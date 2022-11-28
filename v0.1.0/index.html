@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Introduction · MacroModelling.jl</title><script data-outdated-warner src="assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="assets/documenter.js"></script><script src="siteinfo.js"></script><script src="../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href>MacroModelling.jl</a></span></div><form class="docs-search" action="search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li class="is-active"><a class="tocitem" href>Introduction</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="tutorials/install/">Installation</a></li><li><a class="tocitem" href="tutorials/rbc/">RBC</a></li><li><a class="tocitem" href="tutorials/sw03/">Smets and Wouters (2003)</a></li></ul></li><li><a class="tocitem" href="api/">API</a></li><li><a class="tocitem" href="call_index/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Introduction</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Introduction</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/thorek1/MacroModelling.jl/blob/main/docs/src/index.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="MacroModelling.jl"><a class="docs-heading-anchor" href="#MacroModelling.jl">MacroModelling.jl</a><a id="MacroModelling.jl-1"></a><a class="docs-heading-anchor-permalink" href="#MacroModelling.jl" title="Permalink"></a></h1><p><code>MacroModelling.jl</code> - fast prototyping of dynamic stochastic general equilibrium (DSGE) models</p><p><code>MacroModelling.jl</code> currently supports dicsrete-time DSGE models and the timing of a variable reflects when the variable is decided (end of period for stock variables).</p><p>As of now <code>MacroModelling.jl</code> can:</p><ul><li>parse a model written with user friendly syntax (variables are followed by time indices <code>...[2], [1], [0], [-1], [-2]...</code>, or <code>[x]</code> for shocks)</li><li>(tries to) solve the model only knowing the model equations and parameter values (no steady state file needed)</li><li>calculate first, second, and third order perturbation solutions using (forward) automatic differentiation (AD)</li><li>calculate (generalised) impulse response functions, and simulate the model</li><li>calibrate parameters using (non stochastic) steady state relationships</li><li>match model moments</li><li>estimate the model on data (kalman filter using first order perturbation)</li><li><strong>differentiate</strong> (forward AD) the model solution (first order perturbation), kalman filter loglikelihood, model moments, steady state, <strong>with respect to the parameters</strong></li></ul><p><code>MacroModelling.jl</code> helps the modeller:</p><ul><li>Syntax makes variable and parameter definitions obsolete</li><li><code>MacroModelling.jl</code> applies symbolic and numerical tools to solve for the steady state (and mostly succeeds without much help)</li></ul><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using MacroModelling</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; @model RBC_estim begin
+           # c[0]^(-sigma)=beta/gammax*c(+1)^(-sigma)*(alpha*exp(z(+1))*(k/l(+1))^(alpha-1)+(1-delta))
+           c[0]^(-sigma) = beta * c[1]^(-sigma) * (alpha * exp(z[1]) * (k[0] / l[1])^(alpha - 1) + (1 - delta))
+           psi * c[0]^sigma * 1 / (1 - l[0]) = w[0]
+           k[0] = (1 - delta) * k[-1] + invest[0]
+           y[0] = invest[0] + c[0] + gshare * y[ss] * exp(ghat[0])
+           y[0] = exp(z[0]) * k[-1]^alpha * l[0]^(1 - alpha)
+           w[0] = (1 - alpha) * y[0] / l[0]
+           r[0] = 4 * alpha * y[0] / k[-1]
+           z[0] = rhoz * z[-1] + std_z * eps_z[x]
+           ghat[0] = rhog * ghat[-1] + std_g * eps_g[x]
+           c_obs[0] = log(c[0]) - log(c[-1])
+           y_obs[0] = log(y[0]) - log(y[-1])
+           g_obs[0] = ghat[0] - ghat[-1]
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Model: RBC_estim
+Variables: 12
+Shocks: 2
+Parameters: 10
+Auxiliary variables: 0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; @parameters RBC_estim begin
+           std_g  = 0.0105
+           std_z  = 0.0068
+           sigma  = 1
+           alpha  = 0.33
+           rhoz   = 0.97
+           rhog   = 0.989
+           gshare = 0.2038
+           delta  = 0.024038461538461536
+           beta   = 0.9923664122137404
+       
+           psi | l[ss] = .33
+           w &gt; 0
+           l &gt; 0
+           y &gt; 0
+           k &gt; 0
+           c &gt; 0
+           invest &gt; 0
+       
+           psi &gt; 0
+       end</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_solution(RBC_estim)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Steady_state__States__Shocks ∈ 8-element Vector{Symbol}
+→   Variable ∈ 12-element Vector{Symbol}
+And data, 8×12 adjoint(::Matrix{Float64}) with eltype Float64:
+                   (:c)          (:c_obs)      …  (:y_obs)     (:z)
+  (:Steady_state)   0.571206      0.0              0.0          0.0
+  (:c₍₋₁₎)          0.0          -1.75068          0.0          0.0
+  (:ghat₍₋₁₎)      -0.102612     -0.17964          0.146327    -8.55796e-17
+  (:k₍₋₁₎)          0.0314001     0.0549716        0.0102794    1.88022e-17
+  (:y₍₋₁₎)         -1.02869e-16  -1.80092e-16  …  -0.956223    -9.16986e-17
+  (:z₍₋₁₎)          0.342423      0.599475         1.27181      0.97
+  (:eps_g₍ₓ₎)      -0.0010894    -0.0019072        0.00155352  -0.0
+  (:eps_z₍ₓ₎)       0.00240049    0.0042025        0.0089158    0.0068</code></pre></article><nav class="docs-footer"><a class="docs-footer-nextpage" href="tutorials/install/">Installation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.23 on <span class="colophon-date" title="Monday 28 November 2022 09:02">Monday 28 November 2022</span>. Using Julia version 1.8.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
