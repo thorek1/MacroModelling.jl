@@ -8,11 +8,11 @@
 
 `MacroModelling.jl` - fast prototyping of dynamic stochastic general equilibrium (DSGE) models
 
-`MacroModelling.jl` currently supports dicsrete-time DSGE models and the timing of a variable reflects when the variable is decided (end of period for stock variables).
+The package currently supports dicsrete-time DSGE models with end-of-period timing.
 
-As of now `MacroModelling.jl` can:
+As of now the package can:
 - parse a model written with user friendly syntax (variables are followed by time indices `...[2], [1], [0], [-1], [-2]...`, or `[x]` for shocks)
-- (tries to) solve the model only knowing the model equations and parameter values (no steady state file needed)
+- (tries to) solve the model only knowing the model equations and parameter values (no steady state file, no variable and parameter declaration needed)
 - calculate first, second, and third order perturbation solutions using (forward) automatic differentiation (AD)
 - calculate (generalised) impulse response functions, and simulate the model
 - calibrate parameters using (non stochastic) steady state relationships
@@ -20,13 +20,43 @@ As of now `MacroModelling.jl` can:
 - estimate the model on data (kalman filter using first order perturbation)
 - **differentiate** (forward AD) the model solution (first order perturbation), kalman filter loglikelihood, model moments, steady state, **with respect to the parameters**
 
+# Getting started
+## Installation
+`MacroModelling.jl` requires [`julia`](https://julialang.org/downloads/) version 1.8 or higher and an IDE is recommended (e.g. [`VS Code`](https://code.visualstudio.com/download) with the [`julia extension`](https://marketplace.visualstudio.com/items?itemName=julialang.language-julia)).
 
-`MacroModelling.jl` helps the modeller:
-- Syntax makes variable and parameter definitions obsolete
-- `MacroModelling.jl` applies symbolic and numerical tools to solve for the steady state (and mostly succeeds without much help)
+Once set up you can install `MacroModelling.jl` by typing the following in the julia REPL:
+```julia
+using Pkg; Pkg.add(url="https://github.com/thorek1/MacroModelling.jl.git")
+```
+or
+```julia
+using Pkg; Pkg.add("MacroModelling")
+```
+## Example
+Here is example code for a simple RBC model. For more details see the [documentation](https://thorek1.github.io/MacroModelling.jl/stable).
+```julia
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+plot_irfs(RBC)
+```
 
 
-## Comparison with other packages
+# Comparison with other packages
 ||MacroModelling.jl|[dynare](https://www.dynare.org)|[RISE](https://github.com/jmaih/RISE_toolbox)|[DSGE.jl](https://github.com/FRBNY-DSGE/DSGE.jl)|[StateSpaceEcon.jl](https://bankofcanada.github.io/DocsEcon.jl/dev/)|[SolveDSGE.jl](https://github.com/RJDennis/SolveDSGE.jl)|[dolo.py](https://www.econforge.org/dolo.py/)|[DifferentiableStateSpaceModels.jl](https://github.com/HighDimensionalEconLab/DifferentiableStateSpaceModels.jl)|[gEcon](http://gecon.r-forge.r-project.org)
 |---|---|---|---|---|---|---|---|---|---|
 **Host language**|julia|MATLAB|MATLAB|julia|julia|julia|Python|julia|R|
@@ -43,7 +73,7 @@ As of now `MacroModelling.jl` can:
 **Timing convention**|end-of-period|end-of-period|end-of-period||end-of-period|start-of period|end-of-period|start-of period|end-of-period|
 
 
-## Bibliography
+# Bibliography
 
 Levintal, O., (2017), "Fifth-Order Perturbation Solution to DSGE models", Journal of Economic Dynamics and Control, 80, pp. 1---16.
 
