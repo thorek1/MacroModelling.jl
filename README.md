@@ -5,8 +5,7 @@
 [![](https://img.shields.io/badge/docs-stable-blue.svg)](https://thorek1.github.io/MacroModelling.jl/stable)
 <!-- [![](https://img.shields.io/badge/docs-dev-blue.svg)](https://thorek1.github.io/MacroModelling.jl/dev) -->
 
-
-`MacroModelling.jl` - fast prototyping of dynamic stochastic general equilibrium (DSGE) models
+The goal of `MacroModelling.jl` is to reduce coding time and speed up model development.
 
 The package currently supports dicsrete-time DSGE models with end-of-period timing.
 
