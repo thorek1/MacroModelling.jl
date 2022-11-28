@@ -2,9 +2,9 @@
 
 `MacroModelling.jl` - fast prototyping of dynamic stochastic general equilibrium (DSGE) models
 
-MacroModelling currently supports dicsrete-time DSGE models and the timing of a variable reflects when the variable is decided (end of period for stock variables).
+`MacroModelling.jl` currently supports dicsrete-time DSGE models and the timing of a variable reflects when the variable is decided (end of period for stock variables).
 
-As of now MacroModelling can:
+As of now `MacroModelling.jl` can:
 - parse a model written with user friendly syntax (variables are followed by time indices `...[2], [1], [0], [-1], [-2]...`, or `[x]` for shocks)
 - (tries to) solve the model only knowing the model equations and parameter values (no steady state file needed)
 - calculate first, second, and third order perturbation solutions using (forward) automatic differentiation (AD)
@@ -15,9 +15,9 @@ As of now MacroModelling can:
 - **differentiate** (forward AD) the model solution (first order perturbation), kalman filter loglikelihood, model moments, steady state, **with respect to the parameters**
 
 
-MacroModelling helps the lazy modeller:
+`MacroModelling.jl` helps the modeller:
 - Syntax makes variable and parameter definitions obsolete
-- MacroModelling applies symbolic and numerical tools to solve for the steady state (and mostly succeeds without much help)
+- `MacroModelling.jl` applies symbolic and numerical tools to solve for the steady state (and mostly succeeds without much help)
 
 
 ```@repl
