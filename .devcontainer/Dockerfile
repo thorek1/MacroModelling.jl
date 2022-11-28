@@ -38,5 +38,6 @@ RUN mkdir "/opt/julia-${JULIA_VERSION}" && \
         rm "/tmp/julia-${JULIA_VERSION}-linux-x86_64.tar.gz"
 RUN ln -fs /opt/julia-*/bin/julia /usr/local/bin/julia
 
+RUN julia -e 'import Pkg; Pkg.add("SymPy"); using SymPy'
 RUN julia -e 'import Pkg; Pkg.add(url="https://github.com/thorek1/MacroModelling.jl.git"); using MacroModelling'
 RUN julia -e 'import Pkg; Pkg.add("Turing"); using Turing'
