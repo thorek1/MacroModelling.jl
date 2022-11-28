@@ -11,7 +11,7 @@ The package currently supports dicsrete-time DSGE models with end-of-period timi
 
 As of now the package can:
 - parse a model written with user friendly syntax (variables are followed by time indices `...[2], [1], [0], [-1], [-2]...`, or `[x]` for shocks)
-- (tries to) solve the model only knowing the model equations and parameter values (no steady state file, no variable and parameter declaration needed)
+- (attempt to) solve the model only knowing the model equations and parameter values (no steady state file, no variable and parameter declaration needed)
 - calculate first, second, and third order perturbation solutions using (forward) automatic differentiation (AD)
 - calculate (generalised) impulse response functions, and simulate the model
 - calibrate parameters using (non stochastic) steady state relationships
