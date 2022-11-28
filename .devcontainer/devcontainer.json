@@ -17,7 +17,7 @@
 			]
 		}
 	},
-
+	"onCreateCommand": "julia -e 'import Pkg; Pkg.add(\"SymPy\"); using SymPy'",
 	"postCreateCommand": "/julia-devcontainer-scripts/postcreate.jl",
 
 	"remoteUser": "vscode"
