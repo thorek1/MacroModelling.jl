@@ -2098,7 +2098,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
         F = C * P * C'
 
-        loglik += log(ℒ.det(F)) + v' / F * v
+        loglik += log(max(eps(Float64),ℒ.det(F))) + v' / F * v
 
         K = P * C' / F
 
