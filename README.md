@@ -7,7 +7,7 @@
 
 The goal of `MacroModelling.jl` is to reduce coding time and speed up model development.
 
-The package currently supports dicsrete-time DSGE models with end-of-period timing.
+The package currently supports discrete-time DSGE models with end-of-period timing.
 
 As of now the package can:
 - parse a model written with user friendly syntax (variables are followed by time indices `...[2], [1], [0], [-1], [-2]...`, or `[x]` for shocks)
