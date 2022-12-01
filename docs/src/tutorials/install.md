@@ -3,9 +3,5 @@
 
 Once set up you can install `MacroModelling.jl` by typing the following in the julia REPL:
 ```julia
-using Pkg; Pkg.add(url="https://github.com/thorek1/MacroModelling.jl.git")
-```
-or
-```julia
 using Pkg; Pkg.add("MacroModelling")
 ```
