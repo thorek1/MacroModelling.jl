@@ -4,13 +4,13 @@
 - [x] estimation, IRF matching, system priors
 - [x] check derivative tests with finite diff
 - [ ] clean up printouts/reporting
-- [ ] release first version
+- [x] release first version
 - [ ] clean up function inputs and harmonise AD and standard commands
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example) 
 - [ ] write documentation/docstrings
 - [ ] revisit optimizers for SS
 - [ ] write tests and documentation for solution, estimation... making sure results are consistent
-- [ ] figure out licenses
+- [x] figure out licenses
 - [ ] add more models
 - [ ] symbolic derivatives
 - [ ] use @assert for errors or maybe argcheck
