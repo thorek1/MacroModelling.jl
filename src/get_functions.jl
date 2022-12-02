@@ -62,6 +62,8 @@ function get_irf(𝓂::ℳ,
     sol_mat = calculate_first_order_solution(jacc; T = 𝓂.timings)
 
     state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+    
+    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
     shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
 
@@ -181,6 +183,12 @@ function get_irf(𝓂::ℳ;
         var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
     end
 
+    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
+
+    if shocks == :none && generalised_irf
+        @error "Cannot compute generalised IRFs for model without shocks."
+    end
+    
     if generalised_irf
         girfs =  girf(state_update, 
                         𝓂.timings; 

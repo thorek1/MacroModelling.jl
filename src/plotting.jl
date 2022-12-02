@@ -76,6 +76,8 @@ function plot(𝓂::ℳ;
     end
 
     init_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - collect(get_non_stochastic_steady_state_internal(𝓂))
+    
+    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
     shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
 
@@ -206,7 +208,6 @@ function plot(𝓂::ℳ;
         # elseif length(pp) > 1
         if length(pp) > 0
 
-            shock_string = ": " * string(𝓂.timings.exo[shock_idx[shock]])
 
             if shocks == :simulate
                 shock_string = ": simulate all"
@@ -215,6 +216,7 @@ function plot(𝓂::ℳ;
                 shock_string = ""
                 shock_name = "no_shock"
             else
+                shock_string = ": " * string(𝓂.timings.exo[shock_idx[shock]])
                 shock_name = string(𝓂.timings.exo[shock_idx[shock]])
             end
 

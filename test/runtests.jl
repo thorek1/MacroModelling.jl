@@ -6,6 +6,34 @@ using Random
     include("test_standalone_function.jl")
 end
 
+@testset "Model without shocks" begin
+    @model m begin
+        K[0] = (1 - δ) * K[-1] + I[0]
+        Z[0] = (1 - ρ) * μ + ρ * Z[-1] 
+        I[1]  = ((ρ + δ - Z[0])/(1 - δ))  + ((1 + ρ)/(1 - δ)) * I[0]
+    end
+
+    @parameters m begin
+        ρ = 0.05
+        δ = 0.10
+        μ = .17
+        σ = .2
+    end
+
+    m_ss = get_steady_state(m)
+    @test isapprox(m_ss(:,:Steady_state),[1/7.5,1/.75,.17],rtol = eps(Float32))
+
+    m_sol = get_solution(m) 
+    @test isapprox(m_sol(:,:K),[1/.75,.9,.04975124378109454],rtol = eps(Float32))
+
+    init = m_ss(:,:Steady_state) |> collect
+    init[2] *= 1.5
+    get_irf(m, initial_state = init, shocks = :none)
+
+    plot_irf(m, initial_state = init, shocks = :none)
+    @test true
+end
+
 @testset "Distribution functions, general and SS" begin
     
     @model RBC_CME begin
