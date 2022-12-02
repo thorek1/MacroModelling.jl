@@ -70,7 +70,7 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
 function create_symbols_eqs!(𝓂::ℳ)
 
     # create symbols in module scope
-    symbols_in_equation = union(𝓂.var,𝓂.par,𝓂.parameters,𝓂.exo,𝓂.dynamic_variables)#,𝓂.dynamic_variables_future)
+    symbols_in_equation = union(𝓂.var,𝓂.par,𝓂.parameters,𝓂.exo,𝓂.dynamic_variables,𝓂.nonnegativity_auxilliary_vars)#,𝓂.dynamic_variables_future)
     l_bnds = Dict(𝓂.bounded_vars .=> 𝓂.lower_bounds)
     u_bnds = Dict(𝓂.bounded_vars .=> 𝓂.upper_bounds)
 
@@ -135,6 +135,7 @@ function create_symbols_eqs!(𝓂::ℳ)
                             Set(eval(:([$(𝓂.var_past...)]))),
                             Set(eval(:([$(𝓂.var_future...)]))),
                             Set(eval(:([$(𝓂.var...)]))),
+                            Set(eval(:([$(𝓂.nonnegativity_auxilliary_vars...)]))),
 
                             map(x->Set(eval(:([$(x...)]))),𝓂.ss_calib_list),
                             map(x->Set(eval(:([$(x...)]))),𝓂.par_calib_list),
@@ -198,7 +199,7 @@ end
 
 
 function solve_steady_state!(𝓂::ℳ,symbolic_SS)
-    unknowns = union(𝓂.symbolics.var,𝓂.symbolics.calibration_equations_parameters)
+    unknowns = union(𝓂.symbolics.var,𝓂.symbolics.nonnegativity_auxilliary_vars,𝓂.symbolics.calibration_equations_parameters)
 
     if length(unknowns) > length(𝓂.symbolics.ss_equations) + length(𝓂.symbolics.calibration_equations)
         println("Unable to solve steady state. More unknowns than equations.")

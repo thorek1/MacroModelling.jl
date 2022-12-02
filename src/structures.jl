@@ -68,6 +68,7 @@ mutable struct symbolics
     var_past::Set{Sym}
     var_future::Set{Sym}
     var::Set{Sym}
+    nonnegativity_auxilliary_vars::Set{Sym}
 
     ss_calib_list::Vector{Set{Sym}}
     par_calib_list::Vector{Set{Sym}}
@@ -180,6 +181,7 @@ mutable struct ℳ
     nonlinear_solution_helper
     SS_dependencies
 
+    nonnegativity_auxilliary_vars::Vector{Symbol}
     ss_equations::Vector{Expr}
     t_future_equations 
     t_past_equations 

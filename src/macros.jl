@@ -176,7 +176,8 @@ macro model(𝓂,ex)
     # var = collect(union(var_future,var_present,var_past))
 
     # aux = collect(union(aux_future,aux_present,aux_past))
-
+    nonnegativity_aux_vars = []
+    ss_equations_aux = []
     aux_vars_created = Set()
 
     # write down SS equations and go by equation
@@ -582,16 +583,6 @@ macro model(𝓂,ex)
                                 # issubset([x.args[2]],[:x :ex :exo :exogenous]) ? 0 : #set shocks to zero
                                 occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 :
                         x.args[1] : 
-                    x.head == :call ? 
-                        x.args[1] == :^ ?
-                            x.args[2].head == :ref ?
-                                begin
-                                    push!(lower_bounds,eps())
-                                    push!(upper_bounds,Inf)
-                                    push!(bounded_vars,x.args[2].args[1]) 
-                                end :
-                            x :
-                        x :
                     x.head == :call ?
                         x.args[1] == :* ?
                             x.args[2] isa Int ?
@@ -599,10 +590,32 @@ macro model(𝓂,ex)
                                     x :
                                 :($(x.args[3]) * $(x.args[2])) :
                             x :
+                        x.args[1] ∈ [:^, :log] ?
+                            x.args[2] isa Symbol ?
+                                begin
+                                    if length(intersect(bounded_vars,[x.args[2]])) == 0
+                                        push!(lower_bounds,eps())
+                                        push!(upper_bounds,Inf)
+                                        push!(bounded_vars,x.args[2]) 
+                                    end
+                                    x
+                                end :
+                            x.args[2].head == :call ?
+                                begin
+                                    push!(lower_bounds,eps())
+                                    push!(upper_bounds,Inf)
+                                    push!(bounded_vars,:($(Symbol("nonnegativity_auxilliary" * sub(string(1))))))
+                                    push!(ss_equations_aux,Expr(:call,:-, Symbol("nonnegativity_auxilliary" * sub(string(1))) ,x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
+                                    push!(nonnegativity_aux_vars,:($(Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))))
+                                    :($(Symbol("nonnegativity_auxilliary" * sub(string(1))))^$(x.args[3]))
+                                end :
+                            x :
                         x :
                     unblock(x) : 
                 x,
             ex.args[i])
+            # println(ex.args[i])
+            # println(unblock(prs_ex))
             # println(unblock(prs_ex))
             push!(ss_equations,unblock(prs_ex))
         end
@@ -707,6 +720,7 @@ macro model(𝓂,ex)
                         $nonlinear_solution_helper,
                         $SS_dependencies,
 
+                        $nonnegativity_aux_vars,
                         $ss_equations, 
                         $t_future_equations,
                         # :(function t_future_deriv($($var_future...),$($dyn_ss_future...),$($par...))
