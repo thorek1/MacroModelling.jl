@@ -582,6 +582,16 @@ macro model(𝓂,ex)
                                 # issubset([x.args[2]],[:x :ex :exo :exogenous]) ? 0 : #set shocks to zero
                                 occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 :
                         x.args[1] : 
+                    x.head == :call ? 
+                        x.args[1] == :^ ?
+                            x.args[2].head == :ref ?
+                                begin
+                                    push!(lower_bounds,eps())
+                                    push!(upper_bounds,Inf)
+                                    push!(bounded_vars,x.args[2].args[1]) 
+                                end :
+                            x :
+                        x :
                     x.head == :call ?
                         x.args[1] == :* ?
                             x.args[2] isa Int ?
