@@ -207,7 +207,8 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
 
     incidence_matrix = fill(0,length(unknowns),length(unknowns))
 
-    eq_list = union(union.(setdiff.(𝓂.symbolics.var_list,
+    eq_list = union(union.(setdiff.(union.(𝓂.symbolics.var_list,
+                                           𝓂.symbolics.ss_list),
                                     𝓂.symbolics.var_redundant_list),
                             𝓂.symbolics.par_list),
                     union.(𝓂.symbolics.ss_calib_list,
@@ -1091,16 +1092,16 @@ function write_functions_mapping!(𝓂::ℳ)
     𝓂.solution.valid_steady_state_solution = @RuntimeGeneratedFunction(test_func)
 
     
-    𝓂.timings = sort_and_index_symbols( 𝓂.var,
-                                        𝓂.var_past,
-                                        𝓂.var_future,
-                                        𝓂.aux,
-                                        𝓂.aux_past,
-                                        𝓂.aux_future,
-                                        𝓂.exo,
-                                        𝓂.exo_past,
-                                        𝓂.exo_present,
-                                        𝓂.exo_future)
+    # 𝓂.timings = sort_and_index_symbols( 𝓂.var,
+    #                                     𝓂.var_past,
+    #                                     𝓂.var_future,
+    #                                     𝓂.aux,
+    #                                     𝓂.aux_past,
+    #                                     𝓂.aux_future,
+    #                                     𝓂.exo,
+    #                                     𝓂.exo_past,
+    #                                     𝓂.exo_present,
+    #                                     𝓂.exo_future)
     
     𝓂.solution.outdated = true
     return nothing

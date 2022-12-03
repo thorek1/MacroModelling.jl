@@ -184,7 +184,6 @@ macro model(𝓂,ex)
     for (i,arg) in enumerate(ex.args)
         if isa(arg,Expr)
 
-            # label all variables parameters and exogenous vairables and timings for individual equations
             exo_tmp = Set()
             var_tmp = Set()
             par_tmp = Set()
@@ -211,6 +210,7 @@ macro model(𝓂,ex)
             ss_dyn_tmp = Set()
             exo_dyn_tmp = Set()
 
+            # label all variables parameters and exogenous variables and timings for individual equations
             postwalk(x -> 
                 x isa Expr ? 
                     x.head == :call ? 
@@ -307,7 +307,7 @@ macro model(𝓂,ex)
 
             push!(par_list,par_tmp)
 
-            
+            # write down dynamic equations
             t_ex = postwalk(x -> 
                 x isa Expr ? 
                     x.head == :(=) ? 
@@ -526,7 +526,7 @@ macro model(𝓂,ex)
 
 
 
-
+            # write down dynamic equations shifted one period into future
             t_ex = postwalk(x -> 
                 x isa Expr ? 
                     x.head == :(=) ? 
@@ -621,6 +621,241 @@ macro model(𝓂,ex)
         end
     end
 
+
+
+
+
+    # tag vars and pars in changed SS equations
+    exo_tmp = Set()
+    var_tmp = Set()
+    par_tmp = Set()
+    ss_tmp = Set()
+
+    var_future_tmp = Set()
+    var_present_tmp = Set()
+    var_past_tmp = Set()
+    
+
+    # label all variables parameters and exogenous variables and timings for changed SS equations
+    for eq in ss_equations
+        postwalk(x -> 
+            x isa Expr ? 
+                x.head == :call ? 
+                    for i in 2:length(x.args)
+                        x.args[i] isa Symbol ? 
+                            occursin(r"^(ss|stst|steady|steadystate|steady_state|x|ex|exo|exogenous){1}$"i,string(x.args[i])) ? 
+                                x :
+                            push!(par_tmp,x.args[i]) : 
+                        x
+                    end :
+                x.head == :ref ? 
+                    x.args[2] isa Int ? 
+                        x.args[2] == 0 ? 
+                            begin
+                                push!(var_present_tmp,x.args[1])
+                            end : 
+                        x.args[2] > 0 ? 
+                            begin
+                                push!(var_future_tmp,x.args[1])
+                            end : 
+                        x.args[2] < 0 ? 
+                            begin
+                                push!(var_past_tmp,x.args[1])
+                            end : 
+                        x :
+                    occursin(r"^(x|ex|exo|exogenous){1}$"i,string(x.args[2])) ?
+                        begin
+                            push!(exo_tmp,x.args[1])
+                        end : 
+                    occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\-{1}\s{1}\d+$))"i,string(x.args[2])) ?
+                        begin
+                            push!(var_past_tmp,x.args[1])
+                        end : 
+                    occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\+{1}\s{1}\d+$))"i,string(x.args[2])) ?
+                        begin
+                            push!(var_future_tmp,x.args[1])
+                        end : 
+                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
+                        begin
+                            push!(ss_tmp,x.args[1])
+                        end :
+                    x : 
+                x :
+            x,
+        eq)
+    end
+
+    var_list_SS = []
+    ss_list_SS = []
+    par_list_SS = []
+
+    push!(var_list_SS,union(var_future_tmp,var_present_tmp,var_past_tmp))
+
+    push!(ss_list_SS,ss_tmp)
+
+    push!(par_list_SS,par_tmp)
+
+
+
+
+
+
+    # tag vars and pars in changed SS equations
+    exo_tmp = Set()
+    var_tmp = Set()
+    par_tmp = Set()
+    ss_tmp = Set()
+
+    var_future_tmp = Set()
+    var_present_tmp = Set()
+    var_past_tmp = Set()
+    
+
+    # label all variables parameters and exogenous variables and timings for changed SS equations
+    for eq in ss_equations_aux
+        postwalk(x -> 
+            x isa Expr ? 
+                x.head == :call ? 
+                    for i in 2:length(x.args)
+                        x.args[i] isa Symbol ? 
+                            occursin(r"^(ss|stst|steady|steadystate|steady_state|x|ex|exo|exogenous){1}$"i,string(x.args[i])) ? 
+                                x :
+                            push!(par_tmp,x.args[i]) : 
+                        x
+                    end :
+                x.head == :ref ? 
+                    x.args[2] isa Int ? 
+                        x.args[2] == 0 ? 
+                            begin
+                                push!(var_present_tmp,x.args[1])
+                            end : 
+                        x.args[2] > 0 ? 
+                            begin
+                                push!(var_future_tmp,x.args[1])
+                            end : 
+                        x.args[2] < 0 ? 
+                            begin
+                                push!(var_past_tmp,x.args[1])
+                            end : 
+                        x :
+                    occursin(r"^(x|ex|exo|exogenous){1}$"i,string(x.args[2])) ?
+                        begin
+                            push!(exo_tmp,x.args[1])
+                        end : 
+                    occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\-{1}\s{1}\d+$))"i,string(x.args[2])) ?
+                        begin
+                            push!(var_past_tmp,x.args[1])
+                        end : 
+                    occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\+{1}\s{1}\d+$))"i,string(x.args[2])) ?
+                        begin
+                            push!(var_future_tmp,x.args[1])
+                        end : 
+                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
+                        begin
+                            push!(ss_tmp,x.args[1])
+                        end :
+                    x : 
+                x :
+            x,
+        eq)
+    end
+
+    var_list_SS_aux = []
+    ss_list_SS_aux = []
+    par_list_SS_aux = []
+
+    push!(var_list_SS_aux,union(var_future_tmp,var_present_tmp,var_past_tmp))
+    push!(ss_list_SS_aux,ss_tmp)
+    push!(par_list_SS_aux,par_tmp)
+
+
+
+
+
+
+    var = collect(union(var_future,var_present,var_past))
+
+    aux = collect(union(aux_future,aux_present,aux_past))
+
+
+    # create timings
+    var = sort(union(var, aux, exo_past, exo_future))
+    var_past = sort(collect(union(var_past, aux_past, exo_past)))
+    var_future = sort(collect(union(var_future, aux_future, exo_future)))
+
+    present_only              = sort(setdiff(var,union(var_past,var_future)))
+    future_not_past           = sort(setdiff(var_future, var_past))
+    past_not_future           = sort(setdiff(var_past, var_future))
+    mixed                     = sort(setdiff(var, union(present_only, future_not_past, past_not_future)))
+    future_not_past_and_mixed = sort(union(future_not_past,mixed))
+    past_not_future_and_mixed = sort(union(past_not_future,mixed))
+    present_but_not_only      = sort(setdiff(var,present_only))
+    mixed_in_past             = sort(intersect(var_past, mixed))
+    not_mixed_in_past         = sort(setdiff(var_past,mixed_in_past))
+    mixed_in_future           = sort(intersect(var_future, mixed))
+    exo                       = sort(collect(exo))
+    var                       = sort(var)
+    aux                       = sort(aux)
+    exo_present               = sort(collect(exo_present))
+
+    nPresent_only              = length(present_only)
+    nMixed                     = length(mixed)
+    nFuture_not_past_and_mixed = length(future_not_past_and_mixed)
+    nPast_not_future_and_mixed = length(past_not_future_and_mixed)
+    nPresent_but_not_only      = length(present_but_not_only)
+    nVars                      = length(var)
+    nExo                       = length(collect(exo))
+
+    present_only_idx              = indexin(present_only,var)
+    present_but_not_only_idx      = indexin(present_but_not_only,var)
+    future_not_past_and_mixed_idx = indexin(future_not_past_and_mixed,var)
+    past_not_future_and_mixed_idx = indexin(past_not_future_and_mixed,var)
+    mixed_in_future_idx           = indexin(mixed_in_future,var_future)
+    mixed_in_past_idx             = indexin(mixed_in_past,var_past)
+    not_mixed_in_past_idx         = indexin(not_mixed_in_past,var_past)
+    past_not_future_idx           = indexin(past_not_future,var)
+
+    reorder       = map(x->(getindex(1:nVars, x .== [present_only..., past_not_future..., future_not_past_and_mixed...]))[1], var)
+    dynamic_order = map(x->(getindex(1:nPresent_but_not_only, x .== [past_not_future..., future_not_past_and_mixed...]))[1], present_but_not_only)
+
+    T = timings(present_only,
+                future_not_past,
+                past_not_future,
+                mixed,
+                future_not_past_and_mixed,
+                past_not_future_and_mixed,
+                present_but_not_only,
+                mixed_in_past,
+                not_mixed_in_past,
+                mixed_in_future,
+                exo,
+                var,
+                aux,
+                exo_present,
+
+                nPresent_only,
+                nMixed,
+                nFuture_not_past_and_mixed,
+                nPast_not_future_and_mixed,
+                nPresent_but_not_only,
+                nVars,
+                nExo,
+
+                present_only_idx,
+                present_but_not_only_idx,
+                future_not_past_and_mixed_idx,
+                not_mixed_in_past_idx,
+                past_not_future_and_mixed_idx,
+                mixed_in_past_idx,
+                mixed_in_future_idx,
+                past_not_future_idx,
+
+                reorder,
+                dynamic_order)
+
+
+
+
     # keep normal names as you write them in model block
     for (i,arg) in enumerate(ex.args)
         if isa(arg,Expr)
@@ -632,10 +867,6 @@ macro model(𝓂,ex)
             push!(equations,unblock(prs_exx))
         end
     end
-
-    var = collect(union(var_future,var_present,var_past))
-
-    aux = collect(union(aux_future,aux_present,aux_past))
 
     creator = true
 
@@ -747,102 +978,68 @@ macro model(𝓂,ex)
                         $creator,
 
                         x->x,
-                        # [],
-                        # [],
 
-                        timings([],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                
-                                Int(0),
-                                Int(0),
-                                Int(0),
-                                Int(0),
-                                Int(0),
-                                Int(0),
-                                Int(0),
+                        $T,
 
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                []
+                        solution(
+                            perturbation(  perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
+                                            perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
+                                            higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x),
+                                            higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x)
                             ),
-
-                            solution(
-                                perturbation(  perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
-                                                perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
-                                                higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x),
-                                                higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x)
-                                ),
-                                ComponentVector(nothing = 0.0),
-                                Set([:first_order]),
-                                true,
-                                true,
-                                false,
-                                false
-                            ),
-                            # nothing
-                            symbolics(
-                                [],
-                                [],
-                                [],
-                                
-                                [],
-                                [],
-                                [],
+                            ComponentVector(nothing = 0.0),
+                            Set([:first_order]),
+                            true,
+                            true,
+                            false,
+                            false
+                        ),
+                        # nothing
+                        symbolics(
+                            [],
+                            [],
+                            [],
                             
-                                [],
-                            
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                            
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                                [],
-                            
-                                [],
-                            
-                                [],
-                                [],
-                                [],
-                            
-                                Set(),
-                                Set(),
-                                Set(),
-                                Set(),
-                            
-                                [],
-                                [],
-                            
-                                [],
-                                [],
-                                [],
-                                []
-                            )
+                            [],
+                            [],
+                            [],
+                        
+                            [],
+                        
+                            [],
+                            [],
+                            [],
+                            [],
+                            [],
+                        
+                            [],
+                            [],
+                            [],
+                            [],
+                            [],
+                            [],
+                            [],
+                        
+                            [],
+                        
+                            [],
+                            [],
+                            [],
+                        
+                            Set(),
+                            Set(),
+                            Set(),
+                            Set(),
+                            Set(),
+                        
+                            [],
+                            [],
+                        
+                            [],
+                            [],
+                            [],
+                            []
+                        )
                     );
         # nothing
     end
