@@ -19,6 +19,7 @@
 - [ ] SS: replace variables in log() with auxilliary variable which must be positive to help solver
 - [ ] plot multiple solutions or models - multioptions in one graph
 - [ ] add correlation, autocorrelation, and variance decomposition
+- [ ] complex example with lags > 1, [ss], calib equations, aux nonneg vars
 
 ## Not high priority:
 - [x] implement blockdiag with julia package instead of python
