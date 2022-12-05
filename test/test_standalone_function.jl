@@ -63,7 +63,7 @@ NSSS =  [1.0
 9.467573947982233
 1.42321160651834
 1.0]
-@test isapprox(SS,NSSS,rtol = eps(Float64))
+@test isapprox(SS,NSSS,rtol = eps(Float32))
 
 T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :z_delta], [:A, :Pi, :c, :k, :z_delta], [:A], [:k, :z_delta], [:A], [:delta_eps, :eps_z], [:A, :Pi, :R, :c, :k, :y, :z_delta], Symbol[], Symbol[], 2, 1, 3, 3, 5, 7, 2, [3, 6], [1, 2, 4, 5, 7], [1, 2, 4], [2, 3], [1, 5, 7], [1], [1], [5, 7], [5, 6, 1, 7, 3, 2, 4], [3, 4, 5, 1, 2])
 
@@ -93,7 +93,7 @@ vec([ 1  2  3  3  4  4  4  5  6  6  7  7  7  8  8  9  10  10  11  12  12  13  14
 -0.9
 -0.005
 -0.0068],7,15)
-@test isapprox(jacobian,jacobian2,rtol = eps(Float64))
+@test isapprox(sparse(jacobian),jacobian2,rtol = eps(Float32))
 
 
 hessian2 = sparse(vec([ 2  2  3  3  3  2  3  2  3  3  2  1  5  4  3  3  2  3  2  2  2  5  1  5  5  1  5]),
@@ -125,7 +125,7 @@ vec([ 3  8  17  18  21  31  32  33  33  36  38  57  57  65  77  78  97  97  106 
 -0.0226
 0.0021014511165327685
 -0.0021014511165327685],7,225)
-@test isapprox(hessian,hessian2,rtol = eps(Float64))
+@test isapprox(hessian,hessian2,rtol = eps(Float32))
 
 
 third_order_derivatives2 = sparse(vec([ 2  2  2  2  3  3  3  3  3  3  3  3  2  2  3  3  3  2  3  2  3  3  2  3  3  2  2  2  1  5  4  3  3  3  3  2  3  2  2  2  2  2  2  2  2  1  5  1  5  1  5]),
@@ -181,7 +181,7 @@ vec([ 33  38  108  113  242  243  246  257  258  261  302  303  453  458  467  4
     -0.0021014511165327685
     -0.0004090778090616675
     0.0004090778090616675],7,3375)
-@test isapprox(third_order_derivatives,third_order_derivatives2,rtol = eps(Float64))
+@test isapprox(third_order_derivatives,third_order_derivatives2,rtol = eps(Float32))
 
 
 first_order_solution = calculate_first_order_solution(jacobian; T = T, explosive = false)# |> Matrix{Float32}
@@ -241,22 +241,22 @@ iirrff = irf(first_order_state_update, zeros(T.nVars), T)
 ggiirrff = girf(first_order_state_update, T)
 @test isapprox(iirrff[4,1,:],ggiirrff[4,1,:],rtol = eps(Float32))
 
-ggiirrff2 = girf(second_order_state_update, T,draws = 10000,warmup_periods = 1000)
+ggiirrff2 = girf(second_order_state_update, T,draws = 1000,warmup_periods = 100)
 @test isapprox(ggiirrff2[4,1,:],[-0.0003668849861768406
-0.0021711333455274096],rtol = eps(Float32))
+0.0021711333455274096],rtol = 1e-3)
 
 iirrff2 = irf(second_order_state_update, zeros(T.nVars), T)
 @test isapprox(iirrff2[4,1,:],[-0.00045474294820106135
-0.0020831348757072566],rtol = 1e-5)
+0.0020831348757072566],rtol = eps(Float32))
 
 
-ggiirrff3 = girf(third_order_state_update, T,draws = 10000,warmup_periods = 1000)
+ggiirrff3 = girf(third_order_state_update, T,draws = 1000,warmup_periods = 100)
 @test isapprox(ggiirrff3[4,1,:],[ -0.00036686142588429404
-0.002171120660323429],rtol = eps(Float32))
+0.002171120660323429],rtol = 1e-3)
 
 iirrff3 = irf(third_order_state_update, zeros(T.nVars), T)
 @test isapprox(iirrff3[4,1,:],[-0.00045474294820106135
-0.0020831348757072566], rtol = 1e-5)
+0.0020831348757072566], rtol = eps(Float32))
 
 
 

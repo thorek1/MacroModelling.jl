@@ -100,7 +100,7 @@ macro model(𝓂,ex)
     calibration_equations = []
     calibration_equations_parameters = []
 
-    bounds = []
+    bounds⁺ = Set()
 
     bounded_vars = []
     lower_bounds = []
@@ -614,63 +614,65 @@ macro model(𝓂,ex)
                                 :($(x.args[3]) * $(x.args[2])) :
                             x :
                         x.args[1] ∈ [:^] ?
-                            x.args[2] isa Symbol ? # nonnegative parameters 
-                                begin
-                                    if length(intersect(bounded_vars,[x.args[2]])) == 0
-                                        push!(lower_bounds,eps())
-                                        push!(upper_bounds,Inf)
-                                        push!(bounded_vars,x.args[2]) 
-                                    end
-                                    x
-                                end :
-                            x.args[2].head == :ref ?
-                                x.args[2].args[1] isa Symbol ? # nonnegative variables 
+                            !(x.args[3] isa Int) ?
+                                x.args[2] isa Symbol ? # nonnegative parameters 
+                                        begin
+                                            # if length(intersect(bounded_vars,[x.args[2]])) == 0
+                                                # push!(lower_bounds,eps())
+                                                # push!(upper_bounds,Inf)
+                                                push!(bounds⁺,x.args[2]) 
+                                            # end
+                                            x
+                                        end :
+                                x.args[2].head == :ref ?
+                                    x.args[2].args[1] isa Symbol ? # nonnegative variables 
+                                        begin
+                                            # if length(intersect(bounded_vars,[x.args[2].args[1]])) == 0
+                                                # push!(lower_bounds,eps())
+                                                # push!(upper_bounds,Inf)
+                                                push!(bounds⁺,x.args[2].args[1]) 
+                                            # end
+                                            x
+                                        end :
+                                    x :
+                                x.args[2].head == :call ? # nonnegative expressions
                                     begin
-                                        if length(intersect(bounded_vars,[x.args[2].args[1]])) == 0
-                                            push!(lower_bounds,eps())
-                                            push!(upper_bounds,Inf)
-                                            push!(bounded_vars,x.args[2].args[1]) 
-                                        end
-                                        x
+                                        # push!(lower_bounds,eps())
+                                        # push!(upper_bounds,Inf)
+                                        push!(bounds⁺,:($(Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))))
+                                        
+                                        push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
+                                        push!(nonnegativity_aux_vars,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))
+                                        :($(Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)))),0)) ^ $(x.args[3]))
                                     end :
                                 x :
-                            x.args[2].head == :call ? # nonnegative expressions
-                                begin
-                                    push!(lower_bounds,eps())
-                                    push!(upper_bounds,Inf)
-                                    push!(bounded_vars,:($(Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))))
-                                    
-                                    push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
-                                    push!(nonnegativity_aux_vars,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))
-                                    :($(Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)))),0)) ^ $(x.args[3]))
-                                end :
                             x :
                         x.args[1] ∈ [:log, :norminvcdf, :erfcinv, :qnorm, :norminv] ?
                             x.args[2] isa Symbol ? # nonnegative parameters 
                                 begin
-                                    if length(intersect(bounded_vars,[x.args[2]])) == 0
-                                        push!(lower_bounds,eps())
-                                        push!(upper_bounds,Inf)
-                                        push!(bounded_vars,x.args[2]) 
-                                    end
+                                    # if length(intersect(bounded_vars,[x.args[2]])) == 0
+                                        # push!(lower_bounds,eps())
+                                        # push!(upper_bounds,Inf)
+                                        push!(bounds⁺,x.args[2]) 
+                                    # end
                                     x
                                 end :
                             x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
-                                        if length(intersect(bounded_vars,[x.args[2].args[1]])) == 0
-                                            push!(lower_bounds,eps())
-                                            push!(upper_bounds,Inf)
-                                            push!(bounded_vars,x.args[2].args[1]) 
-                                        end
+                                        # if length(intersect(bounded_vars,[x.args[2].args[1]])) == 0
+                                            # push!(lower_bounds,eps())
+                                            # push!(upper_bounds,Inf)
+                                            push!(bounds⁺,x.args[2].args[1]) 
+                                        # end
                                         x
                                     end :
                                 x :
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
-                                    push!(lower_bounds,eps())
-                                    push!(upper_bounds,Inf)
-                                    push!(bounded_vars,:($(Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))))
+                                    # push!(lower_bounds,eps())
+                                    # push!(upper_bounds,Inf)
+                                    push!(bounds⁺,:($(Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))))
                                     
                                     push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
                                     push!(nonnegativity_aux_vars,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))
@@ -857,6 +859,11 @@ macro model(𝓂,ex)
 
 
 
+    var_future = reduce(union,var_future_list_aux_SS)
+    var_present = reduce(union,var_present_list_aux_SS)
+    var_past = reduce(union,var_past_list_aux_SS)
+      
+    var = collect(union(var_future,var_present,var_past))
 
     # keep normal names as you write them in model block
     for (i,arg) in enumerate(ex.args)
@@ -983,7 +990,7 @@ macro model(𝓂,ex)
                         $calibration_equations, 
                         $calibration_equations_parameters,
 
-                        $bounds,
+                        collect($bounds⁺),
                         $bounded_vars,
                         $lower_bounds,
                         $upper_bounds,
@@ -1337,7 +1344,7 @@ macro parameters(𝓂,ex)
 
     
     quote
-        global $𝓂.bounds = $bounds
+        # global $𝓂.bounds⁺ = $bounds
 
         global $𝓂.bounded_vars = $bounded_vars
         global $𝓂.lower_bounds = $lower_bounds

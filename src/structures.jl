@@ -200,7 +200,7 @@ mutable struct ℳ
     calibration_equations::Vector{Expr}
     calibration_equations_parameters::Vector{Symbol}
 
-    bounds::Vector{Expr}
+    bounds⁺::Vector{Symbol}
 
     bounded_vars::Vector{Symbol}
     lower_bounds::Vector{Float64}

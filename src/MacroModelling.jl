@@ -101,7 +101,7 @@ function create_symbols_eqs!(𝓂::ℳ)
             end
     eval(expr)
 
-    𝓂.symbolics = symbolics(map(x->eval(:($x)),𝓂.ss_equations),
+    𝓂.symbolics = symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
                             map(x->eval(:($x)),𝓂.dyn_equations),
                             map(x->eval(:($x)),𝓂.dyn_equations_future),
 
@@ -117,15 +117,15 @@ function create_symbols_eqs!(𝓂::ℳ)
                             map(x->Set(eval(:([$(x...)]))),𝓂.dyn_ss_list),
                             map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_list),
 
-                            map(x->Set(eval(:([$(x...)]))),𝓂.var_present_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.var_past_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.var_future_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.ss_list),
+                            map(x->Set(eval(:([$(x...)]))),𝓂.var_present_list_aux_SS),
+                            map(x->Set(eval(:([$(x...)]))),𝓂.var_past_list_aux_SS),
+                            map(x->Set(eval(:([$(x...)]))),𝓂.var_future_list_aux_SS),
+                            map(x->Set(eval(:([$(x...)]))),𝓂.ss_list_aux_SS),
 
-                            map(x->Set(eval(:([$(x...)]))),𝓂.var_list),
+                            map(x->Set(eval(:([$(x...)]))),𝓂.var_list_aux_SS),
                             map(x->Set(eval(:([$(x...)]))),𝓂.dynamic_variables_list),
                             map(x->Set(eval(:([$(x...)]))),𝓂.dynamic_variables_future_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.par_list),
+                            map(x->Set(eval(:([$(x...)]))),𝓂.par_list_aux_SS),
 
                             map(x->eval(:($x)),𝓂.calibration_equations),
                             map(x->eval(:($x)),𝓂.calibration_equations_parameters),
@@ -140,9 +140,9 @@ function create_symbols_eqs!(𝓂::ℳ)
                             map(x->Set(eval(:([$(x...)]))),𝓂.ss_calib_list),
                             map(x->Set(eval(:([$(x...)]))),𝓂.par_calib_list),
 
-                            [Set() for _ in 1:length(𝓂.ss_equations)],
+                            [Set() for _ in 1:length(𝓂.ss_aux_equations)],
                             [Set() for _ in 1:length(𝓂.calibration_equations)],
-                            [Set() for _ in 1:length(𝓂.ss_equations)],
+                            [Set() for _ in 1:length(𝓂.ss_aux_equations)],
                             [Set() for _ in 1:length(𝓂.calibration_equations)])
 end
 
@@ -247,7 +247,8 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
     while n > 0 
         if length(eqs[:,eqs[2,:] .== n]) == 2
             var_to_solve = collect(unknowns)[vars[:,vars[2,:] .== n][1]]
-
+            # println(ss_equations[eqs[:,eqs[2,:] .== n][1]])
+            # println(var_to_solve)
             soll = try solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
             catch
             end
@@ -347,7 +348,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
 
                 calib_pars = []
                 calib_pars_input = []
-                relevant_pars = reduce(union,vcat(𝓂.par_list,𝓂.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
+                relevant_pars = reduce(union,vcat(𝓂.par_list_aux_SS,𝓂.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
                 relevant_pars_across = union(relevant_pars_across,relevant_pars)
                 # println(relevant_pars)
                 iii = 1
@@ -613,6 +614,15 @@ function solve!(𝓂::ℳ;
 
 
     if !𝓂.solution.functions_written 
+        # consolidate bounds info
+        double_info = intersect(𝓂.bounds⁺,𝓂.bounded_vars)
+        𝓂.lower_bounds[indexin(double_info,𝓂.bounded_vars)] = max.(eps(),𝓂.lower_bounds[indexin(double_info,𝓂.bounded_vars)])
+
+        new_info = setdiff(𝓂.bounds⁺,𝓂.bounded_vars)
+        𝓂.bounded_vars = vcat(𝓂.bounded_vars,new_info)
+        𝓂.lower_bounds = vcat(𝓂.lower_bounds,fill(eps(),length(new_info)))
+        𝓂.upper_bounds = vcat(𝓂.upper_bounds,fill(Inf,length(new_info)))
+
         remove_redundant_SS_vars!(𝓂)
         solve_steady_state!(𝓂,symbolic_SS)
         write_functions_mapping!(𝓂)
@@ -991,14 +1001,14 @@ end
 
 
 function write_functions_mapping!(𝓂::ℳ)
-    present_varss = map(x->Symbol(string(x) * "₍₀₎"),sort(union(𝓂.var_present,𝓂.aux_present,𝓂.exo_present)))
+    present_varss = map(x->Symbol(string(x) * "₍₀₎"),sort(setdiff(union(𝓂.var_present,𝓂.aux_present,𝓂.exo_present), 𝓂.nonnegativity_auxilliary_vars)))
+    future_varss  = map(x->Symbol(string(x) * "₍₁₎"),sort(setdiff(union(𝓂.var_future,𝓂.aux_future,𝓂.exo_future), 𝓂.nonnegativity_auxilliary_vars)))
+    past_varss    = map(x->Symbol(string(x) * "₍₋₁₎"),sort(setdiff(union(𝓂.var_past,𝓂.aux_past,𝓂.exo_past), 𝓂.nonnegativity_auxilliary_vars)))
     shock_varss   = map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)
-    future_varss  = map(x->Symbol(string(x) * "₍₁₎"),sort(union(𝓂.var_future,𝓂.aux_future,𝓂.exo_future)))
-    past_varss    = map(x->Symbol(string(x) * "₍₋₁₎"),sort(union(𝓂.var_past,𝓂.aux_past,𝓂.exo_past)))
-    ss_varss      = map(x->Symbol(string(x) * "₍ₛₛ₎"),𝓂.var)
+    ss_varss      = map(x->Symbol(string(x) * "₍ₛₛ₎"),setdiff(𝓂.var, 𝓂.nonnegativity_auxilliary_vars))
 
     steady_state = []
-    for ii in 1:length(𝓂.var)
+    for ii in 1:length(ss_varss)
         push!(steady_state,:($(ss_varss[ii]) = X̄[$ii]))
         # ii += 1
     end
@@ -1222,13 +1232,15 @@ end
 
 function SS_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ)
     𝓂.parameter_values[parameters_idx] = parameters
-    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+    out = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+    out[setdiff(Symbol.(labels(out)),𝓂.nonnegativity_auxilliary_vars)]
 end
 
 
 function SS_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ)
     𝓂.parameter_values[parameters_idx] = parameters
-    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+    out = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+    out[setdiff(Symbol.(labels(out)),𝓂.nonnegativity_auxilliary_vars)]
 end
 
 
@@ -1246,29 +1258,35 @@ end
 
 
 function get_non_stochastic_steady_state_internal(𝓂::ℳ; parameters = nothing)
-
     solve!(𝓂;dynamics = false,parameters = parameters)
 
-    return 𝓂.solution.NSSS_outdated ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+    NSSS = 𝓂.solution.NSSS_outdated ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+
+    return NSSS[setdiff(Symbol.(labels(NSSS)),𝓂.nonnegativity_auxilliary_vars)]
 end
 
 
 
 function calculate_jacobian(parameters::Vector{<: Number}, 𝓂::ℳ)
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var_past = setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
+    var_present = setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
+    var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
+
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    non_stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+    non_stochastic_steady_state = collect(SS_and_pars)[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
 
     par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
-    SS = ComponentVector(non_stochastic_steady_state, Axis(sort(union(𝓂.exo_present,𝓂.var))))
+    SS = ComponentVector(non_stochastic_steady_state, Axis(sort(union(𝓂.exo_present,var))))
 
-    past_idx = [indexin(sort([𝓂.var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(var,𝓂.exo_present)))...]
     SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
     
-    present_idx = [indexin(sort([𝓂.var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    present_idx = [indexin(sort([var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(var,𝓂.exo_present)))...]
     SS_present =    length(present_idx) > 0 ? SS[present_idx] : zeros(0)#; zeros(length(𝓂.exo_present))...]
     
-    future_idx = [indexin(sort([𝓂.var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    future_idx = [indexin(sort([var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(var,𝓂.exo_present)))...]
     SS_future =     length(future_idx) > 0 ? SS[future_idx] : zeros(0)#; zeros(length(𝓂.exo_future))...]
 
     shocks_ss = zeros(length(𝓂.exo))
@@ -1279,20 +1297,26 @@ end
 
 
 function calculate_hessian(parameters::Vector{<: Number}, 𝓂::ℳ)
+    
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var_past = setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
+    var_present = setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
+    var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
+
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    non_stochastic_steady_state = SS_and_pars[1:length(𝓂.var)]
-    calibrated_parameters = SS_and_pars[length(𝓂.var)+1:end]
+    non_stochastic_steady_state = collect(SS_and_pars)[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
 
     par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
-    SS = ComponentVector(non_stochastic_steady_state, Axis(𝓂.var))
-    
-    past_idx = [indexin(sort([𝓂.var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    SS = ComponentVector(non_stochastic_steady_state, Axis(sort(union(𝓂.exo_present,var))))
+
+    past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(var,𝓂.exo_present)))...]
     SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
     
-    present_idx = [indexin(sort([𝓂.var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    present_idx = [indexin(sort([var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(var,𝓂.exo_present)))...]
     SS_present =    length(present_idx) > 0 ? SS[present_idx] : zeros(0)#; zeros(length(𝓂.exo_present))...]
     
-    future_idx = [indexin(sort([𝓂.var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    future_idx = [indexin(sort([var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(var,𝓂.exo_present)))...]
     SS_future =     length(future_idx) > 0 ? SS[future_idx] : zeros(0)#; zeros(length(𝓂.exo_future))...]
 
     shocks_ss = zeros(length(𝓂.exo))
@@ -1305,20 +1329,26 @@ end
 
 
 function calculate_third_order_derivatives(parameters::Vector{<: Number}, 𝓂::ℳ)
+    
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var_past = setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
+    var_present = setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
+    var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
+
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    non_stochastic_steady_state = SS_and_pars[1:length(𝓂.var)]
-    calibrated_parameters = SS_and_pars[length(𝓂.var)+1:end]
+    non_stochastic_steady_state = collect(SS_and_pars)[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
 
     par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
-    SS = ComponentVector(non_stochastic_steady_state, Axis(𝓂.var))
-    
-    past_idx = [indexin(sort([𝓂.var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    SS = ComponentVector(non_stochastic_steady_state, Axis(sort(union(𝓂.exo_present,var))))
+
+    past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(var,𝓂.exo_present)))...]
     SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
     
-    present_idx = [indexin(sort([𝓂.var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    present_idx = [indexin(sort([var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(var,𝓂.exo_present)))...]
     SS_present =    length(present_idx) > 0 ? SS[present_idx] : zeros(0)#; zeros(length(𝓂.exo_present))...]
     
-    future_idx = [indexin(sort([𝓂.var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    future_idx = [indexin(sort([var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(var,𝓂.exo_present)))...]
     SS_future =     length(future_idx) > 0 ? SS[future_idx] : zeros(0)#; zeros(length(𝓂.exo_future))...]
 
     shocks_ss = zeros(length(𝓂.exo))
