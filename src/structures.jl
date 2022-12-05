@@ -146,6 +146,14 @@ mutable struct ℳ
     par_calib_list::Vector{Set{Symbol}}
     ss_list::Vector{Set{Symbol}}
 
+    ss_aux_equations::Vector{Expr}
+    var_list_aux_SS::Vector{Set{Symbol}}
+    ss_list_aux_SS::Vector{Set{Symbol}}
+    par_list_aux_SS::Vector{Set{Symbol}}
+    var_future_list_aux_SS::Vector{Set{Symbol}}
+    var_present_list_aux_SS::Vector{Set{Symbol}}
+    var_past_list_aux_SS::Vector{Set{Symbol}}
+
     # var_solved_list
     # var_solved_calib_list
     # var_redundant_list
