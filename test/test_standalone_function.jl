@@ -246,8 +246,7 @@ ggiirrff2 = girf(second_order_state_update, T,draws = 1000,warmup_periods = 100)
 0.0021711333455274096],rtol = 1e-3)
 
 iirrff2 = irf(second_order_state_update, zeros(T.nVars), T)
-@test isapprox(iirrff2[4,1,:],[-0.00045474294820106135
-0.0020831348757072566],rtol = eps(Float32))
+@test isapprox(iirrff2[4,1,:],[-0.00045474264350351415, 0.0020831351808248575],rtol = eps(Float32))
 
 
 ggiirrff3 = girf(third_order_state_update, T,draws = 1000,warmup_periods = 100)
@@ -255,8 +254,7 @@ ggiirrff3 = girf(third_order_state_update, T,draws = 1000,warmup_periods = 100)
 0.002171120660323429],rtol = 1e-3)
 
 iirrff3 = irf(third_order_state_update, zeros(T.nVars), T)
-@test isapprox(iirrff3[4,1,:],[-0.00045474294820106135
-0.0020831348757072566], rtol = eps(Float32))
+@test isapprox(iirrff3[4,1,:],[-0.00045474264350351415, 0.0020831351808248575], rtol = eps(Float32))
 
 
 
