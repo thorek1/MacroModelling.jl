@@ -407,6 +407,8 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
                     end
                 end
 
+                push!(solved_vals,:(aux_error))
+
                 funcs = :(function block(guess::Vector{Float64},inputs::Vector{Float64})
                         $(guess...) 
                         $(calib_pars...) # add those variables which were previously solved and are used in the equations
@@ -415,13 +417,11 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
                         # $(other_vars...) # add those variables which were previously solved and sare used in the equations
                         # return sum(abs2,[$(𝓂.solved_vals[end]...)])
                         $(nnaux...)
-                        # $(nnaux_error...)
-                        return sum(abs2,[$(solved_vals...)])
+                        $(nnaux_error...)
+                        return [$(solved_vals...)]
                         # return [$(𝓂.solved_vals[end]...)]
                     end)
 
-
-                push!(solved_vals,:(aux_error))
 
                 funcs_optim = :(function block(guess::Vector{Float64},inputs::Vector{Float64})
                     $(guess...) 
@@ -1260,14 +1260,12 @@ end
 function SS_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ)
     𝓂.parameter_values[parameters_idx] = parameters
     𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
-    # out[setdiff(Symbol.(labels(out)),𝓂.nonnegativity_auxilliary_vars)]
 end
 
 
 function SS_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ)
     𝓂.parameter_values[parameters_idx] = parameters
     𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
-    # out[setdiff(Symbol.(labels(out)),𝓂.nonnegativity_auxilliary_vars)]
 end
 
 
@@ -1287,9 +1285,7 @@ end
 function get_non_stochastic_steady_state_internal(𝓂::ℳ; parameters = nothing)
     solve!(𝓂;dynamics = false,parameters = parameters)
 
-    NSSS = 𝓂.solution.NSSS_outdated ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
-
-    return NSSS[setdiff(Symbol.(labels(NSSS)),𝓂.nonnegativity_auxilliary_vars)]
+    return 𝓂.solution.NSSS_outdated ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
 end
 
 
@@ -1301,7 +1297,7 @@ function calculate_jacobian(parameters::Vector{<: Number}, 𝓂::ℳ)
     var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    non_stochastic_steady_state = collect(SS_and_pars)#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    non_stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
 
     par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
@@ -1331,7 +1327,7 @@ function calculate_hessian(parameters::Vector{<: Number}, 𝓂::ℳ)
     var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    non_stochastic_steady_state = collect(SS_and_pars)#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    non_stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
 
     par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
@@ -1363,7 +1359,7 @@ function calculate_third_order_derivatives(parameters::Vector{<: Number}, 𝓂::
     var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    non_stochastic_steady_state = collect(SS_and_pars)#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    non_stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
 
     par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))

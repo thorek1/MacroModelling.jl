@@ -540,7 +540,6 @@ function get_moments(𝓂::ℳ;
         # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂.SS_init_guess, 𝓂),𝓂.parameter_values)
         SS =  KeyedArray(hcat(NSSS[1:length(var)],dNSSS[1:length(var),:]);  Variables = sort(union(𝓂.exo_present,var)), Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
 
-
         if variance
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂)
 
@@ -661,7 +660,7 @@ function get_moments(𝓂::ℳ, parameters::Vector;
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    SS = collect(SS_and_pars)[indexin(var,𝓂.var)]
+    SS = SS_and_pars[1:length(var)]
 
     covar_dcmp = calculate_covariance(parameters,𝓂)
 
