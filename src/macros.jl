@@ -177,7 +177,7 @@ macro model(𝓂,ex)
 
     # aux = collect(union(aux_future,aux_present,aux_past))
     nonnegativity_aux_vars = []
-    ss_equations_aux = []
+    ss_and_aux_equations = []
     aux_vars_created = Set()
 
     # write down SS equations and go by equation
@@ -580,7 +580,6 @@ macro model(𝓂,ex)
                     x.head == :(=) ? 
                         Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
                             x.head == :ref ?
-                                # issubset([x.args[2]],[:x :ex :exo :exogenous]) ? 0 : #set shocks to zero
                                 occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 :
                         x.args[1] : 
                     x.head == :call ?
@@ -590,8 +589,32 @@ macro model(𝓂,ex)
                                     x :
                                 :($(x.args[3]) * $(x.args[2])) :
                             x :
-                        x.args[1] ∈ [:^, :log] ?
-                            x.args[2] isa Symbol ?
+                        x :
+                    unblock(x) : 
+                x,
+            ex.args[i])
+            push!(ss_equations,unblock(prs_ex))
+
+
+
+
+            # find nonegative variables, parameters, or terms
+            eqs = postwalk(x -> 
+                x isa Expr ? 
+                    x.head == :(=) ? 
+                        Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
+                            x.head == :ref ?
+                                occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 : # set shocks to zero and remove time scripts
+                        x : 
+                    x.head == :call ?
+                        x.args[1] == :* ?
+                            x.args[2] isa Int ?
+                                x.args[3] isa Int ?
+                                    x :
+                                :($(x.args[3]) * $(x.args[2])) :
+                            x :
+                        x.args[1] ∈ [:^] ?
+                            x.args[2] isa Symbol ? # nonnegative parameters 
                                 begin
                                     if length(intersect(bounded_vars,[x.args[2]])) == 0
                                         push!(lower_bounds,eps())
@@ -600,44 +623,94 @@ macro model(𝓂,ex)
                                     end
                                     x
                                 end :
-                            x.args[2].head == :call ?
+                            x.args[2].head == :ref ?
+                                x.args[2].args[1] isa Symbol ? # nonnegative variables 
+                                    begin
+                                        if length(intersect(bounded_vars,[x.args[2].args[1]])) == 0
+                                            push!(lower_bounds,eps())
+                                            push!(upper_bounds,Inf)
+                                            push!(bounded_vars,x.args[2].args[1]) 
+                                        end
+                                        x
+                                    end :
+                                x :
+                            x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     push!(lower_bounds,eps())
                                     push!(upper_bounds,Inf)
-                                    push!(bounded_vars,:($(Symbol("nonnegativity_auxilliary" * sub(string(1))))))
-                                    push!(ss_equations_aux,Expr(:call,:-, Symbol("nonnegativity_auxilliary" * sub(string(1))) ,x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
-                                    push!(nonnegativity_aux_vars,:($(Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))))
-                                    :($(Symbol("nonnegativity_auxilliary" * sub(string(1))))^$(x.args[3]))
+                                    push!(bounded_vars,:($(Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))))
+                                    
+                                    push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
+                                    push!(nonnegativity_aux_vars,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))
+                                    :($(Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)))),0)) ^ $(x.args[3]))
+                                end :
+                            x :
+                        x.args[1] ∈ [:log, :norminvcdf, :erfcinv, :qnorm, :norminv] ?
+                            x.args[2] isa Symbol ? # nonnegative parameters 
+                                begin
+                                    if length(intersect(bounded_vars,[x.args[2]])) == 0
+                                        push!(lower_bounds,eps())
+                                        push!(upper_bounds,Inf)
+                                        push!(bounded_vars,x.args[2]) 
+                                    end
+                                    x
+                                end :
+                            x.args[2].head == :ref ?
+                                x.args[2].args[1] isa Symbol ? # nonnegative variables 
+                                    begin
+                                        if length(intersect(bounded_vars,[x.args[2].args[1]])) == 0
+                                            push!(lower_bounds,eps())
+                                            push!(upper_bounds,Inf)
+                                            push!(bounded_vars,x.args[2].args[1]) 
+                                        end
+                                        x
+                                    end :
+                                x :
+                            x.args[2].head == :call ? # nonnegative expressions
+                                begin
+                                    push!(lower_bounds,eps())
+                                    push!(upper_bounds,Inf)
+                                    push!(bounded_vars,:($(Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))))
+                                    
+                                    push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
+                                    push!(nonnegativity_aux_vars,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))
+                                    :($(Expr(:call, x.args[1], Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)))),0))))
                                 end :
                             x :
                         x :
-                    unblock(x) : 
+                    x :
                 x,
             ex.args[i])
-            # println(ex.args[i])
-            # println(unblock(prs_ex))
-            # println(unblock(prs_ex))
-            push!(ss_equations,unblock(prs_ex))
+
+            push!(ss_and_aux_equations,unblock(eqs))
         end
     end
 
 
 
 
+    # go through changed SS equations including nonnegative auxilliary variables
+    ss_aux_equations = []
 
     # tag vars and pars in changed SS equations
-    exo_tmp = Set()
-    var_tmp = Set()
-    par_tmp = Set()
-    ss_tmp = Set()
+    var_list_aux_SS = []
+    ss_list_aux_SS = []
+    par_list_aux_SS = []
 
-    var_future_tmp = Set()
-    var_present_tmp = Set()
-    var_past_tmp = Set()
-    
+    var_future_list_aux_SS = []
+    var_present_list_aux_SS = []
+    var_past_list_aux_SS = []
 
-    # label all variables parameters and exogenous variables and timings for changed SS equations
-    for eq in ss_equations
+    # # label all variables parameters and exogenous variables and timings for changed SS equations including nonnegativity auxilliary variables
+    for eq in ss_and_aux_equations
+        var_tmp = Set()
+        ss_tmp = Set()
+        par_tmp = Set()
+        var_future_tmp = Set()
+        var_present_tmp = Set()
+        var_past_tmp = Set()
+
+        # label all variables parameters and exogenous variables and timings for individual equations
         postwalk(x -> 
             x isa Expr ? 
                 x.head == :call ? 
@@ -651,127 +724,56 @@ macro model(𝓂,ex)
                 x.head == :ref ? 
                     x.args[2] isa Int ? 
                         x.args[2] == 0 ? 
-                            begin
-                                push!(var_present_tmp,x.args[1])
-                            end : 
+                            push!(var_present_tmp,x.args[1]) : 
                         x.args[2] > 0 ? 
-                            begin
-                                push!(var_future_tmp,x.args[1])
-                            end : 
+                            push!(var_future_tmp,x.args[1]) : 
                         x.args[2] < 0 ? 
-                            begin
-                                push!(var_past_tmp,x.args[1])
-                            end : 
+                            push!(var_past_tmp,x.args[1]) : 
                         x :
-                    occursin(r"^(x|ex|exo|exogenous){1}$"i,string(x.args[2])) ?
-                        begin
-                            push!(exo_tmp,x.args[1])
-                        end : 
                     occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\-{1}\s{1}\d+$))"i,string(x.args[2])) ?
-                        begin
-                            push!(var_past_tmp,x.args[1])
-                        end : 
+                        push!(var_past_tmp,x.args[1]) : 
                     occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\+{1}\s{1}\d+$))"i,string(x.args[2])) ?
-                        begin
-                            push!(var_future_tmp,x.args[1])
-                        end : 
+                        push!(var_future_tmp,x.args[1]) : 
                     occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                        begin
-                            push!(ss_tmp,x.args[1])
-                        end :
+                        push!(ss_tmp,x.args[1]) :
                     x : 
                 x :
             x,
         eq)
-    end
 
-    var_list_SS = []
-    ss_list_SS = []
-    par_list_SS = []
-
-    push!(var_list_SS,union(var_future_tmp,var_present_tmp,var_past_tmp))
-
-    push!(ss_list_SS,ss_tmp)
-
-    push!(par_list_SS,par_tmp)
+        var_tmp = union(var_future_tmp,var_present_tmp,var_past_tmp)
+        
+        push!(var_list_aux_SS,var_tmp)
+        push!(ss_list_aux_SS,ss_tmp)
+        push!(par_list_aux_SS,par_tmp)
+        push!(var_future_list_aux_SS,var_future_tmp)
+        push!(var_present_list_aux_SS,var_present_tmp)
+        push!(var_past_list_aux_SS,var_past_tmp)
 
 
-
-
-
-
-    # tag vars and pars in changed SS equations
-    exo_tmp = Set()
-    var_tmp = Set()
-    par_tmp = Set()
-    ss_tmp = Set()
-
-    var_future_tmp = Set()
-    var_present_tmp = Set()
-    var_past_tmp = Set()
-    
-
-    # label all variables parameters and exogenous variables and timings for changed SS equations
-    for eq in ss_equations_aux
-        postwalk(x -> 
+        # write down SS equations including nonnegativity auxilliary variables
+        prs_ex = postwalk(x -> 
             x isa Expr ? 
-                x.head == :call ? 
-                    for i in 2:length(x.args)
-                        x.args[i] isa Symbol ? 
-                            occursin(r"^(ss|stst|steady|steadystate|steady_state|x|ex|exo|exogenous){1}$"i,string(x.args[i])) ? 
+                x.head == :(=) ? 
+                    Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
+                        x.head == :ref ?
+                            occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 :
+                    x.args[1] : 
+                x.head == :call ?
+                    x.args[1] == :* ?
+                        x.args[2] isa Int ?
+                            x.args[3] isa Int ?
                                 x :
-                            push!(par_tmp,x.args[i]) : 
-                        x
-                    end :
-                x.head == :ref ? 
-                    x.args[2] isa Int ? 
-                        x.args[2] == 0 ? 
-                            begin
-                                push!(var_present_tmp,x.args[1])
-                            end : 
-                        x.args[2] > 0 ? 
-                            begin
-                                push!(var_future_tmp,x.args[1])
-                            end : 
-                        x.args[2] < 0 ? 
-                            begin
-                                push!(var_past_tmp,x.args[1])
-                            end : 
+                            :($(x.args[3]) * $(x.args[2])) :
                         x :
-                    occursin(r"^(x|ex|exo|exogenous){1}$"i,string(x.args[2])) ?
-                        begin
-                            push!(exo_tmp,x.args[1])
-                        end : 
-                    occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\-{1}\s{1}\d+$))"i,string(x.args[2])) ?
-                        begin
-                            push!(var_past_tmp,x.args[1])
-                        end : 
-                    occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\+{1}\s{1}\d+$))"i,string(x.args[2])) ?
-                        begin
-                            push!(var_future_tmp,x.args[1])
-                        end : 
-                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                        begin
-                            push!(ss_tmp,x.args[1])
-                        end :
-                    x : 
-                x :
+                    x :
+                unblock(x) : 
             x,
         eq)
+        
+        push!(ss_aux_equations,unblock(prs_ex))
+
     end
-
-    var_list_SS_aux = []
-    ss_list_SS_aux = []
-    par_list_SS_aux = []
-
-    push!(var_list_SS_aux,union(var_future_tmp,var_present_tmp,var_past_tmp))
-    push!(ss_list_SS_aux,ss_tmp)
-    push!(par_list_SS_aux,par_tmp)
-
-
-
-
-
 
     var = collect(union(var_future,var_present,var_past))
 
@@ -916,10 +918,20 @@ macro model(𝓂,ex)
                         $ss_calib_list,
                         $par_calib_list,
                         $ss_list,
+
+                        $ss_aux_equations,
+                        $var_list_aux_SS,
+                        $ss_list_aux_SS,
+                        $par_list_aux_SS,
+                        $var_future_list_aux_SS,
+                        $var_present_list_aux_SS,
+                        $var_past_list_aux_SS,
+
                         # $var_solved_list,
                         # $var_solved_calib_list,
                         # $var_redundant_list,
                         # $var_redundant_calib_list,
+
                         $par_list,
                         $var_future_list,
                         $var_present_list,
