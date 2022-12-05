@@ -199,7 +199,7 @@ end
 
 
 function solve_steady_state!(𝓂::ℳ,symbolic_SS)
-    unknowns = union(𝓂.symbolics.var,𝓂.symbolics.nonnegativity_auxilliary_vars,𝓂.symbolics.calibration_equations_parameters)
+    unknowns = union(𝓂.symbolics.var,𝓂.symbolics.calibration_equations_parameters)
 
     if length(unknowns) > length(𝓂.symbolics.ss_equations) + length(𝓂.symbolics.calibration_equations)
         println("Unable to solve steady state. More unknowns than equations.")
@@ -367,17 +367,17 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
 
                 guess = []
                 result = []
-                sorted_vars = sort(𝓂.solved_vars[end])
+                sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.nonnegativity_auxilliary_vars))
                 for i in 1:length(sorted_vars) 
                     parss = sorted_vars[i]
                     push!(guess,:($parss = guess[$i]))
                     push!(result,:($parss = sol[$i]))
                 end
-
+                
                 other_vars = []
                 other_vars_input = []
                 other_vars_inverse = []
-                other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters),sorted_vars),syms_in_eqs)
+                other_vrs = intersect(setdiff(union(setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars),𝓂.calibration_equations_parameters),sort(𝓂.solved_vars[end])),syms_in_eqs)
                 # println(other_vrs)
                 for k in 1:length(other_vrs)
                     # var_idx = [[findfirst(x->x==y,𝓂.var) for y in other_vrs[k]]]
@@ -389,6 +389,24 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
                 end
                 # println(syms_in_eqs)
                 # println(other_vars)
+
+                nnaux = []
+                nnaux_error = []
+                push!(nnaux_error, :(aux_error = 0))
+                solved_vals = []
+                
+                for val in 𝓂.solved_vals[end]
+                    if (val.args[1] == :+ && val.args[3] ∈ 𝓂.nonnegativity_auxilliary_vars) 
+                        push!(nnaux,:($(val.args[3]) = max(eps(),-$(val.args[2]))))
+                        push!(nnaux_error, :(aux_error += min(0.0,-$(val.args[2]))))
+                    elseif (val.args[1] == :- && val.args[2] ∈ 𝓂.nonnegativity_auxilliary_vars) 
+                        push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
+                        push!(nnaux_error, :(aux_error += min(0.0,$(val.args[3]))))
+                    else
+                        push!(solved_vals,val)
+                    end
+                end
+
                 funcs = :(function block(guess::Vector{Float64},inputs::Vector{Float64})
                         $(guess...) 
                         $(calib_pars...) # add those variables which were previously solved and are used in the equations
@@ -396,8 +414,14 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
                         # $(calib_pars...) # take only those that appear in equations - DONE
                         # $(other_vars...) # add those variables which were previously solved and sare used in the equations
                         # return sum(abs2,[$(𝓂.solved_vals[end]...)])
-                        return [$(𝓂.solved_vals[end]...)]
+                        $(nnaux...)
+                        # $(nnaux_error...)
+                        return sum(abs2,[$(solved_vals...)])
+                        # return [$(𝓂.solved_vals[end]...)]
                     end)
+
+
+                push!(solved_vals,:(aux_error))
 
                 funcs_optim = :(function block(guess::Vector{Float64},inputs::Vector{Float64})
                     $(guess...) 
@@ -405,11 +429,14 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
                     $(other_vars...) # take only those that appear in equations - DONE
                     # $(calib_pars...) # take only those that appear in equations - DONE
                     # $(other_vars...) # add those variables which were previously solved and sare used in the equations
-                    return sum(abs2,[$(𝓂.solved_vals[end]...)])
+                    $(nnaux...)
+                    $(nnaux_error...)
+                    return sum(abs2,[$(solved_vals...)])
                     # return [$(𝓂.solved_vals[end]...)]
                 end)
-            
-                𝓂.SS_init_guess = [fill(1,length(𝓂.var)); fill(.5, length(𝓂.calibration_equations_parameters))]
+                # println(𝓂.solved_vals[end])
+
+                𝓂.SS_init_guess = [fill(1,length(setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars))); fill(.5, length(𝓂.calibration_equations_parameters))]
                 
                 # WARNING: infinite bounds are transformed to 1e12
                 lbs = []
@@ -432,7 +459,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
                 # push!(SS_solve_func,:($(other_vars_inverse...)))
                 push!(SS_solve_func,:(f = OptimizationFunction(𝓂.ss_solve_blocks_optim[$(n_block)], Optimization.AutoForwardDiff())))
                 # push!(SS_solve_func,:(prob = OptimizationProblem(f, 𝓂.SS_init_guess, 𝓂, lb = [$(lbs...)], ub = [$(ubs...)])))
-                push!(SS_solve_func,:(inits = max.(lbs,min.(ubs,𝓂.SS_init_guess[$([findfirst(x->x==y,union(𝓂.var,𝓂.calibration_equations_parameters)) for y in sorted_vars])]))))
+                push!(SS_solve_func,:(inits = max.(lbs,min.(ubs,𝓂.SS_init_guess[$([findfirst(x->x==y,union(setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars),𝓂.calibration_equations_parameters)) for y in sorted_vars])]))))
                 
                 
                 # push!(SS_solve_func,:(𝓂.SS_init_guess[$([findfirst(x -> x==y, union(𝓂.var,𝓂.calibration_equations_parameters)) for y in sorted_vars])] = sol = block_solver([$(calib_pars_input...),$(other_vars_input...)], 
@@ -445,7 +472,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
                         lbs, 
                         ubs)))
                         
-                        push!(SS_solve_func,:($(result...)))            
+                push!(SS_solve_func,:($(result...)))            
 
                 push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
                 push!(𝓂.ss_solve_blocks_optim,@RuntimeGeneratedFunction(funcs_optim))
@@ -472,7 +499,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
     
     dependencies = []
     for i in 1:length(atoms_in_equations_list)
-        push!(dependencies,𝓂.solved_vars[i] => intersect(atoms_in_equations_list[i],union(𝓂.var,𝓂.parameters)))
+        push!(dependencies,𝓂.solved_vars[i] => intersect(atoms_in_equations_list[i],union(setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars),𝓂.parameters)))
     end
     push!(dependencies,:SS_relevant_calibration_parameters => intersect(reduce(union,atoms_in_equations_list),𝓂.parameters))
     # print(dependencies)
@@ -487,13 +514,13 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
 
     push!(SS_solve_func,:($(dyn_exos...)))
 
-    push!(SS_solve_func,:(SS_init_guess = ([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)])))
+    push!(SS_solve_func,:(SS_init_guess = ([$(sort(union(setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars),𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)])))
     # push!(SS_solve_func,:(print(typeof(SS_init_guess))))
     push!(SS_solve_func,:(𝓂.SS_init_guess = typeof(SS_init_guess) == Vector{Float64} ? SS_init_guess : ℱ.value.(SS_init_guess)))
     
 
     # push!(SS_solve_func,:(return ComponentArray(non_stochastic_steady_state = [$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...)], calibrated_parameters = length([$(𝓂.calibration_equations_parameters...)]) > 0 ? [$(𝓂.calibration_equations_parameters...)] : 0.0)))
-    push!(SS_solve_func,:(return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))))
+    push!(SS_solve_func,:(return ComponentVector([$(sort(union(setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars),𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)))...,𝓂.calibration_equations_parameters...]))))
 
     solve_exp = :(function solve_SS(parameters::Vector{Real}, initial_guess::Vector{Real}, 𝓂::ℳ)
                             $(parameters_in_equations...)
@@ -1232,15 +1259,15 @@ end
 
 function SS_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ)
     𝓂.parameter_values[parameters_idx] = parameters
-    out = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
-    out[setdiff(Symbol.(labels(out)),𝓂.nonnegativity_auxilliary_vars)]
+    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+    # out[setdiff(Symbol.(labels(out)),𝓂.nonnegativity_auxilliary_vars)]
 end
 
 
 function SS_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ)
     𝓂.parameter_values[parameters_idx] = parameters
-    out = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
-    out[setdiff(Symbol.(labels(out)),𝓂.nonnegativity_auxilliary_vars)]
+    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+    # out[setdiff(Symbol.(labels(out)),𝓂.nonnegativity_auxilliary_vars)]
 end
 
 
@@ -1274,7 +1301,7 @@ function calculate_jacobian(parameters::Vector{<: Number}, 𝓂::ℳ)
     var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    non_stochastic_steady_state = collect(SS_and_pars)[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    non_stochastic_steady_state = collect(SS_and_pars)#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
 
     par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
@@ -1304,7 +1331,7 @@ function calculate_hessian(parameters::Vector{<: Number}, 𝓂::ℳ)
     var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    non_stochastic_steady_state = collect(SS_and_pars)[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    non_stochastic_steady_state = collect(SS_and_pars)#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
 
     par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
@@ -1336,7 +1363,7 @@ function calculate_third_order_derivatives(parameters::Vector{<: Number}, 𝓂::
     var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    non_stochastic_steady_state = collect(SS_and_pars)[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    non_stochastic_steady_state = collect(SS_and_pars)#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
 
     par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
