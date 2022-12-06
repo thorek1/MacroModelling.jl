@@ -407,7 +407,32 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
                     end
                 end
 
-                push!(solved_vals,:(aux_error))
+                # sort nnaux vars so that they enter in right order. avoid using a variable before it is declared
+                if length(nnaux) > 1
+                    function get_symbols(ex)
+                        list = Set()
+                        postwalk(x -> x isa Symbol ? push!(list, x) : x, ex)
+                        return list
+                    end
+
+                    nn_symbols = map(x->intersect(𝓂.nonnegativity_auxilliary_vars,x), get_symbols.(nnaux))
+
+                    all_symbols = reduce(vcat,nn_symbols) |> Set
+
+                    inc_matrix = fill(0,length(all_symbols),length(all_symbols))
+
+
+                    for i in 1:length(all_symbols)
+                        for k in 1:length(all_symbols)
+                            inc_matrix[i,k] = collect(all_symbols)[i] ∈ collect(nn_symbols)[k]
+                        end
+                    end
+
+                    QQ, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(inc_matrix))
+
+                    nnaux = nnaux[QQ]
+                end
+
 
                 funcs = :(function block(guess::Vector{Float64},inputs::Vector{Float64})
                         $(guess...) 
@@ -417,11 +442,12 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
                         # $(other_vars...) # add those variables which were previously solved and sare used in the equations
                         # return sum(abs2,[$(𝓂.solved_vals[end]...)])
                         $(nnaux...)
-                        $(nnaux_error...)
+                        # $(nnaux_error...)
                         return [$(solved_vals...)]
                         # return [$(𝓂.solved_vals[end]...)]
                     end)
 
+                push!(solved_vals,:(aux_error))
 
                 funcs_optim = :(function block(guess::Vector{Float64},inputs::Vector{Float64})
                     $(guess...) 
