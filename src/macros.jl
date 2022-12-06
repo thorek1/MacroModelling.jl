@@ -863,7 +863,7 @@ macro model(𝓂,ex)
     var_present = reduce(union,var_present_list_aux_SS)
     var_past = reduce(union,var_past_list_aux_SS)
       
-    var = collect(union(var_future,var_present,var_past))
+    var = collect(setdiff(union(var_future,var_present,var_past),nonnegativity_aux_vars))
 
     # keep normal names as you write them in model block
     for (i,arg) in enumerate(ex.args)
@@ -1344,8 +1344,6 @@ macro parameters(𝓂,ex)
 
     
     quote
-        # global $𝓂.bounds⁺ = $bounds
-
         global $𝓂.bounded_vars = $bounded_vars
         global $𝓂.lower_bounds = $lower_bounds
         global $𝓂.upper_bounds = $upper_bounds

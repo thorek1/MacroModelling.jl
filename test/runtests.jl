@@ -1022,7 +1022,7 @@ end
     # using NLopt
     # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
     solve!(RBC_CME)
-    @test get_steady_state(RBC_CME)(setdiff(RBC_CME.var,RBC_CME.nonnegativity_auxilliary_vars),:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
+    @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
     # get_moments(RBC_CME)[1]
     # irf(RBC_CME)
     
@@ -1090,7 +1090,7 @@ end
     # using NLopt
     # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
     solve!(RBC_CME,symbolic_SS = true)
-    @test get_steady_state(RBC_CME)(setdiff(RBC_CME.var,RBC_CME.nonnegativity_auxilliary_vars),:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
+    @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
     # get_moments(RBC_CME)[1]
 
     RBC_CME = nothing
@@ -1162,7 +1162,7 @@ end
     solve!(RBC_CME)
     # RBC_CME.SS_init_guess[1:7] = [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
     # get_steady_state(RBC_CME)
-    @test get_steady_state(RBC_CME)(setdiff(RBC_CME.var,RBC_CME.nonnegativity_auxilliary_vars),:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
+    @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
     # get_moments(RBC_CME)[1]
 
     # RBC_CME.ss_solve_blocks[1]([0.15662344139650963, 1.2081023828249515, 0.02259036144578319, 9.437411555244328, 1.4212969209705313],RBC_CME)
@@ -1232,7 +1232,7 @@ end
     # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
     solve!(RBC_CME, symbolic_SS = true)
     # get_steady_state(RBC_CME)
-    @test get_steady_state(RBC_CME)(setdiff(RBC_CME.var,RBC_CME.nonnegativity_auxilliary_vars),:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
+    @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
     # get_moments(RBC_CME)[1]
 
     
@@ -1244,7 +1244,7 @@ end
 # using MacroModelling: @model, @parameters, get_steady_state, solve!
 
 @testset "Steady state SW03 model" begin 
-    using MacroModelling
+    
     @model SW03 begin
         -q[0] + beta * ((1 - tau) * q[1] + epsilon_b[1] * (r_k[1] * z[1] - psi^-1 * r_k[ss] * (-1 + exp(psi * (-1 + z[1])))) * (C[1] - h * C[0])^(-sigma_c)) = 0
         -q_f[0] + beta * ((1 - tau) * q_f[1] + epsilon_b[1] * (r_k_f[1] * z_f[1] - psi^-1 * r_k_f[ss] * (-1 + exp(psi * (-1 + z_f[1])))) * (C_f[1] - h * C_f[0])^(-sigma_c)) = 0
@@ -1345,34 +1345,29 @@ end
         xi_p = 0.908
 
         # Putting non-negative constraint on first block is enough
-        10 < K
-        0 < I
-        0 < Y_s
-        0 < q
-        0 < r_k
+        # 0 < K
+        # 0 < I
+        # 0 < Y_s
+        # 0 < q
+        # 0 < r_k
         5 < f_1
-        0 < L
-        0 < W
+        # 0 < L
+        # 0 < W
         30 < g_1
-        0 < z
-        0 < mc
-        0 < w_star
-        5 < f_2
-        0 < Y
-        30 < g_2
-        0 < C
+        # 0 < z
+        # 0 < mc
+        # 0 < w_star
+        # 5 < f_2
+        # 0 < Y
+        # 0 < g_2
+        # 0 < C
     end
 
 
     solve!(SW03, symbolic_SS = false)
 
 
-
-
-
-
-
-    @test get_steady_state(SW03)(setdiff(SW03.var,SW03.nonnegativity_auxilliary_vars)) ≈ [  1.2043777509278788
+    @test get_steady_state(SW03)(SW03.timings.var) ≈ [  1.2043777509278788
     1.2043777484127967
     0.362
     0.362
