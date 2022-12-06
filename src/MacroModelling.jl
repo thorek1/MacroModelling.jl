@@ -68,7 +68,6 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
 
 
 function create_symbols_eqs!(𝓂::ℳ)
-
     # create symbols in module scope
     symbols_in_equation = union(𝓂.var,𝓂.par,𝓂.parameters,𝓂.exo,𝓂.dynamic_variables,𝓂.nonnegativity_auxilliary_vars)#,𝓂.dynamic_variables_future)
     l_bnds = Dict(𝓂.bounded_vars .=> 𝓂.lower_bounds)
@@ -76,7 +75,6 @@ function create_symbols_eqs!(𝓂::ℳ)
 
     symbols_pos = []
     symbols_neg = []
-    # symbols_zero = []
     symbols_none = []
 
     for symb in symbols_in_equation
@@ -85,8 +83,6 @@ function create_symbols_eqs!(𝓂::ℳ)
                 push!(symbols_pos, symb)
             elseif u_bnds[symb] <= 0
                 push!(symbols_neg, symb)
-            # elseif (u_bnds[symb] >= 0) .& (l_bnds[symb] <= 0)
-            #     push!(symbols_zero, symb)
             end
         else
             push!(symbols_none, symb)
@@ -96,84 +92,74 @@ function create_symbols_eqs!(𝓂::ℳ)
     expr =  quote
                 @vars $(symbols_pos...)  real = true finite = true positive = true
                 @vars $(symbols_neg...)  real = true finite = true negative = true 
-                # @vars $(symbols_zero...) real = true zero = true
                 @vars $(symbols_none...) real = true finite = true 
             end
+
     eval(expr)
 
-    𝓂.symbolics = symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
-                            map(x->eval(:($x)),𝓂.dyn_equations),
-                            map(x->eval(:($x)),𝓂.dyn_equations_future),
+    symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
+                # map(x->eval(:($x)),𝓂.dyn_equations),
+                # map(x->eval(:($x)),𝓂.dyn_equations_future),
 
-                            map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_present_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_past_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_future_list),
+                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_present_list),
+                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_past_list),
+                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_future_list),
 
-                            map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift2_var_past_list),
+                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift2_var_past_list),
 
-                            map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_present_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_past_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_future_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.dyn_ss_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_list),
+                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_present_list),
+                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_past_list),
+                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_future_list),
+                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_ss_list),
+                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_list),
 
-                            map(x->Set(eval(:([$(x...)]))),𝓂.var_present_list_aux_SS),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.var_past_list_aux_SS),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.var_future_list_aux_SS),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.ss_list_aux_SS),
+                map(x->Set(eval(:([$(x...)]))),𝓂.var_present_list_aux_SS),
+                map(x->Set(eval(:([$(x...)]))),𝓂.var_past_list_aux_SS),
+                map(x->Set(eval(:([$(x...)]))),𝓂.var_future_list_aux_SS),
+                map(x->Set(eval(:([$(x...)]))),𝓂.ss_list_aux_SS),
 
-                            map(x->Set(eval(:([$(x...)]))),𝓂.var_list_aux_SS),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.dynamic_variables_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.dynamic_variables_future_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.par_list_aux_SS),
+                map(x->Set(eval(:([$(x...)]))),𝓂.var_list_aux_SS),
+                # map(x->Set(eval(:([$(x...)]))),𝓂.dynamic_variables_list),
+                # map(x->Set(eval(:([$(x...)]))),𝓂.dynamic_variables_future_list),
+                map(x->Set(eval(:([$(x...)]))),𝓂.par_list_aux_SS),
 
-                            map(x->eval(:($x)),𝓂.calibration_equations),
-                            map(x->eval(:($x)),𝓂.calibration_equations_parameters),
-                            map(x->eval(:($x)),𝓂.parameters),
+                map(x->eval(:($x)),𝓂.calibration_equations),
+                map(x->eval(:($x)),𝓂.calibration_equations_parameters),
+                # map(x->eval(:($x)),𝓂.parameters),
 
-                            Set(eval(:([$(𝓂.var_present...)]))),
-                            Set(eval(:([$(𝓂.var_past...)]))),
-                            Set(eval(:([$(𝓂.var_future...)]))),
-                            Set(eval(:([$(𝓂.var...)]))),
-                            Set(eval(:([$(𝓂.nonnegativity_auxilliary_vars...)]))),
+                # Set(eval(:([$(𝓂.var_present...)]))),
+                # Set(eval(:([$(𝓂.var_past...)]))),
+                # Set(eval(:([$(𝓂.var_future...)]))),
+                Set(eval(:([$(𝓂.var...)]))),
+                Set(eval(:([$(𝓂.nonnegativity_auxilliary_vars...)]))),
 
-                            map(x->Set(eval(:([$(x...)]))),𝓂.ss_calib_list),
-                            map(x->Set(eval(:([$(x...)]))),𝓂.par_calib_list),
+                map(x->Set(eval(:([$(x...)]))),𝓂.ss_calib_list),
+                map(x->Set(eval(:([$(x...)]))),𝓂.par_calib_list),
 
-                            [Set() for _ in 1:length(𝓂.ss_aux_equations)],
-                            [Set() for _ in 1:length(𝓂.calibration_equations)],
-                            [Set() for _ in 1:length(𝓂.ss_aux_equations)],
-                            [Set() for _ in 1:length(𝓂.calibration_equations)])
+                [Set() for _ in 1:length(𝓂.ss_aux_equations)],
+                # [Set() for _ in 1:length(𝓂.calibration_equations)],
+                # [Set() for _ in 1:length(𝓂.ss_aux_equations)],
+                # [Set() for _ in 1:length(𝓂.calibration_equations)]
+                )
 end
 
 
 
-function remove_redundant_SS_vars!(𝓂::ℳ)
-    # solve SS
-    if 𝓂.creator
-        create_symbols_eqs!(𝓂)
-        𝓂.creator = false
-    end
-
-    # var_remaining_list = 𝓂.symbolics.var_list
-
-    ss_equations = 𝓂.symbolics.ss_equations
-
-    # nCalibEqs = length(𝓂.symbolics.var_solved_calib_list)
-    # nVars = length(ss_equations)
+function remove_redundant_SS_vars!(𝓂::ℳ, symbolics::symbolics)
+    ss_equations = symbolics.ss_equations
 
     # check variables which appear in two time periods. they might be redundant in steady state
     redundant_vars = intersect.(
         union.(
-            intersect.(𝓂.symbolics.var_future_list,𝓂.symbolics.var_present_list),
-            intersect.(𝓂.symbolics.var_future_list,𝓂.symbolics.var_past_list),
-            intersect.(𝓂.symbolics.var_present_list,𝓂.symbolics.var_past_list),
-            intersect.(𝓂.symbolics.ss_list,𝓂.symbolics.var_present_list),
-            intersect.(𝓂.symbolics.ss_list,𝓂.symbolics.var_past_list),
-            intersect.(𝓂.symbolics.ss_list,𝓂.symbolics.var_future_list)
+            intersect.(symbolics.var_future_list,symbolics.var_present_list),
+            intersect.(symbolics.var_future_list,symbolics.var_past_list),
+            intersect.(symbolics.var_present_list,symbolics.var_past_list),
+            intersect.(symbolics.ss_list,symbolics.var_present_list),
+            intersect.(symbolics.ss_list,symbolics.var_past_list),
+            intersect.(symbolics.ss_list,symbolics.var_future_list)
         ),
-    𝓂.symbolics.var_list)
-    redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(𝓂.symbolics.var_list) .> 1))
+    symbolics.var_list)
+    redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(symbolics.var_list) .> 1))
 
     for i in redundant_idx
         for var_to_solve in redundant_vars[i]
@@ -186,7 +172,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ)
             end
             
             if length(soll) == 0 || soll == Sym[0] # take out variable if it is redundant from that euation only
-                push!(𝓂.symbolics.var_redundant_list[i],var_to_solve)
+                push!(symbolics.var_redundant_list[i],var_to_solve)
                 ss_equations[i] = ss_equations[i].subs(var_to_solve,1)
             end
 
@@ -198,21 +184,21 @@ end
 
 
 
-function solve_steady_state!(𝓂::ℳ,symbolic_SS)
-    unknowns = union(𝓂.symbolics.var,𝓂.symbolics.nonnegativity_auxilliary_vars,𝓂.symbolics.calibration_equations_parameters)
+function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
+    unknowns = union(symbolics.var,symbolics.nonnegativity_auxilliary_vars,symbolics.calibration_equations_parameters)
 
-    if length(unknowns) > length(𝓂.symbolics.ss_equations) + length(𝓂.symbolics.calibration_equations)
+    if length(unknowns) > length(symbolics.ss_equations) + length(symbolics.calibration_equations)
         println("Unable to solve steady state. More unknowns than equations.")
     end
 
     incidence_matrix = fill(0,length(unknowns),length(unknowns))
 
-    eq_list = union(union.(setdiff.(union.(𝓂.symbolics.var_list,
-                                           𝓂.symbolics.ss_list),
-                                    𝓂.symbolics.var_redundant_list),
-                            𝓂.symbolics.par_list),
-                    union.(𝓂.symbolics.ss_calib_list,
-                            𝓂.symbolics.par_calib_list))
+    eq_list = union(union.(setdiff.(union.(symbolics.var_list,
+                                           symbolics.ss_list),
+                                    symbolics.var_redundant_list),
+                            symbolics.par_list),
+                    union.(symbolics.ss_calib_list,
+                            symbolics.par_calib_list))
 
 
     for i in 1:length(unknowns)
@@ -233,7 +219,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS)
 
     n = n_blocks
 
-    ss_equations = vcat(𝓂.symbolics.ss_equations,𝓂.symbolics.calibration_equations) .|> Sym
+    ss_equations = vcat(symbolics.ss_equations,symbolics.calibration_equations) .|> Sym
     # println(ss_equations)
 
     SS_solve_func = []
@@ -667,8 +653,10 @@ function solve!(𝓂::ℳ;
         𝓂.lower_bounds = vcat(𝓂.lower_bounds,fill(eps(),length(new_info)))
         𝓂.upper_bounds = vcat(𝓂.upper_bounds,fill(Inf,length(new_info)))
 
-        remove_redundant_SS_vars!(𝓂)
-        solve_steady_state!(𝓂,symbolic_SS)
+
+        symbolics = create_symbols_eqs!(𝓂)
+        remove_redundant_SS_vars!(𝓂,symbolics)
+        solve_steady_state!(𝓂,symbolic_SS,symbolics)
         write_functions_mapping!(𝓂)
         𝓂.solution.functions_written = true
     end

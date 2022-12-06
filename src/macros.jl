@@ -877,7 +877,6 @@ macro model(𝓂,ex)
         end
     end
 
-    creator = true
 
     default_optimizer = NLopt.LD_LBFGS
     # default_optimizer = NLopt.LN_BOBYQA
@@ -994,7 +993,6 @@ macro model(𝓂,ex)
                         $bounded_vars,
                         $lower_bounds,
                         $upper_bounds,
-                        $creator,
 
                         x->x,
 
@@ -1012,52 +1010,6 @@ macro model(𝓂,ex)
                             true,
                             false,
                             false
-                        ),
-                        # nothing
-                        symbolics(
-                            [],
-                            [],
-                            [],
-                            
-                            [],
-                            [],
-                            [],
-                        
-                            [],
-                        
-                            [],
-                            [],
-                            [],
-                            [],
-                            [],
-                        
-                            [],
-                            [],
-                            [],
-                            [],
-                            [],
-                            [],
-                            [],
-                        
-                            [],
-                        
-                            [],
-                            [],
-                            [],
-                        
-                            Set(),
-                            Set(),
-                            Set(),
-                            Set(),
-                            Set(),
-                        
-                            [],
-                            [],
-                        
-                            [],
-                            [],
-                            [],
-                            []
                         )
                     );
         # nothing

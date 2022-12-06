@@ -33,40 +33,40 @@ struct timings
     dynamic_order::Vector{Int}
 end
 
-mutable struct symbolics
+struct symbolics
     ss_equations::Vector{Sym}
-    dyn_equations::Vector{Sym}
-    dyn_equations_future::Vector{Sym}
+    # dyn_equations::Vector{Sym}
+    # dyn_equations_future::Vector{Sym}
     
-    dyn_shift_var_present_list::Vector{Set{Sym}}
-    dyn_shift_var_past_list::Vector{Set{Sym}}
-    dyn_shift_var_future_list::Vector{Set{Sym}}
+    # dyn_shift_var_present_list::Vector{Set{Sym}}
+    # dyn_shift_var_past_list::Vector{Set{Sym}}
+    # dyn_shift_var_future_list::Vector{Set{Sym}}
 
-    dyn_shift2_var_past_list::Vector{Set{Sym}}
+    # dyn_shift2_var_past_list::Vector{Set{Sym}}
 
-    dyn_var_present_list::Vector{Set{Sym}}
-    dyn_var_past_list::Vector{Set{Sym}}
-    dyn_var_future_list::Vector{Set{Sym}}
-    dyn_ss_list::Vector{Set{Sym}}
-    dyn_exo_list::Vector{Set{Sym}}
+    # dyn_var_present_list::Vector{Set{Sym}}
+    # dyn_var_past_list::Vector{Set{Sym}}
+    # dyn_var_future_list::Vector{Set{Sym}}
+    # dyn_ss_list::Vector{Set{Sym}}
+    # dyn_exo_list::Vector{Set{Sym}}
 
     var_present_list::Vector{Set{Sym}}
     var_past_list::Vector{Set{Sym}}
     var_future_list::Vector{Set{Sym}}
     ss_list::Vector{Set{Sym}}
     var_list::Vector{Set{Sym}}
-    dynamic_variables_list::Vector{Set{Sym}}
-    dynamic_variables_future_list::Vector{Set{Sym}}
+    # dynamic_variables_list::Vector{Set{Sym}}
+    # dynamic_variables_future_list::Vector{Set{Sym}}
 
     par_list::Vector{Set{Sym}}
 
-    calibration_equations
-    calibration_equations_parameters
-    parameters::Vector{Sym}
+    calibration_equations::Vector{Sym}
+    calibration_equations_parameters::Vector{Sym}
+    # parameters::Vector{Sym}
 
-    var_present::Set{Sym}
-    var_past::Set{Sym}
-    var_future::Set{Sym}
+    # var_present::Set{Sym}
+    # var_past::Set{Sym}
+    # var_future::Set{Sym}
     var::Set{Sym}
     nonnegativity_auxilliary_vars::Set{Sym}
 
@@ -74,9 +74,9 @@ mutable struct symbolics
     par_calib_list::Vector{Set{Sym}}
 
     var_redundant_list::Vector{Set{Sym}}
-    var_redundant_calib_list::Vector{Set{Sym}}
-    var_solved_list::Vector{Set{Sym}}
-    var_solved_calib_list::Vector{Set{Sym}}
+    # var_redundant_calib_list::Vector{Set{Sym}}
+    # var_solved_list::Vector{Set{Sym}}
+    # var_solved_calib_list::Vector{Set{Sym}}
 end
 
 
@@ -205,13 +205,12 @@ mutable struct ℳ
     bounded_vars::Vector{Symbol}
     lower_bounds::Vector{Float64}
     upper_bounds::Vector{Float64}
-    creator::Bool
 
     model_function::Function
 
     timings::timings
     solution::solution
-    symbolics::symbolics
+    # symbolics::symbolics
     
 end
 
