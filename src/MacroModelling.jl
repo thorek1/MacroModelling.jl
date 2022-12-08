@@ -668,19 +668,24 @@ function solve!(𝓂::ℳ;
     if dynamics
         if 𝓂.solution.outdated
             if  algorithm ∈ [:dynare, :riccati, :first_order]
-                jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
+                SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								
+								sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
                 state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                 
                 𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update)
 
-                𝓂.solution.non_stochastic_steady_state = NSSS
+                𝓂.solution.non_stochastic_steady_state = SS_and_pars
                 𝓂.solution.NSSS_outdated = false
             end
             if :second_order == algorithm #∈ 𝓂.solution.algorithm
                 # calculate_second_order_solution!(𝓂)
                 if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0
-                    jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)   
+                    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+										jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
                     sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
 
@@ -688,11 +693,14 @@ function solve!(𝓂::ℳ;
                             
                     𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update)
                     
-                    𝓂.solution.non_stochastic_steady_state = NSSS
+                    𝓂.solution.non_stochastic_steady_state = SS_and_pars
                     𝓂.solution.NSSS_outdated = false
                 end
-                jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                hessian = calculate_hessian(𝓂.parameter_values,NSSS,𝓂)
+                SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								
+								hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
                 𝐒₂ = calculate_second_order_solution(jacobian, 
                                                 hessian, 
                                                 𝓂.solution.perturbation.first_order.solution_matrix; 
@@ -723,14 +731,16 @@ function solve!(𝓂::ℳ;
                     state = state_tmp
                 end
 
-                𝓂.solution.perturbation.second_order.stochastic_steady_state = NSSS[1:end - length(𝓂.calibration_equations)] + vec(state)
+                𝓂.solution.perturbation.second_order.stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)
                 𝓂.solution.outdated = false
             end
             if :third_order == algorithm #∈ 𝓂.solution.algorithm
                 # calculate_third_order_solution(𝓂)
                 # make sure 1st order solution is available
                 if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0
-                    jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
+                    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+										jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
                     sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
 
@@ -740,7 +750,7 @@ function solve!(𝓂::ℳ;
 
                     𝓂.solution.outdated = false
                     
-                    𝓂.solution.non_stochastic_steady_state = NSSS
+                    𝓂.solution.non_stochastic_steady_state = SS_and_pars
                     𝓂.solution.NSSS_outdated = false
                 end
 
@@ -748,8 +758,11 @@ function solve!(𝓂::ℳ;
                 if length(𝓂.solution.perturbation.second_order.solution_matrix) == 0
                     # calculate_second_order_solution(𝓂)
                     
-                    jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                    hessian = calculate_hessian(𝓂.parameter_values,NSSS,𝓂)
+                    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+										jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+
+										hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
 
                     𝐒₂ = calculate_second_order_solution(jacobian, 
                                                         hessian, 
@@ -781,14 +794,17 @@ function solve!(𝓂::ℳ;
                         state = state_tmp
                     end
 
-                    𝓂.solution.perturbation.second_order.stochastic_steady_state = NSSS[1:end - length(𝓂.calibration_equations)] + vec(state)
+                    𝓂.solution.perturbation.second_order.stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)
                     𝓂.solution.outdated = false
 
                 end
 
-                jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                hessian = calculate_hessian(𝓂.parameter_values,NSSS,𝓂)
-                ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,NSSS,𝓂)
+                SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+
+								hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
+                ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,SS_and_pars,𝓂)
 
                 𝐒₃ = calculate_third_order_solution(jacobian, 
                                                         hessian, 
@@ -827,18 +843,20 @@ function solve!(𝓂::ℳ;
                     state = state_tmp
                 end
 
-                𝓂.solution.perturbation.third_order.stochastic_steady_state = NSSS[1:end - length(𝓂.calibration_equations)] + vec(state)
+                𝓂.solution.perturbation.third_order.stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)
                 𝓂.solution.outdated = false
 
             end
             if :linear_time_iteration == algorithm #∈ 𝓂.solution.algorithm
-                jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                sol_mat = calculate_linear_time_iteration_solution(jacobian; T = 𝓂.timings)
+                SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								sol_mat = calculate_linear_time_iteration_solution(jacobian; T = 𝓂.timings)
                 state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                 
                 𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(sol_mat, state_update)
                 
-                𝓂.solution.non_stochastic_steady_state = NSSS
+                𝓂.solution.non_stochastic_steady_state = SS_and_pars
                 𝓂.solution.NSSS_outdated = false
             end
             if length(intersect(𝓂.solution.algorithm,[:linear_time_iteration, :dynare, :riccati, :first_order])) == 0
@@ -846,17 +864,21 @@ function solve!(𝓂::ℳ;
             end
         end
         if length(𝓂.solution.perturbation.linear_time_iteration.solution_matrix) == 0 && :linear_time_iteration == algorithm #∈ 𝓂.solution.algorithm
-                jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                sol_mat = calculate_linear_time_iteration_solution(jacobian; T = 𝓂.timings)
+                SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								sol_mat = calculate_linear_time_iteration_solution(jacobian; T = 𝓂.timings)
                 state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                 
                 𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(sol_mat, state_update)
                 
-                𝓂.solution.non_stochastic_steady_state = NSSS
+                𝓂.solution.non_stochastic_steady_state = SS_and_pars
                 𝓂.solution.NSSS_outdated = false
         end
         if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0 && algorithm ∈ [:dynare, :riccati, :first_order]
-                jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
+                SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
                 sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
 
@@ -864,26 +886,29 @@ function solve!(𝓂::ℳ;
                 
                 𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update)
                 
-                𝓂.solution.non_stochastic_steady_state = NSSS
+                𝓂.solution.non_stochastic_steady_state = SS_and_pars
                 𝓂.solution.NSSS_outdated = false
         end
         if length(𝓂.solution.perturbation.second_order.solution_matrix) == 0 && :second_order == algorithm #∈ 𝓂.solution.algorithm
                 # calculate_second_order_solution!(𝓂)
                 if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0  
-                    jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)   
-                                         
-                    sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+                    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+										∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+										sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
                     state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                             
                     𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update)
                     
-                    𝓂.solution.non_stochastic_steady_state = NSSS
+                    𝓂.solution.non_stochastic_steady_state = SS_and_pars
                     𝓂.solution.NSSS_outdated = false
                 end
-
-                jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                hessian = calculate_hessian(𝓂.parameter_values,NSSS,𝓂)
+								SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+										
+                hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
 
                 𝐒₂ = calculate_second_order_solution(jacobian, 
                                                         hessian, 
@@ -915,7 +940,7 @@ function solve!(𝓂::ℳ;
                     state = state_tmp
                 end
 
-                𝓂.solution.perturbation.second_order.stochastic_steady_state = NSSS[1:end - length(𝓂.calibration_equations)] + vec(state)
+                𝓂.solution.perturbation.second_order.stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)
                 𝓂.solution.outdated = false
 
         end
@@ -924,8 +949,10 @@ function solve!(𝓂::ℳ;
 
                 # make sure 1st order solution is available
                 if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0
-                    jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-
+                    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+										jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+										
                     sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
                     
                     state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
@@ -934,7 +961,7 @@ function solve!(𝓂::ℳ;
 
                     𝓂.solution.outdated = false
                     
-                    𝓂.solution.non_stochastic_steady_state = NSSS
+                    𝓂.solution.non_stochastic_steady_state = SS_and_pars
                     𝓂.solution.NSSS_outdated = false
                 end
 
@@ -942,8 +969,10 @@ function solve!(𝓂::ℳ;
                 if length(𝓂.solution.perturbation.second_order.solution_matrix) == 0
                     # calculate_second_order_solution(𝓂)
                     
-                    jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                    hessian = calculate_hessian(𝓂.parameter_values,NSSS,𝓂)
+                    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+										jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+										hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
 
                     𝐒₂ = calculate_second_order_solution(jacobian, 
                                                         hessian, 
@@ -975,14 +1004,16 @@ function solve!(𝓂::ℳ;
                         state = state_tmp
                     end
 
-                    𝓂.solution.perturbation.second_order.stochastic_steady_state = NSSS[1:end - length(𝓂.calibration_equations)] + vec(state)
+                    𝓂.solution.perturbation.second_order.stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)
                     𝓂.solution.outdated = false
 
                 end
 
-                jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                hessian = calculate_hessian(𝓂.parameter_values,NSSS,𝓂)
-                ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,NSSS,𝓂)
+                SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
+                ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,SS_and_pars,𝓂)
 
                 𝐒₃ = calculate_third_order_solution(jacobian, 
                                                         hessian, 
@@ -1021,7 +1052,7 @@ function solve!(𝓂::ℳ;
                     state = state_tmp
                 end
 
-                𝓂.solution.perturbation.third_order.stochastic_steady_state = NSSS[1:end - length(𝓂.calibration_equations)] + vec(state)
+                𝓂.solution.perturbation.third_order.stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)
                 𝓂.solution.outdated = false
         end
     end
@@ -1294,16 +1325,16 @@ end
 
 
 
-function calculate_jacobian(parameters::Vector{<: Number}, 𝓂::ℳ)
+function calculate_jacobian(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
     var_past = setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
     var_present = setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
     var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
-    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    par = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-
-    past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+		par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
+    
+		past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
     SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
     
     present_idx = [indexin(sort([var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(𝓂.var,𝓂.exo_present)))...]
@@ -1325,8 +1356,9 @@ function calculate_hessian(parameters::Vector{<: Number}, SS_and_pars::AbstractA
     var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    par = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
- 
+    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+		par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
+    
     past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
     SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
     
@@ -1350,10 +1382,10 @@ function calculate_third_order_derivatives(parameters::Vector{<: Number}, SS_and
     var_present = setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
     var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
-    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    par = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-
+    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+		par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
+    
     past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
     SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
     
@@ -1999,7 +2031,9 @@ end
 
 
 function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ)
-    jacc, NSSS = calculate_jacobian(parameters,𝓂)
+    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+		jacc = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
     sol = calculate_first_order_solution(jacc; T = 𝓂.timings)
 
@@ -2025,7 +2059,9 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         @error "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
     end
     
-    jacc, NSSS = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters,𝓂)
+    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+		jacc = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
     sol = calculate_first_order_solution(jacc; T = 𝓂.timings)
 
