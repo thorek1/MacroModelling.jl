@@ -57,7 +57,7 @@ function get_irf(𝓂::ℳ,
 
     solve!(𝓂)
 
-    NSSS = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    NSSS = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
 		jacc = calculate_jacobian(parameters, NSSS, 𝓂)
 								
@@ -661,7 +661,7 @@ function get_moments(𝓂::ℳ, parameters::Vector;
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
-    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     SS = SS_and_pars[1:length(var)]
 
     covar_dcmp = calculate_covariance(parameters,𝓂)
