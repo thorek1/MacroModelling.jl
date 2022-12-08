@@ -692,7 +692,7 @@ function solve!(𝓂::ℳ;
                     𝓂.solution.NSSS_outdated = false
                 end
                 jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                hessian, _ = calculate_hessian(𝓂.parameter_values,𝓂)
+                hessian = calculate_hessian(𝓂.parameter_values,NSSS,𝓂)
                 𝐒₂ = calculate_second_order_solution(jacobian, 
                                                 hessian, 
                                                 𝓂.solution.perturbation.first_order.solution_matrix; 
@@ -749,7 +749,7 @@ function solve!(𝓂::ℳ;
                     # calculate_second_order_solution(𝓂)
                     
                     jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                    hessian, _ = calculate_hessian(𝓂.parameter_values,𝓂)
+                    hessian = calculate_hessian(𝓂.parameter_values,NSSS,𝓂)
 
                     𝐒₂ = calculate_second_order_solution(jacobian, 
                                                         hessian, 
@@ -787,8 +787,8 @@ function solve!(𝓂::ℳ;
                 end
 
                 jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                hessian, _ = calculate_hessian(𝓂.parameter_values,𝓂)
-                ∇₃, _ = calculate_third_order_derivatives(𝓂.parameter_values,𝓂)
+                hessian = calculate_hessian(𝓂.parameter_values,NSSS,𝓂)
+                ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,NSSS,𝓂)
 
                 𝐒₃ = calculate_third_order_solution(jacobian, 
                                                         hessian, 
@@ -883,7 +883,7 @@ function solve!(𝓂::ℳ;
                 end
 
                 jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                hessian, _ = calculate_hessian(𝓂.parameter_values,𝓂)
+                hessian = calculate_hessian(𝓂.parameter_values,NSSS,𝓂)
 
                 𝐒₂ = calculate_second_order_solution(jacobian, 
                                                         hessian, 
@@ -943,7 +943,7 @@ function solve!(𝓂::ℳ;
                     # calculate_second_order_solution(𝓂)
                     
                     jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                    hessian, _ = calculate_hessian(𝓂.parameter_values,𝓂)
+                    hessian = calculate_hessian(𝓂.parameter_values,NSSS,𝓂)
 
                     𝐒₂ = calculate_second_order_solution(jacobian, 
                                                         hessian, 
@@ -981,8 +981,8 @@ function solve!(𝓂::ℳ;
                 end
 
                 jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
-                hessian, _ = calculate_hessian(𝓂.parameter_values,𝓂)
-                ∇₃, _ = calculate_third_order_derivatives(𝓂.parameter_values,𝓂)
+                hessian = calculate_hessian(𝓂.parameter_values,NSSS,𝓂)
+                ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,NSSS,𝓂)
 
                 𝐒₃ = calculate_third_order_solution(jacobian, 
                                                         hessian, 
@@ -1300,12 +1300,9 @@ function calculate_jacobian(parameters::Vector{<: Number}, 𝓂::ℳ)
     var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    non_stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+    par = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
 
-    par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
-    SS = ComponentVector(non_stochastic_steady_state, Axis(sort(union(𝓂.exo_present,𝓂.var))))
-    
     past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
     SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
     
@@ -1322,18 +1319,14 @@ end
 
 
 
-function calculate_hessian(parameters::Vector{<: Number}, 𝓂::ℳ)
+function calculate_hessian(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
     var_past = setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
     var_present = setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
     var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
-    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    non_stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-
-    par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
-    SS = ComponentVector(non_stochastic_steady_state, Axis(sort(union(𝓂.exo_present,𝓂.var))))
-    
+    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+    par = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+ 
     past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
     SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
     
@@ -1347,22 +1340,19 @@ function calculate_hessian(parameters::Vector{<: Number}, 𝓂::ℳ)
 
     nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
         
-    return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2)), SS_and_pars
+    return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
 end
 
 
 
-function calculate_third_order_derivatives(parameters::Vector{<: Number}, 𝓂::ℳ)
+function calculate_third_order_derivatives(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
     var_past = setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
     var_present = setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
     var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    non_stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-
-    par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
-    SS = ComponentVector(non_stochastic_steady_state, Axis(sort(union(𝓂.exo_present,𝓂.var))))
+    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+    par = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
 
     past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
     SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
@@ -1377,7 +1367,7 @@ function calculate_third_order_derivatives(parameters::Vector{<: Number}, 𝓂::
 
     nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
       
-    return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3)), SS_and_pars
+    return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
  end
 
 
