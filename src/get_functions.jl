@@ -57,7 +57,7 @@ function get_irf(𝓂::ℳ,
 
     solve!(𝓂)
 
-    jacc = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters,𝓂)
+    jacc, NSSS = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters,𝓂)
 
     sol_mat = calculate_first_order_solution(jacc; T = 𝓂.timings)
 
@@ -71,7 +71,7 @@ function get_irf(𝓂::ℳ,
     
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
-    SS = collect(get_non_stochastic_steady_state_internal(𝓂))#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    SS = collect(NSSS[1:end - length(𝓂.calibration_equations)])#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - SS
 
