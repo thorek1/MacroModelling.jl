@@ -59,7 +59,7 @@ function get_irf(𝓂::ℳ,
 
     NSSS = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-		jacc = calculate_jacobian(parameters, NSSS, 𝓂)
+		jacc = calculate_jacobian(𝓂.parameter_values, NSSS, 𝓂)
 								
     sol_mat = calculate_first_order_solution(jacc; T = 𝓂.timings)
 
