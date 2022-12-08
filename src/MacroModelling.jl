@@ -670,9 +670,9 @@ function solve!(𝓂::ℳ;
             if  algorithm ∈ [:dynare, :riccati, :first_order]
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+								∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 								
-								sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
+								sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
                 state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                 
                 𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update)
@@ -685,9 +685,9 @@ function solve!(𝓂::ℳ;
                 if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0
                     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-										jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+					∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
-                    sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
+                    sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
                     state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                             
@@ -698,11 +698,11 @@ function solve!(𝓂::ℳ;
                 end
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-								
-								hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
-                𝐒₂ = calculate_second_order_solution(jacobian, 
-                                                hessian, 
+                ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+                
+                ∇₂ = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
+                𝐒₂ = calculate_second_order_solution(∇₁, 
+                                                ∇₂, 
                                                 𝓂.solution.perturbation.first_order.solution_matrix; 
                                                 T = 𝓂.timings)
 
@@ -740,9 +740,9 @@ function solve!(𝓂::ℳ;
                 if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0
                     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-										jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+					∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
-                    sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
+                    sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
                     state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                     
@@ -760,12 +760,11 @@ function solve!(𝓂::ℳ;
                     
                     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-										jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+					∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+					∇₂ = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
 
-										hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
-
-                    𝐒₂ = calculate_second_order_solution(jacobian, 
-                                                        hessian, 
+                    𝐒₂ = calculate_second_order_solution(∇₁, 
+                                                        ∇₂, 
                                                         𝓂.solution.perturbation.first_order.solution_matrix; 
                                                         T = 𝓂.timings)
 
@@ -801,13 +800,12 @@ function solve!(𝓂::ℳ;
 
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-
-								hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
+				∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+				∇₂ = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
                 ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,SS_and_pars,𝓂)
 
-                𝐒₃ = calculate_third_order_solution(jacobian, 
-                                                        hessian, 
+                𝐒₃ = calculate_third_order_solution(∇₁, 
+                                                        ∇₂, 
                                                         ∇₃, 
                                                         𝓂.solution.perturbation.first_order.solution_matrix, 
                                                         𝓂.solution.perturbation.second_order.solution_matrix; 
@@ -850,8 +848,8 @@ function solve!(𝓂::ℳ;
             if :linear_time_iteration == algorithm #∈ 𝓂.solution.algorithm
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-								sol_mat = calculate_linear_time_iteration_solution(jacobian; T = 𝓂.timings)
+								∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+								sol_mat = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
                 state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                 
                 𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(sol_mat, state_update)
@@ -866,8 +864,8 @@ function solve!(𝓂::ℳ;
         if length(𝓂.solution.perturbation.linear_time_iteration.solution_matrix) == 0 && :linear_time_iteration == algorithm #∈ 𝓂.solution.algorithm
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-								sol_mat = calculate_linear_time_iteration_solution(jacobian; T = 𝓂.timings)
+								∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+								sol_mat = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
                 state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                 
                 𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(sol_mat, state_update)
@@ -878,9 +876,9 @@ function solve!(𝓂::ℳ;
         if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0 && algorithm ∈ [:dynare, :riccati, :first_order]
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+								∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
-                sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
+                sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
                 state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                 
@@ -894,8 +892,8 @@ function solve!(𝓂::ℳ;
                 if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0  
                     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-										∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-										sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+					∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+					sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
                     state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                             
@@ -904,14 +902,14 @@ function solve!(𝓂::ℳ;
                     𝓂.solution.non_stochastic_steady_state = SS_and_pars
                     𝓂.solution.NSSS_outdated = false
                 end
-								SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
-    
-								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-										
-                hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
 
-                𝐒₂ = calculate_second_order_solution(jacobian, 
-                                                        hessian, 
+				SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+    
+				∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)					
+                ∇₂ = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
+
+                𝐒₂ = calculate_second_order_solution(∇₁, 
+                                                        ∇₂, 
                                                 𝓂.solution.perturbation.first_order.solution_matrix; 
                                                 T = 𝓂.timings)
 
@@ -951,9 +949,9 @@ function solve!(𝓂::ℳ;
                 if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0
                     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-										jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+					∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 										
-                    sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
+                    sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
                     
                     state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                     
@@ -971,11 +969,11 @@ function solve!(𝓂::ℳ;
                     
                     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-										jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-										hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
+                    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+                    ∇₂ = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
 
-                    𝐒₂ = calculate_second_order_solution(jacobian, 
-                                                        hessian, 
+                    𝐒₂ = calculate_second_order_solution(∇₁, 
+                                                        ∇₂, 
                                                         𝓂.solution.perturbation.first_order.solution_matrix; 
                                                         T = 𝓂.timings)
 
@@ -1011,12 +1009,12 @@ function solve!(𝓂::ℳ;
 
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-								hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
+                ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+                ∇₂ = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
                 ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,SS_and_pars,𝓂)
 
-                𝐒₃ = calculate_third_order_solution(jacobian, 
-                                                        hessian, 
+                𝐒₃ = calculate_third_order_solution(∇₁, 
+                                                        ∇₂, 
                                                         ∇₃, 
                                                         𝓂.solution.perturbation.first_order.solution_matrix, 
                                                         𝓂.solution.perturbation.second_order.solution_matrix; 
@@ -1384,7 +1382,7 @@ function calculate_third_order_derivatives(parameters::Vector{<: Number}, SS_and
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-		par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
+	par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
     
     past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
     SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
@@ -1405,14 +1403,14 @@ function calculate_third_order_derivatives(parameters::Vector{<: Number}, SS_and
 
 
 # function calculate_linear_time_iteration_solution(𝓂::ℳ)
-function calculate_linear_time_iteration_solution(jacobian::AbstractMatrix{Float64}; T::timings)
+function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings)
     expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
               ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
-    ∇₊ = jacobian[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    ∇₀ = jacobian[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    ∇₋ = jacobian[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
-    ∇ₑ = jacobian[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇₋ = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+    ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
   
     maxiter = 1000
     tol = eps(Float32)
@@ -1458,10 +1456,10 @@ end
 
 
 
-function riccati_forward(jacobian::AbstractMatrix{<: Number}; T::timings, explosive::Bool = false)#::AbstractMatrix{Real}
-    ∇₊ = @view jacobian[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = @view jacobian[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
-    ∇₋ = @view jacobian[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
+function riccati_forward(∇₁::AbstractMatrix{<: Number}; T::timings, explosive::Bool = false)#::AbstractMatrix{Real}
+    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
+    ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
+    ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
 
     Q    = ℒ.qr(collect(∇₀[:,T.present_only_idx]))
     Qinv = Q.Q'
@@ -1530,14 +1528,14 @@ function riccati_forward(jacobian::AbstractMatrix{<: Number}; T::timings, explos
 end
 
 
-# function riccati_forward(jacobian::AbstractMatrix{Float64}; T::timings, explosive::Bool = false)
-function riccati_conditions(jacc::AbstractMatrix{<: Number}, sol_d::AbstractMatrix{<: Number}; T::timings) #::AbstractMatrix{Real},
+# function riccati_forward(∇₁::AbstractMatrix{Float64}; T::timings, explosive::Bool = false)
+function riccati_conditions(∇₁::AbstractMatrix{<: Number}, sol_d::AbstractMatrix{<: Number}; T::timings) #::AbstractMatrix{Real},
     expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
               ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
-    A = jacc[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    B = jacc[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    C = jacc[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+    A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    B = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    C = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
 
     sol_buf = sol_d * expand[2]
 
@@ -1547,18 +1545,18 @@ end
 
 
 
-function riccati_forward(jacc::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T, explosive::Bool = false) where {Z,S,N}
+function riccati_forward(∇₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T, explosive::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
-    jacobian = ℱ.value.(jacc)
+    ∇̂₁ = ℱ.value.(∇₁)
     # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, jacc)'
+    ps = mapreduce(ℱ.partials, hcat, ∇₁)'
 
     # get f(vs)
-    val = riccati_forward(jacobian;T = T, explosive = explosive)
+    val = riccati_forward(∇₁;T = T, explosive = explosive)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
-    B = ℱ.jacobian(x -> riccati_conditions(x, val; T = T), jacobian)
-    A = ℱ.jacobian(x -> riccati_conditions(jacobian, x; T = T), val)
+    B = ℱ.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)
+    A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)
 
     jvp = (-A \ B) * ps
 
@@ -1569,14 +1567,14 @@ function riccati_forward(jacc::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T, 
 end
 
 
-function calculate_first_order_solution(jacobian::AbstractMatrix{<: Number}; T::timings, explosive::Bool = false)
-    A = riccati_forward(jacobian, T = T, explosive = explosive)
+function calculate_first_order_solution(∇₁::AbstractMatrix{<: Number}; T::timings, explosive::Bool = false)
+    A = riccati_forward(∇₁, T = T, explosive = explosive)
 
     Jm = ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]
     
-    ∇₊ = jacobian[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:]
-    ∇₀ = jacobian[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    ∇ₑ = jacobian[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:]
+    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
 
     B = -((∇₊ * A * Jm + ∇₀) \ ∇ₑ)
 
@@ -2031,11 +2029,11 @@ end
 
 
 function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ)
-    SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
     
-		jacc = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
-    sol = calculate_first_order_solution(jacc; T = 𝓂.timings)
+    sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     A = sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
     C = sol[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
@@ -2061,9 +2059,9 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     
     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-		jacc = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
-    sol = calculate_first_order_solution(jacc; T = 𝓂.timings)
+    sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     observables_and_states = sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,𝓂.var)))
 

@@ -59,9 +59,9 @@ function get_irf(𝓂::ℳ,
 
     NSSS = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-		jacc = calculate_jacobian(𝓂.parameter_values, NSSS, 𝓂)
+		∇₁ = calculate_jacobian(𝓂.parameter_values, NSSS, 𝓂)
 								
-    sol_mat = calculate_first_order_solution(jacc; T = 𝓂.timings)
+    sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
     
@@ -661,8 +661,9 @@ function get_moments(𝓂::ℳ, parameters::Vector;
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
-    SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
-    SS = SS_and_pars[1:length(var)]
+    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+
+    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
 
     covar_dcmp = calculate_covariance(parameters,𝓂)
 

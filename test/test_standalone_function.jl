@@ -50,9 +50,9 @@ momm = get_moments(RBC_CME)
 
 SS_and_pars = RBC_CME.SS_solve_func(RBC_CME.parameter_values, RBC_CME.SS_init_guess, RBC_CME)
     
-jacobian = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, RBC_CME)
-hessian = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
-third_order_derivatives = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
+∇₁ = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, RBC_CME)
+∇₂ = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
+∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
 #SS = get_steady_state(RBC_CME, derivatives = false)
 
 using SparseArrays
@@ -95,7 +95,7 @@ vec([ 1  2  3  3  4  4  4  5  6  6  7  7  7  8  8  9  10  10  11  12  12  13  14
 -0.9
 -0.005
 -0.0068],7,15)
-@test isapprox(sparse(jacobian),jacobian2,rtol = eps(Float32))
+@test isapprox(sparse(∇₁),jacobian2,rtol = eps(Float32))
 
 
 hessian2 = sparse(vec([ 2  2  3  3  3  2  3  2  3  3  2  1  5  4  3  3  2  3  2  2  2  5  1  5  5  1  5]),
@@ -127,7 +127,7 @@ vec([ 3  8  17  18  21  31  32  33  33  36  38  57  57  65  77  78  97  97  106 
 -0.0226
 0.0021014511165327685
 -0.0021014511165327685],7,225)
-@test isapprox(hessian,hessian2,rtol = eps(Float32))
+@test isapprox(∇₂,hessian2,rtol = eps(Float32))
 
 
 third_order_derivatives2 = sparse(vec([ 2  2  2  2  3  3  3  3  3  3  3  3  2  2  3  3  3  2  3  2  3  3  2  3  3  2  2  2  1  5  4  3  3  3  3  2  3  2  2  2  2  2  2  2  2  1  5  1  5  1  5]),
@@ -183,10 +183,10 @@ vec([ 33  38  108  113  242  243  246  257  258  261  302  303  453  458  467  4
     -0.0021014511165327685
     -0.0004090778090616675
     0.0004090778090616675],7,3375)
-@test isapprox(third_order_derivatives,third_order_derivatives2,rtol = eps(Float32))
+@test isapprox(∇₃,third_order_derivatives2,rtol = eps(Float32))
 
 
-first_order_solution = calculate_first_order_solution(jacobian; T = T, explosive = false)# |> Matrix{Float32}
+first_order_solution = calculate_first_order_solution(∇₁; T = T, explosive = false)# |> Matrix{Float32}
 
 first_order_solution2 = [ 0.9         5.41234e-16  -6.41848e-17   0.0           0.0068
 0.0223801  -0.00364902    0.00121336    6.7409e-6     0.000169094
@@ -199,16 +199,16 @@ first_order_solution2 = [ 0.9         5.41234e-16  -6.41848e-17   0.0           
 @test isapprox(first_order_solution,first_order_solution2,rtol = 1e-6)
 
 
-second_order_solution = calculate_second_order_solution(jacobian, 
-                                                        hessian, 
+second_order_solution = calculate_second_order_solution(∇₁, 
+                                                        ∇₂, 
                                                         first_order_solution; 
                                                         T = T)
 
 @test isapprox(second_order_solution[2,1], -0.006642814796744731,rtol = eps(Float32))
 
-third_order_solution = calculate_third_order_solution(jacobian, 
-                                                        hessian, 
-                                                        third_order_derivatives,
+third_order_solution = calculate_third_order_solution(∇₁, 
+                                                        ∇₂, 
+                                                        ∇₃,
                                                         first_order_solution, 
                                                         second_order_solution; 
                                                         T = T)
