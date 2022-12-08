@@ -48,10 +48,10 @@ momm = get_moments(RBC_CME)
 @test isapprox(momm[2][1], 0.015600269903198518, rtol = eps(Float32))
 
 
-jacobian = calculate_jacobian(RBC_CME.parameter_values,RBC_CME)
-hessian = calculate_hessian(RBC_CME.parameter_values,RBC_CME)
-third_order_derivatives = calculate_third_order_derivatives(RBC_CME.parameter_values,RBC_CME)
-SS = get_steady_state(RBC_CME, derivatives = false)
+jacobian, SS = calculate_jacobian(RBC_CME.parameter_values,RBC_CME)
+hessian, _ = calculate_hessian(RBC_CME.parameter_values,RBC_CME)
+third_order_derivatives, _ = calculate_third_order_derivatives(RBC_CME.parameter_values,RBC_CME)
+#SS = get_steady_state(RBC_CME, derivatives = false)
 
 using SparseArrays
 using MacroModelling: timings
