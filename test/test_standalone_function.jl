@@ -48,9 +48,11 @@ momm = get_moments(RBC_CME)
 @test isapprox(momm[2][1], 0.015600269903198518, rtol = eps(Float32))
 
 
-jacobian, SS = calculate_jacobian(RBC_CME.parameter_values,RBC_CME)
-hessian = calculate_hessian(RBC_CME.parameter_values,SS,RBC_CME)
-third_order_derivatives = calculate_third_order_derivatives(RBC_CME.parameter_values,SS,RBC_CME)
+SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+hessian = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
+third_order_derivatives = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
 #SS = get_steady_state(RBC_CME, derivatives = false)
 
 using SparseArrays
@@ -63,7 +65,7 @@ NSSS =  [1.0
 9.467573947982233
 1.42321160651834
 1.0]
-@test isapprox(SS,NSSS,rtol = eps(Float32))
+@test isapprox(SS_and_pars,NSSS,rtol = eps(Float32))
 
 T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :z_delta], [:A, :Pi, :c, :k, :z_delta], [:A], [:k, :z_delta], [:A], [:delta_eps, :eps_z], [:A, :Pi, :R, :c, :k, :y, :z_delta], Symbol[], Symbol[], 2, 1, 3, 3, 5, 7, 2, [3, 6], [1, 2, 4, 5, 7], [1, 2, 4], [2, 3], [1, 5, 7], [1], [1], [5, 7], [5, 6, 1, 7, 3, 2, 4], [3, 4, 5, 1, 2])
 
