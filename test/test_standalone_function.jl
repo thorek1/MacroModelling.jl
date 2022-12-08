@@ -49,8 +49,8 @@ momm = get_moments(RBC_CME)
 
 
 jacobian, SS = calculate_jacobian(RBC_CME.parameter_values,RBC_CME)
-hessian, _ = calculate_hessian(RBC_CME.parameter_values,RBC_CME)
-third_order_derivatives, _ = calculate_third_order_derivatives(RBC_CME.parameter_values,RBC_CME)
+hessian = calculate_hessian(RBC_CME.parameter_values,SS,RBC_CME)
+third_order_derivatives = calculate_third_order_derivatives(RBC_CME.parameter_values,SS,RBC_CME)
 #SS = get_steady_state(RBC_CME, derivatives = false)
 
 using SparseArrays
