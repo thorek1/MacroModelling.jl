@@ -670,7 +670,7 @@ function solve!(𝓂::ℳ;
             if  algorithm ∈ [:dynare, :riccati, :first_order]
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 								
 								sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
                 state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
@@ -685,7 +685,7 @@ function solve!(𝓂::ℳ;
                 if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0
                     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-										jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+										jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
                     sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
 
@@ -698,7 +698,7 @@ function solve!(𝓂::ℳ;
                 end
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 								
 								hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
                 𝐒₂ = calculate_second_order_solution(jacobian, 
@@ -740,7 +740,7 @@ function solve!(𝓂::ℳ;
                 if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0
                     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-										jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+										jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
                     sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
 
@@ -760,7 +760,7 @@ function solve!(𝓂::ℳ;
                     
                     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-										jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+										jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
 										hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
 
@@ -801,7 +801,7 @@ function solve!(𝓂::ℳ;
 
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
 								hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
                 ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,SS_and_pars,𝓂)
@@ -850,7 +850,7 @@ function solve!(𝓂::ℳ;
             if :linear_time_iteration == algorithm #∈ 𝓂.solution.algorithm
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 								sol_mat = calculate_linear_time_iteration_solution(jacobian; T = 𝓂.timings)
                 state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                 
@@ -866,7 +866,7 @@ function solve!(𝓂::ℳ;
         if length(𝓂.solution.perturbation.linear_time_iteration.solution_matrix) == 0 && :linear_time_iteration == algorithm #∈ 𝓂.solution.algorithm
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 								sol_mat = calculate_linear_time_iteration_solution(jacobian; T = 𝓂.timings)
                 state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
                 
@@ -878,7 +878,7 @@ function solve!(𝓂::ℳ;
         if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0 && algorithm ∈ [:dynare, :riccati, :first_order]
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
                 sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
 
@@ -894,7 +894,7 @@ function solve!(𝓂::ℳ;
                 if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0  
                     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-										∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+										∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 										sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
                     state_update = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
@@ -906,7 +906,7 @@ function solve!(𝓂::ℳ;
                 end
 								SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 										
                 hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
 
@@ -951,7 +951,7 @@ function solve!(𝓂::ℳ;
                 if length(𝓂.solution.perturbation.first_order.solution_matrix) == 0
                     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-										jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+										jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 										
                     sol_mat = calculate_first_order_solution(jacobian; T = 𝓂.timings)
                     
@@ -971,7 +971,7 @@ function solve!(𝓂::ℳ;
                     
                     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-										jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+										jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 										hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
 
                     𝐒₂ = calculate_second_order_solution(jacobian, 
@@ -1011,7 +1011,7 @@ function solve!(𝓂::ℳ;
 
                 SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-								jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+								jacobian = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 								hessian = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
                 ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,SS_and_pars,𝓂)
 
@@ -2033,7 +2033,7 @@ end
 function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ)
     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-		jacc = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+		jacc = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
     sol = calculate_first_order_solution(jacc; T = 𝓂.timings)
 
@@ -2061,7 +2061,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     
     SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
     
-		jacc = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+		jacc = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
     sol = calculate_first_order_solution(jacc; T = 𝓂.timings)
 
