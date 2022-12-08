@@ -57,8 +57,10 @@ function get_irf(𝓂::ℳ,
 
     solve!(𝓂)
 
-    jacc, NSSS = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters,𝓂)
-
+    NSSS = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+    
+		jacc = calculate_jacobian(parameters, NSSS, 𝓂)
+								
     sol_mat = calculate_first_order_solution(jacc; T = 𝓂.timings)
 
     state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
