@@ -788,7 +788,7 @@ function solve!(𝓂::ℳ;
 
                 jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
                 hessian, _ = calculate_hessian(𝓂.parameter_values,𝓂)
-                ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,𝓂)
+                ∇₃, _ = calculate_third_order_derivatives(𝓂.parameter_values,𝓂)
 
                 𝐒₃ = calculate_third_order_solution(jacobian, 
                                                         hessian, 
@@ -982,7 +982,7 @@ function solve!(𝓂::ℳ;
 
                 jacobian, NSSS = calculate_jacobian(𝓂.parameter_values,𝓂)
                 hessian, _ = calculate_hessian(𝓂.parameter_values,𝓂)
-                ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,𝓂)
+                ∇₃, _ = calculate_third_order_derivatives(𝓂.parameter_values,𝓂)
 
                 𝐒₃ = calculate_third_order_solution(jacobian, 
                                                         hessian, 
@@ -2009,7 +2009,7 @@ end
 
 
 function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ)
-    jacc = calculate_jacobian(parameters,𝓂)
+    jacc, NSSS = calculate_jacobian(parameters,𝓂)
 
     sol = calculate_first_order_solution(jacc; T = 𝓂.timings)
 
@@ -2035,7 +2035,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         @error "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
     end
     
-    jacc = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters,𝓂)
+    jacc, NSSS = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters,𝓂)
 
     sol = calculate_first_order_solution(jacc; T = 𝓂.timings)
 
