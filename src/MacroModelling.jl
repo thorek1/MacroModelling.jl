@@ -1552,7 +1552,7 @@ function riccati_forward(∇₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T
     ps = mapreduce(ℱ.partials, hcat, ∇₁)'
 
     # get f(vs)
-    val = riccati_forward(∇₁;T = T, explosive = explosive)
+    val = riccati_forward(∇̂₁;T = T, explosive = explosive)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
     B = ℱ.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)
