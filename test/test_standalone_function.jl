@@ -50,7 +50,7 @@ momm = get_moments(RBC_CME)
 
 SS_and_pars = RBC_CME.SS_solve_func(RBC_CME.parameter_values, RBC_CME.SS_init_guess, RBC_CME)
     
-jacobian = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, 𝓂)
+jacobian = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, RBC_CME)
 hessian = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
 third_order_derivatives = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
 #SS = get_steady_state(RBC_CME, derivatives = false)
