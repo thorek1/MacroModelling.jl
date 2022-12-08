@@ -1345,7 +1345,7 @@ function calculate_jacobian(parameters::Vector{<: Number}, SS_and_pars::Abstract
 
     shocks_ss = zeros(length(𝓂.exo))
 
-    return ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss]), SS_and_pars
+    return ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
 end
 
 
