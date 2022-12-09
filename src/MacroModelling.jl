@@ -1136,9 +1136,7 @@ function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64
 
     Q = -(∇₊ * F + ∇₀) \ ∇ₑ
 
-    sol_mat = @views hcat(F[:,T.past_not_future_and_mixed_idx],Q)
-    
-    return sol_mat
+    @views hcat(F[:,T.past_not_future_and_mixed_idx],Q)
 end
 
 
@@ -1211,7 +1209,7 @@ function riccati_forward(∇₁::AbstractMatrix{<: Number}; T::timings, explosiv
 
     A    = @views vcat(- Ā₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ), sol)
     
-    A[T.reorder,:]
+    @view A[T.reorder,:]
 end
 
 
@@ -1226,7 +1224,8 @@ function riccati_conditions(∇₁::AbstractMatrix{<: Number}, sol_d::AbstractMa
     sol_buf = sol_d * expand[2]
 
     err1 = A * sol_buf * sol_buf + B * sol_buf + C
-    return @view(err1[:,T.past_not_future_and_mixed_idx])
+
+    @view err1[:,T.past_not_future_and_mixed_idx]
 end
 
 
