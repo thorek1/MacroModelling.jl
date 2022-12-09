@@ -1005,8 +1005,8 @@ macro model(𝓂,ex)
                                             higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x)
                             ),
                             ComponentVector(nothing = 0.0),
-                            Set(:first_order),
-                            true,
+                            Set([:first_order]),
+                            Set([:linear_time_iteration, :riccati, :first_order, :second_order, :third_order]),
                             true,
                             false,
                             false
@@ -1307,7 +1307,7 @@ macro parameters(𝓂,ex)
         global $𝓂.parameter_values = $calib_values
         global $𝓂.calibration_equations = $calib_equations_list
         global $𝓂.calibration_equations_parameters = $calib_eq_parameters
-        global $𝓂.solution.outdated_algorithms = [:linear_time_iteration, :riccati, :first_order, :second_order, :third_order]
+        #global $𝓂.solution.outdated_algorithms = [:linear_time_iteration, :riccati, :first_order, :second_order, :third_order]
         global $𝓂.solution.outdated_NSSS = true
         global $𝓂.solution.functions_written = false
         nothing
