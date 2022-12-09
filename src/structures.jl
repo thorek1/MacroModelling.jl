@@ -142,8 +142,13 @@ mutable struct ℳ
     var_list::Vector{Set{Symbol}}
     dynamic_variables_list::Vector{Set{Symbol}}
     dynamic_variables_future_list::Vector{Set{Symbol}}
+
     ss_calib_list::Vector{Set{Symbol}}
     par_calib_list::Vector{Set{Symbol}}
+
+    ss_no_var_calib_list::Vector{Set{Symbol}}
+    par_no_var_calib_list::Vector{Set{Symbol}}
+
     ss_list::Vector{Set{Symbol}}
 
     ss_aux_equations::Vector{Expr}
@@ -197,6 +202,9 @@ mutable struct ℳ
     dyn_equations::Vector{Expr}
     dyn_equations_future::Vector{Expr}
     equations::Vector{Expr}
+
+    calibration_equations_no_var::Vector{Expr}
+
     calibration_equations::Vector{Expr}
     calibration_equations_parameters::Vector{Symbol}
 

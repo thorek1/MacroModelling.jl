@@ -923,6 +923,10 @@ macro model(𝓂,ex)
 
                         $ss_calib_list,
                         $par_calib_list,
+
+                        $ss_calib_list, #no_var_
+                        $par_calib_list, #no_var_
+
                         $ss_list,
 
                         $ss_aux_equations,
@@ -986,6 +990,9 @@ macro model(𝓂,ex)
                         $dyn_equations,
                         $dyn_equations_future,
                         $equations, 
+
+                        $calibration_equations, #no_var_
+
                         $calibration_equations, 
                         $calibration_equations_parameters,
 
@@ -1051,29 +1058,36 @@ end
 """
 macro parameters(𝓂,ex)
     calib_equations = []
+    calib_equations_no_var = []
     calib_equations_list = []
+    calib_equations_no_var_list = []
     calib_eq_parameters = []
 
     ss_calib_list = []
     par_calib_list = []
 
+    ss_no_var_calib_list = []
+    par_no_var_calib_list = []
+
     calib_parameters = []
+    calib_parameters_no_var = []
     calib_values = []
     
     bounds = []
-
-    # var_solved_list = []
-    # var_redundant_list = []
-    
 
     # label all variables parameters and exogenous vairables and timings across all equations
     postwalk(x -> 
         x isa Expr ?
             x.head == :(=) ? 
                 x.args[1] isa Symbol ?
+                    typeof(x.args[2]) ∈ [Int, Float64] ?
+                        begin # this is normal calibration by setting values of parameters
+                            push!(calib_values,x.args[2])
+                            push!(calib_parameters,x.args[1])
+                        end :
                     begin # this is normal calibration by setting values of parameters
-                        push!(calib_values,x.args[2])
-                        push!(calib_parameters,x.args[1])
+                        push!(calib_equations_no_var,Expr(:(=),x.args[1], unblock(x.args[2])))
+                        push!(calib_parameters_no_var,x.args[1])
                     end :
                 begin # this is calibration by targeting SS values
                     push!(calib_eq_parameters,x.args[1].args[2])
@@ -1089,48 +1103,38 @@ macro parameters(𝓂,ex)
         x,
     ex)
 
-    for i in 1:length(calib_equations)
+
+    for (i, cal_eq) in enumerate(calib_equations)
         ss_tmp = Set()
         par_tmp = Set()
 
-        # push!(var_solved_list,Set())
-        # push!(var_redundant_list,Set())
-
+        # parse SS variables
         postwalk(x -> 
             x isa Expr ? 
                 x.head == :ref ?
-                    # issubset([x.args[2]],[:ss :SS :ℳ :StSt :steady :steadystate :steady_state :Steady_State]) ?
                     occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
                         push!(ss_tmp,x.args[1]) :
                     x : 
                 x :
             x,
-        calib_equations[i])
+            cal_eq)
 
-
+        # get SS variables per non_linear_solved_vals
         postwalk(x -> 
         x isa Symbol ? 
-            # issubset([x],[:(-) :(+) :(*) :(/) :(^) :ss :SS :ℳ :StSt :steady :steadystate :steady_state :Steady_State]) ?
             occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i,string(x)) ?
                 x :
                 begin
                     diffed = setdiff([x],ss_tmp)
-                    # println("pre",diffed)
-                    # filter!(isempty,diffed)
-                    # println(diffed)
                     if !isempty(diffed)
                         push!(par_tmp,diffed[1])
                     end
                 end :
         x,
-        calib_equations[i])
+        cal_eq)
 
         push!(ss_calib_list,ss_tmp)
-        # if par_tmp == Set([Symbol[]])
-        #     push!(par_calib_list,Set())
-        # else
-            push!(par_calib_list,par_tmp)
-        # end
+        push!(par_calib_list,par_tmp)
         
         # write down calibration equations
         prs_ex = postwalk(x -> 
@@ -1138,9 +1142,7 @@ macro parameters(𝓂,ex)
                 x.head == :(=) ? 
                     Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
                         x.head == :ref ?
-                            # issubset([x.args[2]],[:ss :SS :ℳ :StSt :steady :steadystate :steady_state :Steady_State]) ? 
                             occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                        # split(string(x.args[1]), "₍")[1] :
                         x.args[1] : 
                     x : 
                 x.head == :call ?
@@ -1153,20 +1155,73 @@ macro parameters(𝓂,ex)
                     x :
                 unblock(x) : 
             x,
-        calib_equations[i])
+            cal_eq)
         push!(calib_equations_list,unblock(prs_ex))
     end
-    # println(unblock(prs_ex))
-    # push!(ss_equations,unblock(prs_ex))
-    # map(xx -> postwalk(x -> 
-    # x
-    
-    # ,xx),calib_equations)
+
+
+    for (i, cal_eq) in enumerate(calib_equations_no_var)
+        ss_tmp = Set()
+        par_tmp = Set()
+
+        # parse SS variables
+        postwalk(x -> 
+            x isa Expr ? 
+                x.head == :ref ?
+                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
+                        push!(ss_tmp,x.args[1]) :
+                    x : 
+                x :
+            x,
+            cal_eq)
+
+        # get SS variables per non_linear_solved_vals
+        postwalk(x -> 
+        x isa Symbol ? 
+            occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i,string(x)) ?
+                x :
+                begin
+                    diffed = setdiff([x],ss_tmp)
+                    if !isempty(diffed)
+                        push!(par_tmp,diffed[1])
+                    end
+                end :
+        x,
+        cal_eq)
+
+        push!(ss_no_var_calib_list,ss_tmp)
+        push!(par_no_var_calib_list,par_tmp)
+        
+        # write down calibration equations
+        prs_ex = postwalk(x -> 
+            x isa Expr ? 
+                x.head == :(=) ? 
+                    Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
+                        x.head == :ref ?
+                            occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
+                        x.args[1] : 
+                    x : 
+                x.head == :call ?
+                    x.args[1] == :* ?
+                        x.args[2] isa Int ?
+                            x.args[3] isa Int ?
+                                x :
+                            :($(x.args[3]) * $(x.args[2])) :
+                        x :
+                    x :
+                unblock(x) : 
+            x,
+            cal_eq)
+        push!(calib_equations_no_var_list,unblock(prs_ex))
+    end
+
+
+
+    #parse bounds
     bounded_vars = []
     upper_bounds = []
     lower_bounds = []
 
-    #parse bounds
     for bound in bounds
         postwalk(x -> 
         x isa Expr ?
@@ -1291,8 +1346,6 @@ macro parameters(𝓂,ex)
             x :
         x,bound)
     end
-    # :(print($𝓂))
-
 
     
     quote
@@ -1303,9 +1356,13 @@ macro parameters(𝓂,ex)
         global $𝓂.ss_calib_list = $ss_calib_list
         global $𝓂.par_calib_list = $par_calib_list
 
+        global $𝓂.ss_no_var_calib_list = $ss_no_var_calib_list
+        global $𝓂.par_no_var_calib_list = $par_no_var_calib_list
+
         global $𝓂.parameters = $calib_parameters
         global $𝓂.parameter_values = $calib_values
         global $𝓂.calibration_equations = $calib_equations_list
+        global $𝓂.calibration_equations_no_var = $calib_equations_no_var_list
         global $𝓂.calibration_equations_parameters = $calib_eq_parameters
         global $𝓂.solution.outdated_NSSS = true
         global $𝓂.solution.functions_written = false
