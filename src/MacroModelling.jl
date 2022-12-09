@@ -716,7 +716,7 @@ function solve!(𝓂::ℳ;
 
             𝓂.solution.perturbation.second_order = higher_order_perturbation_solution(𝐒₂,stochastic_steady_state,state_update₂)
 
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,:second_order)
+            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
             
         elseif :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
             ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,SS_and_pars,𝓂)
@@ -751,7 +751,7 @@ function solve!(𝓂::ℳ;
 
             𝓂.solution.perturbation.third_order = higher_order_perturbation_solution(𝐒₃,stochastic_steady_state,state_update₃)
 
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,:third_order)
+            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order])
             
         elseif :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
             SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
@@ -763,7 +763,7 @@ function solve!(𝓂::ℳ;
             state_update₁ₜ = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
             𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,:linear_time_iteration)
+            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:linear_time_iteration])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
             𝓂.solution.outdated_NSSS = false
@@ -877,7 +877,7 @@ function write_functions_mapping!(𝓂::ℳ)
 
     𝓂.solution.valid_steady_state_solution = @RuntimeGeneratedFunction(test_func)
 
-    𝓂.solution.outdated_algorithms = true
+    𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :first_order, :second_order, :third_order])
     return nothing
 end
 
