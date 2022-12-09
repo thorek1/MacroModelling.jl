@@ -85,7 +85,7 @@ struct perturbation_solution
     state_update::Function
 end
 
-mutable struct higher_order_perturbation_solution
+struct higher_order_perturbation_solution
     solution_matrix::AbstractMatrix{Float64}
     stochastic_steady_state::Vector{Float64}
     state_update::Function
@@ -102,9 +102,9 @@ end
 mutable struct solution
     perturbation::perturbation
     non_stochastic_steady_state::ComponentVector{Float64}
-    algorithm
-    outdated::Bool
-    NSSS_outdated::Bool
+    algorithms::Vector{Symbol}
+    outdated_algorithms::Vector{Symbol}
+    outdated_NSSS::Bool
     functions_written::Bool
     valid_steady_state_solution
 end

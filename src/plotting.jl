@@ -71,7 +71,7 @@ function plot(𝓂::ℳ;
         reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
     elseif algorithm == :third_order
         reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-    elseif algorithm ∈ [:linear_time_iteration, :dynare, :riccati, :first_order]
+    elseif algorithm ∈ [:linear_time_iteration, :riccati, :first_order]
         reference_steady_state = 𝓂.solution.non_stochastic_steady_state[1:length(𝓂.var)]
     end
 
