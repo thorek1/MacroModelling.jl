@@ -1005,7 +1005,7 @@ macro model(𝓂,ex)
                                             higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x)
                             ),
                             ComponentVector(nothing = 0.0),
-                            Set([:first_order]),
+                            Set(:first_order),
                             true,
                             true,
                             false,
