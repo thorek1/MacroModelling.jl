@@ -636,13 +636,13 @@ function solve!(𝓂::ℳ;
     algorithm::Symbol = :riccati, 
     symbolic_SS::Bool = false)
 
-    @assert algrotihm ∈ [:linear_time_iteration, :riccati, :first_order, :second_order, :third_order]
+    @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :second_order, :third_order]
 
     # if algorithm == :all_predefined
-    #     algorithm = 𝓂.solution.algorithm
+    #     algorithm = 𝓂.solution.algorithms
     # elseif algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :second_order, :third_order]
-    𝓂.solution.outdated_algorithms = union(intersect(𝓂.solution.algorithm,[algorithm]),𝓂.solution.outdated_algorithms)
-    𝓂.solution.algorithm = union(𝓂.solution.algorithm,[algorithm])
+    𝓂.solution.outdated_algorithms = union(intersect(𝓂.solution.algorithms,[algorithm]),𝓂.solution.outdated_algorithms)
+    𝓂.solution.algorithms = union(𝓂.solution.algorithms,[algorithm])
     # end
 
 
@@ -877,7 +877,7 @@ function write_functions_mapping!(𝓂::ℳ)
 
     𝓂.solution.valid_steady_state_solution = @RuntimeGeneratedFunction(test_func)
 
-    𝓂.solution.outdated = true
+    𝓂.solution.outdated_algorithms = true
     return nothing
 end
 
@@ -925,7 +925,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,<: Number})
         
         if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters)))
             println("Parameter changes: ")
-            𝓂.solution.outdated = true
+            𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :first_order, :second_order, :third_order])
         end
             
         for i in 1:length(parameters)
@@ -979,7 +979,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Number})
         println("Parameters unchanged.")
     else
         if !all(parameters .== 𝓂.parameter_values[1:length(parameters)])
-            𝓂.solution.outdated = true
+            𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :first_order, :second_order, :third_order])
 
             match_idx = parameters .!= 𝓂.parameter_values[1:length(parameters)]
 
