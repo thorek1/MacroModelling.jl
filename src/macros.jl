@@ -1235,7 +1235,7 @@ macro parameters(𝓂,ex)
     end
     
     
-    
+    if length(calib_equations_no_var_list) > 0
     
     incidence_matrix = fill(0,length(calib_parameters_no_var),length(calib_parameters_no_var))
     
@@ -1250,7 +1250,7 @@ macro parameters(𝓂,ex)
     @assert length(Q) == n_blocks "Check the parameter definitions. They are either incomplete or have more than only the defined parameter on the LHS."
     
     calib_equations_no_var_list = calib_equations_no_var_list[Q]
-    
+    end
     
 
 
