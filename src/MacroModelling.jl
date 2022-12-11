@@ -519,8 +519,8 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
     push!(SS_solve_func,:(return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))))
 
     solve_exp = :(function solve_SS(parameters::Vector{Real}, initial_guess::Vector{Real}, 𝓂::ℳ)
-                            $(𝓂.calibration_equations_no_var...)
                             $(parameters_in_equations...)
+                            $(𝓂.calibration_equations_no_var...)
                             $(SS_solve_func...)
                             end)
 
