@@ -116,6 +116,7 @@ mutable struct ℳ
     SS_optimizer
     exo::Vector{Symbol}
     par::Vector{Symbol}
+    parameters_as_function_of_parameters::Vector{Symbol}
     parameters::Vector{Symbol}
     parameter_values::Vector{Number}
     ss

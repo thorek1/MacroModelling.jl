@@ -67,9 +67,17 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 )
 
 
+
+
+function get_symbols(ex)
+    list = Set()
+    postwalk(x -> x isa Symbol ? push!(list, x) : x, ex)
+    return list
+end
+
 function create_symbols_eqs!(𝓂::ℳ)
     # create symbols in module scope
-    symbols_in_equation = union(𝓂.var,𝓂.par,𝓂.parameters,𝓂.exo,𝓂.dynamic_variables,𝓂.nonnegativity_auxilliary_vars)#,𝓂.dynamic_variables_future)
+    symbols_in_equation = union(𝓂.var,𝓂.par,𝓂.parameters,𝓂.parameters_as_function_of_parameters,𝓂.exo,𝓂.dynamic_variables,𝓂.nonnegativity_auxilliary_vars)#,𝓂.dynamic_variables_future)
     l_bnds = Dict(𝓂.bounded_vars .=> 𝓂.lower_bounds)
     u_bnds = Dict(𝓂.bounded_vars .=> 𝓂.upper_bounds)
 
@@ -388,11 +396,6 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
 
                 # sort nnaux vars so that they enter in right order. avoid using a variable before it is declared
                 if length(nnaux) > 1
-                    function get_symbols(ex)
-                        list = Set()
-                        postwalk(x -> x isa Symbol ? push!(list, x) : x, ex)
-                        return list
-                    end
 
                     nn_symbols = map(x->intersect(𝓂.nonnegativity_auxilliary_vars,x), get_symbols.(nnaux))
 
@@ -417,7 +420,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                         $(guess...) 
                         $(calib_pars...) # add those variables which were previously solved and are used in the equations
                         $(other_vars...) # take only those that appear in equations - DONE
-                        
+
                         $(nnaux...)
                         return [$(solved_vals...)]
                     end)
@@ -479,18 +482,21 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
 
     unknwns = Symbol.(collect(unknowns))
 
+    # add parameters from parameter definitions
+    atoms = reduce(union,get_symbols.(𝓂.calibration_equations_no_var))
+    [push!(atoms_in_equations, a) for a in atoms]
+
     parameters_in_equations = []
 
-    for i in 1:length(𝓂.parameters) 
-        parss = 𝓂.parameters[i]
+    for (i, parss) in enumerate(𝓂.parameters) 
         if parss ∈ union(Symbol.(atoms_in_equations),relevant_pars_across)
             push!(parameters_in_equations,:($parss = parameters[$i]))
         end
     end
     
     dependencies = []
-    for i in 1:length(atoms_in_equations_list)
-        push!(dependencies,𝓂.solved_vars[i] => intersect(atoms_in_equations_list[i],union(𝓂.var,𝓂.parameters)))
+    for (i, a) in enumerate(atoms_in_equations_list)
+        push!(dependencies,𝓂.solved_vars[i] => intersect(a, union(𝓂.var,𝓂.parameters)))
     end
 
     push!(dependencies,:SS_relevant_calibration_parameters => intersect(reduce(union,atoms_in_equations_list),𝓂.parameters))
@@ -513,6 +519,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
     push!(SS_solve_func,:(return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))))
 
     solve_exp = :(function solve_SS(parameters::Vector{Real}, initial_guess::Vector{Real}, 𝓂::ℳ)
+                            $(𝓂.calibration_equations_no_var...)
                             $(parameters_in_equations...)
                             $(SS_solve_func...)
                             end)
