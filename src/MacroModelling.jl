@@ -807,6 +807,7 @@ function write_functions_mapping!(𝓂::ℳ)
     mod_func2 = :(function model_function_uni_redux(X::Vector{Real}, params::Vector{Real}, X̄::Vector{Real})
         $(alll...)
         $(paras...)
+				$(𝓂.calibration_equations_no_var...)
         $(steady_state...)
         [$(𝓂.dyn_equations...)]
     end)
