@@ -484,9 +484,10 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
 
     # add parameters from parameter definitions
     if length(𝓂.calibration_equations_no_var) > 0
-			atoms = reduce(union,get_symbols.(𝓂.calibration_equations_no_var))
+		atoms = reduce(union,get_symbols.(𝓂.calibration_equations_no_var))
 	    [push!(atoms_in_equations, a) for a in atoms]
-		end
+	end
+    
     parameters_in_equations = []
 
     for (i, parss) in enumerate(𝓂.parameters) 
@@ -630,9 +631,10 @@ function solve!(𝓂::ℳ;
     symbolic_SS::Bool = false)
 
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :second_order, :third_order]
-
-    𝓂.solution.outdated_algorithms = union(intersect(𝓂.solution.algorithms,[algorithm]),𝓂.solution.outdated_algorithms)
-    𝓂.solution.algorithms = union(𝓂.solution.algorithms,[algorithm])
+    if dynamics
+        𝓂.solution.outdated_algorithms = union(intersect(𝓂.solution.algorithms,[algorithm]),𝓂.solution.outdated_algorithms)
+        𝓂.solution.algorithms = union(𝓂.solution.algorithms,[algorithm])
+    end
 
     if !𝓂.solution.functions_written 
         # consolidate bounds info
@@ -657,107 +659,128 @@ function solve!(𝓂::ℳ;
     end
 
     if dynamics
-        if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
-            SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+        while algorithm ∈ 𝓂.solution.outdated_algorithms
+            if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
+                SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
 
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-            
-            sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
-            
-            state_update₁ = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
-            
-            𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update₁)
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
+                ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+                
+                sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+                
+                state_update₁ = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+                
+                𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update₁)
+                𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
 
-            𝓂.solution.non_stochastic_steady_state = SS_and_pars
-            𝓂.solution.outdated_NSSS = false
+                𝓂.solution.non_stochastic_steady_state = SS_and_pars
+                𝓂.solution.outdated_NSSS = false
 
-        elseif any([:second_order, :third_order] .∈ ([algorithm],)) && :second_order ∈ 𝓂.solution.outdated_algorithms
-            𝐒₁ = [𝓂.solution.perturbation.first_order.solution_matrix[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
-            
-            ∇₂ = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
-            𝐒₂ = calculate_second_order_solution(∇₁, 
-                                                ∇₂, 
-                                                𝓂.solution.perturbation.first_order.solution_matrix; 
-                                                T = 𝓂.timings)
+            elseif any([:second_order, :third_order] .∈ ([algorithm],)) && :second_order ∈ 𝓂.solution.outdated_algorithms
+                SS_and_pars = get_non_stochastic_steady_state_internal(𝓂, parameters = parameters)
 
-            state_update₂ = function(state::Vector{Float64}, shock::Vector{Float64})
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                            1
-                            shock]
-                return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-            end
+                if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
+                    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+                end
 
-            # Calculate stochastic SS
-            state = zeros(𝓂.timings.nVars)
-            shock = zeros(𝓂.timings.nExo)
+                ∇₂ = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
+                𝐒₂ = calculate_second_order_solution(∇₁, 
+                                                    ∇₂, 
+                                                    𝓂.solution.perturbation.first_order.solution_matrix; 
+                                                    T = 𝓂.timings)
 
-            delta = 1
-
-            while delta > eps(Float64)
-                state_tmp =  state_update₂(state,shock)
-                delta = sum(abs,state_tmp - state)
-                state = state_tmp
-            end
-
-            stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)
-
-            𝓂.solution.perturbation.second_order = higher_order_perturbation_solution(𝐒₂,stochastic_steady_state,state_update₂)
-
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
-            
-        elseif :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
-            ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,SS_and_pars,𝓂)
-
-            𝐒₃ = calculate_third_order_solution(∇₁, 
-                                                ∇₂, 
-                                                ∇₃, 
-                                                𝓂.solution.perturbation.first_order.solution_matrix, 
-                                                𝓂.solution.perturbation.second_order.solution_matrix; 
-                                                T = 𝓂.timings)
-
-            state_update₃ = function(state::Vector{Float64}, shock::Vector{Float64})
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                𝐒₁ = [𝓂.solution.perturbation.first_order.solution_matrix[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+                
+                state_update₂ = function(state::Vector{Float64}, shock::Vector{Float64})
+                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                                 1
                                 shock]
-                return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+                end
+
+                # Calculate stochastic SS
+                state = zeros(𝓂.timings.nVars)
+                shock = zeros(𝓂.timings.nExo)
+
+                delta = 1
+
+                while delta > eps(Float64)
+                    state_tmp =  state_update₂(state,shock)
+                    delta = sum(abs,state_tmp - state)
+                    state = state_tmp
+                end
+
+                stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)
+
+                𝓂.solution.perturbation.second_order = higher_order_perturbation_solution(𝐒₂,stochastic_steady_state,state_update₂)
+
+                𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
+                
+            elseif :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
+                SS_and_pars = get_non_stochastic_steady_state_internal(𝓂, parameters = parameters)
+
+                if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
+                    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+                    𝐒₁ = [𝓂.solution.perturbation.first_order.solution_matrix[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+                end
+
+                if :second_order ∉ 𝓂.solution.outdated_algorithms
+                    ∇₂ = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
+                    𝐒₂ = 𝓂.solution.perturbation.second_order.solution_matrix
+                end
+                
+                ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,SS_and_pars,𝓂)
+                
+                𝐒₃ = calculate_third_order_solution(∇₁, 
+                                                    ∇₂, 
+                                                    ∇₃, 
+                                                    𝓂.solution.perturbation.first_order.solution_matrix, 
+                                                    𝓂.solution.perturbation.second_order.solution_matrix; 
+                                                    T = 𝓂.timings)
+
+                state_update₃ = function(state::Vector{Float64}, shock::Vector{Float64})
+                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                                    1
+                                    shock]
+                    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                end
+
+                # Calculate stochastic SS
+                state = zeros(𝓂.timings.nVars)
+                shock = zeros(𝓂.timings.nExo)
+
+                delta = 1
+
+                while delta > eps(Float64)
+                    state_tmp =  state_update₃(state,shock)
+                    delta = sum(abs,state_tmp - state)
+                    state = state_tmp
+                end
+
+                stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)
+
+                𝓂.solution.perturbation.third_order = higher_order_perturbation_solution(𝐒₃,stochastic_steady_state,state_update₃)
+
+                𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order])
+                
+            elseif :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
+                SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+
+                ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+                
+                sol_mat = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
+                
+                state_update₁ₜ = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+                
+                𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
+                𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:linear_time_iteration])
+
+                𝓂.solution.non_stochastic_steady_state = SS_and_pars
+                𝓂.solution.outdated_NSSS = false
+                
             end
-
-            # Calculate stochastic SS
-            state = zeros(𝓂.timings.nVars)
-            shock = zeros(𝓂.timings.nExo)
-
-            delta = 1
-
-            while delta > eps(Float64)
-                state_tmp =  state_update₃(state,shock)
-                delta = sum(abs,state_tmp - state)
-                state = state_tmp
-            end
-
-            stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)
-
-            𝓂.solution.perturbation.third_order = higher_order_perturbation_solution(𝐒₃,stochastic_steady_state,state_update₃)
-
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order])
-            
-        elseif :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
-
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-            
-            sol_mat = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
-            
-            state_update₁ₜ = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
-            
-            𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:linear_time_iteration])
-
-            𝓂.solution.non_stochastic_steady_state = SS_and_pars
-            𝓂.solution.outdated_NSSS = false
-            
         end
     end
+    return nothing
 end
 
 
@@ -802,13 +825,13 @@ function write_functions_mapping!(𝓂::ℳ)
 
 
     paras = []
-    push!(paras,:((;$(𝓂.par...)) = params))
+    push!(paras,:((;$(setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters)...)) = params))
 
     # watch out with naming of parameters in model and functions
     mod_func2 = :(function model_function_uni_redux(X::Vector{Real}, params::Vector{Real}, X̄::Vector{Real})
         $(alll...)
         $(paras...)
-				$(𝓂.calibration_equations_no_var...)
+		$(𝓂.calibration_equations_no_var...)
         $(steady_state...)
         [$(𝓂.dyn_equations...)]
     end)
@@ -870,6 +893,7 @@ end
 
 write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,<: Number}) = write_parameters_input!(𝓂::ℳ, Dict(parameters))
 write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,<: Number},Vararg{Pair{Symbol,<: Number}}}) = write_parameters_input!(𝓂::ℳ, Dict(parameters))
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}) = write_parameters_input!(𝓂::ℳ, Dict(parameters))
 
 
 
@@ -965,10 +989,15 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Number})
         if !all(parameters .== 𝓂.parameter_values[1:length(parameters)])
             𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :first_order, :second_order, :third_order])
 
-            match_idx = parameters .!= 𝓂.parameter_values[1:length(parameters)]
-
+            match_idx = []
+            for (i, v) in enumerate(parameters)
+                if v != 𝓂.parameter_values[i]
+                     push!(match_idx,i)
+                end
+            end
+            
             changed_vals = parameters[match_idx]
-            changes_pars = 𝓂.parameters[1:length(parameters)][match_idx]
+            changes_pars = 𝓂.parameters[match_idx]
 
             for p in changes_pars
                 if p ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
@@ -978,11 +1007,11 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Number})
             end
 
             println("Parameter changes: ")
-            for ii in 1:sum(match_idx)
-                println("\t",changes_pars[ii],"\tfrom ",𝓂.parameter_values[1:length(parameters)][match_idx][ii],"\tto ",changed_vals[ii])
+            for (i,m) in enumerate(match_idx)
+                println("\t",changes_pars[i],"\tfrom ",𝓂.parameter_values[m],"\tto ",changed_vals[i])
             end
 
-            𝓂.parameter_values[1:length(parameters)][match_idx] = parameters[match_idx]
+            𝓂.parameter_values[match_idx] = parameters[match_idx]
         end
     end
     if 𝓂.solution.outdated_NSSS == true println("New parameters changed the steady state.") end
