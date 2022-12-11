@@ -483,9 +483,10 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
     unknwns = Symbol.(collect(unknowns))
 
     # add parameters from parameter definitions
-    atoms = reduce(union,get_symbols.(𝓂.calibration_equations_no_var))
-    [push!(atoms_in_equations, a) for a in atoms]
-
+    if length(𝓂.calibration_equations_no_var) > 0
+			atoms = reduce(union,get_symbols.(𝓂.calibration_equations_no_var))
+	    [push!(atoms_in_equations, a) for a in atoms]
+		end
     parameters_in_equations = []
 
     for (i, parss) in enumerate(𝓂.parameters) 
