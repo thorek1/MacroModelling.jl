@@ -116,7 +116,7 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedAr
 # Keyword Arguments
 - `periods` [Default: `40`, Type: `Int`]: number of periods for which to calculate the IRFs
 - `algorithm` [Default: `:first_order`, Type: `Symbol`]: solution algorithm for which to show the IRFs
-- `parameters` : If nothing is provided, the solution is calculated for the parameters defined previously. If a vector with parameter values, or a named tuple is provided and the parameters differ from the previously defined the solution will be recalculated. 
+- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
 - `variables` [Default: `:all`]: variables for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y` or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. Any variables not part of the model will trigger a warning.
 - `shocks` [Default: `:all`]: shocks for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y`, `:simulate`, :none, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. `:simulate` triggers random draws of all shocks. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
 - `negative_shock` [Default: `false`, Type: `Bool`]: calculate a negative shock. Relevant for generalised IRFs.
@@ -258,7 +258,7 @@ Return the (non stochastic) steady state and derivatives with respect to model p
 # Arguments
 - `𝓂`: the object created by @model and @parameters for which to get the solution.
 # Keyword Arguments
-- `parameters` : If nothing is provided, the solution is calculated for the parameters defined previously. If a vector with parameter values, or a named tuple is provided and the parameters differ from the previously defined the solution will be recalculated. 
+- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
 - `derivatives` [Default: `true`, Type: `Bool`]: calculate derivatives of the SS with respect to the parameters
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation. No derivatives are calculated.
 
@@ -304,13 +304,18 @@ function get_steady_state(𝓂::ℳ;
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     if parameter_derivatives == :all
-        param_idx = 1:length(𝓂.par)
+        param_idx = 1:length(setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters))
         length_par = length(var)
     elseif isa(parameter_derivatives,Symbol)
-        param_idx = indexin([parameter_derivatives], 𝓂.parameters)
+        @assert parameter_derivatives ∈ setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters) string(p) * " is not part of the free model parameters."
+
+        param_idx = indexin([parameter_derivatives], setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters))
         length_par = 1
     elseif length(parameter_derivatives) > 1
-        param_idx = indexin(parameter_derivatives |> collect |> vec, 𝓂.parameters) |> sort
+        for p in vec(collect(parameter_derivatives))
+            @assert p ∈ setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters) string(p) * " is not part of the free model parameters."
+        end
+        param_idx = indexin(parameter_derivatives |> collect |> vec, setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters)) |> sort
         length_par = length(parameter_derivatives)
     end
 
@@ -318,14 +323,14 @@ function get_steady_state(𝓂::ℳ;
         derivatives = false
     end
 
-    
-    SS = collect(get_non_stochastic_steady_state_internal(𝓂; parameters = parameters))#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    solve!(𝓂; dynamics = true, algorithm = stochastic ? :second_order : :first_order, parameters = parameters)
+
+    SS = collect(𝓂.solution.non_stochastic_steady_state)#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
 
     if stochastic
-        solve!(𝓂; algorithm = :second_order, dynamics = true)
         SS[1:length(union(𝓂.exo_present,var))] = 𝓂.solution.perturbation.second_order.stochastic_steady_state
     end
-    
+
     if derivatives && !stochastic
         # dSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂.SS_init_guess, 𝓂),𝓂.parameter_values)
         dSS = ℱ.jacobian(x->SS_parameter_derivatives(x, param_idx, 𝓂), Float64.(𝓂.parameter_values[param_idx]))
@@ -381,7 +386,7 @@ Return the linearised solution and the non stochastic steady state (SS) of the m
 # Arguments
 - `𝓂`: the object created by [`@model`](@ref) and [`@parameters`](@ref) for which to get the solution.
 # Keyword Arguments
-- `parameters` : If nothing is provided, the solution is calculated for the parameters defined previously. If a vector with parameter values, or a named tuple is provided and the parameters differ from the previously defined the solution will be recalculated. 
+- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
 
 The returned `KeyedArray` shows the SS, policy and transition functions of the model. The columns show the varibales including auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows are the SS, followed by the states, and exogenous shocks. 
 Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
@@ -451,13 +456,13 @@ Function to use when differentiating model moments with repect to parameters.
 # Arguments
 - `𝓂`: the object created by @model and @parameters for which to get the solution.
 # Keyword Arguments
-- `parameters` : If nothing is provided, the solution is calculated for the parameters defined previously. If a vector with parameter values, or a named tuple is provided and the parameters differ from the previously defined the solution will be recalculated. 
+- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
 - `non_stochastic_steady_state` [Default: `true`, Type: `Bool`]: switch to return SS of endogenous variables
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
 - `derivatives` [Default: true, Type: `Bool`]: switch to calculate derivatives of SS, standard deviation, and variance with respect to the parameters
-
+- `parameter_derivatives` [Default: :all]: parameters for which to calculate derivatives of the SS. Inputs can be either a `Symbol` (e.g. `:alpha`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`.
 
 # Examples
 ```jldoctest part1
@@ -520,13 +525,18 @@ function get_moments(𝓂::ℳ;
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     if parameter_derivatives == :all
-        param_idx = 1:length(𝓂.par)
+        param_idx = 1:length(setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters))
         length_par = length(var)
     elseif isa(parameter_derivatives,Symbol)
-        param_idx = indexin([parameter_derivatives], 𝓂.parameters)
+        @assert parameter_derivatives ∈ setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters) string(p) * " is not part of the free model parameters."
+
+        param_idx = indexin([parameter_derivatives], setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters))
         length_par = 1
     elseif length(parameter_derivatives) > 1
-        param_idx = indexin(parameter_derivatives |> collect |> vec, 𝓂.parameters) |> sort
+        for p in vec(collect(parameter_derivatives))
+            @assert p ∈ setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters) string(p) * " is not part of the free model parameters."
+        end
+        param_idx = indexin(parameter_derivatives |> collect |> vec, setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters)) |> sort
         length_par = length(parameter_derivatives)
     end
 
