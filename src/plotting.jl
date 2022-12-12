@@ -69,17 +69,19 @@ function plot(𝓂::ℳ;
 
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
 
+    NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+
+    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    SS = [NSSS[s] for s in full_NSSS]
+
     if algorithm == :second_order
         reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
     elseif algorithm == :third_order
         reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
     elseif algorithm ∈ [:linear_time_iteration, :riccati, :first_order]
-        reference_steady_state = 𝓂.solution.non_stochastic_steady_state[1:end - length(𝓂.calibration_equations)]
+        reference_steady_state = SS
     end
-
-    NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
-
-    SS = collect(NSSS[1:end - length(𝓂.calibration_equations)])
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - SS
     
@@ -141,7 +143,7 @@ function plot(𝓂::ℳ;
         end
 
         for i in 1:length(var_idx)
-            SS = reference_steady_state[indexin(𝓂.timings.var,sort(union(𝓂.timings.var,𝓂.timings.exo_present)))][var_idx[i]]
+            SS = reference_steady_state[var_idx[i]]
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
             # if !(plot_count ∈ unique(round.((1:𝓂.timings.timings.nVars)/plots_per_page))*plots_per_page)
                 if !(plot_count % plots_per_page == 0)
