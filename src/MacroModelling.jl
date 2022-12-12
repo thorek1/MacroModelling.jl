@@ -625,6 +625,7 @@ end
 
 
 function solve!(𝓂::ℳ; 
+    parameters = nothing, 
     dynamics::Bool = false, 
     algorithm::Symbol = :riccati, 
     symbolic_SS::Bool = false)
@@ -653,6 +654,8 @@ function solve!(𝓂::ℳ;
         write_functions_mapping!(𝓂)
         𝓂.solution.functions_written = true
     end
+
+    write_parameters_input!(𝓂,parameters)
 
     if dynamics
         if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
