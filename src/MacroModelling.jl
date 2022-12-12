@@ -1517,35 +1517,7 @@ function irf(state_update::Function, initial_state::Vector{Float64}, T::timings;
     variables::Symbol_input = :all, 
     negative_shock::Bool = false)
 
-    if shocks == :all
-        shock_idx = 1:T.nExo
-    elseif shocks == :simulate
-        shock_idx = 1:T.nExo
-    elseif shocks == :none
-        shock_idx = 1:T.nExo
-    elseif shocks isa Matrix{Symbol}
-        if !issubset(shocks,T.exo)
-            return @warn "Following shocks are not part of the model: " * string.(setdiff(shocks,T.exo))
-        end
-        shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(shocks .== T.exo,dims= 2))))
-    elseif shocks isa Vector{Symbol}
-        if !issubset(shocks,𝓂.timings.exo)
-            return @warn "Following shocks are not part of the model: " * string.(setdiff(shocks,𝓂.timings.exo))
-        end
-        shock_idx = getindex(1:𝓂.timings.nExo,convert(Vector{Bool},vec(sum(reshape(shocks,1,length(variables)) .== 𝓂.timings.exo,dims= 2))))
-    elseif shocks isa Tuple
-        if !issubset(shocks,𝓂.timings.exo)
-            return @warn "Following shocks are not part of the model: " * string.(setdiff(shocks,𝓂.timings.exo))
-        end
-        shock_idx = getindex(1:𝓂.timings.nExo,convert(Vector{Bool},vec(sum(reshape(collect(shocks),1,length(variables)) .== 𝓂.timings.exo,dims= 2))))
-    elseif shocks isa Symbol
-        if !issubset([shocks],T.exo)
-            return @warn "Following shock is not part of the model: " * string(setdiff([shocks],T.exo)[1])
-        end
-        shock_idx = getindex(1:T.nExo,shocks .== T.exo)
-    else
-        return @warn "Invalid argument in shocks"
-    end
+    shock_idx = parse_shocks_input_to_index(shocks, T)
 
     var_idx = parse_variables_input_to_index(variables, T)
 
@@ -1652,6 +1624,7 @@ function girf(state_update::Function, T::timings;
 
 end
 
+
 function parse_variables_input_to_index(variables::Symbol_input, T::timings)
     if variables == :all
         return indexin(T.var,sort(union(T.var,T.aux,T.exo_present)))
@@ -1681,9 +1654,6 @@ function parse_variables_input_to_index(variables::Symbol_input, T::timings)
 end
 
 
-
-
-
 function parse_shocks_input_to_index(shocks::Symbol_input, T::timings)
     if shocks == :all
         shock_idx = 1:T.nExo
@@ -1700,12 +1670,12 @@ function parse_shocks_input_to_index(shocks::Symbol_input, T::timings)
         if !issubset(shocks,T.exo)
             return @warn "Following shocks are not part of the model: " * string.(setdiff(shocks,T.exo))
         end
-        shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(shocks,1,length(variables)) .== T.exo,dims= 2))))
+        shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(shocks,1,length(shocks)) .== T.exo, dims= 2))))
     elseif shocks isa Tuple{Symbol, Vararg{Symbol}}
         if !issubset(shocks,T.exo)
             return @warn "Following shocks are not part of the model: " * string.(setdiff(shocks,T.exo))
         end
-        shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(collect(shocks),1,length(variables)) .== T.exo,dims= 2))))
+        shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(collect(shocks),1,length(shocks)) .== T.exo,dims= 2))))
     elseif shocks isa Symbol
         if !issubset([shocks],T.exo)
             return @warn "Following shock is not part of the model: " * string(setdiff([shocks],T.exo)[1])
@@ -1715,6 +1685,7 @@ function parse_shocks_input_to_index(shocks::Symbol_input, T::timings)
         return @warn "Invalid argument in shocks"
     end
 end
+
 
 
 
