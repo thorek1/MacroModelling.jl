@@ -73,7 +73,7 @@ new_sub_irfs  = get_irf(m, shocks = :all)
 new_sub_irfs  = get_irf(m, shocks = :simulate)
 new_sub_irfs  = get_irf(m, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
 new_sub_lvl_irfs  = get_irf(m, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])), levels = true)
-isapprox(collect(new_sub_lvl_irfs(:,1,:)), collect(lvl_irfs(:,6,m.exo[1])),rtol = eps(Float64))
+@test isapprox(collect(new_sub_lvl_irfs(:,1,:)), collect(lvl_irfs(:,6,m.exo[1])),rtol = eps(Float64))
 
 
 
@@ -152,7 +152,7 @@ second_new_sub_irfs  = get_irf(m, algorithm = :second_order, shocks = :simulate)
 m = deepcopy(m_orig)
 second_new_sub_irfs  = get_irf(m, algorithm = :second_order, shocks = :none, initial_state = collect(second_lvl_irfs(:,5,m.exo[1])))
 second_new_sub_lvl_irfs  = get_irf(m, algorithm = :second_order, shocks = :none, initial_state = collect(second_lvl_irfs(:,5,m.exo[1])), levels = true)
-isapprox(collect(second_new_sub_lvl_irfs(:,1,:)), collect(second_lvl_irfs(:,6,m.exo[1])),rtol = eps(Float32))
+@test isapprox(collect(second_new_sub_lvl_irfs(:,1,:)), collect(second_lvl_irfs(:,6,m.exo[1])),rtol = eps(Float32))
 
 
 
@@ -224,7 +224,7 @@ third_new_sub_irfs  = get_irf(m, algorithm = :third_order, shocks = :simulate)
 m = deepcopy(m_orig)
 third_new_sub_irfs  = get_irf(m, algorithm = :third_order, shocks = :none, initial_state = collect(third_lvl_irfs(:,5,m.exo[1])))
 third_new_sub_lvl_irfs  = get_irf(m, algorithm = :third_order, shocks = :none, initial_state = collect(third_lvl_irfs(:,5,m.exo[1])), levels = true)
-isapprox(collect(third_new_sub_lvl_irfs(:,1,:)), collect(third_lvl_irfs(:,6,m.exo[1])),rtol = eps(Float32))
+@test isapprox(collect(third_new_sub_lvl_irfs(:,1,:)), collect(third_lvl_irfs(:,6,m.exo[1])),rtol = eps(Float32))
 
 
 
