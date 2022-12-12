@@ -308,8 +308,8 @@ function get_steady_state(𝓂::ℳ;
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     if parameter_derivatives == :all
-        param_idx = 1:length(setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters))
-        length_par = length(var)
+        length_par = length(setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters))
+        param_idx = 1:length_par
     elseif isa(parameter_derivatives,Symbol)
         @assert parameter_derivatives ∈ setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters) string(p) * " is not part of the free model parameters."
 
@@ -327,7 +327,7 @@ function get_steady_state(𝓂::ℳ;
         derivatives = false
     end
 
-    solve!(𝓂; dynamics = true, algorithm = stochastic ? :second_order : :first_order)
+    solve!(𝓂; dynamics = true, algorithm = stochastic ? :second_order : :first_order) #efficiency fix!!!
 
     SS = collect(𝓂.solution.non_stochastic_steady_state)#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
 
@@ -530,11 +530,13 @@ function get_moments(𝓂::ℳ;
     
     write_parameters_input!(𝓂,parameters)
 
+    solve!(𝓂)
+
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     if parameter_derivatives == :all
-        param_idx = 1:length(setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters))
-        length_par = length(var)
+        length_par = length(setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters))
+        param_idx = 1:length_par
     elseif isa(parameter_derivatives,Symbol)
         @assert parameter_derivatives ∈ setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters) string(p) * " is not part of the free model parameters."
 
@@ -547,7 +549,7 @@ function get_moments(𝓂::ℳ;
         param_idx = indexin(parameter_derivatives |> collect |> vec, setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters)) |> sort
         length_par = length(parameter_derivatives)
     end
-
+    
     if length_par * length(var) > 200
         derivatives = false
     end
@@ -566,14 +568,14 @@ function get_moments(𝓂::ℳ;
             vari = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
 
             # dvariance = ℱ.jacobian(x-> convert(Vector{Number},max.(ℒ.diag(calculate_covariance(x, 𝓂)),eps(Float64))), Float64.(𝓂.parameter_values))
-            dvariance = ℱ.jacobian(x->covariance_parameter_derivatives(x, param_idx, 𝓂),Float64.(𝓂.parameter_values[param_idx]))
+            dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives(x, param_idx, 𝓂), Float64.(𝓂.parameter_values[param_idx]))
             𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
-
+            
             varrs =  KeyedArray(hcat(vari,dvariance);  Variables = sort(union(𝓂.exo_present,var)), Variance_and_∂variance∂parameter = vcat(:Variance, 𝓂.parameters[param_idx]))
 
             if standard_deviation
-                standard_dev = sqrt.(convert(Vector{Number},ℒ.diag(covar_dcmp)))
-                dst_dev = ℱ.jacobian(x-> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂)), Float64.(𝓂.parameter_values[param_idx]))
+                standard_dev = sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))))
+                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂)), Float64.(𝓂.parameter_values[param_idx]))
                 𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
 
                 st_dev =  KeyedArray(hcat(standard_dev,dst_dev);  Variables = sort(union(𝓂.exo_present,var)), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
@@ -584,7 +586,7 @@ function get_moments(𝓂::ℳ;
 
                 standard_dev = sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))))
 
-                dst_dev = ℱ.jacobian(x-> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂)), Float64.(𝓂.parameter_values[param_idx]))
+                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂)), Float64.(𝓂.parameter_values[param_idx]))
                 𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
 
                 st_dev =  KeyedArray(hcat(standard_dev,dst_dev);  Variables = sort(union(𝓂.exo_present,var)), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
@@ -596,9 +598,10 @@ function get_moments(𝓂::ℳ;
 
         if variance
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂)
-            varrs = KeyedArray(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)));  Variables = sort(union(𝓂.exo_present,var)))
+            varr = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
+            varrs = KeyedArray(varr;  Variables = sort(union(𝓂.exo_present,var)))
             if standard_deviation
-                st_dev = KeyedArray(sqrt.(varrs);  Variables = sort(union(𝓂.exo_present,var)))
+                st_dev = KeyedArray(sqrt.(varr);  Variables = sort(union(𝓂.exo_present,var)))
             end
         else
             if standard_deviation
