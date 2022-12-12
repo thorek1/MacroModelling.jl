@@ -1562,7 +1562,7 @@ function irf(state_update::Function, initial_state::Vector{Float64}, T::timings;
         return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Period = 1:periods, Shock = [:simulate])
     elseif shocks == :none
         Y = zeros(T.nVars,periods,1)
-        shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : [0.0]
+        shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
         Y[:,1,1] = state_update(initial_state,shck)
 
         for t in 1:periods-1

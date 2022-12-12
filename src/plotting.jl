@@ -74,12 +74,14 @@ function plot(𝓂::ℳ;
     elseif algorithm == :third_order
         reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
     elseif algorithm ∈ [:linear_time_iteration, :riccati, :first_order]
-        reference_steady_state = 𝓂.solution.non_stochastic_steady_state[1:length(𝓂.var)]
+        reference_steady_state = 𝓂.solution.non_stochastic_steady_state[1:end - length(𝓂.calibration_equations)]
     end
 
     NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
 
-    init_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - collect(NSSS)
+    SS = collect(NSSS[1:end - length(𝓂.calibration_equations)])
+
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - SS
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
@@ -90,7 +92,7 @@ function plot(𝓂::ℳ;
     if generalised_irf
         Y = girf(state_update, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
     else
-        Y = irf(state_update, init_state, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)
+        Y = irf(state_update, initial_state, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)
     end
 
     # fontt = "computer modern"#"serif-roman"#

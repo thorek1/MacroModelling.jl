@@ -14,7 +14,7 @@ Function to use when differentiating IRFs with repect to parameters.
 - `shocks` [Default: `:all`]: shocks for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y`, `:simulate`, :none, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. `:simulate` triggers random draws of all shocks. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
 - `negative_shock` [Default: `false`, Type: `Bool`]: calculate a negative shock. Relevant for generalised IRFs.
 - `generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.
-- `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state from which to start IRFs. Relevant for normal IRFs.
+- `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs.
 - `levels` [Default: `false`, Type: `Bool`]: return levels or absolute deviations from steady state
 
 # Examples
@@ -119,7 +119,7 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedAr
 - `shocks` [Default: `:all`]: shocks for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y`, `:simulate`, :none, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. `:simulate` triggers random draws of all shocks. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
 - `negative_shock` [Default: `false`, Type: `Bool`]: calculate a negative shock. Relevant for generalised IRFs.
 - `generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.
-- `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state from which to start IRFs. Relevant for normal IRFs.
+- `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs.
 - `levels` [Default: `false`, Type: `Bool`]: return levels or absolute deviations from steady state
 
 # Examples
@@ -177,7 +177,9 @@ function get_irf(𝓂::ℳ;
 
     NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
 
-    init_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - collect(NSSS)#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    SS = collect(NSSS[1:end - length(𝓂.calibration_equations)])
+
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - SS
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
@@ -187,7 +189,7 @@ function get_irf(𝓂::ℳ;
         elseif algorithm == :third_order
             reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
         elseif algorithm ∈ [:linear_time_iteration, :riccati, :first_order]
-            reference_steady_state = collect(𝓂.solution.non_stochastic_steady_state)[indexin(var,𝓂.var)]
+            reference_steady_state = collect(𝓂.solution.non_stochastic_steady_state[1:end - length(𝓂.calibration_equations)])
         end
 
         var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
@@ -213,7 +215,7 @@ function get_irf(𝓂::ℳ;
         end
     else
         irfs =  irf(state_update, 
-                    init_state, 
+                    initial_state, 
                     𝓂.timings; 
                     periods = periods, 
                     shocks = shocks, 
