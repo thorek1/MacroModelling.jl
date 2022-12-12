@@ -36,3 +36,4 @@ Manifest.toml
 *.log
 .ipynb_checkpoints/
 *.svg
+*.png
