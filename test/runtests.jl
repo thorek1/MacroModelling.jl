@@ -2,9 +2,27 @@ using Test
 using MacroModelling
 using Random
 
+
 @testset "Standalone functions" begin
     include("test_standalone_function.jl")
 end
+
+
+@testset "RBC_CME with calibration equations and parameter definitions" begin
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+    include("functionality_tests.jl")
+end
+
+@testset "RBC_CME with calibration equations" begin
+    include("models/RBC_CME_calibration_equations.jl")
+    include("functionality_tests.jl")
+end
+
+@testset "RBC_CME " begin
+    include("models/RBC_CME.jl")
+    include("functionality_tests.jl")
+end
+
 
 @testset "Model without shocks" begin
     @model m begin
@@ -1364,7 +1382,7 @@ end
     end
 
 
-    solve!(SW03, symbolic_SS = false)
+    solve!(SW03)
 
 
     @test get_steady_state(SW03)(SW03.timings.var) ≈ [  1.2043777509278788
