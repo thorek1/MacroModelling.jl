@@ -3,24 +3,33 @@ using MacroModelling
 using Random
 
 
+
 @testset "Standalone functions" begin
     include("test_standalone_function.jl")
 end
 
 
-@testset "RBC_CME with calibration equations and parameter definitions" begin
-    include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-    include("functionality_tests.jl")
+include("functionality_tests.jl")
+
+@testset "RBC_CME with calibration equations, parameter definitions, and special functions" begin
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
+    functionality_test(m, second_order = false, third_order = false)
 end
+
+ @testset "RBC_CME with calibration equations and parameter definitions" begin
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+    functionality_test(m)
+end
+
 
 @testset "RBC_CME with calibration equations" begin
     include("models/RBC_CME_calibration_equations.jl")
-    include("functionality_tests.jl")
+    functionality_test(m)
 end
 
 @testset "RBC_CME " begin
     include("models/RBC_CME.jl")
-    include("functionality_tests.jl")
+    functionality_test(m)
 end
 
 
