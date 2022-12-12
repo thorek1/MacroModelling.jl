@@ -57,9 +57,9 @@ function get_irf(𝓂::ℳ,
 
     solve!(𝓂)
 
-    NSSS = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+    NSSS = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
     
-		∇₁ = calculate_jacobian(𝓂.parameter_values, NSSS, 𝓂)
+	∇₁ = calculate_jacobian(parameters, NSSS, 𝓂)
 								
     sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
@@ -71,9 +71,7 @@ function get_irf(𝓂::ℳ,
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
     
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
-
-    SS = collect(NSSS[1:end - length(𝓂.calibration_equations)])#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    SS = collect(NSSS[1:end - length(𝓂.calibration_equations)])
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - SS
 
@@ -460,7 +458,6 @@ get_perturbation_solution = get_solution
 """
 $(SIGNATURES)
 Return the first and second moments of endogenous variables using the linearised solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
-Function to use when differentiating model moments with repect to parameters.
 
 # Arguments
 - `𝓂`: the object created by @model and @parameters for which to get the solution.
@@ -680,13 +677,11 @@ function get_moments(𝓂::ℳ, parameters::Vector;
 
     solve!(𝓂)
 
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
-
     SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
 
-    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-
     covar_dcmp = calculate_covariance(parameters,𝓂)
+
+    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
 
     if variance
         varrs = convert(Vector{Number},ℒ.diag(covar_dcmp))
