@@ -169,13 +169,17 @@ function get_irf(𝓂::ℳ;
     initial_state::Vector{Float64} = [0.0],
     levels::Bool = false)
 
-    solve!(𝓂; dynamics = true, algorithm = algorithm, parameters = parameters)
+    write_parameters_input!(𝓂,parameters)
+
+    solve!(𝓂; dynamics = true, algorithm = algorithm)
     
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
-    init_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - collect(get_non_stochastic_steady_state_internal(𝓂))#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+
+    init_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - collect(NSSS)#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
@@ -301,6 +305,8 @@ function get_steady_state(𝓂::ℳ;
     stochastic::Bool = false,
     parameter_derivatives::Symbol_input = :all)
 
+    write_parameters_input!(𝓂,parameters)
+
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     if parameter_derivatives == :all
@@ -323,7 +329,7 @@ function get_steady_state(𝓂::ℳ;
         derivatives = false
     end
 
-    solve!(𝓂; dynamics = true, algorithm = stochastic ? :second_order : :first_order, parameters = parameters)
+    solve!(𝓂; dynamics = true, algorithm = stochastic ? :second_order : :first_order)
 
     SS = collect(𝓂.solution.non_stochastic_steady_state)#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
 
@@ -424,7 +430,10 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
 """
 function get_solution(𝓂::ℳ; 
     parameters = nothing)
-    solve!(𝓂; dynamics = true, parameters = parameters)
+
+    write_parameters_input!(𝓂,parameters)
+
+    solve!(𝓂; dynamics = true)
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
@@ -521,6 +530,8 @@ function get_moments(𝓂::ℳ;
     covariance::Bool = false, 
     derivatives::Bool = true,
     parameter_derivatives::Symbol_input = :all)#limit output by selecting pars and vars like for plots and irfs!?
+    
+    write_parameters_input!(𝓂,parameters)
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
@@ -544,7 +555,7 @@ function get_moments(𝓂::ℳ;
         derivatives = false
     end
 
-    NSSS = get_non_stochastic_steady_state_internal(𝓂; parameters = parameters)#[indexin(sort(union(𝓂.exo_present,var)),sort(union(𝓂.exo_present,𝓂.var)))]
+    NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
 
     if derivatives
         dNSSS = ℱ.jacobian(x->SS_parameter_derivatives(x, param_idx, 𝓂), Float64.(𝓂.parameter_values[param_idx]))

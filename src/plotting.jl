@@ -63,7 +63,9 @@ function plot(𝓂::ℳ;
     generalised_irf::Bool = false,
     initial_state::Vector{Float64} = [0.0])
 
-    solve!(𝓂; dynamics = true, algorithm = algorithm, parameters = parameters)
+    write_parameters_input!(𝓂,parameters)
+
+    solve!(𝓂; dynamics = true, algorithm = algorithm)
 
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
 
@@ -75,7 +77,9 @@ function plot(𝓂::ℳ;
         reference_steady_state = 𝓂.solution.non_stochastic_steady_state[1:length(𝓂.var)]
     end
 
-    init_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - collect(get_non_stochastic_steady_state_internal(𝓂))
+    NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+
+    init_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - collect(NSSS)
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
