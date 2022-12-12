@@ -16,22 +16,22 @@ end
 
 @testset "RBC_CME with calibration equations, parameter definitions, and special functions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
-    functionality_test(m, second_order = false, third_order = false)
+    functionality_test(m, second_order = false, third_order = false,plots = false)
 end
 
 @testset "RBC_CME with calibration equations and parameter definitions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-    functionality_test(m)
+    functionality_test(m,plots = false)
 end
 
 @testset "RBC_CME with calibration equations" begin
     include("models/RBC_CME_calibration_equations.jl")
-    functionality_test(m)
+    functionality_test(m, third_order = false,plots = false)
 end
 
 @testset "RBC_CME " begin
     include("models/RBC_CME.jl")
-    functionality_test(m)
+    functionality_test(m, third_order = false)
 end
 
 
@@ -163,7 +163,7 @@ end
     end
 
     solve!(finacc)
-    @test isapprox(get_steady_state(finacc),[1.0, 7.004987166460695, 1.2762549358842095, 0.0008293608419033882, 0.0009318065746306208, 0.0003952537570055814, 0.30743973601435376, 15.371986800781423, 0.4435430773517457, 8.366999635233856, 1.0000000000593001, 1.0101010101010102, 1.0172249577970442, 1.5895043340984303, 0.4529051354389826, 2.2935377097663356, -1.4597012487627126e-10], rtol = eps(Float32))
+    @test isapprox(get_steady_state(finacc)[:,1],[1.0, 7.004987166460695, 1.2762549358842095, 0.0008293608419033882, 0.0009318065746306208, 0.0003952537570055814, 0.30743973601435376, 15.371986800781423, 0.4435430773517457, 8.366999635233856, 1.0000000000593001, 1.0101010101010102, 1.0172249577970442, 1.5895043340984303, 0.4529051354389826, 2.2935377097663356, -1.4597012487627126e-10], rtol = eps(Float32))
     
 end
 
