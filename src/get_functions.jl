@@ -177,9 +177,7 @@ function get_irf(𝓂::ℳ;
 
     NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
 
-    SS = collect(NSSS[1:end - length(𝓂.calibration_equations)])
-
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - SS
+    reference_steady_state = collect(NSSS[1:end - length(𝓂.calibration_equations)])
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
@@ -188,12 +186,12 @@ function get_irf(𝓂::ℳ;
             reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
         elseif algorithm == :third_order
             reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-        elseif algorithm ∈ [:linear_time_iteration, :riccati, :first_order]
-            reference_steady_state = collect(𝓂.solution.non_stochastic_steady_state[1:end - length(𝓂.calibration_equations)])
         end
 
         var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
     end
+
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - reference_steady_state
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
