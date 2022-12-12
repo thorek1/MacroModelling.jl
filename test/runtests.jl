@@ -9,7 +9,7 @@ end
 
 include("functionality_tests.jl")
 
-@testset "RBC_CME with calibration equations, parameter definitions, and leads/lag > 1 on endogenous and exogenous variables" begin
+@testset "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
     functionality_test(m, second_order = false, third_order = false)
 end

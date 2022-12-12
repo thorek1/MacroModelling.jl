@@ -3,6 +3,7 @@
 - [x] Get functions: get_output, get_moments
 - [x] estimation, IRF matching, system priors
 - [x] check derivative tests with finite diff
+- [ ] SS solve: add domain transformation optim
 - [ ] clean up printouts/reporting
 - [x] release first version
 - [ ] clean up function inputs and harmonise AD and standard commands
@@ -19,7 +20,7 @@
 - [ ] SS: replace variables in log() with auxilliary variable which must be positive to help solver
 - [ ] plot multiple solutions or models - multioptions in one graph
 - [ ] add correlation, autocorrelation, and variance decomposition
-- [ ] complex example with lags > 1, [ss], calib equations, aux nonneg vars
+- [x] complex example with lags > 1, [ss], calib equations, aux nonneg vars
 
 ## Not high priority:
 - [x] implement blockdiag with julia package instead of python

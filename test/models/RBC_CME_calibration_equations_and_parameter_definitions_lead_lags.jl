@@ -6,9 +6,10 @@ m = nothing
     R[0] * beta =(Pi[0]/Pibar)^phi_pi
     A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
     z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
-    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * (eps_z[x-8] + eps_z[x-4] + eps_z[x+4] + eps_z_s[x])
-    ZZ_avg[0] = (A[0] + A[-1] + A[-2] + A[-3]) / 4
-    ZZ_avg_fut[0] = (A[0] + A[1] + A[2] + A[3]) / 4
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * (eps_z[x-2] + eps_z[x+2] + eps_z_s[x])
+    ZZ_avg[0] = (A[0] + A[-1] + A[-2] + A[ss]) / 4
+    ZZ_avg_fut[0] = (A[0] + A[1] + A[2] + A[ss]) / 4
+    log_ZZ_avg[0] = log(ZZ_avg[0]/ZZ_avg[ss])
     c_normlogpdf[0]= normlogpdf(c[0])
     c_norminvcdf[0]= norminvcdf(c[0]-1)
 end
