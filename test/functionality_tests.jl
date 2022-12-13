@@ -7,7 +7,7 @@ function functionality_test(m; second_order = true, third_order = true, plots = 
     # Check different inputs for get_steady_state
     nsss = get_steady_state(m)
     nsss_no_derivs = get_steady_state(m, derivatives = false)
-    params = setdiff(m.par, m.parameters_as_function_of_parameters)
+    params = setdiff(m.parameters, m.parameters_as_function_of_parameters)
     nsss_select_par_deriv1 = get_steady_state(m, parameter_derivatives = params[1])
     nsss_select_par_deriv2 = get_steady_state(m, parameter_derivatives = params[1:2])
     nsss_select_par_deriv3 = get_steady_state(m, parameter_derivatives = Tuple(params[1:3]))
@@ -15,18 +15,18 @@ function functionality_test(m; second_order = true, third_order = true, plots = 
 
 
     old_par_vals = copy(m.parameter_values)
-    new_nsss1 = get_steady_state(m, parameters = m.parameter_values * 1.01)
-    new_nsss2 = get_steady_state(m, parameters = (m.parameters[1] => m.parameter_values[1] * 1.01))
-    new_nsss3 = get_steady_state(m, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.01))
-    new_nsss4 = get_steady_state(m, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.01))
+    new_nsss1 = get_steady_state(m, parameters = m.parameter_values * 1.0001)
+    new_nsss2 = get_steady_state(m, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
+    new_nsss3 = get_steady_state(m, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+    new_nsss4 = get_steady_state(m, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
     old_nsss = get_steady_state(m, parameters = old_par_vals)
     nsss = get_non_stochastic_steady_state(m)
 
     sols = get_solution(m)
-    new_sols1 = get_solution(m, parameters = m.parameter_values * 1.01)
-    new_sols2 = get_solution(m, parameters = (m.parameters[1] => m.parameter_values[1] * 1.01))
-    new_sols3 = get_solution(m, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.01))
-    new_sols4 = get_solution(m, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.01))
+    new_sols1 = get_solution(m, parameters = m.parameter_values * 1.0001)
+    new_sols2 = get_solution(m, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
+    new_sols3 = get_solution(m, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+    new_sols4 = get_solution(m, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
     old_sols = get_solution(m, parameters = old_par_vals)
 
 
@@ -40,7 +40,6 @@ function functionality_test(m; second_order = true, third_order = true, plots = 
     moms_no_derivs = get_moments(m, derivatives = false)
     moms_no_derivs_var = get_moments(m, derivatives = false, variance = true)
 
-    params = setdiff(m.par, m.parameters_as_function_of_parameters)
     moms_select_par_deriv1 = get_moments(m, parameter_derivatives = params[1])
     moms_select_par_deriv2 = get_moments(m, parameter_derivatives = params[1:2])
     moms_select_par_deriv3 = get_moments(m, parameter_derivatives = Tuple(params[1:3]))
@@ -48,10 +47,10 @@ function functionality_test(m; second_order = true, third_order = true, plots = 
 
 
 
-    new_moms1 = get_moments(m, parameters = m.parameter_values * 1.01)
-    new_moms2 = get_moments(m, parameters = (m.parameters[1] => m.parameter_values[1] * 1.01))
-    new_moms3 = get_moments(m, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.01))
-    new_moms4 = get_moments(m, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.01))
+    new_moms1 = get_moments(m, parameters = m.parameter_values * 1.0001)
+    new_moms2 = get_moments(m, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
+    new_moms3 = get_moments(m, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+    new_moms4 = get_moments(m, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
     old_moms  = get_moments(m, parameters = old_par_vals)
 
 
@@ -59,10 +58,10 @@ function functionality_test(m; second_order = true, third_order = true, plots = 
     irfs = get_irf(m)
     irfs_10 = get_irf(m, periods = 10)
     irfs_100 = get_irf(m, periods = 100)
-    new_irfs1 = get_irf(m, parameters = m.parameter_values * 1.01)
-    new_irfs2 = get_irf(m, parameters = (m.parameters[1] => m.parameter_values[1] * 1.01))
-    new_irfs3 = get_irf(m, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.01))
-    new_irfs4 = get_irf(m, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.01))
+    new_irfs1 = get_irf(m, parameters = m.parameter_values * 1.0001)
+    new_irfs2 = get_irf(m, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
+    new_irfs3 = get_irf(m, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+    new_irfs4 = get_irf(m, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
     lvl_irfs  = get_irf(m, parameters = old_par_vals, levels = true)
     lvlv_init_irfs  = get_irf(m, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
     lvlv_init_neg_irfs  = get_irf(m, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true)
