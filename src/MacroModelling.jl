@@ -10,7 +10,8 @@ import LinearAlgebra as ℒ
 using Optimization, OptimizationNLopt
 import BlockTriangularForm
 import Subscripts: super, sub
-using IterativeSolvers, LinearMaps
+import IterativeSolvers as ℐ
+using LinearMaps
 using ComponentArrays
 # using NamedArrays
 using AxisKeys
@@ -67,13 +68,32 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 )
 
 
-
-
 function get_symbols(ex)
-    list = Set()
-    postwalk(x -> x isa Symbol ? push!(list, x) : x, ex)
-    return list
+    par = Set()
+    postwalk(x ->   
+    x isa Expr ? 
+        x.head == :(=) ?
+            for i in x.args
+                i isa Symbol ? 
+                    push!(par,i) :
+                x
+            end :
+        x.head == :call ? 
+            for i in 2:length(x.args)
+                x.args[i] isa Symbol ? 
+                    push!(par,x.args[i]) : 
+                x
+            end : 
+        x : 
+    x, ex)
+    return par
 end
+
+# function get_symbols(ex)
+#     list = Set()
+#     postwalk(x -> x isa Symbol ? push!(list, x) : x, ex)
+#     return list
+# end
 
 function create_symbols_eqs!(𝓂::ℳ)
     # create symbols in module scope
@@ -483,6 +503,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
 
     unknwns = Symbol.(collect(unknowns))
 
+    parameters_only_in_par_defs = Set()
     # add parameters from parameter definitions
     if length(𝓂.calibration_equations_no_var) > 0
 		atoms = reduce(union,get_symbols.(𝓂.calibration_equations_no_var))
@@ -1384,7 +1405,7 @@ function  calculate_second_order_solution(∇₁::AbstractMatrix{Float64}, #firs
 
     lm = LinearMap{Float64}(x -> A * reshape(x,size(X)) - B * reshape(x,size(X)) * C, size(X)[1] * size(X)[2])
 
-    𝐒₂ = sparse(reshape(bicgstabl(lm, vec(-X)), size(X))) * 𝐔₂ # fastest
+    𝐒₂ = sparse(reshape(ℐ.bicgstabl(lm, vec(-X)), size(X))) * 𝐔₂ # fastest
     droptol!(𝐒₂,tol)
 
     return 𝐒₂
@@ -1519,7 +1540,7 @@ function  calculate_third_order_solution(∇₁::AbstractMatrix{Float64}, #first
     A = spdiagm(ones(n))
     lm = LinearMap{Float64}(x -> A * reshape(x,size(X)) - B * reshape(x,size(X)) * C, size(X)[1] * size(X)[2])
     
-    𝐒₃ = sparse(reshape(bicgstabl(lm, vec(-X)),size(X))) * 𝐔₃ # fastest
+    𝐒₃ = sparse(reshape(ℐ.bicgstabl(lm, vec(-X)),size(X))) * 𝐔₃ # fastest
     droptol!(𝐒₃,tol)
     
     
