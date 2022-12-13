@@ -20,7 +20,7 @@ function functionality_test(m; second_order = true, third_order = true, plots = 
     new_nsss3 = get_steady_state(m, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.01))
     new_nsss4 = get_steady_state(m, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.01))
     old_nsss = get_steady_state(m, parameters = old_par_vals)
-
+    nsss = get_non_stochastic_steady_state(m)
 
     sols = get_solution(m)
     new_sols1 = get_solution(m, parameters = m.parameter_values * 1.01)
@@ -36,7 +36,9 @@ function functionality_test(m; second_order = true, third_order = true, plots = 
     moms_covar = get_moments(m, covariance = true)
     moms_no_nsss = get_moments(m, non_stochastic_steady_state = false)
     moms_no_nsss = get_moments(m, standard_deviation = false)
+    moms_no_nsss = get_moments(m, standard_deviation = false, variance = true)
     moms_no_derivs = get_moments(m, derivatives = false)
+    moms_no_derivs_var = get_moments(m, derivatives = false, variance = true)
 
     params = setdiff(m.par, m.parameters_as_function_of_parameters)
     moms_select_par_deriv1 = get_moments(m, parameter_derivatives = params[1])
@@ -65,6 +67,7 @@ function functionality_test(m; second_order = true, third_order = true, plots = 
     lvlv_init_irfs  = get_irf(m, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
     lvlv_init_neg_irfs  = get_irf(m, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true)
     lvlv_init_neg_gen_irfs  = get_irf(m, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true)
+    init_neg_gen_irfs  = get_irf(m, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true)
 
     new_sub_irfs  = get_irf(m, shocks = m.exo[1])
     new_sub_irfs  = get_irf(m, shocks = m.exo)
@@ -130,6 +133,7 @@ function functionality_test(m; second_order = true, third_order = true, plots = 
         new_sss4 = get_SS(m,stochastic = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.01))
         m = deepcopy(m_orig)
         old_sss  = get_SS(m,stochastic = true, parameters = old_par_vals)
+        sss = get_stochastic_steady_state(m)
 
 
         # irfs
