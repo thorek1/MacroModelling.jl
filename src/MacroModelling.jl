@@ -1797,7 +1797,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     T = size(data)[2]
 
     # Gaussian Prior
-    P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(B * B', prod(size(A)), 1), size(A))
+    P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
     u = zeros(length(observables_and_states))
     z = C * u
     
