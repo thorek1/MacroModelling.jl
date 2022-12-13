@@ -74,7 +74,7 @@ function functionality_test(m; second_order = true, third_order = true, plots = 
     new_sub_irfs  = get_irf(m, shocks = :simulate)
     new_sub_irfs  = get_irf(m, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
     new_sub_lvl_irfs  = get_irf(m, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])), levels = true)
-    @test isapprox(collect(new_sub_lvl_irfs(:,1,:)), collect(lvl_irfs(:,6,m.exo[1])),rtol = eps(Float64))
+    @test isapprox(collect(new_sub_lvl_irfs(:,1,:)), collect(lvl_irfs(:,6,m.exo[1])),rtol = eps(Float32))
 
 
 
