@@ -51,7 +51,7 @@
 - [ ] print legend for algorithm in last subplot of plot only
 - [ ] conditional forecasting
 - [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
-- [ ] redo ugly solution for selecting parameters to differentiate for
+- [x] redo ugly solution for selecting parameters to differentiate for
 - [ ] select variables for moments
 
 - [x] Revise 2,3 pert codes to make it more intuitive 
