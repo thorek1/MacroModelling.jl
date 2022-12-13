@@ -508,7 +508,10 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
     if length(𝓂.calibration_equations_no_var) > 0
 		atoms = reduce(union,get_symbols.(𝓂.calibration_equations_no_var))
 	    [push!(atoms_in_equations, a) for a in atoms]
+	    [push!(parameters_only_in_par_defs, a) for a in atoms]
 	end
+    
+    𝓂.par = union(𝓂.par,setdiff(parameters_only_in_par_defs,𝓂.parameters_as_function_of_parameters))
     
     parameters_in_equations = []
 
