@@ -6,8 +6,12 @@ using Random
     include("test_standalone_function.jl")
 end
 
-
 include("functionality_tests.jl")
+
+@testset "SW03 with calibration equations" begin
+    include("models/SW03.jl")
+    functionality_test(m, second_order = false, third_order = false)
+end
 
 @testset "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
