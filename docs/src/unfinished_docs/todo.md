@@ -3,13 +3,14 @@
 - [x] Get functions: get_output, get_moments
 - [x] estimation, IRF matching, system priors
 - [x] check derivative tests with finite diff
-- [ ] SS solve: add domain transformation optim
+- [ ] get parameters (in function of parameters) into the dependencies
+- [x] SS solve: add domain transformation optim
 - [ ] clean up printouts/reporting
 - [x] release first version
 - [ ] clean up function inputs and harmonise AD and standard commands
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example) 
 - [ ] write documentation/docstrings
-- [ ] revisit optimizers for SS
+- [x] revisit optimizers for SS
 - [ ] write tests and documentation for solution, estimation... making sure results are consistent
 - [x] figure out licenses
 - [ ] add more models
