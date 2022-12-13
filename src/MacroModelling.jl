@@ -314,8 +314,8 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                     # println(atoms)
                     [push!(atoms_in_equations, a) for a in atoms]
                     
-                    for k in 1:length(vars_to_solve)
-                        push!(𝓂.solved_vars,Symbol(vars_to_solve[k]))
+                    for (k, vars) in enumerate(vars_to_solve)
+                        push!(𝓂.solved_vars,Symbol(vars))
                         push!(𝓂.solved_vals,Meta.parse(string(soll[1][k]))) #using convert(Expr,x) leads to ugly expressions
 
                         push!(atoms_in_equations_list, Set(Symbol.(soll[1][k].atoms())))
@@ -343,9 +343,8 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                 relevant_pars_across = union(relevant_pars_across,relevant_pars)
                 
                 iii = 1
-                for i in 1:length(𝓂.parameters) 
+                for (i, parss) in enumerate(𝓂.parameters) 
                     valss   = 𝓂.parameter_values[i]
-                    parss = 𝓂.parameters[i]
                     if :($parss) ∈ relevant_pars
                         push!(calib_pars,:($parss = inputs[$iii]))
                         push!(calib_pars_input,:($parss))
@@ -357,8 +356,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                 guess = []
                 result = []
                 sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.nonnegativity_auxilliary_vars))
-                for i in 1:length(sorted_vars) 
-                    parss = sorted_vars[i]
+                for (i, parss) in enumerate(sorted_vars) 
                     push!(guess,:($parss = guess[$i]))
                     push!(result,:($parss = sol[$i]))
                 end
@@ -368,12 +366,12 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                 other_vars_inverse = []
                 other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters),sort(𝓂.solved_vars[end])),syms_in_eqs)
 
-                for k in 1:length(other_vrs)
-                    var_idx = findfirst(x -> x == other_vrs[k], union(𝓂.var,𝓂.calibration_equations_parameters))
-                    push!(other_vars,:($(other_vrs[k]) = inputs[$iii]))
-                    push!(other_vars_input,:($(other_vrs[k])))
+                for var in other_vrs
+                    var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
+                    push!(other_vars,:($(var) = inputs[$iii]))
+                    push!(other_vars_input,:($(var)))
                     iii += 1
-                    push!(other_vars_inverse,:(𝓂.SS_init_guess[$var_idx] = $(other_vrs[k])))
+                    push!(other_vars_inverse,:(𝓂.SS_init_guess[$var_idx] = $(var)))
                 end
                 
                 # separate out auxilliary variables (nonnegativity)
@@ -417,6 +415,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
 
 
                 funcs = :(function block(guess::Vector{Float64},inputs::Vector{Float64})
+                        guess = undo_transformer(guess)
                         $(guess...) 
                         $(calib_pars...) # add those variables which were previously solved and are used in the equations
                         $(other_vars...) # take only those that appear in equations - DONE
@@ -428,6 +427,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                 push!(solved_vals,:(aux_error))
 
                 funcs_optim = :(function block(guess::Vector{Float64},inputs::Vector{Float64})
+                    guess = undo_transformer(guess)
                     $(guess...) 
                     $(calib_pars...) # add those variables which were previously solved and are used in the equations
                     $(other_vars...) # take only those that appear in equations - DONE
@@ -437,7 +437,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                     return sum(abs2,[$(solved_vals...)])
                 end)
             
-                𝓂.SS_init_guess = [fill(1,length(𝓂.var)); fill(.5, length(𝓂.calibration_equations_parameters))]
+                𝓂.SS_init_guess = [fill(.9,length(𝓂.var)); fill(.5, length(𝓂.calibration_equations_parameters))]
                 
                 # WARNING: infinite bounds are transformed to 1e12
                 lbs = []
@@ -465,10 +465,11 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                         𝓂.ss_solve_blocks[$(n_block)], 
                         𝓂.SS_optimizer, 
                         f, 
-                        inits, 
-                        lbs, 
-                        ubs)))
+                        transformer(inits), 
+                        transformer(lbs), 
+                        transformer(ubs))))
                         
+                push!(SS_solve_func,:(sol = undo_transformer(sol))) 
                 push!(SS_solve_func,:($(result...)))            
 
                 push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
@@ -531,6 +532,18 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
     return nothing
 end
 
+# transformation of NSSS problem
+function transformer(x)
+    # return asinh.(asinh.(asinh.(x)))
+    return asinh.(asinh.(x))
+    # return x
+end
+
+function undo_transformer(x)
+    # return sinh.(sinh.(sinh.(x)))
+    return sinh.(sinh.(x))
+    # return x
+end
 
 function block_solver(inputs::Vector{Float64}, 
                         n_block::Int, 
@@ -542,37 +555,47 @@ function block_solver(inputs::Vector{Float64},
                         ubs::Vector{Float64})
     
     prob = OptimizationProblem(f, guess, inputs, lb = lbs, ub = ubs)
-    sol = solve(prob, SS_optimizer(), local_maxiters=10000)
+    sol = solve(prob, SS_optimizer())
     
-    if (sol.minimum > eps()) | (sum(abs2,ss_solve_blocks(sol,inputs)) > eps())
-                    println("Block: ",n_block," - Solution not found. Trying optimizer: LN_BOBYQA.")
-                    sol = solve(prob, NLopt.LN_BOBYQA(), local_maxiters=10000)
-                end
-    
-    if (sol.minimum > eps()) | (sum(abs2,ss_solve_blocks(sol,inputs)) > eps())
-        println("Block: ",n_block," - Local solution not found. Trying global solution.")
-        sol = solve(prob, NLopt.GD_MLSL_LDS(), local_method = NLopt.LD_LBFGS(), local_maxiters=10000, population = length(ubs))
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
+        println("Block: ",n_block," - Solution not found. Trying optimizer: LN_BOBYQA.")
+        sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120)
+    end
+
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
+        println("Block: ",n_block," - Solution not found. Trying optimizer: LN_SBPLX.")
+        sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120)
     end
     
-    if (sol.minimum > eps()) | (sum(abs2,ss_solve_blocks(sol,inputs)) > eps())
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
+        println("Block: ",n_block," - Local solution not found. Trying global solution.")
+        sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120)
+    end
+    
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
         println("Block: ",n_block," - No solution found. Trying with positive domain.")
         
         inits = max.(max.(lbs,eps()),min.(ubs,guess))
         prob = OptimizationProblem(f, guess, inits, lb = max.(lbs,eps()), ub = ubs)
-        sol = solve(prob, SS_optimizer(), local_maxiters=10000)
+        sol = solve(prob, SS_optimizer())
     end
     
-    if (sol.minimum > eps()) | (sum(abs2,ss_solve_blocks(sol,inputs)) > eps())
-        println("Block: ",n_block," - Solution not found. Trying optimizer: L-BFGS.")
-        sol = solve(prob, NLopt.LN_BOBYQA() , local_maxiters=10000)
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
+        println("Block: ",n_block," - Solution not found. Trying optimizer: LN_BOBYQA.")
+        sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120)
+    end
+
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
+        println("Block: ",n_block," - Solution not found. Trying optimizer: LN_SBPLX.")
+        sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120)
     end
     
-    if (sol.minimum > eps()) | (sum(abs2,ss_solve_blocks(sol,inputs)) > eps())
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
         println("Block: ",n_block," - Local solution not found. Trying global solution.")
-        sol = solve(prob, NLopt.GD_MLSL_LDS(), local_method = NLopt.LD_LBFGS(), local_maxiters=10000, population = length(ubs))
+        sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120)
     end
     
-    if (sol.minimum > eps()) | (sum(abs2,ss_solve_blocks(sol,inputs)) > eps())
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
         error("Block: ",n_block," - No solution found. Consider changing bounds.")
     end
 
@@ -798,31 +821,31 @@ function write_functions_mapping!(𝓂::ℳ)
     ss_varss      = map(x->Symbol(string(x) * "₍ₛₛ₎"),𝓂.var)
 
     steady_state = []
-    for ii in 1:length(ss_varss)
-        push!(steady_state,:($(ss_varss[ii]) = X̄[$ii]))
+    for (i, var) in enumerate(ss_varss)
+        push!(steady_state,:($var = X̄[$i]))
         # ii += 1
     end
 
     ii = 1
 
     alll = []
-    for j in 1:length(future_varss)
-        push!(alll,:($(future_varss[j]) = X[$ii]))
+    for var in future_varss
+        push!(alll,:($var = X[$ii]))
         ii += 1
     end
 
-    for i in 1:length(present_varss)
-        push!(alll,:($(present_varss[i]) = X[$ii]))
+    for var in present_varss
+        push!(alll,:($var = X[$ii]))
         ii += 1
     end
 
-    for l in 1:length(past_varss)
-        push!(alll,:($(past_varss[l]) = X[$ii]))
+    for var in past_varss
+        push!(alll,:($var = X[$ii]))
         ii += 1
     end
 
-    for k in 1:length(shock_varss)
-        push!(alll,:($(shock_varss[k]) = X[$ii]))
+    for var in shock_varss
+        push!(alll,:($var = X[$ii]))
         ii += 1
     end
 
@@ -843,39 +866,35 @@ function write_functions_mapping!(𝓂::ℳ)
     𝓂.model_function = @RuntimeGeneratedFunction(mod_func2)
 
     calib_eqs = []
-    for i in 1:length(𝓂.solved_vals) 
-        eqs   = 𝓂.solved_vals[i]
+    for (i, eqs) in enumerate(𝓂.solved_vals) 
         varss = 𝓂.solved_vars[i]
         push!(calib_eqs,:($varss = $eqs))
     end
 
-    for i in 1:length(𝓂.exo)
-        varss = 𝓂.exo[i]
+    for varss in 𝓂.exo
         push!(calib_eqs,:($varss = 0))
     end
 
     calib_pars = []
-    for i in 1:length(𝓂.parameters)
-        parss = 𝓂.parameters[i]
+    for (i, parss) in enumerate(𝓂.parameters)
         push!(calib_pars,:($parss = parameters[$i]))
     end
 
     var_out = []
     ii =  1
-    for i in 1:length(𝓂.var) 
-        push!(var_out,:($(𝓂.var[i]) = SS[$ii]))
+    for var in 𝓂.var
+        push!(var_out,:($var = SS[$ii]))
         ii += 1
     end
 
     par_out = []
-    for i in 1:length(𝓂.calibration_equations_parameters) 
-        push!(par_out,:($(𝓂.calibration_equations_parameters[i]) = SS[$ii]))
+    for cal in 𝓂.calibration_equations_parameters
+        push!(par_out,:($cal = SS[$ii]))
         ii += 1
     end
 
     calib_pars = []
-    for i in 1:length(𝓂.parameters)
-        parss = 𝓂.parameters[i]
+    for (i, parss) in enumerate(𝓂.parameters)
         push!(calib_pars,:($parss = parameters[$i]))
     end
 
