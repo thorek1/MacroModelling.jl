@@ -2,15 +2,21 @@ using Test
 using MacroModelling
 using Random
 
+
 @testset "Standalone functions" begin
     include("test_standalone_function.jl")
 end
 
 include("functionality_tests.jl")
 
+@testset "SW07 with calibration equations" begin
+    include("models/SW07.jl")
+    functionality_test(m, second_order = false, third_order = false,plots = false)
+end
+
 @testset "SW03 with calibration equations" begin
     include("models/SW03.jl")
-    functionality_test(m, second_order = false, third_order = false)
+    functionality_test(m, second_order = false, third_order = false,plots = false)
 end
 
 @testset "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
