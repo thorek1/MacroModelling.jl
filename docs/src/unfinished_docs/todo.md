@@ -4,6 +4,8 @@
 - [x] estimation, IRF matching, system priors
 - [x] check derivative tests with finite diff
 - [ ] get parameters (in function of parameters) into the dependencies
+- [ ] make the nonnegativity trick optional
+- [ ] clean up different parameter types
 - [x] SS solve: add domain transformation optim
 - [ ] clean up printouts/reporting
 - [x] release first version
@@ -15,10 +17,10 @@
 - [x] figure out licenses
 - [ ] add more models
 - [ ] symbolic derivatives
-- [ ] use @assert for errors or maybe argcheck
+- [ ] use @assert for errors and @test_throws
 - [ ] print SS dependencies, show SS solver
 - [ ] an and schorfheide estimation
-- [ ] SS: replace variables in log() with auxilliary variable which must be positive to help solver
+- [x] SS: replace variables in log() with auxilliary variable which must be positive to help solver
 - [ ] plot multiple solutions or models - multioptions in one graph
 - [ ] add correlation, autocorrelation, and variance decomposition
 - [x] complex example with lags > 1, [ss], calib equations, aux nonneg vars
