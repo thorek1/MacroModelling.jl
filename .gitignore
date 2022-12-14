@@ -31,9 +31,10 @@ Manifest.toml
 *.java
 .vscode
 *.pdf
-*.csv
+# *.csv
 *.gz
 *.log
 .ipynb_checkpoints/
 *.svg
 *.png
+*.xls

@@ -92,10 +92,10 @@ end
     curvw=10
     
     calfa=.24
-    cgamma=1.004
-    cbeta=.9995
+    # cgamma=1.004
+    # cbeta=.9995
     csigma=1.5
-    cpie=1.005
+    # cpie=1.005
     cfc=1.5
     cgy=0.51
     
@@ -139,9 +139,18 @@ end
     cwhlc=(1/clandaw)*(1-calfa)/calfa*crk*cky/ccy
     cwly=1-crk*cky
     
-    ctrend=(cgamma-1)*100
     conster=(cr-1)*100
-    constepinf=(cpie-1)*100
+    # ctrend=(cgamma-1)*100
+    ctrend=(1.004-1)*100
+    # constepinf=(cpie-1)*100
+    constepinf=(1.005-1)*100
+
+    cpie=1+constepinf/100
+    cgamma=1+ctrend/100 
+
+    cbeta=1/(1+constebeta/100)
+    constebeta = 100 / .9995 - 100
+
     constelab=0
 
     z_ea = 0.4618
