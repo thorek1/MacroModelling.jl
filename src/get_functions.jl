@@ -564,7 +564,7 @@ function get_moments(𝓂::ℳ;
     NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
 
     NSSS_labels = labels(NSSS) .|> Symbol
-    var_idx = indexin(vcat(var,𝓂.calibration_equations_parameters),NSSS_labels)
+    var_idx = indexin(var,NSSS_labels)
     var_idx_SS = indexin(vcat(var,𝓂.calibration_equations_parameters),NSSS_labels)
 
     if length_par * length(var_idx_SS) > 200
@@ -609,7 +609,7 @@ function get_moments(𝓂::ℳ;
         end
 
     else
-        SS =  KeyedArray(collect(NSSS)[var_idx];  Variables = sort(var))
+        SS =  KeyedArray(collect(NSSS)[var_idx_SS];  Variables = [sort(var)...,𝓂.calibration_equations_parameters...])
 
         if variance
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂)
