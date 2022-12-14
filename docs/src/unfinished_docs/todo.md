@@ -5,6 +5,8 @@
 - [x] check derivative tests with finite diff
 - [ ] get parameters (in function of parameters) into the dependencies
 - [ ] make the nonnegativity trick optional
+- [ ] have conditional parameters at end of entry as well
+- [ ] input field for SS init guess in all functions
 - [ ] clean up different parameter types
 - [x] SS solve: add domain transformation optim
 - [ ] clean up printouts/reporting
