@@ -11,9 +11,9 @@ end
 
 
 @parameters m begin
-    # alpha | k[ss] / (4 * y[ss]) = cap_share
-    # cap_share = 1.66
-    alpha = .157
+    alpha | k[ss] / (4 * y[ss]) = cap_share
+    cap_share = 1.66
+    # alpha = .157
 
     beta | R[ss] = R_ss
     R_ss = 1.0035
