@@ -85,14 +85,6 @@ end
 
 
 @parameters m begin  
-    z_ea = 0.4618
-    z_eb = 1.8513
-    z_eg = 0.6090
-    z_eqs = 0.6017
-    z_em = 0.2397
-    z_epinf = 0.1455
-    z_ew = 0.2089
-
     ctou=.025
     clandaw=1.5
     cg=0.18
@@ -151,4 +143,12 @@ end
     conster=(cr-1)*100
     constepinf=(cpie-1)*100
     constelab=0
+
+    z_ea = 0.4618
+    z_eb = 1.8513
+    z_eg = 0.6090
+    z_eqs = 0.6017
+    z_em = 0.2397
+    z_epinf = 0.1455
+    z_ew = 0.2089
 end
