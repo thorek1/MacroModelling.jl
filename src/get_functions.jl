@@ -335,6 +335,7 @@ function get_steady_state(𝓂::ℳ;
     SS = collect(NSSS)
 
     if stochastic
+        solve!(𝓂, dynamics = true, algorithm = :second_order)
         SS[1:length(union(𝓂.exo_present,var))] = 𝓂.solution.perturbation.second_order.stochastic_steady_state
     end
 
