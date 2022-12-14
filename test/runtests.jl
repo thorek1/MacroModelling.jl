@@ -2,46 +2,51 @@ using Test
 using MacroModelling
 using Random
 
+include("functionality_tests.jl")
 
 @testset "Standalone functions" begin
     include("test_standalone_function.jl")
 end
 
-include("functionality_tests.jl")
-
 @testset "SW07 with calibration equations" begin
     include("models/SW07.jl")
-    functionality_test(m, second_order = false, third_order = false,plots = false)
+    functionality_test(m)
 end
 
 @testset "SW03 with calibration equations" begin
     include("models/SW03.jl")
-    functionality_test(m, second_order = false, third_order = false,plots = false)
+    functionality_test(m)
 end
 
 @testset "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
-    functionality_test(m, second_order = false, third_order = false)
+    functionality_test(m)
 end
 
 @testset "RBC_CME with calibration equations, parameter definitions, and special functions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
-    functionality_test(m, second_order = false, third_order = false,plots = false)
+    functionality_test(m)
 end
 
 @testset "RBC_CME with calibration equations and parameter definitions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-    functionality_test(m,plots = false)
+    functionality_test(m)
+    functionality_test(m, algorithm = :second_order)
+    functionality_test(m, algorithm = :third_order)
 end
 
 @testset "RBC_CME with calibration equations" begin
     include("models/RBC_CME_calibration_equations.jl")
-    functionality_test(m, third_order = false,plots = false)
+    functionality_test(m)
+    functionality_test(m, algorithm = :second_order)
+    functionality_test(m, algorithm = :third_order)
 end
 
 @testset "RBC_CME " begin
     include("models/RBC_CME.jl")
-    functionality_test(m, third_order = false)
+    functionality_test(m)
+    functionality_test(m, algorithm = :second_order)
+    functionality_test(m, algorithm = :third_order)
 end
 
 
