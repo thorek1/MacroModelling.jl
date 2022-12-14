@@ -363,8 +363,8 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                 relevant_pars_across = union(relevant_pars_across,relevant_pars)
                 
                 iii = 1
-                for (i, parss) in enumerate(𝓂.parameters) 
-                    valss   = 𝓂.parameter_values[i]
+                for parss in union(𝓂.parameters,𝓂.parameters_as_function_of_parameters)
+                    # valss   = 𝓂.parameter_values[i]
                     if :($parss) ∈ relevant_pars
                         push!(calib_pars,:($parss = inputs[$iii]))
                         push!(calib_pars_input,:($parss))
@@ -875,7 +875,7 @@ function write_functions_mapping!(𝓂::ℳ)
 
 
     paras = []
-    push!(paras,:((;$(setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters)...)) = params))
+    push!(paras,:((;$(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)...)) = params))
 
     # watch out with naming of parameters in model and functions
     mod_func2 = :(function model_function_uni_redux(X::Vector{Real}, params::Vector{Real}, X̄::Vector{Real})

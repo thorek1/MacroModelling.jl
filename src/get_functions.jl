@@ -308,36 +308,37 @@ function get_steady_state(𝓂::ℳ;
     stochastic::Bool = false,
     parameter_derivatives::Symbol_input = :all)
 
+    solve!(𝓂)
+
     write_parameters_input!(𝓂,parameters)
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     if parameter_derivatives == :all
-        length_par = length(setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters))
+        length_par = length(𝓂.parameters)
         param_idx = 1:length_par
     elseif isa(parameter_derivatives,Symbol)
-        @assert parameter_derivatives ∈ setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters) string(p) * " is not part of the free model parameters."
+        @assert parameter_derivatives ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
 
-        param_idx = indexin([parameter_derivatives], setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters))
+        param_idx = indexin([parameter_derivatives], 𝓂.parameters)
         length_par = 1
     elseif length(parameter_derivatives) > 1
         for p in vec(collect(parameter_derivatives))
-            @assert p ∈ setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters) string(p) * " is not part of the free model parameters."
+            @assert p ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
         end
-        param_idx = indexin(parameter_derivatives |> collect |> vec, setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters)) |> sort
+        param_idx = indexin(parameter_derivatives |> collect |> vec, 𝓂.parameters) |> sort
         length_par = length(parameter_derivatives)
     end
 
+    NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
 
-    solve!(𝓂; dynamics = true, algorithm = stochastic ? :second_order : :first_order) #efficiency fix!!!
-
-    SS = collect(𝓂.solution.non_stochastic_steady_state)#[indexin(sort(var),sort(union(𝓂.exo_present,𝓂.var)))]
+    SS = collect(NSSS)
 
     if stochastic
         SS[1:length(union(𝓂.exo_present,var))] = 𝓂.solution.perturbation.second_order.stochastic_steady_state
     end
 
-    NSSS_labels = labels(𝓂.solution.non_stochastic_steady_state) .|> Symbol
+    NSSS_labels = labels(NSSS) .|> Symbol
     var_idx = indexin(vcat(var,𝓂.calibration_equations_parameters),NSSS_labels)
 
     if length_par * length(var_idx) > 200
@@ -537,37 +538,37 @@ function get_moments(𝓂::ℳ;
     derivatives::Bool = true,
     parameter_derivatives::Symbol_input = :all)#limit output by selecting pars and vars like for plots and irfs!?
     
-    write_parameters_input!(𝓂,parameters)
-
     solve!(𝓂)
+
+    write_parameters_input!(𝓂,parameters)
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     if parameter_derivatives == :all
-        length_par = length(setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters))
+        length_par = length(𝓂.parameters)
         param_idx = 1:length_par
     elseif isa(parameter_derivatives,Symbol)
-        @assert parameter_derivatives ∈ setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters) string(p) * " is not part of the free model parameters."
+        @assert parameter_derivatives ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
 
-        param_idx = indexin([parameter_derivatives], setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters))
+        param_idx = indexin([parameter_derivatives], 𝓂.parameters)
         length_par = 1
     elseif length(parameter_derivatives) > 1
         for p in vec(collect(parameter_derivatives))
-            @assert p ∈ setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters) string(p) * " is not part of the free model parameters."
+            @assert p ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
         end
-        param_idx = indexin(parameter_derivatives |> collect |> vec, setdiff(𝓂.par, 𝓂.parameters_as_function_of_parameters)) |> sort
+        param_idx = indexin(parameter_derivatives |> collect |> vec, 𝓂.parameters) |> sort
         length_par = length(parameter_derivatives)
-    end
-    
-    if length_par * length(var) > 200
-        derivatives = false
     end
 
     NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
 
     NSSS_labels = labels(NSSS) .|> Symbol
-    var_idx = indexin(var,NSSS_labels)
+    var_idx = indexin(vcat(var,𝓂.calibration_equations_parameters),NSSS_labels)
     var_idx_SS = indexin(vcat(var,𝓂.calibration_equations_parameters),NSSS_labels)
+
+    if length_par * length(var_idx_SS) > 200
+        derivatives = false
+    end
 
     if derivatives
         dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂))[var_idx_SS], Float64.(𝓂.parameter_values[param_idx]))
