@@ -583,17 +583,17 @@ function block_solver(inputs::Vector{Float64},
     
     if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
         println("Block: ",n_block," - Solution not found. Trying optimizer: LN_BOBYQA.")
-        sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120)
+        sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120, maxtime = 120)
     end
 
     if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
         println("Block: ",n_block," - Solution not found. Trying optimizer: LN_SBPLX.")
-        sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120)
+        sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120, maxtime = 120)
     end
     
     if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
         println("Block: ",n_block," - Local solution not found. Trying global solution.")
-        sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120)
+        sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120)
     end
     
     if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
@@ -606,17 +606,17 @@ function block_solver(inputs::Vector{Float64},
     
     if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
         println("Block: ",n_block," - Solution not found. Trying optimizer: LN_BOBYQA.")
-        sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120)
+        sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120, maxtime = 120)
     end
 
     if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
         println("Block: ",n_block," - Solution not found. Trying optimizer: LN_SBPLX.")
-        sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120)
+        sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120, maxtime = 120)
     end
     
     if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
         println("Block: ",n_block," - Local solution not found. Trying global solution.")
-        sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120)
+        sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120)
     end
     
     if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
