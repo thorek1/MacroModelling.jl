@@ -47,23 +47,23 @@ m = nothing
 
     r[0] = crpi * (1 - crr) * pinf[0] + cry * (1 - crr) * (y[0] - yf[0]) + crdy * (y[0] - yf[0] - y[-1] + yf[-1]) + crr * r[-1] + ms[0]
 
-    a[0] = crhoa * a[-1] + ea[x]
+    a[0] = crhoa * a[-1] + z_ea * ea[x]
 
-    b[0] = crhob * b[-1] + eb[x]
+    b[0] = crhob * b[-1] + z_eb * eb[x]
 
-    g[0] = crhog * g[-1] + eg[x] + cgy * ea[x]
+    g[0] = crhog * g[-1] + z_eg * eg[x] + cgy * z_ea * ea[x]
 
-    qs[0] = crhoqs * qs[-1] + eqs[x]
+    qs[0] = crhoqs * qs[-1] + z_eqs * eqs[x]
 
-    ms[0] = crhoms * ms[-1] + em[x]
+    ms[0] = crhoms * ms[-1] + z_em * em[x]
 
     spinf[0] = crhopinf * spinf[-1] + epinfma[0] - cmap * epinfma[-1]
 
-    epinfma[0] = epinf[x]
+    epinfma[0] = z_epinf * epinf[x]
 
     sw[0] = crhow * sw[-1] + ewma[0] - cmaw * ewma[-1]
 
-    ewma[0] = ew[x]
+    ewma[0] = z_ew * ew[x]
 
     kp[0] = (1 - cikbar) * kp[-1] + cikbar * inve[0] + cikbar * cgamma ^ 2 * csadjcost * qs[0]
 
@@ -85,6 +85,14 @@ end
 
 
 @parameters m begin  
+    z_ea = 0.4618
+    z_eb = 1.8513
+    z_eg = 0.6090
+    z_eqs = 0.6017
+    z_em = 0.2397
+    z_epinf = 0.1455
+    z_ew = 0.2089
+
     ctou=.025
     clandaw=1.5
     cg=0.18
