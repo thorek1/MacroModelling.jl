@@ -590,6 +590,11 @@ function block_solver(inputs::Vector{Float64},
         println("Block: ",n_block," - Solution not found. Trying optimizer: LN_SBPLX.")
         sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120, maxtime = 120)
     end
+
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
+        println("Block: ",n_block," - Solution not found. Trying optimizer: LD_SLSQP.")
+        sol = solve(prob, NLopt.LD_SLSQP(), local_maxtime = 120, maxtime = 120)
+    end
     
     if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
         println("Block: ",n_block," - Local solution not found. Trying global solution.")
@@ -1098,7 +1103,7 @@ function calculate_jacobian(parameters::Vector{<: Number}, SS_and_pars::Abstract
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-    par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
+    par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
 
     past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
     SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
@@ -1780,17 +1785,19 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     
     SS_and_pars = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂.SS_init_guess, 𝓂)
     
+    𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
+
 	∇₁ = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters, SS_and_pars, 𝓂)
 
     sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    observables_and_states = sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,𝓂.var)))
+    observables_and_states = sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
 
     A = sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)
     ,:]
     B = sol[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
 
-    C = ℒ.diagm(ones(length(observables_and_states)))[indexin(sort(indexin(observables,𝓂.var)),observables_and_states),:]
+    C = ℒ.diagm(ones(length(observables_and_states)))[indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states),:]
 
     𝐁 = B * B'
 
@@ -1798,7 +1805,8 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     # Gaussian Prior
     P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
-    u = zeros(length(observables_and_states))
+    # u = zeros(length(observables_and_states))
+    u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
     z = C * u
     
     loglik = 0.0
@@ -1808,7 +1816,9 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
         F = C * P * C'
 
-        loglik += log(ℒ.det(F)) + v' / F * v
+        F = (F + F') / 2
+
+        loglik += log(max(eps(),ℒ.det(F))) + v' / F * v
 
         K = P * C' / F
 
