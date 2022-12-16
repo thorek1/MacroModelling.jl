@@ -1781,8 +1781,10 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
-    # write_parameters_input!(𝓂,parameters)
-    
+    observables = sort(observables)
+
+    data = data(observables,:) .- collect(𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess,𝓂)[observables])
+
     SS_and_pars = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂.SS_init_guess, 𝓂)
     
     𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
@@ -1801,17 +1803,15 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     𝐁 = B * B'
 
-    T = size(data)[2]
-
     # Gaussian Prior
     P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
-    # u = zeros(length(observables_and_states))
-    u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
+    u = zeros(length(observables_and_states))
+    # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
     z = C * u
     
     loglik = 0.0
 
-    for t in 1:T
+    for t in 1:size(data)[2]
         v = data[:,t] - z
 
         F = C * P * C'
@@ -1828,7 +1828,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         
         z = C * u 
     end
-    return -(loglik + length(observables) * log(2 * 3.141592653589793) * T) / 2 # otherwise conflicts with model parameters assignment
+    return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
 end
 
 
