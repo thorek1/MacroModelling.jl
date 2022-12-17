@@ -385,7 +385,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                 other_vars_input = []
                 other_vars_inverse = []
                 other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters),sort(𝓂.solved_vars[end])),syms_in_eqs)
-
+                
                 for var in other_vrs
                     var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
                     push!(other_vars,:($(var) = inputs[$iii]))
@@ -406,7 +406,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                         push!(nnaux_error, :(aux_error += min(0.0,-$(val.args[2]))))
                     elseif (val.args[1] == :- && val.args[2] ∈ 𝓂.nonnegativity_auxilliary_vars) 
                         push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
-                        push!(nnaux_error, :(aux_error += min(0.0,$(val.args[3]))))
+                        push!(nnaux_error, :(aux_error += (min(0.0,$(val.args[3])))^2))
                     else
                         push!(solved_vals,val)
                     end
@@ -434,17 +434,40 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                 end
 
 
+
+                # augment system for bound constraint violations
+                aug_lag = []
+                aug_lag_penalty = []
+                push!(aug_lag_penalty, :(bound_violation_penalty = 0))
+
+                for (i,varpar) in enumerate(intersect(𝓂.bounded_vars,union(other_vrs,sorted_vars,relevant_pars)))
+                    push!(aug_lag,:($varpar = min(max($varpar,$(𝓂.lower_bounds[i])),$(𝓂.upper_bounds[i]))))
+                    push!(aug_lag_penalty,:(bound_violation_penalty += (max(0,$(𝓂.lower_bounds[i]) - $varpar) + max(0,$varpar - $(𝓂.upper_bounds[i])))^2))
+                end
+
+
+                # add it also to output from optimisation
+                aug_lag_results = []
+                push!(aug_lag_penalty, :(bound_violation_penalty = 0))
+
+                for (i,varpar) in enumerate(intersect(𝓂.bounded_vars,sorted_vars))
+                    push!(aug_lag_results,:($varpar = min(max($varpar,𝓂.lower_bounds[$i]),𝓂.upper_bounds[$i])))
+                end
+
+
                 funcs = :(function block(guess::Vector{Float64},inputs::Vector{Float64})
                         guess = undo_transformer(guess)
                         $(guess...) 
                         $(calib_pars...) # add those variables which were previously solved and are used in the equations
                         $(other_vars...) # take only those that appear in equations - DONE
 
+                        $(aug_lag...)
                         $(nnaux...)
                         return [$(solved_vals...)]
                     end)
 
                 push!(solved_vals,:(aux_error))
+                push!(solved_vals,:(bound_violation_penalty))
 
                 funcs_optim = :(function block(guess::Vector{Float64},inputs::Vector{Float64})
                     guess = undo_transformer(guess)
@@ -452,6 +475,8 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                     $(calib_pars...) # add those variables which were previously solved and are used in the equations
                     $(other_vars...) # take only those that appear in equations - DONE
 
+                    $(aug_lag_penalty...)
+                    $(aug_lag...)
                     $(nnaux...)
                     $(nnaux_error...)
                     return sum(abs2,[$(solved_vals...)])
@@ -490,7 +515,8 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                         transformer(ubs))))
                         
                 push!(SS_solve_func,:(sol = undo_transformer(sol))) 
-                push!(SS_solve_func,:($(result...)))            
+                push!(SS_solve_func,:($(result...)))   
+                push!(SS_solve_func,:($(aug_lag_results...)))     
 
                 push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
                 push!(𝓂.ss_solve_blocks_optim,@RuntimeGeneratedFunction(funcs_optim))
@@ -569,7 +595,7 @@ function undo_transformer(x)
     # return x
 end
 
-function block_solver(inputs::Vector{Float64}, 
+function block_solver(initial_values::Vector{Float64}, 
                         n_block::Int, 
                         ss_solve_blocks::Function, 
                         SS_optimizer, 
@@ -577,55 +603,97 @@ function block_solver(inputs::Vector{Float64},
                         guess::Vector{Float64}, 
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64})
+                        
+    prob = OptimizationProblem(f, guess, initial_values)#, lb = lbs, ub = ubs)
+    sol = solve(prob, SS_optimizer(), maxtime = 120, maxiters = Int(2e5))
     
-    prob = OptimizationProblem(f, guess, inputs, lb = lbs, ub = ubs)
-    sol = solve(prob, SS_optimizer())
-    
-    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
-        println("Block: ",n_block," - Solution not found. Trying optimizer: LN_BOBYQA.")
-        sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120, maxtime = 120)
-    end
-
-    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
-        println("Block: ",n_block," - Solution not found. Trying optimizer: LN_SBPLX.")
-        sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120, maxtime = 120)
-    end
-
-    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
-        println("Block: ",n_block," - Solution not found. Trying optimizer: LD_SLSQP.")
-        sol = solve(prob, NLopt.LD_SLSQP(), local_maxtime = 120, maxtime = 120)
-    end
-    
-    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
-        println("Block: ",n_block," - Local solution not found. Trying global solution.")
-        sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120)
-    end
-    
-    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
-        println("Block: ",n_block," - No solution found. Trying with positive domain.")
+    if ((sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))) && SS_optimizer != NLopt.LD_LBFGS
+        println("Block: ",n_block," - Solution not found with ",SS_optimizer|>string,": maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying optimizer: LD_LBFGS.")
         
-        inits = max.(max.(lbs,eps()),min.(ubs,guess))
-        prob = OptimizationProblem(f, guess, inits, lb = max.(lbs,eps()), ub = ubs)
-        sol = solve(prob, SS_optimizer())
-    end
-    
-    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
-        println("Block: ",n_block," - Solution not found. Trying optimizer: LN_BOBYQA.")
-        sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120, maxtime = 120)
+        SS_optimizer = NLopt.LD_LBFGS
+
+        prob = OptimizationProblem(f, guess, sol.u, lb = lbs, ub = ubs)
+        sol = solve(prob, SS_optimizer(), local_maxtime = 120, maxtime = 120)
+
+        if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+            prob = OptimizationProblem(f, guess, initial_values, lb = lbs, ub = ubs)
+            sol = solve(prob, SS_optimizer(), local_maxtime = 120, maxtime = 120)
+        end
     end
 
-    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
-        println("Block: ",n_block," - Solution not found. Trying optimizer: LN_SBPLX.")
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+        println("Block: ",n_block," - Solution not found with ",SS_optimizer|>string,": maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying optimizer: LN_BOBYQA.")
+        
+        prob = OptimizationProblem(f, guess, sol.u, lb = lbs, ub = ubs)
+        sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120, maxtime = 120)
+
+        if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+            prob = OptimizationProblem(f, guess, initial_values, lb = lbs, ub = ubs)
+            sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120, maxtime = 120)
+        end
+    end
+
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+        println("Block: ",n_block," - Solution not found with LN_BOBYQA: maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying optimizer: LN_SBPLX.")
+        
+        prob = OptimizationProblem(f, guess, sol.u, lb = lbs, ub = ubs)
         sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120, maxtime = 120)
+
+        if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+            prob = OptimizationProblem(f, guess, initial_values, lb = lbs, ub = ubs)
+            sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120, maxtime = 120)
+        end
+    end
+
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+        println("Block: ",n_block," - Solution not found with LN_SBPLX: maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying optimizer: LD_SLSQP.")
+ 
+        prob = OptimizationProblem(f, guess, sol.u, lb = lbs, ub = ubs)
+        sol = solve(prob, NLopt.LD_SLSQP(), local_maxtime = 120, maxtime = 120)
+
+        if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+            prob = OptimizationProblem(f, guess, initial_values, lb = lbs, ub = ubs)
+            sol = solve(prob, NLopt.LD_SLSQP(), local_maxtime = 120, maxtime = 120)
+        end
     end
     
-    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
-        println("Block: ",n_block," - Local solution not found. Trying global solution.")
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+        println("Block: ",n_block," - Solution not found with LD_SLSQP: maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying global solution.")
+         
+        prob = OptimizationProblem(f, guess, sol.u, lb = lbs, ub = ubs)
         sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120)
+
+        if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+            prob = OptimizationProblem(f, guess, initial_values, lb = lbs, ub = ubs)
+            sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120)
+        end
     end
     
-    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,inputs)) > eps(Float32))
-        error("Block: ",n_block," - No solution found. Consider changing bounds.")
+    # if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+    #     println("Block: ",n_block," - Solution not found: maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying with positive domain.")
+        
+    #     inits = max.(max.(lbs,eps()),min.(ubs,guess))
+    #     prob = OptimizationProblem(f, guess, inits, lb = max.(lbs,eps()), ub = ubs)
+    #     sol = solve(prob, SS_optimizer())
+    # end
+    
+    # if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+    #     println("Block: ",n_block," - Solution not found: maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying optimizer: LN_BOBYQA.")
+    #     sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120, maxtime = 120)
+    # end
+
+    # if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+    #     println("Block: ",n_block," - Solution not found: maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying optimizer: LN_SBPLX.")
+    #     sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120, maxtime = 120)
+    # end
+    
+    # if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+    #     println("Block: ",n_block," - Local solution not found: maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying global solution.")
+    #     sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120)
+    # end
+    
+    if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+        error("Block: ",n_block," - Solution not found with G_MLSL_LDS and LN_BOBYQA: maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Consider changing bounds.")
     end
 
     return sol.u
@@ -634,7 +702,7 @@ end
 
 
 
-function block_solver(inputs::Vector{ℱ.Dual{Z,S,N}}, 
+function block_solver(initial_values::Vector{ℱ.Dual{Z,S,N}}, 
     n_block::Int, 
     ss_solve_blocks::Function, 
     SS_optimizer, 
@@ -644,10 +712,10 @@ function block_solver(inputs::Vector{ℱ.Dual{Z,S,N}},
     ubs::Vector{Float64}) where {Z,S,N}
 
     # unpack: AoS -> SoA
-    inp = ℱ.value.(inputs)
+    inp = ℱ.value.(initial_values)
 
     # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, inputs)'
+    ps = mapreduce(ℱ.partials, hcat, initial_values)'
 
     # get f(vs)
     val = block_solver(inp, 
