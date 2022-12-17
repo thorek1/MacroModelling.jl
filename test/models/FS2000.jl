@@ -38,17 +38,18 @@ end
 
 
 @parameters m begin  
-    alp     = 0.33
-    bet     = 0.99
-    gam     = 0.003
-    mst     = 1.011
-    rho     = 0.7
-    psi     = 0.787
-    del     = 0.02
-    z_e_a   = 0.014
-    z_e_m   = 0.005
+    alp     = 0.356
+    bet     = 0.993
+    gam     = 0.0085
+    mst     = 1.0002
+    rho     = 0.129
+    psi     = 0.65
+    del     = 0.01
+    z_e_a   = 0.035449
+    z_e_m   = 0.008862
 end
- 
+
+
 # estimated_params;
 # alp, beta_pdf, 0.356, 0.02; 
 # bet, beta_pdf, 0.993, 0.002;
