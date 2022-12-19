@@ -603,9 +603,12 @@ function block_solver(initial_values::Vector{Float64},
                         guess::Vector{Float64}, 
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64})
-                        
-    prob = OptimizationProblem(f, guess, initial_values)#, lb = lbs, ub = ubs)
-    sol = solve(prob, SS_optimizer(), maxtime = 120, maxiters = Int(2e5))
+                 
+    sol = try 
+        solve(OptimizationProblem(f, guess, initial_values, lb = lbs, ub = ubs), SS_optimizer(), maxtime = 120, maxiters = Int(2e5))
+    catch e
+        solve(OptimizationProblem(f, guess, initial_values), SS_optimizer(), maxtime = 120, maxiters = Int(2e5))
+    end
     
     if ((sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))) && SS_optimizer != NLopt.LD_LBFGS
         println("Block: ",n_block," - Solution not found with ",SS_optimizer|>string,": maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying optimizer: LD_LBFGS.")
@@ -613,11 +616,15 @@ function block_solver(initial_values::Vector{Float64},
         SS_optimizer = NLopt.LD_LBFGS
 
         prob = OptimizationProblem(f, guess, sol.u, lb = lbs, ub = ubs)
-        sol = solve(prob, SS_optimizer(), local_maxtime = 120, maxtime = 120)
+        sol_new = solve(prob, SS_optimizer(), local_maxtime = 120, maxtime = 120)
 
-        if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+        if (sol_new.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol_new, initial_values)) > eps(Float32))
             prob = OptimizationProblem(f, guess, initial_values, lb = lbs, ub = ubs)
-            sol = solve(prob, SS_optimizer(), local_maxtime = 120, maxtime = 120)
+            sol_new = solve(prob, SS_optimizer(), local_maxtime = 120, maxtime = 120)
+        end
+
+        if sol_new.minimum < sol.minimum
+            sol = sol_new
         end
     end
 
@@ -625,11 +632,15 @@ function block_solver(initial_values::Vector{Float64},
         println("Block: ",n_block," - Solution not found with ",SS_optimizer|>string,": maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying optimizer: LN_BOBYQA.")
         
         prob = OptimizationProblem(f, guess, sol.u, lb = lbs, ub = ubs)
-        sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120, maxtime = 120)
+        sol_new = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120, maxtime = 120)
 
-        if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+        if (sol_new.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol_new, initial_values)) > eps(Float32))
             prob = OptimizationProblem(f, guess, initial_values, lb = lbs, ub = ubs)
-            sol = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120, maxtime = 120)
+            sol_new = solve(prob, NLopt.LN_BOBYQA(), local_maxtime = 120, maxtime = 120)
+        end
+
+        if sol_new.minimum < sol.minimum
+            sol = sol_new
         end
     end
 
@@ -637,11 +648,15 @@ function block_solver(initial_values::Vector{Float64},
         println("Block: ",n_block," - Solution not found with LN_BOBYQA: maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying optimizer: LN_SBPLX.")
         
         prob = OptimizationProblem(f, guess, sol.u, lb = lbs, ub = ubs)
-        sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120, maxtime = 120)
+        sol_new = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120, maxtime = 120)
 
-        if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+        if (sol_new.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol_new, initial_values)) > eps(Float32))
             prob = OptimizationProblem(f, guess, initial_values, lb = lbs, ub = ubs)
-            sol = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120, maxtime = 120)
+            sol_new = solve(prob, NLopt.LN_SBPLX(), local_maxtime = 120, maxtime = 120)
+        end
+
+        if sol_new.minimum < sol.minimum
+            sol = sol_new
         end
     end
 
@@ -649,11 +664,15 @@ function block_solver(initial_values::Vector{Float64},
         println("Block: ",n_block," - Solution not found with LN_SBPLX: maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying optimizer: LD_SLSQP.")
  
         prob = OptimizationProblem(f, guess, sol.u, lb = lbs, ub = ubs)
-        sol = solve(prob, NLopt.LD_SLSQP(), local_maxtime = 120, maxtime = 120)
+        sol_new = solve(prob, NLopt.LD_SLSQP(), local_maxtime = 120, maxtime = 120)
 
-        if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+        if (sol_new.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol_new, initial_values)) > eps(Float32))
             prob = OptimizationProblem(f, guess, initial_values, lb = lbs, ub = ubs)
-            sol = solve(prob, NLopt.LD_SLSQP(), local_maxtime = 120, maxtime = 120)
+            sol_new = solve(prob, NLopt.LD_SLSQP(), local_maxtime = 120, maxtime = 120)
+        end
+
+        if sol_new.minimum < sol.minimum
+            sol = sol_new
         end
     end
     
@@ -661,11 +680,15 @@ function block_solver(initial_values::Vector{Float64},
         println("Block: ",n_block," - Solution not found with LD_SLSQP: maximum residual = ",maximum(abs,ss_solve_blocks(sol,initial_values)),". Trying global solution.")
          
         prob = OptimizationProblem(f, guess, sol.u, lb = lbs, ub = ubs)
-        sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120)
+        sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120)
 
-        if (sol.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol,initial_values)) > eps(Float32))
+        if (sol_new.minimum > eps(Float32)) | (maximum(abs,ss_solve_blocks(sol_new, initial_values)) > eps(Float32))
             prob = OptimizationProblem(f, guess, initial_values, lb = lbs, ub = ubs)
-            sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120)
+            sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120)
+        end
+
+        if sol_new.minimum < sol.minimum
+            sol = sol_new
         end
     end
     
@@ -1849,13 +1872,13 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
-    observables = sort(observables)
+    sort!(observables)
 
-    data = data(observables,:) .- collect(𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess,𝓂)[observables])
+    # data = data(observables,:) .- collect(𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess,𝓂)[observables])
 
     SS_and_pars = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂.SS_init_guess, 𝓂)
     
-    𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
+    # 𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
 
 	∇₁ = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters, SS_and_pars, 𝓂)
 
@@ -1880,14 +1903,16 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     loglik = 0.0
 
     for t in 1:size(data)[2]
-        v = data[:,t] - z
+        v = collect(data(observables,t)) - z - collect(SS_and_pars[observables])
 
         F = C * P * C'
 
         F = (F + F') / 2
 
-        loglik += log(max(eps(),ℒ.det(F))) + v' / F * v
+        # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
+        # K = P * C' * ℒ.pinv(F)
 
+        loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
         K = P * C' / F
 
         P = A * (P - K * C * P) * A' + 𝐁
