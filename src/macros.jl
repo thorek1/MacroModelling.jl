@@ -91,6 +91,7 @@ macro model(𝓂,ex)
     ss_solve_blocks = []
     ss_solve_blocks_optim = []
     SS_init_guess = Vector{Float64}(undef,0)
+    NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(100)
     SS_solve_func = nothing
     nonlinear_solution_helper = nothing
     SS_dependencies = nothing
@@ -879,6 +880,7 @@ macro model(𝓂,ex)
 
 
     default_optimizer = NLopt.LD_LBFGS
+    # default_optimizer = Optimisers.ADAM
     # default_optimizer = NLopt.LN_BOBYQA
 
     dynamic_variables = collect(union(dyn_ss_past,dyn_ss_future,dyn_ss_present))
@@ -970,6 +972,7 @@ macro model(𝓂,ex)
                         $ss_solve_blocks,
                         $ss_solve_blocks_optim,
                         $SS_init_guess,
+                        $NSSS_solver_cache,
                         $SS_solve_func,
                         $nonlinear_solution_helper,
                         $SS_dependencies,
