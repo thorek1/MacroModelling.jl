@@ -20,11 +20,16 @@ include("models/FS2000.jl")
 # solve!(m,symbolic_SS = true)
 get_solution(m)
 get_SS(m)
+
+m.NSSS_solver_cache
 # get_SS(m,parameters = [0.44728295202065166, 0.9988884445965371, 0.0028058657322557485, 1.0075373840302122, 0.6142408307950538, 0.5318308372997724, 0.0011670521404654407, 0.07535090815216333, 0.012834752100689741])
-
+length(m.NSSS_solver_cache) < 1
 # m.SS_solve_func
+parameters = [0.4035,0.9909, 0.0046, 1.0143, 0.8455, 0.6890, 0.0017, 0.0136, 0.0033]
 
 
+findmin([sum(abs2,pars[end] - parameters) for pars in m.NSSS_solver_cache])[2]
+findmin([sum(abs2,pars[end] ./ parameters .- 1) for pars in m.NSSS_solver_cache])[2]
 
 # get_SS(m,parameters = [0.6750005457453657, 0.7705742051621937, -0.13003647764699267, 0.6057594085497515, 0.7171103532068533, 0.7901279425902789, 0.5380666025781062, 0.2961217015642633, 4.264173335281647])
 # get_SS(m,parameters = [0.6695526157125993, 0.7782097900770949, 1.399954432139673, 0.9777895536920106, 0.7173213885987454, 0.7899294918080639, 0.5385159934129353, 0.29591747435564625, 4.253028889230297])
@@ -112,7 +117,7 @@ end
 # @time calculate_kalman_filter_loglikelihood(m, data(observables,1:10), observables; parameters = parameters)
 # using ForwardDiff
 #find mode
-function find_mode(parameters, u)
+function calculate_posterior_loglikelihood(parameters, u)
     # println(ForwardDiff.value.(parameters))
     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
     log_lik = 0
@@ -134,18 +139,33 @@ end
 # @profview find_mode(parameters, [])
 # find_mode([0.4035,0.9909, 0.0046, 1.0143, 0.8455, 0.6890, 0.0017, 0.0136, 0.0033],[])
 using OptimizationNLopt
+using OptimizationOptimisers
 
 # parameters = [0.6750005457453657, 0.7705742051621937, -0.13003647764699267, 0.6057594085497515, 0.7171103532068533, 0.7901279425902789, 0.5380666025781062, 0.2961217015642633, 4.264173335281647]
 # parameters = [0.4035,0.9909, 0.0046, 1.0143, 0.8455, 0.6890, 0.0017, 0.0136, 0.0033]
 
-lbs = [.0001,.5,eps(),.5,.0001,.0001,.0001,.000001,.000001]
-ubs = [.6,.999,.5,1.5,.95,.999,.1,1,1]
+# lbs = [.0001,.5,eps(),.5,.0001,.0001,.0001,.000001,.000001]
+# ubs = [.6,.999,.5,1.5,.95,.999,.1,1,1]
 
-f = OptimizationFunction(find_mode, Optimization.AutoForwardDiff())
 
-prob = OptimizationProblem(f, Float64[parameters...], [], lb = lbs, ub = ubs)
-sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 100000)
+lbs = [eps(), eps(), -1e12, -1e12, eps(), eps(), eps(), eps(), eps()]
+ubs = [1-eps(), 1-eps(), 1e12, 1e12, 1-eps(), 1-eps(), 1-eps(), 1e12, 1e12]
+
+f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoForwardDiff())
+
+prob = OptimizationProblem(f, Float64[parameters...], [])#, lb = lbs, ub = ubs)
+sol = solve(prob, Optimisers.ADAM(), maxiters = 1000, progress = true)
 sol.minimum
+
+prob = OptimizationProblem(f, sol.u, [], lb = lbs, ub = ubs)
+sol_new = solve(prob, NLopt.LD_LBFGS(), maxiters = 100000)
+sol_new.minimum
+
+
+# sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120, progress = true)
+
+# prob = OptimizationProblem(f, Float64[parameters...], [])#, lb = lbs, ub = ubs)
+# sol_new = solve(prob, Optimisers.ADAM(), maxiters = 1000, progress = true)
 
 # prob = OptimizationProblem(f, Float64[parameters...], [], lb = lbs, ub = ubs)
 # sol = solve(prob, NLopt.LN_BOBYQA(), maxiters = 100000, maxtime = 100, local_maxtime = 100)
