@@ -21,15 +21,15 @@ include("models/FS2000.jl")
 get_solution(m)
 get_SS(m)
 
-m.NSSS_solver_cache
-# get_SS(m,parameters = [0.44728295202065166, 0.9988884445965371, 0.0028058657322557485, 1.0075373840302122, 0.6142408307950538, 0.5318308372997724, 0.0011670521404654407, 0.07535090815216333, 0.012834752100689741])
-length(m.NSSS_solver_cache) < 1
-# m.SS_solve_func
-parameters = [0.4035,0.9909, 0.0046, 1.0143, 0.8455, 0.6890, 0.0017, 0.0136, 0.0033]
+# m.NSSS_solver_cache
+# # get_SS(m,parameters = [0.44728295202065166, 0.9988884445965371, 0.0028058657322557485, 1.0075373840302122, 0.6142408307950538, 0.5318308372997724, 0.0011670521404654407, 0.07535090815216333, 0.012834752100689741])
+# length(m.NSSS_solver_cache) < 1
+# # m.SS_solve_func
+# parameters = [0.4035,0.9909, 0.0046, 1.0143, 0.8455, 0.6890, 0.0017, 0.0136, 0.0033]
 
 
-findmin([sum(abs2,pars[end] - parameters) for pars in m.NSSS_solver_cache])[2]
-findmin([sum(abs2,pars[end] ./ parameters .- 1) for pars in m.NSSS_solver_cache])[2]
+# findmin([sum(abs2,pars[end] - parameters) for pars in m.NSSS_solver_cache])[2]
+# findmin([sum(abs2,pars[end] ./ parameters .- 1) for pars in m.NSSS_solver_cache])[2]
 
 # get_SS(m,parameters = [0.6750005457453657, 0.7705742051621937, -0.13003647764699267, 0.6057594085497515, 0.7171103532068533, 0.7901279425902789, 0.5380666025781062, 0.2961217015642633, 4.264173335281647])
 # get_SS(m,parameters = [0.6695526157125993, 0.7782097900770949, 1.399954432139673, 0.9777895536920106, 0.7173213885987454, 0.7899294918080639, 0.5385159934129353, 0.29591747435564625, 4.253028889230297])
@@ -156,6 +156,7 @@ f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoFor
 prob = OptimizationProblem(f, Float64[parameters...], [])#, lb = lbs, ub = ubs)
 sol = solve(prob, Optimisers.ADAM(), maxiters = 1000, progress = true)
 sol.minimum
+# m.NSSS_solver_cache
 
 prob = OptimizationProblem(f, sol.u, [], lb = lbs, ub = ubs)
 sol_new = solve(prob, NLopt.LD_LBFGS(), maxiters = 100000)
@@ -199,7 +200,7 @@ sol_new.minimum
 # define priors and likelihood
 Turing.@model function kalman(data, m, observables)
     # parameters = deepcopy(m.parameter_values)
-    alp     ~ truncated(Beta(beta_map(0.356, 0.02)...), .0001, .6)
+    alp     ~ truncated(Beta(beta_map(0.356, 0.02)...), .0001, .5)
     bet     ~ truncated(Beta(beta_map(0.993, 0.002)...), .5, .999)
     gam     ~ truncated(Normal(0.0085, 0.003),eps(),.5)
     mst     ~ truncated(Normal(1.0002, 0.007), .5, 1.5)
@@ -267,11 +268,15 @@ end
 turing_model = kalman(data, m, observables) # passing observables from before 
 
 # logprob"data = data, observables = observables, m = m | model = turing_model,  alp = 0.356, bet = 0.993, gam = 0.0085, mst = 1.0002, rho = 0.129, psi = 0.65, del = 0.01, z_e_a = 0.035449, z_e_m = 0.008862"
-
-
+# pars = [0.5999999999999941, 0.999, 0.00022410786148670898, 1.5, 0.2918845841974984, 0.0023597321974304225, 0.0036122338038623494, 9.667230108300879e-16, 6.186816831182828e-7]
+# get_SS(m, parameters = pars)
+# x = .04
+# get_SS(m, parameters = pars * x + m.NSSS_solver_cache[100][2] * (1 - x))
+# findmin([sum(abs2,i[2]- pars) for i in m.NSSS_solver_cache])
 # sample
-n_samples = 1000
+n_samples = 100
 # chain_NUTS = sample(turing_model, NUTS(1000, .65, max_depth = 10, Δ_max = 400.0, init_ϵ = .02), n_samples; θ = sol.u, progress = true)
+chain_NUTS = sample(turing_model, NUTS(), n_samples; progress = true)
 # chain_HMC = sample(turing_model, HMC(.02,10), n_samples; θ = sol.u, progress = true)
 chain_HMCDA = sample(turing_model, HMCDA(2000, 0.65, .02), n_samples; θ = sol.u, progress = true)
 # chain_PG = sample(turing_model, PG(20), n_samples; θ = sol.u, progress = true)
