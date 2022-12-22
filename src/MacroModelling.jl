@@ -484,7 +484,9 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                 end)
             
                 𝓂.SS_init_guess = [fill(.9,length(𝓂.var)); fill(.5, length(𝓂.calibration_equations_parameters))]
-                
+
+                push!(𝓂.NSSS_solver_cache,[fill(.9,length(sorted_vars)),fill(Inf,length(𝓂.parameters))])
+
                 # WARNING: infinite bounds are transformed to 1e12
                 lbs = []
                 ubs = []
@@ -504,7 +506,9 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                 push!(SS_solve_func,:(ubs = [$(ubs...)]))
                 push!(SS_solve_func,:(𝓂.SS_init_guess = initial_guess))
                 push!(SS_solve_func,:(f = OptimizationFunction(𝓂.ss_solve_blocks_optim[$(n_block)], Optimization.AutoForwardDiff())))
-                push!(SS_solve_func,:(inits = max.(lbs,min.(ubs,𝓂.SS_init_guess[$([findfirst(x->x==y,union(𝓂.var,𝓂.calibration_equations_parameters)) for y in sorted_vars])]))))
+                # push!(SS_solve_func,:(inits = max.(lbs,min.(ubs,𝓂.SS_init_guess[$([findfirst(x->x==y,union(𝓂.var,𝓂.calibration_equations_parameters)) for y in sorted_vars])]))))
+                
+                push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]][$(n_block)] ))))
                 
                 push!(SS_solve_func,:(sol = block_solver([$(calib_pars_input...),$(other_vars_input...)], 
                         $(n_block), 
@@ -568,9 +572,10 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
     end
 
     push!(SS_solve_func,:($(dyn_exos...)))
-
-    push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters))))
-    push!(SS_solve_func,:(push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)))
+    
+    push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_flt)))
+    
+    push!(SS_solve_func,:(if minimum([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache]) >  eps(Float16) push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp) end))
     # push!(SS_solve_func,:(if length(𝓂.NSSS_solver_cache) > 100 popfirst!(𝓂.NSSS_solver_cache) end))
     
     push!(SS_solve_func,:(SS_init_guess = ([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)])))
@@ -582,6 +587,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
     solve_exp = :(function solve_SS(parameters::Vector{Real}, initial_guess::Vector{Real}, 𝓂::ℳ)
                             $(parameters_in_equations...)
                             $(𝓂.calibration_equations_no_var...)
+                            params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                             $(SS_solve_func...)
                             end)
 
@@ -636,6 +642,22 @@ function block_solver(parameters::Vector{Float64},
             sol = sol_new
         end
     end
+
+    # if (sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters)) > tol)
+    #     println("Block: ",n_block," - Solution not found with ",SS_optimizer|>string,": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters)),". Trying optimizer: ADAM.")
+        
+    #     prob = OptimizationProblem(f, guess, sol.u)#, lb = lbs, ub = ubs)
+    #     sol_new = solve(prob, Optimisers.ADAM(), maxiters = 1000)
+
+    #     if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters)) > tol)
+    #         prob = OptimizationProblem(f, guess, parameters)#, lb = lbs, ub = ubs)
+    #         sol_new = solve(prob, Optimisers.ADAM(), maxiters = 1000)
+    #     end
+
+    #     if sol_new.minimum < sol.minimum
+    #         sol = sol_new
+    #     end
+    # end
 
     if (sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters)) > tol)
         println("Block: ",n_block," - Solution not found with ",SS_optimizer|>string,": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters)),". Trying optimizer: LN_BOBYQA.")
