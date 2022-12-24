@@ -256,6 +256,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
     atoms_in_equations = Set()
     atoms_in_equations_list = []
     relevant_pars_across = []
+    NSSS_solver_cache_init_tmp = []
 
     n_block = 1
 
@@ -485,7 +486,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
             
                 𝓂.SS_init_guess = [fill(.9,length(𝓂.var)); fill(.5, length(𝓂.calibration_equations_parameters))]
 
-                push!(𝓂.NSSS_solver_cache,[fill(.9,length(sorted_vars)),fill(Inf,length(𝓂.parameters))])
+                push!(NSSS_solver_cache_init_tmp,fill(.9,length(sorted_vars)))
 
                 # WARNING: infinite bounds are transformed to 1e12
                 lbs = []
@@ -508,24 +509,28 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                 push!(SS_solve_func,:(f = OptimizationFunction(𝓂.ss_solve_blocks_optim[$(n_block)], Optimization.AutoForwardDiff())))
                 # push!(SS_solve_func,:(inits = max.(lbs,min.(ubs,𝓂.SS_init_guess[$([findfirst(x->x==y,union(𝓂.var,𝓂.calibration_equations_parameters)) for y in sorted_vars])]))))
                 # push!(SS_solve_func,:(closest_solution = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]))
-                push!(SS_solve_func,:(inits = [transformer(max.(lbs,min.(ubs, closest_solution[$(n_block)] ))),closest_solution[end]]))
+                # push!(SS_solve_func,:(inits = [transformer(max.(lbs,min.(ubs, closest_solution[$(n_block)] ))),closest_solution[end]]))
+                push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, closest_solution[$(n_block)]))))
                 
                 push!(SS_solve_func,:(solution = block_solver([$(calib_pars_input...),$(other_vars_input...)], 
                         $(n_block), 
                         𝓂.ss_solve_blocks[$(n_block)], 
                         # 𝓂.SS_optimizer, 
                         f, 
-                        inits, 
+                        transformer(inits),
                         transformer(lbs), 
                         transformer(ubs),
                         multisolver = r > 2 ? true : false)))
                         
                 push!(SS_solve_func,:(solution_error = solution[2])) 
                 push!(SS_solve_func,:(sol = undo_transformer(solution[1]))) 
+
+                # push!(SS_solve_func,:(println(sol))) 
+
                 push!(SS_solve_func,:($(result...)))   
                 push!(SS_solve_func,:($(aug_lag_results...))) 
 
-                push!(SS_solve_func,:(NSSS_solver_cache_tmp = []))
+                # push!(SS_solve_func,:(NSSS_solver_cache_tmp = []))
                 push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol))))
 
                 push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
@@ -536,6 +541,9 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
         end
         n -= 1
     end
+
+    push!(NSSS_solver_cache_init_tmp,fill(Inf,length(𝓂.parameters)))
+    push!(𝓂.NSSS_solver_cache,NSSS_solver_cache_init_tmp)
 
     unknwns = Symbol.(collect(unknowns))
 
@@ -577,7 +585,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
     
     push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
     
-    push!(SS_solve_func,:(if (minimum([sum(abs2,pars[end] - params_scaled_flt) for pars in 𝓂.NSSS_solver_cache]) > eps(Float64)) && (solution_error < 1e-6) 
+    push!(SS_solve_func,:(if (minimum([sum(abs2,pars[end] - params_scaled_flt) for pars in 𝓂.NSSS_solver_cache]) > eps(Float64)) && (solution_error < eps(Float32)) 
     push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp) 
     solved_scale = scale
 end))
@@ -600,15 +608,17 @@ end))
                         for scale in range(0,1,r+1)[2:end]
                             if scale <= solved_scale continue end
                             closest_solution = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]
-                            params = isfinite(closest_solution_init[end]) ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
+                            params = all(isfinite.(closest_solution_init[end])) ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
                             params_scaled_flt = typeof(params) == Vector{Float64} ? params : ℱ.value.(params)
                             # println(params_scaled_flt)
                             $(parameters_in_equations...)
                             $(𝓂.calibration_equations_no_var...)
+                            NSSS_solver_cache_tmp = []
+                            solution_error = 0.0
                             $(SS_solve_func...)
-                            # println(scale)
+                            # println(sol)
                             # println(solution_error)
-                            if solution_error < 1e-6 && scale == 1
+                            if solution_error < eps(Float32) && scale == 1
                                 return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))
                             end
                         end
@@ -638,10 +648,10 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         ss_solve_blocks::Function, 
                         # SS_optimizer, 
                         f::OptimizationFunction, 
-                        guess::Vector{Vector{Float64}}, 
+                        guess::Vector{Float64}, 
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64};
-                        tol = 1e-6,
+                        tol = eps(Float32),
                         maxtime = 120,
                         maxiters = 100000,
                         multisolver = true)
@@ -672,18 +682,19 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         # println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying optimizer: ",string(SS_optimizer))
  
-        prob = OptimizationProblem(f, guess[1], parameters_and_solved_vars, lb = lbs, ub = ubs)
+        prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
         sol = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
         # if the previous non-converged best guess as a starting point does not work, try the standard starting point
         if (sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol, parameters_and_solved_vars)) > tol)
-            prob = OptimizationProblem(f, fill(.9,length(guess[1])), parameters_and_solved_vars, lb = lbs, ub = ubs)
+            standard_inits = max.(lbs,min.(ubs, fill(transformer(.9),length(guess))))
+            prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
             sol = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         end
 
         # # if the the standard starting pointdoesnt work try the provided guess
         # if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-        #     prob = OptimizationProblem(f, guess[1], parameters_and_solved_vars, lb = lbs, ub = ubs)
+        #     prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
         #     sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         # end
 
@@ -702,7 +713,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     #     for r in range_length
     #         for scale in range(0,1,r+1)[2:end]
-    #             prob = OptimizationProblem(f, guess[1], scale * parameters_and_solved_vars + (1 - scale) * guess[2], lb = lbs, ub = ubs)
+    #             prob = OptimizationProblem(f, guess, scale * parameters_and_solved_vars + (1 - scale) * guess[2], lb = lbs, ub = ubs)
     #             sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
     #             if sol_new.minimum < tol
@@ -726,18 +737,20 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying optimizer: ",string(SS_optimizer))
  
-        prob = OptimizationProblem(f, sol.u, parameters_and_solved_vars, lb = lbs, ub = ubs)
+        previous_sol_init = max.(lbs,min.(ubs, transformer(sol.u)))
+        prob = OptimizationProblem(f, previous_sol_init, parameters_and_solved_vars, lb = lbs, ub = ubs)
         sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
         # if the previous non-converged best guess as a starting point does not work, try the standard starting point
         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            prob = OptimizationProblem(f, fill(.9,length(guess[1])), parameters_and_solved_vars, lb = lbs, ub = ubs)
+            standard_inits = max.(lbs,min.(ubs, fill(transformer(.9),length(guess))))
+            prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
             sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         end
 
         # if the the standard starting pointdoesnt work try the provided guess
         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            prob = OptimizationProblem(f, guess[1], parameters_and_solved_vars, lb = lbs, ub = ubs)
+            prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
             sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         end
 
@@ -755,18 +768,20 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying optimizer: ",string(SS_optimizer))
  
-        prob = OptimizationProblem(f, sol.u, parameters_and_solved_vars, lb = lbs, ub = ubs)
+        previous_sol_init = max.(lbs,min.(ubs, transformer(sol.u)))
+        prob = OptimizationProblem(f, previous_sol_init, parameters_and_solved_vars, lb = lbs, ub = ubs)
         sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
         # if the previous non-converged best guess as a starting point does not work, try the standard starting point
         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            prob = OptimizationProblem(f, fill(.9,length(guess[1])), parameters_and_solved_vars, lb = lbs, ub = ubs)
+            standard_inits = max.(lbs,min.(ubs, fill(transformer(.9),length(guess))))
+            prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
             sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         end
 
         # if the the standard starting pointdoesnt work try the provided guess
         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            prob = OptimizationProblem(f, guess[1], parameters_and_solved_vars, lb = lbs, ub = ubs)
+            prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
             sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         end
 
@@ -826,18 +841,20 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     if multisolver && ((sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)) > tol))
         println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying global solution.")
          
-        prob = OptimizationProblem(f, sol.u, parameters_and_solved_vars, lb = lbs, ub = ubs)
+        previous_sol_init = max.(lbs,min.(ubs, transformer(sol.u)))
+        prob = OptimizationProblem(f, previous_sol_init, parameters_and_solved_vars, lb = lbs, ub = ubs)
         sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = maxtime, maxtime = maxtime)
 
         # if the previous non-converged best guess as a starting point does not work, try the standard starting point
         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            prob = OptimizationProblem(f, fill(.9,length(guess[1])), parameters_and_solved_vars, lb = lbs, ub = ubs)
+            standard_inits = max.(lbs,min.(ubs, fill(transformer(.9),length(guess))))
+            prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
             sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = maxtime, maxtime = maxtime)
         end
 
         # if the the standard starting pointdoesnt work try the provided guess
         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            prob = OptimizationProblem(f, guess[1], parameters_and_solved_vars, lb = lbs, ub = ubs)
+            prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
             sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = maxtime, maxtime = maxtime)
         end
 
@@ -885,10 +902,10 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     ss_solve_blocks::Function, 
     # SS_optimizer, 
     f::OptimizationFunction, 
-    guess::Vector{Vector{Float64}}, 
+    guess::Vector{Float64}, 
     lbs::Vector{Float64}, 
     ubs::Vector{Float64};
-    tol = 1e-6,
+    tol = eps(Float32),
     maxtime = 120,
     maxiters = 100000,
     multisolver = true) where {Z,S,N}
@@ -922,7 +939,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     # pack: SoA -> AoS
     return reshape(map(val, eachrow(jvp)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val)), min
+    end, size(val)), min
 end
 
 
