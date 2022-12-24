@@ -13,10 +13,10 @@ end
     functionality_test(m)
 end
 
-# @testset "SW03 with calibration equations" begin
-#     include("models/SW03.jl")
-#     functionality_test(m)
-# end
+@testset "SW03 with calibration equations" begin
+    include("models/SW03.jl")
+    functionality_test(m)
+end
 
 @testset "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
