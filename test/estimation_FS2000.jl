@@ -1,5 +1,5 @@
 import Turing
-import Turing: Normal, Beta, Gamma, InverseGamma, Uniform, Poisson, truncated, NUTS, HMC, HMCDA, MH, PG, SMC, IS, sample, mean, var, @logprob_str, logpdf
+import Turing: Normal, Beta, Gamma, InverseGamma, Uniform, Poisson, truncated, NUTS, HMC, HMCDA, MH, PG, SMC, IS, sample, mean, var, @logprob_str, logpdf, density
 using MacroModelling, OptimizationNLopt, OptimizationOptimisers
 using CSV, DataFrames, AxisKeys
 
@@ -18,30 +18,38 @@ include("models/FS2000.jl")
 # m.SS_optimizer = Optimisers.ADAM
 # m.SS_optimizer = Optimisers.AdaMax
 # solve!(m,symbolic_SS = true)
-get_solution(m)
 get_SS(m)
+get_solution(m)
+
 
 # m.NSSS_solver_cache
-# # get_SS(m,parameters = [0.44728295202065166, 0.9988884445965371, 0.0028058657322557485, 1.0075373840302122, 0.6142408307950538, 0.5318308372997724, 0.0011670521404654407, 0.07535090815216333, 0.012834752100689741])
-# length(m.NSSS_solver_cache) < 1
-# # m.SS_solve_func
-# parameters = [0.4035,0.9909, 0.0046, 1.0143, 0.8455, 0.6890, 0.0017, 0.0136, 0.0033]
+
+# pars1 = [0.41150191239122613, 0.9961786187508863, 0.0031745098374241546, 1.0119018843241043, 0.8720610472237464, 0.7576218838388646, 0.0003046024734065515, 0.012647803563655321, 0.0031452245745823937];
+# aux_res1 = get_SS(m, parameters = pars1)
+# m.NSSS_solver_cache
+
+# pars2 = [0.4115505276884593, 0.9961610698201956, 0.0031892263438955946, 1.0125501237734196, 0.8723284266761051, 0.7569466782764831, 0.00029867203541913143, 0.012709213813776992, 0.003196765679883496];
+# aux_res2 = get_SS(m, parameters = pars2)
+
+# # m.NSSS_solver_cache
+# get_SS(m,parameters = [0.44728295202065166, 0.9988884445965371, 0.0028058657322557485, 1.0075373840302122, 0.6142408307950538, 0.5318308372997724, 0.0011670521404654407, 0.07535090815216333, 0.012834752100689741])
+# # length(m.NSSS_solver_cache) < 1
+# # # m.SS_solve_func
+# # parameters = [0.4035,0.9909, 0.0046, 1.0143, 0.8455, 0.6890, 0.0017, 0.0136, 0.0033]
 
 
-# findmin([sum(abs2,pars[end] - parameters) for pars in m.NSSS_solver_cache])[2]
-# findmin([sum(abs2,pars[end] ./ parameters .- 1) for pars in m.NSSS_solver_cache])[2]
+# # findmin([sum(abs2,pars[end] - parameters) for pars in m.NSSS_solver_cache])[2]
+# # findmin([sum(abs2,pars[end] ./ parameters .- 1) for pars in m.NSSS_solver_cache])[2]
 
 # get_SS(m,parameters = [0.6750005457453657, 0.7705742051621937, -0.13003647764699267, 0.6057594085497515, 0.7171103532068533, 0.7901279425902789, 0.5380666025781062, 0.2961217015642633, 4.264173335281647])
-# get_SS(m,parameters = [0.6695526157125993, 0.7782097900770949, 1.399954432139673, 0.9777895536920106, 0.7173213885987454, 0.7899294918080639, 0.5385159934129353, 0.29591747435564625, 4.253028889230297])
-# # get_SS(m,parameters = ([0.6585547093545611, 0.797796110027983, -27.99086509624363, 1.7260870685765246, 0.7176543116605183, 0.7893164495740828, 0.5286306119368696, 0.2900532604080456, 4.158761080384637] .+ [0.6695526157125993, 0.7782097900770949, 1.399954432139673, 0.9777895536920106, 0.7173213885987454, 0.7899294918080639, 0.5385159934129353, 0.29591747435564625, 4.253028889230297])/2)
+# # get_SS(m,parameters = [0.6695526157125993, 0.7782097900770949, 1.399954432139673, 0.9777895536920106, 0.7173213885987454, 0.7899294918080639, 0.5385159934129353, 0.29591747435564625, 4.253028889230297])
+# # # get_SS(m,parameters = ([0.6585547093545611, 0.797796110027983, -27.99086509624363, 1.7260870685765246, 0.7176543116605183, 0.7893164495740828, 0.5286306119368696, 0.2900532604080456, 4.158761080384637] .+ [0.6695526157125993, 0.7782097900770949, 1.399954432139673, 0.9777895536920106, 0.7173213885987454, 0.7899294918080639, 0.5385159934129353, 0.29591747435564625, 4.253028889230297])/2)
 # get_SS(m,parameters = [0.6585547093545611, 0.797796110027983, -27.99086509624363, 1.7260870685765246, 0.7176543116605183, 0.7893164495740828, 0.5286306119368696, 0.2900532604080456, 4.158761080384637])
 
 # old = [0.6695526157125993, 0.7782097900770949, 1.399954432139673, 0.9777895536920106, 0.7173213885987454, 0.7899294918080639, 0.5385159934129353, 0.29591747435564625, 4.253028889230297]
 # new = [0.6585547093545611, 0.797796110027983, -27.99086509624363, 1.7260870685765246, 0.7176543116605183, 0.7893164495740828, 0.5286306119368696, 0.2900532604080456, 4.158761080384637]
 # x = .918
 # get_SS(m,parameters = x * old + (1-x) * new)
-
-
 
 
 
@@ -159,10 +167,13 @@ sol.minimum
 # m.NSSS_solver_cache
 
 prob = OptimizationProblem(f, sol.u, [], lb = lbs, ub = ubs)
+# prob = OptimizationProblem(f, Float64[parameters...], [], lb = lbs, ub = ubs)
 sol_new = solve(prob, NLopt.LD_LBFGS(), maxiters = 100000)
 sol_new.minimum
 
 
+# using BenchmarkTools
+# @benchmark calculate_posterior_loglikelihood(parameters * exp(randn()/1e3), [])
 # sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120, progress = true)
 
 # prob = OptimizationProblem(f, Float64[parameters...], [])#, lb = lbs, ub = ubs)
@@ -204,8 +215,8 @@ Turing.@model function kalman(data, m, observables)
     bet     ~ truncated(Beta(beta_map(0.993, 0.002)...), .5, .999)
     gam     ~ truncated(Normal(0.0085, 0.003),eps(),.5)
     mst     ~ truncated(Normal(1.0002, 0.007), .5, 1.5)
-    rho     ~ truncated(Beta(beta_map(0.129, 0.223)...), .0001, .999)
-    psi     ~ truncated(Beta(beta_map(0.65, 0.05)...), .0001, .999)
+    rho     ~ truncated(Beta(beta_map(0.129, 0.223)...), .0001, .9)
+    psi     ~ truncated(Beta(beta_map(0.65, 0.05)...), .0001, .9)
     del     ~ truncated(Beta(beta_map(0.01, 0.005)...), .0001, .1)
     z_e_a   ~ truncated(InverseGamma(inv_gamma_map(0.035449, Inf)...), eps(), 1.5)
     z_e_m   ~ truncated(InverseGamma(inv_gamma_map(0.008862, Inf)...), eps(), 1.5)
@@ -269,21 +280,88 @@ turing_model = kalman(data, m, observables) # passing observables from before
 
 # logprob"data = data, observables = observables, m = m | model = turing_model,  alp = 0.356, bet = 0.993, gam = 0.0085, mst = 1.0002, rho = 0.129, psi = 0.65, del = 0.01, z_e_a = 0.035449, z_e_m = 0.008862"
 # pars = [0.5999999999999941, 0.999, 0.00022410786148670898, 1.5, 0.2918845841974984, 0.0023597321974304225, 0.0036122338038623494, 9.667230108300879e-16, 6.186816831182828e-7]
+# pars1 = [0.4057990671188101, 0.9939453787866409, 2.684106868506867e-6, 1.0102466111491866, 0.9260781713903609, 0.6255494229713717, 0.0007961626163605908, 0.014329941996977557, 0.0032669429428229045]
+# aux_res = get_SS(m, parameters = pars1)
+# pars2 = [0.4060354127026275, 0.9939696880461915, 2.676217146735149e-6, 1.0099951272753809, 0.9256873341280071, 0.6276800066680917, 0.0007881343164889416, 0.014477030943022696, 0.0032982783449941383]
+# get_SS(m, parameters = pars2)
+
+# sum(abs2,pars1 - pars2)
+# aux_res[:,2:end] * (pars1 - pars2) + aux_res[:,1]
+
+
+
+
+
+
+# include("models/FS2000.jl")
+# get_SS(m)
+# m.NSSS_solver_cache
+
+# pars1 = [0.41150191239122613, 0.9961786187508863, 0.0031745098374241546, 1.0119018843241043, 0.8720610472237464, 0.7576218838388646, 0.0003046024734065515, 0.012647803563655321, 0.0031452245745823937];
+# aux_res = get_SS(m, parameters = pars1)
+# m.NSSS_solver_cache
+
+# pars2 = [0.4115505276884593, 0.9961610698201956, 0.0031892263438955946, 1.0125501237734196, 0.8723284266761051, 0.7569466782764831, 0.00029867203541913143, 0.012709213813776992, 0.003196765679883496];
+# # push!(m.NSSS_solver_cache,[collect((aux_res[:,2:end] * (pars2-pars1) + aux_res[:,1])([:P,:c,:k,:l,:n])),pars1])
+# sum(abs2,pars1 - (pars1*31/32+pars2*1/32))
+
+
+# x = .25
+# aux_res2 = get_SS(m, parameters = x * pars2 + (1-x)*pars1)
+# x = .5
+# aux_res2 = get_SS(m, parameters = x * pars2 + (1-x)*pars1)
+# x = .75
+# aux_res2 = get_SS(m, parameters = x * pars2 + (1-x)*pars1)
+
+
+# aux_res2 = get_SS(m, parameters = pars2)
+
+
+
+
+# pars1 = [0.4090531876949292, 0.9922026277043132, 3.7270004959805524e-11, 0.9854252206393719, 0.8926246975110997, 0.42404142756503127, 0.0310239576746275, 1.1347210157951444, 0.034292863714027705]
+# aux_res = get_SS(m, parameters = pars1)
+
+# pars2 = [0.43805847862197406, 0.9870471979008302, 4.6187033193934515e-11, 1.5, 0.9985956426786606, 0.9989980021158512, 0.02604273081193925, 2.802946371762405e-9, 2.220446049250313e-16]
+# aux_res = get_SS(m, parameters = pars2)
+
+
+# parameters
+# pars2 = [ 0.356
+# 0.993
+# 0.0085
+# 1.0002
+# 0.129
+# 0.99355
+# 0.01
+# 0.035449
+# 0.008862]
+
+# # pars2 = [0.4090531876949292, 0.9922026277043132, 3.7270004959805524e-11, 1.5, 0.9985956426786606, 0.985, 0.0310239576746275, 1.1347210157951444, 0.034292863714027705]
+# aux_res = get_SS(m, parameters = pars2)
+
+
+
+# pars = [0.4060354127026275, 0.9939696880461915, 2.676217146735149e-6, 1.0099951272753809, 0.9256873341280071, 0.6276800066680917, 0.0007896, 0.014329941996977557, 0.0032669429428229045]
+# # pars = [0.5, 0.999, 0.00019596038697428447, 0.5, 0.9613020894154952, 0.21357589547162303, 0.0003397291645318067, 7.751707376780153e-9, 1.8728386399634146e-11]
 # get_SS(m, parameters = pars)
+# m.parameter_values
+# m.NSSS_solver_cache
+# get_SS(m, parameters = (:del => 0.0007896, :alp => .41, :gam => 1e-6, :rho => .926, :psi => .627))
 # x = .04
 # get_SS(m, parameters = pars * x + m.NSSS_solver_cache[100][2] * (1 - x))
 # findmin([sum(abs2,i[2]- pars) for i in m.NSSS_solver_cache])
 # sample
-n_samples = 100
+n_samples = 1000
 # chain_NUTS = sample(turing_model, NUTS(1000, .65, max_depth = 10, Δ_max = 400.0, init_ϵ = .02), n_samples; θ = sol.u, progress = true)
-chain_NUTS = sample(turing_model, NUTS(), n_samples; progress = true)
+chain_NUTS = sample(turing_model, NUTS(), n_samples; θ = parameters, progress = true)
 # chain_HMC = sample(turing_model, HMC(.02,10), n_samples; θ = sol.u, progress = true)
 chain_HMCDA = sample(turing_model, HMCDA(2000, 0.65, .02), n_samples; θ = sol.u, progress = true)
 # chain_PG = sample(turing_model, PG(20), n_samples; θ = sol.u, progress = true)
-chain_MH = sample(turing_model, MH(), Int(1e5); θ = sol.u, progress = true)
+chain_MH = sample(turing_model, MH(), Int(1e6); θ = parameters, progress = true)
 # chain_MH = sample(turing_model, SMC(), Int(1e5); θ = sol.u, progress = true)
 
-
+m.NSSS_solver_cache
 
 
 
