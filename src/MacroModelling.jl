@@ -484,9 +484,9 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                     return sum(abs2,[$(solved_vals...)])
                 end)
             
-                𝓂.SS_init_guess = [fill(.75,length(𝓂.var)); fill(.5, length(𝓂.calibration_equations_parameters))]
+                𝓂.SS_init_guess = [fill(1,length(𝓂.var)); fill(.5, length(𝓂.calibration_equations_parameters))]
 
-                push!(NSSS_solver_cache_init_tmp,fill(.75,length(sorted_vars)))
+                push!(NSSS_solver_cache_init_tmp,fill(1,length(sorted_vars)))
 
                 # WARNING: infinite bounds are transformed to 1e12
                 lbs = []
@@ -687,7 +687,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         # if the previous non-converged best guess as a starting point does not work, try the standard starting point
         if (sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol, parameters_and_solved_vars)) > tol)
-            standard_inits = max.(lbs,min.(ubs, fill(transformer(.75),length(guess))))
+            standard_inits = max.(lbs,min.(ubs, fill(transformer(1),length(guess))))
             prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
             sol = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         end
@@ -731,7 +731,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     # end
 
 
-    # if SLSQP didnt converge try BOBYQA
+    # if LBFGS didnt converge try BOBYQA
     if multisolver && ((sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)) > tol))
         SS_optimizer = NLopt.LN_BOBYQA
 
@@ -743,7 +743,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         # if the previous non-converged best guess as a starting point does not work, try the standard starting point
         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            standard_inits = max.(lbs,min.(ubs, fill(transformer(.75),length(guess))))
+            standard_inits = max.(lbs,min.(ubs, fill(transformer(1),length(guess))))
             prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
             sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         end
@@ -762,7 +762,39 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     end
 
 
-    # if L-BFGS didnt converge try SLSQP
+    # if BOBYQA didnt converge try SBPLX
+    if multisolver && ((sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)) > tol))
+        SS_optimizer = NLopt.LN_SBPLX
+
+        println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying optimizer: ",string(SS_optimizer))
+ 
+        previous_sol_init = max.(lbs,min.(ubs, transformer(sol.u)))
+        prob = OptimizationProblem(f, previous_sol_init, parameters_and_solved_vars, lb = lbs, ub = ubs)
+        sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+
+        # if the previous non-converged best guess as a starting point does not work, try the standard starting point
+        if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
+            standard_inits = max.(lbs,min.(ubs, fill(transformer(1),length(guess))))
+            prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
+            sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+        end
+
+        # if the the standard starting pointdoesnt work try the provided guess
+        if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
+            prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
+            sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+        end
+
+        if sol_new.minimum < sol.minimum
+            sol = sol_new
+        end
+
+        previous_SS_optimizer = NLopt.LN_SBPLX
+    end
+
+
+
+    # if SBPLX didnt converge try SLSQP
     if multisolver && ((sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)) > tol))
         SS_optimizer = NLopt.LD_SLSQP
 
@@ -774,7 +806,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         # if the previous non-converged best guess as a starting point does not work, try the standard starting point
         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            standard_inits = max.(lbs,min.(ubs, fill(transformer(.75),length(guess))))
+            standard_inits = max.(lbs,min.(ubs, fill(transformer(1),length(guess))))
             prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
             sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         end
@@ -847,7 +879,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         # if the previous non-converged best guess as a starting point does not work, try the standard starting point
         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            standard_inits = max.(lbs,min.(ubs, fill(transformer(.75),length(guess))))
+            standard_inits = max.(lbs,min.(ubs, fill(transformer(1),length(guess))))
             prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
             sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = maxtime, maxtime = maxtime)
         end
