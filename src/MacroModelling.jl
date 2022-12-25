@@ -408,7 +408,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                         push!(nnaux_error, :(aux_error += min(0.0,-$(val.args[2]))))
                     elseif (val.args[1] == :- && val.args[2] ∈ 𝓂.nonnegativity_auxilliary_vars) 
                         push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
-                        push!(nnaux_error, :(aux_error += (min(0.0,$(val.args[3])))^2))
+                        push!(nnaux_error, :(aux_error += min(0.0,$(val.args[3]))))
                     else
                         push!(solved_vals,val)
                     end
@@ -444,13 +444,13 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
 
                 for (i,varpar) in enumerate(intersect(𝓂.bounded_vars,union(other_vrs,sorted_vars,relevant_pars)))
                     push!(aug_lag,:($varpar = min(max($varpar,$(𝓂.lower_bounds[i])),$(𝓂.upper_bounds[i]))))
-                    push!(aug_lag_penalty,:(bound_violation_penalty += (max(0,$(𝓂.lower_bounds[i]) - $varpar) + max(0,$varpar - $(𝓂.upper_bounds[i])))^2))
+                    push!(aug_lag_penalty,:(bound_violation_penalty += max(0,$(𝓂.lower_bounds[i]) - $varpar) + max(0,$varpar - $(𝓂.upper_bounds[i]))))
                 end
 
 
                 # add it also to output from optimisation
                 aug_lag_results = []
-                push!(aug_lag_penalty, :(bound_violation_penalty = 0))
+                # push!(aug_lag_results, :(bound_violation_penalty = 0))
 
                 for (i,varpar) in enumerate(intersect(𝓂.bounded_vars,sorted_vars))
                     push!(aug_lag_results,:($varpar = min(max($varpar,𝓂.lower_bounds[$i]),𝓂.upper_bounds[$i])))
