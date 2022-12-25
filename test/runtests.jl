@@ -10,7 +10,7 @@ end
 
 @testset "SW07 with calibration equations" begin
     include("models/SW07.jl")
-    functionality_test(m)
+    functionality_test(m, plots = false)
 end
 
 @testset "SW03 with calibration equations" begin
@@ -25,28 +25,28 @@ end
 
 @testset "RBC_CME with calibration equations, parameter definitions, and special functions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
-    functionality_test(m)
+    functionality_test(m, plots = false)
 end
 
 @testset "RBC_CME with calibration equations and parameter definitions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-    functionality_test(m)
+    functionality_test(m, plots = false)
     functionality_test(m, algorithm = :second_order)
     functionality_test(m, algorithm = :third_order)
 end
 
 @testset "RBC_CME with calibration equations" begin
     include("models/RBC_CME_calibration_equations.jl")
-    functionality_test(m)
-    functionality_test(m, algorithm = :second_order)
-    functionality_test(m, algorithm = :third_order)
+    functionality_test(m, plots = false)
+    functionality_test(m, algorithm = :second_order, plots = false)
+    functionality_test(m, algorithm = :third_order, plots = false)
 end
 
 @testset "RBC_CME " begin
     include("models/RBC_CME.jl")
-    functionality_test(m)
-    functionality_test(m, algorithm = :second_order)
-    functionality_test(m, algorithm = :third_order)
+    functionality_test(m, plots = false)
+    functionality_test(m, algorithm = :second_order, plots = false)
+    functionality_test(m, algorithm = :third_order, plots = false)
 end
 
 
