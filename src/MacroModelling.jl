@@ -484,9 +484,9 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                     return sum(abs2,[$(solved_vals...)])
                 end)
             
-                𝓂.SS_init_guess = [fill(1,length(𝓂.var)); fill(.5, length(𝓂.calibration_equations_parameters))]
+                𝓂.SS_init_guess = [fill(.9,length(𝓂.var)); fill(.5, length(𝓂.calibration_equations_parameters))]
 
-                push!(NSSS_solver_cache_init_tmp,fill(1,length(sorted_vars)))
+                push!(NSSS_solver_cache_init_tmp,fill(.9,length(sorted_vars)))
 
                 # WARNING: infinite bounds are transformed to 1e12
                 lbs = []
@@ -517,12 +517,12 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                         𝓂.ss_solve_blocks[$(n_block)], 
                         # 𝓂.SS_optimizer, 
                         f, 
-                        transformer(inits),
-                        transformer(lbs), 
-                        transformer(ubs),
-                        multisolver = r > 2 ? true : false)))
+                        inits,
+                        lbs, 
+                        ubs,
+                        multisolver = r > 2 || !all(isfinite.(closest_solution_init[end])) ? true : false)))
                         
-                push!(SS_solve_func,:(solution_error = solution[2])) 
+                push!(SS_solve_func,:(solution_error += solution[2])) 
                 push!(SS_solve_func,:(sol = undo_transformer(solution[1]))) 
 
                 # push!(SS_solve_func,:(println(sol))) 
@@ -654,20 +654,21 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         tol = eps(Float32),
                         maxtime = 120,
                         maxiters = 100000,
-                        multisolver = true)
+                        multisolver = true,
+                        starting_points = [.9, 1, 1.1, .75, 1.5, -.5])
     
     # # try whatever solver you gave first
     # # try catch in order to capture possible issues with bounds (ADAM doesnt work with bounds)
     # sol = try 
-    #     solve(OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs), SS_optimizer(), maxtime = maxtime, maxiters = maxiters)
+    #     solve(OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs)), SS_optimizer(), maxtime = maxtime, maxiters = maxiters)
     # catch e
-    #     solve(OptimizationProblem(f, guess, parameters_and_solved_vars), SS_optimizer(), maxtime = maxtime, maxiters = maxiters)
+    #     solve(OptimizationProblem(f, transformer(guess), parameters_and_solved_vars), SS_optimizer(), maxtime = maxtime, maxiters = maxiters)
     # end
     
     # # if the provided guess does not work, try the standard starting point
     # if (sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol, parameters_and_solved_vars)) > tol)
     #     sol = try 
-    #         solve(OptimizationProblem(f, fill(.9,length(guess)), parameters_and_solved_vars, lb = lbs, ub = ubs), SS_optimizer(), maxtime = maxtime, maxiters = maxiters)
+    #         solve(OptimizationProblem(f, fill(.9,length(guess)), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs)), SS_optimizer(), maxtime = maxtime, maxiters = maxiters)
     #     catch e
     #         solve(OptimizationProblem(f, fill(.9,length(guess)), parameters_and_solved_vars), SS_optimizer(), maxtime = maxtime, maxiters = maxiters)
     #     end
@@ -682,19 +683,27 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         # println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying optimizer: ",string(SS_optimizer))
  
-        prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
+        prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
         sol = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
-        # if the previous non-converged best guess as a starting point does not work, try the standard starting point
-        if (sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol, parameters_and_solved_vars)) > tol)
-            standard_inits = max.(lbs,min.(ubs, fill(transformer(1),length(guess))))
-            prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
-            sol = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+        # if the previous non-converged best guess as a starting point does not work, try the standard starting points
+        for starting_point in starting_points
+            if (sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol, parameters_and_solved_vars)) > tol)
+                standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
+                prob = OptimizationProblem(f, transformer(standard_inits), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
+                sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+
+                if sol_new.minimum < sol.minimum
+                    sol = sol_new
+                end
+            else 
+                continue
+            end
         end
 
         # # if the the standard starting pointdoesnt work try the provided guess
         # if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-        #     prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
+        #     prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
         #     sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         # end
 
@@ -713,7 +722,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     #     for r in range_length
     #         for scale in range(0,1,r+1)[2:end]
-    #             prob = OptimizationProblem(f, guess, scale * parameters_and_solved_vars + (1 - scale) * guess[2], lb = lbs, ub = ubs)
+    #             prob = OptimizationProblem(f, transformer(guess), scale * parameters_and_solved_vars + (1 - scale) * guess[2], lb = transformer(lbs), ub = transformer(ubs))
     #             sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
     #             if sol_new.minimum < tol
@@ -737,20 +746,28 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying optimizer: ",string(SS_optimizer))
  
-        previous_sol_init = max.(lbs,min.(ubs, transformer(sol.u)))
-        prob = OptimizationProblem(f, previous_sol_init, parameters_and_solved_vars, lb = lbs, ub = ubs)
+        previous_sol_init = max.(lbs,min.(ubs, undo_transformer(sol.u)))
+        prob = OptimizationProblem(f, transformer(previous_sol_init), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
         sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
         # if the previous non-converged best guess as a starting point does not work, try the standard starting point
-        if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            standard_inits = max.(lbs,min.(ubs, fill(transformer(1),length(guess))))
-            prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
-            sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+        for starting_point in starting_points
+            if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
+                standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
+                prob = OptimizationProblem(f, transformer(standard_inits), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
+                sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+
+                if sol_new.minimum < sol.minimum
+                    sol = sol_new
+                end
+            else 
+                continue
+            end
         end
 
-        # if the the standard starting pointdoesnt work try the provided guess
+        # if the the standard starting point doesnt work try the provided guess
         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
+            prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
             sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         end
 
@@ -762,26 +779,35 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     end
 
 
-    # if BOBYQA didnt converge try SBPLX
+
+    # if BOBYQA didnt converge try PRAXIS
     if multisolver && ((sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)) > tol))
-        SS_optimizer = NLopt.LN_SBPLX
+        SS_optimizer = NLopt.LN_PRAXIS
 
         println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying optimizer: ",string(SS_optimizer))
  
-        previous_sol_init = max.(lbs,min.(ubs, transformer(sol.u)))
-        prob = OptimizationProblem(f, previous_sol_init, parameters_and_solved_vars, lb = lbs, ub = ubs)
+        previous_sol_init = max.(lbs,min.(ubs, undo_transformer(sol.u)))
+        prob = OptimizationProblem(f, transformer(previous_sol_init), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
         sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
         # if the previous non-converged best guess as a starting point does not work, try the standard starting point
-        if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            standard_inits = max.(lbs,min.(ubs, fill(transformer(1),length(guess))))
-            prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
-            sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+        for starting_point in starting_points
+            if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
+                standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
+                prob = OptimizationProblem(f, transformer(standard_inits), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
+                sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+
+                if sol_new.minimum < sol.minimum
+                    sol = sol_new
+                end
+            else 
+                continue
+            end
         end
 
-        # if the the standard starting pointdoesnt work try the provided guess
+        # if the the standard starting point doesnt work try the provided guess
         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
+            prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
             sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         end
 
@@ -789,31 +815,39 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             sol = sol_new
         end
 
-        previous_SS_optimizer = NLopt.LN_SBPLX
+        previous_SS_optimizer = NLopt.LN_PRAXIS
     end
 
 
 
-    # if SBPLX didnt converge try SLSQP
+    # if PRAXIS didnt converge try SLSQP
     if multisolver && ((sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)) > tol))
         SS_optimizer = NLopt.LD_SLSQP
 
         println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying optimizer: ",string(SS_optimizer))
  
-        previous_sol_init = max.(lbs,min.(ubs, transformer(sol.u)))
-        prob = OptimizationProblem(f, previous_sol_init, parameters_and_solved_vars, lb = lbs, ub = ubs)
+        previous_sol_init = max.(lbs,min.(ubs, undo_transformer(sol.u)))
+        prob = OptimizationProblem(f, transformer(previous_sol_init), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
         sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
         # if the previous non-converged best guess as a starting point does not work, try the standard starting point
-        if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            standard_inits = max.(lbs,min.(ubs, fill(transformer(1),length(guess))))
-            prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
-            sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+        for starting_point in starting_points
+            if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
+                standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
+                prob = OptimizationProblem(f, transformer(standard_inits), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
+                sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+
+                if sol_new.minimum < sol.minimum
+                    sol = sol_new
+                end
+            else 
+                continue
+            end
         end
 
-        # if the the standard starting pointdoesnt work try the provided guess
+        # if the the standard starting point doesnt work try the provided guess
         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
+            prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
             sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
         end
 
@@ -825,16 +859,58 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     end
 
 
+
+
+
+    # if SLSQP didnt converge try SBPLX
+    if multisolver && ((sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)) > tol))
+        SS_optimizer = NLopt.LN_SBPLX
+
+        println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying optimizer: ",string(SS_optimizer))
+ 
+        previous_sol_init = max.(lbs,min.(ubs, undo_transformer(sol.u)))
+        prob = OptimizationProblem(f, transformer(previous_sol_init), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
+        sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+
+        # if the previous non-converged best guess as a starting point does not work, try the standard starting point
+        for starting_point in starting_points
+            if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
+                standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
+                prob = OptimizationProblem(f, transformer(standard_inits), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
+                sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+
+                if sol_new.minimum < sol.minimum
+                    sol = sol_new
+                end
+            else 
+                continue
+            end
+        end
+
+        # if the the standard starting point doesnt work try the provided guess
+        if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
+            prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
+            sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+        end
+
+        if sol_new.minimum < sol.minimum
+            sol = sol_new
+        end
+
+        previous_SS_optimizer = NLopt.LN_SBPLX
+    end
+
+
     # if (sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)) > tol)
     #     SS_optimizer = Optimisers.ADAM
 
     #     println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying optimizer: ",string(SS_optimizer))
  
-    #     prob = OptimizationProblem(f, sol.u, parameters_and_solved_vars)#, lb = lbs, ub = ubs)
+    #     prob = OptimizationProblem(f, sol.u, parameters_and_solved_vars)#, lb = transformer(lbs), ub = transformer(ubs))
     #     sol_new = solve(prob, SS_optimizer(), maxiters = maxiters)
 
     #     if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-    #         prob = OptimizationProblem(f, guess, parameters_and_solved_vars)#, lb = lbs, ub = ubs)
+    #         prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars)#, lb = transformer(lbs), ub = transformer(ubs))
     #         sol_new = solve(prob, SS_optimizer(), maxiters = maxiters)
     #     end
 
@@ -852,11 +928,11 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     #     println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying optimizer: ",string(SS_optimizer))
  
-    #     prob = OptimizationProblem(f, sol.u, parameters_and_solved_vars, lb = lbs, ub = ubs)
+    #     prob = OptimizationProblem(f, sol.u, parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
     #     sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
     #     if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-    #         prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
+    #         prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
     #         sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
     #     end
 
@@ -870,36 +946,44 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
 
     # if BOBYQA didnt converge try G_MLSL_LDS with BOBYQA
-    if multisolver && ((sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)) > tol))
-        println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying global solution.")
+    # if multisolver && ((sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)) > tol))
+    #     println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying global solution.")
          
-        previous_sol_init = max.(lbs,min.(ubs, transformer(sol.u)))
-        prob = OptimizationProblem(f, previous_sol_init, parameters_and_solved_vars, lb = lbs, ub = ubs)
-        sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = maxtime, maxtime = maxtime)
+    #     previous_sol_init = max.(lbs,min.(ubs, undo_transformer(sol.u)))
+    #     prob = OptimizationProblem(f, transformer(previous_sol_init), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
+    #     sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = maxtime, maxtime = maxtime)
 
-        # if the previous non-converged best guess as a starting point does not work, try the standard starting point
-        if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            standard_inits = max.(lbs,min.(ubs, fill(transformer(1),length(guess))))
-            prob = OptimizationProblem(f, standard_inits, parameters_and_solved_vars, lb = lbs, ub = ubs)
-            sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = maxtime, maxtime = maxtime)
-        end
+    #     # if the previous non-converged best guess as a starting point does not work, try the standard starting point
+    #     for starting_point in starting_points
+    #         if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
+    #             standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
+    #             prob = OptimizationProblem(f, transformer(standard_inits), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
+    #             sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = maxtime, maxtime = maxtime)
 
-        # if the the standard starting pointdoesnt work try the provided guess
-        if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
-            prob = OptimizationProblem(f, guess, parameters_and_solved_vars, lb = lbs, ub = ubs)
-            sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = maxtime, maxtime = maxtime)
-        end
+    #             if sol_new.minimum < sol.minimum
+    #                 sol = sol_new
+    #             end
+    #         else 
+    #             continue
+    #         end
+    #     end
 
-        if sol_new.minimum < sol.minimum
-            sol = sol_new
-        end
-    end
+    #     # if the the standard starting point doesnt work try the provided guess
+    #     if (sol_new.minimum > tol) | (maximum(abs,ss_solve_blocks(sol_new, parameters_and_solved_vars)) > tol)
+    #         prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
+    #         sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = maxtime, maxtime = maxtime)
+    #     end
+
+    #     if sol_new.minimum < sol.minimum
+    #         sol = sol_new
+    #     end
+    # end
     
     # if (sol.minimum > tol) | (maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)) > tol)
     #     println("Block: ",n_block," - Solution not found: maximum residual = ",maximum(abs,ss_solve_blocks(sol,parameters_and_solved_vars)),". Trying with positive domain.")
         
     #     inits = max.(max.(lbs,eps()),min.(ubs,guess))
-    #     prob = OptimizationProblem(f, guess, inits, lb = max.(lbs,eps()), ub = ubs)
+    #     prob = OptimizationProblem(f, transformer(guess), inits, lb = max.(lbs,eps()), ub = ubs)
     #     sol = solve(prob, SS_optimizer())
     # end
     
@@ -940,7 +1024,8 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     tol = eps(Float32),
     maxtime = 120,
     maxiters = 100000,
-    multisolver = true) where {Z,S,N}
+    multisolver = true,
+    starting_points = [1, .9, .75, 1.5, -.5]) where {Z,S,N}
 
     # unpack: AoS -> SoA
     inp = ℱ.value.(parameters_and_solved_vars)
@@ -960,7 +1045,8 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
                         tol = tol,
                         maxtime = maxtime,
                         maxiters = maxiters,
-                        multisolver = multisolver)
+                        multisolver = multisolver,
+                        starting_points = starting_points)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
     B = ℱ.jacobian(x -> ss_solve_blocks(val, x), inp)
