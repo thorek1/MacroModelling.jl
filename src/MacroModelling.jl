@@ -659,7 +659,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         maxtime = 120,
                         maxiters = 100000,
                         multisolver = true,
-                        starting_points = [.9, 1, 1.1, .75, 1.5, -.5])
+                        starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25])
     
     # # try whatever solver you gave first
     # # try catch in order to capture possible issues with bounds (ADAM doesnt work with bounds)
@@ -759,7 +759,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         println("Block: ",n_block," - Solution not found with ",string(previous_SS_optimizer),": maximum residual = ",maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)),". Trying optimizer: ",string(SS_optimizer))
  
         previous_sol_init = max.(lbs,min.(ubs, undo_transformer(sol.u)))
-        sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),previous_sol_init,lbs,ubs,method = :jfnk) catch e end
+        sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(previous_sol_init),transformer(lbs),transformer(ubs),method = :jfnk) catch e end
 
         if isnothing(sol_new)
             sol_minimum = Inf
@@ -775,7 +775,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         for starting_point in starting_points
             if sol_minimum > tol
                 standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
-                sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),standard_inits,lbs,ubs,method = :jfnk) catch e end
+                sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(standard_inits),transformer(lbs),transformer(ubs),method = :jfnk) catch e end
                 if isnothing(sol_new)
                     sol_minimum = Inf
                     sol_values = [0]
@@ -790,7 +790,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         # if the the standard starting point doesnt work try the provided guess
         if sol_minimum > tol
-            sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),guess,lbs,ubs,method = :jfnk) catch e end
+            sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(guess),transformer(lbs),transformer(ubs),method = :jfnk) catch e end
             if isnothing(sol_new)
                 sol_minimum = Inf
                 sol_values = [0]
