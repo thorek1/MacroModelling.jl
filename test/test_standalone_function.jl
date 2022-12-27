@@ -382,16 +382,16 @@ fin_grad = FiniteDifferences.grad(central_fdm(2,1),x->get_irf(RBC_CME, x)[4,1,2]
 
 
 
-# data = simulate(RBC_CME)[:,:,1]
-# observables = [:c,:k]
-# @test isapprox(425.76898045392835,calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables),rtol = eps(Float32))
+data = simulate(RBC_CME, levels = true)[:,:,1]
+observables = [:c,:k]
+@test isapprox(425.7688745392835,calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables),rtol = 1e-5)
 
 
 # forw_grad = ForwardDiff.gradient(x->calculate_kalman_filter_loglikelihood(RBC_CME, data(observables), observables; parameters = x),Float64.(RBC_CME.parameter_values))
 
-# fin_grad = FiniteDifferences.grad(central_fdm(2,1),x->calculate_kalman_filter_loglikelihood(RBC_CME, data(observables), observables; parameters = x),RBC_CME.parameter_values)[1]
+# fin_grad = FiniteDifferences.grad(central_fdm(4,1),x->calculate_kalman_filter_loglikelihood(RBC_CME, data(observables), observables; parameters = x),RBC_CME.parameter_values)[1]
 
-# @test isapprox(forw_grad,fin_grad, rtol = 1e-5)
+# @test isapprox(forw_grad,fin_grad, rtol = 1e-1)
 
 
 # observables = [:c,:k,:Pi]
