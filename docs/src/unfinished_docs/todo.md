@@ -26,6 +26,12 @@
 - [ ] plot multiple solutions or models - multioptions in one graph
 - [ ] add correlation, autocorrelation, and variance decomposition
 - [x] complex example with lags > 1, [ss], calib equations, aux nonneg vars
+- [x] add NLboxsolve
+- [x] try NonlinearSolve - fails due to missing bounds
+- [ ] make noneg aux part of optim problem for NLboxsolve in order to avoid DomainErrors
+- [ ] Find any SS by optimising over both SS guesses and parameter inputs
+- [ ] have Flux solve SS field
+- [ ] check control flow in SS solver
 
 ## Not high priority:
 - [x] implement blockdiag with julia package instead of python
