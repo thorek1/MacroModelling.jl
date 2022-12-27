@@ -213,12 +213,10 @@ end
 
 
 
-function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
+function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbose = false)
     unknowns = union(symbolics.var,symbolics.nonnegativity_auxilliary_vars,symbolics.calibration_equations_parameters)
 
-    if length(unknowns) > length(symbolics.ss_equations) + length(symbolics.calibration_equations)
-        println("Unable to solve steady state. More unknowns than equations.")
-    end
+    @assert length(unknowns) <= length(symbolics.ss_equations) + length(symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
 
     incidence_matrix = fill(0,length(unknowns),length(unknowns))
 
@@ -314,22 +312,29 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
 
                 # println(soll)
                 if isnothing(soll)
-                    println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
+                    if verbose
+                        println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
+                    end
                     numerical_sol = true
                     # continue
                 elseif length(soll) == 0
-                    println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
+                    if verbose
+                        println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
+                    end
                     numerical_sol = true
                     # continue
                 elseif length(intersect(vars_to_solve,reduce(union,map(x->x.atoms(),collect(soll[1]))))) > 0
-                    println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
+                    if verbose
+                        println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
+                    end
                     numerical_sol = true
                     # println("Could not solve for: ",intersect(var_list,reduce(union,map(x->x.atoms(),solll)))...)
                     # break_ind = true
                     # break
                 else
-                    println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " symbolically.")
-
+                    if verbose
+                        println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " symbolically.")
+                    end
                     # relevant_pars = reduce(union,vcat(𝓂.par_list,𝓂.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
                     # relevant_pars = reduce(union,map(x->x.atoms(),collect(soll[1])))
                     atoms = reduce(union,map(x->x.atoms(),collect(soll[1])))
@@ -350,7 +355,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                 
             # try symbolically and use numerical if it does not work
             if numerical_sol || !symbolic_SS
-                if !symbolic_SS
+                if !symbolic_SS && verbose
                     println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " numerically.")
                 end
                 push!(𝓂.solved_vars,Symbol.(collect(unknowns)[vars[:,vars[2,:] .== n][1,:]]))
@@ -525,7 +530,8 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                         f, 
                         inits,
                         lbs, 
-                        ubs)))
+                        ubs,
+                        verbose = verbose)))
                         
                 push!(SS_solve_func,:(solution_error += solution[2])) 
                 push!(SS_solve_func,:(sol = solution[1]))
@@ -602,12 +608,10 @@ end))
 
     # push!(SS_solve_func,:(return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))))
 
-    solve_exp = :(function solve_SS(parameters::Vector{Real}, initial_guess::Vector{Real}, 𝓂::ℳ)
+    solve_exp = :(function solve_SS(parameters::Vector{Real}, initial_guess::Vector{Real}, 𝓂::ℳ, verbose::Bool)
                     range_length = [2^i for i in 0:5]
                     params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                     closest_solution_init = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]
-                    # println(closest_solution_init[end])
-                    # println(params_flt)
                     solved_scale = 0
                     for r in range_length
                         for scale in range(0,1,r+1)[2:end]
@@ -615,14 +619,11 @@ end))
                             closest_solution = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]
                             params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
                             params_scaled_flt = typeof(params) == Vector{Float64} ? params : ℱ.value.(params)
-                            # println(params_scaled_flt)
                             $(parameters_in_equations...)
                             $(𝓂.calibration_equations_no_var...)
                             NSSS_solver_cache_tmp = []
                             solution_error = 0.0
                             $(SS_solve_func...)
-                            # println(sol)
-                            # println(solution_error)
                             if solution_error < eps(Float32) && scale == 1
                                 return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))
                             end
@@ -659,7 +660,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         tol = eps(Float64),
                         maxtime = 120,
                         starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25],
-                        verbose = true)
+                        verbose = false)
     
     sol_values = guess
     sol_minimum  = sum(abs2,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars))
@@ -696,7 +697,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
                     sol_values = undo_transformer(sol_new.zero)
 
-                    if sol_minimum < tol
+                    if sol_minimum < tol && verbose
                         println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
                     end
                 end
@@ -721,7 +722,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 end
             end
         end
-    else
+    elseif verbose
         println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
     end
 
@@ -769,7 +770,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
                 prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
                 sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
-                if sol_new.minimum < sol.minimum
+                if sol_new.minimum < sol_minimum
                     sol_minimum  = sol.minimum
                     sol_values = undo_transformer(sol.u)
 
@@ -796,10 +797,10 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     guess::Vector{Float64}, 
     lbs::Vector{Float64}, 
     ubs::Vector{Float64};
-    tol = eps(Float32),
+    tol = eps(Float64),
     maxtime = 120,
     starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25],
-    verbose = true) where {Z,S,N}
+    verbose = false) where {Z,S,N}
 
     # unpack: AoS -> SoA
     inp = ℱ.value.(parameters_and_solved_vars)
@@ -807,7 +808,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     # you can play with the dimension here, sometimes it makes sense to transpose
     ps = mapreduce(ℱ.partials, hcat, parameters_and_solved_vars)'
 
-    println("Solution for derivatives.")
+    if verbose println("Solution for derivatives.") end
     # get f(vs)
     val, min = block_solver(inp, 
                         n_block, 
@@ -843,7 +844,8 @@ function solve!(𝓂::ℳ;
     parameters = nothing, 
     dynamics::Bool = false, 
     algorithm::Symbol = :riccati, 
-    symbolic_SS::Bool = false)
+    symbolic_SS::Bool = false,
+    verbose = false)
 
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :second_order, :third_order]
 
@@ -865,16 +867,16 @@ function solve!(𝓂::ℳ;
 
         symbolics = create_symbols_eqs!(𝓂)
         remove_redundant_SS_vars!(𝓂,symbolics)
-        solve_steady_state!(𝓂,symbolic_SS,symbolics)
+        solve_steady_state!(𝓂, symbolic_SS, symbolics, verbose = verbose)
         write_functions_mapping!(𝓂)
         𝓂.solution.functions_written = true
     end
 
-    write_parameters_input!(𝓂,parameters)
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
 
     if dynamics
         if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
-            SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+            SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose)
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
@@ -891,7 +893,7 @@ function solve!(𝓂::ℳ;
         end
         
         if any([:second_order, :third_order] .∈ ([algorithm],)) && :second_order ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+            SS_and_pars = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : 𝓂.solution.non_stochastic_steady_state
 
             if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
                 ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -933,7 +935,7 @@ function solve!(𝓂::ℳ;
         end
         
         if :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+            SS_and_pars = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : 𝓂.solution.non_stochastic_steady_state
 
             if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
                 ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -982,7 +984,7 @@ function solve!(𝓂::ℳ;
         end
         
         if :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+            SS_and_pars = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : 𝓂.solution.non_stochastic_steady_state
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
@@ -1105,14 +1107,14 @@ end
 
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Nothing) = return parameters
-write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,<: Number}) = write_parameters_input!(𝓂::ℳ, Dict(parameters))
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,<: Number},Vararg{Pair{Symbol,<: Number}}}) = write_parameters_input!(𝓂::ℳ, Dict(parameters))
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}) = write_parameters_input!(𝓂::ℳ, Dict(parameters))
+write_parameters_input!(𝓂::ℳ, parameters::Nothing; verbose = true) = return parameters
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,<: Number}; verbose = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,<: Number},Vararg{Pair{Symbol,<: Number}}}; verbose = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; verbose = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
 
 
 
-function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,<: Number})
+function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,<: Number}; verbose = true)
     if length(setdiff(collect(keys(parameters)),𝓂.parameters))>0
         println("Parameters not part of the model: ",setdiff(collect(keys(parameters)),𝓂.parameters))
         for kk in setdiff(collect(keys(parameters)),𝓂.parameters)
@@ -1148,7 +1150,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,<: Number})
 
         
         if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters)))
-            println("Parameter changes: ")
+            if verbose println("Parameter changes: ") end
             𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :first_order, :second_order, :third_order])
         end
             
@@ -1158,22 +1160,22 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,<: Number})
                     𝓂.solution.outdated_NSSS = true
                 end
                 
-                println("\t",𝓂.parameters[ntrsct_idx[i]],"\tfrom ",𝓂.parameter_values[ntrsct_idx[i]],"\tto ",collect(values(parameters))[i])
+                if verbose println("\t",𝓂.parameters[ntrsct_idx[i]],"\tfrom ",𝓂.parameter_values[ntrsct_idx[i]],"\tto ",collect(values(parameters))[i]) end
 
                 𝓂.parameter_values[ntrsct_idx[i]] = collect(values(parameters))[i]
             end
         end
     end
 
-    if 𝓂.solution.outdated_NSSS == true println("New parameters changed the steady state.") end
+    if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
 end
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{<: Number,Vararg{<: Number}}) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)))
-write_parameters_input!(𝓂::ℳ, parameters::Matrix{<: Number}) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)))
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{<: Number,Vararg{<: Number}}; verbose = true) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Matrix{<: Number}; verbose = true) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)), verbose = verbose)
 
 
-function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Number})
+function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Number}; verbose = true)
     if length(parameters) > length(𝓂.parameter_values)
         println("Model has "*string(length(𝓂.parameter_values))*" parameters. "*string(length(parameters))*" were provided. The following will be ignored: "*string(parameters[length(𝓂.parameter_values)+1:end]...))
 
@@ -1221,40 +1223,42 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Number})
                 end
             end
 
-            println("Parameter changes: ")
-            for (i,m) in enumerate(match_idx)
-                println("\t",changes_pars[i],"\tfrom ",𝓂.parameter_values[m],"\tto ",changed_vals[i])
+            if verbose 
+                println("Parameter changes: ")
+                for (i,m) in enumerate(match_idx)
+                    println("\t",changes_pars[i],"\tfrom ",𝓂.parameter_values[m],"\tto ",changed_vals[i])
+                end
             end
 
             𝓂.parameter_values[match_idx] = parameters[match_idx]
         end
     end
-    if 𝓂.solution.outdated_NSSS == true println("New parameters changed the steady state.") end
+    if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
 end
 
 
 
-function SS_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ)
+function SS_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose)
 end
 
 
-function SS_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ)
+function SS_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂)
+    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose)
 end
 
 
-function covariance_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ)
+function covariance_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂)),eps(Float64)))
+    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)),eps(Float64)))
 end
 
 
-function covariance_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ)
+function covariance_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂)),eps(Float64)))
+    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)),eps(Float64)))
 end
 
 
@@ -1920,8 +1924,8 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ)
 end
 
 
-function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ)
-    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
+function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ; verbose = false)
+    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂, verbose)
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
@@ -1940,7 +1944,7 @@ end
 
 
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing)
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose = false)
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
@@ -1948,7 +1952,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     # data = data(observables,:) .- collect(𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess,𝓂)[observables])
 
-    SS_and_pars = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂.SS_init_guess, 𝓂)
+    SS_and_pars = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂.SS_init_guess, 𝓂, verbose)
     
     # 𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
 

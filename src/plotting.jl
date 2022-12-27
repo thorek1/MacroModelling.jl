@@ -61,15 +61,16 @@ function plot(𝓂::ℳ;
     algorithm::Symbol = :first_order,
     negative_shock::Bool = false,
     generalised_irf::Bool = false,
-    initial_state::Vector{Float64} = [0.0])
+    initial_state::Vector{Float64} = [0.0],
+    verbose = false)
 
-    write_parameters_input!(𝓂,parameters)
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    solve!(𝓂; dynamics = true, algorithm = algorithm)
+    solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
 
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
 
-    NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+    NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : 𝓂.solution.non_stochastic_steady_state
 
     full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
