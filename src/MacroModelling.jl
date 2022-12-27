@@ -442,25 +442,25 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
 
 
                 # augment system for bound constraint violations
-                aug_lag = []
-                aug_lag_penalty = []
-                push!(aug_lag_penalty, :(bound_violation_penalty = 0))
+                # aug_lag = []
+                # aug_lag_penalty = []
+                # push!(aug_lag_penalty, :(bound_violation_penalty = 0))
 
-                for varpar in intersect(𝓂.bounded_vars,union(other_vrs,sorted_vars,relevant_pars))
-                    i = indexin([varpar],𝓂.bounded_vars)
-                    push!(aug_lag,:($varpar = min(max($varpar,𝓂.lower_bounds[$i...]),𝓂.upper_bounds[$i...])))
-                    push!(aug_lag_penalty,:(bound_violation_penalty += max(0,𝓂.lower_bounds[$i...] - $varpar) + max(0,$varpar - 𝓂.upper_bounds[$i...])))
-                end
+                # for varpar in intersect(𝓂.bounded_vars,union(other_vrs,sorted_vars,relevant_pars))
+                #     i = indexin([varpar],𝓂.bounded_vars)
+                #     push!(aug_lag,:($varpar = min(max($varpar,$(𝓂.lower_bounds[i...])),$(𝓂.upper_bounds[i...]))))
+                #     push!(aug_lag_penalty,:(bound_violation_penalty += max(0,$(𝓂.lower_bounds[i...]) - $varpar) + max(0,$varpar - $(𝓂.upper_bounds[i...]))))
+                # end
 
 
-                # add it also to output from optimisation
-                aug_lag_results = []
-                # push!(aug_lag_results, :(bound_violation_penalty = 0))
+                # add it also to output from optimisation, in case you use optimiser without bounds
+                # aug_lag_results = []
+                # # push!(aug_lag_results, :(bound_violation_penalty = 0))
 
-                for varpar in intersect(𝓂.bounded_vars,sorted_vars)
-                    i = indexin([varpar],𝓂.bounded_vars)
-                    push!(aug_lag_results,:($varpar = min(max($varpar,𝓂.lower_bounds[$i...]),𝓂.upper_bounds[$i...])))
-                end
+                # for varpar in intersect(𝓂.bounded_vars,sorted_vars)
+                #     i = indexin([varpar],𝓂.bounded_vars)
+                #     push!(aug_lag_results,:($varpar = min(max($varpar,𝓂.lower_bounds[$i...]),𝓂.upper_bounds[$i...])))
+                # end
 
 
                 funcs = :(function block(guess::Vector{Float64},parameters_and_solved_vars::Vector{Float64})
@@ -475,7 +475,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                     end)
 
                 push!(solved_vals,:(aux_error))
-                push!(solved_vals,:(bound_violation_penalty))
+                # push!(solved_vals,:(bound_violation_penalty))
 
                 funcs_optim = :(function block(guess::Vector{Float64},parameters_and_solved_vars::Vector{Float64})
                     guess = undo_transformer(guess)
@@ -483,8 +483,8 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                     $(calib_pars...) # add those variables which were previously solved and are used in the equations
                     $(other_vars...) # take only those that appear in equations - DONE
 
-                    $(aug_lag_penalty...)
-                    $(aug_lag...)
+                    # $(aug_lag_penalty...)
+                    # $(aug_lag...)
                     $(nnaux...)
                     $(nnaux_error...)
                     return sum(abs2,[$(solved_vals...)])
@@ -533,7 +533,7 @@ function solve_steady_state!(𝓂::ℳ,symbolic_SS, symbolics::symbolics)
                 # push!(SS_solve_func,:(println(sol))) 
 
                 push!(SS_solve_func,:($(result...)))   
-                push!(SS_solve_func,:($(aug_lag_results...))) 
+                # push!(SS_solve_func,:($(aug_lag_results...))) 
 
                 # push!(SS_solve_func,:(NSSS_solver_cache_tmp = []))
                 push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol))))
@@ -688,16 +688,19 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             if sol_minimum > tol
                 standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
                 sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(standard_inits),transformer(lbs),transformer(ubs),method = :jfnk) catch e end
+                
                 if isnothing(sol_new)
                     sol_minimum = Inf
                     sol_values = [0]
                 elseif (isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)) < sol_minimum
                     sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
                     sol_values = undo_transformer(sol_new.zero)
+
                     if sol_minimum < tol
                         println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
                     end
                 end
+
             else 
                 break
             end
@@ -712,6 +715,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             elseif (isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)) < sol_minimum
                 sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
                 sol_values = undo_transformer(sol_new.zero)
+
                 if (sol_minimum < tol) && verbose
                     println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
                 end
@@ -733,11 +737,12 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             if sol_new.minimum < sol_minimum
                 sol_minimum = sol_new.minimum
                 sol_values = undo_transformer(sol_new.u)
+
+                if (sol_minimum < tol) && verbose
+                    println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
+                end
             end
 
-            if (sol_minimum < tol) && verbose
-                println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
-            end
 
             # if the previous non-converged best guess as a starting point does not work, try the standard starting point
             for starting_point in starting_points
@@ -753,7 +758,6 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         if (sol_minimum < tol) && verbose
                             println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
                         end
-
                     end
 
                 else 
@@ -819,8 +823,8 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
                         verbose = verbose)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
-    B = ℱ.jacobian(x -> ss_solve_blocks(val, x), inp)
-    A = ℱ.jacobian(x -> ss_solve_blocks(x, inp), val)
+    B = ℱ.jacobian(x -> ss_solve_blocks(transformer(val), x), inp)
+    A = ℱ.jacobian(x -> ss_solve_blocks(transformer(x), inp), val)
 
     jvp = (-A \ B) * ps
 
