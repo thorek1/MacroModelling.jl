@@ -23,6 +23,11 @@ end
     functionality_test(m)
 end
 
+@testset "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+    functionality_test(m)
+end
+
 @testset "RBC_CME with calibration equations, parameter definitions, and special functions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
     functionality_test(m, plots = false)
@@ -49,6 +54,13 @@ end
     functionality_test(m, algorithm = :third_order, plots = false)
 end
 
+
+@testset "FS2000 " begin
+    include("models/FS2000.jl")
+    functionality_test(m, plots = false)
+    functionality_test(m, algorithm = :second_order, plots = false)
+    functionality_test(m, algorithm = :third_order, plots = false)
+end
 
 @testset "Model without shocks" begin
     @model m begin
