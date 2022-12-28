@@ -39,4 +39,7 @@ end
     std_eps = .0068
     rho_z_delta = rhoz
     std_z_delta = .005
+
+    0 < alpha < 1
+    0 < beta < 1
 end
