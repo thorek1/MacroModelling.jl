@@ -596,7 +596,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
     
     push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
     
-    push!(SS_solve_func,:(if (minimum([sum(abs2,pars[end] - params_scaled_flt) for pars in 𝓂.NSSS_solver_cache]) > eps(Float64)) && (solution_error < eps(Float32)) 
+    push!(SS_solve_func,:(if (minimum([sum(abs2,pars[end] - params_scaled_flt) for pars in 𝓂.NSSS_solver_cache]) > eps(Float32)) && (solution_error < eps(Float64)) 
     push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp) 
     solved_scale = scale
 end))
@@ -670,7 +670,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         SS_optimizer = nlboxsolve
 
         previous_sol_init = max.(lbs,min.(ubs, sol_values))
-        sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(previous_sol_init),transformer(lbs),transformer(ubs),method = :jfnk) catch e end
+        sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(previous_sol_init),transformer(lbs),transformer(ubs),method = :nk) catch e end
 
         if isnothing(sol_new)
             sol_minimum = Inf
@@ -688,7 +688,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         for starting_point in starting_points
             if sol_minimum > tol
                 standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
-                sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(standard_inits),transformer(lbs),transformer(ubs),method = :jfnk) catch e end
+                sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(standard_inits),transformer(lbs),transformer(ubs),method = :nk) catch e end
                 
                 if isnothing(sol_new)
                     sol_minimum = Inf
@@ -709,7 +709,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         # if the the standard starting point doesnt work try the provided guess
         if sol_minimum > tol
-            sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(guess),transformer(lbs),transformer(ubs),method = :jfnk) catch e end
+            sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(guess),transformer(lbs),transformer(ubs),method = :nk) catch e end
             if isnothing(sol_new)
                 sol_minimum = Inf
                 sol_values = [0]
