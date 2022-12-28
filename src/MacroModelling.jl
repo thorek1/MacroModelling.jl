@@ -926,7 +926,7 @@ function solve!(𝓂::ℳ;
                 state = state_tmp
             end
 
-            stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)
+            stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)[indexin(sort(union(𝓂.var, 𝓂.exo_present)), sort(union(𝓂.var, 𝓂.exo_present, map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux))))]
 
             𝓂.solution.perturbation.second_order = higher_order_perturbation_solution(𝐒₂,stochastic_steady_state,state_update₂)
 
@@ -975,7 +975,7 @@ function solve!(𝓂::ℳ;
                 state = state_tmp
             end
 
-            stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)
+            stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)[indexin(sort(union(𝓂.var, 𝓂.exo_present)), sort(union(𝓂.var, 𝓂.exo_present, map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux))))]
 
             𝓂.solution.perturbation.third_order = higher_order_perturbation_solution(𝐒₃,stochastic_steady_state,state_update₃)
 
