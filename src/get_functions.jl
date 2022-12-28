@@ -179,26 +179,23 @@ function get_irf(𝓂::ℳ;
 
     NSSS = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : 𝓂.solution.non_stochastic_steady_state
 
-    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-    NSSS = [NSSS[s] for s in full_NSSS]
-     
-    
-    reference_steady_state = NSSS#collect(NSSS[1:end - length(𝓂.calibration_equations)])
+    full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
+    reference_steady_state = [NSSS[s] for s in full_SS]#collect(NSSS[1:end - length(𝓂.calibration_equations)])
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     if levels
         if algorithm == :second_order
-            reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
+            reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))]
         elseif algorithm == :third_order
-            reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+            reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))]
         end
         var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
     end
-
+    
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - reference_steady_state
-
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
