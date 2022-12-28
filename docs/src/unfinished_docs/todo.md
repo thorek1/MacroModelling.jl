@@ -1,40 +1,40 @@
 # Todo list:
 ## High priority:
-- [x] Get functions: get_output, get_moments
-- [x] estimation, IRF matching, system priors
-- [x] check derivative tests with finite diff
 - [ ] get parameters (in function of parameters) into the dependencies
 - [ ] make the nonnegativity trick optional
 - [ ] have conditional parameters at end of entry as well
 - [ ] input field for SS init guess in all functions
 - [ ] clean up different parameter types
-- [x] SS solve: add domain transformation optim
 - [ ] clean up printouts/reporting
-- [x] release first version
 - [ ] clean up function inputs and harmonise AD and standard commands
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example) 
 - [ ] write documentation/docstrings
-- [x] revisit optimizers for SS
 - [ ] write tests and documentation for solution, estimation... making sure results are consistent
-- [x] figure out licenses
 - [ ] add more models
 - [ ] symbolic derivatives
 - [ ] use @assert for errors and @test_throws
 - [ ] print SS dependencies, show SS solver
 - [ ] an and schorfheide estimation
-- [x] SS: replace variables in log() with auxilliary variable which must be positive to help solver
 - [ ] plot multiple solutions or models - multioptions in one graph
-- [ ] add correlation, autocorrelation, and variance decomposition
-- [x] complex example with lags > 1, [ss], calib equations, aux nonneg vars
-- [x] add NLboxsolve
-- [x] try NonlinearSolve - fails due to missing bounds
-- [ ] make noneg aux part of optim problem for NLboxsolve in order to avoid DomainErrors
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
+- [ ] add correlation, autocorrelation, and variance decomposition
+- [x] Get functions: get_output, get_moments
+- [x] estimation, IRF matching, system priors
+- [x] check derivative tests with finite diff
+- [x] release first version
+- [x] SS solve: add domain transformation optim
+- [x] revisit optimizers for SS
+- [x] figure out licenses
+- [x] SS: replace variables in log() with auxilliary variable which must be positive to help solver
+- [x] complex example with lags > 1, [ss], calib equations, aux nonneg vars
+- [x] add NLboxsolve
+- [x] try NonlinearSolve - fails due to missing bounds
+- [x] make noneg aux part of optim problem for NLboxsolve in order to avoid DomainErrors - not necessary
+- [x] have bounds on alpha (failed previously due to naming conflict) - works now
 
 ## Not high priority:
-- [x] implement blockdiag with julia package instead of python
 - [ ] estimation codes with missing values (adopt kalman filter)
 - [ ] whats a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
 - [ ] implement global solution methods
@@ -59,10 +59,11 @@
 - [ ] print legend for algorithm in last subplot of plot only
 - [ ] conditional forecasting
 - [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
-- [x] redo ugly solution for selecting parameters to differentiate for
 - [ ] select variables for moments
+- [x] redo ugly solution for selecting parameters to differentiate for
 
 - [x] Revise 2,3 pert codes to make it more intuitive 
+- [x] implement blockdiag with julia package instead of python
 - [x] Pretty print linear solution
 - [x] write function to get_irfs
 - [x] Named arrays for irf
