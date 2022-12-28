@@ -1215,10 +1215,10 @@ end
     # get_steady_state(RBC_CME)[1]
     # using NLopt
     # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
-    solve!(RBC_CME)
+    solve!(RBC_CME, verbose = true)
     # RBC_CME.SS_init_guess[1:7] = [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
     # get_steady_state(RBC_CME)
-    @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
+    @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
     # get_moments(RBC_CME)[1]
 
     # RBC_CME.ss_solve_blocks[1]([0.15662344139650963, 1.2081023828249515, 0.02259036144578319, 9.437411555244328, 1.4212969209705313],RBC_CME)
@@ -1286,9 +1286,9 @@ end
     # get_steady_state(RBC_CME)[1]
     # using NLopt
     # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
-    solve!(RBC_CME, symbolic_SS = true)
+    solve!(RBC_CME, symbolic_SS = true, verbose = true)
     # get_steady_state(RBC_CME)
-    @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
+    @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
     # get_moments(RBC_CME)[1]
 
     
@@ -1420,10 +1420,10 @@ end
     end
 
 
-    solve!(SW03)
+    solve!(SW03, verbose = true)
 
 
-    @test isapprox(get_steady_state(SW03)(SW03.timings.var),
+    @test isapprox(get_steady_state(SW03, verbose = true)(SW03.timings.var),
     [  1.2043777509278788
     1.2043777484127967
     0.362
@@ -1777,7 +1777,6 @@ end
 
 @testset "Plotting" begin
 
-    ENV["GKSwstype"] = "100"
     # Symbolic test with calibration targets
     @model RBC_CME begin
         y[0]=A[0]*k[-1]^alpha
