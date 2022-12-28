@@ -1,5 +1,5 @@
 import Turing
-import Turing: Normal, Beta, Gamma, InverseGamma, Uniform, Poisson, truncated, NUTS, HMC, HMCDA, MH, PG, SMC, IS, sample, mean, var, @logprob_str, logpdf, density
+import Turing: Normal, Beta, Gamma, InverseGamma, Uniform, Poisson, truncated, NUTS, HMC, HMCDA, MH, PG, SMC, IS, sample, mean, var, @logprob_str, logpdf
 using MacroModelling, OptimizationNLopt, OptimizationOptimisers
 using CSV, DataFrames, AxisKeys
 
@@ -234,7 +234,7 @@ Turing.@model function kalman(data, m, observables)
     parameters[indexin([:z_e_m],m.parameters)] .= z_e_m
 
     # println(ForwardDiff.value.(parameters))
-    data_log_lik = calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters)
+    data_log_lik = calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters, verbose = false)
     # println(ForwardDiff.value.(data_log_lik))
     # data likelihood
     Turing.@addlogprob! data_log_lik
@@ -355,13 +355,39 @@ turing_model = kalman(data, m, observables) # passing observables from before
 n_samples = 1000
 # chain_NUTS = sample(turing_model, NUTS(1000, .65, max_depth = 10, Δ_max = 400.0, init_ϵ = .02), n_samples; θ = sol.u, progress = true)
 chain_NUTS = sample(turing_model, NUTS(), n_samples; θ = parameters, progress = true)
-# chain_HMC = sample(turing_model, HMC(.02,10), n_samples; θ = sol.u, progress = true)
+chain_HMC = sample(turing_model, HMC(.05,10), n_samples; θ = parameters, progress = true)
 chain_HMCDA = sample(turing_model, HMCDA(2000, 0.65, .02), n_samples; θ = sol.u, progress = true)
 # chain_PG = sample(turing_model, PG(20), n_samples; θ = sol.u, progress = true)
-chain_MH = sample(turing_model, MH(), Int(1e6); θ = parameters, progress = true)
+chain_MH = sample(turing_model, MH(), Int(1e5); θ = parameters, progress = true)
 # chain_MH = sample(turing_model, SMC(), Int(1e5); θ = sol.u, progress = true)
 
+
+using MCMCChains, MCMCDiagnosticTools, StatsPlots
+StatsPlots.plot(chain_NUTS)
+ess_rhat(chain_NUTS)
+autocor(chain_NUTS)
+bfmi(chain_NUTS[:hamiltonian_energy])
+# gelmandiag(chain_NUTS)
+# gelmandiag_multivariate(chain_NUTS)
+geweke = gewekediag(chain_NUTS)
+heidel = heideldiag(chain_NUTS)
+raftery = rafterydiag(chain_NUTS)
+
+
+StatsPlots.plot(chain_MH)
+ess_rhat(chain_MH)
+autocor(chain_MH)
+# bfmi(chain_MH[:hamiltonian_energy])
+# gelmandiag(chain_MH)
+# gelmandiag_multivariate(chain_MH)
+geweke = gewekediag(chain_MH)
+heidel = heideldiag(chain_MH)
+raftery = rafterydiag(chain_MH)
+
+
+
 m.NSSS_solver_cache
+
 
 
 
