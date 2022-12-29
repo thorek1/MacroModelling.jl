@@ -444,8 +444,6 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                     nnaux_linear = nnaux_linear[QQ]
                 end
 
-
-
                 # augment system for bound constraint violations
                 # aug_lag = []
                 # aug_lag_penalty = []
@@ -597,9 +595,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
     push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
     
     push!(SS_solve_func,:(if (minimum([sum(abs2,pars[end] - params_scaled_flt) for pars in 𝓂.NSSS_solver_cache]) > eps(Float32)) && (solution_error < eps(Float64)) 
-    push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp) 
-    solved_scale = scale
-end))
+                                push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp) 
+                                solved_scale = scale
+                            end))
     # push!(SS_solve_func,:(if length(𝓂.NSSS_solver_cache) > 100 popfirst!(𝓂.NSSS_solver_cache) end))
     
     # push!(SS_solve_func,:(SS_init_guess = ([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)])))
@@ -607,6 +605,16 @@ end))
     # push!(SS_solve_func,:(𝓂.SS_init_guess = typeof(SS_init_guess) == Vector{Float64} ? SS_init_guess : ℱ.value.(SS_init_guess)))
 
     # push!(SS_solve_func,:(return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))))
+
+
+    # fix parameter bounds
+    par_bounds = []
+
+    for varpar in intersect(𝓂.bounded_vars, 𝓂.parameters)
+        i = indexin([varpar],𝓂.bounded_vars)
+        push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.lower_bounds[i...])),$(𝓂.upper_bounds[i...]))))
+    end
+
 
     solve_exp = :(function solve_SS(parameters::Vector{Real}, initial_guess::Vector{Real}, 𝓂::ℳ, verbose::Bool)
                     range_length = [2^i for i in 0:5]
@@ -620,12 +628,13 @@ end))
                             params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
                             params_scaled_flt = typeof(params) == Vector{Float64} ? params : ℱ.value.(params)
                             $(parameters_in_equations...)
+                            $(par_bounds...)
                             $(𝓂.calibration_equations_no_var...)
                             NSSS_solver_cache_tmp = []
                             solution_error = 0.0
                             $(SS_solve_func...)
-                            if solution_error < eps(Float32) && scale == 1
-                                return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))
+                            if scale == 1
+                                return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
                             end
                         end
                     end
@@ -660,6 +669,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         tol = eps(Float64),
                         maxtime = 120,
                         starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25],
+                        fail_fast_solvers_only = true,
                         verbose = false)
     
     sol_values = guess
@@ -726,9 +736,10 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
     end
 
+    optimizers = fail_fast_solvers_only ? [NLopt.LD_LBFGS] : [NLopt.LD_LBFGS, NLopt.LN_BOBYQA, NLopt.LN_PRAXIS, NLopt.LD_SLSQP, NLopt.LN_SBPLX]
 
     # cycle through NLopt solvers
-    for SS_optimizer in [NLopt.LD_LBFGS, NLopt.LN_BOBYQA, NLopt.LN_PRAXIS, NLopt.LD_SLSQP, NLopt.LN_SBPLX]
+    for SS_optimizer in optimizers
         if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
 
             previous_sol_init = max.(lbs,min.(ubs, sol_values))
@@ -771,8 +782,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
                 sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
                 if sol_new.minimum < sol_minimum
-                    sol_minimum  = sol.minimum
-                    sol_values = undo_transformer(sol.u)
+                    sol_minimum  = sol_new.minimum
+                    sol_values = undo_transformer(sol_new.u)
 
                     if (sol_minimum < tol) && verbose
                         println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
@@ -800,6 +811,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     tol = eps(Float64),
     maxtime = 120,
     starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25],
+    fail_fast_solvers_only = true,
     verbose = false) where {Z,S,N}
 
     # unpack: AoS -> SoA
@@ -821,13 +833,18 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
                         tol = tol,
                         maxtime = maxtime,
                         starting_points = starting_points,
+                        fail_fast_solvers_only = fail_fast_solvers_only,
                         verbose = verbose)
 
-    # get J(f, vs) * ps (cheating). Write your custom rule here
-    B = ℱ.jacobian(x -> ss_solve_blocks(transformer(val), x), inp)
-    A = ℱ.jacobian(x -> ss_solve_blocks(transformer(x), inp), val)
+    if min > tol
+        jvp = fill(Inf,length(val),length(inp)) * ps
+    else
+        # get J(f, vs) * ps (cheating). Write your custom rule here
+        B = ℱ.jacobian(x -> ss_solve_blocks(transformer(val), x), inp)
+        A = ℱ.jacobian(x -> ss_solve_blocks(transformer(x), inp), val)
 
-    jvp = (-A \ B) * ps
+        jvp = (-A \ B) * ps
+    end
 
     # pack: SoA -> AoS
     return reshape(map(val, eachrow(jvp)) do v, p
@@ -876,7 +893,7 @@ function solve!(𝓂::ℳ;
 
     if dynamics
         if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
-            SS_and_pars = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose)
+            SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose)
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
@@ -893,7 +910,7 @@ function solve!(𝓂::ℳ;
         end
         
         if any([:second_order, :third_order] .∈ ([algorithm],)) && :second_order ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : 𝓂.solution.non_stochastic_steady_state
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
                 ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -935,7 +952,7 @@ function solve!(𝓂::ℳ;
         end
         
         if :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : 𝓂.solution.non_stochastic_steady_state
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
                 ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -984,7 +1001,7 @@ function solve!(𝓂::ℳ;
         end
         
         if :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : 𝓂.solution.non_stochastic_steady_state
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
@@ -1925,7 +1942,7 @@ end
 
 
 function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ; verbose = false)
-    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂, verbose)
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
@@ -1944,7 +1961,7 @@ end
 
 
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose = false)
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose = false, tol = eps())
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
@@ -1952,8 +1969,11 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     # data = data(observables,:) .- collect(𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess,𝓂)[observables])
 
-    SS_and_pars = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂.SS_init_guess, 𝓂, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂.SS_init_guess, 𝓂, verbose)
     
+    if solution_error > tol
+        return -Inf * sum(parameters)
+    end
     # 𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
 
 	∇₁ = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters, SS_and_pars, 𝓂)
@@ -1988,7 +2008,8 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
         # K = P * C' * ℒ.pinv(F)
 
-        loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
+        # loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
+        loglik += log(ℒ.det(F)) + v' / F  * v
         K = P * C' / F
 
         P = A * (P - K * C * P) * A' + 𝐁
@@ -1997,6 +2018,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         
         z = C * u 
     end
+
     return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
 end
 
