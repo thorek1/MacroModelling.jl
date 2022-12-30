@@ -16,6 +16,7 @@ Function to use when differentiating IRFs with repect to parameters.
 - `generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.
 - `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs.
 - `levels` [Default: `false`, Type: `Bool`]: return levels or absolute deviations from steady state
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 # Examples
 ```jldoctest
@@ -122,6 +123,7 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedAr
 - `generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.
 - `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs.
 - `levels` [Default: `false`, Type: `Bool`]: return levels or absolute deviations from steady state
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 # Examples
 ```jldoctest
@@ -267,6 +269,7 @@ Return the (non stochastic) steady state and derivatives with respect to model p
 - `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
 - `derivatives` [Default: `true`, Type: `Bool`]: calculate derivatives of the SS with respect to the parameters
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation. No derivatives are calculated.
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 The columns show the SS and parameters for which derivatives are taken. The rows show the variables.
 # Examples
@@ -402,6 +405,7 @@ Return the linearised solution and the non stochastic steady state (SS) of the m
 - `𝓂`: the object created by [`@model`](@ref) and [`@parameters`](@ref) for which to get the solution.
 # Keyword Arguments
 - `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 The returned `KeyedArray` shows the SS, policy and transition functions of the model. The columns show the varibales including auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows are the SS, followed by the states, and exogenous shocks. 
 Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
@@ -481,6 +485,7 @@ Return the first and second moments of endogenous variables using the linearised
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
 - `derivatives` [Default: true, Type: `Bool`]: switch to calculate derivatives of SS, standard deviation, and variance with respect to the parameters
 - `parameter_derivatives` [Default: :all]: parameters for which to calculate derivatives of the SS. Inputs can be either a `Symbol` (e.g. `:alpha`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`.
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 # Examples
 ```jldoctest part1
@@ -662,6 +667,7 @@ Function to use when differentiating model moments with repect to parameters.
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 # Examples
 ```jldoctest
