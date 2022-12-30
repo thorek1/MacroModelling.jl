@@ -9,6 +9,9 @@ on:
 
 jobs:
   build:
+    env: 
+      GKS_ENCODING: "utf8"
+      GKSwstype: "nul"
     permissions:
       contents: write
     runs-on: ubuntu-latest
