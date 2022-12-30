@@ -25,6 +25,7 @@ The left axis shows the level, and the right the deviation from the reference st
 - `negative_shock` [Default: `false`, Type: `Bool`]: calculate a negative shock. Relevant for generalised IRFs.
 - `generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions.
 - `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state from which to start IRFs. Relevant for normal IRFs.
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 # Examples
 ```julia
