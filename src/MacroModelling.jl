@@ -616,11 +616,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
     end
 
 
-    solve_exp = :(function solve_SS(parameters::Vector{Real}, initial_guess::Vector{Real}, 𝓂::ℳ, verbose::Bool)
-                    range_length = [2^i for i in 0:5]
+    solve_exp = :(function solve_SS(parameters::Vector{Real}, initial_guess::Vector{Real}, 𝓂::ℳ, fail_fast_solvers_only::Bool, verbose::Bool)
                     params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                     closest_solution_init = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]
                     solved_scale = 0
+                    range_length = fail_fast_solvers_only ? [1] : [2^i for i in 0:5]
                     for r in range_length
                         for scale in range(0,1,r+1)[2:end]
                             if scale <= solved_scale continue end
@@ -694,12 +694,33 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
         end
 
-        # if the previous non-converged best guess as a starting point does not work, try the standard starting point
-        for starting_point in starting_points
+        if !fail_fast_solvers_only
+            # if the previous non-converged best guess as a starting point does not work, try the standard starting points
+            for starting_point in starting_points
+                if sol_minimum > tol
+                    standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
+                    sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(standard_inits),transformer(lbs),transformer(ubs),method = :nk) catch e end
+                    
+                    if isnothing(sol_new)
+                        sol_minimum = Inf
+                        sol_values = [0]
+                    elseif (isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)) < sol_minimum
+                        sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
+                        sol_values = undo_transformer(sol_new.zero)
+
+                        if sol_minimum < tol && verbose
+                            println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
+                        end
+                    end
+
+                else 
+                    break
+                end
+            end
+
+            # if the the standard starting point doesnt work try the provided guess
             if sol_minimum > tol
-                standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
-                sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(standard_inits),transformer(lbs),transformer(ubs),method = :nk) catch e end
-                
+                sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(guess),transformer(lbs),transformer(ubs),method = :nk) catch e end
                 if isnothing(sol_new)
                     sol_minimum = Inf
                     sol_values = [0]
@@ -707,28 +728,9 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
                     sol_values = undo_transformer(sol_new.zero)
 
-                    if sol_minimum < tol && verbose
-                        println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
+                    if (sol_minimum < tol) && verbose
+                        println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
                     end
-                end
-
-            else 
-                break
-            end
-        end
-
-        # if the the standard starting point doesnt work try the provided guess
-        if sol_minimum > tol
-            sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(guess),transformer(lbs),transformer(ubs),method = :nk) catch e end
-            if isnothing(sol_new)
-                sol_minimum = Inf
-                sol_values = [0]
-            elseif (isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)) < sol_minimum
-                sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
-                sol_values = undo_transformer(sol_new.zero)
-
-                if (sol_minimum < tol) && verbose
-                    println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
                 end
             end
         end
@@ -755,38 +757,39 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 end
             end
 
+            if !fail_fast_solvers_only
+                # if the previous non-converged best guess as a starting point does not work, try the standard starting point
+                for starting_point in starting_points
+                    if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
+                        standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
+                        prob = OptimizationProblem(f, transformer(standard_inits), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
+                        sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
-            # if the previous non-converged best guess as a starting point does not work, try the standard starting point
-            for starting_point in starting_points
+                        if sol_new.minimum < sol_minimum
+                            sol_minimum = sol_new.minimum
+                            sol_values = undo_transformer(sol_new.u)
+
+                            if (sol_minimum < tol) && verbose
+                                println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
+                            end
+                        end
+
+                    else 
+                        break
+                    end
+                end
+
+                # if the the standard starting point doesnt work try the provided guess
                 if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
-                    standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
-                    prob = OptimizationProblem(f, transformer(standard_inits), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
+                    prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
                     sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
-
                     if sol_new.minimum < sol_minimum
-                        sol_minimum = sol_new.minimum
+                        sol_minimum  = sol_new.minimum
                         sol_values = undo_transformer(sol_new.u)
 
                         if (sol_minimum < tol) && verbose
-                            println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
+                            println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
                         end
-                    end
-
-                else 
-                    break
-                end
-            end
-
-            # if the the standard starting point doesnt work try the provided guess
-            if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
-                prob = OptimizationProblem(f, transformer(guess), parameters_and_solved_vars, lb = transformer(lbs), ub = transformer(ubs))
-                sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
-                if sol_new.minimum < sol_minimum
-                    sol_minimum  = sol_new.minimum
-                    sol_values = undo_transformer(sol_new.u)
-
-                    if (sol_minimum < tol) && verbose
-                        println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(transformer(sol_values),parameters_and_solved_vars)))
                     end
                 end
             end
@@ -893,7 +896,7 @@ function solve!(𝓂::ℳ;
 
     if dynamics
         if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
-            SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose)
+            SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose)
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
@@ -910,7 +913,7 @@ function solve!(𝓂::ℳ;
         end
         
         if any([:second_order, :third_order] .∈ ([algorithm],)) && :second_order ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
                 ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -952,7 +955,7 @@ function solve!(𝓂::ℳ;
         end
         
         if :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
                 ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -1001,7 +1004,7 @@ function solve!(𝓂::ℳ;
         end
         
         if :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
@@ -1257,13 +1260,13 @@ end
 
 function SS_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose)
+    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose)
 end
 
 
 function SS_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose)
+    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose)
 end
 
 
@@ -1942,7 +1945,7 @@ end
 
 
 function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ; verbose = false)
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂, false, verbose)
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
@@ -1971,10 +1974,10 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     # data = data(observables,:) .- collect(𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess,𝓂)[observables])
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂.SS_init_guess, 𝓂, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂.SS_init_guess, 𝓂, true, verbose)
     
     if solution_error > tol
-        return -Inf * sum(parameters)
+        return -1e16 - sum(abs,parameters)
     end
     # 𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
 

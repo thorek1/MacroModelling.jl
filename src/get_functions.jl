@@ -59,7 +59,7 @@ function get_irf(𝓂::ℳ,
 
     solve!(𝓂, verbose = verbose)
 
-    NSSS, solution_error = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂, verbose)
+    NSSS, solution_error = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂, false, verbose)
     
 	∇₁ = calculate_jacobian(parameters, NSSS, 𝓂)
 								
@@ -179,7 +179,7 @@ function get_irf(𝓂::ℳ;
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
@@ -333,7 +333,7 @@ function get_steady_state(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     SS = collect(NSSS)
 
@@ -568,7 +568,7 @@ function get_moments(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     NSSS_labels = labels(NSSS) .|> Symbol
     var_idx = indexin(var,NSSS_labels)
@@ -692,7 +692,7 @@ get_moments(RBC, RBC.parameter_values)
 # output
 2-element Vector{Any}:
  [5.936252888048724, 47.39025414828808, 6.884057971014486, 0.0]
- [0.02666420378525522, 0.26467737291222343, 0.07393254045396495, 0.010206207261596576]
+ [0.026664203785255254, 0.26467737291222343, 0.07393254045396497, 0.010206207261596576]
 ```
 """
 function get_moments(𝓂::ℳ, parameters::Vector; 
@@ -704,7 +704,7 @@ function get_moments(𝓂::ℳ, parameters::Vector;
 
     solve!(𝓂, verbose = verbose)
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂, false, verbose)
 
     covar_dcmp = calculate_covariance(parameters,𝓂, verbose = verbose)
 
