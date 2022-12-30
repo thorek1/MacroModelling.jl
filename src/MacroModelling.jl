@@ -1967,6 +1967,8 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     sort!(observables)
 
+    solve!(𝓂, verbose = verbose)
+
     # data = data(observables,:) .- collect(𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess,𝓂)[observables])
 
     SS_and_pars, solution_error = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂.SS_init_guess, 𝓂, verbose)
