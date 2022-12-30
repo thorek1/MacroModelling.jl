@@ -85,6 +85,11 @@ data = data(observables,:)
 
 # calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters)
 # calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = [0.4035, 0.9909, 0.0046, 1.0143, 0.8455, 0.6891, 0.0017, 0.0136, 0.0033])
+# calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = [0.7, 0.9999, 0.0046, 1.0143, 0.8455, 0.6891, 0.0017, 0.0136, 0.0033])
+
+# using ForwardDiff
+# ForwardDiff.gradient(x -> calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = x),[0.7, 0.9999, 0.0046, 1.0143, 0.8455, 0.6891, 0.0017, 0.0136, 0.0033])
+
 
 # functions to map mean and standard deviations to distribution parameters
 function beta_map(μ, σ) 
@@ -171,6 +176,7 @@ prob = OptimizationProblem(f, sol.u, [], lb = lbs, ub = ubs)
 sol_new = solve(prob, NLopt.LD_LBFGS(), maxiters = 100000)
 sol_new.minimum
 
+parameters = sol_new.u
 
 # using BenchmarkTools
 # @benchmark calculate_posterior_loglikelihood(parameters * exp(randn()/1e3), [])
@@ -211,31 +217,42 @@ sol_new.minimum
 # define priors and likelihood
 Turing.@model function kalman(data, m, observables)
     # parameters = deepcopy(m.parameter_values)
-    alp     ~ truncated(Beta(beta_map(0.356, 0.02)...), .0001, .5)
-    bet     ~ truncated(Beta(beta_map(0.993, 0.002)...), .5, .999)
-    gam     ~ truncated(Normal(0.0085, 0.003),eps(),.5)
-    mst     ~ truncated(Normal(1.0002, 0.007), .5, 1.5)
-    rho     ~ truncated(Beta(beta_map(0.129, 0.223)...), .0001, .9)
-    psi     ~ truncated(Beta(beta_map(0.65, 0.05)...), .0001, .9)
-    del     ~ truncated(Beta(beta_map(0.01, 0.005)...), .0001, .1)
-    z_e_a   ~ truncated(InverseGamma(inv_gamma_map(0.035449, Inf)...), eps(), 1.5)
-    z_e_m   ~ truncated(InverseGamma(inv_gamma_map(0.008862, Inf)...), eps(), 1.5)
+    alp     ~ Beta(beta_map(0.356, 0.02)...)
+    bet     ~ Beta(beta_map(0.993, 0.002)...)
+    gam     ~ Normal(0.0085, 0.003)#, eps(), .1)
+    mst     ~ Normal(1.0002, 0.007)
+    rho     ~ Beta(beta_map(0.129, 0.223)...)
+    psi     ~ Beta(beta_map(0.65, 0.05)...)
+    del     ~ Beta(beta_map(0.01, 0.005)...)
+    z_e_a   ~ InverseGamma(inv_gamma_map(0.035449, Inf)...)
+    z_e_m   ~ InverseGamma(inv_gamma_map(0.008862, Inf)...)
+
+    # alp     ~ truncated(Beta(beta_map(0.356, 0.02)...), eps(), .6)
+    # bet     ~ truncated(Beta(beta_map(0.993, 0.002)...),eps(), .999)
+    # gam     ~ Normal(0.0085, 0.003)#, eps(), .1)
+    # mst     ~ truncated(Normal(1.0002, 0.007),  .5, 1.5)
+    # rho     ~ Beta(beta_map(0.129, 0.223)...)
+    # psi     ~ Beta(beta_map(0.65, 0.05)...)
+    # del     ~ Beta(beta_map(0.01, 0.005)...)
+    # z_e_a   ~ truncated(InverseGamma(inv_gamma_map(0.035449, Inf)...), eps(), 1.5)
+    # z_e_m   ~ truncated(InverseGamma(inv_gamma_map(0.008862, Inf)...), eps(), 1.5)
     # z_e_a   ~ Uniform(eps(),2)
     # z_e_m   ~ Uniform(eps(),2)
 
-    parameters[indexin([:alp],m.parameters)] .= alp
-    parameters[indexin([:bet],m.parameters)] .= bet
-    parameters[indexin([:rho],m.parameters)] .= rho
-    parameters[indexin([:psi],m.parameters)] .= psi
-    parameters[indexin([:del],m.parameters)] .= del
-    parameters[indexin([:gam],m.parameters)] .= gam
-    parameters[indexin([:mst],m.parameters)] .= mst
-    parameters[indexin([:z_e_a],m.parameters)] .= z_e_a
-    parameters[indexin([:z_e_m],m.parameters)] .= z_e_m
+    parameters[indexin([:alp, :bet, :rho, :psi, :del, :gam, :mst, :z_e_a, :z_e_m],m.parameters)] .= [alp, bet, rho, psi, del, gam, mst, z_e_a, z_e_m]
+    # parameters[indexin([:bet],m.parameters)] .= bet
+    # parameters[indexin([:rho],m.parameters)] .= rho
+    # parameters[indexin([:psi],m.parameters)] .= psi
+    # parameters[indexin([:del],m.parameters)] .= del
+    # parameters[indexin([:gam],m.parameters)] .= gam
+    # parameters[indexin([:mst],m.parameters)] .= mst
+    # parameters[indexin([:z_e_a],m.parameters)] .= z_e_a
+    # parameters[indexin([:z_e_m],m.parameters)] .= z_e_m
 
     # println(ForwardDiff.value.(parameters))
-    data_log_lik = calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters, verbose = false)
+    data_log_lik = calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters)
     # println(ForwardDiff.value.(data_log_lik))
+    # println(data_log_lik)
     # data likelihood
     Turing.@addlogprob! data_log_lik
 
@@ -342,8 +359,9 @@ turing_model = kalman(data, m, observables) # passing observables from before
 
 
 
-# pars = [0.4060354127026275, 0.9939696880461915, 2.676217146735149e-6, 1.0099951272753809, 0.9256873341280071, 0.6276800066680917, 0.0007896, 0.014329941996977557, 0.0032669429428229045]
+# pars = [0.61, 0.999, 2.676217146735149e-3*2.5, 1.0099951272753809, 0.9256873341280071, 0.6276800066680917, 0.0007896, 0.014329941996977557, 0.0032669429428229045]
 # # pars = [0.5, 0.999, 0.00019596038697428447, 0.5, 0.9613020894154952, 0.21357589547162303, 0.0003397291645318067, 7.751707376780153e-9, 1.8728386399634146e-11]
+# pars = [0.5999999999922886, 0.9989999999999681, 1.4297470897549595e-8, 1.5, 0.9, 0.9, 1.1786838316189486e-22, 2.220446049250313e-16, 1.4089183824793878e-11]
 # get_SS(m, parameters = pars)
 # m.parameter_values
 # m.NSSS_solver_cache
@@ -351,11 +369,12 @@ turing_model = kalman(data, m, observables) # passing observables from before
 # x = .04
 # get_SS(m, parameters = pars * x + m.NSSS_solver_cache[100][2] * (1 - x))
 # findmin([sum(abs2,i[2]- pars) for i in m.NSSS_solver_cache])
+
 # sample
 n_samples = 1000
 # chain_NUTS = sample(turing_model, NUTS(1000, .65, max_depth = 10, Δ_max = 400.0, init_ϵ = .02), n_samples; θ = sol.u, progress = true)
-chain_NUTS = sample(turing_model, NUTS(), n_samples; θ = parameters, progress = true)
-chain_HMC = sample(turing_model, HMC(.05,10), n_samples; θ = parameters, progress = true)
+chain_NUTS  = sample(turing_model, NUTS(), n_samples; θ = parameters, progress = true)
+chain_HMC   = sample(turing_model, HMC(.05,10), n_samples; θ = parameters, progress = true)
 chain_HMCDA = sample(turing_model, HMCDA(2000, 0.65, .02), n_samples; θ = sol.u, progress = true)
 # chain_PG = sample(turing_model, PG(20), n_samples; θ = sol.u, progress = true)
 chain_MH = sample(turing_model, MH(), Int(1e5); θ = parameters, progress = true)
