@@ -54,7 +54,6 @@ end
     functionality_test(m, algorithm = :third_order, plots = false)
 end
 
-
 @testset "FS2000" begin
     include("models/FS2000.jl")
     functionality_test(m, plots = false)

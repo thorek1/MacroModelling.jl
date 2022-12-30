@@ -48,7 +48,7 @@ momm = get_moments(RBC_CME)
 @test isapprox(momm[2][1], 0.015600269903198518, rtol = eps(Float32))
 
 
-SS_and_pars = RBC_CME.SS_solve_func(RBC_CME.parameter_values, RBC_CME.SS_init_guess, RBC_CME, true)
+SS_and_pars, _ = RBC_CME.SS_solve_func(RBC_CME.parameter_values, RBC_CME.SS_init_guess, RBC_CME, true)
     
 ∇₁ = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, RBC_CME)
 ∇₂ = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
