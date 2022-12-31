@@ -684,7 +684,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         if isnothing(sol_new)
             sol_minimum = Inf
-            sol_values = [0]
+            sol_values = zero(sol_values)
         else
             sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
             sol_values = undo_transformer(sol_new.zero)
@@ -703,7 +703,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     
                     if isnothing(sol_new)
                         sol_minimum = Inf
-                        sol_values = [0]
+                        sol_values = zero(sol_values)
                     elseif (isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)) < sol_minimum
                         sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
                         sol_values = undo_transformer(sol_new.zero)
@@ -723,7 +723,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 sol_new = try SS_optimizer(x->ss_solve_blocks(x,parameters_and_solved_vars),transformer(guess),transformer(lbs),transformer(ubs),method = :nk) catch e end
                 if isnothing(sol_new)
                     sol_minimum = Inf
-                    sol_values = [0]
+                    sol_values = zero(sol_values)
                 elseif (isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)) < sol_minimum
                     sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
                     sol_values = undo_transformer(sol_new.zero)
@@ -840,7 +840,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
                         verbose = verbose)
 
     if min > tol
-        jvp = fill(Inf,length(val),length(inp)) * ps
+        jvp = fill(0,length(val),length(inp)) * ps
     else
         # get J(f, vs) * ps (cheating). Write your custom rule here
         B = ℱ.jacobian(x -> ss_solve_blocks(transformer(val), x), inp)
@@ -1977,7 +1977,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     SS_and_pars, solution_error = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂.SS_init_guess, 𝓂, true, verbose)
     
     if solution_error > tol
-        return -1e16 - sum(abs,parameters)
+        return -1e6
     end
     # 𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
 
