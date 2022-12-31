@@ -104,10 +104,10 @@ end
 ```
 
 ## Define bayesian model including priors
-Next we are defining the priors over the parameters:
+Next we define the parameter priors:
 ```@repl tutorial_2
 import Turing
-import Turing: Normal, Beta, InverseGamma, NUTS, sample, logpdf
+import Turing: Normal, Beta, InverseGamma, NUTS, sample
 
 Turing.@model function kalman(data, m, observables)
     alp     ~ Beta(beta_map(0.356, 0.02)...)
@@ -121,22 +121,126 @@ Turing.@model function kalman(data, m, observables)
     z_e_m   ~ InverseGamma(inv_gamma_map(0.008862, Inf)...)
 
     Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
-    Turing.@addlogprob! logpdf(Beta(beta_map(0.356, 0.02)...),alp)
-    Turing.@addlogprob! logpdf(Beta(beta_map(0.993, 0.002)...),bet)
-    Turing.@addlogprob! logpdf(Beta(beta_map(0.129, 0.223)...),rho)
-    Turing.@addlogprob! logpdf(Beta(beta_map(0.65, 0.05)...),psi)
-    Turing.@addlogprob! logpdf(Beta(beta_map(0.01, 0.005)...),del)
-    Turing.@addlogprob! logpdf(Normal(0.0085, 0.003),gam)
-    Turing.@addlogprob! logpdf(Normal(1.0002, 0.007),mst)
-    Turing.@addlogprob! logpdf(InverseGamma(inv_gamma_map(0.035449, Inf)...),z_e_a)
-    Turing.@addlogprob! logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...),z_e_m)
 end
 ```
 
-## Sample from posterior
+## Sample from posterior - NUTS sampler
 Having set up the prior loglikelihood given the data we use the NUTS sampler to retrieve the posterior distribution:
 ```@repl tutorial_2
 turing_model = kalman(data, FS2000, observables)
 n_samples = 1000
 chain_NUTS  = sample(turing_model, NUTS(), n_samples)
+```
+
+
+### Inspect posterior
+First we are plotting the posterior distributions of the parameters:
+```@repl tutorial_2
+using StatsPlots
+StatsPlots.plot(chain_NUTS)
+```
+
+Next, we are plotting the posterior loglikelihood along two parameters dimensions and add the samples to the visualisation. This visualisation allows us to understand the curvature of the posterior and how well the sampler worked.
+
+```@repl tutorial_2
+using ComponentArrays, MCMCChains
+parameter_mean = mean(chain_NUTS)
+pars = ComponentArray(parameter_mean.nt[2],Axis(parameter_mean.nt[1]))
+
+function get_log_probability(par1, par2, pars_syms, orig_pars, m, data, observables)
+    orig_pars[pars_syms] = [par1, par2]
+    (; alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m) = orig_pars
+
+    logprob  = 0
+    logprob += calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = collect(orig_pars))
+    logprob += logpdf(Beta(beta_map(0.356, 0.02)...), alp)
+    logprob += logpdf(Beta(beta_map(0.993, 0.002)...), bet)
+    logprob += logpdf(Normal(0.0085, 0.003), gam)
+    logprob += logpdf(Normal(1.0002, 0.007), mst)
+    logprob += logpdf(Beta(beta_map(0.129, 0.223)...), rho)
+    logprob += logpdf(Beta(beta_map(0.65, 0.05)...), psi)
+    logprob += logpdf(Beta(beta_map(0.01, 0.005)...), del)
+    logprob += logpdf(InverseGamma(inv_gamma_map(0.035449, Inf)...), z_e_a)
+    logprob += logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...), z_e_m)
+end
+
+
+using Plots
+granularity = 32
+
+par1 = :del
+par2 = :gam
+par_range1 = collect(range(minimum(chain_NUTS[par1]), stop = maximum(chain_NUTS[par1]), length = granularity))
+par_range2 = collect(range(minimum(chain_NUTS[par2]), stop = maximum(chain_NUTS[par2]), length = granularity))
+
+p = surface(par_range1, par_range2, 
+            (x,y) -> get_log_probability(x,y, [par1,par2], pars, FS2000, data, observables),
+            camera=(30, 65),
+            colorbar=false,
+            color=:inferno)
+
+
+scatter3d!(vec(collect(chain_NUTS[par1])),
+           vec(collect(chain_NUTS[par2])),
+           vec(collect(chain_NUTS[:lp])),
+            mc =:viridis, 
+            marker_z=collect(1:length(chain_NUTS)), 
+            msw=0,
+            legend=false, 
+            colorbar=false, 
+            xlabel = string(par1),
+            ylabel = string(par2),
+            zlabel = "Log probability",
+            alpha=0.5)
+
+p
+```
+
+
+## Sample from posterior - MH sampler
+### Find posterior mode
+```@repl tutorial_2
+using Optimization, OptimizationNLopt, OptimizationOptimisers
+
+function calculate_posterior_loglikelihood(parameters, u)
+    # println(ForwardDiff.value.(parameters))
+    alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
+    log_lik = 0
+    log_lik -= calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters)
+    log_lik -= logpdf(Beta(beta_map(0.356, 0.02)...),alp)
+    log_lik -= logpdf(Beta(beta_map(0.993, 0.002)...),bet)
+    log_lik -= logpdf(Normal(0.0085, 0.003),gam)
+    log_lik -= logpdf(Normal(1.0002, 0.007),mst)
+    log_lik -= logpdf(Beta(beta_map(0.129, 0.223)...),rho)
+    log_lik -= logpdf(Beta(beta_map(0.65, 0.05)...),psi)
+    log_lik -= logpdf(Beta(beta_map(0.01, 0.005)...),del)
+    log_lik -= logpdf(InverseGamma(inv_gamma_map(0.035449, Inf)...),z_e_a)
+    log_lik -= logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...),z_e_m)
+    return log_lik
+end
+
+f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoForwardDiff())
+
+prob = OptimizationProblem(f, Float64[parameters...], [])
+sol = solve(prob, Optimisers.ADAM(), maxiters = 1000, progress = true)
+sol.minimum
+
+lbs = fill(-1e12, length(FS2000.parameters))
+ubs = fill(1e12, length(FS2000.parameters))
+
+bounds_index_in_pars = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.parameters)
+bounds_index_in_bounds = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.bounded_vars)
+
+lbs[bounds_index_in_pars] = max.(-1e12,FS2000.lower_bounds[bounds_index_in_bounds])
+ubs[bounds_index_in_pars] = min.(1e12,FS2000.upper_bounds[bounds_index_in_bounds])
+
+prob = OptimizationProblem(f, min.(max.(sol.u,lbs),ubs), [], lb = lbs, ub = ubs)
+sol = solve(prob, NLopt.LD_LBFGS())
+sol.minimum
+```
+Next we are sampling suing the MH algorithm and starting from the posterior mode found in the previous optimisation.
+
+
+```@repl tutorial_2
+chain_MH = sample(turing_model, MH(), Int(1e5); θ = sol.u)
 ```
