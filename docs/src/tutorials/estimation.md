@@ -1,10 +1,12 @@
 # Estimate a simple model - Schorfheide (2000)
-This tutorial is intended to show the workflow to estimate a model using the NUTS sampler. The tutorial works with a benchmark model for estimation and can therefore be compared to [results from other software packages](https://archives.dynare.org/documentation/examples.html).
+This tutorial is intended to show the workflow to estimate a model using the NUTS sampler. The tutorial works with a benchmark model for estimation and can therefore be compared to results from other software packages (e.g. [dynare](https://archives.dynare.org/documentation/examples.html)).
 
 ## Define the model
 The first step is always to name the model and write down the equations. For the Schorfheide (2000) model this would go as follows:
 ```@setup tutorial_2
 ENV["GKSwstype"] = "100"
+using Random
+Random.seed!(3)
 ```
 ```@repl tutorial_2
 using MacroModelling
@@ -71,12 +73,12 @@ Frist, we load in the data using the from a CSV file and convert it to a `KeyedA
 using CSV, DataFrames, AxisKeys
 
 # load data
-dat = CSV.read("test/FS2000_data.csv",DataFrame)
+dat = CSV.read("../assets/FS2000_data.csv", DataFrame)
 data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
 data = log.(data)
 
 # declare observables
-observables = sort(Symbol.("log_".*names(dat)))#[:dinve, :dc]
+observables = sort(Symbol.("log_".*names(dat)))
 
 data = data(observables,:)
 
@@ -118,9 +120,7 @@ Turing.@model function kalman(data, m, observables)
     z_e_a   ~ InverseGamma(inv_gamma_map(0.035449, Inf)...)
     z_e_m   ~ InverseGamma(inv_gamma_map(0.008862, Inf)...)
 
-    parameters[indexin([:alp, :bet, :rho, :psi, :del, :gam, :mst, :z_e_a, :z_e_m], m.parameters)] .= [alp, bet, rho, psi, del, gam, mst, z_e_a, z_e_m]
-
-    Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters)
+    Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
     Turing.@addlogprob! logpdf(Beta(beta_map(0.356, 0.02)...),alp)
     Turing.@addlogprob! logpdf(Beta(beta_map(0.993, 0.002)...),bet)
     Turing.@addlogprob! logpdf(Beta(beta_map(0.129, 0.223)...),rho)
@@ -133,11 +133,10 @@ Turing.@model function kalman(data, m, observables)
 end
 ```
 
-
 ## Sample from posterior
 Having set up the prior loglikelihood given the data we use the NUTS sampler to retrieve the posterior distribution:
 ```@repl tutorial_2
-turing_model = kalman(data, m, observables)
+turing_model = kalman(data, FS2000, observables)
 n_samples = 1000
-chain_NUTS  = sample(turing_model, NUTS(), n_samples; progress = true)
+chain_NUTS  = sample(turing_model, NUTS(), n_samples)
 ```
