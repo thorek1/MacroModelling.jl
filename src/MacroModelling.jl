@@ -886,11 +886,11 @@ function solve!(𝓂::ℳ;
     if !𝓂.solution.functions_written 
         # consolidate bounds info
         double_info = intersect(𝓂.bounds⁺,𝓂.bounded_vars)
-        𝓂.lower_bounds[indexin(double_info,𝓂.bounded_vars)] = max.(eps(),𝓂.lower_bounds[indexin(double_info,𝓂.bounded_vars)])
+        𝓂.lower_bounds[indexin(double_info,𝓂.bounded_vars)] = max.(eps(Float32),𝓂.lower_bounds[indexin(double_info,𝓂.bounded_vars)])
 
         new_info = setdiff(𝓂.bounds⁺,𝓂.bounded_vars)
         𝓂.bounded_vars = vcat(𝓂.bounded_vars,new_info)
-        𝓂.lower_bounds = vcat(𝓂.lower_bounds,fill(eps(),length(new_info)))
+        𝓂.lower_bounds = vcat(𝓂.lower_bounds,fill(eps(Float32),length(new_info)))
         𝓂.upper_bounds = vcat(𝓂.upper_bounds,fill(1e12,length(new_info)))
 
 
