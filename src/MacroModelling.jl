@@ -277,7 +277,13 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 
                 push!(𝓂.solved_vars,Symbol(var_to_solve))
                 push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
-                push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+
+                if (𝓂.solved_vars[end] ∈ 𝓂.nonnegativity_auxilliary_vars) 
+                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = max(eps(),$(𝓂.solved_vals[end]))))
+                else
+                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                end
+
                 push!(atoms_in_equations_list,[])
             else
 
@@ -290,8 +296,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 # println(atoms_in_equations)
                 # push!(atoms_in_equations, soll[1].atoms())
 
-                push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
-
+                if (𝓂.solved_vars[end] ∈ 𝓂.nonnegativity_auxilliary_vars) 
+                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = max(eps(),$(𝓂.solved_vals[end]))))
+                else
+                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                end
             end
 
             # push!(single_eqs,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
@@ -458,7 +467,6 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 
                 # add it also to output from optimisation, in case you use optimiser without bounds
                 # aug_lag_results = []
-                # # push!(aug_lag_results, :(bound_violation_penalty = 0))
 
                 # for varpar in intersect(𝓂.bounded_vars,sorted_vars)
                 #     i = indexin([varpar],𝓂.bounded_vars)
@@ -529,6 +537,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                         inits,
                         lbs, 
                         ubs,
+                        fail_fast_solvers_only = fail_fast_solvers_only,
                         verbose = verbose)))
                         
                 push!(SS_solve_func,:(solution_error += solution[2])) 
@@ -882,7 +891,7 @@ function solve!(𝓂::ℳ;
         new_info = setdiff(𝓂.bounds⁺,𝓂.bounded_vars)
         𝓂.bounded_vars = vcat(𝓂.bounded_vars,new_info)
         𝓂.lower_bounds = vcat(𝓂.lower_bounds,fill(eps(),length(new_info)))
-        𝓂.upper_bounds = vcat(𝓂.upper_bounds,fill(Inf,length(new_info)))
+        𝓂.upper_bounds = vcat(𝓂.upper_bounds,fill(1e12,length(new_info)))
 
 
         symbolics = create_symbols_eqs!(𝓂)
