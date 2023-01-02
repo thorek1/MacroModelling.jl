@@ -3,6 +3,9 @@
 - [ ] get parameters (in function of parameters) into the dependencies
 - [ ] for larger models write a model compression. gradient loglikelihood is very slow due to large matmuls
 - [ ] see if we can avoid try catch and test for invertability instead
+- [ ] use packages for kalman filter
+- [ ] add balanced growth path handling
+- [ ] add other outputs from estimation (smoothed, filter states and shocks)
 - [ ] make the nonnegativity trick optional
 - [ ] have conditional parameters at end of entry as well
 - [ ] input field for SS init guess in all functions
