@@ -14,7 +14,8 @@ jobs:
       matrix:
         version:
           - '1'
-          - 'nightly' # fails
+          - '^1.8.4-0'
+          # - 'nightly' # fails
         os:
           - ubuntu-latest
           # - macOS-latest #slow
