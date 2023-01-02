@@ -1388,25 +1388,25 @@ macro parameters(𝓂,ex)
     end
 
     
-    quote
-        global $𝓂.bounded_vars = $bounded_vars
-        global $𝓂.lower_bounds = $lower_bounds
-        global $𝓂.upper_bounds = $upper_bounds
+    return quote
+        Main.$𝓂.bounded_vars = $bounded_vars
+        Main.$𝓂.lower_bounds = $lower_bounds
+        Main.$𝓂.upper_bounds = $upper_bounds
 
-        global $𝓂.ss_calib_list = $ss_calib_list
-        global $𝓂.par_calib_list = $par_calib_list
+        Main.$𝓂.ss_calib_list = $ss_calib_list
+        Main.$𝓂.par_calib_list = $par_calib_list
 
-        global $𝓂.ss_no_var_calib_list = $ss_no_var_calib_list
-        global $𝓂.par_no_var_calib_list = $par_no_var_calib_list
+        Main.$𝓂.ss_no_var_calib_list = $ss_no_var_calib_list
+        Main.$𝓂.par_no_var_calib_list = $par_no_var_calib_list
 
-        global $𝓂.parameters = $calib_parameters
-        global $𝓂.parameter_values = $calib_values
-        global $𝓂.calibration_equations = $calib_equations_list
-        global $𝓂.parameters_as_function_of_parameters = $calib_parameters_no_var
-        global $𝓂.calibration_equations_no_var = $calib_equations_no_var_list
-        global $𝓂.calibration_equations_parameters = $calib_eq_parameters
-        global $𝓂.solution.outdated_NSSS = true
-        global $𝓂.solution.functions_written = false
+        Main.$𝓂.parameters = $calib_parameters
+        Main.$𝓂.parameter_values = $calib_values
+        Main.$𝓂.calibration_equations = $calib_equations_list
+        Main.$𝓂.parameters_as_function_of_parameters = $calib_parameters_no_var
+        Main.$𝓂.calibration_equations_no_var = $calib_equations_no_var_list
+        Main.$𝓂.calibration_equations_parameters = $calib_eq_parameters
+        Main.$𝓂.solution.outdated_NSSS = true
+        Main.$𝓂.solution.functions_written = false
         nothing
     end
 end
