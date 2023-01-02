@@ -36,5 +36,11 @@ Manifest.toml
 *.log
 .ipynb_checkpoints/
 *.svg
-*.png
+irf*.png
 *.xls
+test/fix_RBC.jl
+test/fix_SW03_SS.jl
+test/fix_sw03.jl
+test/figure out SS.jl
+test/debug_test.jl
+test/macrotoolstest.jl

@@ -135,15 +135,15 @@ function calculate_posterior_loglikelihood(parameters, u)
     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
     log_lik = 0
     log_lik -= calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters)
-    log_lik -= logpdf(Beta(beta_map(0.356, 0.02)...),alp)
-    log_lik -= logpdf(Beta(beta_map(0.993, 0.002)...),bet)
+    log_lik -= logpdf(Beta(beta_map(0.356, 0.02)...),min(1,max(0,alp)))
+    log_lik -= logpdf(Beta(beta_map(0.993, 0.002)...),min(1,max(0,bet)))
     log_lik -= logpdf(Normal(0.0085, 0.003),gam)
     log_lik -= logpdf(Normal(1.0002, 0.007),mst)
-    log_lik -= logpdf(Beta(beta_map(0.129, 0.223)...),rho)
-    log_lik -= logpdf(Beta(beta_map(0.65, 0.05)...),psi)
-    log_lik -= logpdf(Beta(beta_map(0.01, 0.005)...),del)
-    log_lik -= logpdf(InverseGamma(inv_gamma_map(0.035449, Inf)...),z_e_a)
-    log_lik -= logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...),z_e_m)
+    log_lik -= logpdf(Beta(beta_map(0.129, 0.223)...),min(1,max(0,rho)))
+    log_lik -= logpdf(Beta(beta_map(0.65, 0.05)...),min(1,max(0,psi)))
+    log_lik -= logpdf(Beta(beta_map(0.01, 0.005)...),min(1,max(0,del)))
+    log_lik -= logpdf(InverseGamma(inv_gamma_map(0.035449, Inf)...),max(0,z_e_a))
+    log_lik -= logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...),max(0,z_e_m))
     return log_lik
 end
 
@@ -167,17 +167,21 @@ ubs = [1-eps(), 1-eps(), 1e12, 1e12, 1-eps(), 1-eps(), 1-eps(), 1e12, 1e12]
 f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoForwardDiff())
 
 prob = OptimizationProblem(f, Float64[parameters...], [])#, lb = lbs, ub = ubs)
+# prob = OptimizationProblem(f, sol_new.u, [])#, lb = lbs, ub = ubs)
 sol = solve(prob, Optimisers.ADAM(), maxiters = 1000, progress = true)
 sol.minimum
 # m.NSSS_solver_cache
 
-prob = OptimizationProblem(f, sol.u, [], lb = lbs, ub = ubs)
+prob = OptimizationProblem(f, min.(max.(sol.u,lbs),ubs), [], lb = lbs, ub = ubs)
 # prob = OptimizationProblem(f, Float64[parameters...], [], lb = lbs, ub = ubs)
-sol_new = solve(prob, NLopt.LD_LBFGS(), maxiters = 100000)
+# prob = OptimizationProblem(f, Float64[parameters...], [], lb = lbs, ub = ubs)
+sol_new = solve(prob, NLopt.LD_LBFGS())
 sol_new.minimum
 
 parameters = sol_new.u
 
+using ForwardDiff
+hessian_at_posterior_mode = ForwardDiff.hessian(x->calculate_posterior_loglikelihood(x,[]),parameters)
 # using BenchmarkTools
 # @benchmark calculate_posterior_loglikelihood(parameters * exp(randn()/1e3), [])
 # sol_new = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LN_BOBYQA(), population = length(ubs), local_maxtime = 120, maxtime = 120, progress = true)
@@ -369,6 +373,8 @@ turing_model = kalman(data, m, observables) # passing observables from before
 # x = .04
 # get_SS(m, parameters = pars * x + m.NSSS_solver_cache[100][2] * (1 - x))
 # findmin([sum(abs2,i[2]- pars) for i in m.NSSS_solver_cache])
+using LinearAlgebra
+inv_hess = Hermitian(inv(hessian_at_posterior_mode))
 
 # sample
 n_samples = 1000
@@ -377,7 +383,11 @@ chain_NUTS  = sample(turing_model, NUTS(), n_samples; θ = parameters, progress 
 chain_HMC   = sample(turing_model, HMC(.05,10), n_samples; θ = parameters, progress = true)
 chain_HMCDA = sample(turing_model, HMCDA(2000, 0.65, .02), n_samples; θ = sol.u, progress = true)
 # chain_PG = sample(turing_model, PG(20), n_samples; θ = sol.u, progress = true)
-chain_MH = sample(turing_model, MH(), Int(1e5); θ = parameters, progress = true)
+chain_MH = sample(turing_model, MH(inv_hess), Int(1e5); θ = parameters, progress = true)
+
+using AdaptiveMCMC
+chain_MH = adaptive_rwm(parameters,x->calculate_posterior_loglikelihood(x,[]),Int(1e2))
+
 # chain_MH = sample(turing_model, SMC(), Int(1e5); θ = sol.u, progress = true)
 
 

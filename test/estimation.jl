@@ -41,7 +41,8 @@ end
 # Beta(beta_map(.5,.2)...)|>mean
 # Beta(beta_map(.5,.2)...)|>var|>sqrt
 
-
+get_SS(m)
+using ForwardDiff
 # define priors and likelihood
 Turing.@model function kalman(data, m, observables)
     z_ea    ~ truncated(InverseGamma(inv_gamma_map(0.1, 2)...), 0.01,    3)
@@ -129,13 +130,17 @@ Turing.@model function kalman(data, m, observables)
     
     
     # data likelihood
-    Turing.@addlogprob! begin
-        try 
-            calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters)
-        catch e
-            return -Inf
-        end
-    end
+    # Turing.@addlogprob! begin
+    #     try 
+    #         calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters)
+    #     catch e
+    #         return -Inf
+    #     end
+    # end
+
+    # println(ForwardDiff.value.(parameters))
+    Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters)
+
     
     # # system prior on IRFs
     # Turing.@addlogprob! loglikelihood(Normal(.03, .01), get_irf(parameters,m)[6,4,2])
@@ -146,8 +151,22 @@ Turing.@model function kalman(data, m, observables)
     # Turing.@addlogprob! loglikelihood(Normal(.014, .001), moments[2][5])
 end
 
-
 observables = Symbol.(names(dat))#[:dinve, :dc]
+
+
+using BenchmarkTools
+calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = m.parameter_values)
+@benchmark calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = m.parameter_values)
+
+@profview calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = m.parameter_values)
+
+using ForwardDiff
+ForwardDiff.gradient(x->calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = x), Float64[m.parameter_values...])
+@benchmark ForwardDiff.gradient(x->calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = x), Float64[m.parameter_values...]) samples = 10 seconds = 100
+
+@profview ForwardDiff.gradient(x->calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = x), Float64[m.parameter_values...])
+
+
 
 turing_model = kalman(data, m, observables) # passing observables from before 
 

@@ -246,3 +246,24 @@ RBC_CME.ss_aux_equations
 using SpecialFunctions
 
 erfcinv(-1)
+
+
+
+using AxisKeys
+𝓂 = RBC_CME;
+
+
+var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+
+KeyedArray([𝓂.solution.non_stochastic_steady_state[[indexin(sort([var; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux,𝓂.exo_present))]), sort(union(var,𝓂.exo_present)))...]] 𝓂.solution.perturbation.first_order.solution_matrix]';
+Steady_state__States__Shocks = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
+Variable = sort([var; 𝓂.aux; 𝓂.exo_present]))
+
+
+double_info = intersect(𝓂.bounds⁺,𝓂.bounded_vars)
+𝓂.lower_bounds[indexin(double_info,𝓂.bounded_vars)] = max.(eps(),𝓂.lower_bounds[indexin(double_info,𝓂.bounded_vars)])
+
+new_info = setdiff(𝓂.bounds⁺,𝓂.bounded_vars)
+𝓂.bounded_vars = vcat(𝓂.bounded_vars,new_info)
+𝓂.lower_bounds = vcat(𝓂.lower_bounds,fill(eps(),length(new_info)))
+𝓂.upper_bounds = vcat(𝓂.upper_bounds,fill(Inf,length(new_info)))
