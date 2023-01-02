@@ -149,29 +149,18 @@ StatsPlots.plot(chain_NUTS);
 Next, we are plotting the posterior loglikelihood along two parameters dimensions and add the samples to the visualisation. This visualisation allows us to understand the curvature of the posterior and how well the sampler worked.
 
 ```@repl tutorial_2
-using ComponentArrays, MCMCChains
+using ComponentArrays, MCMCChains, DynamicPPL, Plots
+
 parameter_mean = mean(chain_NUTS)
 pars = ComponentArray(parameter_mean.nt[2],Axis(parameter_mean.nt[1]))
 
-function calculate_log_probability(par1, par2, pars_syms, orig_pars, m, data, observables)
-    orig_pars[pars_syms] = [par1, par2]
-    (; alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m) = orig_pars
+logjoint(turing_model, pars)
 
-    logprob  = 0
-    logprob += calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = collect(orig_pars))
-    logprob += logpdf(Beta(beta_map(0.356, 0.02)...), alp)
-    logprob += logpdf(Beta(beta_map(0.993, 0.002)...), bet)
-    logprob += logpdf(Normal(0.0085, 0.003), gam)
-    logprob += logpdf(Normal(1.0002, 0.007), mst)
-    logprob += logpdf(Beta(beta_map(0.129, 0.223)...), rho)
-    logprob += logpdf(Beta(beta_map(0.65, 0.05)...), psi)
-    logprob += logpdf(Beta(beta_map(0.01, 0.005)...), del)
-    logprob += logpdf(InverseGamma(inv_gamma_map(0.035449, Inf)...), z_e_a)
-    logprob += logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...), z_e_m)
+function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
+    orig_pars[pars_syms] = [par1, par2]
+    logjoint(model, orig_pars)
 end
 
-
-using Plots
 granularity = 32
 
 par1 = :del
@@ -180,24 +169,26 @@ par_range1 = collect(range(minimum(chain_NUTS[par1]), stop = maximum(chain_NUTS[
 par_range2 = collect(range(minimum(chain_NUTS[par2]), stop = maximum(chain_NUTS[par2]), length = granularity));
 
 p = surface(par_range1, par_range2, 
-            (x,y) -> calculate_log_probability(x,y, [par1,par2], pars, FS2000, data, observables),
+            (x,y) -> calculate_log_probability(x, y, [par1, par2], pars, turing_model),
             camera=(30, 65),
             colorbar=false,
             color=:inferno);
 
 
+joint_loglikelihood = [logjoint(turing_model, ComponentArray(reduce(hcat, get(chain_NUTS, FS2000.parameters)[FS2000.parameters])[s,:], Axis(FS2000.parameters))) for s in 1:length(chain_NUTS)]
+
 scatter3d!(vec(collect(chain_NUTS[par1])),
            vec(collect(chain_NUTS[par2])),
-           vec(collect(chain_NUTS[:lp])),
-            mc =:viridis, 
-            marker_z=collect(1:length(chain_NUTS)), 
-            msw=0,
-            legend=false, 
-            colorbar=false, 
+           joint_loglikelihood,
+            mc = :viridis, 
+            marker_z = collect(1:length(chain_NUTS)), 
+            msw = 0,
+            legend = false, 
+            colorbar = false, 
             xlabel = string(par1),
             ylabel = string(par2),
             zlabel = "Log probability",
-            alpha=0.5);
+            alpha = 0.5);
 
 p
 ```
