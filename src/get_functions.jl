@@ -59,7 +59,7 @@ function get_irf(𝓂::ℳ,
 
     solve!(𝓂, verbose = verbose)
 
-    NSSS, solution_error = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂, false, verbose)
+    NSSS, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, false, verbose)
     
 	∇₁ = calculate_jacobian(parameters, NSSS, 𝓂)
 								
@@ -179,7 +179,7 @@ function get_irf(𝓂::ℳ;
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
@@ -333,7 +333,7 @@ function get_steady_state(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     SS = collect(NSSS)
 
@@ -350,7 +350,7 @@ function get_steady_state(𝓂::ℳ;
     end
 
     if derivatives && !stochastic
-        # dSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂.SS_init_guess, 𝓂),𝓂.parameter_values)
+        # dSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
         dSS = ℱ.jacobian(x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx], Float64.(𝓂.parameter_values[param_idx]))
         𝓂.parameter_values = ℱ.value.(𝓂.parameter_values)
 
@@ -370,7 +370,7 @@ function get_steady_state(𝓂::ℳ;
     #                 calibrated_parameters = ComponentVector(NSSS.non_stochastic_steady_state, Axis(𝓂.calibration_equations_parameters)),
     #                 stochastic = stochastic)
 
-    # return 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+    # return 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂) : 𝓂.solution.non_stochastic_steady_state
     # return 𝓂.SS_solve_func(𝓂)
     # return (var .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[1:length(var)]),  (𝓂.par .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[length(var)+1:end])[getindex(1:length(𝓂.par),map(x->x ∈ collect(𝓂.calibration_equations_parameters),𝓂.par))]
 end
@@ -568,7 +568,7 @@ function get_moments(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     NSSS_labels = labels(NSSS) .|> Symbol
     var_idx = indexin(var,NSSS_labels)
@@ -581,7 +581,7 @@ function get_moments(𝓂::ℳ;
     if derivatives
         dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx_SS], Float64.(𝓂.parameter_values[param_idx]))
         𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
-        # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂.SS_init_guess, 𝓂),𝓂.parameter_values)
+        # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
         SS =  KeyedArray(hcat(collect(NSSS)[var_idx_SS],dNSSS);  Variables = [sort(var)...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
 
         if variance
@@ -704,7 +704,7 @@ function get_moments(𝓂::ℳ, parameters::Vector;
 
     solve!(𝓂, verbose = verbose)
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂, false, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, false, verbose)
 
     covar_dcmp = calculate_covariance(parameters,𝓂, verbose = verbose)
 

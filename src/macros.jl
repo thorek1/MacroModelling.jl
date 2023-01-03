@@ -90,7 +90,7 @@ macro model(𝓂,ex)
     # solved_sub_values = []
     ss_solve_blocks = []
     ss_solve_blocks_optim = []
-    SS_init_guess = Vector{Float64}(undef,0)
+    # SS_init_guess = Vector{Float64}(undef,0)
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = nothing
     nonlinear_solution_helper = nothing
@@ -971,7 +971,7 @@ macro model(𝓂,ex)
                         # $solved_sub_values,
                         $ss_solve_blocks,
                         $ss_solve_blocks_optim,
-                        $SS_init_guess,
+                        # $SS_init_guess,
                         $NSSS_solver_cache,
                         $SS_solve_func,
                         $nonlinear_solution_helper,

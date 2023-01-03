@@ -71,7 +71,7 @@ function plot(𝓂::ℳ;
 
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)

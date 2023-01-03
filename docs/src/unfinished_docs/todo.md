@@ -1,31 +1,36 @@
 # Todo list:
 ## High priority:
+- [ ] add balanced growth path handling
+- [ ] write tests and documentation for solution, estimation... making sure results are consistent
+- [ ] have conditional parameters at end of entry as well (... | alpha instead of alpha | ...)
+- [ ] use @assert for errors and @test_throws
+- [ ] add correlation, autocorrelation, and variance decomposition
+- [ ] add other outputs from estimation (smoothed, filter states and shocks)
+- [ ] print SS dependencies, show SS solver
+- [ ] write to dynare
+  
+- [ ] speed up covariance mat calc
+- [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
+- [ ] make the nonnegativity trick optional
 - [ ] get parameters (in function of parameters) into the dependencies
 - [ ] for larger models write a model compression. gradient loglikelihood is very slow due to large matmuls
 - [ ] see if we can avoid try catch and test for invertability instead
 - [ ] use packages for kalman filter
-- [ ] add balanced growth path handling
-- [ ] add other outputs from estimation (smoothed, filter states and shocks)
-- [ ] make the nonnegativity trick optional
-- [ ] have conditional parameters at end of entry as well
 - [ ] input field for SS init guess in all functions
 - [ ] clean up different parameter types
 - [ ] clean up printouts/reporting
 - [ ] clean up function inputs and harmonise AD and standard commands
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example) 
 - [ ] write documentation/docstrings
-- [ ] write tests and documentation for solution, estimation... making sure results are consistent
 - [ ] add more models
 - [ ] symbolic derivatives
-- [ ] use @assert for errors and @test_throws
-- [ ] print SS dependencies, show SS solver
-- [ ] an and schorfheide estimation
 - [ ] plot multiple solutions or models - multioptions in one graph
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
-- [ ] add correlation, autocorrelation, and variance decomposition
 - [x] Get functions: get_output, get_moments
+- [x] get rid of init_guess
+- [x] an and schorfheide estimation
 - [x] estimation, IRF matching, system priors
 - [x] check derivative tests with finite diff
 - [x] release first version
@@ -45,28 +50,26 @@
 - [ ] implement global solution methods
 - [ ] more options for IRFs, pass on shock vector, simulate only certain shocks
 - [ ] improve redundant calculations of SS and other parts of solution
-- [ ] find way to recover from failed SS solution which is written to init guess
 - [ ] restructure functions and containers so that compiler knows what types to expect
 - [ ] use RecursiveFactorization and TriangularSolve to solve, instead of MKL or OpenBLAS
 - [ ] fix SnoopCompile with generated functions
 - [ ] rewrite first order with riccati equation MatrixEquations.jl
-- [ ] exploit variable incidence and compression for derivatives
+- [ ] exploit variable incidence and compression for higher order derivatives
 - [ ] for estimation use CUDA with st order: linear time iteration starting from last 1st order solution and then LinearSolveCUDA solvers for higher orders. this should bring benefits for large models and HANK models
 - [ ] test on highly nonlinear model (https://www.sciencedirect.com/science/article/pii/S0165188917300970)
 - [ ] pull request in StatsFuns to have norminv... accept type numbers and add translation from matlab: norminv to StatsFuns norminvcdf
-- [ ] conditions for when to use which solution. if solution is outdated redo all solutions which have been done so far and use smart starting points
 - [ ] more informative errors when declaring equations/ calibration
 - [ ] unit equation errors
 - [ ] implenent reduced linearised system solver + nonlinear
 - [ ] implement HANK
 - [ ] implement automatic problem derivation (gEcon)
-- [ ] write to dynare
 - [ ] print legend for algorithm in last subplot of plot only
 - [ ] conditional forecasting
-- [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
 - [ ] select variables for moments
-- [x] redo ugly solution for selecting parameters to differentiate for
 
+- [x] find way to recover from failed SS solution which is written to init guess
+- [x] redo ugly solution for selecting parameters to differentiate for
+- [x] conditions for when to use which solution. if solution is outdated redo all solutions which have been done so far and use smart starting points
 - [x] Revise 2,3 pert codes to make it more intuitive 
 - [x] implement blockdiag with julia package instead of python
 - [x] Pretty print linear solution

@@ -190,7 +190,7 @@ mutable struct ℳ
     # solved_sub_values
     ss_solve_blocks
     ss_solve_blocks_optim
-    SS_init_guess::Vector{Real}
+    # SS_init_guess::Vector{Real}
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func
     nonlinear_solution_helper

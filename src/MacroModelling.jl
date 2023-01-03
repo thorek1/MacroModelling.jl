@@ -399,7 +399,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 
                 other_vars = []
                 other_vars_input = []
-                other_vars_inverse = []
+                # other_vars_inverse = []
                 other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters),sort(𝓂.solved_vars[end])),syms_in_eqs)
                 
                 for var in other_vrs
@@ -407,7 +407,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                     push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
                     push!(other_vars_input,:($(var)))
                     iii += 1
-                    push!(other_vars_inverse,:(𝓂.SS_init_guess[$var_idx] = $(var)))
+                    # push!(other_vars_inverse,:(𝓂.SS_init_guess[$var_idx] = $(var)))
                 end
                 
                 # separate out auxilliary variables (nonnegativity)
@@ -501,7 +501,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                     return sum(abs2,[$(solved_vals...)])
                 end)
             
-                𝓂.SS_init_guess = [fill(.9,length(𝓂.var)); fill(.5, length(𝓂.calibration_equations_parameters))]
+                # 𝓂.SS_init_guess = [fill(.9,length(𝓂.var)); fill(.5, length(𝓂.calibration_equations_parameters))]
 
                 push!(NSSS_solver_cache_init_tmp,fill(.9,length(sorted_vars)))
 
@@ -625,7 +625,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
     end
 
 
-    solve_exp = :(function solve_SS(parameters::Vector{Real}, initial_guess::Vector{Real}, 𝓂::ℳ, fail_fast_solvers_only::Bool, verbose::Bool)
+    solve_exp = :(function solve_SS(parameters::Vector{Real}, 𝓂::ℳ, fail_fast_solvers_only::Bool, verbose::Bool)
                     params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                     closest_solution_init = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]
                     solved_scale = 0
@@ -905,7 +905,7 @@ function solve!(𝓂::ℳ;
 
     if dynamics
         if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
-            SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose)
+            SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose)
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
@@ -922,7 +922,7 @@ function solve!(𝓂::ℳ;
         end
         
         if any([:second_order, :third_order] .∈ ([algorithm],)) && :second_order ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
                 ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -964,7 +964,7 @@ function solve!(𝓂::ℳ;
         end
         
         if :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
                 ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -1013,7 +1013,7 @@ function solve!(𝓂::ℳ;
         end
         
         if :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
@@ -1269,13 +1269,13 @@ end
 
 function SS_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose)
+    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose)
 end
 
 
 function SS_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂, false, verbose)
+    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose)
 end
 
 
@@ -1954,7 +1954,7 @@ end
 
 
 function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ; verbose = false)
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂, false, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, false, verbose)
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
@@ -1983,7 +1983,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     # data = data(observables,:) .- collect(𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess,𝓂)[observables])
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂.SS_init_guess, 𝓂, true, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂, true, verbose)
     
     if solution_error > tol
         return -1e6
