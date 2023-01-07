@@ -52,20 +52,20 @@ plot_irfs(RBC)
 
 
 # Comparison with other packages
-||MacroModelling.jl|[dynare](https://www.dynare.org)|[RISE](https://github.com/jmaih/RISE_toolbox)|[DSGE.jl](https://github.com/FRBNY-DSGE/DSGE.jl)|[StateSpaceEcon.jl](https://bankofcanada.github.io/DocsEcon.jl/dev/)|[SolveDSGE.jl](https://github.com/RJDennis/SolveDSGE.jl)|[dolo.py](https://www.econforge.org/dolo.py/)|[DifferentiableStateSpaceModels.jl](https://github.com/HighDimensionalEconLab/DifferentiableStateSpaceModels.jl)|[gEcon](http://gecon.r-forge.r-project.org)
-|---|---|---|---|---|---|---|---|---|---|
-**Host language**|julia|MATLAB|MATLAB|julia|julia|julia|Python|julia|R|
-**Non stochastic steady state solver**|*symbolic* or numerical solver of recursive blocks; symbolic removal of variables redundant in steady state; inclusion of calibration equations in problem|numerical solver of recursive blocks or user-supplied values/functions|numerical solver of recursive blocks or user-supplied values/functions||numerical solver of recursive blocks or user-supplied values/functions|numerical solver|numerical solver or user supplied values/equations|numerical solver or user supplied values/equations|numerical solver; inclusion of calibration equations in problem|
-**Automatic declaration of variables and parameters**|yes|||||||||
-**Derivatives (Automatic Differentiation) wrt parameters**|yes - for all 1st order perturbation solution related output||||||yes - for all 1st, 2nd order perturbation solution related output *if user supplied steady state equations*||
-**Perturbation solution order**|1, 2, 3 |k|1 to 5 |1|1|1, 2, 3 |1, 2, 3 |1, 2 |1|
-**Automatic derivation of first order conditions**||||||||yes|
-**Handles occasionally binding constraints**||yes|yes|yes||yes|yes|||
-**Global solution**||||||yes|yes|||
-**Estimation**|yes|yes|yes|yes|||||yes|
-**Balanced growth path**||yes|yes|yes|yes|||||
-**Model input**|macro (julia)|text file|text file|text file|module (julia)|text file|text file|macro (julia)|text file|
-**Timing convention**|end-of-period|end-of-period|end-of-period||end-of-period|start-of period|end-of-period|start-of period|end-of-period|
+||MacroModelling.jl|[dynare](https://www.dynare.org)|[RISE](https://github.com/jmaih/RISE_toolbox)|[DSGE.jl](https://github.com/FRBNY-DSGE/DSGE.jl)|[StateSpaceEcon.jl](https://bankofcanada.github.io/DocsEcon.jl/dev/)|[SolveDSGE.jl](https://github.com/RJDennis/SolveDSGE.jl)|[dolo.py](https://www.econforge.org/dolo.py/)|[DifferentiableStateSpaceModels.jl](https://github.com/HighDimensionalEconLab/DifferentiableStateSpaceModels.jl)|[gEcon](http://gecon.r-forge.r-project.org)|[GDSGE](https://www.gdsge.com)
+|---|---|---|---|---|---|---|---|---|---|---|
+**Host language**|julia|MATLAB|MATLAB|julia|julia|julia|Python|julia|R|MATLAB|
+**Non stochastic steady state solver**|*symbolic* or numerical solver of recursive blocks; symbolic removal of variables redundant in steady state; inclusion of calibration equations in problem|numerical solver of recursive blocks or user-supplied values/functions|numerical solver of recursive blocks or user-supplied values/functions||numerical solver of recursive blocks or user-supplied values/functions|numerical solver|numerical solver or user supplied values/equations|numerical solver or user supplied values/equations|numerical solver; inclusion of calibration equations in problem||
+**Automatic declaration of variables and parameters**|yes||||||||||
+**Derivatives (Automatic Differentiation) wrt parameters**|yes - for all 1st order perturbation solution related output||||||yes - for all 1st, 2nd order perturbation solution related output *if user supplied steady state equations*|||
+**Perturbation solution order**|1, 2, 3 |k|1 to 5 |1|1|1, 2, 3 |1, 2, 3 |1, 2 |1||
+**Automatic derivation of first order conditions**||||||||yes||
+**Handles occasionally binding constraints**||yes|yes|yes||yes|yes|||yes|
+**Global solution**||||||yes|yes|||yes|
+**Estimation**|yes|yes|yes|yes|||||yes||
+**Balanced growth path**||yes|yes|yes|yes||||||
+**Model input**|macro (julia)|text file|text file|text file|module (julia)|text file|text file|macro (julia)|text file|text file|
+**Timing convention**|end-of-period|end-of-period|end-of-period||end-of-period|start-of-period|end-of-period|start-of-period|end-of-period|start-of-period|
 
 
 # Bibliography
