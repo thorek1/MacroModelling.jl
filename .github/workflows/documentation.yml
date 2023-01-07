@@ -9,14 +9,17 @@ on:
 
 jobs:
   build:
+    env: 
+      GKS_ENCODING: "utf8"
+      GKSwstype: "nul"
     permissions:
       contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: julia-actions/setup-julia@v1
+      - uses: julia-actions/setup-julia@latest
         with:
-          version: '1.8'
+          version: '1'
       - run: pip3 install sympy
       - name: Install dependencies
         run: julia --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
@@ -26,6 +29,6 @@ jobs:
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }} # If authenticating with SSH deploy key
         #run: julia --project=docs/ docs/make.jl      
         run: julia --project=docs/ --code-coverage=user docs/make.jl
-      - uses: julia-actions/julia-processcoverage@v1
+      - uses: julia-actions/julia-processcoverage@latest
       - uses: codecov/codecov-action@v3
 

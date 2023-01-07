@@ -2,8 +2,63 @@ using Test
 using MacroModelling
 using Random
 
+include("functionality_tests.jl")
+
 @testset "Standalone functions" begin
     include("test_standalone_function.jl")
+end
+
+@testset "SW07 with calibration equations" begin
+    include("models/SW07.jl")
+    functionality_test(m, plots = false)
+end
+
+@testset "SW03 with calibration equations" begin
+    include("models/SW03.jl")
+    functionality_test(m)
+end
+
+@testset "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
+    functionality_test(m)
+end
+
+@testset "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables numerical SS" begin
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+    functionality_test(m)
+end
+
+@testset "RBC_CME with calibration equations, parameter definitions, and special functions" begin
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
+    functionality_test(m, plots = false)
+end
+
+@testset "RBC_CME with calibration equations and parameter definitions" begin
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+    functionality_test(m, plots = false)
+    functionality_test(m, algorithm = :second_order)
+    functionality_test(m, algorithm = :third_order)
+end
+
+@testset "RBC_CME with calibration equations" begin
+    include("models/RBC_CME_calibration_equations.jl")
+    functionality_test(m, plots = false)
+    functionality_test(m, algorithm = :second_order, plots = false)
+    functionality_test(m, algorithm = :third_order, plots = false)
+end
+
+@testset "RBC_CME" begin
+    include("models/RBC_CME.jl")
+    functionality_test(m, plots = false)
+    functionality_test(m, algorithm = :second_order, plots = false)
+    functionality_test(m, algorithm = :third_order, plots = false)
+end
+
+@testset "FS2000" begin
+    include("models/FS2000.jl")
+    functionality_test(m, plots = false)
+    functionality_test(m, algorithm = :second_order, plots = false)
+    # functionality_test(m, algorithm = :third_order, plots = false)
 end
 
 @testset "Model without shocks" begin
@@ -134,7 +189,7 @@ end
     end
 
     solve!(finacc)
-    @test isapprox(get_steady_state(finacc),[1.0, 7.004987166460695, 1.2762549358842095, 0.0008293608419033882, 0.0009318065746306208, 0.0003952537570055814, 0.30743973601435376, 15.371986800781423, 0.4435430773517457, 8.366999635233856, 1.0000000000593001, 1.0101010101010102, 1.0172249577970442, 1.5895043340984303, 0.4529051354389826, 2.2935377097663356, -1.4597012487627126e-10], rtol = eps(Float32))
+    @test isapprox(get_steady_state(finacc,derivatives = false)[:,1],[1.0, 7.004987166460695, 1.2762549358842095, 0.0008293608419033882, 0.0009318065746306208, 0.0003952537570055814, 0.30743973601435376, 15.371986800781423, 0.4435430773517457, 8.366999635233856, 1.0000000000593001, 1.0101010101010102, 1.0172249577970442, 1.5895043340984303, 0.4529051354389826, 2.2935377097663356, -1.4597012487627126e-10], rtol = eps(Float32))
     
 end
 
@@ -1159,10 +1214,10 @@ end
     # get_steady_state(RBC_CME)[1]
     # using NLopt
     # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
-    solve!(RBC_CME)
+    solve!(RBC_CME, verbose = true)
     # RBC_CME.SS_init_guess[1:7] = [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
     # get_steady_state(RBC_CME)
-    @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
+    @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
     # get_moments(RBC_CME)[1]
 
     # RBC_CME.ss_solve_blocks[1]([0.15662344139650963, 1.2081023828249515, 0.02259036144578319, 9.437411555244328, 1.4212969209705313],RBC_CME)
@@ -1230,9 +1285,9 @@ end
     # get_steady_state(RBC_CME)[1]
     # using NLopt
     # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
-    solve!(RBC_CME, symbolic_SS = true)
+    solve!(RBC_CME, symbolic_SS = true, verbose = true)
     # get_steady_state(RBC_CME)
-    @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
+    @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
     # get_moments(RBC_CME)[1]
 
     
@@ -1345,30 +1400,30 @@ end
         xi_p = 0.908
 
         # Putting non-negative constraint on first block is enough
-        0 < K
-        0 < I
-        0 < Y_s
-        0 < q
-        0 < r_k
-        0 < f_1
-        0 < L
-        0 < W
-        0 < g_1
-        0 < z
-        0 < mc
-        0 < w_star
-        0 < f_2
-        0 < Y
-        0 < g_2
-        0 < C
+        # 0 < K
+        # 0 < I
+        # 0 < Y_s
+        # 0 < q
+        # 0 < r_k
+        5 < f_1
+        # 0 < L
+        # 0 < W
+        30 < g_1
+        # 0 < z
+        # 0 < mc
+        # 0 < w_star
+        # 5 < f_2
+        # 0 < Y
+        # 0 < g_2
+        # 0 < C
     end
 
 
-    solve!(SW03, symbolic_SS = false)
+    solve!(SW03, verbose = true)
 
-    # get_steady_state(SW03)
 
-    @test get_steady_state(SW03)(SW03.var) ≈ [  1.2043777509278788
+    @test isapprox(get_steady_state(SW03, verbose = true)(SW03.timings.var),
+    [  1.2043777509278788
     1.2043777484127967
     0.362
     0.362
@@ -1421,174 +1476,173 @@ end
       0.03510101010809239
       1.1221034311168996
       0.9999999999999698
-      1.0000000000000089]
-    # x = 1
+      1.0000000000000089],
+      rtol = eps(Float32))
+#     # x = 1
 
 
-#     SW03 = nothing
+# #     SW03 = nothing
 
-#     @model SW03 begin
-#         -q[0] + beta * ((1 - tau) * q[1] + epsilon_b[1] * (r_k[1] * z[1] - psi^-1 * r_k[ss] * (-1 + exp(psi * (-1 + z[1])))) * (C[1] - h * C[0])^(-sigma_c)) = 0
-#         -q_f[0] + beta * ((1 - tau) * q_f[1] + epsilon_b[1] * (r_k_f[1] * z_f[1] - psi^-1 * r_k_f[ss] * (-1 + exp(psi * (-1 + z_f[1])))) * (C_f[1] - h * C_f[0])^(-sigma_c)) = 0
-#         -r_k[0] + alpha * epsilon_a[0] * mc[0] * L[0]^(1 - alpha) * (K[-1] * z[0])^(-1 + alpha) = 0
-#         -r_k_f[0] + alpha * epsilon_a[0] * mc_f[0] * L_f[0]^(1 - alpha) * (K_f[-1] * z_f[0])^(-1 + alpha) = 0
-#         -G[0] + T[0] = 0
-#         -G[0] + G_bar * epsilon_G[0] = 0
-#         -G_f[0] + T_f[0] = 0
-#         -G_f[0] + G_bar * epsilon_G[0] = 0
-#         -L[0] + nu_w[0]^-1 * L_s[0] = 0
-#         -L_s_f[0] + L_f[0] * (W_i_f[0] * W_f[0]^-1)^(lambda_w^-1 * (-1 - lambda_w)) = 0
-#         L_s_f[0] - L_f[0] = 0
-#         L_s_f[0] + lambda_w^-1 * L_f[0] * W_f[0]^-1 * (-1 - lambda_w) * (-W_disutil_f[0] + W_i_f[0]) * (W_i_f[0] * W_f[0]^-1)^(-1 + lambda_w^-1 * (-1 - lambda_w)) = 0
-#         Pi_ws_f[0] - L_s_f[0] * (-W_disutil_f[0] + W_i_f[0]) = 0
-#         Pi_ps_f[0] - Y_f[0] * (-mc_f[0] + P_j_f[0]) * P_j_f[0]^(-lambda_p^-1 * (1 + lambda_p)) = 0
-#         -Q[0] + epsilon_b[0]^-1 * q[0] * (C[0] - h * C[-1])^(sigma_c) = 0
-#         -Q_f[0] + epsilon_b[0]^-1 * q_f[0] * (C_f[0] - h * C_f[-1])^(sigma_c) = 0
-#         -W[0] + epsilon_a[0] * mc[0] * (1 - alpha) * L[0]^(-alpha) * (K[-1] * z[0])^alpha = 0
-#         -W_f[0] + epsilon_a[0] * mc_f[0] * (1 - alpha) * L_f[0]^(-alpha) * (K_f[-1] * z_f[0])^alpha = 0
-#         -Y_f[0] + Y_s_f[0] = 0
-#         Y_s[0] - nu_p[0] * Y[0] = 0
-#         -Y_s_f[0] + Y_f[0] * P_j_f[0]^(-lambda_p^-1 * (1 + lambda_p)) = 0
-#         beta * epsilon_b[1] * (C_f[1] - h * C_f[0])^(-sigma_c) - epsilon_b[0] * R_f[0]^-1 * (C_f[0] - h * C_f[-1])^(-sigma_c) = 0
-#         beta * epsilon_b[1] * pi[1]^-1 * (C[1] - h * C[0])^(-sigma_c) - epsilon_b[0] * R[0]^-1 * (C[0] - h * C[-1])^(-sigma_c) = 0
-#         Y_f[0] * P_j_f[0]^(-lambda_p^-1 * (1 + lambda_p)) - lambda_p^-1 * Y_f[0] * (1 + lambda_p) * (-mc_f[0] + P_j_f[0]) * P_j_f[0]^(-1 - lambda_p^-1 * (1 + lambda_p)) = 0
-#         epsilon_b[0] * W_disutil_f[0] * (C_f[0] - h * C_f[-1])^(-sigma_c) - omega * epsilon_b[0] * epsilon_L[0] * L_s_f[0]^sigma_l = 0
-#         -1 + xi_p * (pi[0]^-1 * pi[-1]^gamma_p)^(-lambda_p^-1) + (1 - xi_p) * pi_star[0]^(-lambda_p^-1) = 0
-#         -1 + (1 - xi_w) * (w_star[0] * W[0]^-1)^(-lambda_w^-1) + xi_w * (W[-1] * W[0]^-1)^(-lambda_w^-1) * (pi[0]^-1 * pi[-1]^gamma_w)^(-lambda_w^-1) = 0
-#         -Phi - Y_s[0] + epsilon_a[0] * L[0]^(1 - alpha) * (K[-1] * z[0])^alpha = 0
-#         -Phi - Y_f[0] * P_j_f[0]^(-lambda_p^-1 * (1 + lambda_p)) + epsilon_a[0] * L_f[0]^(1 - alpha) * (K_f[-1] * z_f[0])^alpha = 0
-#         eta_b[exo] - log(epsilon_b[0]) + rho_b * log(epsilon_b[-1]) = 0
-#         -eta_L[exo] - log(epsilon_L[0]) + rho_L * log(epsilon_L[-1]) = 0
-#         eta_I[exo] - log(epsilon_I[0]) + rho_I * log(epsilon_I[-1]) = 0
-#         eta_w[exo] - f_1[0] + f_2[0] = 0
-#         eta_a[exo] - log(epsilon_a[0]) + rho_a * log(epsilon_a[-1]) = 0
-#         eta_p[exo] - g_1[0] + g_2[0] * (1 + lambda_p) = 0
-#         eta_G[exo] - log(epsilon_G[0]) + rho_G * log(epsilon_G[-1]) = 0
-#         -f_1[0] + beta * xi_w * f_1[1] * (w_star[0]^-1 * w_star[1])^(lambda_w^-1) * (pi[1]^-1 * pi[0]^gamma_w)^(-lambda_w^-1) + epsilon_b[0] * w_star[0] * L[0] * (1 + lambda_w)^-1 * (C[0] - h * C[-1])^(-sigma_c) * (w_star[0] * W[0]^-1)^(-lambda_w^-1 * (1 + lambda_w)) = 0
-#         -f_2[0] + beta * xi_w * f_2[1] * (w_star[0]^-1 * w_star[1])^(lambda_w^-1 * (1 + lambda_w) * (1 + sigma_l)) * (pi[1]^-1 * pi[0]^gamma_w)^(-lambda_w^-1 * (1 + lambda_w) * (1 + sigma_l)) + omega * epsilon_b[0] * epsilon_L[0] * (L[0] * (w_star[0] * W[0]^-1)^(-lambda_w^-1 * (1 + lambda_w)))^(1 + sigma_l) = 0
-#         -g_1[0] + beta * xi_p * pi_star[0] * g_1[1] * pi_star[1]^-1 * (pi[1]^-1 * pi[0]^gamma_p)^(-lambda_p^-1) + epsilon_b[0] * pi_star[0] * Y[0] * (C[0] - h * C[-1])^(-sigma_c) = 0
-#         -g_2[0] + beta * xi_p * g_2[1] * (pi[1]^-1 * pi[0]^gamma_p)^(-lambda_p^-1 * (1 + lambda_p)) + epsilon_b[0] * mc[0] * Y[0] * (C[0] - h * C[-1])^(-sigma_c) = 0
-#         -nu_w[0] + (1 - xi_w) * (w_star[0] * W[0]^-1)^(-lambda_w^-1 * (1 + lambda_w)) + xi_w * nu_w[-1] * (W[-1] * pi[0]^-1 * W[0]^-1 * pi[-1]^gamma_w)^(-lambda_w^-1 * (1 + lambda_w)) = 0
-#         -nu_p[0] + (1 - xi_p) * pi_star[0]^(-lambda_p^-1 * (1 + lambda_p)) + xi_p * nu_p[-1] * (pi[0]^-1 * pi[-1]^gamma_p)^(-lambda_p^-1 * (1 + lambda_p)) = 0
-#         -K[0] + K[-1] * (1 - tau) + I[0] * (1 - 0.5 * varphi * (-1 + I[-1]^-1 * epsilon_I[0] * I[0])^2) = 0
-#         -K_f[0] + K_f[-1] * (1 - tau) + I_f[0] * (1 - 0.5 * varphi * (-1 + I_f[-1]^-1 * epsilon_I[0] * I_f[0])^2) = 0
-#         U[0] - beta * U[1] - epsilon_b[0] * ((1 - sigma_c)^-1 * (C[0] - h * C[-1])^(1 - sigma_c) - omega * epsilon_L[0] * (1 + sigma_l)^-1 * L_s[0]^(1 + sigma_l)) = 0
-#         U_f[0] - beta * U_f[1] - epsilon_b[0] * ((1 - sigma_c)^-1 * (C_f[0] - h * C_f[-1])^(1 - sigma_c) - omega * epsilon_L[0] * (1 + sigma_l)^-1 * L_s_f[0]^(1 + sigma_l)) = 0
-#         -epsilon_b[0] * (C[0] - h * C[-1])^(-sigma_c) + q[0] * (1 - 0.5 * varphi * (-1 + I[-1]^-1 * epsilon_I[0] * I[0])^2 - varphi * I[-1]^-1 * epsilon_I[0] * I[0] * (-1 + I[-1]^-1 * epsilon_I[0] * I[0])) + beta * varphi * I[0]^-2 * epsilon_I[1] * q[1] * I[1]^2 * (-1 + I[0]^-1 * epsilon_I[1] * I[1]) = 0
-#         -epsilon_b[0] * (C_f[0] - h * C_f[-1])^(-sigma_c) + q_f[0] * (1 - 0.5 * varphi * (-1 + I_f[-1]^-1 * epsilon_I[0] * I_f[0])^2 - varphi * I_f[-1]^-1 * epsilon_I[0] * I_f[0] * (-1 + I_f[-1]^-1 * epsilon_I[0] * I_f[0])) + beta * varphi * I_f[0]^-2 * epsilon_I[1] * q_f[1] * I_f[1]^2 * (-1 + I_f[0]^-1 * epsilon_I[1] * I_f[1]) = 0
-#         eta_pi[exo] - log(pi_obj[0]) + rho_pi_bar * log(pi_obj[-1]) + log(calibr_pi_obj) * (1 - rho_pi_bar) = 0
-#         -C[0] - I[0] - T[0] + Y[0] - psi^-1 * r_k[ss] * K[-1] * (-1 + exp(psi * (-1 + z[0]))) = 0
-#         -calibr_pi + eta_R[exo] - log(R[ss]^-1 * R[0]) + r_Delta_pi * (-log(pi[ss]^-1 * pi[-1]) + log(pi[ss]^-1 * pi[0])) + r_Delta_y * (-log(Y[ss]^-1 * Y[-1]) + log(Y[ss]^-1 * Y[0]) + log(Y_f[ss]^-1 * Y_f[-1]) - log(Y_f[ss]^-1 * Y_f[0])) + rho * log(R[ss]^-1 * R[-1]) + (1 - rho) * (log(pi_obj[0]) + r_pi * (-log(pi_obj[0]) + log(pi[ss]^-1 * pi[-1])) + r_Y * (log(Y[ss]^-1 * Y[0]) - log(Y_f[ss]^-1 * Y_f[0]))) = 0
-#         -C_f[0] - I_f[0] + Pi_ws_f[0] - T_f[0] + Y_f[0] + L_s_f[0] * W_disutil_f[0] - L_f[0] * W_f[0] - psi^-1 * r_k_f[ss] * K_f[-1] * (-1 + exp(psi * (-1 + z_f[0]))) = 0
-#         epsilon_b[0] * (K[-1] * r_k[0] - r_k[ss] * K[-1] * exp(psi * (-1 + z[0]))) * (C[0] - h * C[-1])^(-sigma_c) = 0
-#         epsilon_b[0] * (K_f[-1] * r_k_f[0] - r_k_f[ss] * K_f[-1] * exp(psi * (-1 + z_f[0]))) * (C_f[0] - h * C_f[-1])^(-sigma_c) = 0
-#     end
-
-
-#     @parameters SW03 begin  
-#         calibr_pi_obj | 1 = pi_obj[ss]
-#         calibr_pi | pi[ss] = pi_obj[ss]
-#         Phi | (Y_s[ss] + Phi) / Y_s[ss] = 1.408
-#         # lambda_p | .6 = C_f[ss] / Y_f[ss]
-#         # lambda_w | L[ss] = .33
-#         G_bar | .18 = G[ss] / Y[ss]
-
-#         lambda_p = .368
-#         # G_bar = .362
-#         lambda_w = 0.5
-#         # Phi = .819
-
-#         alpha = 0.3
-#         beta = 0.99
-#         gamma_w = 0.763
-#         gamma_p = 0.469
-#         h = 0.573
-#         omega = 1
-#         psi = 0.169
-#         r_pi = 1.684
-#         r_Y = 0.099
-#         r_Delta_pi = 0.14
-#         r_Delta_y = 0.159
-#         rho = 0.961
-#         rho_b = 0.855
-#         rho_L = 0.889
-#         rho_I = 0.927
-#         rho_a = 0.823
-#         rho_G = 0.949
-#         rho_pi_bar = 0.924
-#         sigma_c = 1.353
-#         sigma_l = 2.4
-#         tau = 0.025
-#         varphi = 6.771
-#         xi_w = 0.737
-#         xi_p = 0.908
-
-#     end
+# #     @model SW03 begin
+# #         -q[0] + beta * ((1 - tau) * q[1] + epsilon_b[1] * (r_k[1] * z[1] - psi^-1 * r_k[ss] * (-1 + exp(psi * (-1 + z[1])))) * (C[1] - h * C[0])^(-sigma_c)) = 0
+# #         -q_f[0] + beta * ((1 - tau) * q_f[1] + epsilon_b[1] * (r_k_f[1] * z_f[1] - psi^-1 * r_k_f[ss] * (-1 + exp(psi * (-1 + z_f[1])))) * (C_f[1] - h * C_f[0])^(-sigma_c)) = 0
+# #         -r_k[0] + alpha * epsilon_a[0] * mc[0] * L[0]^(1 - alpha) * (K[-1] * z[0])^(-1 + alpha) = 0
+# #         -r_k_f[0] + alpha * epsilon_a[0] * mc_f[0] * L_f[0]^(1 - alpha) * (K_f[-1] * z_f[0])^(-1 + alpha) = 0
+# #         -G[0] + T[0] = 0
+# #         -G[0] + G_bar * epsilon_G[0] = 0
+# #         -G_f[0] + T_f[0] = 0
+# #         -G_f[0] + G_bar * epsilon_G[0] = 0
+# #         -L[0] + nu_w[0]^-1 * L_s[0] = 0
+# #         -L_s_f[0] + L_f[0] * (W_i_f[0] * W_f[0]^-1)^(lambda_w^-1 * (-1 - lambda_w)) = 0
+# #         L_s_f[0] - L_f[0] = 0
+# #         L_s_f[0] + lambda_w^-1 * L_f[0] * W_f[0]^-1 * (-1 - lambda_w) * (-W_disutil_f[0] + W_i_f[0]) * (W_i_f[0] * W_f[0]^-1)^(-1 + lambda_w^-1 * (-1 - lambda_w)) = 0
+# #         Pi_ws_f[0] - L_s_f[0] * (-W_disutil_f[0] + W_i_f[0]) = 0
+# #         Pi_ps_f[0] - Y_f[0] * (-mc_f[0] + P_j_f[0]) * P_j_f[0]^(-lambda_p^-1 * (1 + lambda_p)) = 0
+# #         -Q[0] + epsilon_b[0]^-1 * q[0] * (C[0] - h * C[-1])^(sigma_c) = 0
+# #         -Q_f[0] + epsilon_b[0]^-1 * q_f[0] * (C_f[0] - h * C_f[-1])^(sigma_c) = 0
+# #         -W[0] + epsilon_a[0] * mc[0] * (1 - alpha) * L[0]^(-alpha) * (K[-1] * z[0])^alpha = 0
+# #         -W_f[0] + epsilon_a[0] * mc_f[0] * (1 - alpha) * L_f[0]^(-alpha) * (K_f[-1] * z_f[0])^alpha = 0
+# #         -Y_f[0] + Y_s_f[0] = 0
+# #         Y_s[0] - nu_p[0] * Y[0] = 0
+# #         -Y_s_f[0] + Y_f[0] * P_j_f[0]^(-lambda_p^-1 * (1 + lambda_p)) = 0
+# #         beta * epsilon_b[1] * (C_f[1] - h * C_f[0])^(-sigma_c) - epsilon_b[0] * R_f[0]^-1 * (C_f[0] - h * C_f[-1])^(-sigma_c) = 0
+# #         beta * epsilon_b[1] * pi[1]^-1 * (C[1] - h * C[0])^(-sigma_c) - epsilon_b[0] * R[0]^-1 * (C[0] - h * C[-1])^(-sigma_c) = 0
+# #         Y_f[0] * P_j_f[0]^(-lambda_p^-1 * (1 + lambda_p)) - lambda_p^-1 * Y_f[0] * (1 + lambda_p) * (-mc_f[0] + P_j_f[0]) * P_j_f[0]^(-1 - lambda_p^-1 * (1 + lambda_p)) = 0
+# #         epsilon_b[0] * W_disutil_f[0] * (C_f[0] - h * C_f[-1])^(-sigma_c) - omega * epsilon_b[0] * epsilon_L[0] * L_s_f[0]^sigma_l = 0
+# #         -1 + xi_p * (pi[0]^-1 * pi[-1]^gamma_p)^(-lambda_p^-1) + (1 - xi_p) * pi_star[0]^(-lambda_p^-1) = 0
+# #         -1 + (1 - xi_w) * (w_star[0] * W[0]^-1)^(-lambda_w^-1) + xi_w * (W[-1] * W[0]^-1)^(-lambda_w^-1) * (pi[0]^-1 * pi[-1]^gamma_w)^(-lambda_w^-1) = 0
+# #         -Phi - Y_s[0] + epsilon_a[0] * L[0]^(1 - alpha) * (K[-1] * z[0])^alpha = 0
+# #         -Phi - Y_f[0] * P_j_f[0]^(-lambda_p^-1 * (1 + lambda_p)) + epsilon_a[0] * L_f[0]^(1 - alpha) * (K_f[-1] * z_f[0])^alpha = 0
+# #         eta_b[exo] - log(epsilon_b[0]) + rho_b * log(epsilon_b[-1]) = 0
+# #         -eta_L[exo] - log(epsilon_L[0]) + rho_L * log(epsilon_L[-1]) = 0
+# #         eta_I[exo] - log(epsilon_I[0]) + rho_I * log(epsilon_I[-1]) = 0
+# #         eta_w[exo] - f_1[0] + f_2[0] = 0
+# #         eta_a[exo] - log(epsilon_a[0]) + rho_a * log(epsilon_a[-1]) = 0
+# #         eta_p[exo] - g_1[0] + g_2[0] * (1 + lambda_p) = 0
+# #         eta_G[exo] - log(epsilon_G[0]) + rho_G * log(epsilon_G[-1]) = 0
+# #         -f_1[0] + beta * xi_w * f_1[1] * (w_star[0]^-1 * w_star[1])^(lambda_w^-1) * (pi[1]^-1 * pi[0]^gamma_w)^(-lambda_w^-1) + epsilon_b[0] * w_star[0] * L[0] * (1 + lambda_w)^-1 * (C[0] - h * C[-1])^(-sigma_c) * (w_star[0] * W[0]^-1)^(-lambda_w^-1 * (1 + lambda_w)) = 0
+# #         -f_2[0] + beta * xi_w * f_2[1] * (w_star[0]^-1 * w_star[1])^(lambda_w^-1 * (1 + lambda_w) * (1 + sigma_l)) * (pi[1]^-1 * pi[0]^gamma_w)^(-lambda_w^-1 * (1 + lambda_w) * (1 + sigma_l)) + omega * epsilon_b[0] * epsilon_L[0] * (L[0] * (w_star[0] * W[0]^-1)^(-lambda_w^-1 * (1 + lambda_w)))^(1 + sigma_l) = 0
+# #         -g_1[0] + beta * xi_p * pi_star[0] * g_1[1] * pi_star[1]^-1 * (pi[1]^-1 * pi[0]^gamma_p)^(-lambda_p^-1) + epsilon_b[0] * pi_star[0] * Y[0] * (C[0] - h * C[-1])^(-sigma_c) = 0
+# #         -g_2[0] + beta * xi_p * g_2[1] * (pi[1]^-1 * pi[0]^gamma_p)^(-lambda_p^-1 * (1 + lambda_p)) + epsilon_b[0] * mc[0] * Y[0] * (C[0] - h * C[-1])^(-sigma_c) = 0
+# #         -nu_w[0] + (1 - xi_w) * (w_star[0] * W[0]^-1)^(-lambda_w^-1 * (1 + lambda_w)) + xi_w * nu_w[-1] * (W[-1] * pi[0]^-1 * W[0]^-1 * pi[-1]^gamma_w)^(-lambda_w^-1 * (1 + lambda_w)) = 0
+# #         -nu_p[0] + (1 - xi_p) * pi_star[0]^(-lambda_p^-1 * (1 + lambda_p)) + xi_p * nu_p[-1] * (pi[0]^-1 * pi[-1]^gamma_p)^(-lambda_p^-1 * (1 + lambda_p)) = 0
+# #         -K[0] + K[-1] * (1 - tau) + I[0] * (1 - 0.5 * varphi * (-1 + I[-1]^-1 * epsilon_I[0] * I[0])^2) = 0
+# #         -K_f[0] + K_f[-1] * (1 - tau) + I_f[0] * (1 - 0.5 * varphi * (-1 + I_f[-1]^-1 * epsilon_I[0] * I_f[0])^2) = 0
+# #         U[0] - beta * U[1] - epsilon_b[0] * ((1 - sigma_c)^-1 * (C[0] - h * C[-1])^(1 - sigma_c) - omega * epsilon_L[0] * (1 + sigma_l)^-1 * L_s[0]^(1 + sigma_l)) = 0
+# #         U_f[0] - beta * U_f[1] - epsilon_b[0] * ((1 - sigma_c)^-1 * (C_f[0] - h * C_f[-1])^(1 - sigma_c) - omega * epsilon_L[0] * (1 + sigma_l)^-1 * L_s_f[0]^(1 + sigma_l)) = 0
+# #         -epsilon_b[0] * (C[0] - h * C[-1])^(-sigma_c) + q[0] * (1 - 0.5 * varphi * (-1 + I[-1]^-1 * epsilon_I[0] * I[0])^2 - varphi * I[-1]^-1 * epsilon_I[0] * I[0] * (-1 + I[-1]^-1 * epsilon_I[0] * I[0])) + beta * varphi * I[0]^-2 * epsilon_I[1] * q[1] * I[1]^2 * (-1 + I[0]^-1 * epsilon_I[1] * I[1]) = 0
+# #         -epsilon_b[0] * (C_f[0] - h * C_f[-1])^(-sigma_c) + q_f[0] * (1 - 0.5 * varphi * (-1 + I_f[-1]^-1 * epsilon_I[0] * I_f[0])^2 - varphi * I_f[-1]^-1 * epsilon_I[0] * I_f[0] * (-1 + I_f[-1]^-1 * epsilon_I[0] * I_f[0])) + beta * varphi * I_f[0]^-2 * epsilon_I[1] * q_f[1] * I_f[1]^2 * (-1 + I_f[0]^-1 * epsilon_I[1] * I_f[1]) = 0
+# #         eta_pi[exo] - log(pi_obj[0]) + rho_pi_bar * log(pi_obj[-1]) + log(calibr_pi_obj) * (1 - rho_pi_bar) = 0
+# #         -C[0] - I[0] - T[0] + Y[0] - psi^-1 * r_k[ss] * K[-1] * (-1 + exp(psi * (-1 + z[0]))) = 0
+# #         -calibr_pi + eta_R[exo] - log(R[ss]^-1 * R[0]) + r_Delta_pi * (-log(pi[ss]^-1 * pi[-1]) + log(pi[ss]^-1 * pi[0])) + r_Delta_y * (-log(Y[ss]^-1 * Y[-1]) + log(Y[ss]^-1 * Y[0]) + log(Y_f[ss]^-1 * Y_f[-1]) - log(Y_f[ss]^-1 * Y_f[0])) + rho * log(R[ss]^-1 * R[-1]) + (1 - rho) * (log(pi_obj[0]) + r_pi * (-log(pi_obj[0]) + log(pi[ss]^-1 * pi[-1])) + r_Y * (log(Y[ss]^-1 * Y[0]) - log(Y_f[ss]^-1 * Y_f[0]))) = 0
+# #         -C_f[0] - I_f[0] + Pi_ws_f[0] - T_f[0] + Y_f[0] + L_s_f[0] * W_disutil_f[0] - L_f[0] * W_f[0] - psi^-1 * r_k_f[ss] * K_f[-1] * (-1 + exp(psi * (-1 + z_f[0]))) = 0
+# #         epsilon_b[0] * (K[-1] * r_k[0] - r_k[ss] * K[-1] * exp(psi * (-1 + z[0]))) * (C[0] - h * C[-1])^(-sigma_c) = 0
+# #         epsilon_b[0] * (K_f[-1] * r_k_f[0] - r_k_f[ss] * K_f[-1] * exp(psi * (-1 + z_f[0]))) * (C_f[0] - h * C_f[-1])^(-sigma_c) = 0
+# #     end
 
 
-#     solve!(SW03, symbolic_SS = false)
+# #     @parameters SW03 begin  
+# #         calibr_pi_obj | 1 = pi_obj[ss]
+# #         calibr_pi | pi[ss] = pi_obj[ss]
+# #         Phi | (Y_s[ss] + Phi) / Y_s[ss] = 1.408
+# #         # lambda_p | .6 = C_f[ss] / Y_f[ss]
+# #         # lambda_w | L[ss] = .33
+# #         G_bar | .18 = G[ss] / Y[ss]
 
-#     # get_steady_state(SW03)
+# #         lambda_p = .368
+# #         # G_bar = .362
+# #         lambda_w = 0.5
+# #         # Phi = .819
 
-#     @test get_steady_state(SW03)[1] ≈ [     1.20465991441435
-#     1.204659917151701
-#     0.3613478048030788
-#     0.3613478048030788
-#     0.4414800855444218
-#     0.4414800896382151
-#    17.659203422264238
-#    17.65920357698873
-#     1.2889457095271066
-#     1.2889457096070582
-#     1.2889457095307755
-#     1.2889457098239414
-#     1.0000000000366498
-#     0.5400259611608715
-#     0.48211013259048446
-#     1.00000000000172
-#     1.000000000127065
-#     1.0101010101010102
-#     1.0101010101010102
-#     0.3613478047907606
-#     0.3613478048030788
-#     -427.92495898028676
-#     -427.9249587468684
-#        1.1221034247496608
-#        0.7480689524616317
-#        1.122103428477167
-#        1.1221034282377538
-#        2.0074878047372287
-#        2.00748781245403
-#        2.007487804732286
-#        2.0074878121606647
-#        1.0
-#        1.0
-#        1.0
-#        1.0
-#        1.0
-#        8.766762166589194
-#        8.766762166588967
-#       48.8212791635492
-#       35.68806956399776
-#       0.730994152045567
-#       0.7309941520886629
-#       1.0
-#       1.0000000000028464
-#       1.0
-#       1.0
-#       1.0
-#       2.4582240979093846
-#       2.4582240906598867
-#       0.03510101014899653
-#       0.035101010136073356
-#       1.1221034247485961
-#       1.0000000000000178
-#       0.9999999999583465]
+# #         alpha = 0.3
+# #         beta = 0.99
+# #         gamma_w = 0.763
+# #         gamma_p = 0.469
+# #         h = 0.573
+# #         omega = 1
+# #         psi = 0.169
+# #         r_pi = 1.684
+# #         r_Y = 0.099
+# #         r_Delta_pi = 0.14
+# #         r_Delta_y = 0.159
+# #         rho = 0.961
+# #         rho_b = 0.855
+# #         rho_L = 0.889
+# #         rho_I = 0.927
+# #         rho_a = 0.823
+# #         rho_G = 0.949
+# #         rho_pi_bar = 0.924
+# #         sigma_c = 1.353
+# #         sigma_l = 2.4
+# #         tau = 0.025
+# #         varphi = 6.771
+# #         xi_w = 0.737
+# #         xi_p = 0.908
+
+# #     end
+
+
+# #     solve!(SW03, symbolic_SS = false)
+
+# #     # get_steady_state(SW03)
+
+# #     @test get_steady_state(SW03)[1] ≈ [     1.20465991441435
+# #     1.204659917151701
+# #     0.3613478048030788
+# #     0.3613478048030788
+# #     0.4414800855444218
+# #     0.4414800896382151
+# #    17.659203422264238
+# #    17.65920357698873
+# #     1.2889457095271066
+# #     1.2889457096070582
+# #     1.2889457095307755
+# #     1.2889457098239414
+# #     1.0000000000366498
+# #     0.5400259611608715
+# #     0.48211013259048446
+# #     1.00000000000172
+# #     1.000000000127065
+# #     1.0101010101010102
+# #     1.0101010101010102
+# #     0.3613478047907606
+# #     0.3613478048030788
+# #     -427.92495898028676
+# #     -427.9249587468684
+# #        1.1221034247496608
+# #        0.7480689524616317
+# #        1.122103428477167
+# #        1.1221034282377538
+# #        2.0074878047372287
+# #        2.00748781245403
+# #        2.007487804732286
+# #        2.0074878121606647
+# #        1.0
+# #        1.0
+# #        1.0
+# #        1.0
+# #        1.0
+# #        8.766762166589194
+# #        8.766762166588967
+# #       48.8212791635492
+# #       35.68806956399776
+# #       0.730994152045567
+# #       0.7309941520886629
+# #       1.0
+# #       1.0000000000028464
+# #       1.0
+# #       1.0
+# #       1.0
+# #       2.4582240979093846
+# #       2.4582240906598867
+# #       0.03510101014899653
+# #       0.035101010136073356
+# #       1.1221034247485961
+# #       1.0000000000000178
+# #       0.9999999999583465]
 
 
 end
-
-
 
 
 @testset "First order perturbation" begin
@@ -1722,7 +1776,6 @@ end
 
 @testset "Plotting" begin
 
-    ENV["GKSwstype"] = "100"
     # Symbolic test with calibration targets
     @model RBC_CME begin
         y[0]=A[0]*k[-1]^alpha

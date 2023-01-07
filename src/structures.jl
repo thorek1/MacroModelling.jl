@@ -33,49 +33,50 @@ struct timings
     dynamic_order::Vector{Int}
 end
 
-mutable struct symbolics
+struct symbolics
     ss_equations::Vector{Sym}
-    dyn_equations::Vector{Sym}
-    dyn_equations_future::Vector{Sym}
+    # dyn_equations::Vector{Sym}
+    # dyn_equations_future::Vector{Sym}
     
-    dyn_shift_var_present_list::Vector{Set{Sym}}
-    dyn_shift_var_past_list::Vector{Set{Sym}}
-    dyn_shift_var_future_list::Vector{Set{Sym}}
+    # dyn_shift_var_present_list::Vector{Set{Sym}}
+    # dyn_shift_var_past_list::Vector{Set{Sym}}
+    # dyn_shift_var_future_list::Vector{Set{Sym}}
 
-    dyn_shift2_var_past_list::Vector{Set{Sym}}
+    # dyn_shift2_var_past_list::Vector{Set{Sym}}
 
-    dyn_var_present_list::Vector{Set{Sym}}
-    dyn_var_past_list::Vector{Set{Sym}}
-    dyn_var_future_list::Vector{Set{Sym}}
-    dyn_ss_list::Vector{Set{Sym}}
-    dyn_exo_list::Vector{Set{Sym}}
+    # dyn_var_present_list::Vector{Set{Sym}}
+    # dyn_var_past_list::Vector{Set{Sym}}
+    # dyn_var_future_list::Vector{Set{Sym}}
+    # dyn_ss_list::Vector{Set{Sym}}
+    # dyn_exo_list::Vector{Set{Sym}}
 
     var_present_list::Vector{Set{Sym}}
     var_past_list::Vector{Set{Sym}}
     var_future_list::Vector{Set{Sym}}
     ss_list::Vector{Set{Sym}}
     var_list::Vector{Set{Sym}}
-    dynamic_variables_list::Vector{Set{Sym}}
-    dynamic_variables_future_list::Vector{Set{Sym}}
+    # dynamic_variables_list::Vector{Set{Sym}}
+    # dynamic_variables_future_list::Vector{Set{Sym}}
 
     par_list::Vector{Set{Sym}}
 
-    calibration_equations
-    calibration_equations_parameters
-    parameters::Vector{Sym}
+    calibration_equations::Vector{Sym}
+    calibration_equations_parameters::Vector{Sym}
+    # parameters::Vector{Sym}
 
-    var_present::Set{Sym}
-    var_past::Set{Sym}
-    var_future::Set{Sym}
+    # var_present::Set{Sym}
+    # var_past::Set{Sym}
+    # var_future::Set{Sym}
     var::Set{Sym}
+    nonnegativity_auxilliary_vars::Set{Sym}
 
     ss_calib_list::Vector{Set{Sym}}
     par_calib_list::Vector{Set{Sym}}
 
     var_redundant_list::Vector{Set{Sym}}
-    var_redundant_calib_list::Vector{Set{Sym}}
-    var_solved_list::Vector{Set{Sym}}
-    var_solved_calib_list::Vector{Set{Sym}}
+    # var_redundant_calib_list::Vector{Set{Sym}}
+    # var_solved_list::Vector{Set{Sym}}
+    # var_solved_calib_list::Vector{Set{Sym}}
 end
 
 
@@ -84,7 +85,7 @@ struct perturbation_solution
     state_update::Function
 end
 
-mutable struct higher_order_perturbation_solution
+struct higher_order_perturbation_solution
     solution_matrix::AbstractMatrix{Float64}
     stochastic_steady_state::Vector{Float64}
     state_update::Function
@@ -101,9 +102,9 @@ end
 mutable struct solution
     perturbation::perturbation
     non_stochastic_steady_state::ComponentVector{Float64}
-    algorithm
-    outdated::Bool
-    NSSS_outdated::Bool
+    algorithms::Set{Symbol}
+    outdated_algorithms::Set{Symbol}
+    outdated_NSSS::Bool
     functions_written::Bool
     valid_steady_state_solution
 end
@@ -115,6 +116,7 @@ mutable struct ℳ
     SS_optimizer
     exo::Vector{Symbol}
     par::Vector{Symbol}
+    parameters_as_function_of_parameters::Vector{Symbol}
     parameters::Vector{Symbol}
     parameter_values::Vector{Number}
     ss
@@ -141,9 +143,22 @@ mutable struct ℳ
     var_list::Vector{Set{Symbol}}
     dynamic_variables_list::Vector{Set{Symbol}}
     dynamic_variables_future_list::Vector{Set{Symbol}}
+
     ss_calib_list::Vector{Set{Symbol}}
     par_calib_list::Vector{Set{Symbol}}
+
+    ss_no_var_calib_list::Vector{Set{Symbol}}
+    par_no_var_calib_list::Vector{Set{Symbol}}
+
     ss_list::Vector{Set{Symbol}}
+
+    ss_aux_equations::Vector{Expr}
+    var_list_aux_SS::Vector{Set{Symbol}}
+    ss_list_aux_SS::Vector{Set{Symbol}}
+    par_list_aux_SS::Vector{Set{Symbol}}
+    var_future_list_aux_SS::Vector{Set{Symbol}}
+    var_present_list_aux_SS::Vector{Set{Symbol}}
+    var_past_list_aux_SS::Vector{Set{Symbol}}
 
     # var_solved_list
     # var_solved_calib_list
@@ -175,11 +190,13 @@ mutable struct ℳ
     # solved_sub_values
     ss_solve_blocks
     ss_solve_blocks_optim
-    SS_init_guess::Vector{Real}
+    # SS_init_guess::Vector{Real}
+    NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func
     nonlinear_solution_helper
     SS_dependencies
 
+    nonnegativity_auxilliary_vars::Vector{Symbol}
     ss_equations::Vector{Expr}
     t_future_equations 
     t_past_equations 
@@ -187,21 +204,23 @@ mutable struct ℳ
     dyn_equations::Vector{Expr}
     dyn_equations_future::Vector{Expr}
     equations::Vector{Expr}
+
+    calibration_equations_no_var::Vector{Expr}
+
     calibration_equations::Vector{Expr}
     calibration_equations_parameters::Vector{Symbol}
 
-    bounds::Vector{Expr}
+    bounds⁺::Vector{Symbol}
 
     bounded_vars::Vector{Symbol}
     lower_bounds::Vector{Float64}
     upper_bounds::Vector{Float64}
-    creator::Bool
 
     model_function::Function
 
     timings::timings
     solution::solution
-    symbolics::symbolics
+    # symbolics::symbolics
     
 end
 

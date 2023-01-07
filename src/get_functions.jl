@@ -14,8 +14,9 @@ Function to use when differentiating IRFs with repect to parameters.
 - `shocks` [Default: `:all`]: shocks for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y`, `:simulate`, :none, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. `:simulate` triggers random draws of all shocks. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
 - `negative_shock` [Default: `false`, Type: `Bool`]: calculate a negative shock. Relevant for generalised IRFs.
 - `generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.
-- `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state from which to start IRFs. Relevant for normal IRFs.
+- `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs.
 - `levels` [Default: `false`, Type: `Bool`]: return levels or absolute deviations from steady state
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 # Examples
 ```jldoctest
@@ -53,13 +54,16 @@ function get_irf(𝓂::ℳ,
                     shocks::Symbol_input = :all, 
                     negative_shock::Bool = false, 
                     initial_state::Vector{Float64} = [0.0],
-                    levels::Bool = false)
+                    levels::Bool = false,
+                    verbose = false)
 
-    solve!(𝓂)
+    solve!(𝓂, verbose = verbose)
 
-    jacc = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters,𝓂)
-
-    sol_mat = calculate_first_order_solution(jacc; T = 𝓂.timings)
+    NSSS, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, false, verbose)
+    
+	∇₁ = calculate_jacobian(parameters, NSSS, 𝓂)
+								
+    sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
     
@@ -68,8 +72,8 @@ function get_irf(𝓂::ℳ,
     shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
-
-    SS = get_non_stochastic_steady_state_internal(𝓂) |> collect
+    
+    SS = collect(NSSS[1:end - length(𝓂.calibration_equations)])
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - SS
 
@@ -112,13 +116,14 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedAr
 # Keyword Arguments
 - `periods` [Default: `40`, Type: `Int`]: number of periods for which to calculate the IRFs
 - `algorithm` [Default: `:first_order`, Type: `Symbol`]: solution algorithm for which to show the IRFs
-- `parameters` : If nothing is provided, the solution is calculated for the parameters defined previously. If a vector with parameter values, or a named tuple is provided and the parameters differ from the previously defined the solution will be recalculated. 
+- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
 - `variables` [Default: `:all`]: variables for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y` or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. Any variables not part of the model will trigger a warning.
 - `shocks` [Default: `:all`]: shocks for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y`, `:simulate`, :none, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. `:simulate` triggers random draws of all shocks. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
 - `negative_shock` [Default: `false`, Type: `Bool`]: calculate a negative shock. Relevant for generalised IRFs.
 - `generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.
-- `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state from which to start IRFs. Relevant for normal IRFs.
+- `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs.
 - `levels` [Default: `false`, Type: `Bool`]: return levels or absolute deviations from steady state
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 # Examples
 ```jldoctest
@@ -163,25 +168,36 @@ function get_irf(𝓂::ℳ;
     negative_shock::Bool = false, 
     generalised_irf::Bool = false,
     initial_state::Vector{Float64} = [0.0],
-    levels::Bool = false)
+    levels::Bool = false,
+    verbose = false)
 
-    solve!(𝓂; dynamics = true, algorithm = algorithm, parameters = parameters)
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
     
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
 
-    init_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - collect(get_non_stochastic_steady_state_internal(𝓂))
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+
+    full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
+    reference_steady_state = [NSSS[s] for s in full_SS]#collect(NSSS[1:end - length(𝓂.calibration_equations)])
+
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     if levels
         if algorithm == :second_order
-            reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
+            reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))]
         elseif algorithm == :third_order
-            reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-        elseif algorithm ∈ [:linear_time_iteration, :dynare, :riccati, :first_order]
-            reference_steady_state = 𝓂.solution.non_stochastic_steady_state[1:length(𝓂.var)]
+            reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))]
         end
-
         var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
     end
+    
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - reference_steady_state
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
@@ -197,20 +213,20 @@ function get_irf(𝓂::ℳ;
                         variables = variables, 
                         negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
         if levels
-            return girfs .+ reference_steady_state[var_idx]
+            return girfs .+ reference_steady_state
         else
             return girfs
         end
     else
         irfs =  irf(state_update, 
-                    init_state, 
+                    initial_state, 
                     𝓂.timings; 
                     periods = periods, 
                     shocks = shocks, 
                     variables = variables, 
                     negative_shock = negative_shock)
         if levels
-            return irfs .+ reference_steady_state[var_idx]
+            return irfs .+ reference_steady_state
         else
             return irfs
         end
@@ -250,9 +266,10 @@ Return the (non stochastic) steady state and derivatives with respect to model p
 # Arguments
 - `𝓂`: the object created by @model and @parameters for which to get the solution.
 # Keyword Arguments
-- `parameters` : If nothing is provided, the solution is calculated for the parameters defined previously. If a vector with parameter values, or a named tuple is provided and the parameters differ from the previously defined the solution will be recalculated. 
+- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
 - `derivatives` [Default: `true`, Type: `Bool`]: calculate derivatives of the SS with respect to the parameters
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation. No derivatives are calculated.
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 The columns show the SS and parameters for which derivatives are taken. The rows show the variables.
 # Examples
@@ -291,56 +308,71 @@ function get_steady_state(𝓂::ℳ;
     parameters = nothing, 
     derivatives::Bool = true, 
     stochastic::Bool = false,
-    parameter_derivatives::Symbol_input = :all)
+    parameter_derivatives::Symbol_input = :all,
+    verbose = false)
 
+    solve!(𝓂, verbose = verbose)
+
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     if parameter_derivatives == :all
-        param_idx = 1:length(𝓂.par)
-        length_par = length(𝓂.var)
+        length_par = length(𝓂.parameters)
+        param_idx = 1:length_par
     elseif isa(parameter_derivatives,Symbol)
+        @assert parameter_derivatives ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
+
         param_idx = indexin([parameter_derivatives], 𝓂.parameters)
         length_par = 1
     elseif length(parameter_derivatives) > 1
+        for p in vec(collect(parameter_derivatives))
+            @assert p ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
+        end
         param_idx = indexin(parameter_derivatives |> collect |> vec, 𝓂.parameters) |> sort
         length_par = length(parameter_derivatives)
     end
 
-    if length_par * length(𝓂.var) > 200
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+
+    SS = collect(NSSS)
+
+    if stochastic
+        solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order)
+        SS[1:length(union(𝓂.exo_present,var))] = 𝓂.solution.perturbation.second_order.stochastic_steady_state
+    end
+
+    NSSS_labels = labels(NSSS) .|> Symbol
+    var_idx = indexin(vcat(var,𝓂.calibration_equations_parameters),NSSS_labels)
+
+    if length_par * length(var_idx) > 200
         derivatives = false
     end
 
-    
-    SS = get_non_stochastic_steady_state_internal(𝓂; parameters = parameters) |> collect
-
-    if stochastic
-        solve!(𝓂; algorithm = :second_order, dynamics = true)
-        SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state
-    end
-    
     if derivatives && !stochastic
-        # dSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂.SS_init_guess, 𝓂),𝓂.parameter_values)
-        dSS = ℱ.jacobian(x->SS_parameter_derivatives(x, param_idx, 𝓂),Float64.(𝓂.parameter_values[param_idx]))
+        # dSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
+        dSS = ℱ.jacobian(x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx], Float64.(𝓂.parameter_values[param_idx]))
         𝓂.parameter_values = ℱ.value.(𝓂.parameter_values)
 
         # if length(𝓂.calibration_equations_parameters) == 0        
-        #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.exo_present,𝓂.var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters))
+        #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters))
         # else
-        # return ComponentMatrix(hcat(collect(NSSS), dNSSS)',Axis(vcat(:SS, 𝓂.parameters)),Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))
-        # return NamedArray(hcat(collect(NSSS), dNSSS), ([sort(union(𝓂.exo_present,𝓂.var))..., 𝓂.calibration_equations_parameters...], vcat(:Steady_state, 𝓂.parameters)), ("Var. and par.", "∂x/∂y"))
-        return KeyedArray(hcat(SS,dSS);  Variables_and_calibrated_parameters = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+        # return ComponentMatrix(hcat(collect(NSSS), dNSSS)',Axis(vcat(:SS, 𝓂.parameters)),Axis([sort(union(𝓂.exo_present,var))...,𝓂.calibration_equations_parameters...]))
+        # return NamedArray(hcat(collect(NSSS), dNSSS), ([sort(union(𝓂.exo_present,var))..., 𝓂.calibration_equations_parameters...], vcat(:Steady_state, 𝓂.parameters)), ("Var. and par.", "∂x/∂y"))
+        return KeyedArray(hcat(SS[var_idx],dSS);  Variables_and_calibrated_parameters = [sort(var)...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
         # end
     else
-        # return ComponentVector(collect(NSSS),Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))
-        # return NamedArray(collect(NSSS), [sort(union(𝓂.exo_present,𝓂.var))..., 𝓂.calibration_equations_parameters...], ("Variables and calibrated parameters"))
-        return KeyedArray(SS;  Variables_and_calibrated_parameters = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])
+        # return ComponentVector(collect(NSSS),Axis([sort(union(𝓂.exo_present,var))...,𝓂.calibration_equations_parameters...]))
+        # return NamedArray(collect(NSSS), [sort(union(𝓂.exo_present,var))..., 𝓂.calibration_equations_parameters...], ("Variables and calibrated parameters"))
+        return KeyedArray(SS[var_idx];  Variables_and_calibrated_parameters = [sort(var)...,𝓂.calibration_equations_parameters...])
     end
-    # ComponentVector(non_stochastic_steady_state = ComponentVector(NSSS.non_stochastic_steady_state, Axis(sort(union(𝓂.exo_present,𝓂.var)))),
+    # ComponentVector(non_stochastic_steady_state = ComponentVector(NSSS.non_stochastic_steady_state, Axis(sort(union(𝓂.exo_present,var)))),
     #                 calibrated_parameters = ComponentVector(NSSS.non_stochastic_steady_state, Axis(𝓂.calibration_equations_parameters)),
     #                 stochastic = stochastic)
 
-    # return 𝓂.solution.NSSS_outdated ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess, 𝓂) : 𝓂.solution.non_stochastic_steady_state
+    # return 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂) : 𝓂.solution.non_stochastic_steady_state
     # return 𝓂.SS_solve_func(𝓂)
-    # return (𝓂.var .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[1:length(𝓂.var)]),  (𝓂.par .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[length(𝓂.var)+1:end])[getindex(1:length(𝓂.par),map(x->x ∈ collect(𝓂.calibration_equations_parameters),𝓂.par))]
+    # return (var .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[1:length(var)]),  (𝓂.par .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[length(var)+1:end])[getindex(1:length(𝓂.par),map(x->x ∈ collect(𝓂.calibration_equations_parameters),𝓂.par))]
 end
 
 
@@ -372,7 +404,8 @@ Return the linearised solution and the non stochastic steady state (SS) of the m
 # Arguments
 - `𝓂`: the object created by [`@model`](@ref) and [`@parameters`](@ref) for which to get the solution.
 # Keyword Arguments
-- `parameters` : If nothing is provided, the solution is calculated for the parameters defined previously. If a vector with parameter values, or a named tuple is provided and the parameters differ from the previously defined the solution will be recalculated. 
+- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 The returned `KeyedArray` shows the SS, policy and transition functions of the model. The columns show the varibales including auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows are the SS, followed by the states, and exogenous shocks. 
 Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
@@ -409,12 +442,18 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
 ```
 """
 function get_solution(𝓂::ℳ; 
-    parameters = nothing)
-    solve!(𝓂; dynamics = true, parameters = parameters)
+    parameters = nothing,
+    verbose = false)
 
-    KeyedArray([𝓂.solution.non_stochastic_steady_state[[indexin(sort([𝓂.var; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux,𝓂.exo_present))]), sort(union(𝓂.var,𝓂.exo_present)))...]] 𝓂.solution.perturbation.first_order.solution_matrix]';
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    solve!(𝓂, verbose = verbose, dynamics = true)
+
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+
+    KeyedArray([𝓂.solution.non_stochastic_steady_state[[indexin(sort([var; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux,𝓂.exo_present))]), sort(union(var,𝓂.exo_present)))...]] 𝓂.solution.perturbation.first_order.solution_matrix]';
     Steady_state__States__Shocks = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
-    Variable = sort([𝓂.var; 𝓂.aux; 𝓂.exo_present]))
+    Variable = sort([var; 𝓂.aux; 𝓂.exo_present]))
 end
 
 
@@ -435,18 +474,18 @@ get_perturbation_solution = get_solution
 """
 $(SIGNATURES)
 Return the first and second moments of endogenous variables using the linearised solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
-Function to use when differentiating model moments with repect to parameters.
 
 # Arguments
 - `𝓂`: the object created by @model and @parameters for which to get the solution.
 # Keyword Arguments
-- `parameters` : If nothing is provided, the solution is calculated for the parameters defined previously. If a vector with parameter values, or a named tuple is provided and the parameters differ from the previously defined the solution will be recalculated. 
+- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
 - `non_stochastic_steady_state` [Default: `true`, Type: `Bool`]: switch to return SS of endogenous variables
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
 - `derivatives` [Default: true, Type: `Bool`]: switch to calculate derivatives of SS, standard deviation, and variance with respect to the parameters
-
+- `parameter_derivatives` [Default: :all]: parameters for which to calculate derivatives of the SS. Inputs can be either a `Symbol` (e.g. `:alpha`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`.
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 # Examples
 ```jldoctest part1
@@ -504,76 +543,92 @@ function get_moments(𝓂::ℳ;
     variance::Bool = false, 
     covariance::Bool = false, 
     derivatives::Bool = true,
-    parameter_derivatives::Symbol_input = :all)#limit output by selecting pars and vars like for plots and irfs!?
+    parameter_derivatives::Symbol_input = :all,
+    verbose = false)#limit output by selecting pars and vars like for plots and irfs!?
+    
+    solve!(𝓂, verbose = verbose)
+
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     if parameter_derivatives == :all
-        param_idx = 1:length(𝓂.par)
-        length_par = length(𝓂.var)
+        length_par = length(𝓂.parameters)
+        param_idx = 1:length_par
     elseif isa(parameter_derivatives,Symbol)
+        @assert parameter_derivatives ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
+
         param_idx = indexin([parameter_derivatives], 𝓂.parameters)
         length_par = 1
     elseif length(parameter_derivatives) > 1
+        for p in vec(collect(parameter_derivatives))
+            @assert p ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
+        end
         param_idx = indexin(parameter_derivatives |> collect |> vec, 𝓂.parameters) |> sort
         length_par = length(parameter_derivatives)
     end
 
-    if length_par * length(𝓂.var) > 200
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+
+    NSSS_labels = labels(NSSS) .|> Symbol
+    var_idx = indexin(var,NSSS_labels)
+    var_idx_SS = indexin(vcat(var,𝓂.calibration_equations_parameters),NSSS_labels)
+
+    if length_par * length(var_idx_SS) > 200
         derivatives = false
     end
 
-    NSSS = get_non_stochastic_steady_state_internal(𝓂; parameters = parameters)
-
     if derivatives
-        dNSSS = ℱ.jacobian(x->SS_parameter_derivatives(x, param_idx, 𝓂),Float64.(𝓂.parameter_values[param_idx]))
+        dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx_SS], Float64.(𝓂.parameter_values[param_idx]))
         𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
-        # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂.SS_init_guess, 𝓂),𝓂.parameter_values)
-        SS =  KeyedArray(hcat(NSSS[1:length(𝓂.var)],dNSSS[1:length(𝓂.var),:]);  Variables = sort(union(𝓂.exo_present,𝓂.var)), Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
-
+        # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
+        SS =  KeyedArray(hcat(collect(NSSS)[var_idx_SS],dNSSS);  Variables = [sort(var)...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
 
         if variance
-            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂)
+            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
 
             vari = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
 
             # dvariance = ℱ.jacobian(x-> convert(Vector{Number},max.(ℒ.diag(calculate_covariance(x, 𝓂)),eps(Float64))), Float64.(𝓂.parameter_values))
-            dvariance = ℱ.jacobian(x->covariance_parameter_derivatives(x, param_idx, 𝓂),Float64.(𝓂.parameter_values[param_idx]))
+            dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[var_idx], Float64.(𝓂.parameter_values[param_idx]))
             𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
-
-            varrs =  KeyedArray(hcat(vari,dvariance);  Variables = sort(union(𝓂.exo_present,𝓂.var)), Variance_and_∂variance∂parameter = vcat(:Variance, 𝓂.parameters[param_idx]))
+            
+            varrs =  KeyedArray(hcat(vari[var_idx],dvariance);  Variables = sort(var), Variance_and_∂variance∂parameter = vcat(:Variance, 𝓂.parameters[param_idx]))
 
             if standard_deviation
-                standard_dev = sqrt.(convert(Vector{Number},ℒ.diag(covar_dcmp)))
-                dst_dev = ℱ.jacobian(x-> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂)), Float64.(𝓂.parameter_values[param_idx]))
+                standard_dev = sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))))
+                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose))[var_idx], Float64.(𝓂.parameter_values[param_idx]))
                 𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
 
-                st_dev =  KeyedArray(hcat(standard_dev,dst_dev);  Variables = sort(union(𝓂.exo_present,𝓂.var)), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
+                st_dev =  KeyedArray(hcat(standard_dev[var_idx],dst_dev);  Variables = sort(var), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
             end
         else
             if standard_deviation
-                covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂)
+                covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
 
                 standard_dev = sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))))
 
-                dst_dev = ℱ.jacobian(x-> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂)), Float64.(𝓂.parameter_values[param_idx]))
+                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose))[var_idx], Float64.(𝓂.parameter_values[param_idx]))
                 𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
 
-                st_dev =  KeyedArray(hcat(standard_dev,dst_dev);  Variables = sort(union(𝓂.exo_present,𝓂.var)), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
+                st_dev =  KeyedArray(hcat(standard_dev[var_idx],dst_dev);  Variables = sort(var), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
             end
         end
 
     else
-        SS =  KeyedArray(NSSS[1:length(𝓂.var)];  Variables = sort(union(𝓂.exo_present,𝓂.var)))
+        SS =  KeyedArray(collect(NSSS)[var_idx_SS];  Variables = [sort(var)...,𝓂.calibration_equations_parameters...])
 
         if variance
-            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂)
-            varrs = KeyedArray(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)));  Variables = sort(union(𝓂.exo_present,𝓂.var)))
+            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            varr = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
+            varrs = KeyedArray(varr[var_idx];  Variables = sort(var))
             if standard_deviation
-                st_dev = KeyedArray(sqrt.(varrs);  Variables = sort(union(𝓂.exo_present,𝓂.var)))
+                st_dev = KeyedArray(sqrt.(varr[var_idx]);  Variables = sort(var))
             end
         else
             if standard_deviation
-                covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂)
-                st_dev = KeyedArray(sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))));  Variables = sort(union(𝓂.exo_present,𝓂.var)))
+                covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                st_dev = KeyedArray(sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp)[var_idx],eps(Float64))));  Variables = sort(var))
             end
         end
     end
@@ -612,6 +667,7 @@ Function to use when differentiating model moments with repect to parameters.
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 # Examples
 ```jldoctest
@@ -636,21 +692,23 @@ get_moments(RBC, RBC.parameter_values)
 # output
 2-element Vector{Any}:
  [5.936252888048724, 47.39025414828808, 6.884057971014486, 0.0]
- [0.02666420378525522, 0.26467737291222343, 0.07393254045396495, 0.010206207261596576]
+ [0.026664203785255254, 0.26467737291222343, 0.07393254045396497, 0.010206207261596576]
 ```
 """
 function get_moments(𝓂::ℳ, parameters::Vector; 
     non_stochastic_steady_state::Bool = true, 
     standard_deviation::Bool = true, 
     variance::Bool = false, 
-    covariance::Bool = false)
+    covariance::Bool = false,
+    verbose = false)
 
-    solve!(𝓂)
+    solve!(𝓂, verbose = verbose)
 
-    SS_and_pars = 𝓂.SS_solve_func(parameters, 𝓂.SS_init_guess, 𝓂)
-    SS = SS_and_pars[1:length(𝓂.var)]
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, false, verbose)
 
-    covar_dcmp = calculate_covariance(parameters,𝓂)
+    covar_dcmp = calculate_covariance(parameters,𝓂, verbose = verbose)
+
+    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
 
     if variance
         varrs = convert(Vector{Number},ℒ.diag(covar_dcmp))

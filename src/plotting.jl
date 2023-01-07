@@ -25,6 +25,7 @@ The left axis shows the level, and the right the deviation from the reference st
 - `negative_shock` [Default: `false`, Type: `Bool`]: calculate a negative shock. Relevant for generalised IRFs.
 - `generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions.
 - `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state from which to start IRFs. Relevant for normal IRFs.
+- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
 
 # Examples
 ```julia
@@ -61,21 +62,30 @@ function plot(𝓂::ℳ;
     algorithm::Symbol = :first_order,
     negative_shock::Bool = false,
     generalised_irf::Bool = false,
-    initial_state::Vector{Float64} = [0.0])
+    initial_state::Vector{Float64} = [0.0],
+    verbose = false)
 
-    solve!(𝓂; dynamics = true, algorithm = algorithm, parameters = parameters)
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
 
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
+
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+
+    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    SS = [NSSS[s] for s in full_NSSS]
 
     if algorithm == :second_order
         reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
     elseif algorithm == :third_order
         reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-    elseif algorithm ∈ [:linear_time_iteration, :dynare, :riccati, :first_order]
-        reference_steady_state = 𝓂.solution.non_stochastic_steady_state[1:length(𝓂.var)]
+    elseif algorithm ∈ [:linear_time_iteration, :riccati, :first_order]
+        reference_steady_state = SS
     end
 
-    init_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - collect(get_non_stochastic_steady_state_internal(𝓂))
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - SS
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
@@ -86,7 +96,7 @@ function plot(𝓂::ℳ;
     if generalised_irf
         Y = girf(state_update, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
     else
-        Y = irf(state_update, init_state, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)
+        Y = irf(state_update, initial_state, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)
     end
 
     # fontt = "computer modern"#"serif-roman"#
@@ -135,7 +145,7 @@ function plot(𝓂::ℳ;
         end
 
         for i in 1:length(var_idx)
-            SS = reference_steady_state[indexin(𝓂.timings.var,sort(union(𝓂.timings.var,𝓂.timings.exo_present)))][var_idx[i]]
+            SS = reference_steady_state[var_idx[i]]
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
             # if !(plot_count ∈ unique(round.((1:𝓂.timings.timings.nVars)/plots_per_page))*plots_per_page)
                 if !(plot_count % plots_per_page == 0)

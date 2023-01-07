@@ -1,4 +1,5 @@
-`MacroModelling.jl` enables fast prototyping of dynamic stochastic general equilibrium (DSGE) models
+# `MacroModelling.jl` - fast prototyping of dynamic stochastic general equilibrium (DSGE) models
+**Author: Thore Kockerols (@thorek1)**
 
 The package currently supports dicsrete-time DSGE models and the timing of a variable reflects when the variable is decided (end of period for stock variables).
 

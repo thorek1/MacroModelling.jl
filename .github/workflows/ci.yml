@@ -4,25 +4,31 @@ on:
 #   - pull_request
 jobs:
   test:
+    env: 
+      GKS_ENCODING: "utf8"
+      GKSwstype: "nul"
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         version:
-#           - '1.0'
-          - '1.8'
-          # - 'nightly'
+          - '1'
+          # - '^1.9.0-0' #^1-0 and ^1.9-0 are not recognised
+          # - 'nightly' # fails
         os:
           - ubuntu-latest
-          # - macOS-latest
-          # - windows-latest
+          # - macOS-latest #slow
+          # - windows-latest #slow
         arch:
           - x64
-          # - aarch64
+          # - aarch64 #fails (wrong naming?)
+        include:
+          - os: ubuntu-latest
+            prefix: xvfb-run
     steps:
       - uses: actions/checkout@v3
-      - uses: julia-actions/setup-julia@v1
+      - uses: julia-actions/setup-julia@latest
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
@@ -37,9 +43,12 @@ jobs:
             ${{ runner.os }}-test-
             ${{ runner.os }}-
       - run: pip3 install sympy
-      - uses: julia-actions/julia-buildpkg@v1
-      - uses: julia-actions/julia-runtest@v1
-      - uses: julia-actions/julia-processcoverage@v1
+      - uses: julia-actions/julia-buildpkg@latest
+      - uses: julia-actions/julia-runtest@latest
+        with:
+          prefix: ${{ matrix.prefix }}  # for `xvfb-run`
+          
+      - uses: julia-actions/julia-processcoverage@latest
       - uses: codecov/codecov-action@v3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
