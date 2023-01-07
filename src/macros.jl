@@ -10,6 +10,20 @@ Parses the model equations and assigns them to an object.
 - `𝓂`: name of the object to be created containing the model information.
 - `ex`: equations
 
+Variables must be defined with their time subscript in squared brackets.
+Endogenous variables can have the following:
+- present: `c[0]`
+- non-stcohastic steady state: `c[ss]` instead of `ss` any of the following is also a valid flag for the non-stochastic steady state: `ss`, `stst`, `steady`, `steadystate`, `steady_state`, and the parser is case-insensitive (`SS` or `sTst` will work as well).
+- past: `c[-1]` or any negative Integer: e.g. `c[-12]`
+- future: `c[1]` or any positive Integer: e.g. `c[16]` or `c[+16]`
+Signed integers are recognised and parsed as such.
+
+Exogenous variables (shocks) can have the following:
+- present: `c[x]` instead of `x` any of the following is also a valid flag for exogenous variables: `ex`, `exo`, `exogenous`, and the parser is case-insensitive (`Ex` or `exoGenous` will work as well).
+- past: `c[x-1]`
+- future: `c[x+1]`
+
+Parameters are 
 # Examples
 ```julia
 using MacroModelling
@@ -1040,6 +1054,11 @@ Adds parameter values and calibration equations to the previously defined model.
 - `𝓂`: name of the object previously created containing the model information.
 - `ex`: parameter, parameters values, and calibration equations
 
+Parameters can be defined in either of the following ways:
+- plain number: `δ = 0.02`
+- expression containing numbers: `δ = 1/50`
+- expression containing other parameters: `δ = 2 * std_z` in this case it is irrelevant if `std_z` is defined before or after. The definitons including other parameters are treated as a system of equaitons and solved accordingly.
+- expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneaously with the non-stochastic steady state using the equation defined with it
 # Examples
 ```julia
 using MacroModelling
@@ -1101,9 +1120,14 @@ macro parameters(𝓂,ex)
                         push!(calib_values_no_var,unblock(x.args[2]))
                         push!(calib_parameters_no_var,x.args[1])
                     end :
-                begin # this is calibration by targeting SS values
-                    push!(calib_eq_parameters,x.args[1].args[2])
-                    push!(calib_equations,Expr(:(=),x.args[1].args[3], unblock(x.args[2])))
+                x.args[1].args[1] == :| ?
+                    begin # this is calibration by targeting SS values
+                        push!(calib_eq_parameters,x.args[1].args[2])
+                        push!(calib_equations,Expr(:(=),x.args[1].args[3], unblock(x.args[2])))
+                    end :
+                begin # this is calibration by targeting SS values (conditional parameter at the end)
+                    push!(calib_eq_parameters,x.args[2].args[end].args[end])
+                    push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
                 end :
             x.head == :comparison ? 
                 push!(bounds,x) :

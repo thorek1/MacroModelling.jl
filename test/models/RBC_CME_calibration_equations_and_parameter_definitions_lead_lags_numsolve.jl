@@ -16,7 +16,7 @@ end
 
 
 @parameters m begin
-    alpha | k[ss] / (4 * y[ss]) = cap_share
+    k[ss] / (4 * y[ss]) = cap_share | alpha
     cap_share = 1.66
     # alpha = .157
 
@@ -24,7 +24,7 @@ end
     R_ss = 1.0035
     # beta = .999
 
-    delta | c[ss]/y[ss] = 1 - I_K_ratio
+    c[ss]/y[ss] = 1 - I_K_ratio | delta
     # delta | delta * k[ss]/y[ss] = I_K_ratio #check why this doesnt solve for y
     I_K_ratio = .15
     # delta = .0226
