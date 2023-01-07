@@ -1,5 +1,6 @@
 # Todo list:
 ## High priority:
+
 - [ ] add balanced growth path handling
 - [ ] write tests and documentation for solution, estimation... making sure results are consistent
 - [ ] have conditional parameters at end of entry as well (... | alpha instead of alpha | ...)
@@ -28,6 +29,7 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
+  
 - [x] Get functions: get_output, get_moments
 - [x] get rid of init_guess
 - [x] an and schorfheide estimation
@@ -45,6 +47,7 @@
 - [x] have bounds on alpha (failed previously due to naming conflict) - works now
 
 ## Not high priority:
+
 - [ ] estimation codes with missing values (adopt kalman filter)
 - [ ] whats a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
 - [ ] implement global solution methods
