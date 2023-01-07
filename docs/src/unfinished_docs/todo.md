@@ -3,7 +3,7 @@
 
 - [ ] add balanced growth path handling
 - [ ] write tests and documentation for solution, estimation... making sure results are consistent
-- [ ] have conditional parameters at end of entry as well (... | alpha instead of alpha | ...)
+- [x] have conditional parameters at end of entry as well (... | alpha instead of alpha | ...)
 - [ ] use @assert for errors and @test_throws
 - [ ] add correlation, autocorrelation, and variance decomposition
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
