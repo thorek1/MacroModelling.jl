@@ -1534,7 +1534,7 @@ function calculate_first_order_solution(∇₁::AbstractMatrix{<: Number}; T::ti
 
     Jm = @view(ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:])
     
-    ∇₊ = @view(∇₁[:,1:T.nFuture_not_past_and_mixed]) * @view(ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:])
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
 
@@ -1960,18 +1960,54 @@ function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ; verbose 
 
     sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    A = sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
-    C = sol[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
-
-    covar_dcmp = sparse(ℒ.triu(reshape((ℒ.I - ℒ.kron(A, conj(A))) \ reshape(C * C', prod(size(A)), 1), size(A))))
+    covar_dcmp = sparse(ℒ.triu(calculate_covariance_forward(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))))
 
     droptol!(covar_dcmp,eps(Float64))
 
     return covar_dcmp
+
+end
+
+function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Number}; T::timings, subset_indices::Vector{Int64})
+    A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[indexin(T.past_not_future_and_mixed_idx,subset_indices),:]
+    C = @views 𝑺₁[subset_indices,T.nPast_not_future_and_mixed+1:end]
+    
+    CC = C * C'
+
+    lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+    
+    reshape(ℐ.bicgstabl(lm, vec(-CC)), size(CC))
 end
 
 
+function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T, subset_indices::Vector{Int64} = subset_indices) where {Z,S,N}
+    # unpack: AoS -> SoA
+    𝑺₁̂ = ℱ.value.(𝑺₁)
+    # you can play with the dimension here, sometimes it makes sense to transpose
+    ps = mapreduce(ℱ.partials, hcat, 𝑺₁)'
 
+    # get f(vs)
+    val = calculate_covariance_forward(𝑺₁̂, T = T, subset_indices = subset_indices)
+
+    # get J(f, vs) * ps (cheating). Write your custom rule here
+    B = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, T = T, subset_indices = subset_indices), 𝑺₁̂)
+    A = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, T = T, subset_indices = subset_indices), val)
+
+    jvp = (-A \ B) * ps
+
+    # pack: SoA -> AoS
+    return reshape(map(val, eachrow(jvp)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end,size(val))
+end
+
+
+function calculate_covariance_conditions(𝑺₁::AbstractMatrix{<: Number}, covar::AbstractMatrix{<: Number}; T::timings, subset_indices::Vector{Int64})
+    A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[indexin(T.past_not_future_and_mixed_idx,subset_indices),:]
+    C = @views 𝑺₁[subset_indices,T.nPast_not_future_and_mixed+1:end]
+    
+    A * covar * A' + C * C' - covar
+end
 
 function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose = false, tol = eps())
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
@@ -1988,6 +2024,9 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     if solution_error > tol
         return -1e6
     end
+
+    data_in_deviations = collect(data(observables)) .- collect(SS_and_pars[observables])
+
     # 𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
 
 	∇₁ = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters, SS_and_pars, 𝓂)
@@ -1996,16 +2035,18 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     observables_and_states = sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
 
-    A = sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)
+    A = @views sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)
     ,:]
-    B = sol[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+    B = @views sol[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
 
-    C = ℒ.diagm(ones(length(observables_and_states)))[indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states),:]
+    C = @views ℒ.diagm(ones(length(observables_and_states)))[indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states),:]
 
     𝐁 = B * B'
 
     # Gaussian Prior
-    P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+
+    P = calculate_covariance_forward(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+    # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
     u = zeros(length(observables_and_states))
     # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
     z = C * u
@@ -2013,11 +2054,11 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     loglik = 0.0
 
     for t in 1:size(data)[2]
-        v = collect(data(observables,t)) - z - collect(SS_and_pars[observables])
+        v = data_in_deviations[:,t] - z
 
         F = C * P * C'
 
-        F = (F + F') / 2
+        # F = (F + F') / 2
 
         # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
         # K = P * C' * ℒ.pinv(F)
