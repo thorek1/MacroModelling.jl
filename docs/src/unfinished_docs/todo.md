@@ -8,7 +8,6 @@
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
 - [ ] print SS dependencies, show SS solver
 - [ ] write to dynare
-- [ ] go through docs to reflect verbose behaviour
 - [ ] add functions like get_variance, get_sd, get_var, get_covar
   
 - [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
@@ -30,6 +29,7 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] go through docs to reflect verbose behaviour
 - [x] speed up covariance mat calc
 - [x] have conditional parameters at end of entry as well (... | alpha instead of alpha | ...)
 - [x] Get functions: get_output, get_moments

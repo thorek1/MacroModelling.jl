@@ -23,7 +23,7 @@ Exogenous variables (shocks) can have the following:
 - past: `c[x-1]`
 - future: `c[x+1]`
 
-Parameters are 
+Parameters enter the equations without squared brackets.
 # Examples
 ```julia
 using MacroModelling
@@ -1058,7 +1058,7 @@ Parameters can be defined in either of the following ways:
 - plain number: `δ = 0.02`
 - expression containing numbers: `δ = 1/50`
 - expression containing other parameters: `δ = 2 * std_z` in this case it is irrelevant if `std_z` is defined before or after. The definitons including other parameters are treated as a system of equaitons and solved accordingly.
-- expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneaously with the non-stochastic steady state using the equation defined with it
+- expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneaously with the non-stochastic steady state using the equation defined with it.
 # Examples
 ```julia
 using MacroModelling
