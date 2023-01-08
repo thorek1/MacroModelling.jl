@@ -38,18 +38,18 @@ plot_irf(RBC)
 ```
 ![RBC IRF](../assets/irf__RBC__eps_z__1.png)
 
+When the model is solved the first time (in this case by calling [`plot_irf`](@ref)), the package breaks down the steady state problem into recursive blocks and first attempts to solve them symbolically and if that fails numerically. 
+
 The plot shows the responses of the endogenous variables (`c`, `k`, `q`, and `z`) to a one standard deviation positive (indicated by Shock⁺ in chart title) unanticipated shock in  `eps_z`. Therefore there are as many subplots as there are combinations of shocks and endogenous variables (which are impacted by the shock). Plots are composed of up to 9 subplots and the plot title shows the model name followed by the name of the shock and which plot we are seeing out of the plots for this shock (e.g. (1/3) means we see the first out of three plots for this shock). Subplots show the sorted endogenous variables with the left y-axis showing the level of the respective variable and the right y-axis showing the percent deviation from the SS (if variable is strictly positive). The horizontal black line marks the SS.
 
 ## Explore other parameter values
-Playing around with the model is especially insightful in the early phase of model development. The package facilitates this process to the extent possible. Typically one wants to try different parameter values and see how the IRFs change. This can be done by using the `parameters` argument of the [`plot_irf`](@ref) function. We pass a `Pair` with the `Symbol` of the parameter (`:` in front of the parameter name) we want to change and its new value to the `parameter` argument (e.g. `:α => 0.3`).
+Playing around with the model can be especially insightful in the early phase of model development. The package tries to facilitates this process to the extent possible. Typically one wants to try different parameter values and see how the IRFs change. This can be done by using the `parameters` argument of the [`plot_irf`](@ref) function. We pass a `Pair` with the `Symbol` of the parameter (`:` in front of the parameter name) we want to change and its new value to the `parameter` argument (e.g. `:α => 0.3`).
 ```@repl tutorial_1
 plot_irf(RBC, parameters = :α => 0.3)
 ```
 ![](../assets/irf__RBC_new__eps_z__1.png)
 
-First, the package tells us which parameters changed and that this also changed the steady state. The new SS and model solution are permanently saved in the model object. Second, note that the shape of the curves in the plot and the y-axis values changed. What happened in the background is that the package recalculated the SS and solved the model around the new SS. Updating the plot for new parameters is significantly faster than calling it the first time. This is because the first call triggers compilations of the model functions, and once compiled the user benefits from the performance of the specialised compiled code.
-
-
+First, the package finds the new steady state, solves the model dynamics around it and saves the new parameters and solution in the model object. Second, note that the shape of the curves in the plot and the y-axis values changed. Updating the plot for new parameters is significantly faster than calling it the first time. This is because the first call triggers compilations of the model functions, and once compiled the user benefits from the performance of the specialised compiled code.
 
 ## Plot model simulation
 Another insightful output is simulations of the model. Here we can use the [`plot_simulations`](@ref) function. To the same effect we can use the [`plot`](@ref) function and specify in the `shocks` argument that we want to `:simulate` the model and set the `periods` argument to 100.
