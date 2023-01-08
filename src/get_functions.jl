@@ -483,32 +483,43 @@ Return the variance decomposition of endogenous variables with regards to the sh
 ```jldoctest part1
 using MacroModelling
 
-@model RBC begin
-    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
-    q[0] = exp(z[0]) * k[-1]^α
-    z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
 
-@parameters RBC begin
-    std_z = 0.01
-    ρ = 0.2
-    δ = 0.02
-    α = 0.5
-    β = 0.95
-end;
 
-get_variance_decomposition(RBC)
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+get_variance_decomposition(RBC_CME)
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
-↓   Variables ∈ 4-element Vector{Symbol}
-→   𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 ∈ 4-element Vector{Symbol}
-And data, 4×4 Matrix{Float64}:
-        (:c)       (:k)       (:q)       (:z)
-  (:c)   1.0        0.999812   0.550168   0.314562
-  (:k)   0.999812   1.0        0.533879   0.296104
-  (:q)   0.550168   0.533879   1.0        0.965726
-  (:z)   0.314562   0.296104   0.965726   1.0
+↓   Variables ∈ 7-element Vector{Symbol}
+→   Shocks ∈ 2-element Vector{Symbol}
+And data, 7×2 Matrix{Float64}:
+              (:delta_eps)  (:eps_z)
+  (:A)         1.69478e-29   1.0
+  (:Pi)        0.0156771     0.984323
+  (:R)         0.0156771     0.984323
+  (:c)         0.0134672     0.986533
+  (:k)         0.00869568    0.991304
+  (:y)         0.000313462   0.999687
+  (:z_delta)   1.0           0.0
 ```
 """
 function get_variance_decomposition(𝓂::ℳ; 
