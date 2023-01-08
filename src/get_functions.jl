@@ -470,6 +470,71 @@ get_perturbation_solution = get_solution
 
 """
 $(SIGNATURES)
+Return the autocorrelations of endogenous variables using the linearised solution. 
+
+# Arguments
+- $MODEL
+# Keyword Arguments
+- $PARAMETERS
+- $VERBOSE
+
+# Examples
+```jldoctest part1
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+get_autocorrelation(RBC)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   Autocorrelation_order ∈ 5-element UnitRange{Int64}
+And data, 4×5 Matrix{Float64}:
+        (1)         (2)         (3)         (4)         (5)
+  (:c)    0.966974    0.927263    0.887643    0.849409    0.812761
+  (:k)    0.971015    0.931937    0.892277    0.853876    0.817041
+  (:q)    0.32237     0.181562    0.148347    0.136867    0.129944
+  (:z)    0.2         0.04        0.008       0.0016      0.00032
+```
+"""
+function get_autocorrelation(𝓂::ℳ; 
+    parameters = nothing,  
+    verbose = false)
+    
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+
+    solve!(𝓂, verbose = verbose)
+
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    covar_dcmp, sol, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+    A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+
+    autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp))[indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present]))] for i in 1:5])
+    
+    KeyedArray(collect(autocorr); Variables = sort(var), Autocorrelation_order = 1:5)
+end
+
+
+
+
+
+"""
+$(SIGNATURES)
 Return the first and second moments of endogenous variables using the linearised solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
 
 # Arguments
@@ -582,7 +647,7 @@ function get_moments(𝓂::ℳ;
         SS =  KeyedArray(hcat(collect(NSSS)[var_idx_SS],dNSSS);  Variables = [sort(var)...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
 
         if variance
-            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
 
             vari = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
 
@@ -601,7 +666,7 @@ function get_moments(𝓂::ℳ;
             end
         else
             if standard_deviation
-                covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
 
                 standard_dev = sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))))
 
@@ -616,7 +681,7 @@ function get_moments(𝓂::ℳ;
         SS =  KeyedArray(collect(NSSS)[var_idx_SS];  Variables = [sort(var)...,𝓂.calibration_equations_parameters...])
 
         if variance
-            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
             varr = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
             varrs = KeyedArray(varr[var_idx];  Variables = sort(var))
             if standard_deviation
@@ -624,7 +689,7 @@ function get_moments(𝓂::ℳ;
             end
         else
             if standard_deviation
-                covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
                 st_dev = KeyedArray(sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp)[var_idx],eps(Float64))));  Variables = sort(var))
             end
         end
@@ -701,9 +766,7 @@ function get_moments(𝓂::ℳ, parameters::Vector;
 
     solve!(𝓂, verbose = verbose)
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, false, verbose)
-
-    covar_dcmp = calculate_covariance(parameters,𝓂, verbose = verbose)
+    covar_dcmp, __, _, SS_and_pars = calculate_covariance(parameters,𝓂, verbose = verbose)
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
 
@@ -729,7 +792,11 @@ function get_moments(𝓂::ℳ, parameters::Vector;
         push!(ret,varrs)
     end
     if covariance
-        push!(ret,covar_dcmp)
+        covar_dcmp_sp = sparse(ℒ.triu(covar_dcmp))
+
+        droptol!(covar_dcmp_sp,eps(Float64))
+
+        push!(ret,covar_dcmp_sp)
     end
 
     return ret

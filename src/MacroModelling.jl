@@ -36,7 +36,7 @@ export plot_irfs, plot_irf, plot_IRF, plot, plot_simulations
 export get_irfs, get_irf, get_IRF, simulate
 export get_solution, get_first_order_solution, get_perturbation_solution
 export get_steady_state, get_SS, get_non_stochastic_steady_state, get_stochastic_steady_state
-export get_moments
+export get_moments, get_autocorrelation
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution#, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export calculate_kalman_filter_loglikelihood
@@ -1282,13 +1282,13 @@ end
 
 function covariance_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)),eps(Float64)))
+    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]),eps(Float64)))
 end
 
 
 function covariance_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)),eps(Float64)))
+    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -1961,12 +1961,9 @@ function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ; verbose 
 
     sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    covar_dcmp = sparse(ℒ.triu(calculate_covariance_forward(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))))
+    covar_raw = calculate_covariance_forward(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
 
-    droptol!(covar_dcmp,eps(Float64))
-
-    return covar_dcmp
-
+    return covar_raw, sol , ∇₁, SS_and_pars
 end
 
 function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Number}; T::timings, subset_indices::Vector{Int64})
