@@ -59,12 +59,20 @@ qnorm(p::Number) = norminvcdf(p)
 
 
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
-                "Model: ",𝓂.model_name, 
-                "\nVariables: ",length(𝓂.var),
-                "\nShocks: ",length(𝓂.exo),
-                "\nParameters: ",length(𝓂.par),
-                "\nAuxiliary variables: ",length(𝓂.exo_present) + length(𝓂.aux),
-                # "\nCalibration equations: ",length(𝓂.calibration_equations),
+                "Model:      ", 𝓂.model_name, 
+                "\nVariables", 
+                "\n Total:     ", 𝓂.timings.nVars - length(𝓂.exo_present) - length(𝓂.aux),
+                "\n States:    ", length(setdiff(𝓂.timings.past_not_future_and_mixed,𝓂.aux_present)),
+                "\n Jumpers:   ", length(setdiff(setdiff(𝓂.timings.future_not_past_and_mixed,𝓂.aux_present,𝓂.timings.mixed),𝓂.aux_future)),
+                "\n Auxiliary: ",length(𝓂.exo_present) + length(𝓂.aux),
+                "\nShocks:     ", 𝓂.timings.nExo,
+                "\nParameters: ", length(𝓂.par),
+                if 𝓂.calibration_equations == Expr[]
+                    ""
+                else
+                    "\nCalibration equations:\t\t\t", length(𝓂.calibration_equations)
+                end,
+                # "\n¹: including auxilliary variables"
                 # "\nVariable bounds (upper,lower,any): ",sum(𝓂.upper_bounds .< Inf),", ",sum(𝓂.lower_bounds .> -Inf),", ",length(𝓂.bounds),
                 # "\nNon-stochastic-steady-state found: ",!𝓂.solution.outdated_NSSS
                 )
