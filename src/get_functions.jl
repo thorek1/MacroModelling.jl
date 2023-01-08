@@ -1,22 +1,20 @@
-
-
 """
 $(SIGNATURES)
 Return impulse response functions (IRFs) of the model in a 3-dimensional array.
 Function to use when differentiating IRFs with repect to parameters.
 
 # Arguments
-- `𝓂`: the object created by @model and @parameters for which to get the solution.
-- `parameters` [Type: `Vector`]: Parameter values in alphabetical order (sorted by parameter name).
+- $MODEL
+- $PARAMETER_VALUES
 # Keyword Arguments
-- `periods` [Default: `40`, Type: `Int`]: number of periods for which to calculate the IRFs
-- `variables` [Default: `:all`]: variables for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y` or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. Any variables not part of the model will trigger a warning.
-- `shocks` [Default: `:all`]: shocks for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y`, `:simulate`, :none, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. `:simulate` triggers random draws of all shocks. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
-- `negative_shock` [Default: `false`, Type: `Bool`]: calculate a negative shock. Relevant for generalised IRFs.
-- `generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.
-- `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs.
-- `levels` [Default: `false`, Type: `Bool`]: return levels or absolute deviations from steady state
-- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
+- $PERIODS
+- $VARIABLES
+- $SHOCKS
+- $NEGATIVE_SHOCK
+- $GENERALISED_IRF
+- $INITIAL_STATE
+- $LEVELS
+- $VERBOSE
 
 # Examples
 ```jldoctest
@@ -112,18 +110,18 @@ $(SIGNATURES)
 Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedArray
 
 # Arguments
-- `𝓂`: the object created by @model and @parameters for which to get the solution.
+- $MODEL
 # Keyword Arguments
-- `periods` [Default: `40`, Type: `Int`]: number of periods for which to calculate the IRFs
-- `algorithm` [Default: `:first_order`, Type: `Symbol`]: solution algorithm for which to show the IRFs
-- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
-- `variables` [Default: `:all`]: variables for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y` or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. Any variables not part of the model will trigger a warning.
-- `shocks` [Default: `:all`]: shocks for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y`, `:simulate`, :none, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. `:simulate` triggers random draws of all shocks. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
-- `negative_shock` [Default: `false`, Type: `Bool`]: calculate a negative shock. Relevant for generalised IRFs.
-- `generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.
-- `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs.
-- `levels` [Default: `false`, Type: `Bool`]: return levels or absolute deviations from steady state
-- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
+- $PERIODS
+- $ALGORITHM
+- $PARAMETERS
+- $VARIABLES
+- $SHOCKS
+- $NEGATIVE_SHOCK
+- $GENERALISED_IRF
+- $INITIAL_STATE
+- $LEVELS
+- $VERBOSE
 
 # Examples
 ```jldoctest
@@ -264,12 +262,12 @@ $(SIGNATURES)
 Return the (non stochastic) steady state and derivatives with respect to model parameters.
 
 # Arguments
-- `𝓂`: the object created by @model and @parameters for which to get the solution.
+- $MODEL
 # Keyword Arguments
-- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
-- `derivatives` [Default: `true`, Type: `Bool`]: calculate derivatives of the SS with respect to the parameters
+- $PARAMETERS
+- $DERIVATIVES
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation. No derivatives are calculated.
-- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
+- $VERBOSE
 
 The columns show the SS and parameters for which derivatives are taken. The rows show the variables.
 # Examples
@@ -402,10 +400,10 @@ $(SIGNATURES)
 Return the linearised solution and the non stochastic steady state (SS) of the model.
 
 # Arguments
-- `𝓂`: the object created by [`@model`](@ref) and [`@parameters`](@ref) for which to get the solution.
+- $MODEL
 # Keyword Arguments
-- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
-- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
+- $PARAMETERS
+- $VERBOSE
 
 The returned `KeyedArray` shows the SS, policy and transition functions of the model. The columns show the varibales including auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows are the SS, followed by the states, and exogenous shocks. 
 Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
@@ -470,22 +468,21 @@ get_perturbation_solution = get_solution
 
 
 
-
 """
 $(SIGNATURES)
 Return the first and second moments of endogenous variables using the linearised solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
 
 # Arguments
-- `𝓂`: the object created by @model and @parameters for which to get the solution.
+- $MODEL
 # Keyword Arguments
-- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
+- $PARAMETERS
 - `non_stochastic_steady_state` [Default: `true`, Type: `Bool`]: switch to return SS of endogenous variables
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
-- `derivatives` [Default: true, Type: `Bool`]: switch to calculate derivatives of SS, standard deviation, and variance with respect to the parameters
+- $DERIVATIVES
 - `parameter_derivatives` [Default: :all]: parameters for which to calculate derivatives of the SS. Inputs can be either a `Symbol` (e.g. `:alpha`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`.
-- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
+- $VERBOSE
 
 # Examples
 ```jldoctest part1
@@ -660,14 +657,14 @@ Return the first and second moments of endogenous variables using the linearised
 Function to use when differentiating model moments with repect to parameters.
 
 # Arguments
-- `𝓂`: the object created by @model and @parameters for which to get the solution.
-- `parameters` [Type: `Vector`]: Parameter values in alphabetical order (sorted by parameter name).
+- $MODEL
+- $PARAMETER_VALUES
 # Keyword Arguments
 - `non_stochastic_steady_state` [Default: `true`, Type: `Bool`]: switch to return SS of endogenous variables
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
-- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
+- $VERBOSE
 
 # Examples
 ```jldoctest

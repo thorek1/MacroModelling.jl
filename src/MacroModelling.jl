@@ -24,6 +24,7 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
 
 # Imports
+include("common_docstrings.jl")
 include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")
