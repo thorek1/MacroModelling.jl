@@ -471,6 +471,77 @@ get_perturbation_solution = get_solution
 
 """
 $(SIGNATURES)
+Return the variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
+
+# Arguments
+- $MODEL
+# Keyword Arguments
+- $PARAMETERS
+- $VERBOSE
+
+# Examples
+```jldoctest part1
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+get_variance_decomposition(RBC)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 ∈ 4-element Vector{Symbol}
+And data, 4×4 Matrix{Float64}:
+        (:c)       (:k)       (:q)       (:z)
+  (:c)   1.0        0.999812   0.550168   0.314562
+  (:k)   0.999812   1.0        0.533879   0.296104
+  (:q)   0.550168   0.533879   1.0        0.965726
+  (:z)   0.314562   0.296104   0.965726   1.0
+```
+"""
+function get_variance_decomposition(𝓂::ℳ; 
+    parameters = nothing,  
+    verbose = false)
+    
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+
+    solve!(𝓂, verbose = verbose)
+
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose)
+    
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+
+    sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+    variances_by_shock = reduce(hcat,[ℒ.diag(calculate_covariance_forward(sol[:,[1:𝓂.timings.nPast_not_future_and_mixed..., 𝓂.timings.nPast_not_future_and_mixed+i]], T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))) for i in 1:𝓂.timings.nExo])
+
+    var_decomp = variances_by_shock ./ sum(variances_by_shock,dims=2)
+
+    KeyedArray(var_decomp[indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present])),:]; Variables = sort(var), Shocks = 𝓂.timings.exo)
+end
+
+
+
+
+
+
+
+"""
+$(SIGNATURES)
 Return the correlations of endogenous variables using the linearised solution. 
 
 # Arguments
