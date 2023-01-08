@@ -3,14 +3,14 @@
 
 - [ ] add balanced growth path handling
 - [ ] write tests and documentation for solution, estimation... making sure results are consistent
-- [x] have conditional parameters at end of entry as well (... | alpha instead of alpha | ...)
 - [ ] use @assert for errors and @test_throws
 - [ ] add correlation, autocorrelation, and variance decomposition
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
 - [ ] print SS dependencies, show SS solver
 - [ ] write to dynare
+- [ ] go through docs to reflect verbose behaviour
+- [ ] add functions like get_variance, get_sd, get_var, get_covar
   
-- [ ] speed up covariance mat calc
 - [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
 - [ ] make the nonnegativity trick optional
 - [ ] get parameters (in function of parameters) into the dependencies
@@ -30,6 +30,8 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] speed up covariance mat calc
+- [x] have conditional parameters at end of entry as well (... | alpha instead of alpha | ...)
 - [x] Get functions: get_output, get_moments
 - [x] get rid of init_guess
 - [x] an and schorfheide estimation
