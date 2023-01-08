@@ -19,6 +19,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     nsss = get_non_stochastic_steady_state(m)
 
     if algorithm == :first_order
+        sols_nv = get_solution(m)
         sols = get_solution(m, verbose = true)
         new_sols1 = get_solution(m, verbose = true, parameters = m.parameter_values * 1.0001)
         new_sols2 = get_solution(m, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
@@ -26,7 +27,33 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_sols4 = get_solution(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
         old_sols = get_solution(m, verbose = true, parameters = old_par_vals)
 
+        auto_corr_nv = get_autocorrelation(m)
+        auto_corr = get_autocorrelation(m, verbose = true)
+        new_auto_corr = get_autocorrelation(m, verbose = true, parameters = m.parameter_values * 1.0001)
+        new_auto_corr1 = get_autocorrelation(m, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
+        new_auto_corr2 = get_autocorrelation(m, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+        new_auto_corr3 = get_autocorrelation(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
+        old_auto_corr = get_autocorrelation(m, verbose = true, parameters = old_par_vals)
+
+        corr_nv = get_correlation(m)
+        corr = get_correlation(m, verbose = true)
+        new_corr = get_correlation(m, verbose = true, parameters = m.parameter_values * 1.0001)
+        new_corr1 = get_correlation(m, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
+        new_corr2 = get_correlation(m, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+        new_corr3 = get_correlation(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
+        old_corr = get_correlation(m, verbose = true, parameters = old_par_vals)
+
+        var_decomp_nv = get_variance_decomposition(m)
+        var_decomp = get_variance_decomposition(m, verbose = true)
+        new_var_decomp = get_variance_decomposition(m, verbose = true, parameters = m.parameter_values * 1.0001)
+        new_var_decomp1 = get_variance_decomposition(m, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
+        new_var_decomp2 = get_variance_decomposition(m, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+        new_var_decomp3 = get_variance_decomposition(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
+        old_var_decomp = get_variance_decomposition(m, verbose = true, parameters = old_par_vals)
+
+
         # Check different inputs for get_moments
+        moms_nv = get_moments(m)
         moms = get_moments(m, verbose = true)
         moms_var = get_moments(m, verbose = true, variance = true)
         moms_covar = get_moments(m, verbose = true, covariance = true)
@@ -49,6 +76,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     end
 
     # irfs
+    irfs_nv = get_irf(m, algorithm = algorithm)
     irfs = get_irf(m, verbose = true, algorithm = algorithm)
     irfs_10 = get_irf(m, verbose = true, algorithm = algorithm, periods = 10)
     irfs_100 = get_irf(m, verbose = true, algorithm = algorithm, periods = 100)
