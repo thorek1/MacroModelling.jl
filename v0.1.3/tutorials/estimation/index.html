@@ -131,8 +131,8 @@ Chains MCMC chain (1000×21×1 Array{Float64, 3}):
 Iterations        = 501:1:1500
 Number of chains  = 1
 Samples per chain = 1000
-Wall duration     = 1990.2 seconds
-Compute duration  = 1990.2 seconds
+Wall duration     = 13248.29 seconds
+Compute duration  = 13248.29 seconds
 parameters        = alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m
 internals         = lp, n_steps, is_accept, acceptance_rate, log_density, hamiltonian_energy, hamiltonian_energy_error, max_hamiltonian_energy_error, tree_depth, numerical_error, step_size, nom_step_size
 
@@ -140,42 +140,42 @@ Summary Statistics
   parameters      mean       std   naive_se      mcse         ess      rhat    ⋯
       Symbol   Float64   Float64    Float64   Float64     Float64   Float64    ⋯
 
-         alp    0.4030    0.0198     0.0006    0.0007    792.3235    1.0044    ⋯
-         bet    0.9904    0.0020     0.0001    0.0001   1243.7901    0.9990    ⋯
-         gam    0.0047    0.0010     0.0000    0.0000    946.2709    0.9994    ⋯
-         mst    1.0142    0.0018     0.0001    0.0001   1036.0544    0.9990    ⋯
-         rho    0.8442    0.0345     0.0011    0.0009   1078.8131    0.9995    ⋯
-         psi    0.6834    0.0498     0.0016    0.0014   1173.4154    0.9991    ⋯
-         del    0.0024    0.0013     0.0000    0.0000    910.7302    0.9993    ⋯
-       z_e_a    0.0137    0.0009     0.0000    0.0000    726.9096    1.0002    ⋯
-       z_e_m    0.0033    0.0002     0.0000    0.0000   1039.4297    1.0002    ⋯
+         alp    0.4016    0.0210     0.0007    0.0009    619.6628    1.0007    ⋯
+         bet    0.9905    0.0021     0.0001    0.0001    816.4834    1.0004    ⋯
+         gam    0.0046    0.0010     0.0000    0.0000   1157.8600    0.9994    ⋯
+         mst    1.0141    0.0016     0.0001    0.0000   1161.2686    1.0006    ⋯
+         rho    0.8452    0.0358     0.0011    0.0010   1124.6373    0.9990    ⋯
+         psi    0.6846    0.0489     0.0015    0.0014   1000.5537    0.9990    ⋯
+         del    0.0025    0.0014     0.0000    0.0000   1102.4728    0.9990    ⋯
+       z_e_a    0.0136    0.0009     0.0000    0.0000    609.1178    0.9998    ⋯
+       z_e_m    0.0033    0.0002     0.0000    0.0000    870.2624    1.0019    ⋯
                                                                 1 column omitted
 
 Quantiles
   parameters      2.5%     25.0%     50.0%     75.0%     97.5%
       Symbol   Float64   Float64   Float64   Float64   Float64
 
-         alp    0.3613    0.3899    0.4033    0.4166    0.4415
-         bet    0.9858    0.9891    0.9905    0.9917    0.9941
-         gam    0.0028    0.0041    0.0047    0.0053    0.0065
-         mst    1.0108    1.0132    1.0143    1.0153    1.0173
-         rho    0.7761    0.8204    0.8456    0.8679    0.9121
-         psi    0.5832    0.6516    0.6853    0.7186    0.7719
-         del    0.0006    0.0015    0.0022    0.0031    0.0057
-       z_e_a    0.0120    0.0131    0.0137    0.0143    0.0155
+         alp    0.3594    0.3869    0.4021    0.4161    0.4428
+         bet    0.9860    0.9891    0.9907    0.9919    0.9941
+         gam    0.0028    0.0039    0.0046    0.0053    0.0066
+         mst    1.0106    1.0132    1.0143    1.0152    1.0169
+         rho    0.7715    0.8224    0.8473    0.8702    0.9092
+         psi    0.5835    0.6530    0.6877    0.7183    0.7759
+         del    0.0007    0.0015    0.0022    0.0032    0.0062
+       z_e_a    0.0120    0.0130    0.0136    0.0142    0.0154
        z_e_m    0.0030    0.0032    0.0033    0.0035    0.0037</code></pre><h3 id="Inspect-posterior"><a class="docs-heading-anchor" href="#Inspect-posterior">Inspect posterior</a><a id="Inspect-posterior-1"></a><a class="docs-heading-anchor-permalink" href="#Inspect-posterior" title="Permalink"></a></h3><p>In order to understand the posterior distribution and the sequence of sample we are plot them:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using StatsPlots</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; StatsPlots.plot(chain_NUTS);</code><code class="nohighlight hljs ansi" style="display:block;"></code></pre><p><img src="../../assets/FS2000_chain_NUTS.png" alt="NUTS chain"/></p><p>Next, we are plotting the posterior loglikelihood along two parameters dimensions, with the other parameters ket at the posterior mean, and add the samples to the visualisation. This visualisation allows us to understand the curvature of the posterior and puts the samples in context.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using ComponentArrays, MCMCChains, DynamicPPL, Plots</code><code class="nohighlight hljs ansi" style="display:block;">WARNING: using DynamicPPL.@model in module Main conflicts with an existing identifier.</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; parameter_mean = mean(chain_NUTS)</code><code class="nohighlight hljs ansi" style="display:block;">Mean
   parameters      mean
       Symbol   Float64
 
-         alp    0.4030
-         bet    0.9904
-         gam    0.0047
-         mst    1.0142
-         rho    0.8442
-         psi    0.6834
-         del    0.0024
-       z_e_a    0.0137
-       z_e_m    0.0033</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; pars = ComponentArray(parameter_mean.nt[2],Axis(parameter_mean.nt[1]))</code><code class="nohighlight hljs ansi" style="display:block;">ComponentVector{Float64}(alp = 0.4030257011016682, bet = 0.9903744524428751, gam = 0.004665607879567026, mst = 1.0141918910776724, rho = 0.8441645192139173, psi = 0.6833794365285506, del = 0.0024147686597518927, z_e_a = 0.013730502939276036, z_e_m = 0.0033342995351030463)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; logjoint(FS2000_loglikelihood, pars)</code><code class="nohighlight hljs ansi" style="display:block;">1343.437387500105</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
+         alp    0.4016
+         bet    0.9905
+         gam    0.0046
+         mst    1.0141
+         rho    0.8452
+         psi    0.6846
+         del    0.0025
+       z_e_a    0.0136
+       z_e_m    0.0033</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; pars = ComponentArray(parameter_mean.nt[2],Axis(parameter_mean.nt[1]))</code><code class="nohighlight hljs ansi" style="display:block;">ComponentVector{Float64}(alp = 0.4016310246146579, bet = 0.9904660773659434, gam = 0.004595088279631553, mst = 1.0141480237471914, rho = 0.8451978393425227, psi = 0.6845813449107053, del = 0.0024922324506858476, z_e_a = 0.013645239025758942, z_e_m = 0.003341664398062699)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; logjoint(FS2000_loglikelihood, pars)</code><code class="nohighlight hljs ansi" style="display:block;">1343.4129107884862</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
            orig_pars[pars_syms] = [par1, par2]
            logjoint(model, orig_pars)
        end</code><code class="nohighlight hljs ansi" style="display:block;">calculate_log_probability (generic function with 1 method)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; granularity = 32;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par1 = :del;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par2 = :gam;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range1 = collect(range(minimum(chain_NUTS[par1]), stop = maximum(chain_NUTS[par1]), length = granularity));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range2 = collect(range(minimum(chain_NUTS[par2]), stop = maximum(chain_NUTS[par2]), length = granularity));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; p = surface(par_range1, par_range2,
@@ -183,26 +183,26 @@ Quantiles
                    camera=(30, 65),
                    colorbar=false,
                    color=:inferno);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray(reduce(hcat, get(chain_NUTS, FS2000.parameters)[FS2000.parameters])[s,:], Axis(FS2000.parameters))) for s in 1:length(chain_NUTS)]</code><code class="nohighlight hljs ansi" style="display:block;">1000-element Vector{Float64}:
- 1337.288348494849
- 1341.10812789704
- 1341.4785035341372
- 1341.0820659391982
- 1338.1169275950172
- 1339.0166698761
- 1338.4280220848034
- 1339.8561866893592
- 1341.5627861178382
- 1339.4672814140715
+ 1340.3744158527638
+ 1341.1563903002307
+ 1339.818431210745
+ 1339.122253712646
+ 1339.287840957984
+ 1339.7497269235212
+ 1338.8116713223856
+ 1340.485788565945
+ 1341.8697034285763
+ 1338.630445317983
     ⋮
- 1340.1020609874904
- 1342.3264715957937
- 1339.2587219038114
- 1338.6495833590945
- 1340.9109287213857
- 1337.3330242228037
- 1338.2175764982806
- 1337.1148968117761
- 1341.2251405204881</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; scatter3d!(vec(collect(chain_NUTS[par1])),
+ 1338.6027645067088
+ 1341.0578326479567
+ 1341.0773488410798
+ 1339.3796519020052
+ 1338.535366607166
+ 1339.3430649367654
+ 1334.249526776266
+ 1339.4844986827593
+ 1340.0111399882785</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; scatter3d!(vec(collect(chain_NUTS[par1])),
                   vec(collect(chain_NUTS[par2])),
                   joint_loglikelihood,
                    mc = :viridis,
@@ -228,21 +228,21 @@ Quantiles
            log_lik -= logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...),z_e_m)
            return log_lik
        end</code><code class="nohighlight hljs ansi" style="display:block;">calculate_posterior_loglikelihood (generic function with 1 method)</code></pre><p>Next, we set up the optimsation problem and first use the ADAM global optimiser for 1000 iterations in order to avoid local optima and then fine tune with L-BFGS.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using Optimization, OptimizationNLopt, OptimizationOptimisers</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoForwardDiff())</code><code class="nohighlight hljs ansi" style="display:block;">(::SciMLBase.OptimizationFunction{true, Optimization.AutoForwardDiff{nothing}, typeof(Main.calculate_posterior_loglikelihood), Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, typeof(SciMLBase.DEFAULT_OBSERVED_NO_TIME), Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing}) (generic function with 1 method)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; prob = OptimizationProblem(f, collect(pars), []);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol = solve(prob, Optimisers.ADAM(), maxiters = 1000)</code><code class="nohighlight hljs ansi" style="display:block;">u: 9-element Vector{Float64}:
- 0.4027213022137559
- 0.9909439054539327
- 0.004550077166739255
- 1.0143227331932068
- 0.8457080448473465
- 0.6910342612626768
- 0.0016353130328031944
- 0.013479922158615253
- 0.003257545071770527</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimum</code><code class="nohighlight hljs ansi" style="display:block;">-1343.7491266476698</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; lbs = fill(-1e12, length(FS2000.parameters));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; ubs = fill(1e12, length(FS2000.parameters));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; bounds_index_in_pars = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.parameters);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; bounds_index_in_bounds = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.bounded_vars);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; lbs[bounds_index_in_pars] = max.(-1e12,FS2000.lower_bounds[bounds_index_in_bounds]);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; ubs[bounds_index_in_pars] = min.(1e12,FS2000.upper_bounds[bounds_index_in_bounds]);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; prob = OptimizationProblem(f, min.(max.(sol.u,lbs),ubs), [], lb = lbs, ub = ubs);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol = solve(prob, NLopt.LD_LBFGS())</code><code class="nohighlight hljs ansi" style="display:block;">u: 9-element Vector{Float64}:
- 0.4027213022138409
- 0.990943905446705
- 0.004550077176549523
- 1.0143227331608955
- 0.8457080448474709
- 0.6910342612626407
- 0.0016353130410922566
- 0.013479922185703114
- 0.0032575451176544957</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimum</code><code class="nohighlight hljs ansi" style="display:block;">-1343.749125859123</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../sw03/">« Smets and Wouters (2003)</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.23 on <span class="colophon-date" title="Monday 9 January 2023 15:14">Monday 9 January 2023</span>. Using Julia version 1.8.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ 0.40272130784743204
+ 0.9909439050568881
+ 0.004550077249419099
+ 1.014322732105124
+ 0.8457080512233822
+ 0.6910342518603528
+ 0.0016353132017430572
+ 0.013479922539728814
+ 0.003257545106875962</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimum</code><code class="nohighlight hljs ansi" style="display:block;">-1343.7491260912063</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; lbs = fill(-1e12, length(FS2000.parameters));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; ubs = fill(1e12, length(FS2000.parameters));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; bounds_index_in_pars = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.parameters);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; bounds_index_in_bounds = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.bounded_vars);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; lbs[bounds_index_in_pars] = max.(-1e12,FS2000.lower_bounds[bounds_index_in_bounds]);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; ubs[bounds_index_in_pars] = min.(1e12,FS2000.upper_bounds[bounds_index_in_bounds]);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; prob = OptimizationProblem(f, min.(max.(sol.u,lbs),ubs), [], lb = lbs, ub = ubs);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol = solve(prob, NLopt.LD_LBFGS())</code><code class="nohighlight hljs ansi" style="display:block;">u: 9-element Vector{Float64}:
+ 0.40272130784743204
+ 0.9909439050568881
+ 0.004550077249419107
+ 1.014322732105124
+ 0.8457080512233822
+ 0.6910342518603528
+ 0.0016353132017430745
+ 0.0134799225397288
+ 0.0032575451068759128</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimum</code><code class="nohighlight hljs ansi" style="display:block;">-1343.749126057635</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../sw03/">« Smets and Wouters (2003)</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.23 on <span class="colophon-date" title="Monday 9 January 2023 19:04">Monday 9 January 2023</span>. Using Julia version 1.8.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
