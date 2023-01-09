@@ -29,23 +29,23 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         old_sols = get_solution(m, verbose = true, parameters = old_par_vals)
 
         auto_corr_nv = get_autocorrelation(m)
-        auto_corr = get_autocorrelation(m, verbose = true)
+        auto_corrr = get_autocorrelation(m, verbose = true)
         new_auto_corr = get_autocorrelation(m, verbose = true, parameters = m.parameter_values * 1.0001)
         new_auto_corr1 = get_autocorrelation(m, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
         new_auto_corr2 = get_autocorrelation(m, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
         new_auto_corr3 = get_autocorrelation(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
         new_auto_corr3 = get_autocorr(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-        new_auto_corr3 = autocorr(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
+        new_auto_corr3 = autocorr(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0002))
         old_auto_corr = get_autocorrelation(m, verbose = true, parameters = old_par_vals)
 
         corr_nv = get_correlation(m)
-        corr = get_correlation(m, verbose = true)
+        corrr = get_correlation(m, verbose = true)
         new_corr = get_correlation(m, verbose = true, parameters = m.parameter_values * 1.0001)
         new_corr1 = get_correlation(m, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
         new_corr2 = get_correlation(m, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
         new_corr3 = get_correlation(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
         new_corr3 = get_corr(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-        new_corr3 = corr(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
+        new_corr3 = corr(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0002))
         old_corr = get_correlation(m, verbose = true, parameters = old_par_vals)
 
         var_decomp_nv = get_variance_decomposition(m)
@@ -54,7 +54,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_var_decomp1 = get_variance_decomposition(m, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
         new_var_decomp2 = get_variance_decomposition(m, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
         new_var_decomp3 = get_variance_decomposition(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-        new_var_decomp3 = get_var_decomp(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
+        new_var_decomp3 = get_var_decomp(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0002))
         old_var_decomp = get_variance_decomposition(m, verbose = true, parameters = old_par_vals)
 
 
@@ -81,15 +81,15 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         old_moms  = get_moments(m, verbose = true, parameters = old_par_vals)
 
 
-        new_moms4 = get_standard_deviation(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
+        new_moms4 = get_standard_deviation(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
         new_moms4 = get_variance(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-        new_moms4 = get_covariance(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-        new_moms4 = get_std(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
+        new_moms4 = get_covariance(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0002))
+        new_moms4 = get_std(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
         new_moms4 = get_var(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-        new_moms4 = get_cov(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-        new_moms4 = std(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
+        new_moms4 = get_cov(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0002))
+        new_moms4 = std(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
         new_moms4 = var(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-        new_moms4 = cov(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
+        new_moms4 = cov(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.000))
     end
 
     # irfs
