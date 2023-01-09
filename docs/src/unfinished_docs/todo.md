@@ -1,5 +1,6 @@
-# Todo list:
-## High priority:
+# Todo list
+
+## High priority
 
 - [ ] add balanced growth path handling
 - [ ] write tests and documentation for solution, estimation... making sure results are consistent
@@ -48,7 +49,7 @@
 - [x] make noneg aux part of optim problem for NLboxsolve in order to avoid DomainErrors - not necessary
 - [x] have bounds on alpha (failed previously due to naming conflict) - works now
 
-## Not high priority:
+## Not high priority
 
 - [ ] estimation codes with missing values (adopt kalman filter)
 - [ ] whats a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
@@ -75,7 +76,7 @@
 - [x] find way to recover from failed SS solution which is written to init guess
 - [x] redo ugly solution for selecting parameters to differentiate for
 - [x] conditions for when to use which solution. if solution is outdated redo all solutions which have been done so far and use smart starting points
-- [x] Revise 2,3 pert codes to make it more intuitive 
+- [x] Revise 2,3 pert codes to make it more intuitive
 - [x] implement blockdiag with julia package instead of python
 - [x] Pretty print linear solution
 - [x] write function to get_irfs
