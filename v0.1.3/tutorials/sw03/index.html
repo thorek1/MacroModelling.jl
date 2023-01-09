@@ -140,8 +140,8 @@ And data, 56×3 Matrix{Float64}:
   (:I)               0.456928         3.13855      18.5261
   (:I_f)             0.456928         3.13855      18.5261
    ⋮
-  (:r_k)             0.035101        -1.0934e-15   -1.0203
-  (:r_k_f)           0.035101         1.65064e-16  -1.0203
+  (:r_k)             0.035101         4.12758e-18  -1.0203
+  (:r_k_f)           0.035101        -5.50215e-17  -1.0203
   (:w_star)          1.14353          4.37676      14.5872
   (:z)               1.0              0.0           0.0
   (:z_f)             1.0              0.0           0.0
@@ -160,9 +160,9 @@ And data, 56×3 Matrix{Float64}:
   (:I)               0.47613          0.102174      3.29983
   (:I_f)             0.47613          0.102174      3.29983
    ⋮
-  (:r_k)             0.0340817       -4.06753e-16   6.25548e-15
-  (:r_k_f)           0.0340817       -3.71433e-16   5.70425e-15
-  (:w_star)          1.15842          6.23312e-15   4.5044
+  (:r_k)             0.0340817       -4.91734e-16   7.49349e-15
+  (:r_k_f)           0.0340817       -4.54374e-16   6.97801e-15
+  (:w_star)          1.15842          5.67727e-15   4.5044
   (:z)               1.0              0.0           0.0
   (:z_f)             1.0              0.0           0.0
   (:calibr_pi_obj)   1.0              0.0           0.0
@@ -174,9 +174,9 @@ And data, 56×3 Matrix{Float64}:
 And data, 54×3 Matrix{Float64}:
              (:Standard_deviation)   (:alpha)        (:beta)
   (:C)        2.0521                  9.69554        -9.78014
-  (:C_f)      3.05478                13.0917         -0.834006
-  (:G)        0.373165                8.84278e-12    -5.83396e-11
-  (:G_f)      0.373165                8.83784e-12    -5.82968e-11
+  (:C_f)      3.05478                13.0917         -0.834005
+  (:G)        0.373165                7.25755e-12    -3.7635e-11
+  (:G_f)      0.373165                7.07145e-12    -3.78888e-11
   (:I)        3.00453                13.9594         95.911
   (:I_f)      3.46854                14.3686        105.856
    ⋮
@@ -192,19 +192,19 @@ And data, 54×3 Matrix{Float64}:
 And data, 29×54 adjoint(::Matrix{Float64}) with eltype Float64:
                    (:C)         (:C_f)        …  (:z)         (:z_f)
   (:Steady_state)   1.20438      1.20438          1.0          1.0
-  (:C₍₋₁₎)          0.536418     8.76342e-15      0.214756     5.85483e-14
+  (:C₍₋₁₎)          0.536418     1.51808e-14      0.214756     1.11248e-13
   (:C_f₍₋₁₎)        0.0163196    0.410787         0.00766973   0.139839
-  (:I₍₋₁₎)         -0.102895    -1.11151e-14      0.317145    -5.18718e-14
+  (:I₍₋₁₎)         -0.102895    -1.71564e-14      0.317145    -8.02957e-14
   (:I_f₍₋₁₎)        0.0447033   -0.24819      …   0.0276803    0.213957
-  (:K₍₋₁₎)          0.00880026  -3.03338e-16     -0.0587166    1.06091e-15
+  (:K₍₋₁₎)          0.00880026  -8.87295e-16     -0.0587166   -4.78909e-15
    ⋮                                          ⋱   ⋮
   (:eta_L₍ₓ₎)       0.252424     0.838076         0.0982057    0.430915
-  (:eta_R₍ₓ₎)      -0.229757    -7.72331e-16     -0.179716     8.80832e-16
+  (:eta_R₍ₓ₎)      -0.229757     1.93779e-15     -0.179716    -9.8675e-16
   (:eta_a₍ₓ₎)       0.185454     0.699595     …  -0.551529     0.348639
   (:eta_b₍ₓ₎)       0.087379     0.0150811        0.0338767   -0.013001
-  (:eta_p₍ₓ₎)      -9.72053e-5  -4.54015e-18     -0.00134983  -4.82849e-18
-  (:eta_pi₍ₓ₎)      0.0100939    1.65779e-16      0.00816804  -8.19857e-17
-  (:eta_w₍ₓ₎)      -4.24362e-5   1.29931e-18      0.00222469   3.17355e-18</code></pre><p>The solution provides information about how past states and present shocks impact present variables. The first row contains the SS for the variables denoted in the columns. The second to last rows contain the past states, with the time index <code>₍₋₁₎</code>, and present shocks, with exogenous variables denoted by <code>₍ₓ₎</code>. For example, the immediate impact of a shock to <code>eta_w</code> on <code>z</code> is 0.00222469.</p><h2 id="Obtain-array-of-IRFs-or-model-simulations"><a class="docs-heading-anchor" href="#Obtain-array-of-IRFs-or-model-simulations">Obtain array of IRFs or model simulations</a><a id="Obtain-array-of-IRFs-or-model-simulations-1"></a><a class="docs-heading-anchor-permalink" href="#Obtain-array-of-IRFs-or-model-simulations" title="Permalink"></a></h2><p>Last but not least the user might want to obtain simulated time series of the model or IRFs without plotting them. For IRFs this is possible by calling <a href="../../api/#MacroModelling.get_irf-Tuple{MacroModelling.ℳ, Vector}"><code>get_irf</code></a>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_irf(SW03)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+  (:eta_p₍ₓ₎)      -9.72053e-5   1.2265e-17      -0.00134983  -7.02692e-19
+  (:eta_pi₍ₓ₎)      0.0100939   -1.29666e-16      0.00816804   9.34317e-17
+  (:eta_w₍ₓ₎)      -4.24362e-5  -8.09006e-18      0.00222469  -1.2357e-18</code></pre><p>The solution provides information about how past states and present shocks impact present variables. The first row contains the SS for the variables denoted in the columns. The second to last rows contain the past states, with the time index <code>₍₋₁₎</code>, and present shocks, with exogenous variables denoted by <code>₍ₓ₎</code>. For example, the immediate impact of a shock to <code>eta_w</code> on <code>z</code> is 0.00222469.</p><h2 id="Obtain-array-of-IRFs-or-model-simulations"><a class="docs-heading-anchor" href="#Obtain-array-of-IRFs-or-model-simulations">Obtain array of IRFs or model simulations</a><a id="Obtain-array-of-IRFs-or-model-simulations-1"></a><a class="docs-heading-anchor-permalink" href="#Obtain-array-of-IRFs-or-model-simulations" title="Permalink"></a></h2><p>Last but not least the user might want to obtain simulated time series of the model or IRFs without plotting them. For IRFs this is possible by calling <a href="../../api/#MacroModelling.get_irf-Tuple{MacroModelling.ℳ, Vector}"><code>get_irf</code></a>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_irf(SW03)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 54-element Vector{Symbol}
 →   Period ∈ 40-element UnitRange{Int64}
 ◪   Shock ∈ 9-element Vector{Symbol}
@@ -225,7 +225,7 @@ And data, 54×40×9 Array{Float64, 3}:
              (1)            (2)            …  (39)            (40)
   (:C)         0.185454       0.266366           0.0448634       0.0445393
   (:C_f)       0.699595       0.807224           0.0641954       0.0635383
-  (:G)        -6.31804e-17   -7.59257e-15        1.00074e-14     9.84356e-15
+  (:G)         1.54321e-16    2.11185e-14        1.09414e-14     1.07734e-14
    ⋮                                       ⋱     ⋮
   (:r_k_f)     0.00206815     0.00250599   …    -0.0012247      -0.00120755
   (:w_star)   -0.0685999     -0.0257599          0.0104469       0.00989232
@@ -235,29 +235,29 @@ And data, 54×40×9 Array{Float64, 3}:
 [:, :, 9] ~ (:, :, :eta_w):
              (1)            (2)            …  (39)            (40)
   (:C)        -4.24362e-5    -7.53116e-5        -0.000102464    -0.000101596
-  (:C_f)       1.29931e-18    9.25329e-18        1.28513e-17     1.30425e-17
-  (:G)        -1.0023e-18     2.86889e-17       -7.94199e-18    -7.73625e-18
+  (:C_f)      -8.09006e-18    3.14761e-17        1.56772e-17     1.56533e-17
+  (:G)         2.5387e-18    -2.05809e-17       -1.41812e-17    -1.43797e-17
    ⋮                                       ⋱     ⋮
-  (:r_k_f)     1.88257e-20    7.53333e-19  …    -1.98798e-19    -1.91226e-19
+  (:r_k_f)    -7.33025e-21    2.45625e-18  …    -1.60573e-19    -1.55498e-19
   (:w_star)    0.012691       0.00165858        -8.17445e-5     -7.60783e-5
   (:z)         0.00222469     0.00187724         0.000271989     0.000277738
-  (:z_f)       3.17355e-18    1.26003e-16       -3.35688e-17    -3.22938e-17</code></pre><p>which returns a 3-dimensional <code>KeyedArray</code> with variables in rows, the period in columns, and the shocks as the third dimension.</p><p>For simulations this is possible by calling <a href="../../api/#MacroModelling.simulate-Tuple"><code>simulate</code></a>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; simulate(SW03)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+  (:z_f)      -1.2357e-18     4.14118e-16       -2.7065e-17     -2.6216e-17</code></pre><p>which returns a 3-dimensional <code>KeyedArray</code> with variables in rows, the period in columns, and the shocks as the third dimension.</p><p>For simulations this is possible by calling <a href="../../api/#MacroModelling.simulate-Tuple"><code>simulate</code></a>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; simulate(SW03)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 54-element Vector{Symbol}
 →   Period ∈ 40-element UnitRange{Int64}
 ◪   Shock ∈ 1-element Vector{Symbol}
 And data, 54×40×1 Array{Float64, 3}:
 [:, :, 1] ~ (:, :, :simulate):
              (1)           (2)           …  (39)          (40)
-  (:C)        -0.253038     -0.964514          1.56719       1.94479
-  (:C_f)      -0.712329     -2.52967           3.21522       4.30557
-  (:G)        -0.0770499    -0.0657169         0.456792      0.25316
-  (:G_f)      -0.0770499    -0.0657169         0.456792      0.25316
-  (:I)        -0.0971912    -0.464714    …     3.89315       4.00577
-  (:I_f)      -0.245132     -0.967046          4.3039        4.79736
+  (:C)        -0.430787     -1.02903          -2.07528      -1.9468
+  (:C_f)      -1.08915      -2.29423          -1.32727      -0.842169
+  (:G)         0.16186       0.107582          0.645492      0.783099
+  (:G_f)       0.16186       0.107582          0.645492      0.783099
+  (:I)        -0.137906     -0.554014    …    -3.85475      -3.58272
+  (:I_f)      -0.31298      -0.92163          -4.26472      -3.59424
    ⋮                                     ⋱     ⋮
-  (:q_f)       0.636073      1.62166          -3.48432      -4.02255
-  (:r_k)      -0.00164974    0.0024338   …     0.0125318     0.00717896
-  (:r_k_f)    -0.00228581   -0.00778473        0.0109933     0.0126865
-  (:w_star)    0.33659       0.482861         -0.320162     -0.330445
-  (:z)        -0.278105      0.410279          2.11255       1.2102
-  (:z_f)      -0.385332     -1.31231           1.8532        2.13863</code></pre><p>which returns the simulated data in a 3-dimensional <code>KeyedArray</code> of the same structure as for the IRFs.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../rbc/">« RBC</a><a class="docs-footer-nextpage" href="../estimation/">Estimation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.23 on <span class="colophon-date" title="Monday 9 January 2023 13:46">Monday 9 January 2023</span>. Using Julia version 1.8.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+  (:q_f)       0.684031      1.53577           7.03786       6.97866
+  (:r_k)       0.00297136    0.00203677  …     0.0370955     0.0364592
+  (:r_k_f)    -0.00274046   -0.00675725        0.0460201     0.048962
+  (:w_star)    0.119083      0.081858         -1.51294      -1.53319
+  (:z)         0.500898      0.343349          6.25338       6.14611
+  (:z_f)      -0.461973     -1.1391            7.75784       8.25378</code></pre><p>which returns the simulated data in a 3-dimensional <code>KeyedArray</code> of the same structure as for the IRFs.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../rbc/">« RBC</a><a class="docs-footer-nextpage" href="../estimation/">Estimation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.23 on <span class="colophon-date" title="Monday 9 January 2023 15:14">Monday 9 January 2023</span>. Using Julia version 1.8.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
