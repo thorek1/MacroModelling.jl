@@ -4,11 +4,9 @@
 - [ ] add balanced growth path handling
 - [ ] write tests and documentation for solution, estimation... making sure results are consistent
 - [ ] use @assert for errors and @test_throws
-- [ ] add correlation, autocorrelation, and variance decomposition
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
 - [ ] print SS dependencies, show SS solver
 - [ ] write to dynare
-- [ ] add functions like get_variance, get_sd, get_var, get_covar
   
 - [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
 - [ ] make the nonnegativity trick optional
@@ -29,6 +27,8 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] add functions like get_variance, get_sd, get_var, get_covar
+- [x] add correlation, autocorrelation, and variance decomposition
 - [x] go through docs to reflect verbose behaviour
 - [x] speed up covariance mat calc
 - [x] have conditional parameters at end of entry as well (... | alpha instead of alpha | ...)
