@@ -818,7 +818,9 @@ function get_moments(𝓂::ℳ;
             𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
             # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
             SS =  KeyedArray(hcat(collect(NSSS)[var_idx_SS],dNSSS);  Variables = [sort(var)...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
-        elseif variance
+        end
+        
+        if variance
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
 
             vari = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
@@ -836,7 +838,9 @@ function get_moments(𝓂::ℳ;
 
                 st_dev =  KeyedArray(hcat(standard_dev[var_idx],dst_dev);  Variables = sort(var), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
             end
-        elseif standard_deviation
+        end
+
+        if standard_deviation
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
 
             standard_dev = sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))))
@@ -849,17 +853,23 @@ function get_moments(𝓂::ℳ;
     else
         if non_stochastic_steady_state
             SS =  KeyedArray(collect(NSSS)[var_idx_SS];  Variables = [sort(var)...,𝓂.calibration_equations_parameters...])
-        elseif variance
+        end
+
+        if variance
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
             varr = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
             varrs = KeyedArray(varr[var_idx];  Variables = sort(var))
             if standard_deviation
                 st_dev = KeyedArray(sqrt.(varr[var_idx]);  Variables = sort(var))
             end
-        elseif standard_deviation
+        end
+
+        if standard_deviation
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
             st_dev = KeyedArray(sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp)[var_idx],eps(Float64))));  Variables = sort(var))
-        elseif covariance
+        end
+
+        if covariance
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
         end
     end
