@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Estimation · MacroModelling.jl</title><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">MacroModelling.jl</a></span></div><form class="docs-search" action="../../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../../">Introduction</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../install/">Installation</a></li><li><a class="tocitem" href="../rbc/">RBC</a></li><li><a class="tocitem" href="../sw03/">Smets and Wouters (2003)</a></li><li class="is-active"><a class="tocitem" href>Estimation</a><ul class="internal"><li><a class="tocitem" href="#Define-the-model"><span>Define the model</span></a></li><li><a class="tocitem" href="#Define-the-parameters"><span>Define the parameters</span></a></li><li><a class="tocitem" href="#Load-data,-declare-observables,-and-write-moments-mapping-to-distribution-parameters"><span>Load data, declare observables, and write moments mapping to distribution parameters</span></a></li><li><a class="tocitem" href="#Define-bayesian-model"><span>Define bayesian model</span></a></li><li><a class="tocitem" href="#Sample-from-posterior:-No-U-Turn-Sampler-(NUTS)"><span>Sample from posterior: No-U-Turn Sampler (NUTS)</span></a></li><li><a class="tocitem" href="#Find-posterior-mode"><span>Find posterior mode</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../../api/">API</a></li><li><a class="tocitem" href="../../call_index/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Tutorials</a></li><li class="is-active"><a href>Estimation</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Estimation</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/thorek1/MacroModelling.jl/blob/main/docs/src/tutorials/estimation.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="Estimate-a-simple-model-Schorfheide-(2000)"><a class="docs-heading-anchor" href="#Estimate-a-simple-model-Schorfheide-(2000)">Estimate a simple model - Schorfheide (2000)</a><a id="Estimate-a-simple-model-Schorfheide-(2000)-1"></a><a class="docs-heading-anchor-permalink" href="#Estimate-a-simple-model-Schorfheide-(2000)" title="Permalink"></a></h1><p>This tutorial is intended to show the workflow to estimate a model using the No-U-Turn sampler (NUTS). The tutorial works with a benchmark model for estimation and can therefore be compared to results from other software packages (e.g. <a href="https://archives.dynare.org/documentation/examples.html">dynare</a>).</p><h2 id="Define-the-model"><a class="docs-heading-anchor" href="#Define-the-model">Define the model</a><a id="Define-the-model-1"></a><a class="docs-heading-anchor-permalink" href="#Define-the-model" title="Permalink"></a></h2><p>The first step is always to name the model and write down the equations. For the Schorfheide (2000) model this would go as follows:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using MacroModelling</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; @model FS2000 begin
+           dA[0] = exp(gam + z_e_a  *  e_a[x])
+       
+           log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+       
+           - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+       
+           W[0] = l[0] / n[0]
+       
+           - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+       
+           R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+       
+           1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+       
+           c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+       
+           P[0] * c[0] = m[0]
+       
+           m[0] - 1 + d[0] = l[0]
+       
+           e[0] = exp(z_e_a  *  e_a[x])
+       
+           y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+       
+           gy_obs[0] = dA[0] * y[0] / y[-1]
+       
+           gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+       
+           log_gy_obs[0] = log(gy_obs[0])
+       
+           log_gp_obs[0] = log(gp_obs[0])
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Model:      FS2000
+Variables
+ Total:     16
+ States:    4
+ Jumpers:   3
+ Auxiliary: 2
+Shocks:     2
+Parameters: 9</code></pre><p>First, we load the package and then use the <a href="../../api/#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> macro to define our model. The first argument after <a href="../../api/#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which we write down between <code>begin</code> and <code>end</code>. Equations can contain an equality sign or the expression is assumed to equal 0. Equations cannot span multiple lines and the timing of endogenous variables are expressed in the squared brackets following the variable name (e.g. <code>[-1]</code> for the past period). Exogenous variables (shocks) are followed by a keyword in squared brackets indicating them being exogenous (in this case <code>[x]</code>). Note that names can leverage julia&#39;s unicode capabilities (e.g. alpha can be written as α).</p><h2 id="Define-the-parameters"><a class="docs-heading-anchor" href="#Define-the-parameters">Define the parameters</a><a id="Define-the-parameters-1"></a><a class="docs-heading-anchor-permalink" href="#Define-the-parameters" title="Permalink"></a></h2><p>Next we need to add the parameters of the model. The macro <a href="../../api/#MacroModelling.@parameters-Tuple{Any, Any}"><code>@parameters</code></a> takes care of this:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; @parameters FS2000 begin
+           alp     = 0.356
+           bet     = 0.993
+           gam     = 0.0085
+           mst     = 1.0002
+           rho     = 0.129
+           psi     = 0.65
+           del     = 0.01
+           z_e_a   = 0.035449
+           z_e_m   = 0.008862
+       end</code><code class="nohighlight hljs ansi" style="display:block;"></code></pre><p>The block defining the parameters above only describes the simple parameter definitions the same way you assign values (e.g. <code>alp = .356</code>). </p><p>Note that we have to write one parameter definition per line.</p><h2 id="Load-data,-declare-observables,-and-write-moments-mapping-to-distribution-parameters"><a class="docs-heading-anchor" href="#Load-data,-declare-observables,-and-write-moments-mapping-to-distribution-parameters">Load data, declare observables, and write moments mapping to distribution parameters</a><a id="Load-data,-declare-observables,-and-write-moments-mapping-to-distribution-parameters-1"></a><a class="docs-heading-anchor-permalink" href="#Load-data,-declare-observables,-and-write-moments-mapping-to-distribution-parameters" title="Permalink"></a></h2><p>Given the equations and parameters, we only need the data and define the observables to be able to estimate the model.  First, we load in the data from a CSV file (using the CSV and DataFrames packages) and convert it to a <code>KeyedArray</code> (using the AxisKeys package). Furthermore, we log transform the data provided in levels, and define the observables of the model. Last but not least we select only those variables in the data which are declared observables in the model.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using CSV, DataFrames, AxisKeys</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; # load data
+       dat = CSV.read(&quot;../assets/FS2000_data.csv&quot;, DataFrame)</code><code class="nohighlight hljs ansi" style="display:block;">192×2 DataFrame
+ Row │ gy_obs    gp_obs
+     │ Float64   Float64
+─────┼────────────────────
+   1 │ 1.03836   0.99556
+   2 │ 1.0267    1.0039
+   3 │ 1.03352   1.02277
+   4 │ 1.0163    1.01683
+   5 │ 1.00469   1.03897
+   6 │ 1.01428   1.00462
+   7 │ 1.01456   1.00051
+   8 │ 0.996854  1.01176
+  ⋮  │    ⋮         ⋮
+ 186 │ 1.0126    1.00303
+ 187 │ 1.00279   1.00458
+ 188 │ 1.00813   1.00447
+ 189 │ 1.00849   1.00699
+ 190 │ 1.00764   1.00387
+ 191 │ 1.00797   1.00296
+ 192 │ 1.00489   1.00286
+          177 rows omitted</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; data = KeyedArray(Array(dat)&#39;,Variable = Symbol.(&quot;log_&quot;.*names(dat)),Time = 1:size(dat)[1])</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variable ∈ 2-element Vector{Symbol}
+→   Time ∈ 192-element UnitRange{Int64}
+And data, 2×192 adjoint(::Matrix{Float64}) with eltype Float64:
+                 (1)        (2)       (3)        …  (191)        (192)
+  (:log_gy_obs)    1.03836    1.0267    1.03352         1.00797      1.00489
+  (:log_gp_obs)    0.99556    1.0039    1.02277         1.00296      1.00286</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; data = log.(data)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variable ∈ 2-element Vector{Symbol}
+→   Time ∈ 192-element UnitRange{Int64}
+And data, 2×192 Matrix{Float64}:
+                 (1)          (2)          …  (191)           (192)
+  (:log_gy_obs)    0.0376443    0.026348          0.00793817      0.00487735
+  (:log_gp_obs)   -0.0044494    0.0038943         0.00295712      0.00285919</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; # declare observables
+       observables = sort(Symbol.(&quot;log_&quot;.*names(dat)))</code><code class="nohighlight hljs ansi" style="display:block;">2-element Vector{Symbol}:
+ :log_gp_obs
+ :log_gy_obs</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; # subset observables in data
+       data = data(observables,:)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variable ∈ 2-element view(::Vector{Symbol},...)
+→   Time ∈ 192-element UnitRange{Int64}
+And data, 2×192 view(::Matrix{Float64}, [2, 1], :) with eltype Float64:
+                 (1)          (2)          …  (191)           (192)
+  (:log_gp_obs)   -0.0044494    0.0038943         0.00295712      0.00285919
+  (:log_gy_obs)    0.0376443    0.026348          0.00793817      0.00487735</code></pre><p>In order to make the prior definitions more intuitive for users we define helper functions translating the mean and standard deviation of the beta, inverse gamma, and gamma distributions to the respective distribution parameters (e.g. α and β for the beta distribution).</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; # functions to map mean and standard deviations to distribution parameters
+       function beta_map(μ, σ)
+           α = ((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2
+           β = α * (1 / μ - 1)
+           return α, β
+       end</code><code class="nohighlight hljs ansi" style="display:block;">beta_map (generic function with 1 method)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function inv_gamma_map(μ, σ)
+           α = (μ / σ) ^ 2 + 2
+           β = μ * ((μ / σ) ^ 2 + 1)
+           return α, β
+       end</code><code class="nohighlight hljs ansi" style="display:block;">inv_gamma_map (generic function with 1 method)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function gamma_map(μ, σ)
+           k = μ^2/σ^2
+           θ = σ^2 / μ
+           return k, θ
+       end</code><code class="nohighlight hljs ansi" style="display:block;">gamma_map (generic function with 1 method)</code></pre><h2 id="Define-bayesian-model"><a class="docs-heading-anchor" href="#Define-bayesian-model">Define bayesian model</a><a id="Define-bayesian-model-1"></a><a class="docs-heading-anchor-permalink" href="#Define-bayesian-model" title="Permalink"></a></h2><p>Next we define the parameter priors using the Turing package. The <code>@model</code> macro of the Turing package allows us to define the prior distributions over the parameters and combine it with the loglikelihood of the model and parameters given the data with the help of the <code>calculate_kalman_filter_loglikelihood</code> function. Inside the macro we first define the priors using distributions of the Distributions package (reexported by Turing) and the previously defined helper functions. See the documentation of the Turing package for more details. Next, we define the loglikelihood and add it to the posterior loglikelihood with the help of the <code>@addlogprob!</code> macro.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import Turing</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; import Turing: Normal, Beta, InverseGamma, NUTS, sample, logpdf</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; Turing.@model function FS2000_loglikelihood_function(data, m, observables)
+           alp     ~ Beta(beta_map(0.356, 0.02)...)
+           bet     ~ Beta(beta_map(0.993, 0.002)...)
+           gam     ~ Normal(0.0085, 0.003)#, eps(), .1)
+           mst     ~ Normal(1.0002, 0.007)
+           rho     ~ Beta(beta_map(0.129, 0.223)...)
+           psi     ~ Beta(beta_map(0.65, 0.05)...)
+           del     ~ Beta(beta_map(0.01, 0.005)...)
+           z_e_a   ~ InverseGamma(inv_gamma_map(0.035449, Inf)...)
+           z_e_m   ~ InverseGamma(inv_gamma_map(0.008862, Inf)...)
+       
+           Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
+       end</code><code class="nohighlight hljs ansi" style="display:block;">FS2000_loglikelihood_function (generic function with 2 methods)</code></pre><h2 id="Sample-from-posterior:-No-U-Turn-Sampler-(NUTS)"><a class="docs-heading-anchor" href="#Sample-from-posterior:-No-U-Turn-Sampler-(NUTS)">Sample from posterior: No-U-Turn Sampler (NUTS)</a><a id="Sample-from-posterior:-No-U-Turn-Sampler-(NUTS)-1"></a><a class="docs-heading-anchor-permalink" href="#Sample-from-posterior:-No-U-Turn-Sampler-(NUTS)" title="Permalink"></a></h2><p>We use the NUTS sampler to retrieve the posterior distribution of the parameters. This sampler uses the gradient of the posterior loglikelihood with respect to the model parameters to navigate the parameter space. The NUTS sampler is considered robust, fast, and user-friendly (auto-tuning of hyper-parameters).</p><p>First we define the loglikelihood model with the specific data, observables, and model. Next, we draw 1000 samples from the model:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, observables)</code><code class="nohighlight hljs ansi" style="display:block;">DynamicPPL.Model{typeof(Main.FS2000_loglikelihood_function), (:data, :m, :observables), (), (), Tuple{AxisKeys.KeyedArray{Float64, 2, NamedDims.NamedDimsArray{(:Variable, :Time), Float64, 2, SubArray{Float64, 2, Matrix{Float64}, Tuple{Vector{Int64}, Base.Slice{Base.OneTo{Int64}}}, false}}, Tuple{SubArray{Symbol, 1, Vector{Symbol}, Tuple{Vector{Int64}}, false}, UnitRange{Int64}}}, MacroModelling.ℳ, Vector{Symbol}}, Tuple{}, DynamicPPL.DefaultContext}(Main.FS2000_loglikelihood_function, (data = [-0.004449395549541736 0.003894302557214685 … 0.00295712388974342 0.0028591870800456034; 0.037644325923854076 0.0263480232784771 … 0.007938165671670197 0.004877347098675774], m = Model:      FS2000
+Variables
+ Total:     16
+ States:    4
+ Jumpers:   3
+ Auxiliary: 2
+Shocks:     2
+Parameters: 9
+, observables = [:log_gp_obs, :log_gy_obs]), NamedTuple(), DynamicPPL.DefaultContext())</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; n_samples = 1000</code><code class="nohighlight hljs ansi" style="display:block;">1000</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; chain_NUTS  = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false)</code><code class="nohighlight hljs ansi" style="display:block;">┌ Info: Found initial step size
+└   ϵ = 0.003125
+Chains MCMC chain (1000×21×1 Array{Float64, 3}):
+
+Iterations        = 501:1:1500
+Number of chains  = 1
+Samples per chain = 1000
+Wall duration     = 2130.33 seconds
+Compute duration  = 2130.33 seconds
+parameters        = alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m
+internals         = lp, n_steps, is_accept, acceptance_rate, log_density, hamiltonian_energy, hamiltonian_energy_error, max_hamiltonian_energy_error, tree_depth, numerical_error, step_size, nom_step_size
+
+Summary Statistics
+  parameters      mean       std   naive_se      mcse         ess      rhat    ⋯
+      Symbol   Float64   Float64    Float64   Float64     Float64   Float64    ⋯
+
+         alp    0.4049    0.0201     0.0006    0.0007    706.2529    0.9991    ⋯
+         bet    0.9903    0.0021     0.0001    0.0001   1032.0623    0.9998    ⋯
+         gam    0.0046    0.0009     0.0000    0.0000    739.4394    0.9990    ⋯
+         mst    1.0142    0.0017     0.0001    0.0000   1160.6424    0.9990    ⋯
+         rho    0.8458    0.0336     0.0011    0.0011    999.7559    0.9990    ⋯
+         psi    0.6848    0.0469     0.0015    0.0015   1139.7181    0.9992    ⋯
+         del    0.0025    0.0014     0.0000    0.0000    933.2568    1.0032    ⋯
+       z_e_a    0.0137    0.0009     0.0000    0.0000    566.8366    0.9991    ⋯
+       z_e_m    0.0033    0.0002     0.0000    0.0000    917.3590    0.9994    ⋯
+                                                                1 column omitted
+
+Quantiles
+  parameters      2.5%     25.0%     50.0%     75.0%     97.5%
+      Symbol   Float64   Float64   Float64   Float64   Float64
+
+         alp    0.3672    0.3909    0.4047    0.4184    0.4441
+         bet    0.9861    0.9890    0.9904    0.9918    0.9940
+         gam    0.0029    0.0040    0.0046    0.0052    0.0064
+         mst    1.0102    1.0133    1.0144    1.0154    1.0172
+         rho    0.7768    0.8230    0.8486    0.8698    0.9051
+         psi    0.5898    0.6543    0.6862    0.7182    0.7740
+         del    0.0006    0.0015    0.0023    0.0033    0.0059
+       z_e_a    0.0121    0.0132    0.0137    0.0143    0.0156
+       z_e_m    0.0030    0.0032    0.0033    0.0034    0.0037</code></pre><h3 id="Inspect-posterior"><a class="docs-heading-anchor" href="#Inspect-posterior">Inspect posterior</a><a id="Inspect-posterior-1"></a><a class="docs-heading-anchor-permalink" href="#Inspect-posterior" title="Permalink"></a></h3><p>In order to understand the posterior distribution and the sequence of sample we are plot them:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using StatsPlots</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; StatsPlots.plot(chain_NUTS);</code><code class="nohighlight hljs ansi" style="display:block;"></code></pre><p><img src="../../assets/FS2000_chain_NUTS.png" alt="NUTS chain"/></p><p>Next, we are plotting the posterior loglikelihood along two parameters dimensions, with the other parameters ket at the posterior mean, and add the samples to the visualisation. This visualisation allows us to understand the curvature of the posterior and puts the samples in context.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using ComponentArrays, MCMCChains, DynamicPPL, Plots</code><code class="nohighlight hljs ansi" style="display:block;">WARNING: using DynamicPPL.@model in module Main conflicts with an existing identifier.</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; parameter_mean = mean(chain_NUTS)</code><code class="nohighlight hljs ansi" style="display:block;">Mean
+  parameters      mean
+      Symbol   Float64
+
+         alp    0.4049
+         bet    0.9903
+         gam    0.0046
+         mst    1.0142
+         rho    0.8458
+         psi    0.6848
+         del    0.0025
+       z_e_a    0.0137
+       z_e_m    0.0033</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; pars = ComponentArray(parameter_mean.nt[2],Axis(parameter_mean.nt[1]))</code><code class="nohighlight hljs ansi" style="display:block;">ComponentVector{Float64}(alp = 0.40488285690940834, bet = 0.9903337134181892, gam = 0.004612524338839562, mst = 1.014203367604299, rho = 0.8457602185806977, psi = 0.684842579336535, del = 0.002531286699246741, z_e_a = 0.013747580371369666, z_e_m = 0.0033258078178566653)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; logjoint(FS2000_loglikelihood, pars)</code><code class="nohighlight hljs ansi" style="display:block;">1343.3909483064147</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
+           orig_pars[pars_syms] = [par1, par2]
+           logjoint(model, orig_pars)
+       end</code><code class="nohighlight hljs ansi" style="display:block;">calculate_log_probability (generic function with 1 method)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; granularity = 32;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par1 = :del;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par2 = :gam;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range1 = collect(range(minimum(chain_NUTS[par1]), stop = maximum(chain_NUTS[par1]), length = granularity));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range2 = collect(range(minimum(chain_NUTS[par2]), stop = maximum(chain_NUTS[par2]), length = granularity));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; p = surface(par_range1, par_range2,
+                   (x,y) -&gt; calculate_log_probability(x, y, [par1, par2], pars, FS2000_loglikelihood),
+                   camera=(30, 65),
+                   colorbar=false,
+                   color=:inferno);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray(reduce(hcat, get(chain_NUTS, FS2000.parameters)[FS2000.parameters])[s,:], Axis(FS2000.parameters))) for s in 1:length(chain_NUTS)]</code><code class="nohighlight hljs ansi" style="display:block;">1000-element Vector{Float64}:
+ 1339.1405376661078
+ 1337.98320926077
+ 1338.1007235266231
+ 1339.8018610705387
+ 1339.7940740248118
+ 1337.0542036728602
+ 1336.8426315380007
+ 1337.5115628662202
+ 1340.1754381795788
+ 1340.108079782056
+    ⋮
+ 1341.7161936439816
+ 1340.2946839076649
+ 1339.9368879439025
+ 1338.157155606967
+ 1338.667418283406
+ 1340.2600755479223
+ 1339.0223944978663
+ 1338.315756688743
+ 1334.758121769575</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; scatter3d!(vec(collect(chain_NUTS[par1])),
+                  vec(collect(chain_NUTS[par2])),
+                  joint_loglikelihood,
+                   mc = :viridis,
+                   marker_z = collect(1:length(chain_NUTS)),
+                   msw = 0,
+                   legend = false,
+                   colorbar = false,
+                   xlabel = string(par1),
+                   ylabel = string(par2),
+                   zlabel = &quot;Log probability&quot;,
+                   alpha = 0.5);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; p</code><code class="nohighlight hljs ansi" style="display:block;">Plot{Plots.GRBackend() n=2}</code></pre><p><img src="../../assets/FS2000_posterior_surface.png" alt="Posterior surface"/></p><h2 id="Find-posterior-mode"><a class="docs-heading-anchor" href="#Find-posterior-mode">Find posterior mode</a><a id="Find-posterior-mode-1"></a><a class="docs-heading-anchor-permalink" href="#Find-posterior-mode" title="Permalink"></a></h2><p>Other than the mean and median of the posterior distribution we can also calculate the mode. To this end we will use optimisation routines from the Optimization, OptimizationNLopt, and OptimizationOptimisers packages.</p><p>First, we define the posterior loglikelihood function, similar to how we defined it for the Turing model macro.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; function calculate_posterior_loglikelihood(parameters, u)
+           alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
+           log_lik = 0
+           log_lik -= calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables; parameters = parameters)
+           log_lik -= logpdf(Beta(beta_map(0.356, 0.02)...),alp)
+           log_lik -= logpdf(Beta(beta_map(0.993, 0.002)...),bet)
+           log_lik -= logpdf(Normal(0.0085, 0.003),gam)
+           log_lik -= logpdf(Normal(1.0002, 0.007),mst)
+           log_lik -= logpdf(Beta(beta_map(0.129, 0.223)...),rho)
+           log_lik -= logpdf(Beta(beta_map(0.65, 0.05)...),psi)
+           log_lik -= logpdf(Beta(beta_map(0.01, 0.005)...),del)
+           log_lik -= logpdf(InverseGamma(inv_gamma_map(0.035449, Inf)...),z_e_a)
+           log_lik -= logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...),z_e_m)
+           return log_lik
+       end</code><code class="nohighlight hljs ansi" style="display:block;">calculate_posterior_loglikelihood (generic function with 1 method)</code></pre><p>Next, we set up the optimsation problem and first use the ADAM global optimiser for 1000 iterations in order to avoid local optima and then fine tune with L-BFGS.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using Optimization, OptimizationNLopt, OptimizationOptimisers</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoForwardDiff())</code><code class="nohighlight hljs ansi" style="display:block;">(::SciMLBase.OptimizationFunction{true, Optimization.AutoForwardDiff{nothing}, typeof(Main.calculate_posterior_loglikelihood), Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, typeof(SciMLBase.DEFAULT_OBSERVED_NO_TIME), Nothing, Nothing, Nothing, Nothing, Nothing, Nothing, Nothing}) (generic function with 1 method)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; prob = OptimizationProblem(f, collect(pars), []);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol = solve(prob, Optimisers.ADAM(), maxiters = 1000)</code><code class="nohighlight hljs ansi" style="display:block;">u: 9-element Vector{Float64}:
+ 0.40272130998520816
+ 0.9909439052254149
+ 0.004550077204079822
+ 1.0143227321133992
+ 0.8457080526343768
+ 0.6910342489741199
+ 0.0016353131520142124
+ 0.01347992259269437
+ 0.0032575450901364167</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimum</code><code class="nohighlight hljs ansi" style="display:block;">-1343.749126599817</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; lbs = fill(-1e12, length(FS2000.parameters));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; ubs = fill(1e12, length(FS2000.parameters));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; bounds_index_in_pars = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.parameters);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; bounds_index_in_bounds = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.bounded_vars);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; lbs[bounds_index_in_pars] = max.(-1e12,FS2000.lower_bounds[bounds_index_in_bounds]);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; ubs[bounds_index_in_pars] = min.(1e12,FS2000.upper_bounds[bounds_index_in_bounds]);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; prob = OptimizationProblem(f, min.(max.(sol.u,lbs),ubs), [], lb = lbs, ub = ubs);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol = solve(prob, NLopt.LD_LBFGS())</code><code class="nohighlight hljs ansi" style="display:block;">u: 9-element Vector{Float64}:
+ 0.40272130998548455
+ 0.9909439052247548
+ 0.004550077206028627
+ 1.0143227321075157
+ 0.8457080526343762
+ 0.6910342489741181
+ 0.0016353131537048037
+ 0.013479922588995663
+ 0.003257545091304633</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimum</code><code class="nohighlight hljs ansi" style="display:block;">-1343.7491265862159</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../sw03/">« Smets and Wouters (2003)</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.23 on <span class="colophon-date" title="Monday 9 January 2023 13:46">Monday 9 January 2023</span>. Using Julia version 1.8.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
