@@ -1,22 +1,20 @@
-
-
 """
 $(SIGNATURES)
 Return impulse response functions (IRFs) of the model in a 3-dimensional array.
 Function to use when differentiating IRFs with repect to parameters.
 
 # Arguments
-- `𝓂`: the object created by @model and @parameters for which to get the solution.
-- `parameters` [Type: `Vector`]: Parameter values in alphabetical order (sorted by parameter name).
+- $MODEL
+- $PARAMETER_VALUES
 # Keyword Arguments
-- `periods` [Default: `40`, Type: `Int`]: number of periods for which to calculate the IRFs
-- `variables` [Default: `:all`]: variables for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y` or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. Any variables not part of the model will trigger a warning.
-- `shocks` [Default: `:all`]: shocks for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y`, `:simulate`, :none, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. `:simulate` triggers random draws of all shocks. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
-- `negative_shock` [Default: `false`, Type: `Bool`]: calculate a negative shock. Relevant for generalised IRFs.
-- `generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.
-- `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs.
-- `levels` [Default: `false`, Type: `Bool`]: return levels or absolute deviations from steady state
-- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
+- $PERIODS
+- $VARIABLES
+- $SHOCKS
+- $NEGATIVE_SHOCK
+- $GENERALISED_IRF
+- $INITIAL_STATE
+- $LEVELS
+- $VERBOSE
 
 # Examples
 ```jldoctest
@@ -112,18 +110,18 @@ $(SIGNATURES)
 Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedArray
 
 # Arguments
-- `𝓂`: the object created by @model and @parameters for which to get the solution.
+- $MODEL
 # Keyword Arguments
-- `periods` [Default: `40`, Type: `Int`]: number of periods for which to calculate the IRFs
-- `algorithm` [Default: `:first_order`, Type: `Symbol`]: solution algorithm for which to show the IRFs
-- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
-- `variables` [Default: `:all`]: variables for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y` or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. Any variables not part of the model will trigger a warning.
-- `shocks` [Default: `:all`]: shocks for which to calculate the IRFs. Inputs can be either a `Symbol` (e.g. `:y`, `:simulate`, :none, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`. `:simulate` triggers random draws of all shocks. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
-- `negative_shock` [Default: `false`, Type: `Bool`]: calculate a negative shock. Relevant for generalised IRFs.
-- `generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.
-- `initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs.
-- `levels` [Default: `false`, Type: `Bool`]: return levels or absolute deviations from steady state
-- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
+- $PERIODS
+- $ALGORITHM
+- $PARAMETERS
+- $VARIABLES
+- $SHOCKS
+- $NEGATIVE_SHOCK
+- $GENERALISED_IRF
+- $INITIAL_STATE
+- $LEVELS
+- $VERBOSE
 
 # Examples
 ```jldoctest
@@ -264,12 +262,12 @@ $(SIGNATURES)
 Return the (non stochastic) steady state and derivatives with respect to model parameters.
 
 # Arguments
-- `𝓂`: the object created by @model and @parameters for which to get the solution.
+- $MODEL
 # Keyword Arguments
-- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
-- `derivatives` [Default: `true`, Type: `Bool`]: calculate derivatives of the SS with respect to the parameters
+- $PARAMETERS
+- $DERIVATIVES
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation. No derivatives are calculated.
-- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
+- $VERBOSE
 
 The columns show the SS and parameters for which derivatives are taken. The rows show the variables.
 # Examples
@@ -402,10 +400,10 @@ $(SIGNATURES)
 Return the linearised solution and the non stochastic steady state (SS) of the model.
 
 # Arguments
-- `𝓂`: the object created by [`@model`](@ref) and [`@parameters`](@ref) for which to get the solution.
+- $MODEL
 # Keyword Arguments
-- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
-- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
+- $PARAMETERS
+- $VERBOSE
 
 The returned `KeyedArray` shows the SS, policy and transition functions of the model. The columns show the varibales including auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows are the SS, followed by the states, and exogenous shocks. 
 Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
@@ -473,19 +471,255 @@ get_perturbation_solution = get_solution
 
 """
 $(SIGNATURES)
+Return the variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
+
+# Arguments
+- $MODEL
+# Keyword Arguments
+- $PARAMETERS
+- $VERBOSE
+
+# Examples
+```jldoctest part1
+using MacroModelling
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+get_variance_decomposition(RBC_CME)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 7-element Vector{Symbol}
+→   Shocks ∈ 2-element Vector{Symbol}
+And data, 7×2 Matrix{Float64}:
+              (:delta_eps)  (:eps_z)
+  (:A)         1.69478e-29   1.0
+  (:Pi)        0.0156771     0.984323
+  (:R)         0.0156771     0.984323
+  (:c)         0.0134672     0.986533
+  (:k)         0.00869568    0.991304
+  (:y)         0.000313462   0.999687
+  (:z_delta)   1.0           0.0
+```
+"""
+function get_variance_decomposition(𝓂::ℳ; 
+    parameters = nothing,  
+    verbose = false)
+    
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+
+    solve!(𝓂, verbose = verbose)
+
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose)
+    
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+
+    sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+    variances_by_shock = reduce(hcat,[ℒ.diag(calculate_covariance_forward(sol[:,[1:𝓂.timings.nPast_not_future_and_mixed..., 𝓂.timings.nPast_not_future_and_mixed+i]], T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))) for i in 1:𝓂.timings.nExo])
+
+    var_decomp = variances_by_shock ./ sum(variances_by_shock,dims=2)
+
+    KeyedArray(var_decomp[indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present])),:]; Variables = sort(var), Shocks = 𝓂.timings.exo)
+end
+
+
+
+"""
+See [`get_variance_decomposition`](@ref)
+"""
+get_var_decomp = get_variance_decomposition
+
+
+
+
+"""
+$(SIGNATURES)
+Return the correlations of endogenous variables using the linearised solution. 
+
+# Arguments
+- $MODEL
+# Keyword Arguments
+- $PARAMETERS
+- $VERBOSE
+
+# Examples
+```jldoctest part1
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+get_correlation(RBC)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 ∈ 4-element Vector{Symbol}
+And data, 4×4 Matrix{Float64}:
+        (:c)       (:k)       (:q)       (:z)
+  (:c)   1.0        0.999812   0.550168   0.314562
+  (:k)   0.999812   1.0        0.533879   0.296104
+  (:q)   0.550168   0.533879   1.0        0.965726
+  (:z)   0.314562   0.296104   0.965726   1.0
+```
+"""
+function get_correlation(𝓂::ℳ; 
+    parameters = nothing,  
+    verbose = false)
+    
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+
+    solve!(𝓂, verbose = verbose)
+
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+    std = sqrt.(ℒ.diag(covar_dcmp)[indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present]))])
+
+    corr = covar_dcmp[indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present])), indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present]))] ./ (std * std')
+    
+    KeyedArray(collect(corr); Variables = sort(var), 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = sort(var))
+end
+
+"""
+See [`get_correlation`](@ref)
+"""
+get_corr = get_correlation
+
+
+"""
+See [`get_correlation`](@ref)
+"""
+corr = get_correlation
+
+
+
+
+"""
+$(SIGNATURES)
+Return the autocorrelations of endogenous variables using the linearised solution. 
+
+# Arguments
+- $MODEL
+# Keyword Arguments
+- $PARAMETERS
+- $VERBOSE
+
+# Examples
+```jldoctest part1
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+get_autocorrelation(RBC)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   Autocorrelation_order ∈ 5-element UnitRange{Int64}
+And data, 4×5 Matrix{Float64}:
+        (1)         (2)         (3)         (4)         (5)
+  (:c)    0.966974    0.927263    0.887643    0.849409    0.812761
+  (:k)    0.971015    0.931937    0.892277    0.853876    0.817041
+  (:q)    0.32237     0.181562    0.148347    0.136867    0.129944
+  (:z)    0.2         0.04        0.008       0.0016      0.00032
+```
+"""
+function get_autocorrelation(𝓂::ℳ; 
+    parameters = nothing,  
+    verbose = false)
+    
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+
+    solve!(𝓂, verbose = verbose)
+
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    covar_dcmp, sol, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+    A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+
+    autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp))[indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present]))] for i in 1:5])
+    
+    KeyedArray(collect(autocorr); Variables = sort(var), Autocorrelation_order = 1:5)
+end
+
+"""
+See [`get_autocorrelation`](@ref)
+"""
+get_autocorr = get_autocorrelation
+
+
+"""
+See [`get_autocorrelation`](@ref)
+"""
+autocorr = get_autocorrelation
+
+
+
+
+"""
+$(SIGNATURES)
 Return the first and second moments of endogenous variables using the linearised solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
 
 # Arguments
-- `𝓂`: the object created by @model and @parameters for which to get the solution.
+- $MODEL
 # Keyword Arguments
-- `parameters`: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable input are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated. 
+- $PARAMETERS
 - `non_stochastic_steady_state` [Default: `true`, Type: `Bool`]: switch to return SS of endogenous variables
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
-- `derivatives` [Default: true, Type: `Bool`]: switch to calculate derivatives of SS, standard deviation, and variance with respect to the parameters
+- $DERIVATIVES
 - `parameter_derivatives` [Default: :all]: parameters for which to calculate derivatives of the SS. Inputs can be either a `Symbol` (e.g. `:alpha`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`.
-- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
+- $VERBOSE
 
 # Examples
 ```jldoctest part1
@@ -574,18 +808,20 @@ function get_moments(𝓂::ℳ;
     var_idx = indexin(var,NSSS_labels)
     var_idx_SS = indexin(vcat(var,𝓂.calibration_equations_parameters),NSSS_labels)
 
-    if length_par * length(var_idx_SS) > 200
+    if length_par * length(var_idx_SS) > 200 || (!variance && !standard_deviation && !non_stochastic_steady_state)
         derivatives = false
     end
 
     if derivatives
-        dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx_SS], Float64.(𝓂.parameter_values[param_idx]))
-        𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
-        # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
-        SS =  KeyedArray(hcat(collect(NSSS)[var_idx_SS],dNSSS);  Variables = [sort(var)...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
-
+        if non_stochastic_steady_state
+            dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx_SS], Float64.(𝓂.parameter_values[param_idx]))
+            𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
+            # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
+            SS =  KeyedArray(hcat(collect(NSSS)[var_idx_SS],dNSSS);  Variables = [sort(var)...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+        end
+        
         if variance
-            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
 
             vari = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
 
@@ -602,34 +838,39 @@ function get_moments(𝓂::ℳ;
 
                 st_dev =  KeyedArray(hcat(standard_dev[var_idx],dst_dev);  Variables = sort(var), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
             end
-        else
-            if standard_deviation
-                covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
-
-                standard_dev = sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))))
-
-                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose))[var_idx], Float64.(𝓂.parameter_values[param_idx]))
-                𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
-
-                st_dev =  KeyedArray(hcat(standard_dev[var_idx],dst_dev);  Variables = sort(var), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
-            end
         end
 
+        if standard_deviation
+            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
+
+            standard_dev = sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))))
+
+            dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose))[var_idx], Float64.(𝓂.parameter_values[param_idx]))
+            𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
+
+            st_dev =  KeyedArray(hcat(standard_dev[var_idx],dst_dev);  Variables = sort(var), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
+        end
     else
-        SS =  KeyedArray(collect(NSSS)[var_idx_SS];  Variables = [sort(var)...,𝓂.calibration_equations_parameters...])
+        if non_stochastic_steady_state
+            SS =  KeyedArray(collect(NSSS)[var_idx_SS];  Variables = [sort(var)...,𝓂.calibration_equations_parameters...])
+        end
 
         if variance
-            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
             varr = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
             varrs = KeyedArray(varr[var_idx];  Variables = sort(var))
             if standard_deviation
                 st_dev = KeyedArray(sqrt.(varr[var_idx]);  Variables = sort(var))
             end
-        else
-            if standard_deviation
-                covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
-                st_dev = KeyedArray(sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp)[var_idx],eps(Float64))));  Variables = sort(var))
-            end
+        end
+
+        if standard_deviation
+            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
+            st_dev = KeyedArray(sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp)[var_idx],eps(Float64))));  Variables = sort(var))
+        end
+
+        if covariance
+            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
         end
     end
 
@@ -645,7 +886,9 @@ function get_moments(𝓂::ℳ;
         push!(ret,varrs)
     end
     if covariance
-        push!(ret,covar_dcmp)
+        cdmp = covar_dcmp[indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present])), indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present]))]
+        
+        push!(ret,KeyedArray(cdmp; Variables = sort(var), 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = sort(var)))
     end
 
     return ret
@@ -660,14 +903,14 @@ Return the first and second moments of endogenous variables using the linearised
 Function to use when differentiating model moments with repect to parameters.
 
 # Arguments
-- `𝓂`: the object created by @model and @parameters for which to get the solution.
-- `parameters` [Type: `Vector`]: Parameter values in alphabetical order (sorted by parameter name).
+- $MODEL
+- $PARAMETER_VALUES
 # Keyword Arguments
 - `non_stochastic_steady_state` [Default: `true`, Type: `Bool`]: switch to return SS of endogenous variables
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
-- `verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error.
+- $VERBOSE
 
 # Examples
 ```jldoctest
@@ -704,9 +947,7 @@ function get_moments(𝓂::ℳ, parameters::Vector;
 
     solve!(𝓂, verbose = verbose)
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, false, verbose)
-
-    covar_dcmp = calculate_covariance(parameters,𝓂, verbose = verbose)
+    covar_dcmp, __, _, SS_and_pars = calculate_covariance(parameters,𝓂, verbose = verbose)
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
 
@@ -732,9 +973,64 @@ function get_moments(𝓂::ℳ, parameters::Vector;
         push!(ret,varrs)
     end
     if covariance
-        push!(ret,covar_dcmp)
+        covar_dcmp_sp = sparse(ℒ.triu(covar_dcmp))
+
+        droptol!(covar_dcmp_sp,eps(Float64))
+
+        push!(ret,covar_dcmp_sp)
     end
 
     return ret
 end
 
+
+"""
+Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
+"""
+get_variance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false)[1]
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
+"""
+get_var = get_variance
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
+"""
+var = get_variance
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+"""
+get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false)[1]
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+"""
+get_std =  get_standard_deviation
+
+"""
+Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+"""
+std =  get_standard_deviation
+
+"""
+Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
+"""
+get_covariance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true)[1]
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
+"""
+get_cov = get_covariance
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
+"""
+cov = get_covariance

@@ -1,16 +1,14 @@
-# Todo list:
-## High priority:
+# Todo list
+
+## High priority
 
 - [ ] add balanced growth path handling
 - [ ] write tests and documentation for solution, estimation... making sure results are consistent
-- [ ] have conditional parameters at end of entry as well (... | alpha instead of alpha | ...)
 - [ ] use @assert for errors and @test_throws
-- [ ] add correlation, autocorrelation, and variance decomposition
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
 - [ ] print SS dependencies, show SS solver
 - [ ] write to dynare
   
-- [ ] speed up covariance mat calc
 - [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
 - [ ] make the nonnegativity trick optional
 - [ ] get parameters (in function of parameters) into the dependencies
@@ -30,6 +28,11 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] add functions like get_variance, get_sd, get_var, get_covar
+- [x] add correlation, autocorrelation, and variance decomposition
+- [x] go through docs to reflect verbose behaviour
+- [x] speed up covariance mat calc
+- [x] have conditional parameters at end of entry as well (... | alpha instead of alpha | ...)
 - [x] Get functions: get_output, get_moments
 - [x] get rid of init_guess
 - [x] an and schorfheide estimation
@@ -46,7 +49,7 @@
 - [x] make noneg aux part of optim problem for NLboxsolve in order to avoid DomainErrors - not necessary
 - [x] have bounds on alpha (failed previously due to naming conflict) - works now
 
-## Not high priority:
+## Not high priority
 
 - [ ] estimation codes with missing values (adopt kalman filter)
 - [ ] whats a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
@@ -73,7 +76,7 @@
 - [x] find way to recover from failed SS solution which is written to init guess
 - [x] redo ugly solution for selecting parameters to differentiate for
 - [x] conditions for when to use which solution. if solution is outdated redo all solutions which have been done so far and use smart starting points
-- [x] Revise 2,3 pert codes to make it more intuitive 
+- [x] Revise 2,3 pert codes to make it more intuitive
 - [x] implement blockdiag with julia package instead of python
 - [x] Pretty print linear solution
 - [x] write function to get_irfs

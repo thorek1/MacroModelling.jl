@@ -24,6 +24,7 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
 
 # Imports
+include("common_docstrings.jl")
 include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")
@@ -35,7 +36,8 @@ export plot_irfs, plot_irf, plot_IRF, plot, plot_simulations
 export get_irfs, get_irf, get_IRF, simulate
 export get_solution, get_first_order_solution, get_perturbation_solution
 export get_steady_state, get_SS, get_non_stochastic_steady_state, get_stochastic_steady_state
-export get_moments
+export get_moments, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_cov, var, std, cov
+export get_autocorrelation, get_correlation, get_variance_decomposition, get_corr, get_autocorr, get_var_decomp, corr, autocorr
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution#, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export calculate_kalman_filter_loglikelihood
@@ -58,12 +60,20 @@ qnorm(p::Number) = norminvcdf(p)
 
 
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
-                "Model: ",𝓂.model_name, 
-                "\nVariables: ",length(𝓂.var),
-                "\nShocks: ",length(𝓂.exo),
-                "\nParameters: ",length(𝓂.par),
-                "\nAuxiliary variables: ",length(𝓂.exo_present) + length(𝓂.aux),
-                # "\nCalibration equations: ",length(𝓂.calibration_equations),
+                "Model:      ", 𝓂.model_name, 
+                "\nVariables", 
+                "\n Total:     ", 𝓂.timings.nVars - length(𝓂.exo_present) - length(𝓂.aux),
+                "\n States:    ", length(setdiff(𝓂.timings.past_not_future_and_mixed,𝓂.aux_present)),
+                "\n Jumpers:   ", length(setdiff(setdiff(𝓂.timings.future_not_past_and_mixed,𝓂.aux_present,𝓂.timings.mixed),𝓂.aux_future)),
+                "\n Auxiliary: ",length(𝓂.exo_present) + length(𝓂.aux),
+                "\nShocks:     ", 𝓂.timings.nExo,
+                "\nParameters: ", length(𝓂.par),
+                if 𝓂.calibration_equations == Expr[]
+                    ""
+                else
+                    "\nCalibration equations:\t\t\t", length(𝓂.calibration_equations)
+                end,
+                # "\n¹: including auxilliary variables"
                 # "\nVariable bounds (upper,lower,any): ",sum(𝓂.upper_bounds .< Inf),", ",sum(𝓂.lower_bounds .> -Inf),", ",length(𝓂.bounds),
                 # "\nNon-stochastic-steady-state found: ",!𝓂.solution.outdated_NSSS
                 )
@@ -1281,13 +1291,13 @@ end
 
 function covariance_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)),eps(Float64)))
+    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]),eps(Float64)))
 end
 
 
 function covariance_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)),eps(Float64)))
+    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -1534,7 +1544,7 @@ function calculate_first_order_solution(∇₁::AbstractMatrix{<: Number}; T::ti
 
     Jm = @view(ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:])
     
-    ∇₊ = @view(∇₁[:,1:T.nFuture_not_past_and_mixed]) * @view(ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:])
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
 
@@ -1960,18 +1970,51 @@ function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ; verbose 
 
     sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    A = sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
-    C = sol[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
+    covar_raw = calculate_covariance_forward(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
 
-    covar_dcmp = sparse(ℒ.triu(reshape((ℒ.I - ℒ.kron(A, conj(A))) \ reshape(C * C', prod(size(A)), 1), size(A))))
+    return covar_raw, sol , ∇₁, SS_and_pars
+end
 
-    droptol!(covar_dcmp,eps(Float64))
+function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Number}; T::timings, subset_indices::Vector{Int64})
+    A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[indexin(T.past_not_future_and_mixed_idx,subset_indices),:]
+    C = @views 𝑺₁[subset_indices,T.nPast_not_future_and_mixed+1:end]
+    
+    CC = C * C'
 
-    return covar_dcmp
+    lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+    
+    reshape(ℐ.bicgstabl(lm, vec(-CC)), size(CC))
 end
 
 
+function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T, subset_indices::Vector{Int64} = subset_indices) where {Z,S,N}
+    # unpack: AoS -> SoA
+    𝑺₁̂ = ℱ.value.(𝑺₁)
+    # you can play with the dimension here, sometimes it makes sense to transpose
+    ps = mapreduce(ℱ.partials, hcat, 𝑺₁)'
 
+    # get f(vs)
+    val = calculate_covariance_forward(𝑺₁̂, T = T, subset_indices = subset_indices)
+
+    # get J(f, vs) * ps (cheating). Write your custom rule here
+    B = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, T = T, subset_indices = subset_indices), 𝑺₁̂)
+    A = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, T = T, subset_indices = subset_indices), val)
+
+    jvp = (-A \ B) * ps
+
+    # pack: SoA -> AoS
+    return reshape(map(val, eachrow(jvp)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end,size(val))
+end
+
+
+function calculate_covariance_conditions(𝑺₁::AbstractMatrix{<: Number}, covar::AbstractMatrix{<: Number}; T::timings, subset_indices::Vector{Int64})
+    A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[indexin(T.past_not_future_and_mixed_idx,subset_indices),:]
+    C = @views 𝑺₁[subset_indices,T.nPast_not_future_and_mixed+1:end]
+    
+    A * covar * A' + C * C' - covar
+end
 
 function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose = false, tol = eps())
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
@@ -1988,6 +2031,9 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     if solution_error > tol
         return -1e6
     end
+
+    data_in_deviations = collect(data(observables)) .- collect(SS_and_pars[observables])
+
     # 𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
 
 	∇₁ = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters, SS_and_pars, 𝓂)
@@ -1996,16 +2042,18 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     observables_and_states = sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
 
-    A = sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)
+    A = @views sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)
     ,:]
-    B = sol[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+    B = @views sol[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
 
-    C = ℒ.diagm(ones(length(observables_and_states)))[indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states),:]
+    C = @views ℒ.diagm(ones(length(observables_and_states)))[indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states),:]
 
     𝐁 = B * B'
 
     # Gaussian Prior
-    P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+
+    P = calculate_covariance_forward(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+    # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
     u = zeros(length(observables_and_states))
     # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
     z = C * u
@@ -2013,11 +2061,11 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     loglik = 0.0
 
     for t in 1:size(data)[2]
-        v = collect(data(observables,t)) - z - collect(SS_and_pars[observables])
+        v = data_in_deviations[:,t] - z
 
         F = C * P * C'
 
-        F = (F + F') / 2
+        # F = (F + F') / 2
 
         # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
         # K = P * C' * ℒ.pinv(F)
