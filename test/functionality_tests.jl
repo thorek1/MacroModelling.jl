@@ -57,6 +57,20 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_var_decomp3 = get_var_decomp(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0002))
         old_var_decomp = get_variance_decomposition(m, verbose = true, parameters = old_par_vals)
 
+        cond_var_decomp_nv = get_conditional_variance_decomposition(m)
+        cond_var_decomp = get_conditional_variance_decomposition(m, verbose = true)
+        cond_var_decomp1 = get_conditional_variance_decomposition(m, verbose = true, periods = [1])
+        cond_var_decomp2 = get_conditional_variance_decomposition(m, verbose = true, periods = [10])
+        cond_var_decomp3 = get_conditional_variance_decomposition(m, verbose = true, periods = [1,10])
+        cond_var_decomp5 = get_conditional_variance_decomposition(m, verbose = true, periods = [1,Inf])
+        cond_var_decomp6 = get_conditional_variance_decomposition(m, verbose = true, periods = [Inf,2])
+        new_cond_var_decomp = get_conditional_variance_decomposition(m, verbose = true, parameters = m.parameter_values * 1.0001)
+        new_cond_var_decomp1 = get_conditional_variance_decomposition(m, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
+        new_cond_var_decomp2 = get_conditional_variance_decomposition(m, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+        new_cond_var_decomp3 = get_conditional_variance_decomposition(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
+        new_cond_var_decomp3 = fevd(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0002))
+        old_cond_var_decomp = get_conditional_variance_decomposition(m, verbose = true, parameters = old_par_vals)
+
 
         # Check different inputs for get_moments
         moms_nv = get_moments(m)

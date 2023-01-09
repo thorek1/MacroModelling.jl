@@ -38,6 +38,7 @@ export get_solution, get_first_order_solution, get_perturbation_solution
 export get_steady_state, get_SS, get_non_stochastic_steady_state, get_stochastic_steady_state
 export get_moments, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_cov, var, std, cov
 export get_autocorrelation, get_correlation, get_variance_decomposition, get_corr, get_autocorr, get_var_decomp, corr, autocorr
+export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution#, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export calculate_kalman_filter_loglikelihood
@@ -1785,7 +1786,7 @@ function irf(state_update::Function, initial_state::Vector{Float64}, T::timings;
             Y[:,t+1,1] = state_update(Y[:,t,1],ET[:,t+1])
         end
 
-        return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Period = 1:periods, Shock = [:simulate])
+        return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:simulate])
     elseif shocks == :none
         Y = zeros(T.nVars,periods,1)
         shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
@@ -1795,7 +1796,7 @@ function irf(state_update::Function, initial_state::Vector{Float64}, T::timings;
             Y[:,t+1,1] = state_update(Y[:,t,1],shck)
         end
 
-        return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Period = 1:periods, Shock = [:none])
+        return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:none])
     else
         Y = zeros(T.nVars,periods,T.nExo)
 
@@ -1812,7 +1813,7 @@ function irf(state_update::Function, initial_state::Vector{Float64}, T::timings;
             end
         end
 
-        return KeyedArray(Y[var_idx,:,shock_idx];  Variables = T.var[var_idx], Period = 1:periods, Shock = T.exo[shock_idx])
+        return KeyedArray(Y[var_idx,:,shock_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = T.exo[shock_idx])
     end
 
     # return Y[var_idx,:,shock_idx]
@@ -1874,7 +1875,7 @@ function girf(state_update::Function, T::timings;
     end
     
     # return Y[var_idx,:,shock_idx]
-    return KeyedArray(Y[var_idx,:,shock_idx];  Variables = T.var[var_idx], Period = 1:periods, Shock = T.exo[shock_idx])
+    return KeyedArray(Y[var_idx,:,shock_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = T.exo[shock_idx])
 
 end
 

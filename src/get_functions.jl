@@ -146,8 +146,8 @@ get_irf(RBC)
 # output
 3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 4-element Vector{Symbol}
-→   Period ∈ 40-element UnitRange{Int64}
-◪   Shock ∈ 1-element Vector{Symbol}
+→   Periods ∈ 40-element UnitRange{Int64}
+◪   Shocks ∈ 1-element Vector{Symbol}
 And data, 4×40×1 Array{Float64, 3}:
 [:, :, 1] ~ (:, :, :eps_z):
         (1)           (2)           …  (39)            (40)
@@ -430,7 +430,7 @@ get_solution(RBC)
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Steady_state__States__Shocks ∈ 4-element Vector{Symbol}
-→   Variable ∈ 4-element Vector{Symbol}
+→   Variables ∈ 4-element Vector{Symbol}
 And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
                    (:c)         (:k)        (:q)        (:z)
   (:Steady_state)   5.93625     47.3903      6.88406     0.0
@@ -451,7 +451,7 @@ function get_solution(𝓂::ℳ;
 
     KeyedArray([𝓂.solution.non_stochastic_steady_state[[indexin(sort([var; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux,𝓂.exo_present))]), sort(union(var,𝓂.exo_present)))...]] 𝓂.solution.perturbation.first_order.solution_matrix]';
     Steady_state__States__Shocks = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
-    Variable = sort([var; 𝓂.aux; 𝓂.exo_present]))
+    Variables = sort([var; 𝓂.aux; 𝓂.exo_present]))
 end
 
 
@@ -464,6 +464,150 @@ get_first_order_solution = get_solution
 See [`get_solution`](@ref)
 """
 get_perturbation_solution = get_solution
+
+
+
+"""
+$(SIGNATURES)
+Return the conditional variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
+
+# Arguments
+- $MODEL
+# Keyword Arguments
+- `periods` [Default: `[1:20...,Inf]`, Type: `Union{Vector{Int},Vector{Float64}}`]: vector of periods for which to calculate the conditional variance decomposition. If the vector conatins `Inf`, also the unconditional variance decomposition is calculated (same output as [`get_variance_decomposition`](@ref))."
+- $PARAMETERS
+- $VERBOSE
+
+# Examples
+```jldoctest part1
+using MacroModelling
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+get_conditional_variance_decomposition(RBC_CME)
+# output
+3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 7-element Vector{Symbol}
+→   Shocks ∈ 2-element Vector{Symbol}
+◪   Periods ∈ 21-element Vector{Float64}
+And data, 7×2×21 Array{Float64, 3}:
+[showing 3 of 21 slices]
+[:, :, 1] ~ (:, :, 1.0):
+              (:delta_eps)  (:eps_z)
+  (:A)         0.0           1.0
+  (:Pi)        0.00158668    0.998413
+  (:R)         0.00158668    0.998413
+  (:c)         0.0277348     0.972265
+  (:k)         0.00869568    0.991304
+  (:y)         0.0           1.0
+  (:z_delta)   1.0           0.0
+
+[:, :, 11] ~ (:, :, 11.0):
+              (:delta_eps)  (:eps_z)
+  (:A)         1.29651e-31   1.0
+  (:Pi)        0.0245641     0.975436
+  (:R)         0.0245641     0.975436
+  (:c)         0.0175249     0.982475
+  (:k)         0.00869568    0.991304
+  (:y)         7.63511e-5    0.999924
+  (:z_delta)   1.0           0.0
+
+[:, :, 21] ~ (:, :, Inf):
+              (:delta_eps)  (:eps_z)
+  (:A)         2.47454e-30   1.0
+  (:Pi)        0.0156771     0.984323
+  (:R)         0.0156771     0.984323
+  (:c)         0.0134672     0.986533
+  (:k)         0.00869568    0.991304
+  (:y)         0.000313462   0.999687
+  (:z_delta)   1.0           0.0
+```
+"""
+function get_conditional_variance_decomposition(𝓂::ℳ; 
+    periods::Union{Vector{Int},Vector{Float64}} = [1:20...,Inf],
+    parameters = nothing,  
+    verbose = false)
+
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+
+    solve!(𝓂, verbose = verbose)
+
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose)
+    
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+
+    𝑺₁ = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    
+    A = @views 𝑺₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[indexin(𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nVars),:]
+    
+    sort!(periods)
+
+    maxperiods = Int(maximum(periods[isfinite.(periods)]))
+
+    var_container = zeros(size(𝑺₁)[1], 𝓂.timings.nExo, length(periods))
+
+    for i in 1:𝓂.timings.nExo
+        C = @views 𝑺₁[:,𝓂.timings.nPast_not_future_and_mixed+i]
+        CC = C * C'
+        varr = zeros(size(C)[1],size(C)[1])
+        for k in 1:maxperiods
+            varr = A * varr * A' + CC
+            if k ∈ periods
+                var_container[:,i,indexin(k, periods)] = ℒ.diag(varr)
+            end
+        end
+        if Inf in periods
+            lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+
+            var_container[:,i,indexin(Inf,periods)] = ℒ.diag(reshape(ℐ.bicgstabl(lm, vec(-CC)), size(CC)))
+        end
+    end
+
+    cond_var_decomp = var_container ./ sum(var_container,dims=2)
+
+    KeyedArray(cond_var_decomp[indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present])),:,:]; Variables = sort(var), Shocks = 𝓂.timings.exo, Periods = periods)
+end
+
+
+"""
+See [`get_conditional_variance_decomposition`](@ref)
+"""
+get_fevd = get_conditional_variance_decomposition
+
+
+"""
+See [`get_conditional_variance_decomposition`](@ref)
+"""
+get_forecast_error_variance_decomposition = get_conditional_variance_decomposition
+
+
+"""
+See [`get_conditional_variance_decomposition`](@ref)
+"""
+fevd = get_conditional_variance_decomposition
 
 
 
@@ -663,7 +807,7 @@ get_autocorrelation(RBC)
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 4-element Vector{Symbol}
-→   Autocorrelation_order ∈ 5-element UnitRange{Int64}
+→   Autocorrelation_orders ∈ 5-element UnitRange{Int64}
 And data, 4×5 Matrix{Float64}:
         (1)         (2)         (3)         (4)         (5)
   (:c)    0.966974    0.927263    0.887643    0.849409    0.812761
@@ -688,7 +832,7 @@ function get_autocorrelation(𝓂::ℳ;
 
     autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp))[indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present]))] for i in 1:5])
     
-    KeyedArray(collect(autocorr); Variables = sort(var), Autocorrelation_order = 1:5)
+    KeyedArray(collect(autocorr); Variables = sort(var), Autocorrelation_orders = 1:5)
 end
 
 """
