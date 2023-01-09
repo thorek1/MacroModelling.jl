@@ -92,6 +92,10 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_moms4 = cov(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.000))
     end
 
+    if algorithm ∈ [:second_order, :third_order]
+        SSS = get_stochastic_steady_state(m)
+    end
+    
     # irfs
     irfs_nv = get_irf(m, algorithm = algorithm)
     irfs = get_irf(m, verbose = true, algorithm = algorithm)
