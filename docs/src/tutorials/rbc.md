@@ -128,11 +128,12 @@ A further insightful output are the policy and transition functions of the the f
 
 ```@repl tutorial_1
 get_solution(RBC)
+```
 
 The solution provides information about how past states and present shocks impact present variables. The first row contains the SS for the variables denoted in the columns. The second to last rows contain the past states, with the time index `₍₋₁₎`, and present shocks, with exogenous variables denoted by `₍ₓ₎`. For example, the immediate impact of a shock to `eps_z` on `q` is 0.0688.
 
-
 ## Obtain array of IRFs or model simulations
+
 Last but not least the user might want to obtain simulated time series of the model or IRFs without plotting them.
 For IRFs this is possible by calling [`get_irf`](@ref):
 
