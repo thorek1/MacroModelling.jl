@@ -36,7 +36,8 @@ export plot_irfs, plot_irf, plot_IRF, plot, plot_simulations
 export get_irfs, get_irf, get_IRF, simulate
 export get_solution, get_first_order_solution, get_perturbation_solution
 export get_steady_state, get_SS, get_non_stochastic_steady_state, get_stochastic_steady_state
-export get_moments, get_autocorrelation, get_correlation, get_variance_decomposition
+export get_moments, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_cov, var, std, cov
+export get_autocorrelation, get_correlation, get_variance_decomposition, get_corr, get_autocorr, get_var_decomp, corr, autocorr
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution#, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export calculate_kalman_filter_loglikelihood

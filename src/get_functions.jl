@@ -547,6 +547,10 @@ end
 
 
 
+"""
+See [`get_variance_decomposition`](@ref)
+"""
+get_var_decomp = get_variance_decomposition
 
 
 
@@ -612,6 +616,17 @@ function get_correlation(𝓂::ℳ;
     KeyedArray(collect(corr); Variables = sort(var), 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = sort(var))
 end
 
+"""
+See [`get_correlation`](@ref)
+"""
+get_corr = get_correlation
+
+
+"""
+See [`get_correlation`](@ref)
+"""
+corr = get_correlation
+
 
 
 
@@ -676,6 +691,16 @@ function get_autocorrelation(𝓂::ℳ;
     KeyedArray(collect(autocorr); Variables = sort(var), Autocorrelation_order = 1:5)
 end
 
+"""
+See [`get_autocorrelation`](@ref)
+"""
+get_autocorr = get_autocorrelation
+
+
+"""
+See [`get_autocorrelation`](@ref)
+"""
+autocorr = get_autocorrelation
 
 
 
@@ -783,17 +808,17 @@ function get_moments(𝓂::ℳ;
     var_idx = indexin(var,NSSS_labels)
     var_idx_SS = indexin(vcat(var,𝓂.calibration_equations_parameters),NSSS_labels)
 
-    if length_par * length(var_idx_SS) > 200
+    if length_par * length(var_idx_SS) > 200 || (!variance && !standard_deviation && !non_stochastic_steady_state)
         derivatives = false
     end
 
     if derivatives
-        dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx_SS], Float64.(𝓂.parameter_values[param_idx]))
-        𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
-        # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
-        SS =  KeyedArray(hcat(collect(NSSS)[var_idx_SS],dNSSS);  Variables = [sort(var)...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
-
-        if variance
+        if non_stochastic_steady_state
+            dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx_SS], Float64.(𝓂.parameter_values[param_idx]))
+            𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
+            # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
+            SS =  KeyedArray(hcat(collect(NSSS)[var_idx_SS],dNSSS);  Variables = [sort(var)...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+        elseif variance
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
 
             vari = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
@@ -811,34 +836,31 @@ function get_moments(𝓂::ℳ;
 
                 st_dev =  KeyedArray(hcat(standard_dev[var_idx],dst_dev);  Variables = sort(var), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
             end
-        else
-            if standard_deviation
-                covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
+        elseif standard_deviation
+            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
 
-                standard_dev = sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))))
+            standard_dev = sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))))
 
-                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose))[var_idx], Float64.(𝓂.parameter_values[param_idx]))
-                𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
+            dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose))[var_idx], Float64.(𝓂.parameter_values[param_idx]))
+            𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
 
-                st_dev =  KeyedArray(hcat(standard_dev[var_idx],dst_dev);  Variables = sort(var), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
-            end
+            st_dev =  KeyedArray(hcat(standard_dev[var_idx],dst_dev);  Variables = sort(var), Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
         end
-
     else
-        SS =  KeyedArray(collect(NSSS)[var_idx_SS];  Variables = [sort(var)...,𝓂.calibration_equations_parameters...])
-
-        if variance
+        if non_stochastic_steady_state
+            SS =  KeyedArray(collect(NSSS)[var_idx_SS];  Variables = [sort(var)...,𝓂.calibration_equations_parameters...])
+        elseif variance
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
             varr = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
             varrs = KeyedArray(varr[var_idx];  Variables = sort(var))
             if standard_deviation
                 st_dev = KeyedArray(sqrt.(varr[var_idx]);  Variables = sort(var))
             end
-        else
-            if standard_deviation
-                covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
-                st_dev = KeyedArray(sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp)[var_idx],eps(Float64))));  Variables = sort(var))
-            end
+        elseif standard_deviation
+            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
+            st_dev = KeyedArray(sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp)[var_idx],eps(Float64))));  Variables = sort(var))
+        elseif covariance
+            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
         end
     end
 
@@ -854,7 +876,9 @@ function get_moments(𝓂::ℳ;
         push!(ret,varrs)
     end
     if covariance
-        push!(ret,covar_dcmp)
+        cdmp = covar_dcmp[indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present])), indexin(sort(var),sort([var; 𝓂.aux; 𝓂.exo_present]))]
+        
+        push!(ret,KeyedArray(cdmp; Variables = sort(var), 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = sort(var)))
     end
 
     return ret
@@ -949,3 +973,54 @@ function get_moments(𝓂::ℳ, parameters::Vector;
     return ret
 end
 
+
+"""
+Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
+"""
+get_variance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false)[1]
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
+"""
+get_var = get_variance
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
+"""
+var = get_variance
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+"""
+get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false)[1]
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+"""
+get_std =  get_standard_deviation
+
+"""
+Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+"""
+std =  get_standard_deviation
+
+"""
+Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
+"""
+get_covariance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true)[1]
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
+"""
+get_cov = get_covariance
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
+"""
+cov = get_covariance
