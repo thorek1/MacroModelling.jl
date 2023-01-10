@@ -3,12 +3,12 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] more options for IRFs, pass on shock vector, simulate only certain shocks
 - [ ] write tests and documentation for solution, estimation... making sure results are consistent
 - [ ] use @assert for errors and @test_throws
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
 - [ ] print SS dependencies, show SS solver
 - [ ] write to dynare
-- [ ] add plot for FEVD
 - [ ] add plot for policy function
   
 - [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
@@ -30,6 +30,7 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] add plot for FEVD
 - [x] add functions like get_variance, get_sd, get_var, get_covar
 - [x] add correlation, autocorrelation, and (conditional) variance decomposition
 - [x] go through docs to reflect verbose behaviour
@@ -56,7 +57,6 @@
 - [ ] estimation codes with missing values (adopt kalman filter)
 - [ ] whats a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
 - [ ] implement global solution methods
-- [ ] more options for IRFs, pass on shock vector, simulate only certain shocks
 - [ ] improve redundant calculations of SS and other parts of solution
 - [ ] restructure functions and containers so that compiler knows what types to expect
 - [ ] use RecursiveFactorization and TriangularSolve to solve, instead of MKL or OpenBLAS
