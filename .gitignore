@@ -37,6 +37,7 @@ Manifest.toml
 .ipynb_checkpoints/
 *.svg
 irf*.png
+fevd*.png
 *.xls
 test/fix_RBC.jl
 test/fix_SW03_SS.jl

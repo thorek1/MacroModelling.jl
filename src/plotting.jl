@@ -1,6 +1,6 @@
 
 using Plots, Plots.PlotMeasures, LaTeXStrings
-
+using StatsPlots
 
 
 """
@@ -268,3 +268,158 @@ plot_irfs = plot
 Wrapper for [`plot`](@ref) with `shocks = :simulate` and `periods = 100`.
 """
 plot_simulations(args...; kwargs...) =  plot(args...; kwargs..., shocks = :simulate, periods = 100)
+
+
+
+
+
+
+"""
+$(SIGNATURES)
+Plot conditional variance decomposition of the model.
+
+The vertical axis shows the share of the shocks variance contribution, and horizontal axis the period of the variance decomposition. The stacked bars represent each shocks variance contribution at a specific time horizon.
+
+# Arguments
+- $MODEL
+# Keyword Arguments
+- $PERIODS
+- $VARIABLES
+- $PARAMETERS
+- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
+- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
+- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
+- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
+- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- $VERBOSE
+
+# Examples
+```julia
+using MacroModelling
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+plot_conditional_variance_decomposition(RBC)
+```
+"""
+function plot_conditional_variance_decomposition(𝓂::ℳ;
+    periods::Int = 40, 
+    variables::Symbol_input = :all,
+    parameters = nothing,
+    show_plots::Bool = true,
+    save_plots::Bool = false,
+    save_plots_format::Symbol = :pdf,
+    save_plots_path::String = ".",
+    plots_per_page::Int = 9, 
+    verbose = false)
+
+    fevds = get_conditional_variance_decomposition(𝓂,
+                                                    periods = 1:periods,
+                                                    parameters = parameters,
+                                                    verbose = verbose)
+
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+
+    default(size=(700,500),
+            plot_titlefont = (10), 
+            titlefont = (10), 
+            guidefont = (8), 
+            legendfontsize = 8, 
+            tickfontsize = 8,
+            framestyle = :box)
+
+    vars_to_plot = intersect(axiskeys(fevds)[1],𝓂.timings.var[var_idx])
+    
+    shocks_to_plot = axiskeys(fevds)[2]
+
+    n_subplots = length(var_idx)
+    pp = []
+    pane = 1
+    plot_count = 1
+
+    for k in vars_to_plot
+        if !(plot_count % plots_per_page == 0)
+            plot_count += 1
+            push!(pp,groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
+        else
+            plot_count = 1
+
+            push!(pp,groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
+            
+            ppp = Plots.plot(pp...)
+
+            p = Plots.plot(ppp,Plots.bar(fill(0,1,length(shocks_to_plot)), 
+                                        label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot)), 
+                                        linewidth = 0 , 
+                                        framestyle = :none, 
+                                        legend = :inside, 
+                                        legend_columns = -1), 
+                                        layout = grid(2, 1, heights=[0.99, 0.01]),
+                                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+
+            if show_plots
+                display(p)
+            end
+
+            if save_plots
+                savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            end
+
+            pane += 1
+            pp = []
+        end
+    end
+
+    if length(pp) > 0
+        ppp = Plots.plot(pp...)
+
+        p = Plots.plot(ppp,Plots.bar(fill(0,1,length(shocks_to_plot)), 
+                                    label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot)), 
+                                    linewidth = 0 , 
+                                    framestyle = :none, 
+                                    legend = :inside, 
+                                    legend_columns = -1), 
+                                    layout = grid(2, 1, heights=[0.99, 0.01]),
+                                    plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+
+        if show_plots
+            display(p)
+        end
+
+        if save_plots
+            savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+        end
+    end
+end
+
+
+
+"""
+See [`plot_conditional_variance_decomposition`](@ref)
+"""
+plot_fevd = plot_conditional_variance_decomposition
+
+"""
+See [`plot_conditional_variance_decomposition`](@ref)
+"""
+plot_forecast_error_variance_decomposition = plot_conditional_variance_decomposition

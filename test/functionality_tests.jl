@@ -147,6 +147,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
     if plots
         # plots
+        plot(m, algorithm = algorithm, show_plots = true)
         plot(m, verbose = true, algorithm = algorithm, show_plots = true)
         plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true)
         plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, periods = 10)
@@ -177,5 +178,24 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, plots_per_page = 6)
         plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, save_plots_format = :png)
         plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, save_plots_format = :png, plots_per_page = 4)
+
+        if algorithm == :first_order
+            plot_fevd(m)
+            plot_fevd(m, verbose = true)
+            plot_fevd(m, verbose = true, show_plots = true)
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true)
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true, periods = 10)
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true, periods = 100)
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true, parameters = m.parameter_values * 1.0001)
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[1])
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[end-1:end])
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var)
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true, variables = Tuple(m.timings.var))
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true, variables = :all)
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true, plots_per_page = 6)
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png)
+            plot_fevd(m, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png, plots_per_page = 4)
+        end
     end
 end
