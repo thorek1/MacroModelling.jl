@@ -57,6 +57,21 @@ function get_irf(𝓂::ℳ,
 
     solve!(𝓂, verbose = verbose)
 
+    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
+
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+        shock_history = shocks
+        shock_idx = 1:𝓂.timings.nExo
+    elseif shocks isa KeyedArray{Float64}
+        shock_input = axiskeys(shocks)[1]
+        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks which are not part of the model."
+        shock_history = zeros(𝓂.timings.nExo, size(shocks)[2])
+        shock_history[indexin(shock_input,𝓂.timings.exo),:] = shocks
+    else
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    end
+
     NSSS, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, false, verbose)
     
 	∇₁ = calculate_jacobian(parameters, NSSS, 𝓂)
@@ -64,10 +79,6 @@ function get_irf(𝓂::ℳ,
     sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
-    
-    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
-
-    shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
     
