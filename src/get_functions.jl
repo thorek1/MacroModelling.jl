@@ -188,9 +188,9 @@ function get_irf(𝓂::ℳ;
 
     if levels
         if algorithm == :second_order
-            reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))]
+            reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))]
         elseif algorithm == :third_order
-            reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))]
+            reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state#[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))]
         end
         var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
     end
@@ -337,7 +337,7 @@ function get_steady_state(𝓂::ℳ;
 
     if stochastic
         solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order)
-        SS[1:length(union(𝓂.exo_present,var))] = 𝓂.solution.perturbation.second_order.stochastic_steady_state
+        SS[1:length(union(𝓂.exo_present,var))] = 𝓂.solution.perturbation.second_order.stochastic_steady_state[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
     end
 
     NSSS_labels = labels(NSSS) .|> Symbol
