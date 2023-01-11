@@ -182,7 +182,7 @@ function get_irf(𝓂::ℳ;
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
-    reference_steady_state = [NSSS[s] for s in full_SS]#collect(NSSS[1:end - length(𝓂.calibration_equations)])
+    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[s] for s in full_SS]#collect(NSSS[1:end - length(𝓂.calibration_equations)])
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 

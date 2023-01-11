@@ -38,6 +38,7 @@ Manifest.toml
 *.svg
 irf*.png
 fevd*.png
+solution*.png
 *.xls
 test/fix_RBC.jl
 test/fix_SW03_SS.jl

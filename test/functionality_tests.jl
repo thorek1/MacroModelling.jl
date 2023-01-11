@@ -197,5 +197,28 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
             plot_fevd(m, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png)
             plot_fevd(m, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png, plots_per_page = 4)
         end
+
+
+        states = m.timings.past_not_future_and_mixed
+        plot_solution(m, states[1])
+        plot_solution(m, states[end], verbose = true)
+        plot_solution(m, states[end], algorithm = algorithm, verbose = true)
+        plot_solution(m, states[end], algorithm = [:first_order, algorithm], verbose = true)
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = true)
+        plot_solution(m, states[1], algorithm = algorithm, σ = 10, verbose = true, show_plots = true)
+        plot_solution(m, states[1], algorithm = algorithm, σ = .1, verbose = true, show_plots = true)
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true)
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true)
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true)
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, parameters = m.parameter_values * 1.0001)
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[1])
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[end-1:end])
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var)
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = Tuple(m.timings.var))
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = :all)
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, plots_per_page = 6)
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png)
+        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png, plots_per_page = 4)
     end
 end

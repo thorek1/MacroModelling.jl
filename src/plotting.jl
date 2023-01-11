@@ -76,14 +76,12 @@ function plot(𝓂::ℳ;
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
-    reference_steady_state = [NSSS[s] for s in full_SS]
-
     if algorithm == :second_order
         reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
     elseif algorithm == :third_order
         reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
     elseif algorithm ∈ [:linear_time_iteration, :riccati, :first_order]
-        reference_steady_state = [NSSS[s] for s in full_SS]
+        reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[s] for s in full_SS]
     end
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
@@ -441,7 +439,7 @@ The (non) stochastic steady state is plotted along with the mapping from the cho
 # Keyword Arguments
 - $VARIABLES
 - "`algorithm` [Default: `:first_order`, Type: Union{Symbol,Vector{Symbol}}]: solution algorithm for which to show the IRFs. Can be more than one: `[:second_order,:third_order]`"
-- `σ` [Default: `2.0`, Type: `Float64`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
+- `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
 - $PARAMETERS
 - `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
 - `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
@@ -483,7 +481,7 @@ function plot_solution(𝓂::ℳ,
     state::Symbol;
     variables::Symbol_input = :all,
     algorithm::Union{Symbol,Vector{Symbol}} = :first_order,
-    σ::Float64 = 2.0,
+    σ::Union{Int64,Float64} = 2,
     parameters = nothing,
     show_plots::Bool = true,
     save_plots::Bool = false,
@@ -519,7 +517,7 @@ function plot_solution(𝓂::ℳ,
 
     full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-    full_SS = [SS_and_std[1](s) for s in full_NSSS]
+    full_SS = [s ∈ 𝓂.exo_present ? 0 : SS_and_std[1](s) for s in full_NSSS]
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
