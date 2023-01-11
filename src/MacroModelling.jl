@@ -32,7 +32,7 @@ include("plotting.jl")
 
 
 export @model, @parameters, solve!
-export plot_irfs, plot_irf, plot_IRF, plot, plot_simulations
+export plot_irfs, plot_irf, plot_IRF, plot, plot_simulations, plot_solution
 export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd
 export get_irfs, get_irf, get_IRF, simulate
 export get_solution, get_first_order_solution, get_perturbation_solution
@@ -967,7 +967,14 @@ function solve!(𝓂::ℳ;
                 state = state_tmp
             end
 
-            stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)[indexin(sort(union(𝓂.var, 𝓂.exo_present)), sort(union(𝓂.var, 𝓂.exo_present, map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux))))]
+            all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+            all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+            
+            all_SS = [SS_and_pars[s] for s in all_variables]
+            # we need all variables for the stochastic steady state because even laads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
+
+            stochastic_steady_state = all_SS + state
 
             𝓂.solution.perturbation.second_order = higher_order_perturbation_solution(𝐒₂,stochastic_steady_state,state_update₂)
 
@@ -1016,7 +1023,14 @@ function solve!(𝓂::ℳ;
                 state = state_tmp
             end
 
-            stochastic_steady_state = SS_and_pars[1:end - length(𝓂.calibration_equations)] + vec(state)[indexin(sort(union(𝓂.var, 𝓂.exo_present)), sort(union(𝓂.var, 𝓂.exo_present, map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux))))]
+            all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+            all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+            
+            all_SS = [SS_and_pars[s] for s in all_variables]
+            # we need all variables for the stochastic steady state because even laads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
+            
+            stochastic_steady_state = all_SS + state
 
             𝓂.solution.perturbation.third_order = higher_order_perturbation_solution(𝐒₃,stochastic_steady_state,state_update₃)
 
@@ -1883,7 +1897,7 @@ end
 
 function parse_variables_input_to_index(variables::Symbol_input, T::timings)
     if variables == :all
-        return indexin(T.var,sort(union(T.var,T.aux,T.exo_present)))
+        return indexin(setdiff(setdiff(T.var,T.exo_present),T.aux),sort(union(T.var,T.aux,T.exo_present)))
     elseif variables isa Matrix{Symbol}
         if !issubset(variables,T.var)
             return @warn "Following variables are not part of the model: " * string.(setdiff(variables,T.var))
