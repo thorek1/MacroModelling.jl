@@ -122,7 +122,7 @@ Last but not least, we have a look at the model implied autocorrelations of mode
 get_autocorrelation(RBC)
 ```
 
-## Model solution (policy and transition function)
+## Model solution
 
 A further insightful output are the policy and transition functions of the the first order perturbation solution. To retrieve the solution we call the function [`get_solution`](@ref):
 
@@ -131,6 +131,16 @@ get_solution(RBC)
 ```
 
 The solution provides information about how past states and present shocks impact present variables. The first row contains the SS for the variables denoted in the columns. The second to last rows contain the past states, with the time index `₍₋₁₎`, and present shocks, with exogenous variables denoted by `₍ₓ₎`. For example, the immediate impact of a shock to `eps_z` on `q` is 0.0688.
+
+There is also the possibility to visually inspect the solution using the [`plot_solution`](@ref) function:
+
+```@repl tutorial_1
+plot_solution(RBC, :k)
+```
+
+![RBC solution](../assets/solution__RBC__1.png)
+
+The chart shows the first order perturbation solution mapping from the past state `k` to the present variables of the model. The state variable covers a range of two standard deviations around the non stochastic steady state and all other states remain in the non stochastic steady state.
 
 ## Obtain array of IRFs or model simulations
 
