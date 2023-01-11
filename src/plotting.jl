@@ -73,19 +73,20 @@ function plot(𝓂::ℳ;
 
     NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
-    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-    SS = [NSSS[s] for s in full_NSSS]
+    full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
+    reference_steady_state = [NSSS[s] for s in full_SS]
 
     if algorithm == :second_order
         reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
     elseif algorithm == :third_order
         reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
     elseif algorithm ∈ [:linear_time_iteration, :riccati, :first_order]
-        reference_steady_state = SS
+        reference_steady_state = [NSSS[s] for s in full_SS]
     end
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - SS
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 

@@ -9,6 +9,6 @@ const DERIVATIVES = "`derivatives` [Default: `true`, Type: `Bool`]: calculate de
 const PERIODS = "`periods` [Default: `40`, Type: `Int`]: number of periods for which to calculate the IRFs."
 const NEGATIVE_SHOCK = "`negative_shock` [Default: `false`, Type: `Bool`]: calculate a negative shock. Relevant for generalised IRFs."
 const GENERALISED_IRF = "`generalised_irf` [Default: `false`, Type: `Bool`]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state."
-const INITIAL_STATE = "`initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs."
+const INITIAL_STATE = "`initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs. The state includes all variables as well as exogenous variables in leads or lags if present."
 const ALGORITHM = "`algorithm` [Default: `:first_order`, Type: `Symbol`]: solution algorithm for which to show the IRFs."
 const LEVELS = "`levels` [Default: `false`, Type: `Bool`]: return levels or absolute deviations from steady state."

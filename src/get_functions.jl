@@ -195,7 +195,7 @@ function get_irf(𝓂::ℳ;
         var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
     end
     
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - reference_steady_state
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
@@ -211,7 +211,7 @@ function get_irf(𝓂::ℳ;
                         variables = variables, 
                         negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
         if levels
-            return girfs .+ reference_steady_state
+            return girfs .+ reference_steady_state[var_idx]
         else
             return girfs
         end
@@ -224,7 +224,7 @@ function get_irf(𝓂::ℳ;
                     variables = variables, 
                     negative_shock = negative_shock)
         if levels
-            return irfs .+ reference_steady_state
+            return irfs .+ reference_steady_state[var_idx]
         else
             return irfs
         end

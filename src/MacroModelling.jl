@@ -1897,7 +1897,8 @@ end
 
 function parse_variables_input_to_index(variables::Symbol_input, T::timings)
     if variables == :all
-        return indexin(setdiff(setdiff(T.var,T.exo_present),T.aux),sort(union(T.var,T.aux,T.exo_present)))
+        return indexin(setdiff(T.var,T.aux),sort(union(T.var,T.aux,T.exo_present)))
+        # return indexin(setdiff(setdiff(T.var,T.exo_present),T.aux),sort(union(T.var,T.aux,T.exo_present)))
     elseif variables isa Matrix{Symbol}
         if !issubset(variables,T.var)
             return @warn "Following variables are not part of the model: " * string.(setdiff(variables,T.var))
