@@ -35,7 +35,7 @@ end
 
 struct symbolics
     ss_equations::Vector{Sym}
-    # dyn_equations::Vector{Sym}
+    dyn_equations::Vector{Sym}
     # dyn_equations_future::Vector{Sym}
     
     # dyn_shift_var_present_list::Vector{Set{Sym}}

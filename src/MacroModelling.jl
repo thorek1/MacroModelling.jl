@@ -139,7 +139,7 @@ function create_symbols_eqs!(𝓂::ℳ)
     eval(expr)
 
     symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
-                # map(x->eval(:($x)),𝓂.dyn_equations),
+                map(x->eval(:($x)),𝓂.dyn_equations),
                 # map(x->eval(:($x)),𝓂.dyn_equations_future),
 
                 # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_present_list),
