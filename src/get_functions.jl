@@ -49,7 +49,7 @@ function get_irf(𝓂::ℳ,
                     parameters::Vector; 
                     periods::Int = 40, 
                     variables::Symbol_input = :all, 
-                    shocks::Symbol_input = :all, 
+                    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
                     negative_shock::Bool = false, 
                     initial_state::Vector{Float64} = [0.0],
                     levels::Bool = false,
@@ -61,13 +61,24 @@ function get_irf(𝓂::ℳ,
 
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
         shock_history = shocks
-        shock_idx = 1:𝓂.timings.nExo
+
+        periods = size(shocks)[2]
+
+        shock_idx = 1
     elseif shocks isa KeyedArray{Float64}
         shock_input = axiskeys(shocks)[1]
+
+        periods = size(shocks)[2]
+
         @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks which are not part of the model."
-        shock_history = zeros(𝓂.timings.nExo, size(shocks)[2])
+
+        shock_history = zeros(𝓂.timings.nExo, periods)
+
         shock_history[indexin(shock_input,𝓂.timings.exo),:] = shocks
+
+        shock_idx = 1
     else
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
     end
@@ -90,27 +101,26 @@ function get_irf(𝓂::ℳ,
     Ŷ = []
     for ii in shock_idx
         Y = []
-        if shocks != :simulate
-            ET = zeros(𝓂.timings.nExo,periods)
-            ET[ii,1] = negative_shock ? -1 : 1
+        if shocks != :simulate && shocks isa Symbol_input
+            shock_history = zeros(𝓂.timings.nExo,periods)
+            shock_history[ii,1] = negative_shock ? -1 : 1
         end
 
-        push!(Y, state_update(initial_state,ET[:,1]))
+        push!(Y, state_update(initial_state,shock_history[:,1]))
 
         for t in 1:periods-1
-            push!(Y, state_update(Y[end],ET[:,t+1]))
+            push!(Y, state_update(Y[end],shock_history[:,t+1]))
         end
         push!(Ŷ, reduce(hcat,Y))
     end
 
-    deviations = reshape(reduce(hcat,Ŷ),𝓂.timings.nVars,periods,𝓂.timings.nExo)[var_idx,:,shock_idx]
+    deviations = reshape(reduce(hcat,Ŷ),𝓂.timings.nVars,periods,length(shock_idx))[var_idx,:,:]
 
     if levels
         return deviations .+ SS[var_idx]
     else
         return deviations
     end
-    # return KeyedArray(Y[var_idx,:,shock_idx];  Variables = T.var[var_idx], Period = 1:periods, Shock = T.exo[shock_idx])
 end
 
 
