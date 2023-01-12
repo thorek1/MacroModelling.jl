@@ -88,10 +88,9 @@ function plot(𝓂::ℳ;
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
-    
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
-        
+
         periods = size(shocks)[2] + 40
 
         shock_idx = 1
@@ -144,6 +143,9 @@ function plot(𝓂::ℳ;
     if shocks == :simulate
         shock_dir = "Shocks"
     end
+    if !(shocks isa Symbol_input)
+        shock_dir = ""
+    end
 
     for shock in 1:length(shock_idx)
         n_subplots = length(var_idx)
@@ -192,16 +194,18 @@ function plot(𝓂::ℳ;
 
                     end
 
-                    shock_string = ": " * string(𝓂.timings.exo[shock_idx[shock]])
-
                     if shocks == :simulate
                         shock_string = ": simulate all"
                         shock_name = "simulation"
                     elseif shocks == :none
                         shock_string = ""
                         shock_name = "no_shock"
-                    else
+                    elseif shocks isa Symbol_input
+                        shock_string = ": " * string(𝓂.timings.exo[shock_idx[shock]])
                         shock_name = string(𝓂.timings.exo[shock_idx[shock]])
+                    else
+                        shock_string = "Series of shocks"
+                        shock_name = "shock_matrix"
                     end
 
                     p = Plots.plot(pp...,plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
@@ -237,9 +241,12 @@ function plot(𝓂::ℳ;
             elseif shocks == :none
                 shock_string = ""
                 shock_name = "no_shock"
-            else
+            elseif shocks isa Symbol_input
                 shock_string = ": " * string(𝓂.timings.exo[shock_idx[shock]])
                 shock_name = string(𝓂.timings.exo[shock_idx[shock]])
+            else
+                shock_string = "Series of shocks"
+                shock_name = "shock_matrix"
             end
 
             p = Plots.plot(pp...,plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
