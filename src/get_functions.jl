@@ -62,21 +62,23 @@ function get_irf(𝓂::ℳ,
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
-        shock_history = shocks
+        shock_history = zeros(𝓂.timings.nExo, periods + 40)
 
-        periods = size(shocks)[2]
+        shock_history[:,1:size(shocks)[2]] = shocks
+
+        periods = size(shocks)[2] + 40
 
         shock_idx = 1
     elseif shocks isa KeyedArray{Float64}
         shock_input = axiskeys(shocks)[1]
 
-        periods = size(shocks)[2]
+        periods = size(shocks)[2] + 40
 
         @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks which are not part of the model."
 
-        shock_history = zeros(𝓂.timings.nExo, periods)
+        shock_history = zeros(𝓂.timings.nExo, periods + 40)
 
-        shock_history[indexin(shock_input,𝓂.timings.exo),:] = shocks
+        shock_history[indexin(shock_input,𝓂.timings.exo),1:size(shocks)[2]] = shocks
 
         shock_idx = 1
     else
@@ -183,7 +185,7 @@ function get_irf(𝓂::ℳ;
     algorithm::Symbol = :first_order, 
     parameters = nothing,
     variables::Symbol_input = :all, 
-    shocks::Symbol_input = :all, 
+    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     negative_shock::Bool = false, 
     generalised_irf::Bool = false,
     initial_state::Vector{Float64} = [0.0],
@@ -194,6 +196,10 @@ function get_irf(𝓂::ℳ;
 
     solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
     
+    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
+
+    @assert !(shocks == :none && generalised_irf) "Cannot compute generalised IRFs for model without shocks."
+
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
@@ -218,12 +224,6 @@ function get_irf(𝓂::ℳ;
     
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
 
-    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
-
-    if shocks == :none && generalised_irf
-        @error "Cannot compute generalised IRFs for model without shocks."
-    end
-    
     if generalised_irf
         girfs =  girf(state_update, 
                         𝓂.timings; 
