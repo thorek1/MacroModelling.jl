@@ -80,7 +80,7 @@ The plots show the models endogenous variables in response to random draws for a
 
 ## Plot specific series of shocks
 
-Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or `KeyedArray` of the series of shocks to the `shocks` argument of the [`plot_simulations`](@ref) function:
+Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or `KeyedArray` of the series of shocks to the `shocks` argument of the [`plot`](@ref) function:
 
 ```@repl tutorial_1
 shock_series = zeros(1,4)
