@@ -1783,28 +1783,54 @@ end
 
 function irf(state_update::Function, initial_state::Vector{Float64}, T::timings; 
     periods::Int = 40, 
-    shocks::Symbol_input = :all, 
+    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Symbol_input = :all, 
     negative_shock::Bool = false)
 
-    shock_idx = parse_shocks_input_to_index(shocks, T)
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
+        shock_history = zeros(T.nExo, periods + 40)
+
+        shock_history[:,1:size(shocks)[2]] = shocks
+
+        periods = size(shocks)[2] + 40
+
+        shock_idx = 1
+    elseif shocks isa KeyedArray{Float64}
+        shock_input = axiskeys(shocks)[1]
+
+        periods = size(shocks)[2] + 40
+
+        @assert length(setdiff(shock_input, T.exo)) == 0 "Provided shocks which are not part of the model."
+
+        shock_history = zeros(T.nExo, periods + 40)
+
+        shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+    else
+        shock_idx = parse_shocks_input_to_index(shocks,T)
+    end
 
     var_idx = parse_variables_input_to_index(variables, T)
 
     if shocks == :simulate
-        ET = randn(T.nExo,periods)
+        shock_history = randn(T.nExo,periods)
 
         Y = zeros(T.nVars,periods,1)
-        Y[:,1,1] = state_update(initial_state,ET[:,1])
+        Y[:,1,1] = state_update(initial_state,shock_history[:,1])
 
         for t in 1:periods-1
-            Y[:,t+1,1] = state_update(Y[:,t,1],ET[:,t+1])
+            Y[:,t+1,1] = state_update(Y[:,t,1],shock_history[:,t+1])
         end
 
         return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:simulate])
     elseif shocks == :none
         Y = zeros(T.nVars,periods,1)
+
         shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
+        
         Y[:,1,1] = state_update(initial_state,shck)
 
         for t in 1:periods-1
@@ -1813,43 +1839,65 @@ function irf(state_update::Function, initial_state::Vector{Float64}, T::timings;
 
         return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:none])
     else
-        Y = zeros(T.nVars,periods,T.nExo)
+        Y = zeros(T.nVars,periods,length(shock_idx))
 
         for ii in shock_idx
-            if shocks != :simulate
-                ET = zeros(T.nExo,periods)
-                ET[ii,1] = negative_shock ? -1 : 1
+            if shocks != :simulate && shocks isa Symbol_input
+                shock_history = zeros(T.nExo,periods)
+                shock_history[ii,1] = negative_shock ? -1 : 1
             end
 
-            Y[:,1,ii] = state_update(initial_state,ET[:,1])
+            Y[:,1,ii] = state_update(initial_state,shock_history[:,1])
 
             for t in 1:periods-1
-                Y[:,t+1,ii] = state_update(Y[:,t,ii],ET[:,t+1])
+                Y[:,t+1,ii] = state_update(Y[:,t,ii],shock_history[:,t+1])
             end
         end
 
-        return KeyedArray(Y[var_idx,:,shock_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = T.exo[shock_idx])
+        return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
     end
-
-    # return Y[var_idx,:,shock_idx]
 end
 
 
 
 function girf(state_update::Function, T::timings; 
     periods::Int = 40, 
-    shocks::Symbol_input = :all, 
+    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Symbol_input = :all, 
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
     draws::Int = 50, 
     iterations_to_steady_state::Int = 500)
 
-    shock_idx = parse_shocks_input_to_index(shocks,T)
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
+        shock_history = zeros(T.nExo, periods + 40)
+
+        shock_history[:,1:size(shocks)[2]] = shocks
+
+        periods = size(shocks)[2] + 40
+
+        shock_idx = 1
+    elseif shocks isa KeyedArray{Float64}
+        shock_input = axiskeys(shocks)[1]
+
+        periods = size(shocks)[2] + 40
+
+        @assert length(setdiff(shock_input, T.exo)) == 0 "Provided shocks which are not part of the model."
+
+        shock_history = zeros(T.nExo, periods + 40)
+
+        shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+    else
+        shock_idx = parse_shocks_input_to_index(shocks,T)
+    end
 
     var_idx = parse_variables_input_to_index(variables, T)
 
-    Y = zeros(T.nVars,periods,T.nExo)
+    Y = zeros(T.nVars,periods,length(shock_idx))
 
     initial_state = zeros(T.nVars)
 
@@ -1868,20 +1916,19 @@ function girf(state_update::Function, T::timings;
 
             baseline_noise = randn(T.nExo)
 
-            shock = zeros(T.nExo)
-
-            shock[ii] = negative_shock ? -1 : 1
-
-            shock += baseline_noise
+            if shocks != :simulate && shocks isa Symbol_input
+                shock_history = zeros(T.nExo,periods)
+                shock_history[ii,1] = negative_shock ? -1 : 1
+            end
 
             Y1[:,1] = state_update(initial_state, baseline_noise)
-            Y2[:,1] = state_update(initial_state, shock)
+            Y2[:,1] = state_update(initial_state, baseline_noise + shock_history[:,1])
 
             for t in 1:periods-1
                 baseline_noise = randn(T.nExo)
 
                 Y1[:,t+1] = state_update(Y1[:,t],baseline_noise)
-                Y2[:,t+1] = state_update(Y2[:,t],baseline_noise)
+                Y2[:,t+1] = state_update(Y2[:,t],baseline_noise + shock_history[:,t])
             end
 
             Y[:,:,ii] += Y2 - Y1
@@ -1889,9 +1936,7 @@ function girf(state_update::Function, T::timings;
         Y[:,:,ii] /= draws
     end
     
-    # return Y[var_idx,:,shock_idx]
-    return KeyedArray(Y[var_idx,:,shock_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = T.exo[shock_idx])
-
+    return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
 end
 
 

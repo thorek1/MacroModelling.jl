@@ -11,6 +11,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     nsss_select_par_deriv4 = get_steady_state(m, verbose = true, parameter_derivatives = reshape(m.parameters[1:3],3,1))
 
     old_par_vals = copy(m.parameter_values)
+
     new_nsss1 = get_steady_state(m, verbose = true, parameters = m.parameter_values * 1.0001)
     new_nsss2 = get_steady_state(m, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
     new_nsss3 = get_steady_state(m, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
@@ -104,6 +105,36 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_moms4 = std(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
         new_moms4 = var(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
         new_moms4 = cov(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.000))
+
+
+        irfs_nv = get_irf(m, m.parameter_values)
+        irfs = get_irf(m, m.parameter_values, verbose = true)
+        irfs_10 = get_irf(m, m.parameter_values, verbose = true, periods = 10)
+        irfs_100 = get_irf(m, m.parameter_values, verbose = true, periods = 100)
+        new_irfs1 = get_irf(m, m.parameter_values * 1.0001, verbose = true)
+        lvl_irfs  = get_irf(m, old_par_vals, verbose = true, levels = true)
+        lvlv_init_irfs  = get_irf(m, old_par_vals, verbose = true, levels = true, initial_state = collect(lvl_irfs[:,5,1]))
+        lvlv_init_neg_irfs = get_irf(m, old_par_vals, verbose = true, levels = true, initial_state = collect(lvl_irfs[:,5,1]), negative_shock = true)
+
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = m.exo[1])
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = m.exo)
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = Tuple(m.exo))
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = reshape(m.exo,1,length(m.exo)))
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = :all)
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = randn(m.timings.nExo,10))
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10))
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10))
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = :none, initial_state = collect(lvl_irfs[:,5,1]))
+        new_sub_lvl_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = :none, initial_state = collect(lvl_irfs[:,5,1]), levels = true)
+        @test isapprox(collect(new_sub_lvl_irfs[:,1,:]), collect(lvl_irfs[:,6,1]),rtol = eps(Float32))
+
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = m.timings.var[1])
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = m.timings.var[end-1:end])
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = m.timings.var)
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = Tuple(m.timings.var))
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all)
+
     end
 
     if algorithm ∈ [:second_order, :third_order]
@@ -130,6 +161,10 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = Tuple(m.exo))
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = reshape(m.exo,1,length(m.exo)))
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :all)
+    new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = randn(m.timings.nExo,10))
+    new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10))
+    new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10))
+    new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, generalised_irf = true, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10))
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :simulate)
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
     new_sub_lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])), levels = true)
@@ -165,6 +200,9 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = Tuple(m.exo))
         plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = reshape(m.exo,1,length(m.exo)))
         plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = :all)
+        plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = randn(m.timings.nExo,10))
+        plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10))
+        plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10))
         plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = :simulate)
         plot(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
 

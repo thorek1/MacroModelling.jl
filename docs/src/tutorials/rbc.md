@@ -78,6 +78,21 @@ plot_simulations(RBC)
 
 The plots show the models endogenous variables in response to random draws for all exogenous shocks over 100 periods.
 
+## Plot specific series of shocks
+
+Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or `KeyedArray` of the series of shocks to the `shocks` argument of the [`plot_simulations`](@ref) function:
+
+```@repl tutorial_1
+shock_series = zeros(1,4)
+shock_series[1,2] = 1
+shock_series[1,4] = -1
+plot(RBC, shocks = shock_series)
+```
+
+![Series of shocks RBC](../assets/irf__RBC__shock_matrix__1.png)
+
+The plot shows the two shocks hitting the economy in periods 2 and 4 and then continues the simulation for 40 more quarters.
+
 ## Model statistics
 
 The package solves for the SS automatically and we got an idea of the SS values in the plots. If we want to see the SS values we can call [`get_steady_state`](@ref):
