@@ -51,7 +51,7 @@ plot(RBC)
 """
 function plot(𝓂::ℳ;
     periods::Int = 40, 
-    shocks::Symbol_input = :all,
+    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Symbol_input = :all,
     parameters = nothing,
     show_plots::Bool = true,
@@ -88,7 +88,20 @@ function plot(𝓂::ℳ;
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
-    shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+        
+        periods = size(shocks)[2] + 40
+
+        shock_idx = 1
+    elseif shocks isa KeyedArray{Float64}
+        periods = size(shocks)[2] + 40
+
+        shock_idx = 1
+    else
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    end
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
