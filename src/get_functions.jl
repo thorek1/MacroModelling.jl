@@ -59,6 +59,8 @@ function get_irf(𝓂::ℳ,
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
+    @assert shocks != :simulate "Use parameters as a known argument to simulate the model."
+
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
@@ -94,18 +96,27 @@ function get_irf(𝓂::ℳ,
     state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
-    
-    SS = collect(NSSS[1:end - length(𝓂.calibration_equations)])
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - SS
+    full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    
+    full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
+    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[s] for s in full_SS]#collect(NSSS[1:end - length(𝓂.calibration_equations)])
+
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
 
     # Y = zeros(𝓂.timings.nVars,periods,𝓂.timings.nExo)
     Ŷ = []
     for ii in shock_idx
         Y = []
+
         if shocks != :simulate && shocks isa Symbol_input
             shock_history = zeros(𝓂.timings.nExo,periods)
             shock_history[ii,1] = negative_shock ? -1 : 1
+        end
+
+        if shocks == :none
+            shock_history = zeros(𝓂.timings.nExo,periods)
         end
 
         push!(Y, state_update(initial_state,shock_history[:,1]))
@@ -113,13 +124,14 @@ function get_irf(𝓂::ℳ,
         for t in 1:periods-1
             push!(Y, state_update(Y[end],shock_history[:,t+1]))
         end
+
         push!(Ŷ, reduce(hcat,Y))
     end
 
     deviations = reshape(reduce(hcat,Ŷ),𝓂.timings.nVars,periods,length(shock_idx))[var_idx,:,:]
 
     if levels
-        return deviations .+ SS[var_idx]
+        return deviations .+ reference_steady_state[var_idx]
     else
         return deviations
     end
@@ -207,6 +219,7 @@ function get_irf(𝓂::ℳ;
     NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
     full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
     reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[s] for s in full_SS]#collect(NSSS[1:end - length(𝓂.calibration_equations)])

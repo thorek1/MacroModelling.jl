@@ -1828,7 +1828,9 @@ function irf(state_update::Function, initial_state::Vector{Float64}, T::timings;
         return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:simulate])
     elseif shocks == :none
         Y = zeros(T.nVars,periods,1)
+
         shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
+        
         Y[:,1,1] = state_update(initial_state,shck)
 
         for t in 1:periods-1
@@ -1851,8 +1853,8 @@ function irf(state_update::Function, initial_state::Vector{Float64}, T::timings;
                 Y[:,t+1,ii] = state_update(Y[:,t,ii],shock_history[:,t+1])
             end
         end
-        
-        return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? T.exo[shock_idx] : [:Shock_matrix])
+
+        return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
     end
 end
 
@@ -1934,7 +1936,7 @@ function girf(state_update::Function, T::timings;
         Y[:,:,ii] /= draws
     end
     
-    return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? T.exo[shock_idx] : [:Shock_matrix])
+    return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
 end
 
 
