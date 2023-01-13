@@ -1120,11 +1120,16 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
     dyn_var_past_list = collect(reduce(union,symbolics.dyn_var_past_list))
     dyn_exo_list = collect(reduce(union,symbolics.dyn_exo_list))
 
-    vars = [dyn_var_future_list[indexin(sort(string.(dyn_var_future_list)),string.(dyn_var_future_list))]...,
-            dyn_var_present_list[indexin(sort(string.(dyn_var_present_list)),string.(dyn_var_present_list))]...,
-            dyn_var_past_list[indexin(sort(string.(dyn_var_past_list)),string.(dyn_var_past_list))]...,
-            dyn_exo_list[indexin(sort(string.(dyn_exo_list)),string.(dyn_exo_list))]...]
-
+    future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_var_future_list))
+    present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_var_present_list))
+    past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")),string.(dyn_var_past_list))
+    exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")),string.(dyn_exo_list))
+    
+    vars = [dyn_var_future_list[indexin(sort(future),future)]...,
+            dyn_var_present_list[indexin(sort(present),present)]...,
+            dyn_var_past_list[indexin(sort(past),past)]...,
+            dyn_exo_list[indexin(sort(exo),exo)]...]
+    
     eqs = symbolics.dyn_equations
 
     first_order = []
@@ -1145,7 +1150,7 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
             if var1 ∈ free_symbols(eq)
                 deriv_first = diff(eq,var1)
                 if deriv_first != 0 
-                    push!(first_order, :(out[$i1] = $(Meta.parse(string(deriv_first.subs(PI,N(PI)))))))
+                    push!(first_order, :($(Meta.parse(string(deriv_first.subs(PI,N(PI)))))))
                     push!(row1,r)
                     push!(column1,c1)
                     i1 += 1
@@ -1153,7 +1158,7 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
                         if var2 ∈ free_symbols(deriv_first)
                             deriv_second = diff(deriv_first,var2)
                             if deriv_second != 0 
-                                push!(second_order, :(out[$i2] = $(Meta.parse(string(deriv_second.subs(PI,N(PI)))))))
+                                push!(second_order, :($(Meta.parse(string(deriv_second.subs(PI,N(PI)))))))
                                 push!(row2,r)
                                 push!(column2,(c1 - 1) * length(vars) + c2)
                                 i2 += 1
@@ -1161,7 +1166,7 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
                                     if var3 ∈ free_symbols(deriv_second)
                                         deriv_third = diff(deriv_second,var3)
                                         if deriv_third != 0 
-                                            push!(third_order, :(out[$i3] = $(Meta.parse(string(deriv_third.subs(PI,N(PI)))))))
+                                            push!(third_order, :($(Meta.parse(string(deriv_third.subs(PI,N(PI)))))))
                                             push!(row3,r)
                                             push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
                                             i3 += 1
@@ -1176,42 +1181,46 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
         end
     end
 
-    mod_func3 = :(function model_jacobian(X::Vector{Real}, params::Vector{Real}, X̄::Vector{Real})
+    mod_func3 = :(function model_jacobian(X::Vector{Number}, params::Vector{Number}, X̄::Vector{Number})
         $(alll...)
         $(paras...)
         $(𝓂.calibration_equations_no_var...)
         $(steady_state...)
-        out = zeros($(length(first_order)))
-        $(first_order...)
-        sparse([$(row1...)], [$(column1...)], out, $(length(eqs)), $(length(vars)))
+        sparse([$(row1...)], [$(column1...)], [$(first_order...)], $(length(eqs)), $(length(vars)))
     end)
 
     𝓂.model_jacobian = @RuntimeGeneratedFunction(mod_func3)
 
 
+    if length(row2) == 0 
+        out = :(spzeros($(length(eqs)), $(length(vars)^2)))
+    else 
+        out = :(sparse([$(row2...)], [$(column2...)], [$(second_order...)], $(length(eqs)), $(length(vars)^2)))
+    end
 
-    mod_func4 = :(function model_hessian(X::Vector{Real}, params::Vector{Real}, X̄::Vector{Real})
+    mod_func4 = :(function model_hessian(X::Vector{Number}, params::Vector{Number}, X̄::Vector{Number})
         $(alll...)
         $(paras...)
         $(𝓂.calibration_equations_no_var...)
         $(steady_state...)
-        out = zeros($(length(second_order)))
-        $(second_order...)
-        sparse([$(row2...)], [$(column2...)], out, $(length(eqs)), $(length(vars)^2))
+        $out
     end)
 
     𝓂.model_hessian = @RuntimeGeneratedFunction(mod_func4)
 
 
+    if length(row3) == 0 
+        out = :(spzeros($(length(eqs)), $(length(vars)^3)))
+    else 
+        out = :(sparse([$(row3...)], [$(column3...)], [$(third_order...)], $(length(eqs)), $(length(vars)^3)))
+    end
 
-    mod_func5 = :(function model_hessian(X::Vector{Real}, params::Vector{Real}, X̄::Vector{Real})
+    mod_func5 = :(function model_hessian(X::Vector{Number}, params::Vector{Number}, X̄::Vector{Number})
         $(alll...)
         $(paras...)
         $(𝓂.calibration_equations_no_var...)
         $(steady_state...)
-        out = zeros($(length(third_order)))
-        $(third_order...)
-        sparse([$(row3...)], [$(column3...)], out, $(length(eqs)), $(length(vars)^3))
+        $out
     end)
 
     𝓂.model_third_order_derivatives = @RuntimeGeneratedFunction(mod_func5)
@@ -1441,7 +1450,8 @@ function calculate_jacobian(parameters::Vector{<: Number}, SS_and_pars::Abstract
 
     shocks_ss = zeros(length(𝓂.exo))
 
-    return ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
+    # return ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
+    return collect(𝓂.model_jacobian([SS_future; SS_present; SS_past; shocks_ss], par, SS))
 end
 
 
@@ -1468,7 +1478,8 @@ function calculate_hessian(parameters::Vector{<: Number}, SS_and_pars::AbstractA
 
     nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
         
-    return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
+    # return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
+    return 𝓂.model_hessian([SS_future; SS_present; SS_past; shocks_ss], par, SS)
 end
 
 
@@ -1495,8 +1506,9 @@ function calculate_third_order_derivatives(parameters::Vector{<: Number}, SS_and
 
     nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
       
-    return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
- end
+    # return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
+    return 𝓂.model_third_order_derivatives([SS_future; SS_present; SS_past; shocks_ss], par, SS)
+end
 
 
 
