@@ -3,7 +3,7 @@ module MacroModelling
 
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 using StatsFuns, SpecialFunctions
-import SymPy: @vars, solve, subs, Sym
+import SymPy: @vars, solve, subs, Sym, free_symbols, N, PI
 import ForwardDiff as ℱ 
 import SparseArrays: SparseMatrixCSC, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -148,11 +148,11 @@ function create_symbols_eqs!(𝓂::ℳ)
 
                 # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift2_var_past_list),
 
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_present_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_past_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_future_list),
+                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_present_list),
+                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_past_list),
+                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_future_list),
                 # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_ss_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_list),
+                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_list),
 
                 map(x->Set(eval(:([$(x...)]))),𝓂.var_present_list_aux_SS),
                 map(x->Set(eval(:([$(x...)]))),𝓂.var_past_list_aux_SS),
@@ -909,7 +909,7 @@ function solve!(𝓂::ℳ;
         symbolics = create_symbols_eqs!(𝓂)
         remove_redundant_SS_vars!(𝓂,symbolics)
         solve_steady_state!(𝓂, symbolic_SS, symbolics, verbose = verbose)
-        write_functions_mapping!(𝓂)
+        write_functions_mapping!(𝓂, symbolics)
         𝓂.solution.functions_written = true
     end
 
@@ -1062,7 +1062,7 @@ end
 
 
 
-function write_functions_mapping!(𝓂::ℳ)
+function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
     present_varss = map(x->Symbol(string(x) * "₍₀₎"),sort(setdiff(union(𝓂.var_present,𝓂.aux_present,𝓂.exo_present), 𝓂.nonnegativity_auxilliary_vars)))
     future_varss  = map(x->Symbol(string(x) * "₍₁₎"),sort(setdiff(union(𝓂.var_future,𝓂.aux_future,𝓂.exo_future), 𝓂.nonnegativity_auxilliary_vars)))
     past_varss    = map(x->Symbol(string(x) * "₍₋₁₎"),sort(setdiff(union(𝓂.var_past,𝓂.aux_past,𝓂.exo_past), 𝓂.nonnegativity_auxilliary_vars)))
@@ -1113,6 +1113,109 @@ function write_functions_mapping!(𝓂::ℳ)
 
 
     𝓂.model_function = @RuntimeGeneratedFunction(mod_func2)
+
+
+    dyn_var_future_list = collect(reduce(union,symbolics.dyn_var_future_list))
+    dyn_var_present_list = collect(reduce(union,symbolics.dyn_var_present_list))
+    dyn_var_past_list = collect(reduce(union,symbolics.dyn_var_past_list))
+    dyn_exo_list = collect(reduce(union,symbolics.dyn_exo_list))
+
+    vars = [dyn_var_future_list[indexin(sort(string.(dyn_var_future_list)),string.(dyn_var_future_list))]...,
+            dyn_var_present_list[indexin(sort(string.(dyn_var_present_list)),string.(dyn_var_present_list))]...,
+            dyn_var_past_list[indexin(sort(string.(dyn_var_past_list)),string.(dyn_var_past_list))]...,
+            dyn_exo_list[indexin(sort(string.(dyn_exo_list)),string.(dyn_exo_list))]...]
+
+    eqs = symbolics.dyn_equations
+
+    first_order = []
+    second_order = []
+    third_order = []
+    row1 = Int[]
+    row2 = Int[]
+    row3 = Int[]
+    column1 = Int[]
+    column2 = Int[]
+    column3 = Int[]
+    i1 = 1
+    i2 = 1
+    i3 = 1
+    
+    for (c1,var1) in enumerate(vars)
+        for (r,eq) in enumerate(eqs)
+            if var1 ∈ free_symbols(eq)
+                deriv_first = diff(eq,var1)
+                if deriv_first != 0 
+                    push!(first_order, :(out[$i1] = $(Meta.parse(string(deriv_first.subs(PI,N(PI)))))))
+                    push!(row1,r)
+                    push!(column1,c1)
+                    i1 += 1
+                    for (c2,var2) in enumerate(vars)
+                        if var2 ∈ free_symbols(deriv_first)
+                            deriv_second = diff(deriv_first,var2)
+                            if deriv_second != 0 
+                                push!(second_order, :(out[$i2] = $(Meta.parse(string(deriv_second.subs(PI,N(PI)))))))
+                                push!(row2,r)
+                                push!(column2,(c1 - 1) * length(vars) + c2)
+                                i2 += 1
+                                for (c3,var3) in enumerate(vars)
+                                    if var3 ∈ free_symbols(deriv_second)
+                                        deriv_third = diff(deriv_second,var3)
+                                        if deriv_third != 0 
+                                            push!(third_order, :(out[$i3] = $(Meta.parse(string(deriv_third.subs(PI,N(PI)))))))
+                                            push!(row3,r)
+                                            push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
+                                            i3 += 1
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    mod_func3 = :(function model_jacobian(X::Vector{Real}, params::Vector{Real}, X̄::Vector{Real})
+        $(alll...)
+        $(paras...)
+        $(𝓂.calibration_equations_no_var...)
+        $(steady_state...)
+        out = zeros($(length(first_order)))
+        $(first_order...)
+        sparse([$(row1...)], [$(column1...)], out, $(length(eqs)), $(length(vars)))
+    end)
+
+    𝓂.model_jacobian = @RuntimeGeneratedFunction(mod_func3)
+
+
+
+    mod_func4 = :(function model_hessian(X::Vector{Real}, params::Vector{Real}, X̄::Vector{Real})
+        $(alll...)
+        $(paras...)
+        $(𝓂.calibration_equations_no_var...)
+        $(steady_state...)
+        out = zeros($(length(second_order)))
+        $(second_order...)
+        sparse([$(row2...)], [$(column2...)], out, $(length(eqs)), $(length(vars)^2))
+    end)
+
+    𝓂.model_hessian = @RuntimeGeneratedFunction(mod_func4)
+
+
+
+    mod_func5 = :(function model_hessian(X::Vector{Real}, params::Vector{Real}, X̄::Vector{Real})
+        $(alll...)
+        $(paras...)
+        $(𝓂.calibration_equations_no_var...)
+        $(steady_state...)
+        out = zeros($(length(third_order)))
+        $(third_order...)
+        sparse([$(row3...)], [$(column3...)], out, $(length(eqs)), $(length(vars)^3))
+    end)
+
+    𝓂.model_third_order_derivatives = @RuntimeGeneratedFunction(mod_func5)
+
 
     calib_eqs = []
     for (i, eqs) in enumerate(𝓂.solved_vals) 

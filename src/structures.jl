@@ -44,11 +44,11 @@ struct symbolics
 
     # dyn_shift2_var_past_list::Vector{Set{Sym}}
 
-    # dyn_var_present_list::Vector{Set{Sym}}
-    # dyn_var_past_list::Vector{Set{Sym}}
-    # dyn_var_future_list::Vector{Set{Sym}}
+    dyn_var_present_list::Vector{Set{Sym}}
+    dyn_var_past_list::Vector{Set{Sym}}
+    dyn_var_future_list::Vector{Set{Sym}}
     # dyn_ss_list::Vector{Set{Sym}}
-    # dyn_exo_list::Vector{Set{Sym}}
+    dyn_exo_list::Vector{Set{Sym}}
 
     var_present_list::Vector{Set{Sym}}
     var_past_list::Vector{Set{Sym}}
@@ -217,6 +217,9 @@ mutable struct ℳ
     upper_bounds::Vector{Float64}
 
     model_function::Function
+    model_jacobian::Function
+    model_hessian::Function
+    model_third_order_derivatives::Function
 
     timings::timings
     solution::solution

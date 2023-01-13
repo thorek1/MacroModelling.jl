@@ -1020,6 +1020,9 @@ macro model(𝓂,ex)
                         $upper_bounds,
 
                         x->x,
+                        x->x,
+                        x->x,
+                        x->x,
 
                         $T,
 
