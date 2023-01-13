@@ -91,12 +91,8 @@ function plot(𝓂::ℳ;
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
-        periods += size(shocks)[2]
-
         shock_idx = 1
     elseif shocks isa KeyedArray{Float64}
-        periods += size(shocks)[2]
-
         shock_idx = 1
     else
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
@@ -134,6 +130,9 @@ function plot(𝓂::ℳ;
             # rightmargin = 17mm, 
             framestyle = :box)
 
+		if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
+				periods += size(shocks)[2]
+		end
 
     shock_dir = negative_shock ? "Shock⁻" : "Shock⁺"
 
