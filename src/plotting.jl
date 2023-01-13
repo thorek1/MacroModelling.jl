@@ -91,11 +91,11 @@ function plot(𝓂::ℳ;
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
-        periods = size(shocks)[2] + 40
+        periods += size(shocks)[2]
 
         shock_idx = 1
     elseif shocks isa KeyedArray{Float64}
-        periods = size(shocks)[2] + 40
+        periods += size(shocks)[2]
 
         shock_idx = 1
     else

@@ -1790,21 +1790,21 @@ function irf(state_update::Function, initial_state::Vector{Float64}, T::timings;
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
-        shock_history = zeros(T.nExo, periods + 40)
+        periods += size(shocks)[2]
+
+        shock_history = zeros(T.nExo, periods)
 
         shock_history[:,1:size(shocks)[2]] = shocks
-
-        periods = size(shocks)[2] + 40
 
         shock_idx = 1
     elseif shocks isa KeyedArray{Float64}
         shock_input = axiskeys(shocks)[1]
 
-        periods = size(shocks)[2] + 40
+        periods += size(shocks)[2]
 
         @assert length(setdiff(shock_input, T.exo)) == 0 "Provided shocks which are not part of the model."
 
-        shock_history = zeros(T.nExo, periods + 40)
+        shock_history = zeros(T.nExo, periods)
 
         shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
 
@@ -1872,21 +1872,21 @@ function girf(state_update::Function, T::timings;
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
-        shock_history = zeros(T.nExo, periods + 40)
+        periods += size(shocks)[2]
+
+        shock_history = zeros(T.nExo, periods)
 
         shock_history[:,1:size(shocks)[2]] = shocks
-
-        periods = size(shocks)[2] + 40
 
         shock_idx = 1
     elseif shocks isa KeyedArray{Float64}
         shock_input = axiskeys(shocks)[1]
 
-        periods = size(shocks)[2] + 40
+        periods += size(shocks)[2]
 
         @assert length(setdiff(shock_input, T.exo)) == 0 "Provided shocks which are not part of the model."
 
-        shock_history = zeros(T.nExo, periods + 40)
+        shock_history = zeros(T.nExo, periods)
 
         shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
 
