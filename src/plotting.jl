@@ -490,7 +490,7 @@ function plot_solution(𝓂::ℳ,
     plots_per_page::Int = 4,
     verbose = false)
 
-    @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*reduce(*," ".*string.(𝓂.timings.past_not_future_and_mixed))
+    @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(𝓂.timings.past_not_future_and_mixed)
 
     @assert length(setdiff(algorithm isa Symbol ? [algorithm] : algorithm, [:third_order, :second_order, :first_order])) == 0 "Invalid algorithm. Choose any combination of: :third_order, :second_order, :first_order"
 

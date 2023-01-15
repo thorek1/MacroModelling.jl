@@ -3,7 +3,8 @@ module MacroModelling
 
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 using StatsFuns, SpecialFunctions
-import SymPy: @vars, solve, subs, Sym, free_symbols, N, PI
+import SymPy: @vars, solve, subs, free_symbols
+import SymPy
 import ForwardDiff as ℱ 
 import SparseArrays: SparseMatrixCSC, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -102,6 +103,13 @@ function get_symbols(ex)
     return par
 end
 
+
+function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
+    return filter(r -> match(pattern, string(r)) != nothing, strings)
+end
+
+
+
 # function get_symbols(ex)
 #     list = Set()
 #     postwalk(x -> x isa Symbol ? push!(list, x) : x, ex)
@@ -131,7 +139,7 @@ function create_symbols_eqs!(𝓂::ℳ)
     end
 
     expr =  quote
-                @vars $(symbols_pos...)  real = true finite = true positive = true
+                @vars $(symbols_pos...)  real = true finite = true nonnegative = true
                 @vars $(symbols_neg...)  real = true finite = true negative = true 
                 @vars $(symbols_none...) real = true finite = true 
             end
@@ -153,6 +161,14 @@ function create_symbols_eqs!(𝓂::ℳ)
                 map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_future_list),
                 # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_ss_list),
                 map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_list),
+
+                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_future_list),
+                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_present_list),
+                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_past_list),
+
+                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_future_list),
+                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_present_list),
+                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_past_list),
 
                 map(x->Set(eval(:([$(x...)]))),𝓂.var_present_list_aux_SS),
                 map(x->Set(eval(:([$(x...)]))),𝓂.var_past_list_aux_SS),
@@ -212,7 +228,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, symbolics::symbolics)
                 continue
             end
             
-            if length(soll) == 0 || soll == Sym[0] # take out variable if it is redundant from that euation only
+            if length(soll) == 0 || soll == SymPy.Sym[0] # take out variable if it is redundant from that euation only
                 push!(symbolics.var_redundant_list[i],var_to_solve)
                 ss_equations[i] = ss_equations[i].subs(var_to_solve,1)
             end
@@ -258,7 +274,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 
     n = n_blocks
 
-    ss_equations = vcat(symbolics.ss_equations,symbolics.calibration_equations) .|> Sym
+    ss_equations = vcat(symbolics.ss_equations,symbolics.calibration_equations) .|> SymPy.Sym
     # println(ss_equations)
 
     SS_solve_func = []
@@ -326,7 +342,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
             numerical_sol = false
             
             if symbolic_SS
-                soll = try solve(Sym(eqs_to_solve),vars_to_solve)
+                soll = try solve(SymPy.Sym(eqs_to_solve),vars_to_solve)
                 # soll = try solve(Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
                 catch
                 end
@@ -382,7 +398,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 push!(𝓂.solved_vars,Symbol.(collect(unknowns)[vars[:,vars[2,:] .== n][1,:]]))
                 push!(𝓂.solved_vals,Meta.parse.(string.(ss_equations[eqs[:,eqs[2,:] .== n][1,:]])))
                 
-                syms_in_eqs = Set(Symbol.(Sym(ss_equations[eqs[:,eqs[2,:] .== n][1,:]]).atoms()))
+                syms_in_eqs = Set(Symbol.(SymPy.Sym(ss_equations[eqs[:,eqs[2,:] .== n][1,:]]).atoms()))
                 push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
 
                 calib_pars = []
@@ -439,7 +455,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                         push!(nnaux_linear,:($(val.args[2]) = $(val.args[3])))
                         push!(nnaux_error, :(aux_error += min(0.0,$(val.args[3]))))
                     else
-                        push!(solved_vals,val)
+                        push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
                     end
                 end
 
@@ -1115,19 +1131,19 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
     𝓂.model_function = @RuntimeGeneratedFunction(mod_func2)
 
 
-    dyn_var_future_list = collect(reduce(union,symbolics.dyn_var_future_list))
-    dyn_var_present_list = collect(reduce(union,symbolics.dyn_var_present_list))
-    dyn_var_past_list = collect(reduce(union,symbolics.dyn_var_past_list))
+    dyn_future_list = collect(reduce(union, symbolics.dyn_future_list))
+    dyn_present_list = collect(reduce(union, symbolics.dyn_present_list))
+    dyn_past_list = collect(reduce(union, symbolics.dyn_past_list))
     dyn_exo_list = collect(reduce(union,symbolics.dyn_exo_list))
 
-    future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_var_future_list))
-    present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_var_present_list))
-    past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")),string.(dyn_var_past_list))
+    future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_future_list))
+    present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_present_list))
+    past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")),string.(dyn_past_list))
     exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")),string.(dyn_exo_list))
     
-    vars = [dyn_var_future_list[indexin(sort(future),future)]...,
-            dyn_var_present_list[indexin(sort(present),present)]...,
-            dyn_var_past_list[indexin(sort(past),past)]...,
+    vars = [dyn_future_list[indexin(sort(future),future)]...,
+            dyn_present_list[indexin(sort(present),present)]...,
+            dyn_past_list[indexin(sort(past),past)]...,
             dyn_exo_list[indexin(sort(exo),exo)]...]
     
     eqs = symbolics.dyn_equations
@@ -1150,7 +1166,8 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
             if var1 ∈ free_symbols(eq)
                 deriv_first = diff(eq,var1)
                 if deriv_first != 0 
-                    push!(first_order, :($(Meta.parse(string(deriv_first.subs(PI,N(PI)))))))
+                    deriv_expr = Meta.parse(string(deriv_first.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                    push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                     push!(row1,r)
                     push!(column1,c1)
                     i1 += 1
@@ -1158,7 +1175,8 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
                         if var2 ∈ free_symbols(deriv_first)
                             deriv_second = diff(deriv_first,var2)
                             if deriv_second != 0 
-                                push!(second_order, :($(Meta.parse(string(deriv_second.subs(PI,N(PI)))))))
+                                deriv_expr = Meta.parse(string(deriv_second.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                                push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                                 push!(row2,r)
                                 push!(column2,(c1 - 1) * length(vars) + c2)
                                 i2 += 1
@@ -1166,7 +1184,8 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
                                     if var3 ∈ free_symbols(deriv_second)
                                         deriv_third = diff(deriv_second,var3)
                                         if deriv_third != 0 
-                                            push!(third_order, :($(Meta.parse(string(deriv_third.subs(PI,N(PI)))))))
+                                            deriv_expr = Meta.parse(string(deriv_third.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                                            push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                                             push!(row3,r)
                                             push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
                                             i3 += 1
