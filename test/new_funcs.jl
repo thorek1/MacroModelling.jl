@@ -2,6 +2,10 @@ using MacroModelling
 import ForwardDiff as ℱ
 using StatsFuns, SpecialFunctions
 
+include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+
+get_SS(m)
+
 include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
 
 get_solution(m)
@@ -11,6 +15,12 @@ parameters = m.parameter_values
 m.SS_solve_func(parameters, m, false, false)[1]
 
 using Zygote
+Zygote.jacobian(x -> m.SS_solve_func(x, m, false, false)[1],Float64[parameters...])[1]
+
+using ForwardDiff
+ForwardDiff.jacobian(x -> m.SS_solve_func(x, m, false, false)[1],Float64[parameters...])
+
+
 using BenchmarkTools
 @benchmark Zygote.jacobian(x -> m.SS_solve_func(x, m, false, false)[1],Float64[parameters...])[1]
 

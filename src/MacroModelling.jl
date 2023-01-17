@@ -591,7 +591,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 # push!(SS_solve_func,:($(aug_lag_results...))) 
 
                 # push!(SS_solve_func,:(NSSS_solver_cache_tmp = []))
-                push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol))))
+                # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol))))
+                push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
 
                 push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
                 push!(𝓂.ss_solve_blocks_optim,@RuntimeGeneratedFunction(funcs_optim))
@@ -644,7 +645,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
     push!(SS_solve_func,:($(dyn_exos...)))
     
     # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
-    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = params_scaled_flt else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp,params_scaled_flt] end))
+    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [params_scaled_flt] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp...,params_scaled_flt] end))
     
     push!(SS_solve_func,:(current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)))
 
@@ -656,6 +657,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                             end))
 
     push!(SS_solve_func,:(if (current_best > eps(Float32)) && (solution_error < eps(Float64)) 
+                                println(NSSS_solver_cache_tmp)
                                 push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp) 
                                 solved_scale = scale
                             end))
@@ -738,7 +740,7 @@ function undo_transformer(x)
     # return x
 end
 
-block_solver_AD(parameters_and_solved_vars::Vector{Float64}, 
+block_solver_AD(parameters_and_solved_vars::Vector{<: Number}, 
     n_block::Int, 
     ss_solve_blocks::Function, 
     # SS_optimizer, 
