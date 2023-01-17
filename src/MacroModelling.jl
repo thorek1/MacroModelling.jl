@@ -140,7 +140,7 @@ function create_symbols_eqs!(𝓂::ℳ)
     end
 
     expr =  quote
-                @vars $(symbols_pos...)  real = true finite = true nonnegative = true
+                @vars $(symbols_pos...)  real = true finite = true positive = true
                 @vars $(symbols_neg...)  real = true finite = true negative = true 
                 @vars $(symbols_none...) real = true finite = true 
             end
@@ -594,9 +594,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                         # ubs,
                         # fail_fast_solvers_only = fail_fast_solvers_only,
                         # verbose = verbose)))
-                        
                 # push!(SS_solve_func,:(solution_error += solution[2])) 
                 # push!(SS_solve_func,:(sol = solution[1]))
+                push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks_no_transform[$(n_block)]([$(calib_pars_input...),$(other_vars_input...)],solution))))
                 push!(SS_solve_func,:(sol = solution))
 
                 # push!(SS_solve_func,:(println(sol))) 
@@ -1774,9 +1774,11 @@ function riccati_forward(∇₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T
     end,size(val))
 end
 
+riccati_AD = ImplicitFunction(riccati_forward, riccati_conditions)
 
 function calculate_first_order_solution(∇₁::AbstractMatrix{<: Number}; T::timings, explosive::Bool = false)
-    A = riccati_forward(∇₁, T = T, explosive = explosive)
+    A = riccati_AD(∇₁, T = T, explosive = explosive)
+    # A = riccati_forward(∇₁, T = T, explosive = explosive)
 
     Jm = @view(ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:])
     
@@ -2269,7 +2271,9 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         return -1e6
     end
 
-    data_in_deviations = collect(data(observables)) .- collect(SS_and_pars[observables])
+    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    data_in_deviations = collect(data(observables)) .- SS_and_pars[indexin(observables,NSSS_labels)]
 
     # 𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
 

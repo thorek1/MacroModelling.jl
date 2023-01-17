@@ -15,7 +15,7 @@ parameters = m.parameter_values
 m.SS_solve_func(parameters, m, false, false)[1]
 
 using Zygote
-Zygote.jacobian(x -> m.SS_solve_func(x, m, false, false)[1],Float64[parameters...])[1]
+Zygote.jacobian(x -> m.SS_solve_func(x, m, false, true)[1],Float64[parameters...])[1]
 
 using ForwardDiff
 ForwardDiff.jacobian(x -> m.SS_solve_func(x, m, false, false)[1],Float64[parameters...])
@@ -27,6 +27,64 @@ using BenchmarkTools
 @benchmark get_SS(m)
 
 m.SS_solve_func
+
+
+
+
+
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+
+@parameters RBC_CME begin
+    # alpha | k[ss] / (4 * y[ss]) = cap_share
+    # cap_share = 1.66
+    alpha = .157
+
+    # beta | R[ss] = R_ss
+    # R_ss = 1.0035
+    beta = .999
+
+    # delta | c[ss]/y[ss] = 1 - I_K_ratio
+    # delta | delta * k[ss]/y[ss] = I_K_ratio #check why this doesnt solve for y
+    # I_K_ratio = .15
+    delta = .0226
+
+    # Pibar | Pi[ss] = Pi_ss
+    # Pi_ss = 1.0025
+    Pibar = 1.0008
+
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+solve!(RBC_CME, dynamics = true)
+
+
+
+data = get_irf(RBC_CME, levels = true)[:,:,1]
+data = simulate(RBC_CME, levels = true)[:,:,1]
+observables = [:c,:k]
+
+calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables)
+
+parameters = RBC_CME.parameter_values
+
+using Zygote
+Zygote.gradient(x->calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables,parameters = x),parameters)
+
+@test isapprox(425.7688745392835,calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables),rtol = 1e-5)
 
 
 using Optimization, Krylov

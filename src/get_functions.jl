@@ -182,7 +182,10 @@ function get_irf(𝓂::ℳ;
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
-    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[s] for s in full_SS]#collect(NSSS[1:end - length(𝓂.calibration_equations)])
+    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[indexin([s],NSSS_labels)...] for s in full_SS]#collect(NSSS[1:end - length(𝓂.calibration_equations)])
+    println(reference_steady_state)
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
@@ -945,7 +948,8 @@ function get_moments(𝓂::ℳ;
 
     NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
-    NSSS_labels = labels(NSSS) .|> Symbol
+    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
     var_idx = indexin(var,NSSS_labels)
     var_idx_SS = indexin(vcat(var,𝓂.calibration_equations_parameters),NSSS_labels)
 
