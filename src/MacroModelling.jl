@@ -48,7 +48,7 @@ export calculate_kalman_filter_loglikelihood
 
 
 # Internal
-export irf, girf, block_solver
+export irf, girf, block_solver, block_solver_AD
 # export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!
 
 
@@ -422,7 +422,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 result = []
                 sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.nonnegativity_auxilliary_vars))
                 for (i, parss) in enumerate(sorted_vars) 
-                    push!(guess,:($parss = undo_transformer(guess[$i])))
+                    push!(guess,:($parss = guess[$i]))
+                    # push!(guess,:($parss = undo_transformer(guess[$i])))
                     push!(result,:($parss = sol[$i]))
                 end
 
@@ -520,7 +521,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 # push!(solved_vals,:(bound_violation_penalty))
 
                 funcs_optim = :(function block(guess::Vector{Float64},parameters_and_solved_vars::Vector{Float64})
-                    # guess = undo_transformer(guess)
+                    guess = undo_transformer(guess)
                     $(guess...) 
                     $(calib_pars...) # add those variables which were previously solved and are used in the equations
                     $(other_vars...) # take only those that appear in equations - DONE
@@ -559,7 +560,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 # push!(SS_solve_func,:(closest_solution = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]))
                 # push!(SS_solve_func,:(inits = [transformer(max.(lbs,min.(ubs, closest_solution[$(n_block)] ))),closest_solution[end]]))
                 push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, closest_solution[$(n_block)]))))
-                push!(SS_solve_func,:(block_solver_AD = ImplicitFunction(x->block_solver(x,
+                push!(SS_solve_func,:(block_solver_RD = block_solver_AD([$(calib_pars_input...),$(other_vars_input...)],
                                                                         $(n_block), 
                                                                         𝓂.ss_solve_blocks[$(n_block)], 
                                                                         f, 
@@ -567,10 +568,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                                                                         lbs, 
                                                                         ubs,
                                                                         fail_fast_solvers_only = fail_fast_solvers_only,
-                                                                        verbose = verbose), 
-                                                                        𝓂.ss_solve_blocks[$(n_block)])))
+                                                                        verbose = verbose)))
                 
-                push!(SS_solve_func,:(solution = block_solver_AD([$(calib_pars_input...),$(other_vars_input...)])))#, 
+                push!(SS_solve_func,:(solution = block_solver_RD([$(calib_pars_input...),$(other_vars_input...)])))#, 
                         # $(n_block), 
                         # 𝓂.ss_solve_blocks[$(n_block)], 
                         # # 𝓂.SS_optimizer, 
@@ -581,8 +581,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                         # fail_fast_solvers_only = fail_fast_solvers_only,
                         # verbose = verbose)))
                         
-                push!(SS_solve_func,:(solution_error += solution[2])) 
-                push!(SS_solve_func,:(sol = solution[1]))
+                # push!(SS_solve_func,:(solution_error += solution[2])) 
+                # push!(SS_solve_func,:(sol = solution[1]))
+                push!(SS_solve_func,:(sol = solution))
 
                 # push!(SS_solve_func,:(println(sol))) 
 
@@ -643,10 +644,10 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
     push!(SS_solve_func,:($(dyn_exos...)))
     
     # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
-    push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp,params_scaled_flt]))
+    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = params_scaled_flt else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp,params_scaled_flt] end))
     
     push!(SS_solve_func,:(current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)))
-    
+
     push!(SS_solve_func,:(for pars in 𝓂.NSSS_solver_cache
                                 latest = sum(abs2,pars[end] - params_flt)
                                 if latest <= current_best
@@ -725,15 +726,43 @@ end
 # transformation of NSSS problem
 function transformer(x)
     # return asinh.(asinh.(asinh.(x)))
-    return asinh(asinh(x))
+    # return asinh(asinh(x))
+    return asinh(x)
     # return x
 end
 
 function undo_transformer(x)
     # return sinh.(sinh.(sinh.(x)))
-    return sinh(sinh(x))
+    # return sinh(sinh(x))
+    return sinh(x)
     # return x
 end
+
+block_solver_AD(parameters_and_solved_vars::Vector{Float64}, 
+    n_block::Int, 
+    ss_solve_blocks::Function, 
+    # SS_optimizer, 
+    f::OptimizationFunction, 
+    guess::Vector{Float64}, 
+    lbs::Vector{Float64}, 
+    ubs::Vector{Float64};
+    tol = eps(Float64),
+    maxtime = 120,
+    starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25],
+    fail_fast_solvers_only = true,
+    verbose = false) = ImplicitFunction(x -> block_solver(x,
+                                                            n_block, 
+                                                            ss_solve_blocks,
+                                                            f,
+                                                            guess,
+                                                            lbs,
+                                                            ubs;
+                                                            tol = tol,
+                                                            maxtime = maxtime,
+                                                            starting_points = starting_points,
+                                                            fail_fast_solvers_only = fail_fast_solvers_only,
+                                                            verbose = verbose)[1],  
+                                        ss_solve_blocks)
 
 function block_solver(parameters_and_solved_vars::Vector{Float64}, 
                         n_block::Int, 

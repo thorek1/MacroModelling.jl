@@ -18,6 +18,109 @@ using BenchmarkTools
 
 m.SS_solve_func
 
+
+using Optimization, Krylov
+
+block_solver_AD(parameters_and_solved_vars::Vector{Float64}, 
+    n_block::Int, 
+    ss_solve_blocks::Function, 
+    f::OptimizationFunction, 
+    guess::Vector{Float64}, 
+    lbs::Vector{Float64}, 
+    ubs::Vector{Float64};
+    tol = eps(Float64),
+    maxtime = 120,
+    starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25],
+    fail_fast_solvers_only = true,
+    verbose = false) = ImplicitFunction(parameters_and_solved_vars -> block_solver(parameters_and_solved_vars,
+                                                            n_block, 
+                                                            ss_solve_blocks,
+                                                            f,
+                                                            guess,
+                                                            lbs,
+                                                            ubs;
+                                                            tol = tol,
+                                                            maxtime = maxtime,
+                                                            starting_points = starting_points,
+                                                            fail_fast_solvers_only = fail_fast_solvers_only,
+                                                            verbose = verbose)[1],  
+                                        ss_solve_blocks)#, Krylov.bicgstab)
+
+params = m.parameter_values
+𝓂 = m
+
+cap_share = params[1]
+R_ss = params[2]
+I_K_ratio = params[3]
+phi_pi = params[4]
+Pi_real = params[7]
+rhoz = params[8]
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:707 =#
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:708 =#
+Pi_ss = R_ss - Pi_real
+rho_z_delta = rhoz
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:709 =#
+# NSSS_solver_cache_tmp = []
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:710 =#
+solution_error = 0.0
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:711 =#
+nonnegativity_auxilliary₂ = max(eps(), 1)
+log_ZZ_avg = 0
+A = 1
+ZZ_avg = 1
+R = R_ss
+Pi = Pi_ss
+beta = Pi / R
+nonnegativity_auxilliary₁ = max(eps(), (R * beta) ^ (1 / phi_pi))
+z_delta = 1
+lbs = [2.220446049250313e-16, -1.0e12, -1.0e12, 1.1920928955078125e-7, -1.0e12]
+ubs = [0.9999999999999998, 1.0e12, 1.0e12, 1.0e12, 1.0e12]
+f = OptimizationFunction(𝓂.ss_solve_blocks_optim[1], Optimization.AutoForwardDiff())
+inits = max.(lbs, min.(ubs, fill(.5,length(ubs))))
+
+
+function undo_transformer(x)
+    # return sinh.(sinh.(sinh.(x)))
+    return sinh(sinh(x))
+    # return sinh(x)
+    # return x
+end
+
+
+function ss_solve_blocks(parameters_and_solved_vars,guess)
+    guess = undo_transformer.(guess) 
+    alpha = (guess[1])
+    c = (guess[2])
+    delta = (guess[3])
+    k = (guess[4])
+    y = (guess[5])
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:511 =#
+    cap_share = parameters_and_solved_vars[1]
+    I_K_ratio = parameters_and_solved_vars[2]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:512 =#
+    beta = parameters_and_solved_vars[3]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:515 =#
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:516 =#
+    return [-beta * ((alpha * k ^ (alpha - 1) - delta) + 1) + 1, -(k ^ alpha) + y, ((-c + k * (1 - delta)) - k) + k ^ alpha, (I_K_ratio + c / y) - 1, -cap_share + k / (4y)]
+end
+
+using ImplicitDifferentiation
+bl = block_solver_AD([cap_share, I_K_ratio, beta], 1, ss_solve_blocks, f, inits, lbs, ubs, fail_fast_solvers_only = true, verbose = true);
+
+block_solver([cap_share, I_K_ratio, beta], 1, ss_solve_blocks, f, inits, lbs, ubs, fail_fast_solvers_only = true, verbose = true)
+
+bl([cap_share, I_K_ratio, beta])
+
+using Zygote, ForwardDiff, FiniteDifferences
+
+Zygote.jacobian(bl, [cap_share, I_K_ratio, beta])[1]
+
+ForwardDiff.jacobian(bl, [cap_share, I_K_ratio, beta])
+ForwardDiff.jacobian(x->block_solver(x, 1, ss_solve_blocks, f, inits, lbs, ubs, fail_fast_solvers_only = true, verbose = true)[1], [cap_share, I_K_ratio, beta])
+
+FiniteDifferences.jacobian(central_fdm(3,1),bl, [cap_share, I_K_ratio, beta])[1]
+
+
 function SS_solve_func(parameters, 𝓂, fail_fast_solvers_only, verbose)
     params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
     closest_solution_init = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]
@@ -89,6 +192,8 @@ Zygote.jacobian(x -> m.SS_solve_func(x, m, false, false),Float64[parameters...])
 
 
 include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+
+get_SS(m)
 
 function SS_solve_func(params, 𝓂, fail_fast_solvers_only, verbose)
     cap_share = params[1]
