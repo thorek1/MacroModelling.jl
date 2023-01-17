@@ -109,7 +109,7 @@ end
 
 mutable struct solution
     perturbation::perturbation
-    non_stochastic_steady_state::ComponentVector{Float64}
+    non_stochastic_steady_state::Vector{Float64}
     algorithms::Set{Symbol}
     outdated_algorithms::Set{Symbol}
     outdated_NSSS::Bool

@@ -331,17 +331,14 @@ function get_steady_state(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
-
-    SS = collect(NSSS)
+    SS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     if stochastic
         solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order)
         SS[1:length(union(𝓂.exo_present,var))] = 𝓂.solution.perturbation.second_order.stochastic_steady_state[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
     end
 
-    NSSS_labels = labels(NSSS) .|> Symbol
-    var_idx = indexin(vcat(var,𝓂.calibration_equations_parameters),NSSS_labels)
+    var_idx = indexin(vcat(var,𝓂.calibration_equations_parameters), [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])
 
     if length_par * length(var_idx) > 200
         derivatives = false
