@@ -204,8 +204,9 @@ mutable struct ℳ
     non_linear_solved_vals
     # solved_sub_vals
     # solved_sub_values
-    ss_solve_blocks
-    ss_solve_blocks_optim
+    ss_solve_blocks::Vector#{RuntimeGeneratedFunction}
+    ss_solve_blocks_no_transform::Vector#{RuntimeGeneratedFunction}
+    ss_solve_blocks_optim::Vector#{RuntimeGeneratedFunction}
     # SS_init_guess::Vector{Real}
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func
