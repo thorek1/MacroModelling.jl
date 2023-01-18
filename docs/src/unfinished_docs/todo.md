@@ -20,7 +20,7 @@
 - [ ] clean up different parameter types
 - [ ] clean up printouts/reporting
 - [ ] clean up function inputs and harmonise AD and standard commands
-- [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example) 
+- [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] write documentation/docstrings
 - [ ] add more models
 - [ ] symbolic derivatives
@@ -64,7 +64,7 @@
 - [ ] rewrite first order with riccati equation MatrixEquations.jl
 - [ ] exploit variable incidence and compression for higher order derivatives
 - [ ] for estimation use CUDA with st order: linear time iteration starting from last 1st order solution and then LinearSolveCUDA solvers for higher orders. this should bring benefits for large models and HANK models
-- [ ] test on highly nonlinear model (https://www.sciencedirect.com/science/article/pii/S0165188917300970)
+- [ ] test on highly [nonlinear model](https://www.sciencedirect.com/science/article/pii/S0165188917300970)
 - [ ] pull request in StatsFuns to have norminv... accept type numbers and add translation from matlab: norminv to StatsFuns norminvcdf
 - [ ] more informative errors when declaring equations/ calibration
 - [ ] unit equation errors

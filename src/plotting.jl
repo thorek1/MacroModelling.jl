@@ -51,7 +51,7 @@ plot(RBC)
 """
 function plot(𝓂::ℳ;
     periods::Int = 40, 
-    shocks::Symbol_input = :all,
+    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Symbol_input = :all,
     parameters = nothing,
     show_plots::Bool = true,
@@ -90,7 +90,15 @@ function plot(𝓂::ℳ;
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
-    shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
+        shock_idx = 1
+    elseif shocks isa KeyedArray{Float64}
+        shock_idx = 1
+    else
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    end
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
@@ -124,6 +132,9 @@ function plot(𝓂::ℳ;
             # rightmargin = 17mm, 
             framestyle = :box)
 
+		if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
+				periods += size(shocks)[2]
+		end
 
     shock_dir = negative_shock ? "Shock⁻" : "Shock⁺"
 
@@ -132,6 +143,9 @@ function plot(𝓂::ℳ;
     end
     if shocks == :simulate
         shock_dir = "Shocks"
+    end
+    if !(shocks isa Symbol_input)
+        shock_dir = ""
     end
 
     for shock in 1:length(shock_idx)
@@ -181,16 +195,18 @@ function plot(𝓂::ℳ;
 
                     end
 
-                    shock_string = ": " * string(𝓂.timings.exo[shock_idx[shock]])
-
                     if shocks == :simulate
                         shock_string = ": simulate all"
                         shock_name = "simulation"
                     elseif shocks == :none
                         shock_string = ""
                         shock_name = "no_shock"
-                    else
+                    elseif shocks isa Symbol_input
+                        shock_string = ": " * string(𝓂.timings.exo[shock_idx[shock]])
                         shock_name = string(𝓂.timings.exo[shock_idx[shock]])
+                    else
+                        shock_string = "Series of shocks"
+                        shock_name = "shock_matrix"
                     end
 
                     p = Plots.plot(pp...,plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
@@ -226,9 +242,12 @@ function plot(𝓂::ℳ;
             elseif shocks == :none
                 shock_string = ""
                 shock_name = "no_shock"
-            else
+            elseif shocks isa Symbol_input
                 shock_string = ": " * string(𝓂.timings.exo[shock_idx[shock]])
                 shock_name = string(𝓂.timings.exo[shock_idx[shock]])
+            else
+                shock_string = "Series of shocks"
+                shock_name = "shock_matrix"
             end
 
             p = Plots.plot(pp...,plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")

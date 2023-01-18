@@ -1,6 +1,7 @@
 using Test
 using MacroModelling
 using Random
+using AxisKeys
 
 include("functionality_tests.jl")
 

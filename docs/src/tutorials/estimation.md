@@ -117,7 +117,7 @@ import Turing: Normal, Beta, InverseGamma, NUTS, sample, logpdf
 Turing.@model function FS2000_loglikelihood_function(data, m, observables)
     alp     ~ Beta(beta_map(0.356, 0.02)...)
     bet     ~ Beta(beta_map(0.993, 0.002)...)
-    gam     ~ Normal(0.0085, 0.003)#, eps(), .1)
+    gam     ~ Normal(0.0085, 0.003)
     mst     ~ Normal(1.0002, 0.007)
     rho     ~ Beta(beta_map(0.129, 0.223)...)
     psi     ~ Beta(beta_map(0.65, 0.05)...)

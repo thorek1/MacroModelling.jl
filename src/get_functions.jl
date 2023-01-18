@@ -49,13 +49,43 @@ function get_irf(𝓂::ℳ,
                     parameters::Vector; 
                     periods::Int = 40, 
                     variables::Symbol_input = :all, 
-                    shocks::Symbol_input = :all, 
+                    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
                     negative_shock::Bool = false, 
                     initial_state::Vector{Float64} = [0.0],
                     levels::Bool = false,
                     verbose = false)
 
     solve!(𝓂, verbose = verbose)
+
+    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
+
+    @assert shocks != :simulate "Use parameters as a known argument to simulate the model."
+
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
+        periods += size(shocks)[2]
+
+        shock_history = zeros(𝓂.timings.nExo, periods)
+
+        shock_history[:,1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+    elseif shocks isa KeyedArray{Float64}
+        shock_input = axiskeys(shocks)[1]
+
+        periods += size(shocks)[2]
+
+        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks which are not part of the model."
+
+        shock_history = zeros(𝓂.timings.nExo, periods)
+
+        shock_history[indexin(shock_input,𝓂.timings.exo),1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+    else
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    end
 
     NSSS, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, false, verbose)
     
@@ -64,42 +94,49 @@ function get_irf(𝓂::ℳ,
     sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
-    
-    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
-
-    shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
-    
-    SS = collect(NSSS[1:end - length(𝓂.calibration_equations)])
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - SS
+    full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    
+    full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
+    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[indexin([s],NSSS_labels)...] for s in full_SS]
+
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
 
     # Y = zeros(𝓂.timings.nVars,periods,𝓂.timings.nExo)
     Ŷ = []
     for ii in shock_idx
         Y = []
-        if shocks != :simulate
-            ET = zeros(𝓂.timings.nExo,periods)
-            ET[ii,1] = negative_shock ? -1 : 1
+
+        if shocks != :simulate && shocks isa Symbol_input
+            shock_history = zeros(𝓂.timings.nExo,periods)
+            shock_history[ii,1] = negative_shock ? -1 : 1
         end
 
-        push!(Y, state_update(initial_state,ET[:,1]))
+        if shocks == :none
+            shock_history = zeros(𝓂.timings.nExo,periods)
+        end
+
+        push!(Y, state_update(initial_state,shock_history[:,1]))
 
         for t in 1:periods-1
-            push!(Y, state_update(Y[end],ET[:,t+1]))
+            push!(Y, state_update(Y[end],shock_history[:,t+1]))
         end
+
         push!(Ŷ, reduce(hcat,Y))
     end
 
-    deviations = reshape(reduce(hcat,Ŷ),𝓂.timings.nVars,periods,𝓂.timings.nExo)[var_idx,:,shock_idx]
+    deviations = reshape(reduce(hcat,Ŷ),𝓂.timings.nVars,periods,length(shock_idx))[var_idx,:,:]
 
     if levels
-        return deviations .+ SS[var_idx]
+        return deviations .+ reference_steady_state[var_idx]
     else
         return deviations
     end
-    # return KeyedArray(Y[var_idx,:,shock_idx];  Variables = T.var[var_idx], Period = 1:periods, Shock = T.exo[shock_idx])
 end
 
 
@@ -162,7 +199,7 @@ function get_irf(𝓂::ℳ;
     algorithm::Symbol = :first_order, 
     parameters = nothing,
     variables::Symbol_input = :all, 
-    shocks::Symbol_input = :all, 
+    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     negative_shock::Bool = false, 
     generalised_irf::Bool = false,
     initial_state::Vector{Float64} = [0.0],
@@ -173,6 +210,10 @@ function get_irf(𝓂::ℳ;
 
     solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
     
+    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
+
+    @assert !(shocks == :none && generalised_irf) "Cannot compute generalised IRFs for model without shocks."
+
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
@@ -180,6 +221,7 @@ function get_irf(𝓂::ℳ;
     NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
     full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
     NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
@@ -200,12 +242,6 @@ function get_irf(𝓂::ℳ;
     
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
 
-    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
-
-    if shocks == :none && generalised_irf
-        @error "Cannot compute generalised IRFs for model without shocks."
-    end
-    
     if generalised_irf
         girfs =  girf(state_update, 
                         𝓂.timings; 
