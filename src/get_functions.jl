@@ -185,7 +185,7 @@ function get_irf(𝓂::ℳ;
     NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
 
     reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[indexin([s],NSSS_labels)...] for s in full_SS]#collect(NSSS[1:end - length(𝓂.calibration_equations)])
-    println(reference_steady_state)
+    # println(reference_steady_state)
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 

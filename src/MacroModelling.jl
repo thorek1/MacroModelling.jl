@@ -1074,7 +1074,9 @@ function solve!(𝓂::ℳ;
 
             all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
             
-            all_SS = [SS_and_pars[s] for s in all_variables]
+            NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+            
+            all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
             # we need all variables for the stochastic steady state because even laads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
             stochastic_steady_state = all_SS + state
@@ -1130,7 +1132,9 @@ function solve!(𝓂::ℳ;
 
             all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
             
-            all_SS = [SS_and_pars[s] for s in all_variables]
+            NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+            
+            all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
             # we need all variables for the stochastic steady state because even laads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
             
             stochastic_steady_state = all_SS + state
