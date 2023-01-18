@@ -18,7 +18,7 @@ using ComponentArrays
 using ImplicitDifferentiation
 # using NamedArrays
 using AxisKeys
-using ChainRulesCore
+import ChainRulesCore: @ignore_derivatives
 
 using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
@@ -1748,8 +1748,7 @@ end
 
 
 function riccati_conditions(∇₁::AbstractMatrix{<: Number}, sol_d::AbstractMatrix{<: Number}; T::timings, explosive::Bool = false) #::AbstractMatrix{Real},
-    expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
-              ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+    expand = @ignore_derivatives @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
     A = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
     B = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
