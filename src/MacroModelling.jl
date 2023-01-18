@@ -18,6 +18,7 @@ using ComponentArrays
 using ImplicitDifferentiation
 # using NamedArrays
 using AxisKeys
+using ChainRulesCore
 
 using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
@@ -1201,8 +1202,13 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
     end
 
 
+    # paras = []
+    # push!(paras,:((;$(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)...)) = params))
+
     paras = []
-    push!(paras,:((;$(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)...)) = params))
+    for (i, parss) in enumerate(vcat(𝓂.parameters,𝓂.calibration_equations_parameters))
+        push!(paras,:($parss = params[$i]))
+    end
 
     # watch out with naming of parameters in model and functions
     mod_func2 = :(function model_function_uni_redux(X::Vector{Real}, params::Vector{Real}, X̄::Vector{Real})
@@ -1536,21 +1542,22 @@ end
 
 
 function calculate_jacobian(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
-    var_past = setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
-    var_present = setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
-    var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
+    var_past = @ignore_derivatives setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
+    var_present = @ignore_derivatives setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
+    var_future = @ignore_derivatives setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-    par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
+    # par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
+    par = vcat(parameters,calibrated_parameters)
 
-    past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    past_idx = @ignore_derivatives [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
     SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
     
-    present_idx = [indexin(sort([var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    present_idx = @ignore_derivatives [indexin(sort([var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(𝓂.var,𝓂.exo_present)))...]
     SS_present =    length(present_idx) > 0 ? SS[present_idx] : zeros(0)#; zeros(length(𝓂.exo_present))...]
     
-    future_idx = [indexin(sort([var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    future_idx = @ignore_derivatives [indexin(sort([var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(𝓂.var,𝓂.exo_present)))...]
     SS_future =     length(future_idx) > 0 ? SS[future_idx] : zeros(0)#; zeros(length(𝓂.exo_future))...]
 
     shocks_ss = zeros(length(𝓂.exo))
@@ -1736,7 +1743,7 @@ function riccati_forward(∇₁::AbstractMatrix{<: Number}; T::timings, explosiv
 end
 
 
-function riccati_conditions(∇₁::AbstractMatrix{<: Number}, sol_d::AbstractMatrix{<: Number}; T::timings) #::AbstractMatrix{Real},
+function riccati_conditions(∇₁::AbstractMatrix{<: Number}, sol_d::AbstractMatrix{<: Number}; T::timings, explosive::Bool = false) #::AbstractMatrix{Real},
     expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
               ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
@@ -1774,10 +1781,14 @@ function riccati_forward(∇₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T
     end,size(val))
 end
 
-riccati_AD = ImplicitFunction(riccati_forward, riccati_conditions)
+# riccati_AD = ImplicitFunction(riccati_forward, riccati_conditions)
+
+riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive), (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
 
 function calculate_first_order_solution(∇₁::AbstractMatrix{<: Number}; T::timings, explosive::Bool = false)
-    A = riccati_AD(∇₁, T = T, explosive = explosive)
+    # A = riccati_AD(∇₁, T = T, explosive = explosive)
+    riccati = riccati_(∇₁, T = T, explosive = explosive)
+    A = riccati(∇₁)
     # A = riccati_forward(∇₁, T = T, explosive = explosive)
 
     Jm = @view(ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:])
@@ -2249,17 +2260,21 @@ end
 
 
 function calculate_covariance_conditions(𝑺₁::AbstractMatrix{<: Number}, covar::AbstractMatrix{<: Number}; T::timings, subset_indices::Vector{Int64})
-    A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[indexin(T.past_not_future_and_mixed_idx,subset_indices),:]
+    A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,subset_indices)),:]
     C = @views 𝑺₁[subset_indices,T.nPast_not_future_and_mixed+1:end]
     
     A * covar * A' + C * C' - covar
 end
 
+
+calculate_covariance_AD(sol; T, subset_indices) = ImplicitFunction(sol->calculate_covariance_forward(sol, T=T, subset_indices = subset_indices), (x,y)->calculate_covariance_conditions(x,y,T=T, subset_indices = subset_indices))
+# calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+
 function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose = false, tol = eps())
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
-    sort!(observables)
+    @ignore_derivatives sort!(observables)
 
     solve!(𝓂, verbose = verbose)
 
@@ -2271,9 +2286,11 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         return -1e6
     end
 
-    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
 
-    data_in_deviations = collect(data(observables)) .- SS_and_pars[indexin(observables,NSSS_labels)]
+    obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
+
+    data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
     # 𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
 
@@ -2281,19 +2298,20 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    observables_and_states = sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
+    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
 
-    A = @views sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)
-    ,:]
+    A = @views sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
     B = @views sol[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
 
-    C = @views ℒ.diagm(ones(length(observables_and_states)))[indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states),:]
+    C = @views ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states)),:]
 
     𝐁 = B * B'
 
     # Gaussian Prior
 
-    P = calculate_covariance_forward(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+    calculate_covariance_ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+
+    P = calculate_covariance_(sol)
     # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
     u = zeros(length(observables_and_states))
     # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
