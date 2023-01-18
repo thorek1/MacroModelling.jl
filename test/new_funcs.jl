@@ -2,9 +2,17 @@ using MacroModelling
 import ForwardDiff as ℱ
 using StatsFuns, SpecialFunctions
 
+using ImplicitDifferentiation
+
+
 include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
 
 get_SS(m)
+
+
+# reduce model size
+
+
 
 include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
 
@@ -28,6 +36,273 @@ using BenchmarkTools
 
 m.SS_solve_func
 
+
+
+
+
+
+import MacroModelling: ℳ, timings
+using ImplicitDifferentiation
+import LinearAlgebra as ℒ
+
+
+function riccati_forward(∇₁::AbstractMatrix{<: Number}; T::timings, explosive::Bool = false)#::AbstractMatrix{Real}
+    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
+    ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
+    ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
+
+    Q    = ℒ.qr(collect(∇₀[:,T.present_only_idx]))
+    Qinv = Q.Q'
+
+    A₊ = Qinv * ∇₊
+    A₀ = Qinv * ∇₀
+    A₋ = Qinv * ∇₋
+
+    dynIndex = T.nPresent_only+1:T.nVars
+
+    Ã₊  = @view A₊[dynIndex,:]
+    Ã₋  = @view A₋[dynIndex,:]
+    Ã₀₊ = @view A₀[dynIndex, T.future_not_past_and_mixed_idx]
+    Ã₀₋ = @views A₀[dynIndex, T.past_not_future_idx] * ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.not_mixed_in_past_idx,:]
+    
+    Z₊ = zeros(T.nMixed,T.nFuture_not_past_and_mixed)
+    I₊ = @view ℒ.diagm(ones(T.nFuture_not_past_and_mixed))[T.mixed_in_future_idx,:]
+
+    Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
+    I₋ = @view ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.mixed_in_past_idx,:]
+
+    D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
+    E = vcat(hcat(-Ã₋,-Ã₀₊), hcat(Z₋, I₊))
+    # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
+    schdcmp = ℒ.schur(D,E)
+
+    if explosive # returns false for NaN gen. eigenvalue which is correct here bc they are > 1
+        eigenselect = abs.(schdcmp.β ./ schdcmp.α) .>= 1
+
+        ℒ.ordschur!(schdcmp, eigenselect)
+
+        Z₂₁ = @view schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
+        Z₁₁ = @view schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+
+        S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+        T₁₁    = @view schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+
+        Z₁₁inv = ℒ.pinv(Z₁₁)
+    else
+        eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
+
+        ℒ.ordschur!(schdcmp, eigenselect)
+
+        Z₂₁ = @view schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
+        Z₁₁ = @view schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+
+        S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+        T₁₁    = @view schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
+
+        Z₁₁inv = inv(Z₁₁)
+    end
+    
+    D      = Z₂₁ * Z₁₁inv
+    L      = Z₁₁ * (S₁₁ \ T₁₁) * Z₁₁inv
+
+    sol = @views vcat(L[T.not_mixed_in_past_idx,:], D)
+
+    Ā₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_only_idx]
+    A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
+    Ã₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_but_not_only_idx]
+    A₋ᵤ  = @view A₋[1:T.nPresent_only,:]
+
+    A    = @views vcat(- Ā₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ), sol)
+    
+    @view A[T.reorder,:]
+end
+
+
+function riccati_conditions(∇₁::AbstractMatrix{<: Number}, sol_d::AbstractMatrix{<: Number}; T::timings, explosive::Bool = false) #::AbstractMatrix{Real},
+    expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
+              ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+    A = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    B = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    C = @views ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+
+    sol_buf = sol_d * expand[2]
+
+    err1 = A * sol_buf * sol_buf + B * sol_buf + C
+
+    @view err1[:,T.past_not_future_and_mixed_idx]
+end
+
+
+
+function riccati_forward(∇₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T, explosive::Bool = false) where {Z,S,N}
+    # unpack: AoS -> SoA
+    ∇̂₁ = ℱ.value.(∇₁)
+    # you can play with the dimension here, sometimes it makes sense to transpose
+    ps = mapreduce(ℱ.partials, hcat, ∇₁)'
+
+    # get f(vs)
+    val = riccati_forward(∇̂₁;T = T, explosive = explosive)
+
+    # get J(f, vs) * ps (cheating). Write your custom rule here
+    B = ℱ.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)
+    A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)
+
+    jvp = (-A \ B) * ps
+
+    # pack: SoA -> AoS
+    return reshape(map(val, eachrow(jvp)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end,size(val))
+end
+using Krylov
+riccati = ImplicitFunction(riccati_forward, riccati_conditions, bicgstab)
+
+
+riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive), (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
+
+
+function first_order_solution(∇₁::AbstractMatrix{<: Number}; T::timings, explosive::Bool = false)
+    riccati = riccati_(∇₁, T = T, explosive = explosive)
+    A = riccati(∇₁)
+    # A = riccati_forward(∇₁, T = T, explosive = explosive)
+
+    Jm = @view(ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:])
+    
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:]
+    ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+
+    B = -((∇₊ * A * Jm + ∇₀) \ ∇ₑ)
+
+    return hcat(A, B)
+end
+
+using ChainRulesCore
+
+
+function kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose = false, tol = eps())
+    @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
+    @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+
+    @ignore_derivatives sort!(observables)
+
+    solve!(𝓂, verbose = verbose)
+
+    # data = data(observables,:) .- collect(𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess,𝓂)[observables])
+
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂, true, verbose)
+    
+    if solution_error > tol
+        return -1e6
+    end
+
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
+    data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
+
+    # 𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
+
+	# ∇₁ = calc_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters, SS_and_pars, 𝓂)
+    parameters = isnothing(parameters) ? 𝓂.parameter_values : parameters
+    
+    var_past = @ignore_derivatives setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
+    var_present = @ignore_derivatives setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
+    var_future = @ignore_derivatives setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
+
+    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+    # par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
+    par = vcat(parameters,calibrated_parameters)
+
+    past_idx = @ignore_derivatives [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
+    
+    present_idx = @ignore_derivatives [indexin(sort([var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    SS_present =    length(present_idx) > 0 ? SS[present_idx] : zeros(0)#; zeros(length(𝓂.exo_present))...]
+    
+    future_idx = @ignore_derivatives [indexin(sort([var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    SS_future =     length(future_idx) > 0 ? SS[future_idx] : zeros(0)#; zeros(length(𝓂.exo_future))...]
+
+    shocks_ss = zeros(length(𝓂.exo))
+
+    # return ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
+    ∇₁ =  collect(𝓂.model_jacobian([SS_future; SS_present; SS_past; shocks_ss], par, SS))
+    sol = first_order_solution(∇₁; T = 𝓂.timings)
+
+    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
+
+    # idx1 = @ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states))
+
+    A = @views sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
+
+    B = @views sol[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+
+    idx2 = @ignore_derivatives indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states)
+
+    C = @views ℒ.diagm(ones(length(observables_and_states)))[idx2,:]
+
+    𝐁 = B * B'
+
+    # # Gaussian Prior
+
+    # P = calculate_covariance_forward(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+    # # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+    # u = zeros(length(observables_and_states))
+    # # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
+    # z = C * u
+    
+    # loglik = 0.0
+
+    # for t in 1:size(data)[2]
+    #     v = data_in_deviations[:,t] - z
+
+    #     F = C * P * C'
+
+    #     # F = (F + F') / 2
+
+    #     # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
+    #     # K = P * C' * ℒ.pinv(F)
+
+    #     # loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
+    #     loglik += log(ℒ.det(F)) + v' / F  * v
+    #     K = P * C' / F
+
+    #     P = A * (P - K * C * P) * A' + 𝐁
+
+    #     u = A * (u + K * v)
+        
+    #     z = C * u 
+    # end
+
+    # return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
+end
+
+
+
+function calc_jacobian(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
+    var_past = setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
+    var_present = setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
+    var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
+
+    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+    par = vcat(parameters,calibrated_parameters)
+
+    future_idx = [indexin(sort([var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    SS_future =     length(future_idx) > 0 ? SS[future_idx] : zeros(0)#; zeros(length(𝓂.exo_future))...]
+
+    past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
+    
+    present_idx = [indexin(sort([var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(𝓂.var,𝓂.exo_present)))...]
+    SS_present =    length(present_idx) > 0 ? SS[present_idx] : zeros(0)#; zeros(length(𝓂.exo_present))...]
+
+    shocks_ss = zeros(length(𝓂.exo))
+
+    # return ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
+    return collect(𝓂.model_jacobian([SS_future; SS_present; SS_past; shocks_ss], par, SS))
+end
 
 
 
@@ -73,16 +348,48 @@ solve!(RBC_CME, dynamics = true)
 
 
 
-data = get_irf(RBC_CME, levels = true)[:,:,1]
 data = simulate(RBC_CME, levels = true)[:,:,1]
 observables = [:c,:k]
+parameters = RBC_CME.parameter_values
 
 calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables)
 
-parameters = RBC_CME.parameter_values
+kalman_filter_loglikelihood(RBC_CME,data(observables),observables)
+
+a = [:A, :k, :z_delta]
+A = [:A, :Pi, :R, :c, :k, :y, :z_delta]
+[findfirst(aa .== A) for aa in a]
+
+indexin(a,A)
+findall(a[1],A)
 
 using Zygote
-Zygote.gradient(x->calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables,parameters = x),parameters)
+Zygote.jacobian(x->kalman_filter_loglikelihood(RBC_CME,data(observables),observables,parameters = x),Float64[parameters...])[1]
+
+using FiniteDifferences
+FiniteDifferences.jacobian(central_fdm(3,1),x->kalman_filter_loglikelihood(RBC_CME,data(observables),observables,parameters = x),Float64[parameters...])[1]
+
+
+using Zygote
+Zygote.gradient(x->calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables,parameters = x),Float64[parameters...])[1]
+
+using ForwardDiff
+ForwardDiff.gradient(x->calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables,parameters = x),Float64[parameters...])
+
+using FiniteDifferences
+FiniteDifferences.grad(central_fdm(3,1),x->calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables,parameters = x),Float64[parameters...])[1]
+
+using BenchmarkTools
+@benchmark Zygote.gradient(x->calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables,parameters = x),Float64[parameters...])[1]
+
+@benchmark ForwardDiff.gradient(x->calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables,parameters = x),Float64[parameters...])
+
+
+kalman_filter_loglikelihood(RBC_CME,data(observables),observables)
+
+
+
+
 
 @test isapprox(425.7688745392835,calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables),rtol = 1e-5)
 
