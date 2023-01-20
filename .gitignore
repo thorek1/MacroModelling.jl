@@ -46,3 +46,4 @@ test/fix_sw03.jl
 test/figure out SS.jl
 test/debug_test.jl
 test/macrotoolstest.jl
+test/models/example1/

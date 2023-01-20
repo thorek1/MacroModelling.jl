@@ -29,6 +29,7 @@ include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")
 include("plotting.jl")
+include("dynare.jl")
 
 
 export @model, @parameters, solve!
@@ -43,6 +44,8 @@ export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditiona
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution#, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export calculate_kalman_filter_loglikelihood
+
+export @dynare, dynare_preprocess
 
 
 # Internal
