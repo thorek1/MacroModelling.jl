@@ -74,29 +74,29 @@ end
 
 
 macro dynare(modfile_arg::String, args...)
-    @info "Dynare version: $(module_version(Dynare))"
+    # @info "Dynare version: $(module_version(Dynare))"
     modname = get_modname(modfile_arg)
-    @info "$(now()): Starting @dynare $modfile_arg"
+    # @info "$(now()): Starting @dynare $modfile_arg"
     arglist = []
-    compilemodule = false
-    preprocessing = true
-    for (i, a) in enumerate(args)
-        if a == "nocompile"
-            compilemodule = false
-        elseif a == "nopreprocessing"
-            preprocessing = false
-        else
-            push!(arglist, a)
-        end
-    end
-    if preprocessing
+    # compilemodule = false
+    # preprocessing = true
+    # for (i, a) in enumerate(args)
+    #     if a == "nocompile"
+    #         compilemodule = false
+    #     elseif a == "nopreprocessing"
+    #         preprocessing = false
+    #     else
+    #         push!(arglist, a)
+    #     end
+    # end
+    # if preprocessing
         modfilename = modname * ".mod"
         dynare_preprocess(modfilename, arglist)
-    end
-    @info "$(now()): End of preprocessing"
-    options = CommandLineOptions(compilemodule)
-    context = parser(modname, options)
-    return context
+    # end
+    # @info "$(now()): End of preprocessing"
+    # options = CommandLineOptions(compilemodule)
+    # context = parser(modname, options)
+    # return context
 end
 
 function get_modname(modfilename::String)

@@ -3,9 +3,56 @@ using MacroModelling
 import ForwardDiff as ℱ
 using Optimization, OptimizationNLopt
 
-context = dynare_preprocess("./test/models/example1", [])
+pwd()
+
+# context = dynare_preprocess("./test/models/example1", [])
 context = @dynare "./test/models/example1";
 
+context = dynare_preprocess("example1", []);
+context = @dynare "example1";
+
+context = @dynare "./test/models/Ascari_Sbordone_2014"
+
+
+using JSON
+son = JSON.parsefile("./test/models/Ascari_Sbordone_2014/model/json/modfile.json")
+
+vars = [i["name"] for i in son["endogenous"]]
+shocks = [i["name"] for i in son["exogenous"]]
+pars = [Symbol(i["name"]) for i in son["parameters"]]
+eqs_orig = [i["lhs"] * " = " * i["rhs"] for i in son["model"]]
+
+eqs = []
+for eq in eqs_orig
+    eq = replace(eq, r"\(1\)" => "[1]", r"\(-1\)" => "[-1]")
+    for v in vars
+        eq = replace(eq, Regex("\\b$(v)\\b") => v * "[0]")
+    end
+    for x in shocks
+        eq = replace(eq, Regex("\\b$(x)\\b") => x * "[x]")
+    end
+    eq = replace(eq, r"\[0\]\[1\]" => "[1]", 
+                        r"\[0\]\[-1\]" => "[-1]", 
+                        r"\*" => " * ", 
+                        r"\+" => " + ", 
+                        r"\-" => " - ", 
+                        r"\/" => " / ", 
+                        r"\^" => " ^ ", 
+                        r"\[ - 1\]" => "[-1]")
+    push!(eqs,eq)
+end
+
+eqs[1]
+son["statements"]
+
+
+eqs[1] = replace(eqs[1], r"\(1\)" => s"[1]")
+eqs[1] = replace(eqs[1], r"\(-1\)" => s"[-1]")
+eqs[1]
+
+eqs[1] = replace(eqs[1], r"\(1\)" => "[1]")
+eqs[1]
+r"\b$(vars[1])\b"
 @model finacc begin
     R[0] * beta = C[1] / C[0]
     C[0] = w[0] * L[0] - B[0] + R[-1] * B[-1] + (1-v) * (Rk[-1] * Q[-1] * K[-1] - (R[-1] + mu * G[0] * Rk[-1] * Q[-1] * K[-1] / (Q[-1] * K[-1] - N[-1])) * (Q[-1] * K[-1] - N[-1])) - We 
