@@ -415,10 +415,10 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 other_vars = []
                 other_vars_input = []
                 # other_vars_inverse = []
-                other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters),sort(𝓂.solved_vars[end])),syms_in_eqs)
+                other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters,𝓂.nonnegativity_auxilliary_vars),sort(𝓂.solved_vars[end])),syms_in_eqs)
                 
                 for var in other_vrs
-                    var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
+                    # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
                     push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
                     push!(other_vars_input,:($(var)))
                     iii += 1
@@ -496,7 +496,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                         $(other_vars...) # take only those that appear in equations - DONE
 
                         # $(aug_lag...)
-                        $(nnaux_linear...)
+                        $(nnaux...)
+                        # $(nnaux_linear...)
                         return [$(solved_vals...)]
                     end)
 
@@ -692,7 +693,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         ubs::Vector{Float64};
                         tol = eps(Float64),
                         maxtime = 120,
-                        starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25],
+                        starting_points = [.9, 1, 1.1, .75, 1.5, 0.0, -.5, 2, .25],
                         fail_fast_solvers_only = true,
                         verbose = false)
     
