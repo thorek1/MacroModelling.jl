@@ -1425,7 +1425,7 @@ macro parameters(𝓂,ex)
         mod.$𝓂.upper_bounds = $upper_bounds
 
         mod.$𝓂.ss_calib_list = $ss_calib_list
-        mod.$𝓂.par_calib_list = [intersect(i,mod.$𝓂.par) for i in $par_calib_list]
+        mod.$𝓂.par_calib_list = $par_calib_list#[intersect(i,mod.$𝓂.par) for i in $par_calib_list] otherwise you miss parameters only defined in parameters block but not used in model
 
         mod.$𝓂.ss_no_var_calib_list = $ss_no_var_calib_list
         mod.$𝓂.par_no_var_calib_list = $par_no_var_calib_list
