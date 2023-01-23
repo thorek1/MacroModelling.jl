@@ -50,8 +50,10 @@ export @dynare, dynare_preprocess
 
 # Internal
 export irf, girf
-# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!
 
+# Remove comment for debugging
+# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!
+# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!
 
 # StatsFuns
 norminvcdf(p::Number) = -erfcinv(2*p) * sqrt2
@@ -217,7 +219,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, symbolics::symbolics)
             
             if length(soll) == 0 || soll == Sym[0] # take out variable if it is redundant from that euation only
                 push!(symbolics.var_redundant_list[i],var_to_solve)
-                ss_equations[i] = ss_equations[i].subs(var_to_solve,1)
+                ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
             end
 
         end
@@ -406,7 +408,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 
                 guess = []
                 result = []
-                sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.nonnegativity_auxilliary_vars))
+                sorted_vars = sort(𝓂.solved_vars[end])
+                # sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.nonnegativity_auxilliary_vars))
                 for (i, parss) in enumerate(sorted_vars) 
                     push!(guess,:($parss = guess[$i]))
                     push!(result,:($parss = sol[$i]))
