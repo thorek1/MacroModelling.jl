@@ -1,139 +1,85 @@
 using DynarePreprocessor_jll
 using JSON
 
-Base.@kwdef struct CommandLineOptions
-    compilemodule::Bool = true
-end
+function translate_mod_file(name::AbstractString)
+    args = [basename(name), "language=julia", "json=compute"]
+    
+    directory = dirname(name)
 
+    directory_2 = replace(basename(name),r"\.mod$"=>"")
 
-@noinline function parseJSON(modfilename::String)
-    modelstring::String =
-        open(f -> read(f, String), modfilename * "/model/json/modfile.json")
-    modeljson = JSON.parse(modelstring)
-    return modeljson
-end
-
-
-function make_context(modeljson, modfilename, commandlineoptions)
-    @debug "$(now()): get symbol_table"
-    (symboltable, endo_nbr, exo_nbr, exo_det_nbr, param_nbr, orig_endo_nbr, aux_vars) =
-        get_symbol_table(modeljson)
-    @debug "$(now()): get Modelfile"
-    modfileinfo = ModFileInfo(modfilename)
-    check_function_files!(modfileinfo, modfilename)
-    @debug "$(now()): get model"
-    model = get_model(
-        modfilename,
-        modfileinfo,
-        modeljson["model_info"],
-        commandlineoptions,
-        endo_nbr,
-        exo_nbr,
-        exo_det_nbr,
-        param_nbr,
-        orig_endo_nbr,
-        aux_vars,
-        Vector{Int64}(modeljson["dynamic_g1_sparse_rowval"]),
-        Vector{Int64}(modeljson["dynamic_g1_sparse_colptr"]),
-        Vector{Int64}(modeljson["static_g1_sparse_rowval"]),
-        Vector{Int64}(modeljson["static_g1_sparse_colptr"]),
-        Vector{Int64}(modeljson["dynamic_tmp_nbr"]),
-        Vector{Int64}(modeljson["static_tmp_nbr"]),
-    )
-    varobs = get_varobs(modeljson)
-    @debug "$(now()): make_container"
-    global context = make_containers(
-        modfileinfo,
-        modfilename,
-        endo_nbr,
-        exo_nbr,
-        exo_det_nbr,
-        param_nbr,
-        model,
-        symboltable,
-        varobs,
-        commandlineoptions,
-    )
-    get_mcps!(context.models[1].mcps, modeljson["model"])
-    return context
-end
-
-function parser(modfilename::String, commandlineoptions::CommandLineOptions)
-    @debug "$(now()): Start $(nameof(var"#self#"))"
-
-    modeljson = parseJSON(modfilename)
-    context = make_context(modeljson, modfilename, commandlineoptions)
-    context.work.analytical_steadystate_variables = DFunctions.load_model_functions(modfilename)
-    if haskey(modeljson, "statements")
-        parse_statements!(context, modeljson["statements"])
-    end
-    @info "$(now()): End $(nameof(var"#self#"))"
-    return context
-end
-
-
-
-macro dynare(modfile_arg::String, args...)
-    # @info "Dynare version: $(module_version(Dynare))"
-    modname = get_modname(modfile_arg)
-    # @info "$(now()): Starting @dynare $modfile_arg"
-    arglist = []
-    # compilemodule = false
-    # preprocessing = true
-    # for (i, a) in enumerate(args)
-    #     if a == "nocompile"
-    #         compilemodule = false
-    #     elseif a == "nopreprocessing"
-    #         preprocessing = false
-    #     else
-    #         push!(arglist, a)
-    #     end
-    # end
-    # if preprocessing
-        modfilename = modname * ".mod"
-        dynare_preprocess(modfilename, arglist)
-    # end
-    # @info "$(now()): End of preprocessing"
-    # options = CommandLineOptions(compilemodule)
-    # context = parser(modname, options)
-    # return context
-end
-
-function get_modname(modfilename::String)
-    if occursin(r"\.mod$", modfilename)
-        modname::String = modfilename[1:length(modfilename)-4]
-    else
-        modname = modfilename
-    end
-    return modname
-end
-
-function dynare_preprocess(modfilename::String, args::Vector{Any})
-    dynare_args = [basename(modfilename), "language=julia", "json=compute"]
-    offset = 0
-    for a in args
-        astring = string(a)
-        if !occursin(r"^json=", astring)
-            push!(dynare_args, astring)
-        end
-    end
-    println(dynare_args)
-    run_dynare(modfilename, dynare_args)
-    println("")
-end
-
-function run_dynare(modfilename::String, dynare_args::Vector{String})
-    @info "Dynare preprocessor version: $(module_version(DynarePreprocessor_jll))"
-    directory = dirname(modfilename)
     if length(directory) > 0
         current_directory = pwd()
         cd(directory)
     end
-
+    
     dynare_preprocessor_path = dynare_preprocessor()
-    run(`$dynare_preprocessor_path $dynare_args`)
+
+    mkpath(directory_2)
+
+    run(pipeline(`$dynare_preprocessor_path $args`, stdout = directory_2 * "/log.txt"))
+
+    son = JSON.parsefile(directory_2 * "/model/json/modfile.json");
+
+    vars = [i["name"] for i in son["endogenous"]];
+    shocks = [i["name"] for i in son["exogenous"]];
+    eqs_orig = [i["lhs"] * " = " * i["rhs"] for i in son["model"]];
+    
+    eqs = []
+    for eq in eqs_orig
+        eq = replace(eq, r"(\w+)\((-?\d+)\)" => s"\1[\2]")
+        for v in vars
+            eq = replace(eq, Regex("\\b$(v)\\b") => v * "[0]")
+        end
+        for x in shocks
+            eq = replace(eq, Regex("\\b$(x)\\b") => x * "[x]")
+        end
+        eq = replace(eq, r"\[0\]\[1\]" => "[1]", 
+                            r"\[0\]\[-1\]" => "[-1]", 
+                            r"\*" => " * ", 
+                            r"\+" => " + ", 
+                            r"(?<!\[|\^\()\-" => " - ", 
+                            r"\/" => " / ", 
+                            r"\^" => " ^ ")
+        push!(eqs,eq)
+    end
+    
+    pars = []
+    for s in son["statements"]
+        if s["statementName"] == "native" && contains(s["string"], "=")
+            if contains(s["string"], "options_")
+                break
+            else
+                push!(pars, replace(s["string"],";"=>""))
+            end
+        elseif s["statementName"] == "param_init"
+            push!(pars, s["name"] * " = " * s["value"])
+        else 
+            break
+        end
+    end
+    
+    open(directory_2 * ".jl", "w") do io
+        println(io,"using MacroModelling\n")
+        println(io,"@model "*directory_2*" begin")
+        [println(io,"\t"*eq*"\n") for eq in eqs]
+        println(io,"end\n\n")
+        println(io,"@parameters "*directory_2*" begin")
+        [println(io,"\t"*par*"\n") for par in pars]
+        println(io,"end\n")
+    end
+
+    rm(directory_2, recursive = true)
 
     if length(directory) > 0
         cd(current_directory)
     end
+
+    @info "Created " * directory * "/" * directory_2 * ".jl"
+
+    @warn "This is an experimental function. Parameters are not guaranteed to be translated correctly. Please check before running the model."
 end
+
+translate_dynare_file   =   translate_mod_file
+import_model            =   translate_mod_file
+import_dynare           =   translate_mod_file
