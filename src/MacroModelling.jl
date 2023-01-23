@@ -1848,16 +1848,16 @@ function irf(state_update::Function, initial_state::Vector{Float64}, T::timings;
     else
         Y = zeros(T.nVars,periods,length(shock_idx))
 
-        for ii in shock_idx
+        for (i,ii) in enumerate(shock_idx)
             if shocks != :simulate && shocks isa Symbol_input
                 shock_history = zeros(T.nExo,periods)
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
 
-            Y[:,1,ii] = state_update(initial_state,shock_history[:,1])
+            Y[:,1,i] = state_update(initial_state,shock_history[:,1])
 
             for t in 1:periods-1
-                Y[:,t+1,ii] = state_update(Y[:,t,ii],shock_history[:,t+1])
+                Y[:,t+1,i] = state_update(Y[:,t,i],shock_history[:,t+1])
             end
         end
 
@@ -1912,7 +1912,7 @@ function girf(state_update::Function, T::timings;
         initial_state = state_update(initial_state, zeros(T.nExo))
     end
 
-    for ii in shock_idx
+    for (i,ii) in enumerate(shock_idx)
         for draw in 1:draws
             for i in 1:warmup_periods
                 initial_state = state_update(initial_state, randn(T.nExo))
@@ -1938,9 +1938,9 @@ function girf(state_update::Function, T::timings;
                 Y2[:,t+1] = state_update(Y2[:,t],baseline_noise + shock_history[:,t])
             end
 
-            Y[:,:,ii] += Y2 - Y1
+            Y[:,:,i] += Y2 - Y1
         end
-        Y[:,:,ii] /= draws
+        Y[:,:,i] /= draws
     end
     
     return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
