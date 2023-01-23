@@ -1,6 +1,16 @@
 using DynarePreprocessor_jll
 using JSON
 
+
+"""
+$(SIGNATURES)
+Reads in a `dynare` .mod-file, adapts the syntax, tries to capture parameter definitions, and writes a julia file in the same folder containing the model equations and parameters in `MacroModelling.jl` syntax. This function is not guaranteed to produce working code. It's purpose is to make it easier to port a model from `dynare` to `MacroModelling.jl`. 
+
+The recommended workflow is to use this function to translate a .mod-file, and then adapt the output so that it runs and corresponds to the input.
+
+# Arguments
+- `name` [Type: `AbstractString`]: filename of the .mod-file to be translated
+"""
 function translate_mod_file(name::AbstractString)
     args = [basename(name), "language=julia", "json=compute"]
     
@@ -77,9 +87,20 @@ function translate_mod_file(name::AbstractString)
 
     @info "Created " * directory * "/" * directory_2 * ".jl"
 
-    @warn "This is an experimental function. Parameters are not guaranteed to be translated correctly. Please check before running the model."
+    @warn "This is an experimental function. Manual adjustments are most likely necessary. Please check before running the model."
 end
 
+"""
+See [`translate_mod_file`](@ref)
+"""
 translate_dynare_file   =   translate_mod_file
+
+"""
+See [`translate_mod_file`](@ref)
+"""
 import_model            =   translate_mod_file
+
+"""
+See [`translate_mod_file`](@ref)
+"""
 import_dynare           =   translate_mod_file

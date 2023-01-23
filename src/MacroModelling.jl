@@ -237,7 +237,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 
     incidence_matrix = fill(0,length(unknowns),length(unknowns))
 
-    eq_list = union(union.(setdiff.(union.(symbolics.var_list,
+    eq_list = vcat(union.(setdiff.(union.(symbolics.var_list,
                                            symbolics.ss_list),
                                     symbolics.var_redundant_list),
                             symbolics.par_list),
