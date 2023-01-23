@@ -62,6 +62,12 @@ end
     # functionality_test(m, algorithm = :third_order, plots = false)
 end
 
+@testset "Test dynare read/write" begin
+    include("models/FS2000.jl")
+    write_to_dynare_file(m)
+    translate_mod_file("m.mod")
+end
+
 @testset "Model without shocks" begin
     @model m begin
         K[0] = (1 - δ) * K[-1] + I[0]
