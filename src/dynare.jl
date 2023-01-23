@@ -56,11 +56,15 @@ function translate_mod_file(name::AbstractString)
     
     pars = []
     for s in son["statements"]
-        if s["statementName"] == "native" && contains(s["string"], "=")
-            if contains(s["string"], "options_")
-                break
-            else
-                push!(pars, replace(s["string"],";"=>""))
+        if s["statementName"] == "native" 
+            if contains(s["string"], "=")
+                if contains(s["string"], "options_")
+                    break
+                else
+                    push!(pars, replace(s["string"],";"=>""))
+                end
+            elseif contains(s["string"], r"^\#")
+                continue
             end
         elseif s["statementName"] == "param_init"
             push!(pars, s["name"] * " = " * s["value"])
@@ -104,3 +108,83 @@ import_model            =   translate_mod_file
 See [`translate_mod_file`](@ref)
 """
 import_dynare           =   translate_mod_file
+
+
+"""
+$(SIGNATURES)
+Writes a `dynare` .mod-file in the current working directory. This function is not guaranteed to produce working code. It's purpose is to make it easier to port a model from `MacroModelling.jl` to `dynare`. 
+
+The recommended workflow is to use this function to write a .mod-file, and then adapt the output so that it runs and corresponds to the input.
+
+# Arguments
+- $MODEL
+"""
+function write_mod_file(m::ℳ)
+    NSSS = get_SS(m, derivatives = false)
+
+    open(m.model_name * ".mod", "w") do io
+        println(io,"var ")
+        [print(io,string(v) * " ") for v in m.var]
+
+        println(io,";\n\nvarexo ")
+        [print(io,string(e) * " ") for e in m.exo]
+
+        println(io,";\n\nparameters ")
+        [print(io,string(p) * " ") for p in m.par]
+
+
+        println(io,";\n\n# Parameter definitions:")
+        for (i,p) in enumerate(m.parameters)
+            println(io, "\t" * string(p) * "\t=\t" * string(m.parameter_values[i]) * ";")
+        end
+        [println(io, "\t" * string(p) * "\t=\t" * string(NSSS(p)) * ";") for p in m.calibration_equations_parameters]
+
+        println(io,"\nmodel;")
+        [println(io,"\t" * replace(string(e),r"\[(-?\d+)\]" => s"(\1)",
+        r"(\w+)\[(ss|stst|steady|steadystate|steady_state){1}\]" => s"STEADY_STATE(\1)",
+        r"(\w+)\[(x|ex|exo|exogenous){1}\]" => s"\1",
+        r"(\w+)\[(x|ex|exo|exogenous){1}(\s*(\-|\+)\s*(\d{1}))\]" => s"\1(\4\5)") * ";\n") for e in m.equations]
+
+        println(io,"end;\n\nshocks;")
+        [println(io,"var\t" * string(e) * "\t=\t1;") for e in m.exo]
+
+        println(io,"end;\n\ninitval;")
+        [print(io,"\t" * string(v) * "\t=\t" * string(NSSS(v)) * ";\n") for v in m.var]
+
+        println(io,"end;\n\nstoch_simul(irf=40);")
+    end
+
+    @info "Created " * m.model_name * ".mod"
+
+    @warn "This is an experimental function. Manual adjustments are most likely necessary. Please check before running the model."
+end
+
+"""
+See [`write_mod_file`](@ref)
+"""
+export_dynare = write_mod_file
+
+"""
+See [`write_mod_file`](@ref)
+"""
+export_to_dynare = write_mod_file
+
+"""
+See [`write_mod_file`](@ref)
+"""
+export_mod_file = write_mod_file
+
+"""
+See [`write_mod_file`](@ref)
+"""
+write_dynare_file = write_mod_file
+
+"""
+See [`write_mod_file`](@ref)
+"""
+write_to_dynare_file = write_mod_file
+
+"""
+See [`write_mod_file`](@ref)
+"""
+write_to_dynare = write_mod_file

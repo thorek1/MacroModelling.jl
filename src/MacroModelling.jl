@@ -46,7 +46,7 @@ export calculate_first_order_solution, calculate_second_order_solution, calculat
 export calculate_kalman_filter_loglikelihood
 
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
-
+export write_mod_file, write_dynare_file, write_to_dynare_file, export_dynare, export_to_dynare, export_mod_file
 
 # Internal
 export irf, girf
