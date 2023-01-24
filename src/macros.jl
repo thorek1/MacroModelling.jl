@@ -1125,9 +1125,14 @@ macro parameters(𝓂,ex)
                         push!(calib_eq_parameters,x.args[1].args[2])
                         push!(calib_equations,Expr(:(=),x.args[1].args[3], unblock(x.args[2])))
                     end :
+                x.args[2].head == :block ?
+                    begin # this is calibration by targeting SS values (conditional parameter at the end)
+                        push!(calib_eq_parameters,x.args[2].args[end].args[end])
+                        push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
+                    end :
                 begin # this is calibration by targeting SS values (conditional parameter at the end)
-                    push!(calib_eq_parameters,x.args[2].args[end].args[end])
-                    push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
+                    push!(calib_eq_parameters,x.args[2].args[end])#.args[end])
+                    push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2])))#.args[2])))
                 end :
             x.head == :comparison ? 
                 push!(bounds,x) :
@@ -1412,15 +1417,15 @@ macro parameters(𝓂,ex)
     end
 
     # println($m)
-    
     return quote
         mod = @__MODULE__
+        @assert setdiff(setdiff(setdiff(mod.$𝓂.par,$calib_parameters),$calib_parameters_no_var),$calib_eq_parameters) == Symbol[] "Parameters: " * repr([setdiff(setdiff(setdiff(mod.$𝓂.par,$calib_parameters),$calib_parameters_no_var),$calib_eq_parameters)...]) * " are not defined."
         mod.$𝓂.bounded_vars = $bounded_vars
         mod.$𝓂.lower_bounds = $lower_bounds
         mod.$𝓂.upper_bounds = $upper_bounds
 
         mod.$𝓂.ss_calib_list = $ss_calib_list
-        mod.$𝓂.par_calib_list = $par_calib_list
+        mod.$𝓂.par_calib_list = $par_calib_list#[intersect(i,mod.$𝓂.par) for i in $par_calib_list] otherwise you miss parameters only defined in parameters block but not used in model
 
         mod.$𝓂.ss_no_var_calib_list = $ss_no_var_calib_list
         mod.$𝓂.par_no_var_calib_list = $par_no_var_calib_list
