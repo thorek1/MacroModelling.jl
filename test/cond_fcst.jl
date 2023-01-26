@@ -180,7 +180,7 @@ function get_conditional_forecast(𝓂::ℳ;
     levels::Bool = false,
     verbose = false)
 
-    periods += max(size(conditions,2), shocks == nothing ? 1 : size(shocks,2))
+    periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
@@ -239,6 +239,7 @@ function get_conditional_forecast(𝓂::ℳ;
     NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[s] for s in full_SS]
+
     if conditions_in_levels
         conditions .-= reference_steady_state
     end
@@ -256,7 +257,7 @@ function get_conditional_forecast(𝓂::ℳ;
     free_shock_idx = findall(shocks[:,1] .== nothing)
 
     if size(C[:,free_shock_idx],2) == length(cond_var_idx)
-        @assert ℒ.det(C[cond_var_idx,free_shock_idx]) < eps(Float32) "Numerical stabiltiy issues for restrictions in period 1."
+        @assert ℒ.det(C[cond_var_idx,free_shock_idx]) > eps(Float32) "Numerical stabiltiy issues for restrictions in period 1."
     elseif length(cond_var_idx) > 1
         lu_sol = try ℒ.lu(C[cond_var_idx,free_shock_idx]) catch end
         @assert isnothing(lu_sol) "Numerical stabiltiy issues for restrictions in period 1."
@@ -277,7 +278,7 @@ function get_conditional_forecast(𝓂::ℳ;
         shocks[free_shock_idx,i] .= 0
 
         if size(C[:,free_shock_idx],2) == length(cond_var_idx)
-            @assert ℒ.det(C[cond_var_idx,free_shock_idx]) < eps(Float32) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
+            @assert ℒ.det(C[cond_var_idx,free_shock_idx]) > eps(Float32) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
         elseif length(cond_var_idx) > 1
             lu_sol = try ℒ.lu(C[cond_var_idx,free_shock_idx]) catch end
             @assert isnothing(lu_sol) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
@@ -302,7 +303,7 @@ conditions = zeros(6,5)
 conditions[1,1] = .1
 
 conditions = spzeros(7,5)
-conditions[1,1] = .1
+conditions[1,1] = .01
 
 conditions = spzeros(6,5)
 conditions[1,1] = 0.0

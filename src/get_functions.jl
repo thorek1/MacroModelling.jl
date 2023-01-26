@@ -1,5 +1,193 @@
 """
 $(SIGNATURES)
+Return the conditional forecast given restrictions on endogenous variables and shocks (optional) in a 2-dimensional array.
+
+Limited to the first order perturbation solution of the model for now.
+
+# Arguments
+- $MODEL
+# Keyword Arguments
+- conditions
+- `periods` [Default: `40`, Type: `Int`]: number of periods for which the simulation continues after the end of the longer input in terms of periods of either the conditions on the endogenous variables or the conditions on the shocks 
+- $VARIABLES
+- `shocks` [Default: `:all`]: A series of shocks can be passed on using either a `Matrix{Float64}`, or a `KeyedArray{Float64}` as input with shocks in rows and periods in columns. The period of the simulation will correspond to the length of the input in the period dimension + the number of periods defined in `periods`. If the series of shocks is input as a `KeyedArray{Float64}` make sure to name the rows with valid shock names of type `Symbol`. Any shocks not part of the model will trigger a warning.
+`conditions_in_levels` [Default: `false`, Type: `Bool`]: if true the input to the conditions argument will have the non stochastic steady state substracted
+- $LEVELS
+- $VERBOSE
+
+# Examples
+```jldoctest
+using MacroModelling
+using SparseArrays
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+
+conditions = spzeros(7,5)
+conditions[1,1] = .1
+
+
+shocks = spzeros(2,5)
+shocks[1,1] = 1
+
+get_conditional_forecast(RBC_CME, conditions, shocks = shocks)
+# output
+4×40×1 Array{Float64, 3}:
+[:, :, 1] =
+ 0.00674687  0.00729773  0.00715114  0.00687615  …  0.00146962   0.00140619
+ 0.0620937   0.0718322   0.0712153   0.0686381      0.0146789    0.0140453
+ 0.0688406   0.0182781   0.00797091  0.0057232      0.00111425   0.00106615
+ 0.01        0.002       0.0004      8.0e-5         2.74878e-29  5.49756e-30
+```
+"""
+function get_conditional_forecast(𝓂::ℳ;
+    conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}},
+    periods::Int = 40, 
+    parameters = nothing,
+    variables::Symbol_input = :all, 
+    shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
+    conditions_in_levels::Bool = false,
+    levels::Bool = false,
+    verbose = false)
+
+    periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
+
+    full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+    if conditions isa SparseMatrixCSC{Float64}
+        @assert length(full_SS) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(full_SS)) * " variables (including auxilliary variables): " * repr(full_SS)
+
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(full_SS),periods)
+        cond_tmp[findnz(conditions)[1],findnz(conditions)[2]] .= findnz(conditions)[3]
+        conditions = cond_tmp
+    elseif conditions isa Matrix{Union{Nothing,Float64}}
+        @assert length(full_SS) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(full_SS)) * " variables (including auxilliary variables): " * repr(full_SS)
+
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(full_SS),periods)
+        cond_tmp[:,axes(conditions,2)] = conditions
+        conditions = cond_tmp
+    elseif conditions isa KeyedArray{Union{Nothing,Float64}} || conditions isa KeyedArray{Float64}
+        @assert length(setdiff(axiskeys(conditions,1),full_SS)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(axiskeys(conditions,1),full_SS))
+        
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(full_SS),periods)
+        cond_tmp[indexin(sort(axiskeys(conditions,1)),full_SS),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
+        conditions = cond_tmp
+    end
+
+    if shocks isa SparseMatrixCSC{Float64}
+        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp[findnz(shocks)[1],findnz(shocks)[2]] .= findnz(shocks)[3]
+        shocks = shocks_tmp
+    elseif shocks isa Matrix{Union{Nothing,Float64}}
+        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp[:,axes(shocks,2)] = shocks
+        shocks = shocks_tmp
+    elseif shocks isa KeyedArray{Union{Nothing,Float64}} || shocks isa KeyedArray{Float64}
+        @assert length(setdiff(axiskeys(shocks,1),𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.exo))
+        
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
+        shocks = shocks_tmp
+    elseif shocks == nothing
+        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+    end
+
+    full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
+    write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    solve!(𝓂, verbose = verbose, dynamics = true)
+
+    state_update = parse_algorithm_to_state_update(:first_order, 𝓂)
+
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+
+    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[s] for s in full_SS]
+
+    if conditions_in_levels
+        conditions .-= reference_steady_state
+    end
+
+    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+
+    C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
+
+    Y = zeros(size(C,1),periods)
+
+    cond_var_idx = findall(conditions[:,1] .!= nothing)
+    
+    free_shock_idx = findall(shocks[:,1] .== nothing)
+
+    if size(C[:,free_shock_idx],2) == length(cond_var_idx)
+        @assert ℒ.det(C[cond_var_idx,free_shock_idx]) > eps(Float32) "Numerical stabiltiy issues for restrictions in period 1."
+    elseif length(cond_var_idx) > 1
+        lu_sol = try ℒ.lu(C[cond_var_idx,free_shock_idx]) catch end
+        @assert isnothing(lu_sol) "Numerical stabiltiy issues for restrictions in period 1."
+    end
+
+    @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
+
+    shocks[free_shock_idx,1] .= 0
+
+    shocks[free_shock_idx,1] = C[cond_var_idx,free_shock_idx] \ (conditions[cond_var_idx,1] - state_update(zeros(size(C,1)), Float64[shocks[:,1]...])[cond_var_idx])
+
+    Y[:,1] = state_update(zeros(size(C,1)), Float64[shocks[:,1]...])
+
+    for i in 2:size(conditions,2)
+        cond_var_idx = findall(conditions[:,i] .!= nothing)
+        
+        free_shock_idx = findall(shocks[:,i] .== nothing)
+        shocks[free_shock_idx,i] .= 0
+
+        if size(C[:,free_shock_idx],2) == length(cond_var_idx)
+            @assert ℒ.det(C[cond_var_idx,free_shock_idx]) > eps(Float32) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
+        elseif length(cond_var_idx) > 1
+            lu_sol = try ℒ.lu(C[cond_var_idx,free_shock_idx]) catch end
+            @assert isnothing(lu_sol) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
+        end
+
+        @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
+
+        shocks[free_shock_idx,i] = C[cond_var_idx,free_shock_idx] \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
+
+        Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
+    end
+
+    return KeyedArray([levels ? (Y[var_idx,:] .+ reference_steady_state[var_idx]) : Y[var_idx,:]; convert(Matrix{Float64},shocks)];  Variables_and_shocks = [𝓂.timings.var[var_idx]; 𝓂.timings.exo], Periods = 1:periods)
+end
+
+
+"""
+$(SIGNATURES)
 Return impulse response functions (IRFs) of the model in a 3-dimensional array.
 Function to use when differentiating IRFs with repect to parameters.
 
