@@ -52,8 +52,8 @@ export write_mod_file, write_dynare_file, write_to_dynare_file, export_dynare, e
 export irf, girf
 
 # Remove comment for debugging
-# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!
-# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!
+# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index
+# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update
 
 # StatsFuns
 norminvcdf(p::Number) = -erfcinv(2*p) * sqrt2
