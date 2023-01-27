@@ -1,7 +1,7 @@
 using MacroModelling
 using SparseArrays, AxisKeys
-import LinearAlgebra as ℒ
-import MacroModelling: Symbol_input, ℳ
+# import LinearAlgebra as ℒ
+# import MacroModelling: Symbol_input, ℳ
 
 @model RBC_CME begin
     y[0]=A[0]*k[-1]^alpha
@@ -12,7 +12,6 @@ import MacroModelling: Symbol_input, ℳ
     z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
-
 
 @parameters RBC_CME begin
     alpha = .157
@@ -27,6 +26,36 @@ end
 end
 
 get_solution(RBC_CME)
+
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,3),Variables = [:c,:y], Periods = 1:3)
+conditions[1,1] = .01
+conditions[2,3] = .02
+
+shocks = Matrix{Union{Nothing,Float64}}(undef,2,2)
+shocks[2,2] = .05
+
+
+
+conditions = Matrix{Union{Nothing,Float64}}(undef,7,2)
+conditions[4,1] = .01
+conditions[6,2] = .02
+
+using SparseArrays
+conditions = spzeros(7,2)
+conditions[4,1] = .01
+conditions[6,2] = .02
+
+
+
+shocks = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:delta_eps], Periods = [1])
+shocks[1,1] = .05
+
+# using SparseArrays
+# shocks = spzeros(2,1)
+# shocks[1,1] = .05
+
+get_conditional_forecast(RBC_CME,conditions, shocks = shocks)
+
 
 std(RBC_CME)
 

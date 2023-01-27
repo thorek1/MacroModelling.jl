@@ -1,17 +1,17 @@
 """
 $(SIGNATURES)
-Return the conditional forecast given restrictions on endogenous variables and shocks (optional) in a 2-dimensional array.
+Return the conditional forecast given restrictions on endogenous variables and shocks (optional) in a 2-dimensional array. The algorithm finds the combinations of shocks with the smallest magnitude to match the conditions.
 
-Limited to the first order perturbation solution of the model for now.
+Limited to the first order perturbation solution of the model.
 
 # Arguments
 - $MODEL
+- conditions [Type: `Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}}`]: conditions for which to find the corresponding shocks. The input can have multiple formats, but for all types of entries the first dimension corresponds to the number of variables and the second dimension to the number of periods. The conditions can be specified using a matrix of type `Matrix{Union{Nothing,Float64}}`. In this case the conditions are matrix elements of type `Float64` and all remaining (free) entries are `nothing`. You can also use a `SparseMatrixCSC{Float64}` as input. In this case only non-zero elements are taken as conditions. Note that you cannot condition variables to be zero using a `SparseMatrixCSC{Float64}` as input (use other input formats to do so). Another possibility to input conditions is by using a `KeyedArray`. You can use a `KeyedArray{Union{Nothing,Float64}}` where, similar to `Matrix{Union{Nothing,Float64}}`, all entries of type `Float64` are recognised as conditions and all other entries have to be `nothing`. Furthermore, you can specify in the primary axis a subset of variables (of type `Symbol`) for which you specify conditions and all other variables are considered free. The same goes for the case when you use `KeyedArray{Float64}}` as input, whereas in this case the conditions for the specified variables bind for all periods specified in the `KeyedArray`, because there are no `nothing` entries permitted with this type.
 # Keyword Arguments
-- conditions
-- `periods` [Default: `40`, Type: `Int`]: number of periods for which the simulation continues after the end of the longer input in terms of periods of either the conditions on the endogenous variables or the conditions on the shocks 
+- `shocks` [Default: `nothing`, Type: `Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing`]: known values of shocks. This entry allows the user to include certain shock values. By entering restrictions on the shock sin this way the problem to match the conditions on endogenous variables is restricted to the remaining free shocks in the repective period. The input can have multiple formats, but for all types of entries the first dimension corresponds to the number of shocks and the second dimension to the number of periods. The shocks can be specified using a matrix of type `Matrix{Union{Nothing,Float64}}`. In this case the shocks are matrix elements of type `Float64` and all remaining (free) entries are `nothing`. You can also use a `SparseMatrixCSC{Float64}` as input. In this case only non-zero elements are taken as certain shock values. Note that you cannot condition shocks to be zero using a `SparseMatrixCSC{Float64}` as input (use other input formats to do so). Another possibility to input known shocks is by using a `KeyedArray`. You can use a `KeyedArray{Union{Nothing,Float64}}` where, similar to `Matrix{Union{Nothing,Float64}}`, all entries of type `Float64` are recognised as known shocks and all other entries have to be `nothing`. Furthermore, you can specify in the primary axis a subset of shocks (of type `Symbol`) for which you specify values and all other shocks are considered free. The same goes for the case when you use `KeyedArray{Float64}}` as input, whereas in this case the values for the specified shocks bind for all periods specified in the `KeyedArray`, because there are no `nothing` entries permitted with this type.
+- `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $VARIABLES
-- `shocks` [Default: `:all`]: A series of shocks can be passed on using either a `Matrix{Float64}`, or a `KeyedArray{Float64}` as input with shocks in rows and periods in columns. The period of the simulation will correspond to the length of the input in the period dimension + the number of periods defined in `periods`. If the series of shocks is input as a `KeyedArray{Float64}` make sure to name the rows with valid shock names of type `Symbol`. Any shocks not part of the model will trigger a warning.
-`conditions_in_levels` [Default: `false`, Type: `Bool`]: if true the input to the conditions argument will have the non stochastic steady state substracted
+`conditions_in_levels` [Default: `false`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
 - $LEVELS
 - $VERBOSE
 
@@ -43,30 +43,56 @@ end
     std_z_delta = .005
 end
 
+# c is conditioned to deviate by 0.01 in period 1 and y is conditioned to deviate by 0.02 in period 3
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = [:c,:y], Periods = 1:2)
+conditions[1,1] = .01
+conditions[2,2] = .02
 
-conditions = spzeros(7,5)
-conditions[1,1] = .1
-
-
-shocks = spzeros(2,5)
-shocks[1,1] = 1
+# in period 2 second shock (eps_z) is conditioned to take a value of 0.05
+shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
+shocks[1,1] = .05
 
 get_conditional_forecast(RBC_CME, conditions, shocks = shocks)
 # output
-4×40×1 Array{Float64, 3}:
-[:, :, 1] =
- 0.00674687  0.00729773  0.00715114  0.00687615  …  0.00146962   0.00140619
- 0.0620937   0.0718322   0.0712153   0.0686381      0.0146789    0.0140453
- 0.0688406   0.0182781   0.00797091  0.0057232      0.00111425   0.00106615
- 0.01        0.002       0.0004      8.0e-5         2.74878e-29  5.49756e-30
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables_and_shocks ∈ 9-element Vector{Symbol}
+→   Periods ∈ 42-element UnitRange{Int64}
+And data, 9×42 Matrix{Float64}:
+                (1)            (2)           …  (41)            (42)
+  (:A)            0.0313639      0.0134792         0.000221372     0.000199235
+  (:Pi)           0.000780257    0.00020929       -0.000146071    -0.000140137
+  (:R)            0.00117156     0.00031425       -0.000219325    -0.000210417
+  (:c)            0.01           0.00600605        0.00213278      0.00203751
+  (:k)            0.034584       0.0477482   …     0.0397631       0.0380482
+  (:y)            0.0446375      0.02              0.00129544      0.001222
+  (:z_delta)      0.00025        0.000225          3.69522e-6      3.3257e-6
+  (:delta_eps)    0.05           0.0               0.0             0.0
+  (:eps_z)        4.61234       -2.16887           0.0             0.0
+
+# The same can be achieved with the other input formats:
+# conditions = Matrix{Union{Nothing,Float64}}(undef,7,2)
+# conditions[4,1] = .01
+# conditions[6,2] = .02
+
+# using SparseArrays
+# conditions = spzeros(7,2)
+# conditions[4,1] = .01
+# conditions[6,2] = .02
+
+# shocks = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:delta_eps], Periods = [1])
+# shocks[1,1] = .05
+
+# using SparseArrays
+# shocks = spzeros(2,1)
+# shocks[1,1] = .05
 ```
 """
-function get_conditional_forecast(𝓂::ℳ;
-    conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}},
+function get_conditional_forecast(𝓂::ℳ,
+    conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
+    shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
     periods::Int = 40, 
     parameters = nothing,
     variables::Symbol_input = :all, 
-    shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
     conditions_in_levels::Bool = false,
     levels::Bool = false,
     verbose = false)
@@ -74,12 +100,15 @@ function get_conditional_forecast(𝓂::ℳ;
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
+    
     if conditions isa SparseMatrixCSC{Float64}
         @assert length(full_SS) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(full_SS)) * " variables (including auxilliary variables): " * repr(full_SS)
 
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(full_SS),periods)
-        cond_tmp[findnz(conditions)[1],findnz(conditions)[2]] .= findnz(conditions)[3]
+        nzs = findnz(conditions)
+        for i in 1:length(nzs[1])
+            cond_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
+        end
         conditions = cond_tmp
     elseif conditions isa Matrix{Union{Nothing,Float64}}
         @assert length(full_SS) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(full_SS)) * " variables (including auxilliary variables): " * repr(full_SS)
@@ -94,12 +123,15 @@ function get_conditional_forecast(𝓂::ℳ;
         cond_tmp[indexin(sort(axiskeys(conditions,1)),full_SS),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
         conditions = cond_tmp
     end
-
+    
     if shocks isa SparseMatrixCSC{Float64}
         @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
 
         shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
-        shocks_tmp[findnz(shocks)[1],findnz(shocks)[2]] .= findnz(shocks)[3]
+        nzs = findnz(shocks)
+        for i in 1:length(nzs[1])
+            shocks_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
+        end
         shocks = shocks_tmp
     elseif shocks isa Matrix{Union{Nothing,Float64}}
         @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
@@ -113,7 +145,7 @@ function get_conditional_forecast(𝓂::ℳ;
         shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
         shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
         shocks = shocks_tmp
-    elseif shocks == nothing
+    elseif isnothing(shocks)
         shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
     end
 
