@@ -163,9 +163,6 @@ function get_conditional_forecast(𝓂::ℳ,
 
     reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[s] for s in full_SS]
 
-    if conditions_in_levels
-        conditions .-= reference_steady_state
-    end
 
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
@@ -178,6 +175,10 @@ function get_conditional_forecast(𝓂::ℳ,
     cond_var_idx = findall(conditions[:,1] .!= nothing)
     
     free_shock_idx = findall(shocks[:,1] .== nothing)
+
+    if conditions_in_levels
+        conditions[cond_var_idx,1] .-= reference_steady_state[cond_var_idx]
+    end
 
     if size(C[:,free_shock_idx],2) == length(cond_var_idx)
         @assert ℒ.det(C[cond_var_idx,free_shock_idx]) > eps(Float32) "Numerical stabiltiy issues for restrictions in period 1."
@@ -199,6 +200,10 @@ function get_conditional_forecast(𝓂::ℳ,
     for i in 2:size(conditions,2)
         cond_var_idx = findall(conditions[:,i] .!= nothing)
         
+        if conditions_in_levels
+            conditions[cond_var_idx,i] .-= reference_steady_state[cond_var_idx]
+        end
+
         free_shock_idx = findall(shocks[:,i] .== nothing)
         shocks[free_shock_idx,i] .= 0
 
