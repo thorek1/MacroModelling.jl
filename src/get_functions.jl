@@ -92,7 +92,7 @@ function get_conditional_forecast(𝓂::ℳ,
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
     periods::Int = 40, 
     parameters = nothing,
-    variables::Symbol_input = :all, 
+    variables::Symbol_input = :all_including_auxilliary, 
     conditions_in_levels::Bool = false,
     levels::Bool = false,
     verbose = false)
@@ -181,6 +181,8 @@ function get_conditional_forecast(𝓂::ℳ,
 
     if size(C[:,free_shock_idx],2) == length(cond_var_idx)
         @assert ℒ.det(C[cond_var_idx,free_shock_idx]) > eps(Float32) "Numerical stabiltiy issues for restrictions in period 1."
+    elseif length(cond_var_idx) == 1
+        @assert any(C[cond_var_idx,free_shock_idx] .!= 0) "Free shocks have no impact on conditioned variable in period 1."
     elseif length(cond_var_idx) > 1
         lu_sol = try ℒ.lu(C[cond_var_idx,free_shock_idx]) catch end
         @assert isnothing(lu_sol) "Numerical stabiltiy issues for restrictions in period 1."
@@ -202,6 +204,8 @@ function get_conditional_forecast(𝓂::ℳ,
 
         if size(C[:,free_shock_idx],2) == length(cond_var_idx)
             @assert ℒ.det(C[cond_var_idx,free_shock_idx]) > eps(Float32) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
+        elseif length(cond_var_idx) == 1
+            @assert any(C[cond_var_idx,free_shock_idx] .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
         elseif length(cond_var_idx) > 1
             lu_sol = try ℒ.lu(C[cond_var_idx,free_shock_idx]) catch end
             @assert isnothing(lu_sol) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."

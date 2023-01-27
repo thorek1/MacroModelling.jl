@@ -3,6 +3,33 @@ using SparseArrays, AxisKeys
 # import LinearAlgebra as ℒ
 # import MacroModelling: Symbol_input, ℳ
 
+
+
+include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+
+get_irf(m)
+
+using SparseArrays
+conditions = spzeros(17,2)
+conditions[4,1] = .0002
+conditions[6,2] = .0001
+
+shocks = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,2),Variables = [:eps_z], Periods = 1:2)
+shocks[1,1] = .05
+shocks[1,2] = .05
+
+get_conditional_forecast(m,conditions, shocks = shocks)
+
+
+
+𝓂 = m
+C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
+
+import LinearAlgebra as ℒ
+findnz(conditions)
+ℒ.det(C[6,1:2])
+any(C[6,1:2] .!= 0)
+any([0,0] .!= 0)
 @model RBC_CME begin
     y[0]=A[0]*k[-1]^alpha
     1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
