@@ -186,7 +186,7 @@ function get_conditional_forecast(𝓂::ℳ,
         @assert any(C[cond_var_idx,free_shock_idx] .!= 0) "Free shocks have no impact on conditioned variable in period 1."
     elseif length(cond_var_idx) > 1
         lu_sol = try ℒ.lu(C[cond_var_idx,free_shock_idx]) catch end
-        @assert isnothing(lu_sol) "Numerical stabiltiy issues for restrictions in period 1."
+        @assert !isnothing(lu_sol) "Numerical stabiltiy issues for restrictions in period 1."
     end
 
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
@@ -213,7 +213,7 @@ function get_conditional_forecast(𝓂::ℳ,
             @assert any(C[cond_var_idx,free_shock_idx] .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
         elseif length(cond_var_idx) > 1
             lu_sol = try ℒ.lu(C[cond_var_idx,free_shock_idx]) catch end
-            @assert isnothing(lu_sol) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
+            @assert !isnothing(lu_sol) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
         end
 
         @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
