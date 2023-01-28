@@ -2,6 +2,37 @@ using MacroModelling
 using SparseArrays, AxisKeys
 # import LinearAlgebra as ℒ
 # import MacroModelling: Symbol_input, ℳ
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+get_solution(RBC)
+
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,4),Variables = [:c], Periods = 1:4)
+conditions[1:4] .= [-.01,0,.01,.02]
+
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,4),Variables = [:c], Periods = 1:4)
+conditions[1:4] .= [-.01,0,.01,.02]
+
+shocks = spzeros(1,5)
+shocks[1,5] = -1
+
+get_conditional_forecast(RBC, conditions, shocks = shocks)
+plot_conditional_forecast(RBC,conditions, shocks = shocks, save_plots = true, save_plots_format = :png)
+
+std(RBC)
+get_SS(RBC)
 
 include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
 

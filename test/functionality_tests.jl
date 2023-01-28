@@ -186,6 +186,16 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
         cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
 
+
+        if plots
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
+        end
+
         NSSS = get_SS(m,derivatives = false)
         full_SS = sort(union(m.var,m.aux,m.exo_present))
         full_SS[indexin(m.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  m.aux)
