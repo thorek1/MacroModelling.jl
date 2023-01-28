@@ -757,8 +757,8 @@ function plot_conditional_forecast(𝓂::ℳ,
     plots_per_page::Int = 4,
     verbose = false)
 
-    Y = get_conditional_forecast(𝓂 = 𝓂,
-                                conditions = conditions,
+    Y = get_conditional_forecast(𝓂,
+                                conditions,
                                 shocks = shocks, 
                                 periods = periods, 
                                 parameters = parameters,
@@ -766,7 +766,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 conditions_in_levels = conditions_in_levels,
                                 levels = levels,
                                 verbose = verbose)
-    
+                       
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
@@ -779,7 +779,54 @@ function plot_conditional_forecast(𝓂::ℳ,
     
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
                     
-                    
+    if conditions isa SparseMatrixCSC{Float64}
+        @assert length(full_SS) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(full_SS)) * " variables (including auxilliary variables): " * repr(full_SS)
+
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(full_SS),periods)
+        nzs = findnz(conditions)
+        for i in 1:length(nzs[1])
+            cond_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
+        end
+        conditions = cond_tmp
+    elseif conditions isa Matrix{Union{Nothing,Float64}}
+        @assert length(full_SS) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(full_SS)) * " variables (including auxilliary variables): " * repr(full_SS)
+
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(full_SS),periods)
+        cond_tmp[:,axes(conditions,2)] = conditions
+        conditions = cond_tmp
+    elseif conditions isa KeyedArray{Union{Nothing,Float64}} || conditions isa KeyedArray{Float64}
+        @assert length(setdiff(axiskeys(conditions,1),full_SS)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(axiskeys(conditions,1),full_SS))
+        
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(full_SS),periods)
+        cond_tmp[indexin(sort(axiskeys(conditions,1)),full_SS),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
+        conditions = cond_tmp
+    end
+    
+    if shocks isa SparseMatrixCSC{Float64}
+        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        nzs = findnz(shocks)
+        for i in 1:length(nzs[1])
+            shocks_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
+        end
+        shocks = shocks_tmp
+    elseif shocks isa Matrix{Union{Nothing,Float64}}
+        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp[:,axes(shocks,2)] = shocks
+        shocks = shocks_tmp
+    elseif shocks isa KeyedArray{Union{Nothing,Float64}} || shocks isa KeyedArray{Float64}
+        @assert length(setdiff(axiskeys(shocks,1),𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.exo))
+        
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
+        shocks = shocks_tmp
+    elseif isnothing(shocks)
+        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+    end
+                       
     # plots = []
     default(size=(700,500),
             # leg = false,
