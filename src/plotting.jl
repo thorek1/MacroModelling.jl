@@ -7,7 +7,7 @@ using StatsPlots
 $(SIGNATURES)
 Plot impulse response functions (IRFs) of the model.
 
-The left axis shows the level, and the right the deviation from the reference steady state. Linear solutions have the non stochastic steady state as reference other solutoin the stochastic steady state. The horizontal black line indicates the reference steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
+The left axis shows the level, and the right the deviation from the reference steady state. Linear solutions have the non stochastic steady state as reference other solution the stochastic steady state. The horizontal black line indicates the reference steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
 
 # Arguments
 - $MODEL
@@ -464,7 +464,7 @@ The (non) stochastic steady state is plotted along with the mapping from the cho
 - `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
 - `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
 - `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
-- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- `plots_per_page` [Default: `4`, Type: `Int`]: how many plots to show per page
 - $VERBOSE
 
 # Examples
@@ -741,7 +741,86 @@ function plot_solution(𝓂::ℳ,
 end
 
 
+"""
+$(SIGNATURES)
+Plot conditional forecast given restrictions on endogenous variables and shocks (optional) of the model. The algorithm finds the combinations of shocks with the smallest magnitude to match the conditions and plots both the endogenous variables and shocks.
 
+The left axis shows the level, and the right axis the deviation from the non stochastic steady state. Variable names are above the subplots, conditioned values are marked, and the title provides information about the model, and number of pages.
+
+Limited to the first order perturbation solution of the model.
+
+# Arguments
+- $MODEL
+- $CONDITIONS
+# Keyword Arguments
+- $SHOCK_CONDITIONS
+- `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
+- $VARIABLES
+`conditions_in_levels` [Default: `false`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
+- $LEVELS
+- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
+- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
+- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
+- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
+- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- $VERBOSE
+
+# Examples
+```jldoctest
+using MacroModelling
+using SparseArrays
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+# c is conditioned to deviate by 0.01 in period 1 and y is conditioned to deviate by 0.02 in period 3
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = [:c,:y], Periods = 1:2)
+conditions[1,1] = .01
+conditions[2,2] = .02
+
+# in period 2 second shock (eps_z) is conditioned to take a value of 0.05
+shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
+shocks[1,1] = .05
+
+plot_conditional_forecast(RBC_CME, conditions, shocks = shocks)
+
+# The same can be achieved with the other input formats:
+# conditions = Matrix{Union{Nothing,Float64}}(undef,7,2)
+# conditions[4,1] = .01
+# conditions[6,2] = .02
+
+# using SparseArrays
+# conditions = spzeros(7,2)
+# conditions[4,1] = .01
+# conditions[6,2] = .02
+
+# shocks = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:delta_eps], Periods = [1])
+# shocks[1,1] = .05
+
+# using SparseArrays
+# shocks = spzeros(2,1)
+# shocks[1,1] = .05
+```
+"""
 function plot_conditional_forecast(𝓂::ℳ,
     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
@@ -951,10 +1030,14 @@ function plot_conditional_forecast(𝓂::ℳ,
 
                                                 Plots.scatter!(fill(0,1,1), 
                                                 label = "", 
-                                                markerstrokewidth = 0, 
-                                                framestyle = :none, 
                                                 marker = :rect,
+                                                # markersize = 2,
+                                                markerstrokecolor = :white,
+                                                markerstrokewidth = 0, 
                                                 markercolor = :white,
+                                                linecolor = :white, 
+                                                linewidth = 0, 
+                                                framestyle = :none, 
                                                 legend = :inside)
                                             end, 
                                                 layout = grid(2, 1, heights=[0.99, 0.01]),
@@ -983,21 +1066,25 @@ function plot_conditional_forecast(𝓂::ℳ,
             ppp = Plots.plot(pp...)
 
             p = Plots.plot(ppp,begin
-                                        Plots.scatter(fill(0,1,1), 
-                                        label = "Condition", 
-                                        marker = :star8,
-                                        markercolor = :black,
-                                        linewidth = 0, 
-                                        framestyle = :none, 
-                                        legend = :inside)
+                                    Plots.scatter(fill(0,1,1), 
+                                    label = "Condition", 
+                                    marker = :star8,
+                                    markercolor = :black,
+                                    linewidth = 0, 
+                                    framestyle = :none, 
+                                    legend = :inside)
 
-                                        Plots.scatter!(fill(0,1,1), 
-                                        label = "", 
-                                        markerstrokewidth = 0, 
-                                        framestyle = :none, 
-                                        marker = :rect,
-                                        markercolor = :white,
-                                        legend = :inside)
+                                    Plots.scatter!(fill(0,1,1), 
+                                    label = "", 
+                                    marker = :rect,
+                                    # markersize = 2,
+                                    markerstrokecolor = :white,
+                                    markerstrokewidth = 0, 
+                                    markercolor = :white,
+                                    linecolor = :white, 
+                                    linewidth = 0, 
+                                    framestyle = :none, 
+                                    legend = :inside)
                                     end, 
                                         layout = grid(2, 1, heights=[0.99, 0.01]),
                                         plot_title = "Model: "*𝓂.model_name*"        " * shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")

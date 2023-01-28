@@ -3,8 +3,6 @@ using SparseArrays, AxisKeys
 # import LinearAlgebra as ℒ
 # import MacroModelling: Symbol_input, ℳ
 
-
-
 include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
 
 get_irf(m)
@@ -18,13 +16,18 @@ shocks = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,2),Variables = [:eps_
 shocks[1,1] = .05
 shocks[1,2] = .05
 
-Y = get_conditional_forecast(m,conditions, shocks = shocks)
+Y = get_conditional_forecast(m,conditions, shocks = shocks, variables = [:Pi, :ZZ_avg])
+axiskeys(Y,1)
+plot_conditional_forecast(m,conditions, shocks = shocks, plots_per_page = 9)
+plot_conditional_forecast(m,conditions, shocks = shocks, variables = [:Pi, :ZZ_avg])
+plot_conditional_forecast(m,conditions, variables = [:Pi, :ZZ_avg])
+plot_conditional_forecast(m,conditions, variables = [:Pi, :ZZ_avg], save_plots = true, save_plots_format = :pdf)
+
+i=1
+vcat(conditions[var_idx[i],:],shocks[var_idx[i],:])
 
 
-
-
-
-function plot_conditional_forecast(𝓂::ℳ,
+function plot_conditional_forecas(𝓂::ℳ,
     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
     periods::Int = 40, 
@@ -57,11 +60,13 @@ function plot_conditional_forecast(𝓂::ℳ,
     
     NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
     
-    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[s] for s in full_SS]
+    var_names = axiskeys(Y,1)   
+
+    var_idx = 1:var_names
+
+    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[s] for s in var_names]
     
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
-                    
-              
+
     if conditions isa SparseMatrixCSC{Float64}
         @assert length(full_SS) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(full_SS)) * " variables (including auxilliary variables): " * repr(full_SS)
 
