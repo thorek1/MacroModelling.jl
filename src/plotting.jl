@@ -942,7 +942,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
         for i in 1:length(var_idx)
             SS = reference_steady_state[i]
-            if !(all(isapprox.(Y[i,:],0,atol = eps(Float32))))
+            if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) && length(findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)) == 0
             # if !(plot_count ∈ unique(round.((1:𝓂.timings.timings.nVars)/plots_per_page))*plots_per_page)
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
