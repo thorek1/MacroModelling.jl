@@ -876,10 +876,10 @@ function plot_conditional_forecast(𝓂::ℳ,
         cond_tmp[:,axes(conditions,2)] = conditions
         conditions = cond_tmp
     elseif conditions isa KeyedArray{Union{Nothing,Float64}} || conditions isa KeyedArray{Float64}
-        @assert length(setdiff(axiskeys(conditions,1),var_names)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(axiskeys(conditions,1),var_names))
+        @assert length(setdiff(axiskeys(conditions,1),full_SS)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(axiskeys(conditions,1),full_SS))
         
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
-        cond_tmp[indexin(sort(axiskeys(conditions,1)),var_names),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
+        cond_tmp[indexin(sort(axiskeys(conditions,1)),full_SS),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
         conditions = cond_tmp
     end
     
