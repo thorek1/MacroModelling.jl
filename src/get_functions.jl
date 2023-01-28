@@ -223,7 +223,7 @@ function get_conditional_forecast(𝓂::ℳ,
         Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
     end
 
-    return KeyedArray([levels ? (Y[var_idx,:] .+ reference_steady_state[var_idx]) : Y[var_idx,:]; convert(Matrix{Float64},shocks)];  Variables_and_shocks = [𝓂.timings.var[var_idx]; 𝓂.timings.exo], Periods = 1:periods)
+    return KeyedArray([levels ? (Y[var_idx,:] .+ reference_steady_state[var_idx]) : Y[var_idx,:]; convert(Matrix{Float64},shocks)];  Variables_and_shocks = [𝓂.timings.var[var_idx]; map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)], Periods = 1:periods)
 end
 
 

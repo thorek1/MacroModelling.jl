@@ -754,7 +754,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     save_plots::Bool = false,
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
-    plots_per_page::Int = 4,
+    plots_per_page::Int = 9,
     verbose = false)
 
     Y = get_conditional_forecast(𝓂,
@@ -769,36 +769,38 @@ function plot_conditional_forecast(𝓂::ℳ,
                        
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
-    full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
 
-    full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-    
     NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
     
-    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[s] for s in full_SS]
-    
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
-                    
-    if conditions isa SparseMatrixCSC{Float64}
-        @assert length(full_SS) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(full_SS)) * " variables (including auxilliary variables): " * repr(full_SS)
+    var_names = axiskeys(Y,1)   
 
-        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(full_SS),periods)
+    var_idx = indexin(var_names,full_SS)
+
+    reference_steady_state = [s ∈ union(map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo),𝓂.exo_present) ? 0 : NSSS[Symbol(replace(string(s), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))] for s in var_names]
+
+    var_length = length(full_SS) - 𝓂.timings.nExo
+
+    if conditions isa SparseMatrixCSC{Float64}
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxilliary variables): " * repr(var_names)
+
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
         nzs = findnz(conditions)
         for i in 1:length(nzs[1])
             cond_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
         end
         conditions = cond_tmp
     elseif conditions isa Matrix{Union{Nothing,Float64}}
-        @assert length(full_SS) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(full_SS)) * " variables (including auxilliary variables): " * repr(full_SS)
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxilliary variables): " * repr(var_names)
 
-        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(full_SS),periods)
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
         cond_tmp[:,axes(conditions,2)] = conditions
         conditions = cond_tmp
     elseif conditions isa KeyedArray{Union{Nothing,Float64}} || conditions isa KeyedArray{Float64}
-        @assert length(setdiff(axiskeys(conditions,1),full_SS)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(axiskeys(conditions,1),full_SS))
+        @assert length(setdiff(axiskeys(conditions,1),var_names)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(axiskeys(conditions,1),var_names))
         
-        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(full_SS),periods)
-        cond_tmp[indexin(sort(axiskeys(conditions,1)),full_SS),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
+        cond_tmp[indexin(sort(axiskeys(conditions,1)),var_names),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
         conditions = cond_tmp
     end
     
@@ -860,38 +862,38 @@ function plot_conditional_forecast(𝓂::ℳ,
         end
 
         for i in 1:length(var_idx)
-            SS = reference_steady_state[var_idx[i]]
+            SS = reference_steady_state[i]
             if !(all(isapprox.(Y[i,:],0,atol = eps(Float32))))
             # if !(plot_count ∈ unique(round.((1:𝓂.timings.timings.nVars)/plots_per_page))*plots_per_page)
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
                     if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
-                        cond_idx = findall(conditions[var_idx[i],:] .!= nothing)
+                        cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
                         if length(cond_idx) > 0
                             push!(pp,begin
-                                        Plots.plot(1:periods, Y[i,:] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
+                                        Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
                                         Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
                                         hline!([SS 0], color = :black, label = "") 
-                                        Plots.scatter!(cond_idx,conditions[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                             
+                                        Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                             
                             end)
                         else
                             push!(pp,begin
-                                        Plots.plot(1:periods, Y[i,:] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
+                                        Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
                                         Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
                                         hline!([SS 0], color = :black, label = "")                         
                             end)
                         end
                     else
-                        cond_idx = findall(conditions[var_idx[i],:] .!= nothing)
+                        cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
                         if length(cond_idx) > 0
                             push!(pp,begin
-                                        Plots.plot(1:periods, Y[i,:] .+ SS, title = string(𝓂.timings.var[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                        Plots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
                                         hline!([SS], color = :black, label = "")
-                                        Plots.scatter!(cond_idx,conditions[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)   
+                                        Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)   
                             end)
                         else
                             push!(pp,begin
-                                        Plots.plot(1:periods, Y[i,:] .+ SS, title = string(𝓂.timings.var[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                        Plots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
                                         hline!([SS], color = :black, label = "")
                             end)
                         end
@@ -901,32 +903,32 @@ function plot_conditional_forecast(𝓂::ℳ,
 
                     plot_count = 1
                     if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
-                        cond_idx = findall(conditions[var_idx[i],:] .!= nothing)
+                        cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
                         if length(cond_idx) > 0
                         push!(pp,begin
-                                    Plots.plot(1:periods, Y[i,:] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
+                                    Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
                                     Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
                                     hline!([SS 0],color = :black,label = "")   
-                                    Plots.scatter!(cond_idx,conditions[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
+                                    Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
                         end)
                     else
                         push!(pp,begin
-                                    Plots.plot(1:periods, Y[i,:] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
+                                    Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
                                     Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
                                     hline!([SS 0],color = :black,label = "")                              
                         end)
                     end
                     else
-                        cond_idx = findall(conditions[var_idx[i],:] .!= nothing)
+                        cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
                         if length(cond_idx) > 0
                             push!(pp,begin
-                                        Plots.plot(1:periods, Y[i,:] .+ SS, title = string(𝓂.timings.var[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                        Plots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
                                         hline!([SS], color = :black, label = "")
-                                        Plots.scatter!(cond_idx,conditions[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)  
+                                        Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)  
                             end)
                         else 
                             push!(pp,begin
-                                        Plots.plot(1:periods, Y[i,:] .+ SS, title = string(𝓂.timings.var[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                        Plots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
                                         hline!([SS], color = :black, label = "")
                             end)
                         end
