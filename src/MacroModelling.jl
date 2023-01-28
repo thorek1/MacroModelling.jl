@@ -36,6 +36,7 @@ export @model, @parameters, solve!
 export plot_irfs, plot_irf, plot_IRF, plot, plot_simulations, plot_solution
 export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd
 export get_irfs, get_irf, get_IRF, simulate
+export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution
 export get_steady_state, get_SS, get_non_stochastic_steady_state, get_stochastic_steady_state
 export get_moments, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_cov, var, std, cov
@@ -52,8 +53,8 @@ export write_mod_file, write_dynare_file, write_to_dynare_file, export_dynare, e
 export irf, girf
 
 # Remove comment for debugging
-# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!
-# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!
+# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index
+# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update
 
 # StatsFuns
 norminvcdf(p::Number) = -erfcinv(2*p) * sqrt2
@@ -1951,6 +1952,8 @@ function parse_variables_input_to_index(variables::Symbol_input, T::timings)
     if variables == :all
         return indexin(setdiff(T.var,T.aux),sort(union(T.var,T.aux,T.exo_present)))
         # return indexin(setdiff(setdiff(T.var,T.exo_present),T.aux),sort(union(T.var,T.aux,T.exo_present)))
+    elseif variables == :all_including_auxilliary
+        return 1:length(union(T.var,T.aux,T.exo_present))
     elseif variables isa Matrix{Symbol}
         if !issubset(variables,T.var)
             return @warn "Following variables are not part of the model: " * string.(setdiff(variables,T.var))

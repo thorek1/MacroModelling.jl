@@ -175,3 +175,47 @@ simulate(RBC)
 ```
 
 which returns the simulated data in a 3-dimensional `KeyedArray` of the same structure as for the IRFs.
+
+## Conditional forecasts
+
+Conditional forecasting is a useful tool to incorporate for example forecasts into a model and then add shocks on top.
+
+For example we might be interested in the model dynamics given a path for `c` for the first 4 quarters and the next quarter a negative shock to `eps_z` arrives. This can be implemented using the `get_conditional_forecast` function and visualised with the `plot_conditional_forecast` function.
+
+First, we define the conditions on the endogenous variables as deviations from the non stochastic steady state (`c` in this case) using a `KeyedArray` from the `AxisKeys` package (check [`get_conditional_forecast`](@ref) for other ways to define the conditions):
+
+```@repl tutorial_1
+using AxisKeys
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,4),Variables = [:c], Periods = 1:4)
+conditions[1:4] .= [-.01,0,.01,.02]
+```
+
+Note that all other endogenous variables not part of the `KeyedArray` are also not conditioned on.
+
+Next, we define the conditions on the shocks (`eps_z` in this case) using a `SparseArrayCSC` from the `SparseArrays` package (check [`get_conditional_forecast`](@ref) for other ways to define the conditions on the shocks):
+
+```@repl tutorial_1
+using SparseArrays
+shocks = spzeros(1,5)
+shocks[1,5] = -1
+```
+
+Note that for the first 4 periods the shock has no predetermined value and is determined by the conditions on the endogenous variables.
+
+Finally we can get the conditional forecast:
+
+```@repl tutorial_1
+get_conditional_forecast(RBC, conditions, shocks = shocks)
+```
+
+The function returns a `KeyedArray` with the values of the endogenous variables and shocks matching the conditions exactly.
+
+We can also plot the conditional forecast using:
+
+```@repl tutorial_1
+plot_conditional_forecast(RBC, conditions, shocks = shocks)
+```
+
+![RBC conditional forecast](../assets/conditional_fcst__RBC__conditional_forecast__1.png)
+
+Note that the stars indicate the values the model is conditioned on.

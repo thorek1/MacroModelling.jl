@@ -1,7 +1,7 @@
 using Test
 using MacroModelling
 using Random
-using AxisKeys
+using AxisKeys, SparseArrays
 
 include("functionality_tests.jl")
 

@@ -7,7 +7,7 @@ using StatsPlots
 $(SIGNATURES)
 Plot impulse response functions (IRFs) of the model.
 
-The left axis shows the level, and the right the deviation from the reference steady state. Linear solutions have the non stochastic steady state as reference other solutoin the stochastic steady state. The horizontal black line indicates the reference steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
+The left axis shows the level, and the right the deviation from the reference steady state. Linear solutions have the non stochastic steady state as reference other solution the stochastic steady state. The horizontal black line indicates the reference steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
 
 # Arguments
 - $MODEL
@@ -464,7 +464,7 @@ The (non) stochastic steady state is plotted along with the mapping from the cho
 - `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
 - `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
 - `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
-- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- `plots_per_page` [Default: `4`, Type: `Int`]: how many plots to show per page
 - $VERBOSE
 
 # Examples
@@ -740,3 +740,365 @@ function plot_solution(𝓂::ℳ,
     end
 end
 
+
+"""
+$(SIGNATURES)
+Plot conditional forecast given restrictions on endogenous variables and shocks (optional) of the model. The algorithm finds the combinations of shocks with the smallest magnitude to match the conditions and plots both the endogenous variables and shocks.
+
+The left axis shows the level, and the right axis the deviation from the non stochastic steady state. Variable names are above the subplots, conditioned values are marked, and the title provides information about the model, and number of pages.
+
+Limited to the first order perturbation solution of the model.
+
+# Arguments
+- $MODEL
+- $CONDITIONS
+# Keyword Arguments
+- $SHOCK_CONDITIONS
+- `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
+- $VARIABLES
+`conditions_in_levels` [Default: `false`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
+- $LEVELS
+- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
+- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
+- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
+- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
+- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- $VERBOSE
+
+# Examples
+```jldoctest
+using MacroModelling
+using SparseArrays
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+# c is conditioned to deviate by 0.01 in period 1 and y is conditioned to deviate by 0.02 in period 3
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = [:c,:y], Periods = 1:2)
+conditions[1,1] = .01
+conditions[2,2] = .02
+
+# in period 2 second shock (eps_z) is conditioned to take a value of 0.05
+shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
+shocks[1,1] = .05
+
+plot_conditional_forecast(RBC_CME, conditions, shocks = shocks)
+
+# The same can be achieved with the other input formats:
+# conditions = Matrix{Union{Nothing,Float64}}(undef,7,2)
+# conditions[4,1] = .01
+# conditions[6,2] = .02
+
+# using SparseArrays
+# conditions = spzeros(7,2)
+# conditions[4,1] = .01
+# conditions[6,2] = .02
+
+# shocks = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:delta_eps], Periods = [1])
+# shocks[1,1] = .05
+
+# using SparseArrays
+# shocks = spzeros(2,1)
+# shocks[1,1] = .05
+```
+"""
+function plot_conditional_forecast(𝓂::ℳ,
+    conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
+    shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
+    periods::Int = 40, 
+    parameters = nothing,
+    variables::Symbol_input = :all_including_auxilliary, 
+    conditions_in_levels::Bool = false,
+    levels::Bool = false,
+    show_plots::Bool = true,
+    save_plots::Bool = false,
+    save_plots_format::Symbol = :pdf,
+    save_plots_path::String = ".",
+    plots_per_page::Int = 9,
+    verbose = false)
+
+    Y = get_conditional_forecast(𝓂,
+                                conditions,
+                                shocks = shocks, 
+                                periods = periods, 
+                                parameters = parameters,
+                                variables = variables, 
+                                conditions_in_levels = conditions_in_levels,
+                                levels = levels,
+                                verbose = verbose)
+                       
+    periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
+
+    full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
+
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    
+    var_names = axiskeys(Y,1)   
+
+    var_idx = indexin(var_names,full_SS)
+
+    reference_steady_state = [s ∈ union(map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo),𝓂.exo_present) ? 0 : NSSS[Symbol(replace(string(s), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))] for s in var_names]
+
+    var_length = length(full_SS) - 𝓂.timings.nExo
+
+    if conditions isa SparseMatrixCSC{Float64}
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxilliary variables): " * repr(var_names)
+
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
+        nzs = findnz(conditions)
+        for i in 1:length(nzs[1])
+            cond_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
+        end
+        conditions = cond_tmp
+    elseif conditions isa Matrix{Union{Nothing,Float64}}
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxilliary variables): " * repr(var_names)
+
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
+        cond_tmp[:,axes(conditions,2)] = conditions
+        conditions = cond_tmp
+    elseif conditions isa KeyedArray{Union{Nothing,Float64}} || conditions isa KeyedArray{Float64}
+        @assert length(setdiff(axiskeys(conditions,1),full_SS)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(axiskeys(conditions,1),full_SS))
+        
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
+        cond_tmp[indexin(sort(axiskeys(conditions,1)),full_SS),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
+        conditions = cond_tmp
+    end
+    
+    if shocks isa SparseMatrixCSC{Float64}
+        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        nzs = findnz(shocks)
+        for i in 1:length(nzs[1])
+            shocks_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
+        end
+        shocks = shocks_tmp
+    elseif shocks isa Matrix{Union{Nothing,Float64}}
+        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp[:,axes(shocks,2)] = shocks
+        shocks = shocks_tmp
+    elseif shocks isa KeyedArray{Union{Nothing,Float64}} || shocks isa KeyedArray{Float64}
+        @assert length(setdiff(axiskeys(shocks,1),𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.exo))
+        
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
+        shocks = shocks_tmp
+    elseif isnothing(shocks)
+        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+    end
+                       
+    # plots = []
+    default(size=(700,500),
+            # leg = false,
+            # plot_titlefont = (10, fontt), 
+            # titlefont = (10, fontt), 
+            # guidefont = (8, fontt), 
+            plot_titlefont = (10), 
+            titlefont = (10), 
+            guidefont = (8), 
+            legendfontsize = 8, 
+            # tickfont = (8, fontt),
+            # tickfontfamily = fontt,
+            tickfontsize = 8,
+            # tickfontrotation = 9,
+            # rotation = 90,
+            # tickfontvalign = :center,
+            # topmargin = 10mm,
+            # rightmargin = 17mm, 
+            framestyle = :box)
+
+
+    # for i in 1:length(var_idx)
+        n_subplots = length(var_idx)
+        pp = []
+        pane = 1
+        plot_count = 1
+        for i in 1:length(var_idx)
+            if all(isapprox.(Y[i,:], 0, atol = eps(Float32)))
+                n_subplots -= 1
+            end
+        end
+
+        for i in 1:length(var_idx)
+            SS = reference_steady_state[i]
+            if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)) > 0
+            # if !(plot_count ∈ unique(round.((1:𝓂.timings.timings.nVars)/plots_per_page))*plots_per_page)
+                if !(plot_count % plots_per_page == 0)
+                    plot_count += 1
+                    if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
+                        cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
+                        if length(cond_idx) > 0
+                            push!(pp,begin
+                                        Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
+                                        Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
+                                        hline!([SS 0], color = :black, label = "") 
+                                        Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                             
+                            end)
+                        else
+                            push!(pp,begin
+                                        Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
+                                        Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
+                                        hline!([SS 0], color = :black, label = "")                         
+                            end)
+                        end
+                    else
+                        cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
+                        if length(cond_idx) > 0
+                            push!(pp,begin
+                                        Plots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                        hline!([SS], color = :black, label = "")
+                                        Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)   
+                            end)
+                        else
+                            push!(pp,begin
+                                        Plots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                        hline!([SS], color = :black, label = "")
+                            end)
+                        end
+
+                    end
+                else
+
+                    plot_count = 1
+                    if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
+                        cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
+                        if length(cond_idx) > 0
+                        push!(pp,begin
+                                    Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
+                                    Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
+                                    hline!([SS 0],color = :black,label = "")   
+                                    Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
+                        end)
+                    else
+                        push!(pp,begin
+                                    Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
+                                    Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
+                                    hline!([SS 0],color = :black,label = "")                              
+                        end)
+                    end
+                    else
+                        cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
+                        if length(cond_idx) > 0
+                            push!(pp,begin
+                                        Plots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                        hline!([SS], color = :black, label = "")
+                                        Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)  
+                            end)
+                        else 
+                            push!(pp,begin
+                                        Plots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                        hline!([SS], color = :black, label = "")
+                            end)
+                        end
+
+                    end
+
+                    shock_string = "Conditional forecast"
+                    shock_name = "conditional_forecast"
+
+                    ppp = Plots.plot(pp...)
+
+                    p = Plots.plot(ppp,begin
+                                                Plots.scatter(fill(0,1,1), 
+                                                label = "Condition", 
+                                                marker = :star8,
+                                                markercolor = :black,
+                                                linewidth = 0, 
+                                                framestyle = :none, 
+                                                legend = :inside)
+
+                                                Plots.scatter!(fill(0,1,1), 
+                                                label = "", 
+                                                marker = :rect,
+                                                # markersize = 2,
+                                                markerstrokecolor = :white,
+                                                markerstrokewidth = 0, 
+                                                markercolor = :white,
+                                                linecolor = :white, 
+                                                linewidth = 0, 
+                                                framestyle = :none, 
+                                                legend = :inside)
+                                            end, 
+                                                layout = grid(2, 1, heights=[0.99, 0.01]),
+                                                plot_title = "Model: "*𝓂.model_name*"        " * shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                    
+                    if show_plots# & (length(pp) > 0)
+                        display(p)
+                    end
+
+                    if save_plots# & (length(pp) > 0)
+                        savefig(p, save_plots_path * "/conditional_fcst__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                    end
+
+                    pane += 1
+                    pp = []
+                end
+            end
+        end
+        if length(pp) > 0
+
+            shock_string = "Conditional forecast"
+            shock_name = "conditional_forecast"
+
+            # p = Plots.plot(pp...,plot_title = "Model: " * 𝓂.model_name * "        " * shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page))) * ")")
+
+            ppp = Plots.plot(pp...)
+
+            p = Plots.plot(ppp,begin
+                                    Plots.scatter(fill(0,1,1), 
+                                    label = "Condition", 
+                                    marker = :star8,
+                                    markercolor = :black,
+                                    linewidth = 0, 
+                                    framestyle = :none, 
+                                    legend = :inside)
+
+                                    Plots.scatter!(fill(0,1,1), 
+                                    label = "", 
+                                    marker = :rect,
+                                    # markersize = 2,
+                                    markerstrokecolor = :white,
+                                    markerstrokewidth = 0, 
+                                    markercolor = :white,
+                                    linecolor = :white, 
+                                    linewidth = 0, 
+                                    framestyle = :none, 
+                                    legend = :inside)
+                                    end, 
+                                        layout = grid(2, 1, heights=[0.99, 0.01]),
+                                        plot_title = "Model: "*𝓂.model_name*"        " * shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+            
+            if show_plots
+                display(p)
+            end
+
+            if save_plots
+                savefig(p, save_plots_path * "/conditional_fcst__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+            end
+        end
+    # end
+
+
+
+end
