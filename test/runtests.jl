@@ -1,7 +1,7 @@
 using Test
 using MacroModelling
 using Random
-using AxisKeys
+using AxisKeys, SparseArrays
 
 include("functionality_tests.jl")
 
@@ -60,6 +60,12 @@ end
     functionality_test(m, plots = false)
     functionality_test(m, algorithm = :second_order, plots = false)
     # functionality_test(m, algorithm = :third_order, plots = false)
+end
+
+@testset "Test dynare read/write" begin
+    include("models/FS2000.jl")
+    write_to_dynare_file(m)
+    translate_mod_file("m.mod")
 end
 
 @testset "Model without shocks" begin

@@ -36,9 +36,6 @@ Manifest.toml
 *.log
 .ipynb_checkpoints/
 *.svg
-irf*.png
-fevd*.png
-solution*.png
 *.xls
 test/fix_RBC.jl
 test/fix_SW03_SS.jl
@@ -46,3 +43,9 @@ test/fix_sw03.jl
 test/figure out SS.jl
 test/debug_test.jl
 test/macrotoolstest.jl
+test/models/example1/
+
+irf*.png
+fevd*.png
+solution*.png
+conditional_fcst*.png

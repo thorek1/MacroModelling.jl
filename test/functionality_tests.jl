@@ -135,6 +135,81 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all)
 
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all_including_auxilliary)
+
+        # test conditional forecasting
+        new_sub_irfs_all  = get_irf(m, verbose = true, variables = :all_including_auxilliary)
+        varnames = axiskeys(new_sub_irfs_all,1)
+        shocknames = axiskeys(new_sub_irfs_all,3)
+        sol = get_solution(m)
+        var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[1:2]
+
+        conditions = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
+        conditions[var_idxs[1],1] = .01
+        conditions[var_idxs[2],2] = .02
+        
+        cond_fcst = get_conditional_forecast(m, conditions)
+
+        if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
+            shocks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
+            shocks[1,1] = .1
+            cond_fcst = get_conditional_forecast(m, conditions, shocks = shocks)
+        end
+
+        conditions = spzeros(size(new_sub_irfs_all,1),2)
+        conditions[var_idxs[1],1] = .01
+        conditions[var_idxs[2],2] = .02
+        
+        cond_fcst = get_conditional_forecast(m, conditions)
+
+        if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
+            shocks = spzeros(size(new_sub_irfs_all,3),1)
+            shocks[1,1] = .1
+            cond_fcst = get_conditional_forecast(m, conditions, shocks = shocks)
+        end
+
+        conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[1:2]], Periods = 1:2)
+        conditions[var_idxs[1],1] = .01
+        conditions[var_idxs[2],2] = .02
+
+        cond_fcst = get_conditional_forecast(m, conditions)
+
+        if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
+            shocks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
+            shocks[1,1] = .1
+            cond_fcst = get_conditional_forecast(m, conditions, shocks = shocks)
+        end
+
+        cond_fcst = get_conditional_forecast(m, conditions)
+        cond_fcst = get_conditional_forecast(m, conditions, periods = 10, verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
+
+
+        if plots
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
+        end
+
+        NSSS = get_SS(m,derivatives = false)
+        full_SS = sort(union(m.var,m.aux,m.exo_present))
+        full_SS[indexin(m.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  m.aux)
+        reference_steady_state = [s ∈ m.exo_present ? 0 : NSSS(s) for s in full_SS]
+
+        conditions_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[1:2]], Periods = 1:2)
+        conditions_lvl[var_idxs[1],1] = .01 + reference_steady_state[var_idxs[1]]
+        conditions_lvl[var_idxs[2],2] = .02 + reference_steady_state[var_idxs[2]]
+
+        cond_fcst = get_conditional_forecast(m, conditions_lvl, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], conditions_in_levels = true, verbose = true)
+
+        cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = old_par_vals, variables = varnames[1], levels = true, verbose = true)
+
     end
 
     if algorithm ∈ [:second_order, :third_order]

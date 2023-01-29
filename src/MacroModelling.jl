@@ -32,12 +32,14 @@ include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")
 include("plotting.jl")
+include("dynare.jl")
 
 
 export @model, @parameters, solve!
 export plot_irfs, plot_irf, plot_IRF, plot, plot_simulations, plot_solution
 export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd
 export get_irfs, get_irf, get_IRF, simulate
+export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution
 export get_steady_state, get_SS, get_non_stochastic_steady_state, get_stochastic_steady_state
 export get_moments, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_cov, var, std, cov
@@ -47,11 +49,15 @@ export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution#, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export calculate_kalman_filter_loglikelihood
 
+export translate_mod_file, translate_dynare_file, import_model, import_dynare
+export write_mod_file, write_dynare_file, write_to_dynare_file, export_dynare, export_to_dynare, export_mod_file
 
 # Internal
-export irf, girf, block_solver, block_solver_AD
-# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!
+export irf, girf
 
+# Remove comment for debugging
+# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index
+# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD
 
 # StatsFuns
 norminvcdf(p::Number) = -erfcinv(2*p) * sqrt2
@@ -232,7 +238,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, symbolics::symbolics)
             
             if length(soll) == 0 || soll == SymPy.Sym[0] # take out variable if it is redundant from that euation only
                 push!(symbolics.var_redundant_list[i],var_to_solve)
-                ss_equations[i] = ss_equations[i].subs(var_to_solve,1)
+                ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
             end
 
         end
@@ -250,7 +256,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 
     incidence_matrix = fill(0,length(unknowns),length(unknowns))
 
-    eq_list = union(union.(setdiff.(union.(symbolics.var_list,
+    eq_list = vcat(union.(setdiff.(union.(symbolics.var_list,
                                            symbolics.ss_list),
                                     symbolics.var_redundant_list),
                             symbolics.par_list),
@@ -421,7 +427,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 
                 guess = []
                 result = []
-                sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.nonnegativity_auxilliary_vars))
+                sorted_vars = sort(𝓂.solved_vars[end])
+                # sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.nonnegativity_auxilliary_vars))
                 for (i, parss) in enumerate(sorted_vars) 
                     push!(guess,:($parss = guess[$i]))
                     # push!(guess,:($parss = undo_transformer(guess[$i])))
@@ -431,10 +438,10 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 other_vars = []
                 other_vars_input = []
                 # other_vars_inverse = []
-                other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters),sort(𝓂.solved_vars[end])),syms_in_eqs)
+                other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters,𝓂.nonnegativity_auxilliary_vars),sort(𝓂.solved_vars[end])),syms_in_eqs)
                 
                 for var in other_vrs
-                    var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
+                    # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
                     push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
                     push!(other_vars_input,:($(var)))
                     iii += 1
@@ -527,7 +534,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                         $(other_vars...) # take only those that appear in equations - DONE
 
                         # $(aug_lag...)
-                        $(nnaux_linear...)
+                        $(nnaux...)
+                        # $(nnaux_linear...)
                         return [$(solved_vals...)]
                     end)
 
@@ -792,7 +800,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         ubs::Vector{Float64};
                         tol = eps(Float64),
                         maxtime = 120,
-                        starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25],
+                        starting_points = [.9, 1, 1.1, .75, 1.5, 0.0, -.5, 2, .25],
                         fail_fast_solvers_only = true,
                         verbose = false)
     
@@ -2077,16 +2085,16 @@ function irf(state_update::Function, initial_state::Vector{Float64}, T::timings;
     else
         Y = zeros(T.nVars,periods,length(shock_idx))
 
-        for ii in shock_idx
+        for (i,ii) in enumerate(shock_idx)
             if shocks != :simulate && shocks isa Symbol_input
                 shock_history = zeros(T.nExo,periods)
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
 
-            Y[:,1,ii] = state_update(initial_state,shock_history[:,1])
+            Y[:,1,i] = state_update(initial_state,shock_history[:,1])
 
             for t in 1:periods-1
-                Y[:,t+1,ii] = state_update(Y[:,t,ii],shock_history[:,t+1])
+                Y[:,t+1,i] = state_update(Y[:,t,i],shock_history[:,t+1])
             end
         end
 
@@ -2141,7 +2149,7 @@ function girf(state_update::Function, T::timings;
         initial_state = state_update(initial_state, zeros(T.nExo))
     end
 
-    for ii in shock_idx
+    for (i,ii) in enumerate(shock_idx)
         for draw in 1:draws
             for i in 1:warmup_periods
                 initial_state = state_update(initial_state, randn(T.nExo))
@@ -2167,9 +2175,9 @@ function girf(state_update::Function, T::timings;
                 Y2[:,t+1] = state_update(Y2[:,t],baseline_noise + shock_history[:,t])
             end
 
-            Y[:,:,ii] += Y2 - Y1
+            Y[:,:,i] += Y2 - Y1
         end
-        Y[:,:,ii] /= draws
+        Y[:,:,i] /= draws
     end
     
     return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
@@ -2180,6 +2188,8 @@ function parse_variables_input_to_index(variables::Symbol_input, T::timings)
     if variables == :all
         return indexin(setdiff(T.var,T.aux),sort(union(T.var,T.aux,T.exo_present)))
         # return indexin(setdiff(setdiff(T.var,T.exo_present),T.aux),sort(union(T.var,T.aux,T.exo_present)))
+    elseif variables == :all_including_auxilliary
+        return 1:length(union(T.var,T.aux,T.exo_present))
     elseif variables isa Matrix{Symbol}
         if !issubset(variables,T.var)
             return @warn "Following variables are not part of the model: " * string.(setdiff(variables,T.var))
