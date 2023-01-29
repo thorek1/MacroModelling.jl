@@ -858,7 +858,9 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     var_idx = indexin(var_names,full_SS)
 
-    reference_steady_state = [s ∈ union(map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo),𝓂.exo_present) ? 0 : NSSS[Symbol(replace(string(s), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))] for s in var_names]
+    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    reference_steady_state = [s ∈ union(map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo),𝓂.exo_present) ? 0 : NSSS[indexin([Symbol(replace(string(s), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))],NSSS_labels)...] for s in var_names]
 
     var_length = length(full_SS) - 𝓂.timings.nExo
 
