@@ -238,7 +238,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, symbolics::symbolics)
             
             if length(soll) == 0 || soll == SymPy.Sym[0] # take out variable if it is redundant from that euation only
                 push!(symbolics.var_redundant_list[i],var_to_solve)
-                ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
+                ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(SymPy.Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
             end
 
         end
@@ -351,7 +351,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
             
             if symbolic_SS
                 soll = try solve(SymPy.Sym(eqs_to_solve),vars_to_solve)
-                # soll = try solve(Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
+                # soll = try solve(SymPy.Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
                 catch
                 end
 
