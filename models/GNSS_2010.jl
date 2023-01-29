@@ -1,5 +1,3 @@
-using MacroModelling
-
 @model GNSS_2010 begin
 	(1 - a_i) * exp(ee_z[0]) * (c_p[0] - a_i * c_p[-1]) ^ (-1) = lam_p[0]
 

@@ -15,10 +15,10 @@ As of now the package can:
 - estimate the model on data (kalman filter using first order perturbation)
 - **differentiate** (forward AD) the model solution (first order perturbation), kalman filter loglikelihood, model moments, steady state, **with respect to the parameters**
 
-The package contains the following models in the `test/models` folder:
+The package contains the following models in the `models` folder:
 
 - Smets and Wouters (2003) `SW03.jl`
 - Smets and Wouters (2007) `SW07.jl`
 - Schorfheide (2000) `FS2000.jl`
-- Ascari and Sbordone (2014) `Ascari_sbordone_2014`
-- Gerali, Neri, Sessa, and Signoretti (2010) `GNSS_2010`
+- Ascari and Sbordone (2014) `Ascari_sbordone_2014.jl`
+- Gerali, Neri, Sessa, and Signoretti (2010) `GNSS_2010.jl`
