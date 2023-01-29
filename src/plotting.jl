@@ -76,12 +76,14 @@ function plot(𝓂::ℳ;
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
+    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
     if algorithm == :second_order
         reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
     elseif algorithm == :third_order
         reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
     elseif algorithm ∈ [:linear_time_iteration, :riccati, :first_order]
-        reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[s] for s in full_SS]
+        reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[indexin([s],NSSS_labels)...] for s in full_SS]
     end
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
@@ -509,7 +511,7 @@ function plot_solution(𝓂::ℳ,
     plots_per_page::Int = 4,
     verbose = false)
 
-    @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*reduce(*," ".*string.(𝓂.timings.past_not_future_and_mixed))
+    @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(𝓂.timings.past_not_future_and_mixed)
 
     @assert length(setdiff(algorithm isa Symbol ? [algorithm] : algorithm, [:third_order, :second_order, :first_order])) == 0 "Invalid algorithm. Choose any combination of: :third_order, :second_order, :first_order"
 
@@ -856,7 +858,9 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     var_idx = indexin(var_names,full_SS)
 
-    reference_steady_state = [s ∈ union(map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo),𝓂.exo_present) ? 0 : NSSS[Symbol(replace(string(s), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))] for s in var_names]
+    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    reference_steady_state = [s ∈ union(map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo),𝓂.exo_present) ? 0 : NSSS[indexin([Symbol(replace(string(s), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))],NSSS_labels)...] for s in var_names]
 
     var_length = length(full_SS) - 𝓂.timings.nExo
 
@@ -1015,7 +1019,6 @@ function plot_conditional_forecast(𝓂::ℳ,
                     end
 
                     shock_string = "Conditional forecast"
-                    shock_name = "conditional_forecast"
 
                     ppp = Plots.plot(pp...)
 
@@ -1048,7 +1051,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                     end
 
                     if save_plots# & (length(pp) > 0)
-                        savefig(p, save_plots_path * "/conditional_fcst__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                        savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
                     end
 
                     pane += 1
@@ -1059,7 +1062,6 @@ function plot_conditional_forecast(𝓂::ℳ,
         if length(pp) > 0
 
             shock_string = "Conditional forecast"
-            shock_name = "conditional_forecast"
 
             # p = Plots.plot(pp...,plot_title = "Model: " * 𝓂.model_name * "        " * shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page))) * ")")
 
@@ -1094,7 +1096,7 @@ function plot_conditional_forecast(𝓂::ℳ,
             end
 
             if save_plots
-                savefig(p, save_plots_path * "/conditional_fcst__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
     # end

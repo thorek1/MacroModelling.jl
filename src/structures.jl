@@ -34,49 +34,57 @@ struct timings
 end
 
 struct symbolics
-    ss_equations::Vector{Sym}
-    # dyn_equations::Vector{Sym}
-    # dyn_equations_future::Vector{Sym}
+    ss_equations::Vector{SymPy.Sym}
+    dyn_equations::Vector{SymPy.Sym}
+    # dyn_equations_future::Vector{SymPy.Sym}
     
-    # dyn_shift_var_present_list::Vector{Set{Sym}}
-    # dyn_shift_var_past_list::Vector{Set{Sym}}
-    # dyn_shift_var_future_list::Vector{Set{Sym}}
+    # dyn_shift_var_present_list::Vector{Set{SymPy.Sym}}
+    # dyn_shift_var_past_list::Vector{Set{SymPy.Sym}}
+    # dyn_shift_var_future_list::Vector{Set{SymPy.Sym}}
 
-    # dyn_shift2_var_past_list::Vector{Set{Sym}}
+    # dyn_shift2_var_past_list::Vector{Set{SymPy.Sym}}
 
-    # dyn_var_present_list::Vector{Set{Sym}}
-    # dyn_var_past_list::Vector{Set{Sym}}
-    # dyn_var_future_list::Vector{Set{Sym}}
-    # dyn_ss_list::Vector{Set{Sym}}
-    # dyn_exo_list::Vector{Set{Sym}}
+    dyn_var_present_list::Vector{Set{SymPy.Sym}}
+    dyn_var_past_list::Vector{Set{SymPy.Sym}}
+    dyn_var_future_list::Vector{Set{SymPy.Sym}}
+    # dyn_ss_list::Vector{Set{SymPy.Sym}}
+    dyn_exo_list::Vector{Set{SymPy.Sym}}
 
-    var_present_list::Vector{Set{Sym}}
-    var_past_list::Vector{Set{Sym}}
-    var_future_list::Vector{Set{Sym}}
-    ss_list::Vector{Set{Sym}}
-    var_list::Vector{Set{Sym}}
-    # dynamic_variables_list::Vector{Set{Sym}}
-    # dynamic_variables_future_list::Vector{Set{Sym}}
+    dyn_exo_future_list::Vector{Set{SymPy.Sym}}
+    dyn_exo_present_list::Vector{Set{SymPy.Sym}}
+    dyn_exo_past_list::Vector{Set{SymPy.Sym}} 
 
-    par_list::Vector{Set{Sym}}
+    dyn_future_list::Vector{Set{SymPy.Sym}}
+    dyn_present_list::Vector{Set{SymPy.Sym}}
+    dyn_past_list::Vector{Set{SymPy.Sym}} 
 
-    calibration_equations::Vector{Sym}
-    calibration_equations_parameters::Vector{Sym}
-    # parameters::Vector{Sym}
+    var_present_list::Vector{Set{SymPy.Sym}}
+    var_past_list::Vector{Set{SymPy.Sym}}
+    var_future_list::Vector{Set{SymPy.Sym}}
+    ss_list::Vector{Set{SymPy.Sym}}
+    var_list::Vector{Set{SymPy.Sym}}
+    # dynamic_variables_list::Vector{Set{SymPy.Sym}}
+    # dynamic_variables_future_list::Vector{Set{SymPy.Sym}}
 
-    # var_present::Set{Sym}
-    # var_past::Set{Sym}
-    # var_future::Set{Sym}
-    var::Set{Sym}
-    nonnegativity_auxilliary_vars::Set{Sym}
+    par_list::Vector{Set{SymPy.Sym}}
 
-    ss_calib_list::Vector{Set{Sym}}
-    par_calib_list::Vector{Set{Sym}}
+    calibration_equations::Vector{SymPy.Sym}
+    calibration_equations_parameters::Vector{SymPy.Sym}
+    # parameters::Vector{SymPy.Sym}
 
-    var_redundant_list::Vector{Set{Sym}}
-    # var_redundant_calib_list::Vector{Set{Sym}}
-    # var_solved_list::Vector{Set{Sym}}
-    # var_solved_calib_list::Vector{Set{Sym}}
+    # var_present::Set{SymPy.Sym}
+    # var_past::Set{SymPy.Sym}
+    # var_future::Set{SymPy.Sym}
+    var::Set{SymPy.Sym}
+    nonnegativity_auxilliary_vars::Set{SymPy.Sym}
+
+    ss_calib_list::Vector{Set{SymPy.Sym}}
+    par_calib_list::Vector{Set{SymPy.Sym}}
+
+    var_redundant_list::Vector{Set{SymPy.Sym}}
+    # var_redundant_calib_list::Vector{Set{SymPy.Sym}}
+    # var_solved_list::Vector{Set{SymPy.Sym}}
+    # var_solved_calib_list::Vector{Set{SymPy.Sym}}
 end
 
 
@@ -101,7 +109,7 @@ end
 
 mutable struct solution
     perturbation::perturbation
-    non_stochastic_steady_state::ComponentVector{Float64}
+    non_stochastic_steady_state::Vector{Float64}
     algorithms::Set{Symbol}
     outdated_algorithms::Set{Symbol}
     outdated_NSSS::Bool
@@ -182,14 +190,23 @@ mutable struct ℳ
     dyn_ss_list::Vector{Set{Symbol}}
     dyn_exo_list::Vector{Set{Symbol}}
 
+    dyn_exo_future_list::Vector{Set{Symbol}}
+    dyn_exo_present_list::Vector{Set{Symbol}}
+    dyn_exo_past_list::Vector{Set{Symbol}} 
+
+    dyn_future_list::Vector{Set{Symbol}}
+    dyn_present_list::Vector{Set{Symbol}}
+    dyn_past_list::Vector{Set{Symbol}} 
+
     solved_vars::Vector#{Union{Symbol,Vector{Symbol}}}
     solved_vals::Vector#{Union{Float64,Expr,Int,Vector{Union{Float64,Expr,Int}}}}
     non_linear_solved_vars
     non_linear_solved_vals
     # solved_sub_vals
     # solved_sub_values
-    ss_solve_blocks
-    ss_solve_blocks_optim
+    ss_solve_blocks::Vector#{RuntimeGeneratedFunction}
+    ss_solve_blocks_no_transform::Vector#{RuntimeGeneratedFunction}
+    ss_solve_blocks_optim::Vector#{RuntimeGeneratedFunction}
     # SS_init_guess::Vector{Real}
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func
@@ -217,6 +234,9 @@ mutable struct ℳ
     upper_bounds::Vector{Float64}
 
     model_function::Function
+    model_jacobian::Function
+    model_hessian::Function
+    model_third_order_derivatives::Function
 
     timings::timings
     solution::solution

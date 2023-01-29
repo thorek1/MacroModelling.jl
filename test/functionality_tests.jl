@@ -134,6 +134,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = Tuple(m.timings.var))
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all)
+
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all_including_auxilliary)
 
         # test conditional forecasting
@@ -208,6 +209,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         cond_fcst = get_conditional_forecast(m, conditions_lvl, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], conditions_in_levels = true, verbose = true)
 
         cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = old_par_vals, variables = varnames[1], levels = true, verbose = true)
+
     end
 
     if algorithm ∈ [:second_order, :third_order]

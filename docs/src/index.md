@@ -20,4 +20,5 @@ The package contains the following models in the `test/models` folder:
 - Smets and Wouters (2003) `SW03.jl`
 - Smets and Wouters (2007) `SW07.jl`
 - Schorfheide (2000) `FS2000.jl`
-  
+- Ascari and Sbordone (2014) `Ascari_sbordone_2014`
+- Gerali, Neri, Sessa, and Signoretti (2010) `GNSS_2010`
