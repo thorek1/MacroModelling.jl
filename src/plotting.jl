@@ -1019,7 +1019,6 @@ function plot_conditional_forecast(𝓂::ℳ,
                     end
 
                     shock_string = "Conditional forecast"
-                    shock_name = "conditional_forecast"
 
                     ppp = Plots.plot(pp...)
 
@@ -1052,7 +1051,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                     end
 
                     if save_plots# & (length(pp) > 0)
-                        savefig(p, save_plots_path * "/conditional_fcst__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                        savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
                     end
 
                     pane += 1
@@ -1063,7 +1062,6 @@ function plot_conditional_forecast(𝓂::ℳ,
         if length(pp) > 0
 
             shock_string = "Conditional forecast"
-            shock_name = "conditional_forecast"
 
             # p = Plots.plot(pp...,plot_title = "Model: " * 𝓂.model_name * "        " * shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page))) * ")")
 
@@ -1098,7 +1096,7 @@ function plot_conditional_forecast(𝓂::ℳ,
             end
 
             if save_plots
-                savefig(p, save_plots_path * "/conditional_fcst__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
     # end
