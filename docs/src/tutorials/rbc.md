@@ -187,7 +187,7 @@ First, we define the conditions on the endogenous variables as deviations from t
 ```@repl tutorial_1
 using AxisKeys
 conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,4),Variables = [:c], Periods = 1:4)
-conditions[1:4] .= [-.01,0,.01,.02]
+conditions[1:4] .= [-.01,0,.01,.02];
 ```
 
 Note that all other endogenous variables not part of the `KeyedArray` are also not conditioned on.
@@ -197,7 +197,7 @@ Next, we define the conditions on the shocks (`eps_z` in this case) using a `Spa
 ```@repl tutorial_1
 using SparseArrays
 shocks = spzeros(1,5)
-shocks[1,5] = -1
+shocks[1,5] = -1;
 ```
 
 Note that for the first 4 periods the shock has no predetermined value and is determined by the conditions on the endogenous variables.

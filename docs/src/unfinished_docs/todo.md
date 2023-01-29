@@ -8,7 +8,7 @@
 - [ ] use @assert for errors and @test_throws
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
 - [ ] print SS dependencies, show SS solver
-- [ ] write to dynare
+- [ ] check SW03 SS solver
   
 - [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
 - [ ] make the nonnegativity trick optional
@@ -29,6 +29,7 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] write to dynare
 - [x] add plot for policy function
 - [x] add plot for FEVD
 - [x] add functions like get_variance, get_sd, get_var, get_covar
