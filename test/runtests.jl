@@ -1653,7 +1653,47 @@ end
 
 
 @testset "First order perturbation" begin
+    RBC_CME = nothing
+
+    # Numerical test with calibration targets
+    @model RBC_CME begin
+        y[0]=A[0]*k[-1]^alpha
+        1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+        1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+        R[0] * beta =(Pi[0]/Pibar)^phi_pi
+        A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+        z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+        A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+    end
+
+
+    @parameters RBC_CME begin
+        alpha | k[ss] / (4 * y[ss]) = cap_share
+        cap_share = 1.66
+        # alpha = .157
+
+        beta | R[ss] = R_ss # beta needs to enter into function: block in order to solve
+        R_ss = 1.0035
+        # beta = .999
+
+        # delta | c[ss]/y[ss] = 1 - I_K_ratio
+        delta | delta * k[ss] / y[ss] = I_K_ratio #check why this doesnt solve for y; because delta is not recognised as a free parameter here.
+        I_K_ratio = .15
+        # delta = .0226
+
+        Pibar | Pi[ss] = Pi_ss
+        Pi_ss = 1.0025
+        # Pibar = 1.0008
+
+        phi_pi = 1.5
+        rhoz = .9
+        std_eps = .0068
+        rho_z_delta = .9
+        std_z_delta = .005
+    end
+
     solve!(RBC_CME,dynamics = true)
+
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
                                                                 6.73489e-6   0.000168887
                                                                 1.01124e-5   0.000253583
@@ -1685,22 +1725,18 @@ end
 
 
 
-@testset "First order perturbation" begin
+@testset "First order: linear time iteration" begin
+    RBC_CME = nothing
 
-
-    # Symbolic test with calibration targets
+    # Numerical test with calibration targets
     @model RBC_CME begin
         y[0]=A[0]*k[-1]^alpha
         1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
         1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
         R[0] * beta =(Pi[0]/Pibar)^phi_pi
-        # A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta)*k[-1]
         A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
         z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
-        # z[0]=rhoz*z[-1]+std_eps*eps_z[x]
-        # A[0]=exp(z[0])
         A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
-        # log(A[0]) = rhoz * log(A[-1]) + std_eps * eps_z[x]
     end
 
 
@@ -1709,12 +1745,12 @@ end
         cap_share = 1.66
         # alpha = .157
 
-        beta | R[ss] = R_ss
+        beta | R[ss] = R_ss # beta needs to enter into function: block in order to solve
         R_ss = 1.0035
         # beta = .999
 
-        delta | c[ss]/y[ss] = 1 - I_K_ratio
-        # delta | delta * k[ss] / y[ss] = I_K_ratio # this doesnt solve symbolically
+        # delta | c[ss]/y[ss] = 1 - I_K_ratio
+        delta | delta * k[ss] / y[ss] = I_K_ratio #check why this doesnt solve for y; because delta is not recognised as a free parameter here.
         I_K_ratio = .15
         # delta = .0226
 
@@ -1727,25 +1763,7 @@ end
         std_eps = .0068
         rho_z_delta = .9
         std_z_delta = .005
-        
-        # cap_share > 0
-        # R_ss > 0
-        # Pi_ss > 0
-        # I_K_ratio > 0 
-
-        # 0 < alpha < 1 
-        # 0 < beta < 1
-        # 0 < delta < 1
-        # 0 < Pibar
-        # 0 <= rhoz < 1
-        # phi_pi > 0
-
-        # 0 < A < 1
-        # 0 < k < 50
-        # 0 < y < 10
-        # 0 < c < 10
     end
-
 
     solve!(RBC_CME,dynamics = true, algorithm = :linear_time_iteration)
 
@@ -1757,7 +1775,9 @@ end
                                                                 0.0          0.00966482
                                                                 0.005        0.0], atol = 1e-6)
 
+
     solve!(RBC_CME, dynamics = true, algorithm = :linear_time_iteration, parameters = :I_K_ratio => .1)
+
     @test isapprox(RBC_CME.solution.perturbation.linear_time_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
         3.42408e-6   0.000111417
         5.14124e-6   0.000167292
@@ -1766,7 +1786,9 @@ end
         0.0          0.00852381
         0.005        0.0], atol = 1e-6)
 
+
     solve!(RBC_CME,dynamics = true, algorithm = :linear_time_iteration, parameters = :cap_share => 1.5)
+
     @test isapprox(RBC_CME.solution.perturbation.linear_time_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
     4.00629e-6   0.000118171
     6.01543e-6   0.000177434
