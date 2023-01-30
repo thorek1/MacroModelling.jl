@@ -9,14 +9,14 @@ Reads in a `dynare` .mod-file, adapts the syntax, tries to capture parameter def
 The recommended workflow is to use this function to translate a .mod-file, and then adapt the output so that it runs and corresponds to the input.
 
 # Arguments
-- `name` [Type: `AbstractString`]: filename of the .mod-file to be translated
+- `path_to_mod_file` [Type: `AbstractString`]: path including filename of the .mod-file to be translated
 """
-function translate_mod_file(name::AbstractString)
-    args = [basename(name), "language=julia", "json=compute"]
+function translate_mod_file(path_to_mod_file::AbstractString)
+    args = [basename(path_to_mod_file), "language=julia", "json=compute"]
     
-    directory = dirname(name)
+    directory = dirname(path_to_mod_file)
 
-    directory_2 = replace(basename(name),r"\.mod$"=>"")
+    directory_2 = replace(basename(path_to_mod_file),r"\.mod$"=>"")
 
     if length(directory) > 0
         current_directory = pwd()
