@@ -189,12 +189,12 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
 
         if plots
-            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true)
-            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, verbose = true)
-            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
-            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
-            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
-            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = true, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = false, show_plots = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = false, periods = 10, verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = false, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
+            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = false, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
         end
 
         NSSS = get_SS(m,derivatives = false)
