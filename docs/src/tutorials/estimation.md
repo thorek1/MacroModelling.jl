@@ -9,7 +9,7 @@ The first step is always to name the model and write down the equations. For the
 ```@setup tutorial_2
 ENV["GKSwstype"] = "100"
 using Random
-Random.seed!(3)
+Random.seed!(300)
 ```
 
 ```@repl tutorial_2
