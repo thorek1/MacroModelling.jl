@@ -768,7 +768,7 @@ Limited to the first order perturbation solution of the model.
 - $VERBOSE
 
 # Examples
-```jldoctest
+```julia
 using MacroModelling
 using SparseArrays
 
