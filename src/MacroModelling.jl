@@ -1419,13 +1419,13 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,<: Number}; 
         if !isnothing(bnd_idx)
             if collect(values(parameters))[i] > 𝓂.upper_bounds[bnd_idx]
                 # println("Calibration is out of bounds for ",collect(keys(parameters))[i],":\t",collect(values(parameters))[i]," > ",𝓂.upper_bounds[bnd_idx] + eps())
-                println("Bounds error for",collect(keys(parameters))[i]," < ",𝓂.upper_bounds[bnd_idx] + eps(),"\tparameter value: ",collect(values(parameters))[i])
+                println("Bounds error for ",collect(keys(parameters))[i]," < ",𝓂.upper_bounds[bnd_idx] + eps(),"\tparameter value: ",collect(values(parameters))[i])
                 bounds_broken = true
                 continue
             end
             if collect(values(parameters))[i] < 𝓂.lower_bounds[bnd_idx]
                 # println("Calibration is out of bounds for ",collect(keys(parameters))[i],":\t",collect(values(parameters))[i]," < ",𝓂.lower_bounds[bnd_idx] - eps())
-                println("Bounds error for",collect(keys(parameters))[i]," > ",𝓂.lower_bounds[bnd_idx] + eps(),"\tparameter value: ",collect(values(parameters))[i])
+                println("Bounds error for ",collect(keys(parameters))[i]," > ",𝓂.lower_bounds[bnd_idx] + eps(),"\tparameter value: ",collect(values(parameters))[i])
                 bounds_broken = true
                 continue
             end
@@ -1478,12 +1478,12 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Number}; verbo
         bnd_idx = findfirst(x -> x == 𝓂.parameters[i], 𝓂.bounded_vars)
         if !isnothing(bnd_idx)
             if collect(values(parameters))[i] > 𝓂.upper_bounds[bnd_idx]
-                println("Bounds error for",𝓂.parameters[i]," < ",𝓂.upper_bounds[bnd_idx] + eps(),"\tparameter value: ",𝓂.parameter_values[i])
+                println("Bounds error for ",𝓂.parameters[i]," < ",𝓂.upper_bounds[bnd_idx] + eps(),"\tparameter value: ",𝓂.parameter_values[i])
                 bounds_broken = true
                 continue
             end
             if collect(values(parameters))[i] < 𝓂.lower_bounds[bnd_idx]
-                println("Bounds error for",𝓂.parameters[i]," > ",𝓂.lower_bounds[bnd_idx] + eps(),"\tparameter value: ",𝓂.parameter_values[i])
+                println("Bounds error for ",𝓂.parameters[i]," > ",𝓂.lower_bounds[bnd_idx] + eps(),"\tparameter value: ",𝓂.parameter_values[i])
                 bounds_broken = true
                 continue
             end
@@ -2336,11 +2336,27 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     solve!(𝓂, verbose = verbose)
 
-    # data = data(observables,:) .- collect(𝓂.SS_solve_func(𝓂.parameter_values, 𝓂.SS_init_guess,𝓂)[observables])
+    if isnothing(parameters)
+        parameters = 𝓂.parameter_values
+    else
+        ub = @ignore_derivatives fill(1e12,length(𝓂.parameters))
+        lb = @ignore_derivatives -ub
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(isnothing(parameters) ? 𝓂.parameter_values : parameters, 𝓂, true, verbose)
+        for (i,v) in enumerate(𝓂.bounded_vars)
+            if v ∈ 𝓂.parameters
+                @ignore_derivatives lb[i] = 𝓂.lower_bounds[i]
+                @ignore_derivatives ub[i] = 𝓂.upper_bounds[i]
+            end
+        end
+
+        if min(max(parameters,lb),ub) != parameters 
+            return -1e6
+        end
+    end
+
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, true, verbose)
     
-    if solution_error > tol
+    if solution_error > tol || isnan(solution_error)
         return -1e6
     end
 
@@ -2350,9 +2366,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
-    # 𝓂.solution.non_stochastic_steady_state = ℱ.value.(SS_and_pars)
-
-	∇₁ = calculate_jacobian(isnothing(parameters) ? 𝓂.parameter_values : parameters, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
     sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
