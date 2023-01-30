@@ -18,7 +18,7 @@ Limited to the first order perturbation solution of the model.
 # Examples
 ```jldoctest
 using MacroModelling
-using SparseArrays
+using SparseArrays, AxisKeys
 
 @model RBC_CME begin
     y[0]=A[0]*k[-1]^alpha
