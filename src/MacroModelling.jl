@@ -18,7 +18,7 @@ using ComponentArrays
 using ImplicitDifferentiation
 # using NamedArrays
 using AxisKeys
-import ChainRulesCore: @ignore_derivatives
+import ChainRulesCore: @ignore_derivatives, ignore_derivatives
 
 using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
@@ -680,9 +680,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                                 end
                             end))
 
-    push!(SS_solve_func,:(if (current_best > eps(Float32)) && (solution_error < eps(Float64)) 
-                                # println(NSSS_solver_cache_tmp)
-                                push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp) 
+    push!(SS_solve_func,:(if (current_best > eps(Float32)) && (solution_error < eps(Float64))
+                                reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
                                 solved_scale = scale
                             end))
     # push!(SS_solve_func,:(if length(𝓂.NSSS_solver_cache) > 100 popfirst!(𝓂.NSSS_solver_cache) end))
@@ -717,7 +716,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                     solved_scale = 0
                     range_length = fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
                     for r in range_length
-                        for scale in range(0,1,r+1)[2:end]
+                        rangee = ignore_derivatives(range(0,1,r+1))
+                        for scale in rangee[2:end]
                             if scale <= solved_scale continue end
                             current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
                             closest_solution = 𝓂.NSSS_solver_cache[end]
@@ -747,6 +747,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
 
     return nothing
+end
+
+
+function reverse_diff_friendly_push!(x,y)
+    @ignore_derivatives push!(x,y)
 end
 
 # transformation of NSSS problem
