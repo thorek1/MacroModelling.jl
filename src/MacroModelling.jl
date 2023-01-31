@@ -991,8 +991,8 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
         jvp = fill(0,length(val),length(inp)) * ps
     else
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> ss_solve_blocks(x,transformer.(val),0), inp)
-        A = ℱ.jacobian(x -> ss_solve_blocks(inp,transformer.(x),0), val)
+        B = ℱ.jacobian(x -> ss_solve_blocks(x,transformer.(val, option = 0),0), inp)
+        A = ℱ.jacobian(x -> ss_solve_blocks(inp,transformer.(x, option = 0),0), val)
 
         jvp = (-A \ B) * ps
     end
