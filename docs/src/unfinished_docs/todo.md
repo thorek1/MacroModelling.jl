@@ -8,7 +8,7 @@
 - [ ] use @assert for errors and @test_throws
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
 - [ ] print SS dependencies, show SS solver
-- [ ] check SW03 SS solver
+- [x] check SW03 SS solver
   
 - [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
 - [ ] make the nonnegativity trick optional
@@ -23,7 +23,7 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] write documentation/docstrings
 - [ ] add more models
-- [ ] symbolic derivatives
+- [x] symbolic derivatives
 - [ ] plot multiple solutions or models - multioptions in one graph
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] have Flux solve SS field
