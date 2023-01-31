@@ -2366,14 +2366,14 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         end
 
         if min(max(parameters,lb),ub) != parameters 
-            return -1e6
+            return -Inf
         end
     end
 
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, true, verbose)
     
     if solution_error > tol || isnan(solution_error)
-        return -1e6
+        return -Inf
     end
 
     NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
