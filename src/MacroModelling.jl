@@ -556,8 +556,6 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                     return sum(abs2,[$(solved_vals...)])
                 end)
             
-                # 𝓂.SS_init_guess = [fill(.9,length(𝓂.var)); fill(.5, length(𝓂.calibration_equations_parameters))]
-
                 push!(NSSS_solver_cache_init_tmp,fill(.9,length(sorted_vars)))
 
                 # WARNING: infinite bounds are transformed to 1e12
