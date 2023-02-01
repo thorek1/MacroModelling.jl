@@ -8,8 +8,6 @@ The first step is always to name the model and write down the equations. For the
 
 ```@setup tutorial_2
 ENV["GKSwstype"] = "100"
-using Random
-Random.seed!(1)
 ```
 
 ```@repl tutorial_2
@@ -148,7 +146,13 @@ First we define the loglikelihood model with the specific data, observables, and
 
 ```@repl tutorial_2
 FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, observables)
+
 n_samples = 1000
+
+using Random
+
+Random.seed!(30)
+
 chain_NUTS  = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false)
 ```
 
