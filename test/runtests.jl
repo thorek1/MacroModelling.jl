@@ -3,6 +3,8 @@ using MacroModelling
 using Random
 using AxisKeys, SparseArrays
 
+include("test_estimation.jl")
+
 include("functionality_tests.jl")
 
 @testset "Standalone functions" begin
