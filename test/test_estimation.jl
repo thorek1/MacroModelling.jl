@@ -64,7 +64,7 @@ Random.seed!(30)
 # Turing.setadbackend(:zygote)
 samps = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
-println(mean(samps).nt.mean)
+# println(mean(samps).nt.mean)
 
 
 
@@ -101,8 +101,13 @@ ubs[bounds_index_in_pars] = min.(1e12,FS2000.upper_bounds[bounds_index_in_bounds
 
 prob = OptimizationProblem(f, min.(max.(sol.u,lbs),ubs), [], lb = lbs, ub = ubs);
 sol = solve(prob, NLopt.LD_LBFGS())
-println(sol.minimum)
+# println(sol.minimum)
 
+
+@testset "Estimation results" begin
+    @test isapprox(sol.minimum, -1343.749008345221, rtol = eps(Float32))
+    @test isapprox(mean(samps).nt.mean, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], atol = 1e-3)
+end
 
 # @profview sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)
 
