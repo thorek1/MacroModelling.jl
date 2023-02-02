@@ -148,16 +148,17 @@ First we define the loglikelihood model with the specific data, observables, and
 
 ```@repl tutorial_2
 FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, observables)
+
 n_samples = 1000
 
-chain_NUTS  = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false)
+chain_NUTS  = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false);
 ```
 
 ### Inspect posterior
 
 In order to understand the posterior distribution and the sequence of sample we are plot them:
 
-```@repl tutorial_2
+```@repl tutorial_2; setup = :(chain_NUTS = read("../assets/chain_FS2000.jls", Chains))
 using StatsPlots
 StatsPlots.plot(chain_NUTS);
 ```
