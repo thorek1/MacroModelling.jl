@@ -2421,7 +2421,12 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         # K = P * C' * ℒ.pinv(F)
 
         # loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
-        loglik += log(ℒ.det(F)) + v' / F  * v
+        Fdet = ℒ.det(F)
+
+        if Fdet < eps() return -Inf end
+
+        loglik += log(Fdet) + v' / F  * v
+        
         K = P * C' / F
 
         P = A * (P - K * C * P) * A' + 𝐁
