@@ -64,7 +64,7 @@ Random.seed!(30)
 # Turing.setadbackend(:zygote)
 samps = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
-println(collect(mean(samps)))
+println(mean(samps).nt.mean)
 
 
 
