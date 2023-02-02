@@ -3,8 +3,6 @@ using MacroModelling
 using Random
 using AxisKeys, SparseArrays
 
-include("test_estimation.jl")
-
 include("functionality_tests.jl")
 
 @testset "Standalone functions" begin
@@ -1867,3 +1865,5 @@ end
     plot(RBC_CME)
     @test true
 end
+
+include("test_estimation.jl")
