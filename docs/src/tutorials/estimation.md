@@ -8,6 +8,8 @@ The first step is always to name the model and write down the equations. For the
 
 ```@setup tutorial_2
 ENV["GKSwstype"] = "100"
+using Random
+Random.seed!(30)
 ```
 
 ```@repl tutorial_2
@@ -149,18 +151,14 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, observables)
 
 n_samples = 1000
 
-using Random
-
-Random.seed!(30)
-
-chain_NUTS  = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false)
+chain_NUTS  = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false);
 ```
 
 ### Inspect posterior
 
 In order to understand the posterior distribution and the sequence of sample we are plot them:
 
-```@repl tutorial_2
+```@repl tutorial_2; setup = :(chain_NUTS = read("../assets/chain_FS2000.jls", Chains))
 using StatsPlots
 StatsPlots.plot(chain_NUTS);
 ```

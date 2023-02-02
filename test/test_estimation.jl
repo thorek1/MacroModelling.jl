@@ -1,7 +1,7 @@
 using MacroModelling
 import Turing
 import Turing: Normal, Beta, InverseGamma, NUTS, sample, logpdf
-using Random, CSV, DataFrames, ComponentArrays, MCMCChains#, Optimization, OptimizationNLopt, OptimizationOptimisers
+using Random, CSV, DataFrames, ComponentArrays, Optimization, OptimizationNLopt, OptimizationOptimisers, MCMCChains
 import DynamicPPL: logjoint
 
 include("models/FS2000.jl")
@@ -56,41 +56,6 @@ end
 FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, observables)
 
 
-# function calculate_posterior_loglikelihood(parameters, u)
-#     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
-#     log_lik = 0
-#     log_lik -= calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables; parameters = parameters)
-#     log_lik -= logpdf(Beta(beta_map(0.356, 0.02)...),alp)
-#     log_lik -= logpdf(Beta(beta_map(0.993, 0.002)...),bet)
-#     log_lik -= logpdf(Normal(0.0085, 0.003),gam)
-#     log_lik -= logpdf(Normal(1.0002, 0.007),mst)
-#     log_lik -= logpdf(Beta(beta_map(0.129, 0.223)...),rho)
-#     log_lik -= logpdf(Beta(beta_map(0.65, 0.05)...),psi)
-#     log_lik -= logpdf(Beta(beta_map(0.01, 0.005)...),del)
-#     log_lik -= logpdf(InverseGamma(inv_gamma_map(0.035449, Inf)...),z_e_a)
-#     log_lik -= logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...),z_e_m)
-#     return log_lik
-# end
-
-# f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoForwardDiff())
-
-# prob = OptimizationProblem(f, Float64.(FS2000.parameter_values), []);
-# sol = solve(prob, Optimisers.ADAM(), maxiters = 1000)
-# sol.minimum
-
-# lbs = fill(-1e12, length(FS2000.parameters));
-# ubs = fill(1e12, length(FS2000.parameters));
-
-# bounds_index_in_pars = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.parameters);
-# bounds_index_in_bounds = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.bounded_vars);
-
-# lbs[bounds_index_in_pars] = max.(-1e12,FS2000.lower_bounds[bounds_index_in_bounds]);
-# ubs[bounds_index_in_pars] = min.(1e12,FS2000.upper_bounds[bounds_index_in_bounds]);
-
-# prob = OptimizationProblem(f, min.(max.(sol.u,lbs),ubs), [], lb = lbs, ub = ubs);
-# sol = solve(prob, NLopt.LD_LBFGS())
-# sol.minimum
-
 
 n_samples = 1000
 
@@ -99,7 +64,50 @@ Random.seed!(30)
 # Turing.setadbackend(:zygote)
 samps = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
-println(mean(samps))
+# println(mean(samps).nt.mean)
+
+
+
+function calculate_posterior_loglikelihood(parameters, u)
+    alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
+    log_lik = 0
+    log_lik -= calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables; parameters = parameters)
+    log_lik -= logpdf(Beta(beta_map(0.356, 0.02)...),alp)
+    log_lik -= logpdf(Beta(beta_map(0.993, 0.002)...),bet)
+    log_lik -= logpdf(Normal(0.0085, 0.003),gam)
+    log_lik -= logpdf(Normal(1.0002, 0.007),mst)
+    log_lik -= logpdf(Beta(beta_map(0.129, 0.223)...),rho)
+    log_lik -= logpdf(Beta(beta_map(0.65, 0.05)...),psi)
+    log_lik -= logpdf(Beta(beta_map(0.01, 0.005)...),del)
+    log_lik -= logpdf(InverseGamma(inv_gamma_map(0.035449, Inf)...),z_e_a)
+    log_lik -= logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...),z_e_m)
+    return log_lik
+end
+
+f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoForwardDiff())
+
+prob = OptimizationProblem(f, Float64.(FS2000.parameter_values), []);
+sol = solve(prob, Optimisers.ADAM(), maxiters = 1000)
+sol.minimum
+
+lbs = fill(-1e12, length(FS2000.parameters));
+ubs = fill(1e12, length(FS2000.parameters));
+
+bounds_index_in_pars = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.parameters);
+bounds_index_in_bounds = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.bounded_vars);
+
+lbs[bounds_index_in_pars] = max.(-1e12,FS2000.lower_bounds[bounds_index_in_bounds]);
+ubs[bounds_index_in_pars] = min.(1e12,FS2000.upper_bounds[bounds_index_in_bounds]);
+
+prob = OptimizationProblem(f, min.(max.(sol.u,lbs),ubs), [], lb = lbs, ub = ubs);
+sol = solve(prob, NLopt.LD_LBFGS())
+# println(sol.minimum)
+
+
+@testset "Estimation results" begin
+    @test isapprox(sol.minimum, -1343.749008345221, rtol = eps(Float32))
+    @test isapprox(mean(samps).nt.mean, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
+end
 
 # @profview sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)
 
