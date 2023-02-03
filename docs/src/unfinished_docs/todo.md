@@ -3,32 +3,35 @@
 ## High priority
 
 - [ ] add balanced growth path handling
-- [ ] more options for IRFs, pass on shock vector, simulate only certain shocks
-- [ ] write tests and documentation for solution, estimation... making sure results are consistent
-- [ ] use @assert for errors and @test_throws
+- [ ] model compression -> model setup as maximisation problem (gEcon) -> HANK models 
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
+- [ ] more options for IRFs, simulate only certain shocks
+- [ ] implement global solution methods
+- [ ] write documentation/docstrings
+- [ ] add more models
+- [ ] plot multiple solutions or models - multioptions in one graph
+- [ ] write tests and documentation for solution, estimation... making sure results are consistent
+
+- [ ] use @assert for errors and @test_throws
 - [ ] print SS dependencies, show SS solver
-- [x] check SW03 SS solver
-  
 - [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
 - [ ] make the nonnegativity trick optional
 - [ ] get parameters (in function of parameters) into the dependencies
 - [ ] for larger models write a model compression. gradient loglikelihood is very slow due to large matmuls
 - [ ] see if we can avoid try catch and test for invertability instead
 - [ ] use packages for kalman filter
-- [ ] input field for SS init guess in all functions
 - [ ] clean up different parameter types
 - [ ] clean up printouts/reporting
 - [ ] clean up function inputs and harmonise AD and standard commands
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
-- [ ] write documentation/docstrings
-- [ ] add more models
-- [x] symbolic derivatives
-- [ ] plot multiple solutions or models - multioptions in one graph
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] input field for SS init guess in all functions #not necessary so far. SS solver works out everything just fine
+- [x] symbolic derivatives
+- [x] check SW03 SS solver
+- [x] more options for IRFs, pass on shock vector
 - [x] write to dynare
 - [x] add plot for policy function
 - [x] add plot for FEVD
@@ -57,7 +60,6 @@
 
 - [ ] estimation codes with missing values (adopt kalman filter)
 - [ ] whats a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
-- [ ] implement global solution methods
 - [ ] improve redundant calculations of SS and other parts of solution
 - [ ] restructure functions and containers so that compiler knows what types to expect
 - [ ] use RecursiveFactorization and TriangularSolve to solve, instead of MKL or OpenBLAS
@@ -73,9 +75,9 @@
 - [ ] implement HANK
 - [ ] implement automatic problem derivation (gEcon)
 - [ ] print legend for algorithm in last subplot of plot only
-- [ ] conditional forecasting
 - [ ] select variables for moments
 
+- [x] conditional forecasting
 - [x] find way to recover from failed SS solution which is written to init guess
 - [x] redo ugly solution for selecting parameters to differentiate for
 - [x] conditions for when to use which solution. if solution is outdated redo all solutions which have been done so far and use smart starting points
