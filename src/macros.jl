@@ -937,7 +937,7 @@ macro model(𝓂,ex)
 
 
     default_optimizer = NLopt.LD_LBFGS
-    # default_optimizer = Optimisers.ADAM
+    # default_optimizer = Optimisers.Adam
     # default_optimizer = NLopt.LN_BOBYQA
 
     dynamic_variables = collect(union(dyn_ss_past,dyn_ss_future,dyn_ss_present))

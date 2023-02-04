@@ -87,7 +87,7 @@ end
 f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoForwardDiff())
 
 prob = OptimizationProblem(f, Float64.(FS2000.parameter_values), []);
-sol = solve(prob, Optimisers.ADAM(), maxiters = 1000)
+sol = solve(prob, Optimisers.Adam(), maxiters = 1000)
 sol.minimum
 
 lbs = fill(-1e12, length(FS2000.parameters));

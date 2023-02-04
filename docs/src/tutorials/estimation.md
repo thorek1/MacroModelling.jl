@@ -238,7 +238,7 @@ function calculate_posterior_loglikelihood(parameters, u)
 end
 ```
 
-Next, we set up the optimsation problem and first use the ADAM global optimiser for 1000 iterations in order to avoid local optima and then fine tune with L-BFGS.
+Next, we set up the optimisation problem and first use the ADAM global optimiser for 1000 iterations in order to avoid local optima and then fine tune with L-BFGS.
 
 ```@repl tutorial_2
 using Optimization, OptimizationNLopt, OptimizationOptimisers
@@ -246,7 +246,7 @@ using Optimization, OptimizationNLopt, OptimizationOptimisers
 f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoForwardDiff())
 
 prob = OptimizationProblem(f, collect(pars), []);
-sol = solve(prob, Optimisers.ADAM(), maxiters = 1000)
+sol = solve(prob, Optimisers.Adam(), maxiters = 1000)
 sol.minimum
 
 lbs = fill(-1e12, length(FS2000.parameters));
