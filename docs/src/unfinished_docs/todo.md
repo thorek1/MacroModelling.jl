@@ -3,15 +3,13 @@
 ## High priority
 
 - [ ] add balanced growth path handling
-- [ ] add NBTOOLBOX, IRIS to overview
-- [ ] model compression -> model setup as maximisation problem (gEcon) -> HANK models 
+- [ ] model compression -> model setup as maximisation problem (gEcon) -> HANK models
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
-- [ ] more options for IRFs, simulate only certain shocks
 - [ ] implement global solution methods
-- [ ] write documentation/docstrings
 - [ ] add more models
 - [ ] plot multiple solutions or models - multioptions in one graph
 - [ ] write tests and documentation for solution, estimation... making sure results are consistent
+- [ ] write documentation/docstrings
 
 - [ ] use @assert for errors and @test_throws
 - [ ] print SS dependencies, show SS solver
@@ -29,6 +27,8 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] more options for IRFs, simulate only certain shocks - set stds to 0 instead
+- [x] add NBTOOLBOX, IRIS to overview
 - [x] input field for SS init guess in all functions #not necessary so far. SS solver works out everything just fine
 - [x] symbolic derivatives
 - [x] check SW03 SS solver
