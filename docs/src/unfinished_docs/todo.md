@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] add NBTOOLBOX, IRIS to overview
 - [ ] model compression -> model setup as maximisation problem (gEcon) -> HANK models 
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
 - [ ] more options for IRFs, simulate only certain shocks
