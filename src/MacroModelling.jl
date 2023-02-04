@@ -2311,7 +2311,8 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Number}; T::tim
 
     lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
     
-    reshape(ℐ.bicgstabl(lm, vec(-CC)), size(CC))
+    # reshape(ℐ.bicgstabl(lm, vec(-CC)), size(CC))
+    reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
 end
 
 
