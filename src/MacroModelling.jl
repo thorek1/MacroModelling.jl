@@ -543,8 +543,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 push!(solved_vals,:(aux_error))
                 # push!(solved_vals,:(bound_violation_penalty))
 
-                funcs_optim = :(function block(guess::Vector{Float64},parameters_and_solved_vars::Vector{Float64})
-                    guess = undo_transformer(guess)
+                funcs_optim = :(function block(guess::Vector{Float64},transformer_parameters_and_solved_vars::Tuple{Vector{Float64},Int})
+                    guess = undo_transformer(guess,option = transformer_parameters_and_solved_vars[2])
+                    parameters_and_solved_vars = transformer_parameters_and_solved_vars[1]
                     $(guess...) 
                     $(calib_pars...) # add those variables which were previously solved and are used in the equations
                     $(other_vars...) # take only those that appear in equations - DONE
@@ -890,7 +891,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
 
                 previous_sol_init = max.(lbs,min.(ubs, sol_values))
-                prob = OptimizationProblem(f, transformer(previous_sol_init, option = transformer_option), parameters_and_solved_vars, lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
+                prob = OptimizationProblem(f, transformer(previous_sol_init, option = transformer_option), (parameters_and_solved_vars,transformer_option), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
                 sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
                 if sol_new.minimum < sol_minimum
@@ -907,7 +908,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     for starting_point in starting_points
                         if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
                             standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
-                            prob = OptimizationProblem(f, transformer(standard_inits, option = transformer_option), parameters_and_solved_vars, lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
+                            prob = OptimizationProblem(f, transformer(standard_inits, option = transformer_option), (parameters_and_solved_vars,transformer_option), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
                             sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
 
                             if sol_new.minimum < sol_minimum
@@ -926,7 +927,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
                     # if the the standard starting point doesnt work try the provided guess
                     if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
-                        prob = OptimizationProblem(f, transformer(guess, option = transformer_option), parameters_and_solved_vars, lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
+                        prob = OptimizationProblem(f, transformer(guess, option = transformer_option), (parameters_and_solved_vars,transformer_option), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
                         sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
                         if sol_new.minimum < sol_minimum
                             sol_minimum  = sol_new.minimum
@@ -2421,12 +2422,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         # K = P * C' * ℒ.pinv(F)
 
         # loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
-        Fdet = ℒ.det(F)
-
-        if Fdet < eps() return -Inf end
-
-        loglik += log(Fdet) + v' / F  * v
-        
+        loglik += log(ℒ.det(F)) + v' / F  * v
         K = P * C' / F
 
         P = A * (P - K * C * P) * A' + 𝐁
