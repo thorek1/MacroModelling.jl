@@ -54,8 +54,10 @@ end;
     β = 0.95
 end;
 
-plot_irfs(RBC)
+plot(RBC)
 ```
+
+![RBC IRF](docs/src/assets/irf__RBC__eps_z__1.png)
 
 The package contains the following models in the `models` folder:
 
