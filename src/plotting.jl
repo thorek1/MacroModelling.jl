@@ -78,12 +78,20 @@ function plot(𝓂::ℳ;
 
     NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
 
+    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[indexin([s],NSSS_labels)...] for s in full_SS]
+
+    if algorithm == :second_order
+        SSS_delta = reference_steady_state - 𝓂.solution.perturbation.second_order.stochastic_steady_state
+    elseif algorithm == :third_order
+        SSS_delta = reference_steady_state - 𝓂.solution.perturbation.third_order.stochastic_steady_state
+    else
+        SSS_delta = zeros(length(reference_steady_state))
+    end
+
     if algorithm == :second_order
         reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
     elseif algorithm == :third_order
         reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-    elseif algorithm ∈ [:linear_time_iteration, :riccati, :first_order]
-        reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[indexin([s],NSSS_labels)...] for s in full_SS]
     end
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
@@ -105,7 +113,7 @@ function plot(𝓂::ℳ;
     if generalised_irf
         Y = girf(state_update, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
     else
-        Y = irf(state_update, initial_state, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)
+        Y = irf(state_update, initial_state, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock) .+ SSS_delta
     end
 
     # fontt = "computer modern"#"serif-roman"#

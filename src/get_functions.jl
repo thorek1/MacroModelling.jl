@@ -460,6 +460,14 @@ function get_irf(𝓂::ℳ;
     reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[indexin([s],NSSS_labels)...] for s in full_SS]#collect(NSSS[1:end - length(𝓂.calibration_equations)])
     # println(reference_steady_state)
 
+    if algorithm == :second_order
+        SSS_delta = reference_steady_state - 𝓂.solution.perturbation.second_order.stochastic_steady_state
+    elseif algorithm == :third_order
+        SSS_delta = reference_steady_state - 𝓂.solution.perturbation.third_order.stochastic_steady_state
+    else
+        SSS_delta = zeros(length(reference_steady_state))
+    end
+
     var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
 
     if levels
@@ -470,6 +478,7 @@ function get_irf(𝓂::ℳ;
         end
         var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
     end
+
     
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
 
@@ -496,7 +505,7 @@ function get_irf(𝓂::ℳ;
         if levels
             return irfs .+ reference_steady_state[var_idx]
         else
-            return irfs
+            return irfs .+ SSS_delta
         end
     end
 end
