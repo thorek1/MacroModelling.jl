@@ -476,9 +476,9 @@ function get_irf(𝓂::ℳ;
         elseif algorithm == :third_order
             reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state#[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))]
         end
-        var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
     end
 
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
     
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
 
