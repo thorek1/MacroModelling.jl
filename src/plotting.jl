@@ -113,7 +113,7 @@ function plot(𝓂::ℳ;
     if generalised_irf
         Y = girf(state_update, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
     else
-        Y = irf(state_update, initial_state, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock) .+ SSS_delta
+        Y = irf(state_update, initial_state, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock) .+ SSS_delta[var_idx]
     end
 
     # fontt = "computer modern"#"serif-roman"#

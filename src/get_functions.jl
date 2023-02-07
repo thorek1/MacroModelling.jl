@@ -505,7 +505,7 @@ function get_irf(𝓂::ℳ;
         if levels
             return irfs .+ reference_steady_state[var_idx]
         else
-            return irfs .+ SSS_delta
+            return irfs .+ SSS_delta[var_idx]
         end
     end
 end
