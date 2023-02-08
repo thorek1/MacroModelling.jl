@@ -57,8 +57,8 @@ export write_mod_file, write_dynare_file, write_to_dynare_file, export_dynare, e
 export irf, girf
 
 # Remove comment for debugging
-# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer
-# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD
+export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer
+export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD
 
 # StatsFuns
 norminvcdf(p::Number) = -erfcinv(2*p) * sqrt2
@@ -577,7 +577,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 push!(SS_solve_func,:(lbs = [$(lbs...)]))
                 push!(SS_solve_func,:(ubs = [$(ubs...)]))
                 # push!(SS_solve_func,:(𝓂.SS_init_guess = initial_guess))
-                push!(SS_solve_func,:(f = OptimizationFunction(𝓂.ss_solve_blocks_optim[$(n_block)], Optimization.AutoForwardDiff())))
+                # push!(SS_solve_func,:(f = OptimizationFunction(𝓂.ss_solve_blocks_optim[$(n_block)], Optimization.AutoForwardDiff())))
                 # push!(SS_solve_func,:(inits = max.(lbs,min.(ubs,𝓂.SS_init_guess[$([findfirst(x->x==y,union(𝓂.var,𝓂.calibration_equations_parameters)) for y in sorted_vars])]))))
                 # push!(SS_solve_func,:(closest_solution = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]))
                 # push!(SS_solve_func,:(inits = [transformer(max.(lbs,min.(ubs, closest_solution[$(n_block)] ))),closest_solution[end]]))
@@ -586,7 +586,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                                                                         $(n_block), 
                                                                         𝓂.ss_solve_blocks[$(n_block)], 
                                                                         # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
-                                                                        f, 
+                                                                        # f, 
                                                                         inits,
                                                                         lbs, 
                                                                         ubs,
@@ -775,11 +775,15 @@ function undo_transformer(x; option::Int = 2)
     end
 end
 
+function SS_solve_block_wrapper(guess, transformer_parameters_and_solved_vars)
+    sum(abs2, transformer_parameters_and_solved_vars[3](transformer_parameters_and_solved_vars[1], guess, transformer_parameters_and_solved_vars[2]))
+end
+
 block_solver_AD(parameters_and_solved_vars::Vector{<: Number}, 
     n_block::Int, 
     ss_solve_blocks::Function, 
     # ss_solve_blocks_no_transform::Function, 
-    f::OptimizationFunction, 
+    # f::OptimizationFunction, 
     guess::Vector{Float64}, 
     lbs::Vector{Float64}, 
     ubs::Vector{Float64};
@@ -790,7 +794,7 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Number},
     verbose = false) = ImplicitFunction(x -> block_solver(x,
                                                             n_block, 
                                                             ss_solve_blocks,
-                                                            f,
+                                                            # f,
                                                             guess,
                                                             lbs,
                                                             ubs;
@@ -805,7 +809,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         n_block::Int, 
                         ss_solve_blocks::Function, 
                         # SS_optimizer, 
-                        f::OptimizationFunction, 
+                        # f::OptimizationFunction, 
                         guess::Vector{Float64}, 
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64};
@@ -884,6 +888,10 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     end
 
     optimizers = fail_fast_solvers_only ? [NLopt.LD_LBFGS] : [NLopt.LD_LBFGS, NLopt.LN_BOBYQA, NLopt.LN_PRAXIS, NLopt.LD_SLSQP, NLopt.LN_SBPLX]
+    
+    if (sol_minimum > tol)
+        f = OptimizationFunction(SS_solve_block_wrapper, Optimization.AutoForwardDiff())
+    end
 
     # cycle through NLopt solvers
     for SS_optimizer in optimizers
@@ -891,7 +899,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
 
                 previous_sol_init = max.(lbs,min.(ubs, sol_values))
-                prob = OptimizationProblem(f, transformer(previous_sol_init, option = transformer_option), (parameters_and_solved_vars,transformer_option), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
+                prob = OptimizationProblem(f, transformer(previous_sol_init, option = transformer_option), (parameters_and_solved_vars,transformer_option, ss_solve_blocks), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
                 sol_new = solve(prob, SS_optimizer(), local_maxtime = timeout, maxtime = timeout)
 
                 if sol_new.minimum < sol_minimum
@@ -908,7 +916,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     for starting_point in starting_points
                         if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
                             standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
-                            prob = OptimizationProblem(f, transformer(standard_inits, option = transformer_option), (parameters_and_solved_vars,transformer_option), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
+                            prob = OptimizationProblem(f, transformer(standard_inits, option = transformer_option), (parameters_and_solved_vars, transformer_option, ss_solve_blocks), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
                             sol_new = solve(prob, SS_optimizer(), local_maxtime = timeout, maxtime = timeout)
 
                             if sol_new.minimum < sol_minimum
@@ -927,7 +935,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
                     # if the the standard starting point doesnt work try the provided guess
                     if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
-                        prob = OptimizationProblem(f, transformer(guess, option = transformer_option), (parameters_and_solved_vars,transformer_option), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
+                        prob = OptimizationProblem(f, transformer(guess, option = transformer_option), (parameters_and_solved_vars, transformer_option, ss_solve_blocks), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
                         sol_new = solve(prob, SS_optimizer(), local_maxtime = timeout, maxtime = timeout)
                         if sol_new.minimum < sol_minimum
                             sol_minimum  = sol_new.minimum
@@ -955,7 +963,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     n_block::Int, 
     ss_solve_blocks::Function, 
     # SS_optimizer, 
-    f::OptimizationFunction, 
+    # f::OptimizationFunction, 
     guess::Vector{Float64}, 
     lbs::Vector{Float64}, 
     ubs::Vector{Float64};
@@ -977,7 +985,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
                         n_block, 
                         ss_solve_blocks, 
                         # SS_optimizer, 
-                        f, 
+                        # f, 
                         guess, 
                         lbs, 
                         ubs;
