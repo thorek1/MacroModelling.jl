@@ -540,7 +540,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                         return [$(solved_vals...),$(nnaux_linear...)]
                     end)
 
-                push!(solved_vals,:(aux_error))
+                # push!(solved_vals,:(aux_error))
                 # push!(solved_vals,:(bound_violation_penalty))
 
                 funcs_optim = :(function block(guess::Vector{Float64},transformer_parameters_and_solved_vars::Tuple{Vector{Float64},Int})
@@ -552,9 +552,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 
                     # $(aug_lag_penalty...)
                     # $(aug_lag...)
-                    $(nnaux...)
-                    $(nnaux_error...)
-                    return sum(abs2,[$(solved_vals...)])
+                    # $(nnaux...) # not needed because the aux vars are inputs
+                    # $(nnaux_error...)
+                    return sum(abs2,[$(solved_vals...),$(nnaux_linear...)])
                 end)
             
                 push!(NSSS_solver_cache_init_tmp,fill(.9,length(sorted_vars)))
@@ -784,7 +784,7 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Number},
     lbs::Vector{Float64}, 
     ubs::Vector{Float64};
     tol = eps(Float64),
-    maxtime = 120,
+    timeout = 120,
     starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25],
     fail_fast_solvers_only = true,
     verbose = false) = ImplicitFunction(x -> block_solver(x,
@@ -795,7 +795,7 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Number},
                                                             lbs,
                                                             ubs;
                                                             tol = tol,
-                                                            maxtime = maxtime,
+                                                            timeout = timeout,
                                                             starting_points = starting_points,
                                                             fail_fast_solvers_only = fail_fast_solvers_only,
                                                             verbose = verbose)[1],  
@@ -810,7 +810,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64};
                         tol = eps(Float64),
-                        maxtime = 120,
+                        timeout = 120,
                         starting_points = [.9, 1, 1.1, .75, 1.5, 0.0, -.5, 2, .25],
                         fail_fast_solvers_only = true,
                         verbose = false)
@@ -892,7 +892,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
                 previous_sol_init = max.(lbs,min.(ubs, sol_values))
                 prob = OptimizationProblem(f, transformer(previous_sol_init, option = transformer_option), (parameters_and_solved_vars,transformer_option), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
-                sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+                sol_new = solve(prob, SS_optimizer(), local_maxtime = timeout, maxtime = timeout)
 
                 if sol_new.minimum < sol_minimum
                     sol_minimum = sol_new.minimum
@@ -909,7 +909,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
                             standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
                             prob = OptimizationProblem(f, transformer(standard_inits, option = transformer_option), (parameters_and_solved_vars,transformer_option), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
-                            sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+                            sol_new = solve(prob, SS_optimizer(), local_maxtime = timeout, maxtime = timeout)
 
                             if sol_new.minimum < sol_minimum
                                 sol_minimum = sol_new.minimum
@@ -928,7 +928,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     # if the the standard starting point doesnt work try the provided guess
                     if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
                         prob = OptimizationProblem(f, transformer(guess, option = transformer_option), (parameters_and_solved_vars,transformer_option), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
-                        sol_new = solve(prob, SS_optimizer(), local_maxtime = maxtime, maxtime = maxtime)
+                        sol_new = solve(prob, SS_optimizer(), local_maxtime = timeout, maxtime = timeout)
                         if sol_new.minimum < sol_minimum
                             sol_minimum  = sol_new.minimum
                             sol_values = undo_transformer(sol_new.u, option = transformer_option)
@@ -960,7 +960,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     lbs::Vector{Float64}, 
     ubs::Vector{Float64};
     tol = eps(Float64),
-    maxtime = 120,
+    timeout = 120,
     starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25],
     fail_fast_solvers_only = true,
     verbose = false) where {Z,S,N}
@@ -982,7 +982,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
                         lbs, 
                         ubs;
                         tol = tol,
-                        maxtime = maxtime,
+                        timeout = timeout,
                         starting_points = starting_points,
                         fail_fast_solvers_only = fail_fast_solvers_only,
                         verbose = verbose)
