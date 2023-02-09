@@ -36,7 +36,7 @@ using Pkg; Pkg.add("MacroModelling")
 
 ### Example
 
-See below for example code of a simple RBC model. For more details see the [documentation](https://thorek1.github.io/MacroModelling.jl/stable).
+See below an implementation of a simple RBC model. You can find more detailed tutorials in the [documentation](https://thorek1.github.io/MacroModelling.jl/stable).
 
 ```julia
 using MacroModelling
