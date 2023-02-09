@@ -20,6 +20,8 @@ As of now the package can:
 - estimate the model on data (kalman filter using first order perturbation)
 - **differentiate** (forward AD) the model solution (first order perturbation), kalman filter loglikelihood (reverse-mode AD), model moments, steady state, **with respect to the parameters**
 
+For more details have a look at the [documentation](https://thorek1.github.io/MacroModelling.jl/stable).
+
 ## Getting started
 
 ### Installation
