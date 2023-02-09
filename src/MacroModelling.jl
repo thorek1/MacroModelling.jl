@@ -543,19 +543,19 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 # push!(solved_vals,:(aux_error))
                 # push!(solved_vals,:(bound_violation_penalty))
 
-                funcs_optim = :(function block(guess::Vector{Float64},transformer_parameters_and_solved_vars::Tuple{Vector{Float64},Int})
-                    guess = undo_transformer(guess,option = transformer_parameters_and_solved_vars[2])
-                    parameters_and_solved_vars = transformer_parameters_and_solved_vars[1]
-                    $(guess...) 
-                    $(calib_pars...) # add those variables which were previously solved and are used in the equations
-                    $(other_vars...) # take only those that appear in equations - DONE
+                #funcs_optim = :(function block(guess::Vector{Float64},transformer_parameters_and_solved_vars::Tuple{Vector{Float64},Int})
+                    #guess = undo_transformer(guess,option = transformer_parameters_and_solved_vars[2])
+                    #parameters_and_solved_vars = transformer_parameters_and_solved_vars[1]
+                  #  $(guess...) 
+                   # $(calib_pars...) # add those variables which were previously solved and are used in the equations
+                 #   $(other_vars...) # take only those that appear in equations - DONE
 
                     # $(aug_lag_penalty...)
                     # $(aug_lag...)
                     # $(nnaux...) # not needed because the aux vars are inputs
                     # $(nnaux_error...)
-                    return sum(abs2,[$(solved_vals...),$(nnaux_linear...)])
-                end)
+                    #return sum(abs2,[$(solved_vals...),$(nnaux_linear...)])
+                #end)
             
                 push!(NSSS_solver_cache_init_tmp,fill(.9,length(sorted_vars)))
 
@@ -619,7 +619,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 
                 push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
                 # push!(𝓂.ss_solve_blocks_no_transform,@RuntimeGeneratedFunction(funcs_no_transform))
-                push!(𝓂.ss_solve_blocks_optim,@RuntimeGeneratedFunction(funcs_optim))
+                # push!(𝓂.ss_solve_blocks_optim,@RuntimeGeneratedFunction(funcs_optim))
                 
                 n_block += 1
             end
