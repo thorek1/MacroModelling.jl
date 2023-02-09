@@ -827,7 +827,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     end
     
     # try NLboxsolve first
-    for transformer_option ∈ [2,1,0]
+    for transformer_option ∈ 0:2
         if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
             SS_optimizer = nlboxsolve
 
@@ -895,7 +895,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     # cycle through NLopt solvers
     for SS_optimizer in optimizers
-        for transformer_option ∈ [2,1,0]
+        for transformer_option ∈ 0:2
             if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
 
                 previous_sol_init = max.(lbs,min.(ubs, sol_values))
