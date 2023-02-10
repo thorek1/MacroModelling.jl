@@ -732,9 +732,6 @@ macro model(𝓂,ex)
         end
     end
 
-
-
-
     all_symbols = get_symbols.(dyn_equations)
 
     dyn_future_list = match_pattern.(all_symbols,r"₍₁₎")
@@ -935,6 +932,9 @@ macro model(𝓂,ex)
         end
     end
 
+    single_dyn_vars_equations = findall(length.(dynamic_variables_list) .== 1)
+
+    @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " * repr([equations[single_dyn_vars_equations]...])
 
     default_optimizer = NLopt.LD_LBFGS
     # default_optimizer = Optimisers.Adam
