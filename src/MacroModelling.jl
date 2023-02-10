@@ -457,16 +457,20 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 solved_vals = []
                 
                 for val in 𝓂.solved_vals[end]
-                    if (val.args[1] == :+ && val.args[3] ∈ 𝓂.nonnegativity_auxilliary_vars) 
-                        push!(nnaux,:($(val.args[3]) = max(eps(),-$(val.args[2]))))
-                        push!(nnaux_linear,:($(val.args[3]) + $(val.args[2])))
-                        push!(nnaux_error, :(aux_error += min(0.0,-$(val.args[2]))))
-                    elseif (val.args[1] == :- && val.args[2] ∈ 𝓂.nonnegativity_auxilliary_vars) 
-                        push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
-                        push!(nnaux_linear,:($(val.args[2]) - $(val.args[3])))
-                        push!(nnaux_error, :(aux_error += min(0.0,$(val.args[3]))))
+                    if val isa Symbol
+                        push!(solved_vals,val)
                     else
-                        push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+                        if (val.args[1] == :+ && val.args[3] ∈ 𝓂.nonnegativity_auxilliary_vars) 
+                            push!(nnaux,:($(val.args[3]) = max(eps(),-$(val.args[2]))))
+                            push!(nnaux_linear,:($(val.args[3]) + $(val.args[2])))
+                            push!(nnaux_error, :(aux_error += min(0.0,-$(val.args[2]))))
+                        elseif (val.args[1] == :- && val.args[2] ∈ 𝓂.nonnegativity_auxilliary_vars) 
+                            push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
+                            push!(nnaux_linear,:($(val.args[2]) - $(val.args[3])))
+                            push!(nnaux_error, :(aux_error += min(0.0,$(val.args[3]))))
+                        else
+                            push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+                        end
                     end
                 end
 
