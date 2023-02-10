@@ -655,7 +655,8 @@ macro model(𝓂,ex)
                             x.args[2] isa Int ?
                                 x.args[3] isa Int ?
                                     x :
-                                :($(x.args[3]) * $(x.args[2])) :
+                                # :($(x.args[3]) * $(x.args[2])) :
+                                Expr(:call, :*, x.args[3:end]..., x.args[2]) : # 2beta => beta * 2 
                             x :
                         x.args[1] ∈ [:^] ?
                             !(x.args[3] isa Int) ?
