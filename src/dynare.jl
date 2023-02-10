@@ -39,7 +39,8 @@ function translate_mod_file(path_to_mod_file::AbstractString)
     for eq in eqs_orig
         eq = replace(eq, r"(\w+)\((-?\d+)\)" => s"\1[\2]")
         for v in vars
-            eq = replace(eq, Regex("\\b$(v)\\b") => v * "[0]")
+            eq = replace(eq, Regex("(?<!\\b)\\($(v)\\)") => v * "[ss]")
+            eq = replace(eq, Regex("\\b$(v)\\b(?!\\[)") => v * "[0]")
         end
         for x in shocks
             eq = replace(eq, Regex("\\b$(x)\\b") => x * "[x]")
