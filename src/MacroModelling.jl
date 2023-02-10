@@ -141,6 +141,8 @@ function create_symbols_eqs!(𝓂::ℳ)
                 push!(symbols_pos, symb)
             elseif u_bnds[symb] <= 0
                 push!(symbols_neg, symb)
+            else 
+                push!(symbols_none, symb)
             end
         else
             push!(symbols_none, symb)
