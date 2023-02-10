@@ -23,11 +23,11 @@
 
 	Utility[0] = log(y[0]) - d_n * exp(zeta[0]) * N[0] ^ (1 + phi_par) / (1 + phi_par) + beta * Utility[1]
 
-	v[0] = rho_v * v[-1] + e_v[x]
+	v[0] = rho_v * v[-1] + σᵥ * e_v[x]
 
-	A[0] = rho_a * A[-1] + e_a[x]
+	A[0] = rho_a * A[-1] + σₐ * e_a[x]
 
-	zeta[0] = rho_zeta * zeta[-1] + e_zeta[x]
+	zeta[0] = rho_zeta * zeta[-1] + σ_zeta * e_zeta[x]
 
 	A_tilde[0] = exp(A[0]) / s[0]
 
@@ -75,4 +75,10 @@ end
 	rho_i = 0.8
 
 	var_rho = 0
+
+	σ_zeta = .01
+
+	σₐ = .01
+
+	σᵥ = .01
 end
