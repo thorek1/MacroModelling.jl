@@ -5,7 +5,6 @@
 - [ ] add balanced growth path handling
 - [ ] write functions to debug
 - [ ] error when writing equations with only one variable
-- [ ] error when defining variable as parameter
 - [ ] parser model into per equation functions instead of single big functions
 - [ ] model compression -> model setup as maximisation problem (gEcon) -> HANK models
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
@@ -31,6 +30,7 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] error when defining variable as parameter
 - [x] more options for IRFs, simulate only certain shocks - set stds to 0 instead
 - [x] add NBTOOLBOX, IRIS to overview
 - [x] input field for SS init guess in all functions #not necessary so far. SS solver works out everything just fine

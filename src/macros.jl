@@ -192,8 +192,6 @@ macro model(𝓂,ex)
             x,
     ex)
 
-
-
     #throw errors if variables are not matched
 
     # var = collect(union(var_future,var_present,var_past))
@@ -880,6 +878,8 @@ macro model(𝓂,ex)
     reorder       = map(x->(getindex(1:nVars, x .== [present_only..., past_not_future..., future_not_past_and_mixed...]))[1], var)
     dynamic_order = map(x->(getindex(1:nPresent_but_not_only, x .== [past_not_future..., future_not_past_and_mixed...]))[1], present_but_not_only)
 
+    @assert length(intersect(var,par)) == 0 "Parameters and variables cannot have the same name. This is the case for: " * repr(sort([intersect(var,par)...]))
+
     T = timings(present_only,
                 future_not_past,
                 past_not_future,
@@ -1134,6 +1134,9 @@ end
 end
 ```
 """
+# par_defined_more_than_once = Set()
+# if x.args[i] ∈ par push!(par_defined_more_than_once,x.args[i]) else push!(par,x.args[i]) end 
+# @assert length(par_defined_more_than_once) == 0 "Parameters defined more than once:" * repr(sort(par_defined_more_than_once))
 macro parameters(𝓂,ex)
     calib_equations = []
     calib_equations_no_var = []
