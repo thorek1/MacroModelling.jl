@@ -1134,9 +1134,6 @@ end
 end
 ```
 """
-# par_defined_more_than_once = Set()
-# if x.args[i] ∈ par push!(par_defined_more_than_once,x.args[i]) else push!(par,x.args[i]) end 
-# @assert length(par_defined_more_than_once) == 0 "Parameters defined more than once:" * repr(sort(par_defined_more_than_once))
 macro parameters(𝓂,ex)
     calib_equations = []
     calib_equations_no_var = []
@@ -1159,7 +1156,8 @@ macro parameters(𝓂,ex)
     
     calib_parameters = []
     calib_values = []
-    
+
+    par_defined_more_than_once = Set()
     
     bounds = []
     
@@ -1171,24 +1169,29 @@ macro parameters(𝓂,ex)
                     typeof(x.args[2]) ∈ [Int, Float64] ?
                         begin # this is normal calibration by setting values of parameters
                             push!(calib_values,x.args[2])
-                            push!(calib_parameters,x.args[1])
+                            if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end 
+                            push!(calib_parameters,x.args[1]) 
                         end :
                     begin # this is normal calibration by setting values of parameters
                         # push!(calib_equations_no_var,Expr(:(=),x.args[1], unblock(x.args[2])))
                         push!(calib_values_no_var,unblock(x.args[2]))
+                        if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end
                         push!(calib_parameters_no_var,x.args[1])
                     end :
                 x.args[1].args[1] == :| ?
                     begin # this is calibration by targeting SS values
+                        if x.args[1].args[2] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1].args[2]) end
                         push!(calib_eq_parameters,x.args[1].args[2])
                         push!(calib_equations,Expr(:(=),x.args[1].args[3], unblock(x.args[2])))
                     end :
                 x.args[2].head == :block ?
                     begin # this is calibration by targeting SS values (conditional parameter at the end)
+                        if x.args[2].args[end].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end].args[end]) end
                         push!(calib_eq_parameters,x.args[2].args[end].args[end])
                         push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
                     end :
                 begin # this is calibration by targeting SS values (conditional parameter at the end)
+                    if x.args[2].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end]) end
                     push!(calib_eq_parameters,x.args[2].args[end])#.args[end])
                     push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2])))#.args[2])))
                 end :
@@ -1202,6 +1205,7 @@ macro parameters(𝓂,ex)
         x,
     ex)
     
+    @assert length(par_defined_more_than_once) == 0 "Parameters can only be defined once. This is not the case for: " * repr([par_defined_more_than_once...])
     
     for (i, v) in enumerate(calib_values_no_var)
         out = try eval(v) catch e end

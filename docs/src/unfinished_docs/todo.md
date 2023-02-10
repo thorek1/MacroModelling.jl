@@ -29,6 +29,7 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] error when defining variable more than once in parameters macro
 - [x] error when writing equations with only one variable
 - [x] error when defining variable as parameter
 - [x] more options for IRFs, simulate only certain shocks - set stds to 0 instead
