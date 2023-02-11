@@ -1913,7 +1913,8 @@ function  calculate_second_order_solution(∇₁::AbstractMatrix{Float64}, #firs
 
     lm = LinearMap{Float64}(x -> A * reshape(x,size(X)) - B * reshape(x,size(X)) * C, size(X)[1] * size(X)[2])
 
-    𝐒₂ = sparse(reshape(ℐ.bicgstabl(lm, vec(-X)), size(X))) * 𝐔₂ # fastest
+    # 𝐒₂ = sparse(reshape(ℐ.bicgstabl(lm, vec(-X)), size(X))) * 𝐔₂ # fastest
+    𝐒₂ = sparse(reshape(ℐ.gmres(lm, vec(-X)), size(X))) * 𝐔₂ # numerically more stable
     droptol!(𝐒₂,tol)
 
     return 𝐒₂
@@ -2048,7 +2049,8 @@ function  calculate_third_order_solution(∇₁::AbstractMatrix{Float64}, #first
     A = spdiagm(ones(n))
     lm = LinearMap{Float64}(x -> A * reshape(x,size(X)) - B * reshape(x,size(X)) * C, size(X)[1] * size(X)[2])
     
-    𝐒₃ = sparse(reshape(ℐ.bicgstabl(lm, vec(-X)),size(X))) * 𝐔₃ # fastest
+    # 𝐒₃ = sparse(reshape(ℐ.bicgstabl(lm, vec(-X)),size(X))) * 𝐔₃ # fastest
+    𝐒₃ = sparse(reshape(ℐ.gmres(lm, vec(-X)),size(X))) * 𝐔₃ # numerically more stable
     droptol!(𝐒₃,tol)
     
     

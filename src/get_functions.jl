@@ -858,7 +858,8 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
         if Inf in periods
             lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
 
-            var_container[:,i,indexin(Inf,periods)] = ℒ.diag(reshape(ℐ.bicgstabl(lm, vec(-CC)), size(CC)))
+            # var_container[:,i,indexin(Inf,periods)] = ℒ.diag(reshape(ℐ.bicgstabl(lm, vec(-CC)), size(CC))) # faster
+            var_container[:,i,indexin(Inf,periods)] = ℒ.diag(reshape(ℐ.gmres(lm, vec(-CC)), size(CC))) # numerically more stable
         end
     end
 
