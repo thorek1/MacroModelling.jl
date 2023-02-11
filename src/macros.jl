@@ -1482,7 +1482,7 @@ macro parameters(𝓂,ex)
     # println($m)
     return quote
         mod = @__MODULE__
-        @assert setdiff(setdiff(setdiff(mod.$𝓂.par,$calib_parameters),$calib_parameters_no_var),$calib_eq_parameters) == Symbol[] "Parameters: " * repr([setdiff(setdiff(setdiff(mod.$𝓂.par,$calib_parameters),$calib_parameters_no_var),$calib_eq_parameters)...]) * " are not defined."
+        @assert length(setdiff(setdiff(setdiff(union(reduce(union,$par_calib_list,init = []),mod.$𝓂.par),$calib_parameters),$calib_parameters_no_var),$calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,$par_calib_list,init = []),mod.$𝓂.par),$calib_parameters),$calib_parameters_no_var),$calib_eq_parameters)...])
         mod.$𝓂.bounded_vars = $bounded_vars
         mod.$𝓂.lower_bounds = $lower_bounds
         mod.$𝓂.upper_bounds = $upper_bounds
