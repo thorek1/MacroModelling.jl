@@ -197,7 +197,7 @@ macro model(𝓂,ex)
     # var = collect(union(var_future,var_present,var_past))
 
     # aux = collect(union(aux_future,aux_present,aux_past))
-    nonnegativity_aux_vars = []
+    ➕_vars = []
     ss_and_aux_equations = []
     aux_vars_created = Set()
 
@@ -684,11 +684,11 @@ macro model(𝓂,ex)
                                     begin
                                         # push!(lower_bounds,eps())
                                         # push!(upper_bounds,Inf)
-                                        push!(bounds⁺,:($(Symbol("➕" * sub(string(length(nonnegativity_aux_vars)+1))))))
+                                        push!(bounds⁺,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
                                         
-                                        push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(nonnegativity_aux_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
-                                        push!(nonnegativity_aux_vars,Symbol("➕" * sub(string(length(nonnegativity_aux_vars)+1))))
-                                        :($(Expr(:ref,Symbol("➕" * sub(string(length(nonnegativity_aux_vars)))),0)) ^ $(x.args[3]))
+                                        push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
+                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                        :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)) ^ $(x.args[3]))
                                     end :
                                 x :
                             x :
@@ -717,11 +717,11 @@ macro model(𝓂,ex)
                                 begin
                                     # push!(lower_bounds,eps())
                                     # push!(upper_bounds,Inf)
-                                    push!(bounds⁺,:($(Symbol("➕" * sub(string(length(nonnegativity_aux_vars)+1))))))
+                                    push!(bounds⁺,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
                                     
-                                    push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(nonnegativity_aux_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
-                                    push!(nonnegativity_aux_vars,Symbol("➕" * sub(string(length(nonnegativity_aux_vars)+1))))
-                                    :($(Expr(:call, x.args[1], Expr(:ref,Symbol("➕" * sub(string(length(nonnegativity_aux_vars)))),0))))
+                                    push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
+                                    push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                    :($(Expr(:call, x.args[1], Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0))))
                                 end :
                             x :
                         x :
@@ -919,7 +919,7 @@ macro model(𝓂,ex)
     var_present = reduce(union,var_present_list_aux_SS)
     var_past = reduce(union,var_past_list_aux_SS)
       
-    var = collect(setdiff(union(var_future,var_present,var_past),nonnegativity_aux_vars))
+    var = collect(setdiff(union(var_future,var_present,var_past),➕_vars))
 
     # keep normal names as you write them in model block
     for (i,arg) in enumerate(ex.args)
@@ -1044,7 +1044,7 @@ macro model(𝓂,ex)
                         $nonlinear_solution_helper,
                         $SS_dependencies,
 
-                        $nonnegativity_aux_vars,
+                        $➕_vars,
                         $ss_equations, 
                         $t_future_equations,
                         # :(function t_future_deriv($($var_future...),$($dyn_ss_future...),$($par...))
