@@ -684,11 +684,11 @@ macro model(𝓂,ex)
                                     begin
                                         # push!(lower_bounds,eps())
                                         # push!(upper_bounds,Inf)
-                                        push!(bounds⁺,:($(Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))))
+                                        push!(bounds⁺,:($(Symbol("➕" * sub(string(length(nonnegativity_aux_vars)+1))))))
                                         
-                                        push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
-                                        push!(nonnegativity_aux_vars,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))
-                                        :($(Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)))),0)) ^ $(x.args[3]))
+                                        push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(nonnegativity_aux_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
+                                        push!(nonnegativity_aux_vars,Symbol("➕" * sub(string(length(nonnegativity_aux_vars)+1))))
+                                        :($(Expr(:ref,Symbol("➕" * sub(string(length(nonnegativity_aux_vars)))),0)) ^ $(x.args[3]))
                                     end :
                                 x :
                             x :
@@ -717,11 +717,11 @@ macro model(𝓂,ex)
                                 begin
                                     # push!(lower_bounds,eps())
                                     # push!(upper_bounds,Inf)
-                                    push!(bounds⁺,:($(Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))))
+                                    push!(bounds⁺,:($(Symbol("➕" * sub(string(length(nonnegativity_aux_vars)+1))))))
                                     
-                                    push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
-                                    push!(nonnegativity_aux_vars,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)+1))))
-                                    :($(Expr(:call, x.args[1], Expr(:ref,Symbol("nonnegativity_auxilliary" * sub(string(length(nonnegativity_aux_vars)))),0))))
+                                    push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(nonnegativity_aux_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
+                                    push!(nonnegativity_aux_vars,Symbol("➕" * sub(string(length(nonnegativity_aux_vars)+1))))
+                                    :($(Expr(:call, x.args[1], Expr(:ref,Symbol("➕" * sub(string(length(nonnegativity_aux_vars)))),0))))
                                 end :
                             x :
                         x :

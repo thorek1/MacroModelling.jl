@@ -127,7 +127,7 @@ end
 
 function create_symbols_eqs!(𝓂::ℳ)
     # create symbols in module scope
-    symbols_in_equation = union(𝓂.var,𝓂.par,𝓂.parameters,𝓂.parameters_as_function_of_parameters,𝓂.exo,𝓂.dynamic_variables,𝓂.nonnegativity_auxilliary_vars)#,𝓂.dynamic_variables_future)
+    symbols_in_equation = union(𝓂.var,𝓂.par,𝓂.parameters,𝓂.parameters_as_function_of_parameters,𝓂.exo,𝓂.dynamic_variables,𝓂.➕_vars)#,𝓂.dynamic_variables_future)
     l_bnds = Dict(𝓂.bounded_vars .=> 𝓂.lower_bounds)
     u_bnds = Dict(𝓂.bounded_vars .=> 𝓂.upper_bounds)
 
@@ -199,7 +199,7 @@ function create_symbols_eqs!(𝓂::ℳ)
                 # Set(eval(:([$(𝓂.var_past...)]))),
                 # Set(eval(:([$(𝓂.var_future...)]))),
                 Set(eval(:([$(𝓂.var...)]))),
-                Set(eval(:([$(𝓂.nonnegativity_auxilliary_vars...)]))),
+                Set(eval(:([$(𝓂.➕_vars...)]))),
 
                 map(x->Set(eval(:([$(x...)]))),𝓂.ss_calib_list),
                 map(x->Set(eval(:([$(x...)]))),𝓂.par_calib_list),
@@ -253,7 +253,7 @@ end
 
 
 function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbose = false)
-    unknowns = union(symbolics.var,symbolics.nonnegativity_auxilliary_vars,symbolics.calibration_equations_parameters)
+    unknowns = union(symbolics.var,symbolics.➕_vars,symbolics.calibration_equations_parameters)
 
     @assert length(unknowns) <= length(symbolics.ss_equations) + length(symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
 
@@ -319,7 +319,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 push!(𝓂.solved_vars,Symbol(var_to_solve))
                 push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
 
-                if (𝓂.solved_vars[end] ∈ 𝓂.nonnegativity_auxilliary_vars) 
+                if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = max(eps(),$(𝓂.solved_vals[end]))))
                 else
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
@@ -337,7 +337,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 # println(atoms_in_equations)
                 # push!(atoms_in_equations, soll[1].atoms())
 
-                if (𝓂.solved_vars[end] ∈ 𝓂.nonnegativity_auxilliary_vars) 
+                if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = max(eps(),$(𝓂.solved_vals[end]))))
                 else
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
@@ -433,7 +433,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 guess = []
                 result = []
                 sorted_vars = sort(𝓂.solved_vars[end])
-                # sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.nonnegativity_auxilliary_vars))
+                # sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.➕_vars))
                 for (i, parss) in enumerate(sorted_vars) 
                     push!(guess,:($parss = guess[$i]))
                     # push!(guess,:($parss = undo_transformer(guess[$i])))
@@ -443,7 +443,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 other_vars = []
                 other_vars_input = []
                 # other_vars_inverse = []
-                other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters,𝓂.nonnegativity_auxilliary_vars),sort(𝓂.solved_vars[end])),syms_in_eqs)
+                other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters,𝓂.➕_vars),sort(𝓂.solved_vars[end])),syms_in_eqs)
                 
                 for var in other_vrs
                     # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
@@ -464,11 +464,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                     if val isa Symbol
                         push!(solved_vals,val)
                     else
-                        if (val.args[1] == :+ && val.args[3] ∈ 𝓂.nonnegativity_auxilliary_vars) 
+                        if (val.args[1] == :+ && val.args[3] ∈ 𝓂.➕_vars) 
                             push!(nnaux,:($(val.args[3]) = max(eps(),-$(val.args[2]))))
                             push!(nnaux_linear,:($(val.args[3]) + $(val.args[2])))
                             push!(nnaux_error, :(aux_error += min(0.0,-$(val.args[2]))))
-                        elseif (val.args[1] == :- && val.args[2] ∈ 𝓂.nonnegativity_auxilliary_vars) 
+                        elseif (val.args[1] == :- && val.args[2] ∈ 𝓂.➕_vars) 
                             push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
                             push!(nnaux_linear,:($(val.args[2]) - $(val.args[3])))
                             push!(nnaux_error, :(aux_error += min(0.0,$(val.args[3]))))
@@ -481,7 +481,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 # sort nnaux vars so that they enter in right order. avoid using a variable before it is declared
                 if length(nnaux) > 1
 
-                    nn_symbols = map(x->intersect(𝓂.nonnegativity_auxilliary_vars,x), get_symbols.(nnaux))
+                    nn_symbols = map(x->intersect(𝓂.➕_vars,x), get_symbols.(nnaux))
 
                     all_symbols = reduce(vcat,nn_symbols) |> Set
 
@@ -1212,9 +1212,9 @@ end
 
 
 function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
-    present_varss = map(x->Symbol(string(x) * "₍₀₎"),sort(setdiff(union(𝓂.var_present,𝓂.aux_present,𝓂.exo_present), 𝓂.nonnegativity_auxilliary_vars)))
-    future_varss  = map(x->Symbol(string(x) * "₍₁₎"),sort(setdiff(union(𝓂.var_future,𝓂.aux_future,𝓂.exo_future), 𝓂.nonnegativity_auxilliary_vars)))
-    past_varss    = map(x->Symbol(string(x) * "₍₋₁₎"),sort(setdiff(union(𝓂.var_past,𝓂.aux_past,𝓂.exo_past), 𝓂.nonnegativity_auxilliary_vars)))
+    present_varss = map(x->Symbol(string(x) * "₍₀₎"),sort(setdiff(union(𝓂.var_present,𝓂.aux_present,𝓂.exo_present), 𝓂.➕_vars)))
+    future_varss  = map(x->Symbol(string(x) * "₍₁₎"),sort(setdiff(union(𝓂.var_future,𝓂.aux_future,𝓂.exo_future), 𝓂.➕_vars)))
+    past_varss    = map(x->Symbol(string(x) * "₍₋₁₎"),sort(setdiff(union(𝓂.var_past,𝓂.aux_past,𝓂.exo_past), 𝓂.➕_vars)))
     shock_varss   = map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)
     ss_varss      = map(x->Symbol(string(x) * "₍ₛₛ₎"),𝓂.var)
 
@@ -1588,9 +1588,9 @@ end
 
 
 function calculate_jacobian(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
-    var_past = @ignore_derivatives setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
-    var_present = @ignore_derivatives setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
-    var_future = @ignore_derivatives setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
+    var_past = @ignore_derivatives setdiff(𝓂.var_past,𝓂.➕_vars)
+    var_present = @ignore_derivatives setdiff(𝓂.var_present,𝓂.➕_vars)
+    var_future = @ignore_derivatives setdiff(𝓂.var_future,𝓂.➕_vars)
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
@@ -1615,9 +1615,9 @@ end
 
 
 function calculate_hessian(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
-    var_past = setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
-    var_present = setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
-    var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
+    var_past = setdiff(𝓂.var_past,𝓂.➕_vars)
+    var_present = setdiff(𝓂.var_present,𝓂.➕_vars)
+    var_future = setdiff(𝓂.var_future,𝓂.➕_vars)
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
@@ -1643,9 +1643,9 @@ end
 
 
 function calculate_third_order_derivatives(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
-    var_past = setdiff(𝓂.var_past,𝓂.nonnegativity_auxilliary_vars)
-    var_present = setdiff(𝓂.var_present,𝓂.nonnegativity_auxilliary_vars)
-    var_future = setdiff(𝓂.var_future,𝓂.nonnegativity_auxilliary_vars)
+    var_past = setdiff(𝓂.var_past,𝓂.➕_vars)
+    var_present = setdiff(𝓂.var_present,𝓂.➕_vars)
+    var_future = setdiff(𝓂.var_future,𝓂.➕_vars)
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]

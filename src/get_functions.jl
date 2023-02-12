@@ -157,7 +157,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     state_update = parse_algorithm_to_state_update(:first_order, 𝓂)
 
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var = setdiff(𝓂.var,𝓂.➕_vars)
 
     NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
@@ -166,7 +166,7 @@ function get_conditional_forecast(𝓂::ℳ,
     reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[indexin([s],NSSS_labels)...] for s in full_SS]
 
 
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var = setdiff(𝓂.var,𝓂.➕_vars)
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
@@ -447,7 +447,7 @@ function get_irf(𝓂::ℳ;
 
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
 
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var = setdiff(𝓂.var,𝓂.➕_vars)
 
     NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
@@ -468,7 +468,7 @@ function get_irf(𝓂::ℳ;
         SSS_delta = zeros(length(reference_steady_state))
     end
 
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var = setdiff(𝓂.var,𝓂.➕_vars)
 
     if levels
         if algorithm == :second_order
@@ -593,7 +593,7 @@ function get_steady_state(𝓂::ℳ;
 
     write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var = setdiff(𝓂.var,𝓂.➕_vars)
 
     if parameter_derivatives == :all
         length_par = length(𝓂.parameters)
@@ -724,7 +724,7 @@ function get_solution(𝓂::ℳ;
 
     solve!(𝓂, verbose = verbose, dynamics = true)
 
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var = setdiff(𝓂.var,𝓂.➕_vars)
 
     KeyedArray([𝓂.solution.non_stochastic_steady_state[[indexin(sort([var; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux,𝓂.exo_present))]), sort(union(var,𝓂.exo_present)))...]] 𝓂.solution.perturbation.first_order.solution_matrix]';
     Steady_state__States__Shocks = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
@@ -826,7 +826,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     parameters = nothing,  
     verbose = false)
 
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var = setdiff(𝓂.var,𝓂.➕_vars)
 
     solve!(𝓂, verbose = verbose)
 
@@ -948,7 +948,7 @@ function get_variance_decomposition(𝓂::ℳ;
     parameters = nothing,  
     verbose = false)
     
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var = setdiff(𝓂.var,𝓂.➕_vars)
 
     solve!(𝓂, verbose = verbose)
 
@@ -1023,7 +1023,7 @@ function get_correlation(𝓂::ℳ;
     parameters = nothing,  
     verbose = false)
     
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var = setdiff(𝓂.var,𝓂.➕_vars)
 
     solve!(𝓂, verbose = verbose)
 
@@ -1098,7 +1098,7 @@ function get_autocorrelation(𝓂::ℳ;
     parameters = nothing,  
     verbose = false)
     
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var = setdiff(𝓂.var,𝓂.➕_vars)
 
     solve!(𝓂, verbose = verbose)
 
@@ -1206,7 +1206,7 @@ function get_moments(𝓂::ℳ;
 
     write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    var = setdiff(𝓂.var,𝓂.nonnegativity_auxilliary_vars)
+    var = setdiff(𝓂.var,𝓂.➕_vars)
 
     if parameter_derivatives == :all
         length_par = length(𝓂.parameters)

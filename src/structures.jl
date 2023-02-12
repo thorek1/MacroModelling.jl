@@ -76,7 +76,7 @@ struct symbolics
     # var_past::Set{SymPy.Sym}
     # var_future::Set{SymPy.Sym}
     var::Set{SymPy.Sym}
-    nonnegativity_auxilliary_vars::Set{SymPy.Sym}
+    ➕_vars::Set{SymPy.Sym}
 
     ss_calib_list::Vector{Set{SymPy.Sym}}
     par_calib_list::Vector{Set{SymPy.Sym}}
@@ -213,7 +213,7 @@ mutable struct ℳ
     nonlinear_solution_helper
     SS_dependencies
 
-    nonnegativity_auxilliary_vars::Vector{Symbol}
+    ➕_vars::Vector{Symbol}
     ss_equations::Vector{Expr}
     t_future_equations 
     t_past_equations 
