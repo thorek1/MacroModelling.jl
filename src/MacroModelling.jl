@@ -283,6 +283,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
     vars = hcat(P, R̂)'
     eqs = hcat(Q, R̂)'
 
+    @assert length(unique(eqs)) == size(eqs,2) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(symbolics.ss_equations,symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
+    
     n = n_blocks
 
     ss_equations = vcat(symbolics.ss_equations,symbolics.calibration_equations) .|> SymPy.Sym
