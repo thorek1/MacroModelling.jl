@@ -201,6 +201,8 @@ macro model(𝓂,ex)
     ss_and_aux_equations = []
     aux_vars_created = Set()
 
+    eqs_with_auxs = []
+
     # write down SS equations and go by equation
     for (i,arg) in enumerate(ex.args)
         if isa(arg,Expr)
@@ -641,7 +643,7 @@ macro model(𝓂,ex)
 
 
 
-
+            aux_ind = false
             # find nonegative variables, parameters, or terms
             eqs = postwalk(x -> 
                 x isa Expr ? 
@@ -686,7 +688,8 @@ macro model(𝓂,ex)
                                         # push!(upper_bounds,Inf)
                                         push!(bounds⁺,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
                                         
-                                        push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
+                                        push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the cond_var_decomp
+                                        aux_ind = true
                                         push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                         :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)) ^ $(x.args[3]))
                                     end :
@@ -719,7 +722,8 @@ macro model(𝓂,ex)
                                     # push!(upper_bounds,Inf)
                                     push!(bounds⁺,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
                                     
-                                    push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier i the code
+                                    push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
+                                    aux_ind = true
                                     push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                     :($(Expr(:call, x.args[1], Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0))))
                                 end :
@@ -728,11 +732,12 @@ macro model(𝓂,ex)
                     x :
                 x,
             ex.args[i])
-
             push!(ss_and_aux_equations,unblock(eqs))
+            if aux_ind push!(eqs_with_auxs, unblock(eqs)) end
         end
     end
 
+    # println(eqs_with_auxs)
     all_symbols = get_symbols.(dyn_equations)
 
     dyn_future_list = match_pattern.(all_symbols,r"₍₁₎")
@@ -756,6 +761,8 @@ macro model(𝓂,ex)
     var_future_list_aux_SS = []
     var_present_list_aux_SS = []
     var_past_list_aux_SS = []
+    
+    ss_eqs_with_auxs = []
 
     # # label all variables parameters and exogenous variables and timings for changed SS equations including nonnegativity auxilliary variables
     for eq in ss_and_aux_equations
@@ -829,6 +836,7 @@ macro model(𝓂,ex)
         
         push!(ss_aux_equations,unblock(prs_ex))
 
+        if eq ∈ eqs_with_auxs push!(ss_eqs_with_auxs,unblock(prs_ex)) end
     end
 
     var = collect(union(var_future,var_present,var_past))
@@ -1046,6 +1054,7 @@ macro model(𝓂,ex)
 
                         $➕_vars,
                         $ss_equations, 
+                        $ss_eqs_with_auxs,
                         $t_future_equations,
                         # :(function t_future_deriv($($var_future...),$($dyn_ss_future...),$($par...))
                         #     [$($t_future_equations...)]
