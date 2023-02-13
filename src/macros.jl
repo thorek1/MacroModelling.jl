@@ -1219,7 +1219,7 @@ macro parameters(𝓂,ex)
             x.head == :(=) ? 
                 typeof(x.args[2]) ∈ [Int, Float64] ?
                     x :
-                x.args[1] isa Symbol ?
+                x.args[1] isa Symbol || x.args[1] isa Expr ?
                     x.args[2] isa Expr ?
                         x.args[2].args[1] == :| ? # capture this case: b_star = b_share * y[ss] | b_star
                             begin # this is calibration by targeting SS values (conditional parameter at the end)
