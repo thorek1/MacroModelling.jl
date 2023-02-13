@@ -460,18 +460,23 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 push!(nnaux_error, :(aux_error = 0))
                 solved_vals = []
                 
-                for val in 𝓂.solved_vals[end]
+                eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
+
+                ➕_var_idx = map(x->findall([x] .== 𝓂.ss_aux_equations)[1],setdiff(setdiff(𝓂.ss_aux_equations, 𝓂.ss_equations), 𝓂.ss_equations_post_modification))
+
+                ➕_var_idx_in_block = map(x->findall(x .== eq_idx_in_block_to_solve)[1],➕_var_idx)
+
+                eq_idx_in_block_to_solve[➕_var_idx_in_block]
+
+                for (i,val) in enumerate(𝓂.solved_vals[end])
                     if val isa Symbol
                         push!(solved_vals,val)
                     else
-                        if (val.args[1] == :+ && val.args[3] ∈ 𝓂.➕_vars) 
-                            push!(nnaux,:($(val.args[3]) = max(eps(),-$(val.args[2]))))
-                            push!(nnaux_linear,:($(val.args[3]) + $(val.args[2])))
-                            push!(nnaux_error, :(aux_error += min(0.0,-$(val.args[2]))))
-                        elseif (val.args[1] == :- && val.args[2] ∈ 𝓂.➕_vars) 
+                        if i ∈ ➕_var_idx_in_block
+                            𝓂.ss_aux_equations[eq_idx_in_block_to_solve[i]]
                             push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
-                            push!(nnaux_linear,:($(val.args[2]) - $(val.args[3])))
-                            push!(nnaux_error, :(aux_error += min(0.0,$(val.args[3]))))
+                            push!(nnaux_linear,:($val))
+                            push!(nnaux_error, :(aux_error += min(0.0,-$(val.args[3]))))
                         else
                             push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
                         end
