@@ -440,18 +440,6 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                     push!(result,:($parss = sol[$i]))
                 end
 
-                other_vars = []
-                other_vars_input = []
-                # other_vars_inverse = []
-                other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters,𝓂.➕_vars),sort(𝓂.solved_vars[end])),syms_in_eqs)
-                
-                for var in other_vrs
-                    # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
-                    push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
-                    push!(other_vars_input,:($(var)))
-                    iii += 1
-                    # push!(other_vars_inverse,:(𝓂.SS_init_guess[$var_idx] = $(var)))
-                end
                 
                 # separate out auxilliary variables (nonnegativity)
                 nnaux = []
@@ -462,27 +450,42 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
-                ➕_var_idx = map(x->findall([x] .== 𝓂.ss_aux_equations)[1],setdiff(setdiff(𝓂.ss_aux_equations, 𝓂.ss_equations), 𝓂.ss_equations_post_modification))
+                # sorting of the nonnegative auxilliary variables. identify them in vector of modified ss equations
+                ➕_var_idx = Int[]
 
-                ➕_var_idx_in_block = map(x->findall(x .== eq_idx_in_block_to_solve)[1],➕_var_idx)
+                for v in setdiff(setdiff(𝓂.ss_aux_equations, 𝓂.ss_equations), 𝓂.ss_equations_post_modification)
+                    for f in findall([v] .== 𝓂.ss_aux_equations)
+                        push!(➕_var_idx,f)
+                    end
+                end
 
-                eq_idx_in_block_to_solve[➕_var_idx_in_block]
+                ➕_var_idx_in_block = Int[]
+
+                for v in ➕_var_idx
+                    for f in findall(v .== eq_idx_in_block_to_solve)
+                        push!(➕_var_idx_in_block,f)
+                    end
+                end
+
+                other_vrs_eliminated_by_sympy = Set()
 
                 for (i,val) in enumerate(𝓂.solved_vals[end])
                     if val isa Symbol
                         push!(solved_vals,val)
                     else
                         if i ∈ ➕_var_idx_in_block
-                            𝓂.ss_aux_equations[eq_idx_in_block_to_solve[i]]
-                            push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
-                            push!(nnaux_linear,:($val))
-                            push!(nnaux_error, :(aux_error += min(0.0,-$(val.args[3]))))
+                            vall = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
+                            push!(nnaux,:($(vall.args[2]) = max(eps(),$(vall.args[3]))))
+                            push!(other_vrs_eliminated_by_sympy, vall.args[2])
+                            push!(nnaux_linear,:($vall))
+                            push!(nnaux_error, :(aux_error += min(0.0,$(vall.args[3]))))
                         else
                             push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
                         end
                     end
                 end
 
+                # println(other_vrs_eliminated_by_sympy)
                 # sort nnaux vars so that they enter in right order. avoid using a variable before it is declared
                 if length(nnaux) > 1
 
@@ -494,7 +497,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 
 
                     for i in 1:length(all_symbols)
-                        for k in 1:length(all_symbols)
+                        for k in 1:length(nn_symbols)
                             inc_matrix[i,k] = collect(all_symbols)[i] ∈ collect(nn_symbols)[k]
                         end
                     end
@@ -503,6 +506,21 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 
                     nnaux = nnaux[QQ]
                     nnaux_linear = nnaux_linear[QQ]
+                end
+
+
+
+                other_vars = []
+                other_vars_input = []
+                # other_vars_inverse = []
+                other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters,𝓂.➕_vars),sort(𝓂.solved_vars[end])),union(syms_in_eqs,other_vrs_eliminated_by_sympy))
+                
+                for var in other_vrs
+                    # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
+                    push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
+                    push!(other_vars_input,:($(var)))
+                    iii += 1
+                    # push!(other_vars_inverse,:(𝓂.SS_init_guess[$var_idx] = $(var)))
                 end
 
                 # augment system for bound constraint violations
