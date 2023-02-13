@@ -1182,10 +1182,15 @@ macro parameters(𝓂,ex)
                             if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end 
                             push!(calib_parameters,x.args[1]) 
                         end :
+                    x.args[2] isa Symbol ?
+                        begin # normal calibration by setting values of parameters
+                            push!(calib_values_no_var,unblock(x.args[2]))
+                            if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end
+                            push!(calib_parameters_no_var,x.args[1])
+                        end :
                     x.args[2].args[1] == :| ?
                         x :
                     begin # normal calibration by setting values of parameters
-                        # push!(calib_equations_no_var,Expr(:(=),x.args[1], unblock(x.args[2])))
                         push!(calib_values_no_var,unblock(x.args[2]))
                         if x.args[1] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once,x.args[1]) end
                         push!(calib_parameters_no_var,x.args[1])
