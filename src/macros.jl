@@ -933,11 +933,11 @@ macro model(𝓂,ex)
 
 
 
-    var_future = reduce(union,var_future_list_aux_SS)
-    var_present = reduce(union,var_present_list_aux_SS)
-    var_past = reduce(union,var_past_list_aux_SS)
-      
-    var = collect(setdiff(union(var_future,var_present,var_past),➕_vars))
+    var_aux_future = reduce(union,var_future_list_aux_SS)
+    var_aux_present = reduce(union,var_present_list_aux_SS)
+    var_aux_past = reduce(union,var_past_list_aux_SS)
+
+    var = collect(setdiff(union(var_aux_future,var_aux_present,var_aux_past),➕_vars))
 
     # keep normal names as you write them in model block
     for (i,arg) in enumerate(ex.args)
