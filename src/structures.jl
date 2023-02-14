@@ -215,7 +215,7 @@ mutable struct ℳ
 
     ➕_vars::Vector{Symbol}
     ss_equations::Vector{Expr}
-    ss_equations_post_modification::Vector{Expr}
+    ss_equations_with_aux_variables::Vector{Int}
     t_future_equations 
     t_past_equations 
     t_present_equations 
