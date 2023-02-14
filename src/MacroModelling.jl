@@ -118,12 +118,34 @@ function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
 end
 
 
+function simplify(ex::Expr)
+    ex_ss = convert_to_ss_equation(ex)
 
-# function get_symbols(ex)
-#     list = Set()
-#     postwalk(x -> x isa Symbol ? push!(list, x) : x, ex)
-#     return list
-# end
+	eval(:(@vars $(get_symbols(ex_ss)...) real = true finite = true ))
+
+	ex_ss |> eval |> string |> Meta.parse
+end
+
+function convert_to_ss_equation(eq::Expr)
+    postwalk(x -> 
+        x isa Expr ? 
+            x.head == :(=) ? 
+                Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
+                    x.head == :ref ?
+                        occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 :
+                x.args[1] : 
+            x.head == :call ?
+                x.args[1] == :* ?
+                    x.args[2] isa Int ?
+                        x.args[3] isa Int ?
+                            x :
+                        :($(x.args[3]) * $(x.args[2])) : # avoid 2X syntax. doesnt work with sympy
+                    x :
+                x :
+            unblock(x) : 
+        x,
+    eq)
+end
 
 function create_symbols_eqs!(𝓂::ℳ)
     # create symbols in module scope
@@ -283,7 +305,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
     vars = hcat(P, R̂)'
     eqs = hcat(Q, R̂)'
 
-    @assert length(unique(eqs)) == size(eqs,2) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(symbolics.ss_equations,symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
+    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(symbolics.ss_equations,symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
     
     n = n_blocks
 
@@ -306,6 +328,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
             soll = try solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
             catch
             end
+            # println(soll)
 
             if isnothing(soll)
                 # println("Could not solve single variables case symbolically.")
@@ -450,22 +473,6 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
-                # sorting of the nonnegative auxilliary variables. identify them in vector of modified ss equations
-                ➕_var_idx = Int[]
-
-                for v in setdiff(setdiff(𝓂.ss_aux_equations, 𝓂.ss_equations), 𝓂.ss_equations_post_modification)
-                    for f in findall([v] .== 𝓂.ss_aux_equations)
-                        push!(➕_var_idx,f)
-                    end
-                end
-
-                ➕_var_idx_in_block = Int[]
-
-                for v in ➕_var_idx
-                    for f in findall(v .== eq_idx_in_block_to_solve)
-                        push!(➕_var_idx_in_block,f)
-                    end
-                end
 
                 other_vrs_eliminated_by_sympy = Set()
 
@@ -473,12 +480,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                     if val isa Symbol
                         push!(solved_vals,val)
                     else
-                        if i ∈ ➕_var_idx_in_block
-                            vall = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
-                            push!(nnaux,:($(vall.args[2]) = max(eps(),$(vall.args[3]))))
-                            push!(other_vrs_eliminated_by_sympy, vall.args[2])
-                            push!(nnaux_linear,:($vall))
-                            push!(nnaux_error, :(aux_error += min(0.0,$(vall.args[3]))))
+                        if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
+                            val = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
+                            push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
+                            push!(other_vrs_eliminated_by_sympy, val.args[2])
+                            push!(nnaux_linear,:($val))
+                            push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
                         else
                             push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
                         end
@@ -487,6 +494,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 
                 # println(other_vrs_eliminated_by_sympy)
                 # sort nnaux vars so that they enter in right order. avoid using a variable before it is declared
+                # println(nnaux)
                 if length(nnaux) > 1
 
                     nn_symbols = map(x->intersect(𝓂.➕_vars,x), get_symbols.(nnaux))
