@@ -203,6 +203,10 @@ macro model(𝓂,ex)
 
     eqs_with_auxs = []
 
+    unique_➕_vars = []
+
+    ss_eq_aux_ind = Int[]
+
     # write down SS equations and go by equation
     for (i,arg) in enumerate(ex.args)
         if isa(arg,Expr)
@@ -684,14 +688,26 @@ macro model(𝓂,ex)
                                     x :
                                 x.args[2].head == :call ? # nonnegative expressions
                                     begin
-                                        # push!(lower_bounds,eps())
-                                        # push!(upper_bounds,Inf)
-                                        push!(bounds⁺,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                        
-                                        push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the cond_var_decomp
-                                        aux_ind = true
-                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                        :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)) ^ $(x.args[3]))
+                                        # println(x.args[2])
+                                        replacement = simplify(x.args[2])
+
+                                        if !(replacement isa Int) # check if the nonnegative term is just a constant
+                                            if replacement ∈ unique_➕_vars
+                                                # println(unique_➕_vars)
+                                                ➕_vars_idx = findfirst([replacement] .== unique_➕_vars)
+                                                replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
+                                            else
+                                                push!(unique_➕_vars,replacement)
+                                                push!(bounds⁺,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
+                                                push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), replacement)) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the cond_var_decomp
+                                                push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                                                aux_ind = true
+                                                push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                                replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+                                            end
+                                        end
+
+                                        :($(replacement) ^ $(x.args[3]))
                                     end :
                                 x :
                             x :
@@ -718,14 +734,25 @@ macro model(𝓂,ex)
                                 x :
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
-                                    # push!(lower_bounds,eps())
-                                    # push!(upper_bounds,Inf)
-                                    push!(bounds⁺,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                    
-                                    push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
-                                    aux_ind = true
-                                    push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                    :($(Expr(:call, x.args[1], Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0))))
+                                    # println(x.args[2])
+                                    replacement = simplify(x.args[2])
+
+                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
+                                        if replacement ∈ unique_➕_vars
+                                            # println(unique_➕_vars)
+                                            ➕_vars_idx = findfirst([replacement] .== unique_➕_vars)
+                                            replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
+                                        else
+                                            push!(unique_➕_vars,replacement)
+                                            push!(bounds⁺,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
+                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), replacement)) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
+                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                                            aux_ind = true
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+                                        end
+                                    end
+                                    :($(Expr(:call, x.args[1], replacement)))
                                 end :
                             x :
                         x :
@@ -815,24 +842,7 @@ macro model(𝓂,ex)
 
 
         # write down SS equations including nonnegativity auxilliary variables
-        prs_ex = postwalk(x -> 
-            x isa Expr ? 
-                x.head == :(=) ? 
-                    Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
-                        x.head == :ref ?
-                            occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 :
-                    x.args[1] : 
-                x.head == :call ?
-                    x.args[1] == :* ?
-                        x.args[2] isa Int ?
-                            x.args[3] isa Int ?
-                                x :
-                            :($(x.args[3]) * $(x.args[2])) :
-                        x :
-                    x :
-                unblock(x) : 
-            x,
-        eq)
+        prs_ex = convert_to_ss_equation(eq)
         
         push!(ss_aux_equations,unblock(prs_ex))
 
@@ -948,7 +958,7 @@ macro model(𝓂,ex)
     default_optimizer = NLopt.LD_LBFGS
     # default_optimizer = Optimisers.Adam
     # default_optimizer = NLopt.LN_BOBYQA
-
+    # println(ss_eq_aux_ind)
     dynamic_variables = collect(union(dyn_ss_past,dyn_ss_future,dyn_ss_present))
     #assemble data container of containers
     model_name = string(𝓂)
@@ -1054,7 +1064,7 @@ macro model(𝓂,ex)
 
                         $➕_vars,
                         $ss_equations, 
-                        $ss_eqs_with_auxs,
+                        $ss_eq_aux_ind,
                         $t_future_equations,
                         # :(function t_future_deriv($($var_future...),$($dyn_ss_future...),$($par...))
                         #     [$($t_future_equations...)]
@@ -1219,7 +1229,7 @@ macro parameters(𝓂,ex)
             x.head == :(=) ? 
                 typeof(x.args[2]) ∈ [Int, Float64] ?
                     x :
-                x.args[1] isa Symbol || x.args[1] isa Expr ?
+                x.args[1] isa Symbol ?# || x.args[1] isa Expr ? #this doesnt work really well yet
                     x.args[2] isa Expr ?
                         x.args[2].args[1] == :| ? # capture this case: b_star = b_share * y[ss] | b_star
                             begin # this is calibration by targeting SS values (conditional parameter at the end)
