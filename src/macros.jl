@@ -692,14 +692,14 @@ macro model(𝓂,ex)
                                         replacement = simplify(x.args[2])
 
                                         if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                            if replacement ∈ unique_➕_vars
+                                            if x.args[2] ∈ unique_➕_vars
                                                 # println(unique_➕_vars)
-                                                ➕_vars_idx = findfirst([replacement] .== unique_➕_vars)
+                                                ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
                                                 replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
                                             else
-                                                push!(unique_➕_vars,replacement)
+                                                push!(unique_➕_vars,x.args[2])
                                                 push!(bounds⁺,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                                push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), replacement)) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the cond_var_decomp
+                                                push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the cond_var_decomp
                                                 push!(ss_eq_aux_ind,length(ss_and_aux_equations))
                                                 aux_ind = true
                                                 push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
@@ -738,14 +738,14 @@ macro model(𝓂,ex)
                                     replacement = simplify(x.args[2])
 
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if replacement ∈ unique_➕_vars
+                                        if x.args[2] ∈ unique_➕_vars
                                             # println(unique_➕_vars)
-                                            ➕_vars_idx = findfirst([replacement] .== unique_➕_vars)
+                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
                                         else
-                                            push!(unique_➕_vars,replacement)
+                                            push!(unique_➕_vars,x.args[2])
                                             push!(bounds⁺,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), replacement)) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
+                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
                                             push!(ss_eq_aux_ind,length(ss_and_aux_equations))
                                             aux_ind = true
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
@@ -844,9 +844,13 @@ macro model(𝓂,ex)
         # write down SS equations including nonnegativity auxilliary variables
         prs_ex = convert_to_ss_equation(eq)
         
-        push!(ss_aux_equations,unblock(prs_ex))
+        ss_aux_equation = simplify(unblock(prs_ex))
 
-        if eq ∈ eqs_with_auxs push!(ss_eqs_with_auxs,unblock(prs_ex)) end
+        ss_aux_equation_expr = if ss_aux_equation isa Symbol Expr(:call,:-,ss_aux_equation,0) else ss_aux_equation end
+
+        push!(ss_aux_equations,ss_aux_equation_expr)
+
+        if eq ∈ eqs_with_auxs push!(ss_eqs_with_auxs,ss_aux_equation_expr) end
     end
 
     var = collect(union(var_future,var_present,var_past))
@@ -932,12 +936,23 @@ macro model(𝓂,ex)
                 dynamic_order)
 
 
+    dyn_var_future_list  = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍₁₎")))
+    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍₀₎")))
+    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")))
+    # dyn_exo_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")))
+    dyn_ss_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍ₛₛ₎")))
+    dyn_par_list    = map(x->intersect(x,par_list_aux_SS),collect.(get_symbols.(dyn_equations)))
+    # dyn_exo_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(all_symbols,r"₍ₓ₎")))
+                
+    # var_aux_future = reduce(union,var_future_list_aux_SS)
+    # var_aux_present = reduce(union,var_present_list_aux_SS)
+    # var_aux_past = reduce(union,var_past_list_aux_SS)
 
-    var_aux_future = reduce(union,var_future_list_aux_SS)
-    var_aux_present = reduce(union,var_present_list_aux_SS)
-    var_aux_past = reduce(union,var_past_list_aux_SS)
+    # println(ss_aux_equations)
+    # println(get_symbols.(ss_aux_equations))
+    vars_in_ss_equations  = setdiff(reduce(union,get_symbols.(ss_aux_equations)),par)
 
-    var = collect(setdiff(union(var_aux_future,var_aux_present,var_aux_past),➕_vars))
+    var = collect(setdiff(union(var_future,var_present,var_past),➕_vars))
 
     # keep normal names as you write them in model block
     for (i,arg) in enumerate(ex.args)
@@ -990,6 +1005,7 @@ macro model(𝓂,ex)
                         sort(collect($exo_present)), 
                         sort(collect($exo_past)), 
 
+                        sort(collect($vars_in_ss_equations)),
                         sort($var), 
                         sort(collect($var_present)), 
                         sort(collect($var_future)), 
