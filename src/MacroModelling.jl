@@ -123,7 +123,9 @@ function simplify(ex::Expr)
 
 	eval(:(@vars $(get_symbols(ex_ss)...) real = true finite = true ))
 
-	ex_ss |> eval |> string |> Meta.parse
+	parsed = ex_ss |> eval |> string |> Meta.parse
+
+    postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, parsed)
 end
 
 function convert_to_ss_equation(eq::Expr)
@@ -220,6 +222,7 @@ function create_symbols_eqs!(𝓂::ℳ)
                 # Set(eval(:([$(𝓂.var_present...)]))),
                 # Set(eval(:([$(𝓂.var_past...)]))),
                 # Set(eval(:([$(𝓂.var_future...)]))),
+                Set(eval(:([$(𝓂.vars_in_ss_equations...)]))),
                 Set(eval(:([$(𝓂.var...)]))),
                 Set(eval(:([$(𝓂.➕_vars...)]))),
 
@@ -275,7 +278,7 @@ end
 
 
 function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbose = false)
-    unknowns = union(symbolics.var,symbolics.➕_vars,symbolics.calibration_equations_parameters)
+    unknowns = union(symbolics.vars_in_ss_equations,symbolics.calibration_equations_parameters)
 
     @assert length(unknowns) <= length(symbolics.ss_equations) + length(symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
 
@@ -777,7 +780,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                             $(SS_solve_func...)
                             if scale == 1
                                 # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
-                                return [$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)] , solution_error
+                                return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)] , solution_error
                             end
                         end
                     end
@@ -1145,7 +1148,7 @@ function solve!(𝓂::ℳ;
 
             all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
-            all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+            all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
             
             NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
             
@@ -1203,7 +1206,7 @@ function solve!(𝓂::ℳ;
 
             all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
-            all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+            all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
             
             NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
             
@@ -1619,84 +1622,111 @@ end
 
 
 function calculate_jacobian(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
-    var_past = @ignore_derivatives setdiff(𝓂.var_past,𝓂.➕_vars)
-    var_present = @ignore_derivatives setdiff(𝓂.var_present,𝓂.➕_vars)
-    var_future = @ignore_derivatives setdiff(𝓂.var_future,𝓂.➕_vars)
-
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     # par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
     par = vcat(parameters,calibrated_parameters)
 
-    past_idx = @ignore_derivatives [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
-    SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
-    
-    present_idx = @ignore_derivatives [indexin(sort([var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(𝓂.var,𝓂.exo_present)))...]
-    SS_present =    length(present_idx) > 0 ? SS[present_idx] : zeros(0)#; zeros(length(𝓂.exo_present))...]
-    
-    future_idx = @ignore_derivatives [indexin(sort([var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(𝓂.var,𝓂.exo_present)))...]
-    SS_future =     length(future_idx) > 0 ? SS[future_idx] : zeros(0)#; zeros(length(𝓂.exo_future))...]
+    dyn_var_future_list  = @ignore_derivatives map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎")))
+    dyn_var_present_list = @ignore_derivatives map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎")))
+    dyn_var_past_list    = @ignore_derivatives map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎")))
+    dyn_exo_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎")))
+    # dyn_ss_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍ₛₛ₎")))
 
-    shocks_ss = zeros(length(𝓂.exo))
+    dyn_var_future = @ignore_derivatives Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_future_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_var_present = @ignore_derivatives Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_present_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_var_past = @ignore_derivatives Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_past_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_exo = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_exo_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    # dyn_ss = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_ss_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+
+
+    SS_and_pars_names = @ignore_derivatives vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+
+    dyn_var_future_idx = @ignore_derivatives indexin(dyn_var_future,SS_and_pars_names)
+    dyn_var_present_idx = @ignore_derivatives indexin(dyn_var_present,SS_and_pars_names)
+    dyn_var_past_idx = @ignore_derivatives indexin(dyn_var_past,SS_and_pars_names)
+    # dyn_exo_idx = indexin(dyn_exo,SS_and_pars_names)
+    # dyn_ss_idx = indexin(dyn_ss,SS_and_pars_names)
+
+    shocks_ss = zeros(length(dyn_exo))
 
     # return ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
-    return Matrix(𝓂.model_jacobian([SS_future; SS_present; SS_past; shocks_ss], par, SS))
+    return Matrix(𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS))
 end
 
 
 
 function calculate_hessian(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
-    var_past = setdiff(𝓂.var_past,𝓂.➕_vars)
-    var_present = setdiff(𝓂.var_present,𝓂.➕_vars)
-    var_future = setdiff(𝓂.var_future,𝓂.➕_vars)
-
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-	par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
     
-    past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
-    SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
-    
-    present_idx = [indexin(sort([var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(𝓂.var,𝓂.exo_present)))...]
-    SS_present =    length(present_idx) > 0 ? SS[present_idx] : zeros(0)#; zeros(length(𝓂.exo_present))...]
-    
-    future_idx = [indexin(sort([var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(𝓂.var,𝓂.exo_present)))...]
-    SS_future =     length(future_idx) > 0 ? SS[future_idx] : zeros(0)#; zeros(length(𝓂.exo_future))...]
+    par = vcat(parameters,calibrated_parameters)
 
-    shocks_ss = zeros(length(𝓂.exo))
+    dyn_var_future_list  = @ignore_derivatives map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎")))
+    dyn_var_present_list = @ignore_derivatives map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎")))
+    dyn_var_past_list    = @ignore_derivatives map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎")))
+    dyn_exo_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎")))
+    # dyn_ss_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍ₛₛ₎")))
 
-    nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+    dyn_var_future = @ignore_derivatives Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_future_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_var_present = @ignore_derivatives Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_present_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_var_past = @ignore_derivatives Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_past_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_exo = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_exo_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    # dyn_ss = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_ss_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+
+
+    SS_and_pars_names = @ignore_derivatives vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+
+    dyn_var_future_idx = @ignore_derivatives indexin(dyn_var_future,SS_and_pars_names)
+    dyn_var_present_idx = @ignore_derivatives indexin(dyn_var_present,SS_and_pars_names)
+    dyn_var_past_idx = @ignore_derivatives indexin(dyn_var_past,SS_and_pars_names)
+    # dyn_exo_idx = indexin(dyn_exo,SS_and_pars_names)
+    # dyn_ss_idx = indexin(dyn_ss,SS_and_pars_names)
+
+    shocks_ss = zeros(length(dyn_exo))
+
+    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
         
     # return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
-    return 𝓂.model_hessian([SS_future; SS_present; SS_past; shocks_ss], par, SS)
+    return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS)
 end
 
 
 
 function calculate_third_order_derivatives(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
-    var_past = setdiff(𝓂.var_past,𝓂.➕_vars)
-    var_present = setdiff(𝓂.var_present,𝓂.➕_vars)
-    var_future = setdiff(𝓂.var_future,𝓂.➕_vars)
-
+    
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-	par = ComponentVector( vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
     
-    past_idx = [indexin(sort([var_past; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_past,𝓂.exo_past))]), sort(union(𝓂.var,𝓂.exo_present)))...]
-    SS_past =       length(past_idx) > 0 ? SS[past_idx] : zeros(0) #; zeros(length(𝓂.exo_past))...]
-    
-    present_idx = [indexin(sort([var_present; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_present,𝓂.exo_present))]), sort(union(𝓂.var,𝓂.exo_present)))...]
-    SS_present =    length(present_idx) > 0 ? SS[present_idx] : zeros(0)#; zeros(length(𝓂.exo_present))...]
-    
-    future_idx = [indexin(sort([var_future; map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  union(𝓂.aux_future,𝓂.exo_future))]), sort(union(𝓂.var,𝓂.exo_present)))...]
-    SS_future =     length(future_idx) > 0 ? SS[future_idx] : zeros(0)#; zeros(length(𝓂.exo_future))...]
+    par = vcat(parameters,calibrated_parameters)
 
-    shocks_ss = zeros(length(𝓂.exo))
+    dyn_var_future_list  = @ignore_derivatives map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎")))
+    dyn_var_present_list = @ignore_derivatives map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎")))
+    dyn_var_past_list    = @ignore_derivatives map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎")))
+    dyn_exo_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎")))
+    # dyn_ss_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍ₛₛ₎")))
 
-    nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+    dyn_var_future = @ignore_derivatives Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_future_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_var_present = @ignore_derivatives Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_present_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_var_past = @ignore_derivatives Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_past_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_exo = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_exo_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    # dyn_ss = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_ss_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+
+
+    SS_and_pars_names = @ignore_derivatives vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+
+    dyn_var_future_idx = @ignore_derivatives indexin(dyn_var_future,SS_and_pars_names)
+    dyn_var_present_idx = @ignore_derivatives indexin(dyn_var_present,SS_and_pars_names)
+    dyn_var_past_idx = @ignore_derivatives indexin(dyn_var_past,SS_and_pars_names)
+    # dyn_exo_idx = indexin(dyn_exo,SS_and_pars_names)
+    # dyn_ss_idx = indexin(dyn_ss,SS_and_pars_names)
+
+    shocks_ss = zeros(length(dyn_exo))
+
+    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
       
     # return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
-    return 𝓂.model_third_order_derivatives([SS_future; SS_present; SS_past; shocks_ss], par, SS)
+    return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS)
 end
 
 
