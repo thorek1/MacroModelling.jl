@@ -75,6 +75,7 @@ struct symbolics
     # var_present::Set{SymPy.Sym}
     # var_past::Set{SymPy.Sym}
     # var_future::Set{SymPy.Sym}
+    vars_in_ss_equations::Set{SymPy.Sym}
     var::Set{SymPy.Sym}
     ➕_vars::Set{SymPy.Sym}
 
@@ -142,6 +143,7 @@ mutable struct ℳ
     exo_present::Vector{Symbol}
     exo_past::Vector{Symbol}
 
+    vars_in_ss_equations::Vector{Symbol}
     var::Vector{Symbol}
     var_present::Vector{Symbol}
     var_future::Vector{Symbol}
