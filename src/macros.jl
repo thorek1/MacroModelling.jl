@@ -348,6 +348,19 @@ macro model(𝓂,ex)
         var_present_tmp = Set()
         var_past_tmp = Set()
 
+        # remove terms multiplied with 0
+        eq = postwalk(x -> 
+            x isa Expr ? 
+                x.head == :call ? 
+                    x.args[1] == :* ?
+                        any(x.args[2:end] .== 0) ? 
+                            0 :
+                        x :
+                    x :
+                x :
+            x,
+        eq)
+
         # label all variables parameters and exogenous variables and timings for individual equations
         postwalk(x -> 
             x isa Expr ? 

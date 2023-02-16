@@ -441,10 +441,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 if !symbolic_SS && verbose
                     println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " numerically.")
                 end
-                push!(𝓂.solved_vars,Symbol.(collect(unknowns)[vars[:,vars[2,:] .== n][1,:]]))
-                push!(𝓂.solved_vals,Meta.parse.(string.(ss_equations[eqs[:,eqs[2,:] .== n][1,:]])))
                 
-                syms_in_eqs = Set(Symbol.(SymPy.Sym(ss_equations[eqs[:,eqs[2,:] .== n][1,:]]).atoms()))
+                push!(𝓂.solved_vars,Symbol.(vars_to_solve))
+                push!(𝓂.solved_vals,Meta.parse.(string.(eqs_to_solve)))
+
+                syms_in_eqs = Set(Symbol.(SymPy.Sym(eqs_to_solve).atoms()))
+                # println(syms_in_eqs)
                 push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
 
                 calib_pars = []
@@ -487,15 +489,15 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 other_vrs_eliminated_by_sympy = Set()
 
                 for (i,val) in enumerate(𝓂.solved_vals[end])
-                    if val isa Symbol
+                    if typeof(val) ∈ [Symbol,Float64,Int]
                         push!(solved_vals,val)
                     else
                         if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
                             val = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
-                            push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
+                            push!(nnaux,:($(val.args[3]) = max(eps(),$(val.args[2]))))
                             push!(other_vrs_eliminated_by_sympy, val.args[2])
                             push!(nnaux_linear,:($val))
-                            push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
+                            push!(nnaux_error, :(aux_error += min(eps(),$(val.args[2]))))
                         else
                             push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
                         end
@@ -506,13 +508,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 # sort nnaux vars so that they enter in right order. avoid using a variable before it is declared
                 # println(nnaux)
                 if length(nnaux) > 1
+                    all_symbols = map(x->x.args[1],nnaux) #relevant symbols come first in respective equations
 
-                    nn_symbols = map(x->intersect(𝓂.➕_vars,x), get_symbols.(nnaux))
-
-                    all_symbols = reduce(vcat,nn_symbols) |> Set
-
+                    nn_symbols = map(x->intersect(all_symbols,x), get_symbols.(nnaux))
+                    
                     inc_matrix = fill(0,length(all_symbols),length(all_symbols))
-
 
                     for i in 1:length(all_symbols)
                         for k in 1:length(nn_symbols)
@@ -531,8 +531,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 other_vars = []
                 other_vars_input = []
                 # other_vars_inverse = []
-                other_vrs = intersect(setdiff(union(𝓂.var,𝓂.calibration_equations_parameters,𝓂.➕_vars),sort(𝓂.solved_vars[end])),union(syms_in_eqs,other_vrs_eliminated_by_sympy))
-                
+                other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
+                                                    sort(𝓂.solved_vars[end]) ),
+                                        union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux)), map(x->x.args[1],nnaux)) ) )
+
+                # println(intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars), sort(𝓂.solved_vars[end]) ), union(syms_in_eqs, other_vrs_eliminated_by_sympy ) ))
+                # println(other_vrs)
                 for var in other_vrs
                     # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
                     push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
@@ -574,7 +578,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 #         return [$(solved_vals...),$(nnaux_linear...)]
                 #     end)
 
-
+# println(solved_vals)
                 funcs = :(function block(parameters_and_solved_vars::Vector{Float64}, guess::Vector{Float64}, transformer_option::Int)
                         # if guess isa Tuple guess = guess[1] end
                         guess = undo_transformer(guess, option = transformer_option) 
@@ -892,7 +896,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             end
 
             if (sol_minimum < tol) && verbose
-                println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
+                println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
             elseif !fail_fast_solvers_only
                 # if the previous non-converged best guess as a starting point does not work, try the standard starting points
                 for starting_point in starting_points
@@ -908,7 +912,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                             sol_values = undo_transformer(sol_new.zero, option = transformer_option)
 
                             if sol_minimum < tol && verbose
-                                println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
+                                println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
                             end
                         end
 
@@ -928,7 +932,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         sol_values = undo_transformer(sol_new.zero, option = transformer_option)
 
                         if (sol_minimum < tol) && verbose
-                            println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
+                            println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
                         end
                     end
                 end
@@ -956,7 +960,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     sol_values = undo_transformer(sol_new.u, option = transformer_option)
 
                     if (sol_minimum < tol) && verbose
-                        println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
+                        println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
                     end
                 end
 
@@ -973,7 +977,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                                 sol_values = undo_transformer(sol_new.u, option = transformer_option)
 
                                 if (sol_minimum < tol) && verbose
-                                    println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
+                                    println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
                                 end
                             end
 
@@ -991,7 +995,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                             sol_values = undo_transformer(sol_new.u, option = transformer_option)
 
                             if (sol_minimum < tol) && verbose
-                                println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
+                                println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
                             end
                         end
                     end
