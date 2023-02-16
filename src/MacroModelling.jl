@@ -494,10 +494,10 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                     else
                         if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
                             val = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
-                            push!(nnaux,:($(val.args[3]) = max(eps(),$(val.args[2]))))
+                            push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
                             push!(other_vrs_eliminated_by_sympy, val.args[2])
                             push!(nnaux_linear,:($val))
-                            push!(nnaux_error, :(aux_error += min(eps(),$(val.args[2]))))
+                            push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
                         else
                             push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
                         end

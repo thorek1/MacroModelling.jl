@@ -69,8 +69,6 @@ macro model(𝓂,ex)
     ss_and_aux_equations = []
     aux_vars_created = Set()
 
-    eqs_with_auxs = []
-
     unique_➕_vars = []
 
     ss_eq_aux_ind = Int[]
@@ -229,7 +227,6 @@ macro model(𝓂,ex)
             push!(dyn_equations,unblock(t_ex))
             
             # write down ss equations including nonnegativity auxilliary variables
-            aux_ind = false
             # find nonegative variables, parameters, or terms
             eqs = postwalk(x -> 
                 x isa Expr ? 
@@ -272,7 +269,7 @@ macro model(𝓂,ex)
                                                 push!(bounds⁺,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
                                                 push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the cond_var_decomp
                                                 push!(ss_eq_aux_ind,length(ss_and_aux_equations))
-                                                aux_ind = true
+
                                                 push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                                 replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
                                             end
@@ -308,7 +305,7 @@ macro model(𝓂,ex)
                                             push!(bounds⁺,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
                                             push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
                                             push!(ss_eq_aux_ind,length(ss_and_aux_equations))
-                                            aux_ind = true
+                                            
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
                                         end
@@ -321,7 +318,6 @@ macro model(𝓂,ex)
                 x,
             ex.args[i])
             push!(ss_and_aux_equations,unblock(eqs))
-            if aux_ind push!(eqs_with_auxs, unblock(eqs)) end
         end
     end
 
@@ -336,11 +332,9 @@ macro model(𝓂,ex)
     var_future_list_aux_SS = []
     var_present_list_aux_SS = []
     var_past_list_aux_SS = []
-    
-    ss_eqs_with_auxs = []
 
     # # label all variables parameters and exogenous variables and timings for changed SS equations including nonnegativity auxilliary variables
-    for eq in ss_and_aux_equations
+    for (idx,eq) in enumerate(ss_and_aux_equations)
         var_tmp = Set()
         ss_tmp = Set()
         par_tmp = Set()
@@ -405,13 +399,15 @@ macro model(𝓂,ex)
         # write down SS equations including nonnegativity auxilliary variables
         prs_ex = convert_to_ss_equation(eq)
         
-        ss_aux_equation = simplify(unblock(prs_ex))
+        if idx ∈ ss_eq_aux_ind
+            ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],simplify(unblock(prs_ex).args[3])) # simplify RHS if nonnegative auxilliary variable
 
+        else
+            ss_aux_equation = simplify(unblock(prs_ex))
+        end
         ss_aux_equation_expr = if ss_aux_equation isa Symbol Expr(:call,:-,ss_aux_equation,0) else ss_aux_equation end
 
         push!(ss_aux_equations,ss_aux_equation_expr)
-
-        if eq ∈ eqs_with_auxs push!(ss_eqs_with_auxs,ss_aux_equation_expr) end
     end
 
     # go through dynamic equations and label
