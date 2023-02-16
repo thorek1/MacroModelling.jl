@@ -696,6 +696,7 @@ macro parameters(𝓂,ex)
     
     bounds = []
     
+    # parse parameter inputs
     # label all variables parameters and exogenous vairables and timings across all equations
     postwalk(x -> 
         x isa Expr ?
@@ -762,6 +763,14 @@ macro parameters(𝓂,ex)
                         push!(calib_eq_parameters,x.args[2].args[end].args[end])
                         push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
                     end :
+                x.args[2].head == :call ?
+                    x.args[1].args[1] == :| ?
+                            x :
+                    begin # this is calibration by targeting SS values (conditional parameter at the end)
+                        if x.args[2].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end]) end
+                        push!(calib_eq_parameters,x.args[2].args[end])
+                        push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2])))
+                    end :
                 x :
             x :
         x,
@@ -769,6 +778,7 @@ macro parameters(𝓂,ex)
     
     @assert length(par_defined_more_than_once) == 0 "Parameters can only be defined once. This is not the case for: " * repr([par_defined_more_than_once...])
     
+    # evaluate inputs where they are of the type: log(1/3) (no variables but need evaluation to becoe a Float64)
     for (i, v) in enumerate(calib_values_no_var)
         out = try eval(v) catch e end
         if out isa Float64
@@ -794,20 +804,20 @@ macro parameters(𝓂,ex)
                     x : 
                 x :
             x,
-            cal_eq)
+        cal_eq)
     
-        # get SS variables per non_linear_solved_vals
+        # separate out parameters
         postwalk(x -> 
-        x isa Symbol ? 
-            occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i,string(x)) ?
-                x :
-                begin
-                    diffed = setdiff([x],ss_tmp)
-                    if !isempty(diffed)
-                        push!(par_tmp,diffed[1])
-                    end
-                end :
-        x,
+            x isa Symbol ? 
+                occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i,string(x)) ?
+                    x :
+                    begin
+                        diffed = setdiff([x],ss_tmp)
+                        if !isempty(diffed)
+                            push!(par_tmp,diffed[1])
+                        end
+                    end :
+            x,
         cal_eq)
     
         push!(ss_calib_list,ss_tmp)
@@ -819,7 +829,7 @@ macro parameters(𝓂,ex)
                 x.head == :(=) ? 
                     Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
                         x.head == :ref ?
-                            occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
+                            occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ? # K[ss] => K
                         x.args[1] : 
                     x : 
                 x.head == :call ?
@@ -827,7 +837,7 @@ macro parameters(𝓂,ex)
                         x.args[2] isa Int ?
                             x.args[3] isa Int ?
                                 x :
-                            :($(x.args[3]) * $(x.args[2])) :
+                            :($(x.args[3]) * $(x.args[2])) : # 2Π => Π*2 (the former doesnt work with sympy)
                         x :
                     x :
                 unblock(x) : 
@@ -836,7 +846,7 @@ macro parameters(𝓂,ex)
         push!(calib_equations_list,unblock(prs_ex))
     end
     
-    
+    # parse calibration equations without a variable present: eta = Pi_bar /2 (Pi_bar is also a parameter)
     for (i, cal_eq) in enumerate(calib_equations_no_var)
         ss_tmp = Set()
         par_tmp = Set()
@@ -890,22 +900,21 @@ macro parameters(𝓂,ex)
         push!(calib_equations_no_var_list,unblock(prs_ex))
     end
     
-    
+    # arrange calibration equations where they use parameters defined in parameters block so that they appear in right order (Pi_bar is defined before it is used later on: eta = Pi_bar / 2)
     if length(calib_equations_no_var_list) > 0
-    
-    incidence_matrix = fill(0,length(calib_parameters_no_var),length(calib_parameters_no_var))
-    
-    for i in 1:length(calib_parameters_no_var)
-        for k in 1:length(calib_parameters_no_var)
-            incidence_matrix[i,k] = collect(calib_parameters_no_var)[i] ∈ collect(par_no_var_calib_list)[k]
+        incidence_matrix = fill(0,length(calib_parameters_no_var),length(calib_parameters_no_var))
+        
+        for i in 1:length(calib_parameters_no_var)
+            for k in 1:length(calib_parameters_no_var)
+                incidence_matrix[i,k] = collect(calib_parameters_no_var)[i] ∈ collect(par_no_var_calib_list)[k]
+            end
         end
-    end
-    
-    Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(incidence_matrix))
-    
-    @assert length(Q) == n_blocks "Check the parameter definitions. They are either incomplete or have more than only the defined parameter on the LHS."
-    
-    calib_equations_no_var_list = calib_equations_no_var_list[Q]
+        
+        Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(incidence_matrix))
+        
+        @assert length(Q) == n_blocks "Check the parameter definitions. They are either incomplete or have more than only the defined parameter on the LHS."
+        
+        calib_equations_no_var_list = calib_equations_no_var_list[Q]
     end
     
 
@@ -1049,7 +1058,7 @@ macro parameters(𝓂,ex)
         mod.$𝓂.upper_bounds = $upper_bounds
 
         mod.$𝓂.ss_calib_list = $ss_calib_list
-        mod.$𝓂.par_calib_list = $par_calib_list#[intersect(i,mod.$𝓂.par) for i in $par_calib_list] otherwise you miss parameters only defined in parameters block but not used in model
+        mod.$𝓂.par_calib_list = $par_calib_list
 
         mod.$𝓂.ss_no_var_calib_list = $ss_no_var_calib_list
         mod.$𝓂.par_no_var_calib_list = $par_no_var_calib_list
