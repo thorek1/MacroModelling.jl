@@ -144,7 +144,7 @@ function write_mod_file(m::ℳ)
         [println(io,"\t" * replace(string(e),r"\[(-?\d+)\]" => s"(\1)",
         r"(\w+)\[(ss|stst|steady|steadystate|steady_state){1}\]" => s"STEADY_STATE(\1)",
         r"(\w+)\[(x|ex|exo|exogenous){1}\]" => s"\1",
-        r"(\w+)\[(x|ex|exo|exogenous){1}(\s*(\-|\+)\s*(\d{1}))\]" => s"\1(\4\5)") * ";\n") for e in m.equations]
+        r"(\w+)\[(x|ex|exo|exogenous){1}(\s*(\-|\+)\s*(\d{1}))\]" => s"\1(\4\5)") * ";\n") for e in m.original_equations]
 
         println(io,"end;\n\nshocks;")
         [println(io,"var\t" * string(e) * "\t=\t1;") for e in m.exo]

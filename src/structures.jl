@@ -50,9 +50,9 @@ struct symbolics
     # dyn_ss_list::Vector{Set{SymPy.Sym}}
     dyn_exo_list::Vector{Set{SymPy.Sym}}
 
-    dyn_exo_future_list::Vector{Set{SymPy.Sym}}
-    dyn_exo_present_list::Vector{Set{SymPy.Sym}}
-    dyn_exo_past_list::Vector{Set{SymPy.Sym}} 
+    # dyn_exo_future_list::Vector{Set{SymPy.Sym}}
+    # dyn_exo_present_list::Vector{Set{SymPy.Sym}}
+    # dyn_exo_past_list::Vector{Set{SymPy.Sym}} 
 
     dyn_future_list::Vector{Set{SymPy.Sym}}
     dyn_present_list::Vector{Set{SymPy.Sym}}
@@ -115,7 +115,7 @@ mutable struct solution
     outdated_algorithms::Set{Symbol}
     outdated_NSSS::Bool
     functions_written::Bool
-    valid_steady_state_solution
+    # valid_steady_state_solution
 end
 
 
@@ -128,11 +128,11 @@ mutable struct ℳ
     parameters_as_function_of_parameters::Vector{Symbol}
     parameters::Vector{Symbol}
     parameter_values::Vector{Number}
-    ss
-    dynamic_variables::Vector{Symbol}
-    dyn_ss_past::Vector{Symbol}
-    dyn_ss_present::Vector{Symbol}
-    dyn_ss_future::Vector{Symbol}
+    # ss
+    # dynamic_variables::Vector{Symbol}
+    # dyn_ss_past::Vector{Symbol}
+    # dyn_ss_present::Vector{Symbol}
+    # dyn_ss_future::Vector{Symbol}
 
     aux::Vector{Symbol}
     aux_present::Vector{Symbol}
@@ -145,14 +145,14 @@ mutable struct ℳ
 
     vars_in_ss_equations::Vector{Symbol}
     var::Vector{Symbol}
-    var_present::Vector{Symbol}
-    var_future::Vector{Symbol}
-    var_past::Vector{Symbol}
+    # var_present::Vector{Symbol}
+    # var_future::Vector{Symbol}
+    # var_past::Vector{Symbol}
 
-    exo_list::Vector{Set{Symbol}}
+    # exo_list::Vector{Set{Symbol}}
     var_list::Vector{Set{Symbol}}
-    dynamic_variables_list::Vector{Set{Symbol}}
-    dynamic_variables_future_list::Vector{Set{Symbol}}
+    # dynamic_variables_list::Vector{Set{Symbol}}
+    # dynamic_variables_future_list::Vector{Set{Symbol}}
 
     ss_calib_list::Vector{Set{Symbol}}
     par_calib_list::Vector{Set{Symbol}}
@@ -175,16 +175,16 @@ mutable struct ℳ
     # var_redundant_list
     # var_redundant_calib_list
 
-    par_list::Vector{Set{Symbol}}
-    var_future_list::Vector{Set{Symbol}}
-    var_present_list::Vector{Set{Symbol}}
-    var_past_list::Vector{Set{Symbol}}
+    # par_list::Vector{Set{Symbol}}
+    # var_future_list::Vector{Set{Symbol}}
+    # var_present_list::Vector{Set{Symbol}}
+    # var_past_list::Vector{Set{Symbol}}
 
-    dyn_shift_var_future_list::Vector{Set{Symbol}}
-    dyn_shift_var_present_list::Vector{Set{Symbol}}
-    dyn_shift_var_past_list::Vector{Set{Symbol}}
+    # dyn_shift_var_future_list::Vector{Set{Symbol}}
+    # dyn_shift_var_present_list::Vector{Set{Symbol}}
+    # dyn_shift_var_past_list::Vector{Set{Symbol}}
 
-    dyn_shift2_var_past_list::Vector{Set{Symbol}}
+    # dyn_shift2_var_past_list::Vector{Set{Symbol}}
 
     dyn_var_future_list::Vector{Set{Symbol}}
     dyn_var_present_list::Vector{Set{Symbol}}
@@ -192,9 +192,9 @@ mutable struct ℳ
     dyn_ss_list::Vector{Set{Symbol}}
     dyn_exo_list::Vector{Set{Symbol}}
 
-    dyn_exo_future_list::Vector{Set{Symbol}}
-    dyn_exo_present_list::Vector{Set{Symbol}}
-    dyn_exo_past_list::Vector{Set{Symbol}} 
+    # dyn_exo_future_list::Vector{Set{Symbol}}
+    # dyn_exo_present_list::Vector{Set{Symbol}}
+    # dyn_exo_past_list::Vector{Set{Symbol}} 
 
     dyn_future_list::Vector{Set{Symbol}}
     dyn_present_list::Vector{Set{Symbol}}
@@ -202,8 +202,8 @@ mutable struct ℳ
 
     solved_vars::Vector#{Union{Symbol,Vector{Symbol}}}
     solved_vals::Vector#{Union{Float64,Expr,Int,Vector{Union{Float64,Expr,Int}}}}
-    non_linear_solved_vars
-    non_linear_solved_vals
+    # non_linear_solved_vars
+    # non_linear_solved_vals
     # solved_sub_vals
     # solved_sub_values
     ss_solve_blocks::Vector#{RuntimeGeneratedFunction}
@@ -211,19 +211,19 @@ mutable struct ℳ
     #ss_solve_blocks_optim::Vector#{RuntimeGeneratedFunction}
     # SS_init_guess::Vector{Real}
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
-    SS_solve_func
-    nonlinear_solution_helper
+    SS_solve_func::Function
+    # nonlinear_solution_helper
     SS_dependencies
 
     ➕_vars::Vector{Symbol}
-    ss_equations::Vector{Expr}
+    # ss_equations::Vector{Expr}
     ss_equations_with_aux_variables::Vector{Int}
-    t_future_equations 
-    t_past_equations 
-    t_present_equations 
+    # t_future_equations 
+    # t_past_equations 
+    # t_present_equations 
     dyn_equations::Vector{Expr}
-    dyn_equations_future::Vector{Expr}
-    equations::Vector{Expr}
+    # dyn_equations_future::Vector{Expr}
+    original_equations::Vector{Expr}
 
     calibration_equations_no_var::Vector{Expr}
 

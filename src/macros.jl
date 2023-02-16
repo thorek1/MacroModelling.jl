@@ -42,11 +42,11 @@ macro model(𝓂,ex)
     aux = Set()
     var = Set()
     par = Set()
-    ss = Set()
+    # ss = Set()
 
-    dyn_ss_past = Set()
-    dyn_ss_future = Set()
-    dyn_ss_present = Set()
+    # dyn_ss_past = Set()
+    # dyn_ss_future = Set()
+    # dyn_ss_present = Set()
 
     var_future = Set()
     var_present = Set()
@@ -59,27 +59,27 @@ macro model(𝓂,ex)
     parameters = []
     parameter_values = Vector{Float64}(undef,0)
 
-    exo_list = []
+    # exo_list = []
     ss_list = []
 
     ss_calib_list = []
     par_calib_list = []
     var_list = []
-    dynamic_variables_list = []
-    dynamic_variables_future_list = []
+    # dynamic_variables_list = []
+    # dynamic_variables_future_list = []
     # var_redundant_list = nothing
     # var_redundant_calib_list = nothing
     # var_solved_list = nothing
     # var_solved_calib_list = nothing
     # var_remaining_list = []
-    par_list = []
-    var_future_list = []
-    var_present_list = []
-    var_past_list = []
+    # par_list = []
+    # var_future_list = []
+    # var_present_list = []
+    # var_past_list = []
 
-    dyn_exo_future_list = []
-    dyn_exo_present_list = []
-    dyn_exo_past_list = []
+    # dyn_exo_future_list = []
+    # dyn_exo_present_list = []
+    # dyn_exo_past_list = []
 
     # dyn_aux_future_list = []
     # dyn_aux_present_list = []
@@ -89,23 +89,23 @@ macro model(𝓂,ex)
     exo_present = Set()
     exo_past = Set()
 
-    dyn_shift_var_future_list = []
-    dyn_shift_var_present_list = []
-    dyn_shift_var_past_list = []
+    # dyn_shift_var_future_list = []
+    # dyn_shift_var_present_list = []
+    # dyn_shift_var_past_list = []
 
-    dyn_shift2_var_past_list = []
+    # dyn_shift2_var_past_list = []
 
-    dyn_var_future_list = []
-    dyn_var_present_list = []
-    dyn_var_past_list = []
-    dyn_exo_list = []
-    dyn_ss_list = []
+    # dyn_var_future_list = []
+    # dyn_var_present_list = []
+    # dyn_var_past_list = []
+    # dyn_exo_list = []
+    # dyn_ss_list = []
 
     solved_vars = [] 
     solved_vals = []
 
-    non_linear_solved_vars = []
-    non_linear_solved_vals = []
+    # non_linear_solved_vars = []
+    # non_linear_solved_vals = []
 
     # solved_sub_vals = []
     # solved_sub_values = []
@@ -114,12 +114,12 @@ macro model(𝓂,ex)
     #ss_solve_blocks_optim = []
     # SS_init_guess = Vector{Float64}(undef,0)
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
-    SS_solve_func = nothing
-    nonlinear_solution_helper = nothing
+    SS_solve_func = x->x
+    # nonlinear_solution_helper = nothing
     SS_dependencies = nothing
 
-    ss_equations = []
-    equations = []
+    # ss_equations = []
+    original_equations = []
     calibration_equations = []
     calibration_equations_parameters = []
 
@@ -129,11 +129,11 @@ macro model(𝓂,ex)
     lower_bounds = []
     upper_bounds = []
 
-    t_future_equations = []
-    t_past_equations = []
-    t_present_equations = []
+    # t_future_equations = []
+    # t_past_equations = []
+    # t_present_equations = []
     dyn_equations = []
-    dyn_equations_future = []
+    # dyn_equations_future = []
 
     # label all variables parameters and exogenous variables and timings across all equations
     postwalk(x -> 
@@ -177,8 +177,8 @@ macro model(𝓂,ex)
                     occursin(r"^(x|ex|exo|exogenous){1}$"i,string(x.args[2])) ?
                         push!(exo,x.args[1]) :
                     # issubset([x.args[2]],[:ss :SS :ℳ :StSt :steady :steadystate :steady_state :Steady_State]) ?
-                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                        push!(ss,x.args[1]) :
+                    # occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
+                    #     push!(ss,x.args[1]) :
                     x : 
                 x.head == :call ? 
                     for i in 2:length(x.args)
@@ -227,23 +227,23 @@ macro model(𝓂,ex)
             var_present_tmp = Set()
             var_past_tmp = Set()
 
-            var_dyn_tmp = Set()
+            # var_dyn_tmp = Set()
 
-            var_shift_dyn_future_tmp = Set()
-            var_shift_dyn_present_tmp = Set()
-            var_shift_dyn_past_tmp = Set()
+            # var_shift_dyn_future_tmp = Set()
+            # var_shift_dyn_present_tmp = Set()
+            # var_shift_dyn_past_tmp = Set()
 
-            var_dyn_future_tmp = Set()
-            var_dyn_present_tmp = Set()
-            var_dyn_past_tmp = Set()
-            var_shift_dyn_future_tmp = Set()
-            var_shift_dyn_present_tmp = Set()
-            var_shift_dyn_past_tmp = Set()
+            # var_dyn_future_tmp = Set()
+            # var_dyn_present_tmp = Set()
+            # var_dyn_past_tmp = Set()
+            # var_shift_dyn_future_tmp = Set()
+            # var_shift_dyn_present_tmp = Set()
+            # var_shift_dyn_past_tmp = Set()
 
-            var_shift2_dyn_past_tmp = Set()
+            # var_shift2_dyn_past_tmp = Set()
 
-            ss_dyn_tmp = Set()
-            exo_dyn_tmp = Set()
+            # ss_dyn_tmp = Set()
+            # exo_dyn_tmp = Set()
 
             # label all variables parameters and exogenous variables and timings for individual equations
             postwalk(x -> 
@@ -261,23 +261,23 @@ macro model(𝓂,ex)
                             x.args[2] == 0 ? 
                                 begin
                                     push!(var_present_tmp,x.args[1])
-                                    push!(var_dyn_present_tmp,Symbol(string(x.args[1]) * "₍₀₎"))
-                                    push!(var_shift_dyn_present_tmp,Symbol(string(x.args[1]) * "₍₁₎"))
+                                    # push!(var_dyn_present_tmp,Symbol(string(x.args[1]) * "₍₀₎"))
+                                    # push!(var_shift_dyn_present_tmp,Symbol(string(x.args[1]) * "₍₁₎"))
                                     # push!(var_dyn_tmp,Symbol(string(x.args[1]) * "₍₀₎"))
                                 end : 
                             x.args[2] > 0 ? 
                                 begin
                                     push!(var_future_tmp,x.args[1])
-                                    push!(var_dyn_future_tmp,Symbol(string(x.args[1]) * "₍₁₎"))
-                                    push!(var_shift_dyn_future_tmp,Symbol(string(x.args[1]) * "₍₂₎"))
+                                    # push!(var_dyn_future_tmp,Symbol(string(x.args[1]) * "₍₁₎"))
+                                    # push!(var_shift_dyn_future_tmp,Symbol(string(x.args[1]) * "₍₂₎"))
                                     # push!(var_dyn_tmp,Symbol(string(x.args[1]) * "₍₁₎"))
                                 end : 
                             x.args[2] < 0 ? 
                                 begin
                                     push!(var_past_tmp,x.args[1])
-                                    push!(var_dyn_past_tmp,Symbol(string(x.args[1]) * "₍₋₁₎"))
-                                    push!(var_shift_dyn_past_tmp,Symbol(string(x.args[1]) * "₍₀₎"))
-                                    push!(var_shift2_dyn_past_tmp,Symbol(string(x.args[1]) * "₍₁₎"))
+                                    # push!(var_dyn_past_tmp,Symbol(string(x.args[1]) * "₍₋₁₎"))
+                                    # push!(var_shift_dyn_past_tmp,Symbol(string(x.args[1]) * "₍₀₎"))
+                                    # push!(var_shift2_dyn_past_tmp,Symbol(string(x.args[1]) * "₍₁₎"))
                                     # push!(var_dyn_tmp,Symbol(string(x.args[1]) * "₍₋₁₎"))
                                 end : 
                             x :
@@ -285,26 +285,26 @@ macro model(𝓂,ex)
                         occursin(r"^(x|ex|exo|exogenous){1}$"i,string(x.args[2])) ?
                             begin
                                 push!(exo_tmp,x.args[1])
-                                push!(exo_dyn_tmp,Symbol(string(x.args[1]) * "₍ₓ₎"))
+                                # push!(exo_dyn_tmp,Symbol(string(x.args[1]) * "₍ₓ₎"))
                                 # push!(var_dyn_tmp,Symbol(string(x.args[1]) * "₍ₓ₎"))
                             end : 
                         occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\-{1}\s{1}\d+$))"i,string(x.args[2])) ?
                             begin
                                 push!(var_past_tmp,x.args[1])
-                                push!(var_dyn_past_tmp,Symbol(string(x.args[1]) * "₍₋₁₎"))
-                                push!(var_shift_dyn_past_tmp,Symbol(string(x.args[1]) * "₍₀₎"))
-                                push!(var_shift2_dyn_past_tmp,Symbol(string(x.args[1]) * "₍₁₎"))
+                                # push!(var_dyn_past_tmp,Symbol(string(x.args[1]) * "₍₋₁₎"))
+                                # push!(var_shift_dyn_past_tmp,Symbol(string(x.args[1]) * "₍₀₎"))
+                                # push!(var_shift2_dyn_past_tmp,Symbol(string(x.args[1]) * "₍₁₎"))
                             end : 
                         occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}\+{1}\s{1}\d+$))"i,string(x.args[2])) ?
                             begin
                                 push!(var_future_tmp,x.args[1])
-                                push!(var_dyn_future_tmp,Symbol(string(x.args[1]) * "₍₁₎"))
-                                push!(var_shift_dyn_future_tmp,Symbol(string(x.args[1]) * "₍₂₎"))
+                                # push!(var_dyn_future_tmp,Symbol(string(x.args[1]) * "₍₁₎"))
+                                # push!(var_shift_dyn_future_tmp,Symbol(string(x.args[1]) * "₍₂₎"))
                             end : 
                         occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
                             begin
                                 push!(ss_tmp,x.args[1])
-                                push!(ss_dyn_tmp,Symbol(string(x.args[1]) * "₍ₛₛ₎"))
+                                # push!(ss_dyn_tmp,Symbol(string(x.args[1]) * "₍ₛₛ₎"))
                                 # push!(var_dyn_tmp,Symbol(string(x.args[1]) * "₍ₛₛ₎"))
                             end :
                         x : 
@@ -316,31 +316,31 @@ macro model(𝓂,ex)
 
 
             var_tmp = union(var_future_tmp,var_present_tmp,var_past_tmp)
-            var_dyn_tmp = union(var_dyn_future_tmp,var_dyn_present_tmp,var_dyn_past_tmp,ss_dyn_tmp,exo_dyn_tmp)
-            var_shift_dyn_tmp = union(var_shift_dyn_future_tmp,var_shift_dyn_present_tmp,var_shift_dyn_past_tmp,ss_dyn_tmp)
+            # var_dyn_tmp = union(var_dyn_future_tmp,var_dyn_present_tmp,var_dyn_past_tmp,ss_dyn_tmp,exo_dyn_tmp)
+            # var_shift_dyn_tmp = union(var_shift_dyn_future_tmp,var_shift_dyn_present_tmp,var_shift_dyn_past_tmp,ss_dyn_tmp)
 
-            push!(dynamic_variables_list,var_dyn_tmp)
-            push!(dynamic_variables_future_list,var_shift_dyn_tmp)
+            # push!(dynamic_variables_list,var_dyn_tmp)
+            # push!(dynamic_variables_future_list,var_shift_dyn_tmp)
             push!(var_list,var_tmp)
-            push!(var_future_list,var_future_tmp)
-            push!(var_present_list,var_present_tmp)
-            push!(var_past_list,var_past_tmp)
-            push!(exo_list,exo_tmp)
+            # push!(var_future_list,var_future_tmp)
+            # push!(var_present_list,var_present_tmp)
+            # push!(var_past_list,var_past_tmp)
+            # push!(exo_list,exo_tmp)
             push!(ss_list,ss_tmp)
 
-            push!(dyn_shift_var_future_list,var_shift_dyn_future_tmp)
-            push!(dyn_shift_var_present_list,var_shift_dyn_present_tmp)
-            push!(dyn_shift_var_past_list,var_shift_dyn_past_tmp)
+            # push!(dyn_shift_var_future_list,var_shift_dyn_future_tmp)
+            # push!(dyn_shift_var_present_list,var_shift_dyn_present_tmp)
+            # push!(dyn_shift_var_past_list,var_shift_dyn_past_tmp)
 
-            push!(dyn_shift2_var_past_list,var_shift2_dyn_past_tmp)
+            # push!(dyn_shift2_var_past_list,var_shift2_dyn_past_tmp)
 
-            push!(dyn_var_future_list,var_dyn_future_tmp)
-            push!(dyn_var_present_list,var_dyn_present_tmp)
-            push!(dyn_var_past_list,var_dyn_past_tmp)
-            push!(dyn_exo_list,exo_dyn_tmp)
-            push!(dyn_ss_list,ss_dyn_tmp)
+            # push!(dyn_var_future_list,var_dyn_future_tmp)
+            # push!(dyn_var_present_list,var_dyn_present_tmp)
+            # push!(dyn_var_past_list,var_dyn_past_tmp)
+            # push!(dyn_exo_list,exo_dyn_tmp)
+            # push!(dyn_ss_list,ss_dyn_tmp)
 
-            push!(par_list,par_tmp)
+            # push!(par_list,par_tmp)
 
             # write down dynamic equations
             t_ex = postwalk(x -> 
@@ -351,7 +351,7 @@ macro model(𝓂,ex)
                             # issubset([x.args[2]],[:x :ex :exo :exogenous]) ? 
                             occursin(r"^(x|ex|exo|exogenous){1}$"i,string(x.args[2])) ?
                                 begin
-                                    push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍ₓ₎"))
+                                    # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍ₓ₎"))
                                     Symbol(string(x.args[1]) * "₍ₓ₎") 
                                 end :
                             occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}(\-|\+){1}\s{1}\d+$))"i,string(x.args[2])) ?  
@@ -370,8 +370,8 @@ macro model(𝓂,ex)
                                         else
                                             push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
                 
-                                            push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
-                                            push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₁₎"))
+                                            # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
+                                            # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₁₎"))
                 
                                             push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 2)) * "⁾₍₁₎")))
                                             
@@ -385,8 +385,8 @@ macro model(𝓂,ex)
 
                                         push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
                 
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₁₎"))
+                                        # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
+                                        # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₁₎"))
                 
                                         push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₁₎")))
                                     end
@@ -401,10 +401,10 @@ macro model(𝓂,ex)
                                     push!(exo_future_tmp,Symbol(string(x.args[1])))
                                     push!(exo_present_tmp,Symbol(string(x.args[1])))
                                     
-                                    push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₀₎"))
-                                    push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍ₓ₎"))
+                                    # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₀₎"))
+                                    # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍ₓ₎"))
                                     
-                                    push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₁₎"))
+                                    # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₁₎"))
 
                                     if x.args[2].args[3] > 1
                                         Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(x.args[2].args[3] - 1)) * "⁾₍₁₎")
@@ -427,8 +427,8 @@ macro model(𝓂,ex)
                                         else
                                             push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
                 
-                                            push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
-                                            push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₋₁₎"))
+                                            # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
+                                            # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₋₁₎"))
                 
                                             push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 2)) * "⁾₍₋₁₎")))
                                             
@@ -442,8 +442,8 @@ macro model(𝓂,ex)
 
                                         push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
                 
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₋₁₎"))
+                                        # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
+                                        # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₋₁₎"))
                 
                                         push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₋₁₎")))
                                     end
@@ -459,10 +459,10 @@ macro model(𝓂,ex)
                                     push!(exo_past_tmp,Symbol(string(x.args[1])))
                                     push!(exo_present_tmp,Symbol(string(x.args[1])))
                                     
-                                    push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₀₎"))
-                                    push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍ₓ₎"))
+                                    # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₀₎"))
+                                    # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍ₓ₎"))
                                     
-                                    push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₋₁₎"))
+                                    # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₋₁₎"))
                                     
                                     if  - x.args[2].args[3] < -1
                                         Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(x.args[2].args[3] - 1)) * "⁾₍₋₁₎")
@@ -473,7 +473,7 @@ macro model(𝓂,ex)
                             x.args[1] : 
                             occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
                                 begin
-                                    push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍ₛₛ₎"))
+                                    # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍ₛₛ₎"))
                                     Symbol(string(x.args[1]) * "₍ₛₛ₎") 
                                 end :
                             x.args[2] isa Int ? 
@@ -487,8 +487,8 @@ macro model(𝓂,ex)
                                             else
                                                 push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
 
-                                                push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
-                                                push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₁₎"))
+                                                # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
+                                                # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₁₎"))
 
                                                 push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 2)) * "⁾₍₁₎")))
                                                 
@@ -499,23 +499,23 @@ macro model(𝓂,ex)
                                         if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎") ∉ aux_vars_created
                                             push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
 
-                                            push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
-                                            push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₁₎"))
+                                            # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
+                                            # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₁₎"))
 
                                             push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₁₎")))
                                         end
 
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₁₎"))
+                                        # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₁₎"))
                                         Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(x.args[2] - 1)) * "⁾₍₁₎")
                                     end :
                                 1 >= x.args[2] >= 0 ? 
                                     begin
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍" * sub(string(x.args[2])) * "₎"))
+                                        # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍" * sub(string(x.args[2])) * "₎"))
                                         Symbol(string(x.args[1]) * "₍" * sub(string(x.args[2])) * "₎")
                                     end :  
                                 -1 <= x.args[2] < 0 ? 
                                     begin
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₋" * sub(string(x.args[2])) * "₎"))
+                                        # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₋" * sub(string(x.args[2])) * "₎"))
                                         Symbol(string(x.args[1]) * "₍₋" * sub(string(x.args[2])) * "₎")
                                     end :
                                 x.args[2] < -1 ? 
@@ -528,8 +528,8 @@ macro model(𝓂,ex)
                                             else
                                                 push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
 
-                                                push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
-                                                push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₋₁₎"))
+                                                # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
+                                                # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₋₁₎"))
 
                                                 push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 2)) * "⁾₍₋₁₎")))
                                                 
@@ -540,13 +540,13 @@ macro model(𝓂,ex)
                                         if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎") ∉ aux_vars_created
                                             push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
 
-                                            push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
-                                            push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₋₁₎"))
+                                            # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
+                                            # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₋₁₎"))
 
                                             push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₋₁₎")))
                                         end
 
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₋₁₎"))
+                                        # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₋₁₎"))
                                         Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(x.args[2] + 1)) * "⁾₍₋₁₎")
                                     end :
                             x.args[1] :
@@ -567,83 +567,83 @@ macro model(𝓂,ex)
             # union!(aux_present,aux_present_tmp)
             # union!(aux_past,aux_past_tmp)
 
-            push!(dyn_exo_future_list,Set([Symbol(string(x)*"₍₁₎") for x in exo_future_tmp]))
-            push!(dyn_exo_present_list,Set([Symbol(string(x)*"₍₀₎") for x in exo_present_tmp]))
-            push!(dyn_exo_past_list,Set([Symbol(string(x)*"₍₋₁₎") for x in exo_past_tmp]))
+            # push!(dyn_exo_future_list,Set([Symbol(string(x)*"₍₁₎") for x in exo_future_tmp]))
+            # push!(dyn_exo_present_list,Set([Symbol(string(x)*"₍₀₎") for x in exo_present_tmp]))
+            # push!(dyn_exo_past_list,Set([Symbol(string(x)*"₍₋₁₎") for x in exo_past_tmp]))
 
             # push!(dyn_aux_future_list,Set([Symbol(string(x)*"₍₁₎") for x in aux_future_tmp]))
             # push!(dyn_aux_present_list,Set([Symbol(string(x)*"₍₀₎") for x in aux_present_tmp]))
             # push!(dyn_aux_past_list,Set([Symbol(string(x)*"₍₋₁₎") for x in aux_past_tmp]))
 
 
-            # write down dynamic equations shifted one period into future
-            t_ex = postwalk(x -> 
-                x isa Expr ? 
-                    x.head == :(=) ? 
-                        Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
-                        x.head == :ref ?
-                            # issubset([x.args[2]],[:x :ex :exo :exogenous]) ? 0 :
-                            occursin(r"^(x|ex|exo|exogenous){1}$"i,string(x.args[2])) ? 0 :
-                            # issubset([x.args[2]],[:ss :SS :ℳ :StSt :steady :steadystate :steady_state :Steady_State]) ?
-                            occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
-                                begin
-                                    # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍ₛₛ₎"))
-                                    Symbol(string(x.args[1]) * "₍ₛₛ₎") 
-                                end :
-                            x.args[2] isa Int ? 
-                                1 >= x.args[2] >= 0 ? 
-                                    begin
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍" * sub(string(x.args[2] + 1)) * "₎"))
-                                        Symbol(string(x.args[1]) * "₍" * sub(string(x.args[2] + 1)) * "₎")
-                                    end :  
-                                -1 <= x.args[2] < 0 ? 
-                                    begin
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₋" * sub(string(x.args[2] + 1)) * "₎"))
-                                        Symbol(string(x.args[1]) * "₍₋" * sub(string(x.args[2] + 1)) * "₎")
-                                    end :
-                                x.args[2] < -1 ? 
-                                    begin
-                                        k = x.args[2]
-                                        # while i < -1
-                                        #     push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(i + 1)) * "⁾₍₋₁₎"))
-                                        #     push!(dyn_equations,:(Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(i + 1)) * "⁾₍₀₎") = Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(i + 1)) * "⁾₍₀₎")))
-                                        #     i += 1
-                                        # end
-                                        # push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₁₎"), Symbol(string(x.args[1]) * "₍₀₎")))
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₁₎"))
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
-                                        push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍" * sub(string(k + 2)) * "₎"))
-                                        Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎") # review this. timing might be off here.
-                                    end :
-                            x.args[1] :
-                        x.args[1] : 
-                    unblock(x) : 
-                x,
-            ex.args[i])
-            # println(t_ex)
-            push!(dyn_equations_future,unblock(t_ex))
+            # # write down dynamic equations shifted one period into future
+            # t_ex = postwalk(x -> 
+            #     x isa Expr ? 
+            #         x.head == :(=) ? 
+            #             Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
+            #             x.head == :ref ?
+            #                 # issubset([x.args[2]],[:x :ex :exo :exogenous]) ? 0 :
+            #                 occursin(r"^(x|ex|exo|exogenous){1}$"i,string(x.args[2])) ? 0 :
+            #                 # issubset([x.args[2]],[:ss :SS :ℳ :StSt :steady :steadystate :steady_state :Steady_State]) ?
+            #                 occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
+            #                     begin
+            #                         # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍ₛₛ₎"))
+            #                         Symbol(string(x.args[1]) * "₍ₛₛ₎") 
+            #                     end :
+            #                 x.args[2] isa Int ? 
+            #                     1 >= x.args[2] >= 0 ? 
+            #                         begin
+            #                             # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍" * sub(string(x.args[2] + 1)) * "₎"))
+            #                             Symbol(string(x.args[1]) * "₍" * sub(string(x.args[2] + 1)) * "₎")
+            #                         end :  
+            #                     -1 <= x.args[2] < 0 ? 
+            #                         begin
+            #                             # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍₋" * sub(string(x.args[2] + 1)) * "₎"))
+            #                             Symbol(string(x.args[1]) * "₍₋" * sub(string(x.args[2] + 1)) * "₎")
+            #                         end :
+            #                     x.args[2] < -1 ? 
+            #                         begin
+            #                             k = x.args[2]
+            #                             # while i < -1
+            #                             #     push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(i + 1)) * "⁾₍₋₁₎"))
+            #                             #     push!(dyn_equations,:(Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(i + 1)) * "⁾₍₀₎") = Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(i + 1)) * "⁾₍₀₎")))
+            #                             #     i += 1
+            #                             # end
+            #                             # push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₁₎"), Symbol(string(x.args[1]) * "₍₀₎")))
+            #                             # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₁₎"))
+            #                             # push!(dyn_ss_present,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
+            #                             # push!(dyn_ss_present,Symbol(string(x.args[1]) * "₍" * sub(string(k + 2)) * "₎"))
+            #                             Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎") # review this. timing might be off here.
+            #                         end :
+            #                 x.args[1] :
+            #             x.args[1] : 
+            #         unblock(x) : 
+            #     x,
+            # ex.args[i])
+            # # println(t_ex)
+            # push!(dyn_equations_future,unblock(t_ex))
             
 
-            # write down SS equations
-            prs_ex = postwalk(x -> 
-                x isa Expr ? 
-                    x.head == :(=) ? 
-                        Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
-                            x.head == :ref ?
-                                occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 :
-                        x.args[1] : 
-                    x.head == :call ?
-                        x.args[1] == :* ?
-                            x.args[2] isa Int ?
-                                x.args[3] isa Int ?
-                                    x :
-                                :($(x.args[3]) * $(x.args[2])) :
-                            x :
-                        x :
-                    unblock(x) : 
-                x,
-            ex.args[i])
-            push!(ss_equations,unblock(prs_ex))
+            # # write down SS equations
+            # prs_ex = postwalk(x -> 
+            #     x isa Expr ? 
+            #         x.head == :(=) ? 
+            #             Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
+            #                 x.head == :ref ?
+            #                     occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 :
+            #             x.args[1] : 
+            #         x.head == :call ?
+            #             x.args[1] == :* ?
+            #                 x.args[2] isa Int ?
+            #                     x.args[3] isa Int ?
+            #                         x :
+            #                     :($(x.args[3]) * $(x.args[2])) :
+            #                 x :
+            #             x :
+            #         unblock(x) : 
+            #     x,
+            # ex.args[i])
+            # push!(ss_equations,unblock(prs_ex))
 
 
 
@@ -938,10 +938,13 @@ macro model(𝓂,ex)
 
     dyn_var_future_list  = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍₁₎")))
     dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍₀₎")))
-    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")))
-    # dyn_exo_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")))
-    dyn_ss_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍ₛₛ₎")))
-    dyn_par_list    = map(x->intersect(x,par_list_aux_SS),collect.(get_symbols.(dyn_equations)))
+    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎"=> "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")))
+    # dyn_exo_list         = match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
+    dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(dyn_equations),r"₍ₛₛ₎")))
+    dyn_par_list         = map(x->intersect(x,par_list_aux_SS),collect.(get_symbols.(dyn_equations)))
+
+
+
     # dyn_exo_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(all_symbols,r"₍ₓ₎")))
                 
     # var_aux_future = reduce(union,var_future_list_aux_SS)
@@ -962,19 +965,23 @@ macro model(𝓂,ex)
                     unblock(x) : 
                 x,
             ex.args[i])
-            push!(equations,unblock(prs_exx))
+            push!(original_equations,unblock(prs_exx))
         end
     end
 
-    single_dyn_vars_equations = findall(length.(dynamic_variables_list) .== 1)
-
-    @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " * repr([equations[single_dyn_vars_equations]...])
+    single_dyn_vars_equations = findall(length.(vcat.(collect.(dyn_var_future_list),
+                                                    collect.(dyn_var_present_list),
+                                                    collect.(dyn_var_past_list),
+                                                    collect.(dyn_exo_list),
+                                                    collect.(dyn_ss_list))) .== 1)
+                                                    
+    @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " * repr([original_equations[indexin(single_dyn_vars_equations,setdiff(1:length(ss_aux_equations),ss_eq_aux_ind .- 1))]...])
 
     default_optimizer = NLopt.LD_LBFGS
     # default_optimizer = Optimisers.Adam
     # default_optimizer = NLopt.LN_BOBYQA
     # println(ss_eq_aux_ind)
-    dynamic_variables = collect(union(dyn_ss_past,dyn_ss_future,dyn_ss_present))
+    # dynamic_variables = collect(union(dyn_ss_past,dyn_ss_future,dyn_ss_present))
     #assemble data container of containers
     model_name = string(𝓂)
     quote
@@ -990,11 +997,11 @@ macro model(𝓂,ex)
                         # $par_values,
                         $parameter_values,
 
-                        collect($ss),
-                        collect($dynamic_variables),
-                        collect($dyn_ss_past),
-                        collect($dyn_ss_present),
-                        collect($dyn_ss_future),
+                        # collect($ss),
+                        # collect($dynamic_variables),
+                        # collect($dyn_ss_past),
+                        # collect($dyn_ss_present),
+                        # collect($dyn_ss_future),
 
                         sort($aux),
                         sort(collect($aux_present)), 
@@ -1007,14 +1014,14 @@ macro model(𝓂,ex)
 
                         sort(collect($vars_in_ss_equations)),
                         sort($var), 
-                        sort(collect($var_present)), 
-                        sort(collect($var_future)), 
-                        sort(collect($var_past)), 
+                        # sort(collect($var_present)), 
+                        # sort(collect($var_future)), 
+                        # sort(collect($var_past)), 
 
-                        $exo_list,
+                        # $exo_list,
                         $var_list,
-                        $dynamic_variables_list,
-                        $dynamic_variables_future_list,
+                        # $dynamic_variables_list,
+                        # $dynamic_variables_future_list,
 
                         $ss_calib_list,
                         $par_calib_list,
@@ -1037,16 +1044,16 @@ macro model(𝓂,ex)
                         # $var_redundant_list,
                         # $var_redundant_calib_list,
 
-                        $par_list,
-                        $var_future_list,
-                        $var_present_list,
-                        $var_past_list, 
+                        # $par_list,
+                        # $var_future_list,
+                        # $var_present_list,
+                        # $var_past_list, 
 
-                        $dyn_shift_var_future_list,
-                        $dyn_shift_var_present_list,
-                        $dyn_shift_var_past_list, 
+                        # $dyn_shift_var_future_list,
+                        # $dyn_shift_var_present_list,
+                        # $dyn_shift_var_past_list, 
 
-                        $dyn_shift2_var_past_list, 
+                        # $dyn_shift2_var_past_list, 
 
                         $dyn_var_future_list,
                         $dyn_var_present_list,
@@ -1054,9 +1061,9 @@ macro model(𝓂,ex)
                         $dyn_ss_list,
                         $dyn_exo_list,
 
-                        $dyn_exo_future_list,
-                        $dyn_exo_present_list,
-                        $dyn_exo_past_list, 
+                        # $dyn_exo_future_list,
+                        # $dyn_exo_present_list,
+                        # $dyn_exo_past_list, 
 
                         $dyn_future_list,
                         $dyn_present_list,
@@ -1065,8 +1072,8 @@ macro model(𝓂,ex)
                         $solved_vars, 
                         $solved_vals, 
 
-                        $non_linear_solved_vars,
-                        $non_linear_solved_vals,
+                        # $non_linear_solved_vars,
+                        # $non_linear_solved_vals,
                         # $solved_sub_vals,
                         # $solved_sub_values,
                         $ss_solve_blocks,
@@ -1075,27 +1082,27 @@ macro model(𝓂,ex)
                         # $SS_init_guess,
                         $NSSS_solver_cache,
                         $SS_solve_func,
-                        $nonlinear_solution_helper,
+                        # $nonlinear_solution_helper,
                         $SS_dependencies,
 
                         $➕_vars,
-                        $ss_equations, 
+                        # $ss_equations, 
                         $ss_eq_aux_ind,
-                        $t_future_equations,
+                        # $t_future_equations,
                         # :(function t_future_deriv($($var_future...),$($dyn_ss_future...),$($par...))
                         #     [$($t_future_equations...)]
                         # end),
-                        $t_past_equations,
+                        # $t_past_equations,
                         # :(function t_past_deriv($($var_past...),$($dyn_ss_past...),$($par...))
                         #     [$($t_past_equations...)]
                         # end),
-                        $t_present_equations,
+                        # $t_present_equations,
                         # :(function t_present_deriv($($var_present...),$($dyn_ss_present...),$($par...))
                         #     [$($t_present_equations...)]
                         # end),
                         $dyn_equations,
-                        $dyn_equations_future,
-                        $equations, 
+                        # $dyn_equations_future,
+                        $original_equations, 
 
                         $calibration_equations, #no_var_
 
@@ -1120,11 +1127,11 @@ macro model(𝓂,ex)
                                             higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x),
                                             higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x)
                             ),
-                            ComponentVector(nothing = 0.0),
+                            Float64[], # ComponentVector(nothing = 0.0),
                             Set([:first_order]),
                             Set([:linear_time_iteration, :riccati, :first_order, :second_order, :third_order]),
                             true,
-                            false,
+                            # false,
                             false
                         )
                     );
