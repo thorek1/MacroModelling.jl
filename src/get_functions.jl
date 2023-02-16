@@ -560,7 +560,7 @@ function get_steady_state(𝓂::ℳ;
 
     write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.par,𝓂.➕_vars))))
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
     
     if parameter_derivatives == :all
         length_par = length(𝓂.parameters)

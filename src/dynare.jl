@@ -131,7 +131,7 @@ function write_mod_file(m::ℳ)
         [print(io,string(e) * " ") for e in m.exo]
 
         println(io,";\n\nparameters ")
-        [print(io,string(p) * " ") for p in m.par]
+        [print(io,string(p) * " ") for p in m.parameters_in_equations]
 
 
         println(io,";\n\n# Parameter definitions:")

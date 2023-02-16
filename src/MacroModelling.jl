@@ -75,11 +75,11 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 "Model:      ", 𝓂.model_name, 
                 "\nVariables", 
                 "\n Total:     ", 𝓂.timings.nVars - length(𝓂.exo_present) - length(𝓂.aux),
-                "\n States:    ", length(setdiff(𝓂.timings.past_not_future_and_mixed,𝓂.aux_present)),
-                "\n Jumpers:   ", length(setdiff(setdiff(𝓂.timings.future_not_past_and_mixed,𝓂.aux_present,𝓂.timings.mixed),𝓂.aux_future)),
+                "\n States:    ", length(setdiff(𝓂.timings.past_not_future_and_mixed, 𝓂.aux_present)),
+                "\n Jumpers:   ", length(setdiff(𝓂.timings.future_not_past_and_mixed, 𝓂.aux_present, 𝓂.timings.mixed, 𝓂.aux_future)),
                 "\n Auxiliary: ",length(𝓂.exo_present) + length(𝓂.aux),
                 "\nShocks:     ", 𝓂.timings.nExo,
-                "\nParameters: ", length(𝓂.par),
+                "\nParameters: ", length(𝓂.parameters_in_equations),
                 if 𝓂.calibration_equations == Expr[]
                     ""
                 else
@@ -157,7 +157,7 @@ function create_symbols_eqs!(𝓂::ℳ)
 
     symbols_in_ss_equations = reduce(union,get_symbols.(𝓂.ss_aux_equations))
 
-    symbols_in_equation = union(𝓂.par,𝓂.parameters,𝓂.parameters_as_function_of_parameters,symbols_in_dynamic_equations,symbols_in_dynamic_equations_wo_subscripts,symbols_in_ss_equations)#,𝓂.dynamic_variables_future)
+    symbols_in_equation = union(𝓂.parameters_in_equations,𝓂.parameters,𝓂.parameters_as_function_of_parameters,symbols_in_dynamic_equations,symbols_in_dynamic_equations_wo_subscripts,symbols_in_ss_equations)#,𝓂.dynamic_variables_future)
 
     l_bnds = Dict(𝓂.bounded_vars .=> 𝓂.lower_bounds)
     u_bnds = Dict(𝓂.bounded_vars .=> 𝓂.upper_bounds)
@@ -689,7 +689,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
 	    [push!(parameters_only_in_par_defs, a) for a in atoms]
 	end
     
-    𝓂.par = union(𝓂.par,setdiff(parameters_only_in_par_defs,𝓂.parameters_as_function_of_parameters))
+    # 𝓂.par = union(𝓂.par,setdiff(parameters_only_in_par_defs,𝓂.parameters_as_function_of_parameters))
     
     parameters_in_equations = []
 

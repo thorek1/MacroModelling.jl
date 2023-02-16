@@ -124,7 +124,7 @@ mutable struct ℳ
     model_name
     SS_optimizer
     exo::Vector{Symbol}
-    par::Vector{Symbol}
+    parameters_in_equations::Vector{Symbol}
     parameters_as_function_of_parameters::Vector{Symbol}
     parameters::Vector{Symbol}
     parameter_values::Vector{Number}
@@ -150,7 +150,7 @@ mutable struct ℳ
     # var_past::Vector{Symbol}
 
     # exo_list::Vector{Set{Symbol}}
-    var_list::Vector{Set{Symbol}}
+    # var_list::Vector{Set{Symbol}}
     # dynamic_variables_list::Vector{Set{Symbol}}
     # dynamic_variables_future_list::Vector{Set{Symbol}}
 
@@ -160,7 +160,7 @@ mutable struct ℳ
     ss_no_var_calib_list::Vector{Set{Symbol}}
     par_no_var_calib_list::Vector{Set{Symbol}}
 
-    ss_list::Vector{Set{Symbol}}
+    # ss_list::Vector{Set{Symbol}}
 
     ss_aux_equations::Vector{Expr}
     var_list_aux_SS::Vector{Set{Symbol}}
