@@ -3,7 +3,8 @@
 ## High priority
 
 - [ ] add balanced growth path handling
-- [ ] write functions to debug
+- [ ] write functions to debug (fix_SS.jl...)
+- [ ] try eval instead of runtimegeneratedfunctions
 - [ ] parser model into per equation functions instead of single big functions
 - [ ] model compression -> model setup as maximisation problem (gEcon) -> HANK models
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
