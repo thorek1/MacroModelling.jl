@@ -1407,7 +1407,19 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
         $out
     end)
 
-    𝓂.model_hessian = @RuntimeGeneratedFunction(mod_func4)
+
+    for l in 1:length(second_order)
+        exx = :(function(X::Vector, params::Vector{Number}, X̄::Vector)
+        $(alll...)
+        $(paras...)
+        $(𝓂.calibration_equations_no_var...)
+        $(steady_state...)
+        return $(second_order[l]), $(row2[l]), $(column2[l])
+        end)
+        push!(𝓂.model_hessian,@RuntimeGeneratedFunction(exx))
+    end
+
+    # 𝓂.model_hessian = @RuntimeGeneratedFunction(mod_func4)
     # 𝓂.model_hessian = eval(mod_func4)
 
 
@@ -1425,7 +1437,19 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
         $out
     end)
 
-    𝓂.model_third_order_derivatives = @RuntimeGeneratedFunction(mod_func5)
+
+    for l in  1:length(third_order)
+        exx = :(function(X::Vector, params::Vector{Number}, X̄::Vector)
+        $(alll...)
+        $(paras...)
+        $(𝓂.calibration_equations_no_var...)
+        $(steady_state...)
+        return $(third_order[l]), $(row3[l]), $(column3[l])
+        end)
+        push!(𝓂.model_third_order_derivatives,@RuntimeGeneratedFunction(exx))
+    end
+
+    # 𝓂.model_third_order_derivatives = @RuntimeGeneratedFunction(mod_func5)
     # 𝓂.model_third_order_derivatives = eval(mod_func5)
 
 
@@ -1696,7 +1720,17 @@ function calculate_hessian(parameters::Vector{<: Number}, SS_and_pars::AbstractA
     # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
         
     # return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
-    return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
+    # return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
+
+    nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+    
+    second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_hessian]
+    
+    vals = [Float64(i[1]) for i in second_out]
+    rows = [i[2] for i in second_out]
+    cols = [i[3] for i in second_out]
+
+    sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^2)
 end
 
 
@@ -1729,10 +1763,18 @@ function calculate_third_order_derivatives(parameters::Vector{<: Number}, SS_and
 
     shocks_ss = zeros(length(dyn_exo))
 
-    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-      
     # return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
-    return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
+    # return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
+    
+    nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+    
+    third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
+    
+    vals = [Float64(i[1]) for i in third_out]
+    rows = [i[2] for i in third_out]
+    cols = [i[3] for i in third_out]
+
+    sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
 end
 
 
@@ -1919,7 +1961,7 @@ end
 
 
 function  calculate_second_order_solution(∇₁::AbstractMatrix{Float64}, #first order derivatives
-                                            ∇₂::AbstractMatrix{Float64}, #second order derivatives
+                                            ∇₂::SparseMatrixCSC{Float64}, #second order derivatives
                                             𝑺₁::AbstractMatrix{Float64};  #first order solution
                                             T::timings)
     # inspired by Levintal
@@ -1963,7 +2005,7 @@ function  calculate_second_order_solution(∇₁::AbstractMatrix{Float64}, #firs
 
     ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
-    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = -∇₂ * (ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * 𝛔) * 𝐂₂ 
+    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = -∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * 𝛔) * 𝐂₂ 
 
     X = sparse(∇₁₊𝐒₁➕∇₁₀ \ ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹)
     droptol!(X,tol)
@@ -1992,8 +2034,8 @@ end
 
 
 function  calculate_third_order_solution(∇₁::AbstractMatrix{Float64}, #first order derivatives
-                                            ∇₂::AbstractMatrix{Float64}, #second order derivatives
-                                            ∇₃::AbstractMatrix{Float64}, #third order derivatives
+                                            ∇₂::SparseMatrixCSC{Float64}, #second order derivatives
+                                            ∇₃::SparseMatrixCSC{Float64}, #third order derivatives
                                             𝑺₁::AbstractMatrix{Float64}, #first order solution
                                             𝐒₂::AbstractMatrix{Float64}; #second order solution
                                             T::timings)
@@ -2070,29 +2112,29 @@ function  calculate_third_order_solution(∇₁::AbstractMatrix{Float64}, #first
     𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:] 
              zeros(n₋ + n + nₑ, nₑ₋^2)];
     
-    𝐗₃ = -∇₃ * ℒ.kron(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋), ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+    𝐗₃ = -∇₃ * sparse(ℒ.kron(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋), ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
     
     𝐏₁ₗ  = @views sparse(spdiagm(ones(n̄^3))[vec(permutedims(reshape(1:n̄^3,n̄,n̄,n̄),(1,3,2))),:])
     𝐏₁ᵣ  = @views sparse(spdiagm(ones(nₑ₋^3))[:,vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(1,3,2)))])
     𝐏₂ₗ  = @views sparse(spdiagm(ones(n̄^3))[vec(permutedims(reshape(1:n̄^3,n̄,n̄,n̄),(3,1,2))),:])
     𝐏₂ᵣ  = @views sparse(spdiagm(ones(nₑ₋^3))[:,vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(3,1,2)))])
 
-    tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * 𝛔)
+    tmpkron = sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * 𝛔))
     out = - ∇₃ * tmpkron - ∇₃ * 𝐏₁ₗ * tmpkron * 𝐏₁ᵣ - ∇₃ * 𝐏₂ₗ * tmpkron * 𝐏₂ᵣ
     𝐗₃ += out
     
     
     
-    tmp𝐗₃ = -∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎) 
+    tmp𝐗₃ = -∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎))
     
     𝐏₁ₗ = sparse(spdiagm(ones(nₑ₋^3))[vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(2,1,3))),:])
     𝐏₁ᵣ = sparse(spdiagm(ones(nₑ₋^3))[:,vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(2,1,3)))])
 
-    tmpkron1 = -∇₂ *  ℒ.kron(𝐒₁₊╱𝟎,𝐒₂₊╱𝟎)
-    tmpkron2 = ℒ.kron(𝛔,𝐒₁₋╱𝟏ₑ)
+    tmpkron1 = -∇₂ *  sparse(ℒ.kron(𝐒₁₊╱𝟎,𝐒₂₊╱𝟎))
+    tmpkron2 = sparse(ℒ.kron(𝛔,𝐒₁₋╱𝟏ₑ))
     out2 = tmpkron1 * tmpkron2 +  tmpkron1 * 𝐏₁ₗ * tmpkron2 * 𝐏₁ᵣ
     
-    𝐗₃ += (tmp𝐗₃ + out2 + -∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * 𝛔)) * 𝐏# |> findnz
+    𝐗₃ += (tmp𝐗₃ + out2 + -∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * 𝛔))) * 𝐏# |> findnz
     
     𝐗₃ += @views -∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]) * 𝐏
     droptol!(𝐗₃,tol)
