@@ -238,8 +238,8 @@ mutable struct ℳ
 
     model_function::Function
     model_jacobian::Function
-    model_hessian::Function
-    model_third_order_derivatives::Function
+    model_hessian::Vector{Function}
+    model_third_order_derivatives::Vector{Function}
 
     timings::timings
     solution::solution
