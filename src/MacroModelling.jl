@@ -579,7 +579,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 #     end)
 
 # println(solved_vals)
-                funcs = :(function block(parameters_and_solved_vars::Vector{Float64}, guess::Vector{Float64}, transformer_option::Int)
+                funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector, transformer_option::Int)
                         # if guess isa Tuple guess = guess[1] end
                         guess = undo_transformer(guess, option = transformer_option) 
                         # println(guess)
@@ -755,7 +755,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
     end
 
 
-    solve_exp = :(function solve_SS(parameters::Vector{Real}, 𝓂::ℳ, fail_fast_solvers_only::Bool, verbose::Bool)
+    solve_exp = :(function solve_SS(parameters::Vector{Number}, 𝓂::ℳ, fail_fast_solvers_only::Bool, verbose::Bool)
                     params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                     current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
                     closest_solution_init = 𝓂.NSSS_solver_cache[end]
@@ -798,6 +798,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
                 end)
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
+    # 𝓂.SS_solve_func = eval(solve_exp)
 
     return nothing
 end
@@ -1085,23 +1086,13 @@ function solve!(𝓂::ℳ;
         𝓂.solution.algorithms = union(𝓂.solution.algorithms,[algorithm])
     end
 
-    if !𝓂.solution.functions_written 
-        # consolidate bounds info
-        double_info = intersect(𝓂.bounds⁺,𝓂.bounded_vars)
-        𝓂.lower_bounds[indexin(double_info,𝓂.bounded_vars)] = max.(eps(Float32),𝓂.lower_bounds[indexin(double_info,𝓂.bounded_vars)])
-
-        new_info = setdiff(𝓂.bounds⁺,𝓂.bounded_vars)
-        𝓂.bounded_vars = vcat(𝓂.bounded_vars,new_info)
-        𝓂.lower_bounds = vcat(𝓂.lower_bounds,fill(eps(Float32),length(new_info)))
-        𝓂.upper_bounds = vcat(𝓂.upper_bounds,fill(1e12,length(new_info)))
-
-
-        symbolics = create_symbols_eqs!(𝓂)
-        remove_redundant_SS_vars!(𝓂,symbolics)
-        solve_steady_state!(𝓂, symbolic_SS, symbolics, verbose = verbose)
-        write_functions_mapping!(𝓂, symbolics)
-        𝓂.solution.functions_written = true
-    end
+    # if !𝓂.solution.functions_written 
+    #     symbolics = create_symbols_eqs!(𝓂)
+    #     remove_redundant_SS_vars!(𝓂,symbolics)
+    #     solve_steady_state!(𝓂, symbolic_SS, symbolics, verbose = verbose)
+    #     write_functions_mapping!(𝓂, symbolics)
+    #     𝓂.solution.functions_written = true
+    # end
 
     write_parameters_input!(𝓂,parameters, verbose = verbose)
 
@@ -1308,7 +1299,7 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
     end
 
     # watch out with naming of parameters in model and functions
-    mod_func2 = :(function model_function_uni_redux(X::Vector{Real}, params::Vector{Real}, X̄::Vector{Real})
+    mod_func2 = :(function model_function_uni_redux(X::Vector, params::Vector{Number}, X̄::Vector)
         $(alll...)
         $(paras...)
 		$(𝓂.calibration_equations_no_var...)
@@ -1318,6 +1309,7 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
 
 
     𝓂.model_function = @RuntimeGeneratedFunction(mod_func2)
+    # 𝓂.model_function = eval(mod_func2)
 
 
     dyn_future_list = collect(reduce(union, symbolics.dyn_future_list))
@@ -1389,7 +1381,7 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
         end
     end
 
-    mod_func3 = :(function model_jacobian(X::Vector{Number}, params::Vector{Number}, X̄::Vector{Number})
+    mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Number}, X̄::Vector)
         $(alll...)
         $(paras...)
         $(𝓂.calibration_equations_no_var...)
@@ -1398,6 +1390,7 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
     end)
 
     𝓂.model_jacobian = @RuntimeGeneratedFunction(mod_func3)
+    # 𝓂.model_jacobian = eval(mod_func3)
 
 
     if length(row2) == 0 
@@ -1406,7 +1399,7 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
         out = :(sparse([$(row2...)], [$(column2...)], [$(second_order...)], $(length(eqs)), $(length(vars)^2)))
     end
 
-    mod_func4 = :(function model_hessian(X::Vector{Number}, params::Vector{Number}, X̄::Vector{Number})
+    mod_func4 = :(function model_hessian(X::Vector, params::Vector{Number}, X̄::Vector)
         $(alll...)
         $(paras...)
         $(𝓂.calibration_equations_no_var...)
@@ -1415,6 +1408,7 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
     end)
 
     𝓂.model_hessian = @RuntimeGeneratedFunction(mod_func4)
+    # 𝓂.model_hessian = eval(mod_func4)
 
 
     if length(row3) == 0 
@@ -1423,7 +1417,7 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
         out = :(sparse([$(row3...)], [$(column3...)], [$(third_order...)], $(length(eqs)), $(length(vars)^3)))
     end
 
-    mod_func5 = :(function model_hessian(X::Vector{Number}, params::Vector{Number}, X̄::Vector{Number})
+    mod_func5 = :(function model_hessian(X::Vector, params::Vector{Number}, X̄::Vector)
         $(alll...)
         $(paras...)
         $(𝓂.calibration_equations_no_var...)
@@ -1432,6 +1426,7 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
     end)
 
     𝓂.model_third_order_derivatives = @RuntimeGeneratedFunction(mod_func5)
+    # 𝓂.model_third_order_derivatives = eval(mod_func5)
 
 
     # calib_eqs = []

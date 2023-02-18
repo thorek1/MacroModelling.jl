@@ -521,15 +521,15 @@ macro model(𝓂,ex)
     dyn_exo_list =      match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
 
     single_dyn_vars_equations = findall(length.(vcat.(collect.(dyn_var_future_list),
-                                                    collect.(dyn_var_present_list),
-                                                    collect.(dyn_var_past_list),
-                                                    collect.(dyn_exo_list),
-                                                    collect.(dyn_ss_list))) .== 1)
+                                                      collect.(dyn_var_present_list),
+                                                      collect.(dyn_var_past_list),
+                                                      collect.(dyn_exo_list),
+                                                      collect.(dyn_ss_list))) .== 1)
                                                     
     @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " * repr([original_equations[indexin(single_dyn_vars_equations,setdiff(1:length(ss_aux_equations),ss_eq_aux_ind .- 1))]...])
 
 
-
+    # println(ss_aux_equations)
     # write down original equations as written down in model block
     for (i,arg) in enumerate(ex.args)
         if isa(arg,Expr)
@@ -941,13 +941,13 @@ macro parameters(𝓂,ex)
                     x.args[4] == :(<) ?
                         begin
                             push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[1]+eps()) 
-                            push!(upper_bounds,x.args[5]-eps()) 
+                            push!(lower_bounds,x.args[1]+eps(Float32)) 
+                            push!(upper_bounds,x.args[5]-eps(Float32)) 
                         end :
                     x.args[4] == :(<=) ?
                         begin
                             push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[1]+eps()) 
+                            push!(lower_bounds,x.args[1]+eps(Float32)) 
                             push!(upper_bounds,x.args[5]) 
                         end :
                     x :
@@ -956,7 +956,7 @@ macro parameters(𝓂,ex)
                         begin
                             push!(bounded_vars,x.args[3]) 
                             push!(lower_bounds,x.args[1]) 
-                            push!(upper_bounds,x.args[5]-eps()) 
+                            push!(upper_bounds,x.args[5]-eps(Float32)) 
                         end :
                     x.args[4] == :(<=) ?
                         begin
@@ -970,13 +970,13 @@ macro parameters(𝓂,ex)
                     x.args[4] == :(>) ?
                         begin
                             push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[5]+eps()) 
-                            push!(upper_bounds,x.args[1]-eps()) 
+                            push!(lower_bounds,x.args[5]+eps(Float32)) 
+                            push!(upper_bounds,x.args[1]-eps(Float32)) 
                         end :
                     x.args[4] == :(>=) ?
                         begin
                             push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[5]+eps()) 
+                            push!(lower_bounds,x.args[5]+eps(Float32)) 
                             push!(upper_bounds,x.args[1]) 
                         end :
                     x :
@@ -985,7 +985,7 @@ macro parameters(𝓂,ex)
                         begin
                             push!(bounded_vars,x.args[3]) 
                             push!(lower_bounds,x.args[5]) 
-                            push!(upper_bounds,x.args[1]-eps()) 
+                            push!(upper_bounds,x.args[1]-eps(Float32)) 
                         end :
                     x.args[4] == :(>=) ?
                         begin
@@ -1001,28 +1001,28 @@ macro parameters(𝓂,ex)
                     x.args[2] isa Symbol ? 
                         begin
                             push!(bounded_vars,x.args[2]) 
-                            push!(upper_bounds,x.args[3]-eps()) 
-                            push!(lower_bounds,-Inf) 
+                            push!(upper_bounds,x.args[3]-eps(Float32)) 
+                            push!(lower_bounds,-1e12) 
                         end :
                     x.args[3] isa Symbol ? 
                         begin
                             push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[2]+eps()) 
-                            push!(upper_bounds,Inf) 
+                            push!(lower_bounds,x.args[2]+eps(Float32)) 
+                            push!(upper_bounds,1e12) 
                         end :
                     x :
                 x.args[1] == :(>) ?
                     x.args[2] isa Symbol ? 
                         begin
                             push!(bounded_vars,x.args[2]) 
-                            push!(lower_bounds,x.args[3]+eps()) 
-                            push!(upper_bounds,Inf) 
+                            push!(lower_bounds,x.args[3]+eps(Float32)) 
+                            push!(upper_bounds,1e12) 
                         end :
                     x.args[3] isa Symbol ? 
                         begin
                             push!(bounded_vars,x.args[3]) 
-                            push!(upper_bounds,x.args[2]-eps()) 
-                            push!(lower_bounds,-Inf) 
+                            push!(upper_bounds,x.args[2]-eps(Float32)) 
+                            push!(lower_bounds,-1e12) 
                         end :
                     x :
                 x.args[1] == :(>=) ?
@@ -1030,13 +1030,13 @@ macro parameters(𝓂,ex)
                         begin
                             push!(bounded_vars,x.args[2]) 
                             push!(lower_bounds,x.args[3]) 
-                            push!(upper_bounds,Inf) 
+                            push!(upper_bounds,1e12) 
                         end :
                     x.args[3] isa Symbol ? 
                         begin
                             push!(bounded_vars,x.args[3]) 
                             push!(upper_bounds,x.args[2])
-                            push!(lower_bounds,-Inf) 
+                            push!(lower_bounds,-1e12) 
                         end :
                     x :
                 x.args[1] == :(<=) ?
@@ -1044,13 +1044,13 @@ macro parameters(𝓂,ex)
                         begin
                             push!(bounded_vars,x.args[2]) 
                             push!(upper_bounds,x.args[3]) 
-                            push!(lower_bounds,-Inf) 
+                            push!(lower_bounds,-1e12) 
                         end :
                     x.args[3] isa Symbol ? 
                         begin
                             push!(bounded_vars,x.args[3]) 
                             push!(lower_bounds,x.args[2]) 
-                            push!(upper_bounds,Inf) 
+                            push!(upper_bounds,1e12) 
                         end :
                     x :
                 x :
@@ -1062,9 +1062,12 @@ macro parameters(𝓂,ex)
     return quote
         mod = @__MODULE__
         @assert length(setdiff(setdiff(setdiff(union(reduce(union,$par_calib_list,init = []),mod.$𝓂.parameters_in_equations),$calib_parameters),$calib_parameters_no_var),$calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,$par_calib_list,init = []),mod.$𝓂.parameters_in_equations),$calib_parameters),$calib_parameters_no_var),$calib_eq_parameters)...])
-        mod.$𝓂.bounded_vars = $bounded_vars
-        mod.$𝓂.lower_bounds = $lower_bounds
-        mod.$𝓂.upper_bounds = $upper_bounds
+
+        $lower_bounds[indexin(intersect(mod.$𝓂.bounds⁺,$bounded_vars),$bounded_vars)] = max.(eps(Float32),$lower_bounds[indexin(intersect(mod.$𝓂.bounds⁺,$bounded_vars),$bounded_vars)])
+
+        mod.$𝓂.bounded_vars = vcat($bounded_vars,setdiff(mod.$𝓂.bounds⁺,$bounded_vars))
+        mod.$𝓂.lower_bounds = vcat($lower_bounds,fill(eps(Float32),length(setdiff(mod.$𝓂.bounds⁺,$bounded_vars))))
+        mod.$𝓂.upper_bounds = vcat($upper_bounds,fill(1e12,length(setdiff(mod.$𝓂.bounds⁺,$bounded_vars))))
 
         mod.$𝓂.ss_calib_list = $ss_calib_list
         mod.$𝓂.par_calib_list = $par_calib_list
@@ -1079,6 +1082,14 @@ macro parameters(𝓂,ex)
         mod.$𝓂.calibration_equations_no_var = $calib_equations_no_var_list
         mod.$𝓂.calibration_equations_parameters = $calib_eq_parameters
         mod.$𝓂.solution.outdated_NSSS = true
+
+        symbolics = create_symbols_eqs!(mod.$𝓂)
+        remove_redundant_SS_vars!(mod.$𝓂, symbolics)
+        solve_steady_state!(mod.$𝓂, false, symbolics, verbose = true) # 1nd argument is SS_symbolic
+        write_functions_mapping!(mod.$𝓂, symbolics)
+        mod.$𝓂.solution.functions_written = true
+
+        Base.show(mod.$𝓂)
         nothing
     end
 end
