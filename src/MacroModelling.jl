@@ -881,7 +881,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     end
     
     # try NLboxsolve first
-    for transformer_option ∈ 0:2
+    for transformer_option ∈ [2,1,0]#0:2
         if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
             SS_optimizer = nlboxsolve
 
@@ -949,7 +949,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     # cycle through NLopt solvers
     for SS_optimizer in optimizers
-        for transformer_option ∈ 0:2
+        for transformer_option ∈ [2,1,0]#0:2
             if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
 
                 previous_sol_init = max.(lbs,min.(ubs, sol_values))
@@ -1085,14 +1085,6 @@ function solve!(𝓂::ℳ;
         𝓂.solution.outdated_algorithms = union(intersect(𝓂.solution.algorithms,[algorithm]),𝓂.solution.outdated_algorithms)
         𝓂.solution.algorithms = union(𝓂.solution.algorithms,[algorithm])
     end
-
-    # if !𝓂.solution.functions_written 
-    #     symbolics = create_symbols_eqs!(𝓂)
-    #     remove_redundant_SS_vars!(𝓂,symbolics)
-    #     solve_steady_state!(𝓂, symbolic_SS, symbolics, verbose = verbose)
-    #     write_functions_mapping!(𝓂, symbolics)
-    #     𝓂.solution.functions_written = true
-    # end
 
     write_parameters_input!(𝓂,parameters, verbose = verbose)
 
@@ -1298,17 +1290,17 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
         push!(paras,:($parss = params[$i]))
     end
 
-    # watch out with naming of parameters in model and functions
-    mod_func2 = :(function model_function_uni_redux(X::Vector, params::Vector{Number}, X̄::Vector)
-        $(alll...)
-        $(paras...)
-		$(𝓂.calibration_equations_no_var...)
-        $(steady_state...)
-        [$(𝓂.dyn_equations...)]
-    end)
+    # # watch out with naming of parameters in model and functions
+    # mod_func2 = :(function model_function_uni_redux(X::Vector, params::Vector{Number}, X̄::Vector)
+    #     $(alll...)
+    #     $(paras...)
+	# 	$(𝓂.calibration_equations_no_var...)
+    #     $(steady_state...)
+    #     [$(𝓂.dyn_equations...)]
+    # end)
 
 
-    𝓂.model_function = @RuntimeGeneratedFunction(mod_func2)
+    # 𝓂.model_function = @RuntimeGeneratedFunction(mod_func2)
     # 𝓂.model_function = eval(mod_func2)
 
 

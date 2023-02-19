@@ -618,7 +618,7 @@ macro model(𝓂,ex)
                         $lower_bounds,
                         $upper_bounds,
 
-                        x->x,
+                        # x->x,
                         x->x,
                         [],#x->x,
                         [],#x->x,
@@ -1058,6 +1058,8 @@ macro parameters(𝓂,ex)
         x,bound)
     end
 
+    verbose = false
+
     # println($m)
     return quote
         mod = @__MODULE__
@@ -1081,13 +1083,34 @@ macro parameters(𝓂,ex)
         mod.$𝓂.parameters_as_function_of_parameters = $calib_parameters_no_var
         mod.$𝓂.calibration_equations_no_var = $calib_equations_no_var_list
         mod.$𝓂.calibration_equations_parameters = $calib_eq_parameters
-        mod.$𝓂.solution.outdated_NSSS = true
+        # mod.$𝓂.solution.outdated_NSSS = true
 
+        start_time = time()
+        # time_symbolics = @elapsed 
         symbolics = create_symbols_eqs!(mod.$𝓂)
+        # time_rm_red_SS_vars = @elapsed 
         remove_redundant_SS_vars!(mod.$𝓂, symbolics)
-        solve_steady_state!(mod.$𝓂, false, symbolics, verbose = true) # 1nd argument is SS_symbolic
+        println("Remove redundant variables in non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds")
+        start_time = time()
+
+        # time_SS_solve = @elapsed 
+        solve_steady_state!(mod.$𝓂, false, symbolics, verbose = $verbose) # 1nd argument is SS_symbolic
+        println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds")
+        start_time = time()
+
+        # time_dynamic_derivs = @elapsed 
         write_functions_mapping!(mod.$𝓂, symbolics)
+        println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
+        start_time = time()
+
         mod.$𝓂.solution.functions_written = true
+
+        # time_SS_real_solve = @elapsed 
+        SS_and_pars, solution_error = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, false, $verbose)
+        println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds")
+
+        mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
+        mod.$𝓂.solution.outdated_NSSS = false
 
         Base.show(mod.$𝓂)
         nothing

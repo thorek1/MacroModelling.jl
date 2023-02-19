@@ -236,7 +236,7 @@ mutable struct ℳ
     lower_bounds::Vector{Float64}
     upper_bounds::Vector{Float64}
 
-    model_function::Function
+    # model_function::Function
     model_jacobian::Function
     model_hessian::Vector{Function}
     model_third_order_derivatives::Vector{Function}
