@@ -72,6 +72,7 @@ macro model(𝓂,ex)
     unique_➕_vars = []
 
     ss_eq_aux_ind = Int[]
+    dyn_eq_aux_ind = Int[]
 
     # write down dynamic equations and add auxilliary variables for leads and lags > 1
     for (i,arg) in enumerate(ex.args)
@@ -87,77 +88,82 @@ macro model(𝓂,ex)
                                     Symbol(string(x.args[1]) * "₍ₓ₎") 
                                 end :
                             occursin(r"^(x|ex|exo|exogenous){1}(?=(\s{1}(\-|\+){1}\s{1}\d+$))"i,string(x.args[2])) ?
-                            x.args[2].args[1] == :(+) ?
-                                begin
-                                    k = x.args[2].args[3]
-            
-                                    while k > 2
-                                        if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎") ∈ aux_vars_created
-                                            break
-                                        else
+                                x.args[2].args[1] == :(+) ?
+                                    begin
+                                        k = x.args[2].args[3]
+                
+                                        while k > 2 # create auxilliary dynamic equation for exogenous variables with lead > 1
+                                            if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎") ∈ aux_vars_created
+                                                break
+                                            else
+                                                push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
+                    
+                                                push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 2)) * "⁾₍₁₎")))
+                                                push!(dyn_eq_aux_ind,length(dyn_equations))
+                                                
+                                                k -= 1
+                                            end
+                                        end
+
+                                        if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎") ∉ aux_vars_created && k > 1
                                             push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
-                
-                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 2)) * "⁾₍₁₎")))
-                                            
-                                            k -= 1
+                    
+                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₁₎")))
+                                            push!(dyn_eq_aux_ind,length(dyn_equations))
                                         end
-                                    end
 
-                                    if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎") ∉ aux_vars_created && k > 1
-                                        push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
-                
-                                        push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₁₎")))
-                                    end
+                                        if Symbol(string(x.args[1]) * "₍₀₎") ∉ aux_vars_created
+                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "₍₀₎"))
+                                            
+                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "₍₀₎"),Symbol(string(x.args[1]) * "₍ₓ₎")))
+                                            push!(dyn_eq_aux_ind,length(dyn_equations))
+                                        end
 
-                                    if Symbol(string(x.args[1]) * "₍₀₎") ∉ aux_vars_created
-                                        push!(aux_vars_created,Symbol(string(x.args[1]) * "₍₀₎"))
-                                        
-                                        push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "₍₀₎"),Symbol(string(x.args[1]) * "₍ₓ₎")))
-                                    end
-
-                                    if x.args[2].args[3] > 1
-                                        Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(x.args[2].args[3] - 1)) * "⁾₍₁₎")
-                                    else
-                                        Symbol(string(x.args[1]) * "₍₁₎")
-                                    end
-                                end :
-                            x.args[2].args[1] == :(-) ?
-                                begin
-                                    k = - x.args[2].args[3]
-                
-                                    while k < -2
-                                        if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎") ∈ aux_vars_created
-                                            break
+                                        if x.args[2].args[3] > 1
+                                            Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(x.args[2].args[3] - 1)) * "⁾₍₁₎")
                                         else
-                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
-                
-                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 2)) * "⁾₍₋₁₎")))
-                                            
-                                            k += 1
+                                            Symbol(string(x.args[1]) * "₍₁₎")
                                         end
-                                    end
-                
-                                    if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎") ∉ aux_vars_created && k < -1
-                                      
-                                        push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
-                
-                                        push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₋₁₎")))
-                                    end
-                                    
-                                    if Symbol(string(x.args[1]) * "₍₀₎") ∉ aux_vars_created
-                                        push!(aux_vars_created,Symbol(string(x.args[1]) * "₍₀₎"))
+                                    end :
+                                x.args[2].args[1] == :(-) ?
+                                    begin
+                                        k = - x.args[2].args[3]
+                    
+                                        while k < -2 # create auxilliary dynamic equations for exogenous variables with lag < -1
+                                            if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎") ∈ aux_vars_created
+                                                break
+                                            else
+                                                push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
+                    
+                                                push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 2)) * "⁾₍₋₁₎")))
+                                                push!(dyn_eq_aux_ind,length(dyn_equations))
+                                                
+                                                k += 1
+                                            end
+                                        end
+                    
+                                        if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎") ∉ aux_vars_created && k < -1
                                         
-                                        push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "₍₀₎"),Symbol(string(x.args[1]) * "₍ₓ₎")))
+                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
+                    
+                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₋₁₎")))
+                                            push!(dyn_eq_aux_ind,length(dyn_equations))
+                                        end
+                                        
+                                        if Symbol(string(x.args[1]) * "₍₀₎") ∉ aux_vars_created
+                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "₍₀₎"))
+                                            
+                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "₍₀₎"),Symbol(string(x.args[1]) * "₍ₓ₎")))
+                                            push!(dyn_eq_aux_ind,length(dyn_equations))
+                                        end
 
-                                    end
-
-                                    if  - x.args[2].args[3] < -1
-                                        Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(x.args[2].args[3] - 1)) * "⁾₍₋₁₎")
-                                    else
-                                        Symbol(string(x.args[1]) * "₍₋₁₎")
-                                    end
-                                end :
-                            x.args[1] : 
+                                        if  - x.args[2].args[3] < -1
+                                            Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(x.args[2].args[3] - 1)) * "⁾₍₋₁₎")
+                                        else
+                                            Symbol(string(x.args[1]) * "₍₋₁₎")
+                                        end
+                                    end :
+                                x.args[1] : 
                             occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
                                 begin
                                     Symbol(string(x.args[1]) * "₍ₛₛ₎") 
@@ -167,13 +173,14 @@ macro model(𝓂,ex)
                                     begin
                                         k = x.args[2]
 
-                                        while k > 2
+                                        while k > 2 # create auxilliary dynamic equations for endogenous variables with lead > 1
                                             if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎") ∈ aux_vars_created
                                                 break
                                             else
                                                 push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
 
                                                 push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 2)) * "⁾₍₁₎")))
+                                                push!(dyn_eq_aux_ind,length(dyn_equations))
                                                 
                                                 k -= 1
                                             end
@@ -183,6 +190,7 @@ macro model(𝓂,ex)
                                             push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"))
 
                                             push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k - 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₁₎")))
+                                            push!(dyn_eq_aux_ind,length(dyn_equations))
                                         end
                                         Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(x.args[2] - 1)) * "⁾₍₁₎")
                                     end :
@@ -194,7 +202,7 @@ macro model(𝓂,ex)
                                     begin
                                         Symbol(string(x.args[1]) * "₍₋" * sub(string(x.args[2])) * "₎")
                                     end :
-                                x.args[2] < -1 ? 
+                                x.args[2] < -1 ?  # create auxilliary dynamic equations for endogenous variables with lag < -1
                                     begin
                                         k = x.args[2]
 
@@ -205,6 +213,7 @@ macro model(𝓂,ex)
                                                 push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
 
                                                 push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 2)) * "⁾₍₋₁₎")))
+                                                push!(dyn_eq_aux_ind,length(dyn_equations))
                                                 
                                                 k += 1
                                             end
@@ -214,6 +223,7 @@ macro model(𝓂,ex)
                                             push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
 
                                             push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₋₁₎")))
+                                            push!(dyn_eq_aux_ind,length(dyn_equations))
                                         end
 
                                         Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(x.args[2] + 1)) * "⁾₍₋₁₎")
@@ -401,7 +411,6 @@ macro model(𝓂,ex)
         
         if idx ∈ ss_eq_aux_ind
             ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],simplify(unblock(prs_ex).args[3])) # simplify RHS if nonnegative auxilliary variable
-
         else
             ss_aux_equation = simplify(unblock(prs_ex))
         end
@@ -520,15 +529,6 @@ macro model(𝓂,ex)
     dyn_past_list =     match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")
     dyn_exo_list =      match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
 
-    single_dyn_vars_equations = findall(length.(vcat.(collect.(dyn_var_future_list),
-                                                      collect.(dyn_var_present_list),
-                                                      collect.(dyn_var_past_list),
-                                                      collect.(dyn_exo_list),
-                                                      collect.(dyn_ss_list))) .== 1)
-                                                    
-    @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " * repr([original_equations[indexin(single_dyn_vars_equations,setdiff(1:length(ss_aux_equations),ss_eq_aux_ind .- 1))]...])
-
-
     # println(ss_aux_equations)
     # write down original equations as written down in model block
     for (i,arg) in enumerate(ex.args)
@@ -541,6 +541,15 @@ macro model(𝓂,ex)
             push!(original_equations,unblock(prs_exx))
         end
     end
+
+    single_dyn_vars_equations = findall(length.(vcat.(collect.(dyn_var_future_list),
+                                                      collect.(dyn_var_present_list),
+                                                      collect.(dyn_var_past_list),
+                                                      collect.(dyn_exo_list),
+                                                      collect.(dyn_ss_list))) .== 1)
+                                                    
+    @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " * repr([original_equations[indexin(single_dyn_vars_equations,setdiff(1:length(dyn_equations),dyn_eq_aux_ind .- 1))]...])
+
 
     default_optimizer = NLopt.LD_LBFGS
     # default_optimizer = Optimisers.Adam
