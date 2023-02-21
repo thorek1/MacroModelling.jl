@@ -245,21 +245,21 @@ end
 
 
 
-function remove_redundant_SS_vars!(𝓂::ℳ, symbolics::symbolics)
-    ss_equations = symbolics.ss_equations
+function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
+    ss_equations = Symbolics.ss_equations
 
     # check variables which appear in two time periods. they might be redundant in steady state
     redundant_vars = intersect.(
         union.(
-            intersect.(symbolics.var_future_list,symbolics.var_present_list),
-            intersect.(symbolics.var_future_list,symbolics.var_past_list),
-            intersect.(symbolics.var_present_list,symbolics.var_past_list),
-            intersect.(symbolics.ss_list,symbolics.var_present_list),
-            intersect.(symbolics.ss_list,symbolics.var_past_list),
-            intersect.(symbolics.ss_list,symbolics.var_future_list)
+            intersect.(Symbolics.var_future_list,Symbolics.var_present_list),
+            intersect.(Symbolics.var_future_list,Symbolics.var_past_list),
+            intersect.(Symbolics.var_present_list,Symbolics.var_past_list),
+            intersect.(Symbolics.ss_list,Symbolics.var_present_list),
+            intersect.(Symbolics.ss_list,Symbolics.var_past_list),
+            intersect.(Symbolics.ss_list,Symbolics.var_future_list)
         ),
-    symbolics.var_list)
-    redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(symbolics.var_list) .> 1))
+    Symbolics.var_list)
+    redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(Symbolics.var_list) .> 1))
 
     for i in redundant_idx
         for var_to_solve in redundant_vars[i]
@@ -272,7 +272,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, symbolics::symbolics)
             end
             
             if length(soll) == 0 || soll == SymPy.Sym[0] # take out variable if it is redundant from that euation only
-                push!(symbolics.var_redundant_list[i],var_to_solve)
+                push!(Symbolics.var_redundant_list[i],var_to_solve)
                 ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(SymPy.Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
             end
 
@@ -284,19 +284,19 @@ end
 
 
 
-function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbose = false)
-    unknowns = union(symbolics.vars_in_ss_equations,symbolics.calibration_equations_parameters)
+function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose = false)
+    unknowns = union(Symbolics.vars_in_ss_equations,Symbolics.calibration_equations_parameters)
 
-    @assert length(unknowns) <= length(symbolics.ss_equations) + length(symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
+    @assert length(unknowns) <= length(Symbolics.ss_equations) + length(Symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
 
     incidence_matrix = fill(0,length(unknowns),length(unknowns))
 
-    eq_list = vcat(union.(setdiff.(union.(symbolics.var_list,
-                                           symbolics.ss_list),
-                                    symbolics.var_redundant_list),
-                            symbolics.par_list),
-                    union.(symbolics.ss_calib_list,
-                            symbolics.par_calib_list))
+    eq_list = vcat(union.(setdiff.(union.(Symbolics.var_list,
+                                           Symbolics.ss_list),
+                                    Symbolics.var_redundant_list),
+                            Symbolics.par_list),
+                    union.(Symbolics.ss_calib_list,
+                            Symbolics.par_calib_list))
 
 
     for i in 1:length(unknowns)
@@ -315,11 +315,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, symbolics::symbolics; verbo
     vars = hcat(P, R̂)'
     eqs = hcat(Q, R̂)'
 
-    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(symbolics.ss_equations,symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
+    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
     
     n = n_blocks
 
-    ss_equations = vcat(symbolics.ss_equations,symbolics.calibration_equations) .|> SymPy.Sym
+    ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations) .|> SymPy.Sym
     # println(ss_equations)
 
     SS_solve_func = []
@@ -1090,7 +1090,7 @@ function solve!(𝓂::ℳ;
 
     if dynamics
         if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
-            SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose)
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
@@ -1239,7 +1239,7 @@ end
 
 
 
-function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
+function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics)
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
     past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
@@ -1304,10 +1304,10 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
     # 𝓂.model_function = eval(mod_func2)
 
 
-    dyn_future_list = collect(reduce(union, symbolics.dyn_future_list))
-    dyn_present_list = collect(reduce(union, symbolics.dyn_present_list))
-    dyn_past_list = collect(reduce(union, symbolics.dyn_past_list))
-    dyn_exo_list = collect(reduce(union,symbolics.dyn_exo_list))
+    dyn_future_list = collect(reduce(union, Symbolics.dyn_future_list))
+    dyn_present_list = collect(reduce(union, Symbolics.dyn_present_list))
+    dyn_past_list = collect(reduce(union, Symbolics.dyn_past_list))
+    dyn_exo_list = collect(reduce(union,Symbolics.dyn_exo_list))
 
     future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_future_list))
     present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_present_list))
@@ -1319,7 +1319,7 @@ function write_functions_mapping!(𝓂::ℳ, symbolics::symbolics)
             dyn_past_list[indexin(sort(past),past)]...,
             dyn_exo_list[indexin(sort(exo),exo)]...]
     
-    eqs = symbolics.dyn_equations
+    eqs = Symbolics.dyn_equations
 
     first_order = []
     second_order = []
