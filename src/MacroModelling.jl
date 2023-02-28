@@ -58,7 +58,7 @@ export irf, girf
 
 # Remove comment for debugging
 export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer
-export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance
+export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, levenberg_marquardt_ar
 
 # StatsFuns
 norminvcdf(p::Number) = -erfcinv(2*p) * sqrt2
@@ -148,6 +148,94 @@ function convert_to_ss_equation(eq::Expr)
         x,
     eq)
 end
+
+
+
+
+function levenberg_marquardt_ar(f::Function, x::Array{T,1}, lb::Array{T,1}, ub::Array{T,1}; xtol::T = eps(), ftol::T = 1e-8,iterations::S = 100000, r::T = .5, μ::T = 1e-4, ρ::T  = 0.8) where {T <: AbstractFloat, S <: Integer}
+
+    # This is an implementation of Algorithm 2.1 from Amini and Rostami (2016), "Three-steps modified Levenberg-Marquardt 
+    # method with a new line search for systems of nonlinear equations", Journal of Computational and Applied Mathematics, 
+    # 300, pp. 30--42.
+
+    # Modified to allow for box-constraints by Richard Dennis.
+
+    n = length(x)
+    xk = copy(x)
+    xn = similar(x)
+    z  = similar(x)
+    s  = similar(x)
+    jk = Array{T,2}(undef,n,n)
+
+    lenx = zero(T)
+    lenf = zero(T)
+
+    # Initialize solver-parameters
+    σ1 = 0.005
+    σ2 = 0.005
+    γ  = eps()
+    
+	for iter in 1: iterations
+        jk .= ℱ.jacobian(f,xk)
+
+        λk = μ*ℒ.norm(f(xk))^2
+        
+        d1k = -(jk'jk + λk*ℒ.I) \ (jk'f(xk))
+        xk1 = min.(max.(xk+d1k,lb),ub)
+
+        d2k = -(jk'jk + λk*ℒ.I) \ (jk'f(xk1))
+        xk2 = min.(max.(xk1+d2k,lb),ub)
+
+        d3k = -(jk'jk + λk*ℒ.I) \ (jk'f(xk2))
+
+        dk = d1k+d2k+d3k
+
+        z .= min.(max.(xk+dk,lb),ub)
+        s .= z-xk
+
+        if !all(isfinite,s)
+            return xk, (iter, Inf, Inf, fill(Inf,length(xk)))
+        end
+
+        if ℒ.norm(f(z)) <= ρ*ℒ.norm(f(xk))
+            α = 1.0
+        else
+            if f(xk)'jk*dk > -γ
+                dk = d1k
+				z .= min.(max.(xk+dk,lb),ub)
+                s .= z-xk
+            end
+            α = 1.0
+            epsilon = 1/10
+            while true
+                if ℒ.norm(f(xk+α*s))^2 > (1+epsilon)*ℒ.norm(f(xk))^2 - σ1*α^2*ℒ.norm(s)^2 - σ2*α^2*ℒ.norm(f(xk))^2
+                    α = r*α
+                    epsilon = r*epsilon
+                else
+                    break
+                end
+            end
+        end
+
+        xn .= xk + α*s
+
+        f_eval = f(xn)
+        lenx = maximum(abs,xn-xk)
+        lenf = maximum(abs,f_eval)
+  
+        xk .= xn
+
+        if lenx <= xtol || lenf <= ftol
+            return xk, (iter, lenx, lenf, f_eval)
+        end
+
+    end
+
+    return xk, (iter, lenx, lenf, f_eval)
+end
+
+
+
 
 function create_symbols_eqs!(𝓂::ℳ)
     # create symbols in module scope
@@ -371,7 +459,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 # push!(atoms_in_equations, soll[1].atoms())
 
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = max(eps(),$(𝓂.solved_vals[end]))))
+                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.lower_bounds[indexin([𝓂.solved_vars[end]],𝓂.bounded_vars)][1]),$(𝓂.solved_vals[end])),$(𝓂.upper_bounds[indexin([𝓂.solved_vars[end]],𝓂.bounded_vars)][1]))))
                 else
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
                 end
@@ -579,9 +667,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 #     end)
 
 # println(solved_vals)
-                funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector, transformer_option::Int)
+                funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector, transformer_option::Int, lbs::Vector{Float64}, ubs::Vector{Float64})
                         # if guess isa Tuple guess = guess[1] end
-                        guess = undo_transformer(guess, option = transformer_option) 
+                        guess = undo_transformer(guess,lbs,ubs, option = transformer_option) 
                         # println(guess)
                         $(guess...) 
                         $(calib_pars...) # add those variables which were previously solved and are used in the equations
@@ -620,11 +708,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 for i in sorted_vars
                     if i ∈ 𝓂.bounded_vars
-                        push!(lbs,𝓂.lower_bounds[i .== 𝓂.bounded_vars][1] == -Inf ? -limit_boundaries : 𝓂.lower_bounds[i .== 𝓂.bounded_vars][1])
-                        push!(ubs,𝓂.upper_bounds[i .== 𝓂.bounded_vars][1] ==  Inf ?  limit_boundaries : 𝓂.upper_bounds[i .== 𝓂.bounded_vars][1])
+                        push!(lbs,𝓂.lower_bounds[i .== 𝓂.bounded_vars][1] == -Inf ? -limit_boundaries+rand() : 𝓂.lower_bounds[i .== 𝓂.bounded_vars][1])
+                        push!(ubs,𝓂.upper_bounds[i .== 𝓂.bounded_vars][1] ==  Inf ?  limit_boundaries+rand() : 𝓂.upper_bounds[i .== 𝓂.bounded_vars][1])
                     else
-                        push!(lbs,-limit_boundaries)
-                        push!(ubs,limit_boundaries)
+                        push!(lbs,-limit_boundaries+rand())
+                        push!(ubs,limit_boundaries+rand())
                     end
                 end
                 push!(SS_solve_func,:(lbs = [$(lbs...)]))
@@ -658,7 +746,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                         # verbose = verbose)))
                 # push!(SS_solve_func,:(solution_error += solution[2])) 
                 # push!(SS_solve_func,:(sol = solution[1]))
-                push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)]([$(calib_pars_input...),$(other_vars_input...)],solution,0))))
+                push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)]([$(calib_pars_input...),$(other_vars_input...)],solution,0,lbs,ubs))))
                 push!(SS_solve_func,:(sol = solution))
 
                 # push!(SS_solve_func,:(println(sol))) 
@@ -809,8 +897,10 @@ function reverse_diff_friendly_push!(x,y)
 end
 
 # transformation of NSSS problem
-function transformer(x; option::Int = 2)
-    if option == 2
+function transformer(x,lb,ub; option::Int = 2)
+    if option == 3
+        return  @. tan((x - (ub + lb) / 2) * pi / (ub - lb)) / pi * (ub - lb) # project to unbounded
+    elseif option == 2
         return asinh.(asinh.(x))
     elseif option == 1
         return asinh.(x)
@@ -819,8 +909,10 @@ function transformer(x; option::Int = 2)
     end
 end
 
-function undo_transformer(x; option::Int = 2)
-    if option == 2
+function undo_transformer(x,lb,ub; option::Int = 2)
+    if option == 3
+        return  @. atan(x * pi / (ub - lb)) / pi * (ub - lb) + (ub + lb) / 2 # project to bounded
+    elseif option == 2
         return sinh.(sinh.(x))
     elseif option == 1
         return sinh.(x)
@@ -830,7 +922,7 @@ function undo_transformer(x; option::Int = 2)
 end
 
 function SS_solve_block_wrapper(guess, transformer_parameters_and_solved_vars)
-    sum(abs2, transformer_parameters_and_solved_vars[3](transformer_parameters_and_solved_vars[1], guess, transformer_parameters_and_solved_vars[2]))
+    sum(abs2, transformer_parameters_and_solved_vars[3](transformer_parameters_and_solved_vars[1], guess, transformer_parameters_and_solved_vars[2],transformer_parameters_and_solved_vars[4],transformer_parameters_and_solved_vars[5]))
 end
 
 block_solver_AD(parameters_and_solved_vars::Vector{<: Number}, 
@@ -874,47 +966,39 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         verbose = false)
     
     sol_values = guess
-    sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,transformer(sol_values, option = 0),0))
+    sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,transformer(sol_values,lbs,ubs, option = 0),0,lbs,ubs))
 
     if verbose && sol_minimum < tol
-        println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = 0), 0)))
+        println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = 0), 0,lbs,ubs)))
     end
     
     # try NLboxsolve first
-    for transformer_option ∈ [2,1,0]#0:2
+    for transformer_option ∈ 0:2 #[2,1,0]#
         if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
-            SS_optimizer = nlboxsolve
+            SS_optimizer = levenberg_marquardt_ar
 
             previous_sol_init = max.(lbs,min.(ubs, sol_values))
-            sol_new = try SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x, transformer_option),transformer(previous_sol_init, option = transformer_option),transformer(lbs, option = transformer_option),transformer(ubs, option = transformer_option),method = :nk) catch e end
 
-            if isnothing(sol_new)
-                sol_minimum = Inf
-                sol_values = zero(sol_values)
-            else
-                sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
-                sol_values = undo_transformer(sol_new.zero, option = transformer_option)
-            end
+            sol_new, info = SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option))# catch e end
+
+            sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
+            sol_values = undo_transformer(sol_new,lbs,ubs, option = transformer_option)
 
             if (sol_minimum < tol) && verbose
-                println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
+                println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
             elseif !fail_fast_solvers_only
                 # if the previous non-converged best guess as a starting point does not work, try the standard starting points
                 for starting_point in starting_points
                     if sol_minimum > tol
                         standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
-                        sol_new = try SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x, transformer_option),transformer(standard_inits, option = transformer_option),transformer(lbs, option = transformer_option),transformer(ubs, option = transformer_option),method = :nk) catch e end
-                        
-                        if isnothing(sol_new)
-                            sol_minimum = Inf
-                            sol_values = zero(sol_values)
-                        elseif (isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)) < sol_minimum
-                            sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
-                            sol_values = undo_transformer(sol_new.zero, option = transformer_option)
+                        standard_inits[ubs .<= 1] .= .1 # capture cases where part of values is small
+                        sol_new, info = SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(standard_inits,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option))# catch e end
+                       
+                        sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
+                        sol_values = undo_transformer(sol_new,lbs,ubs, option = transformer_option)
 
-                            if sol_minimum < tol && verbose
-                                println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
-                            end
+                        if sol_minimum < tol && verbose
+                            println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
                         end
 
                     else 
@@ -924,17 +1008,13 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
                 # if the the standard starting point doesnt work try the provided guess
                 if sol_minimum > tol
-                    sol_new = try SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x, transformer_option),transformer(guess, option = transformer_option),transformer(lbs, option = transformer_option),transformer(ubs, option = transformer_option),method = :nk) catch e end
-                    if isnothing(sol_new)
-                        sol_minimum = Inf
-                        sol_values = zero(sol_values)
-                    elseif (isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)) < sol_minimum
-                        sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
-                        sol_values = undo_transformer(sol_new.zero, option = transformer_option)
+                    sol_new, info = SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(guess,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option))# catch e end
 
-                        if (sol_minimum < tol) && verbose
-                            println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
-                        end
+                    sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
+                    sol_values = undo_transformer(sol_new,lbs,ubs, option = transformer_option)
+
+                    if (sol_minimum < tol) && verbose
+                        println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
                     end
                 end
             end
@@ -953,15 +1033,15 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
 
                 previous_sol_init = max.(lbs,min.(ubs, sol_values))
-                prob = OptimizationProblem(f, transformer(previous_sol_init, option = transformer_option), (parameters_and_solved_vars,transformer_option, ss_solve_blocks), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
+                prob = OptimizationProblem(f, transformer(previous_sol_init,lbs,ubs, option = transformer_option), (parameters_and_solved_vars,transformer_option, ss_solve_blocks, lbs, ubs), lb = transformer(lbs,lbs,ubs, option = transformer_option), ub = transformer(ubs,lbs,ubs, option = transformer_option))
                 sol_new = solve(prob, SS_optimizer(), local_maxtime = timeout, maxtime = timeout)
 
                 if sol_new.minimum < sol_minimum
                     sol_minimum = sol_new.minimum
-                    sol_values = undo_transformer(sol_new.u, option = transformer_option)
+                    sol_values = undo_transformer(sol_new.u,lbs,ubs, option = transformer_option)
 
                     if (sol_minimum < tol) && verbose
-                        println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
+                        println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
                     end
                 end
 
@@ -970,15 +1050,16 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     for starting_point in starting_points
                         if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
                             standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
-                            prob = OptimizationProblem(f, transformer(standard_inits, option = transformer_option), (parameters_and_solved_vars, transformer_option, ss_solve_blocks), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
+                            standard_inits[ubs .<= 1] .= .1 # capture cases where part of values is small
+                            prob = OptimizationProblem(f, transformer(standard_inits,lbs,ubs, option = transformer_option), (parameters_and_solved_vars, transformer_option, ss_solve_blocks, lbs, ubs), lb = transformer(lbs,lbs,ubs, option = transformer_option), ub = transformer(ubs,lbs,ubs, option = transformer_option))
                             sol_new = solve(prob, SS_optimizer(), local_maxtime = timeout, maxtime = timeout)
 
                             if sol_new.minimum < sol_minimum
                                 sol_minimum = sol_new.minimum
-                                sol_values = undo_transformer(sol_new.u, option = transformer_option)
+                                sol_values = undo_transformer(sol_new.u,lbs,ubs, option = transformer_option)
 
                                 if (sol_minimum < tol) && verbose
-                                    println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
+                                    println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
                                 end
                             end
 
@@ -989,14 +1070,14 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
                     # if the the standard starting point doesnt work try the provided guess
                     if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
-                        prob = OptimizationProblem(f, transformer(guess, option = transformer_option), (parameters_and_solved_vars, transformer_option, ss_solve_blocks), lb = transformer(lbs, option = transformer_option), ub = transformer(ubs, option = transformer_option))
+                        prob = OptimizationProblem(f, transformer(guess,lbs,ubs, option = transformer_option), (parameters_and_solved_vars, transformer_option, ss_solve_blocks, lbs, ubs), lb = transformer(lbs,lbs,ubs, option = transformer_option), ub = transformer(ubs,lbs,ubs, option = transformer_option))
                         sol_new = solve(prob, SS_optimizer(), local_maxtime = timeout, maxtime = timeout)
                         if sol_new.minimum < sol_minimum
                             sol_minimum  = sol_new.minimum
-                            sol_values = undo_transformer(sol_new.u, option = transformer_option)
+                            sol_values = undo_transformer(sol_new.u,lbs,ubs, option = transformer_option)
 
                             if (sol_minimum < tol) && verbose
-                                println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values, option = transformer_option), transformer_option)))
+                                println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
                             end
                         end
                     end
@@ -1053,8 +1134,8 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
         jvp = fill(0,length(val),length(inp)) * ps
     else
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)
-        A = ℱ.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)
+        B = ℱ.jacobian(x -> ss_solve_blocks(x,transformer(val,lbs,ubs, option = 0),0), inp)
+        A = ℱ.jacobian(x -> ss_solve_blocks(inp,transformer(x,lbs,ubs, option = 0),0), val)
         # B = Zygote.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)[1]
         # A = Zygote.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)[1]
 
@@ -2479,7 +2560,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     if isnothing(parameters)
         parameters = 𝓂.parameter_values
     else
-        ub = @ignore_derivatives fill(1e12,length(𝓂.parameters))
+        ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters))
         lb = @ignore_derivatives -ub
 
         for (i,v) in enumerate(𝓂.bounded_vars)
