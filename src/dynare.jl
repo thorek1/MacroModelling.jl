@@ -125,7 +125,7 @@ function write_mod_file(m::ℳ)
 
     open(m.model_name * ".mod", "w") do io
         println(io,"var ")
-        [print(io,string(v) * " ") for v in m.vars_in_ss_equations]
+        [print(io,string(v) * " ") for v in setdiff(m.vars_in_ss_equations, m.➕_vars)]
 
         println(io,";\n\nvarexo ")
         [print(io,string(e) * " ") for e in m.exo]
@@ -150,7 +150,7 @@ function write_mod_file(m::ℳ)
         [println(io,"var\t" * string(e) * "\t=\t1;") for e in m.exo]
 
         println(io,"end;\n\ninitval;")
-        [print(io,"\t" * string(v) * "\t=\t" * string(NSSS(v)) * ";\n") for v in m.vars_in_ss_equations]
+        [print(io,"\t" * string(v) * "\t=\t" * string(NSSS(v)) * ";\n") for v in setdiff(m.vars_in_ss_equations, m.➕_vars)]
 
         println(io,"end;\n\nstoch_simul(irf=40);")
     end
