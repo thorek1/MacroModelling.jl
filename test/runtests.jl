@@ -9,6 +9,10 @@ include("functionality_tests.jl")
     include("test_standalone_function.jl")
 end
 
+@testset "Test various models: NSSS and 1st order solution" begin
+    include("test_models.jl")
+end
+
 @testset "SW07 with calibration equations" begin
     include("models/SW07.jl")
     functionality_test(m, plots = false)
