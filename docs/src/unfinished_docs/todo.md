@@ -3,6 +3,8 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] weed out SS solver and saved objects
+- [ ] streamline estimation part (dont do string matching... but rely on precomputed indices...)
 - [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
 - [ ] catch cases where you define calibration equation without declaring conditional variable
 - [ ] check out Aqua.jl as additional tests
@@ -32,6 +34,9 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] check correctness of solution for models added
+- [x] SpecialFunctions eta and gamma cause conflicts; consider importing used functions explicitly
+- [x] bring the parsing of equations after the parameters macro
 - [x] rewrite redundant var part so that it works with ss_aux_equations instead of ss_equations
 - [x] catch cases where ss vars are set to zero. x[0] * eps_z[x] in SS becomes x[0] * 0 but should be just 0 (use sympy for this)
 - [x] remove duplicate nonnegative aux vars to speed up SS solver
