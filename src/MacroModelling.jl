@@ -179,50 +179,50 @@ function levenberg_marquardt_ar(f::Function, x::Array{T,1}, lb::Array{T,1}, ub::
 	for iter in 1:iterations
         jk .= ℱ.jacobian(f,xk)
 
-        λk = μ*ℒ.norm(f(xk))^2
-        
-        d1k = -(jk'jk + λk*ℒ.I) \ (jk'f(xk))
-        xk1 = min.(max.(xk+d1k,lb),ub)
+        xk_norm = ℒ.norm(f(xk))
 
-        d2k = -(jk'jk + λk*ℒ.I) \ (jk'f(xk1))
-        xk2 = min.(max.(xk1+d2k,lb),ub)
+        A = -(jk'jk + μ * xk_norm^2 * ℒ.I)
 
-        d3k = -(jk'jk + λk*ℒ.I) \ (jk'f(xk2))
+        d1k = A \ (jk'f(xk))
+        xk1 = min.(max.(xk + d1k, lb), ub)
 
-        dk = d1k+d2k+d3k
+        d2k = A \ (jk'f(xk1))
+        xk2 = min.(max.(xk1 + d2k, lb), ub)
 
-        z .= min.(max.(xk+dk,lb),ub)
+        d3k = A \ (jk'f(xk2))
+
+        dk = d1k + d2k + d3k
+
+        z .= min.(max.(xk + dk, lb), ub)
         s .= z-xk
 
         if !all(isfinite,s)
             return xk, (iter, Inf, Inf, fill(Inf,length(xk)))
         end
 
-        if ℒ.norm(f(z)) <= ρ*ℒ.norm(f(xk))
+        if ℒ.norm(f(z)) <= ρ * xk_norm
             α = 1.0
         else
-            if f(xk)'jk*dk > -γ
+            if f(xk)'jk * dk > -γ
                 dk = d1k
-				z .= min.(max.(xk+dk,lb),ub)
-                s .= z-xk
+				z .= min.(max.(xk + dk, lb), ub)
+                s .= z - xk
             end
+
             α = 1.0
             epsilon = 1/10
-            while true
-                if ℒ.norm(f(xk+α*s))^2 > (1+epsilon)*ℒ.norm(f(xk))^2 - σ1*α^2*ℒ.norm(s)^2 - σ2*α^2*ℒ.norm(f(xk))^2
-                    α = r*α
-                    epsilon = r*epsilon
-                else
-                    break
-                end
+
+            while ℒ.norm(f(xk + α * s))^2 > (1 + epsilon) * xk_norm^2 - σ1 * α^2 * ℒ.norm(s)^2 - σ2 * α^2 * xk_norm^2
+                α *= r
+                epsilon *= r
             end
         end
 
-        xn .= xk + α*s
+        xn .= xk + α * s
 
         f_eval = f(xn)
-        lenx = maximum(abs,xn-xk)
-        lenf = maximum(abs,f_eval)
+        lenx = maximum(abs, xn - xk)
+        lenf = maximum(abs, f_eval)
   
         xk .= xn
 
