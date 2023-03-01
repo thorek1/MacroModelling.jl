@@ -2,7 +2,8 @@ module MacroModelling
 
 
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
-using StatsFuns, SpecialFunctions
+using StatsFuns
+import SpecialFunctions: erfcinv, erfc
 import SymPy: @vars, solve, subs, free_symbols
 import SymPy
 import ForwardDiff as ℱ 
