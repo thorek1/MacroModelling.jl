@@ -8,7 +8,7 @@
 - [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
 - [ ] catch cases where you define calibration equation without declaring conditional variable
 - [ ] check out Aqua.jl as additional tests
-- [ ] write functions to debug
+- [ ] write functions to debug (fix_SS.jl...)
 - [ ] parser model into per equation functions instead of single big functions
 - [ ] model compression -> model setup as maximisation problem (gEcon) -> HANK models
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
@@ -34,6 +34,7 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] try eval instead of runtimegeneratedfunctions; eval is slower but can be typed
 - [x] check correctness of solution for models added
 - [x] SpecialFunctions eta and gamma cause conflicts; consider importing used functions explicitly
 - [x] bring the parsing of equations after the parameters macro
