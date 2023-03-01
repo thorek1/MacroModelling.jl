@@ -2,7 +2,7 @@ module MacroModelling
 
 
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
-using StatsFuns
+import StatsFuns: normcdf, normpdf
 import SpecialFunctions: erfcinv, erfc
 import SymPy: @vars, solve, subs, free_symbols
 import SymPy
@@ -63,11 +63,12 @@ export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameter
 export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, levenberg_marquardt_ar
 
 # StatsFuns
-norminvcdf(p::Number) = -erfcinv(2*p) * sqrt2
+norminvcdf(p) = -erfcinv(2*p) * 1.4142135623730951
 norminv(p::Number) = norminvcdf(p)
 pnorm(p::Number) = normcdf(p)
 dnorm(p::Number) = normpdf(p)
 qnorm(p::Number) = norminvcdf(p)
+normlogpdf(z) = -(abs2(z) + 1.8378770664093453)/2
 
 
 
