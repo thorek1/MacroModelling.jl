@@ -39,7 +39,8 @@ function translate_mod_file(path_to_mod_file::AbstractString)
     for eq in eqs_orig
         eq = replace(eq, r"(\w+)\((-?\d+)\)" => s"\1[\2]")
         for v in vars
-            eq = replace(eq, Regex("\\b$(v)\\b") => v * "[0]")
+            eq = replace(eq, Regex("(?<!\\b)\\($(v)\\)") => v * "[ss]")
+            eq = replace(eq, Regex("\\b$(v)\\b(?!\\[)") => v * "[0]")
         end
         for x in shocks
             eq = replace(eq, Regex("\\b$(x)\\b") => x * "[x]")
@@ -124,13 +125,13 @@ function write_mod_file(m::ℳ)
 
     open(m.model_name * ".mod", "w") do io
         println(io,"var ")
-        [print(io,string(v) * " ") for v in m.var]
+        [print(io,string(v) * " ") for v in setdiff(m.vars_in_ss_equations, m.➕_vars)]
 
         println(io,";\n\nvarexo ")
         [print(io,string(e) * " ") for e in m.exo]
 
         println(io,";\n\nparameters ")
-        [print(io,string(p) * " ") for p in m.par]
+        [print(io,string(p) * " ") for p in m.parameters_in_equations]
 
 
         println(io,";\n\n# Parameter definitions:")
@@ -143,13 +144,13 @@ function write_mod_file(m::ℳ)
         [println(io,"\t" * replace(string(e),r"\[(-?\d+)\]" => s"(\1)",
         r"(\w+)\[(ss|stst|steady|steadystate|steady_state){1}\]" => s"STEADY_STATE(\1)",
         r"(\w+)\[(x|ex|exo|exogenous){1}\]" => s"\1",
-        r"(\w+)\[(x|ex|exo|exogenous){1}(\s*(\-|\+)\s*(\d{1}))\]" => s"\1(\4\5)") * ";\n") for e in m.equations]
+        r"(\w+)\[(x|ex|exo|exogenous){1}(\s*(\-|\+)\s*(\d{1}))\]" => s"\1(\4\5)") * ";\n") for e in m.original_equations]
 
         println(io,"end;\n\nshocks;")
         [println(io,"var\t" * string(e) * "\t=\t1;") for e in m.exo]
 
         println(io,"end;\n\ninitval;")
-        [print(io,"\t" * string(v) * "\t=\t" * string(NSSS(v)) * ";\n") for v in m.var]
+        [print(io,"\t" * string(v) * "\t=\t" * string(NSSS(v)) * ";\n") for v in setdiff(m.vars_in_ss_equations, m.➕_vars)]
 
         println(io,"end;\n\nstoch_simul(irf=40);")
     end

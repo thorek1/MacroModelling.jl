@@ -3,8 +3,12 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] weed out SS solver and saved objects
+- [ ] streamline estimation part (dont do string matching... but rely on precomputed indices...)
+- [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
+- [ ] catch cases where you define calibration equation without declaring conditional variable
+- [ ] check out Aqua.jl as additional tests
 - [ ] write functions to debug (fix_SS.jl...)
-- [ ] try eval instead of runtimegeneratedfunctions
 - [ ] parser model into per equation functions instead of single big functions
 - [ ] model compression -> model setup as maximisation problem (gEcon) -> HANK models
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
@@ -30,7 +34,15 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] try eval instead of runtimegeneratedfunctions; eval is slower but can be typed
+- [x] check correctness of solution for models added
+- [x] SpecialFunctions eta and gamma cause conflicts; consider importing used functions explicitly
+- [x] bring the parsing of equations after the parameters macro
+- [x] rewrite redundant var part so that it works with ss_aux_equations instead of ss_equations
+- [x] catch cases where ss vars are set to zero. x[0] * eps_z[x] in SS becomes x[0] * 0 but should be just 0 (use sympy for this)
+- [x] remove duplicate nonnegative aux vars to speed up SS solver
 - [x] error when defining variable more than once in parameters macro
+- [x] consolidate aux vars, use sympy to simplify
 - [x] error when writing equations with only one variable
 - [x] error when defining variable as parameter
 - [x] more options for IRFs, simulate only certain shocks - set stds to 0 instead

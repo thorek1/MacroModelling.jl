@@ -15,7 +15,7 @@ m = nothing
     c_dnorm[0]= dnorm(c[0])
     c_pnorm[0]= pnorm(c[0])
     c_normlogpdf[0]= normlogpdf(c[0])
-    c_inv[0] = erfcinv(c[0])
+    c_inv[0] = erfcinv(c[0]) * gamma + eta
 end
 
 
@@ -43,4 +43,6 @@ end
     std_eps = .0068
     rho_z_delta = rhoz
     std_z_delta = .005
+    gamma = .99
+    eta = 0.01
 end
