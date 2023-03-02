@@ -1111,7 +1111,7 @@ end
     end
 
 
-    @parameters RBC_CME begin
+    @parameters RBC_CME symbolic = true verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -1155,7 +1155,7 @@ end
     # get_steady_state(RBC_CME)[1]
     # using NLopt
     # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
-    solve!(RBC_CME,symbolic_SS = true)
+    # solve!(RBC_CME,symbolic_SS = true)
     @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
     # get_moments(RBC_CME)[1]
 

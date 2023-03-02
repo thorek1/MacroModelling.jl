@@ -816,6 +816,11 @@ Parameters can be defined in either of the following ways:
 - expression containing numbers: `δ = 1/50`
 - expression containing other parameters: `δ = 2 * std_z` in this case it is irrelevant if `std_z` is defined before or after. The definitons including other parameters are treated as a system of equaitons and solved accordingly.
 - expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneaously with the non-stochastic steady state using the equation defined with it.
+
+# Optional arguments to be placed between `𝓂` and `ex`
+- `verbose` [Default: `false`]: print more information about how the non stochastic steady state is solved
+- `symbolic` [Default: `false`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
+
 # Examples
 ```julia
 using MacroModelling
@@ -827,7 +832,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 
-@parameters RBC begin
+@parameters RBC verbose = true begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
@@ -836,7 +841,7 @@ end
 end
 ```
 """
-macro parameters(𝓂,ex)
+macro parameters(𝓂,ex...)
     calib_equations = []
     calib_equations_no_var = []
     calib_values_no_var = []
@@ -861,7 +866,28 @@ macro parameters(𝓂,ex)
     par_defined_more_than_once = Set()
     
     bounds = []
-    
+
+    # parse options
+    verbose = false
+    symbolic = false
+
+    for exp in ex[1:end-1]
+        postwalk(x -> 
+            x isa Expr ?
+                x.head == :(=) ?  
+                    x.args[1] == :symbolic && x.args[2] isa Bool ?
+                        symbolic = x.args[2] :
+                    x.args[1] == :verbose && x.args[2] isa Bool ?
+                        verbose = x.args[2] :
+                    begin
+                        @warn "Invalid options." 
+                        x
+                    end :
+                x :
+            x,
+        exp)
+    end
+
     # parse parameter inputs
     # label all variables parameters and exogenous vairables and timings across all equations
     postwalk(x -> 
@@ -902,7 +928,7 @@ macro parameters(𝓂,ex)
                 x :
             x :
         x,
-    ex)
+    ex[end])
 
 
 
@@ -940,7 +966,7 @@ macro parameters(𝓂,ex)
                 x :
             x :
         x,
-    ex)
+    ex[end])
     
     @assert length(par_defined_more_than_once) == 0 "Parameters can only be defined once. This is not the case for: " * repr([par_defined_more_than_once...])
     
@@ -1215,7 +1241,6 @@ macro parameters(𝓂,ex)
         x,bound)
     end
 
-    verbose = false
 
     # println($m)
     return quote
@@ -1253,7 +1278,7 @@ macro parameters(𝓂,ex)
         start_time = time()
 
         # time_SS_solve = @elapsed 
-        solve_steady_state!(mod.$𝓂, false, symbolics, verbose = $verbose) # 1nd argument is SS_symbolic
+        solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 1nd argument is SS_symbolic
         println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds")
         start_time = time()
 

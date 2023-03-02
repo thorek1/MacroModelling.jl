@@ -241,7 +241,7 @@ function levenberg_marquardt_ar(f::Function, x::Array{T,1}, lb::Array{T,1}, ub::
 
         lenx = maximum(abs, xn - xk)
         lenf = maximum(abs, f(xn))
-  
+
         xk .= xn
 
         if lenx <= xtol || lenf <= ftol
@@ -399,7 +399,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     incidence_matrix = fill(0,length(unknowns),length(unknowns))
 
     eq_list = vcat(union.(setdiff.(union.(Symbolics.var_list,
-                                           Symbolics.ss_list),
+                                        Symbolics.ss_list),
                                     Symbolics.var_redundant_list),
                             Symbolics.par_list),
                     union.(Symbolics.ss_calib_list,
