@@ -99,31 +99,31 @@
 
 	PIW[0] = pie[0] * (w_p[0] + w_i[0]) / (w_p[-1] + w_i[-1])
 
-	1 + r_ib[0] = (1 + r_ib_ss) ^ (1 - rho_ib) * (1 + r_ib[-1]) ^ rho_ib * ((pie[0] / piss) ^ phi_pie * (Y1[0] / Y1[-1]) ^ phi_y) ^ (1 - rho_ib) * (1 + e_r_ib[x])
+	1 + r_ib[0] = (1 + r_ib_ss) ^ (1 - rho_ib) * (1 + r_ib[-1]) ^ rho_ib * ((pie[0] / piss) ^ phi_pie * (Y1[0] / Y1[-1]) ^ phi_y) ^ (1 - rho_ib) * (1 + σ_r_ib * e_r_ib[x])
 
-	exp(ee_z[0]) = 1 - rho_ee_z + rho_ee_z * exp(ee_z[-1]) + e_z[x]
+	exp(ee_z[0]) = 1 - rho_ee_z + rho_ee_z * exp(ee_z[-1]) + σ_z * e_z[x]
 
-	exp(A_e[0]) = 1 - rho_A_e + rho_A_e * exp(A_e[-1]) + e_A_e[x]
+	exp(A_e[0]) = 1 - rho_A_e + rho_A_e * exp(A_e[-1]) + σ_A_e * e_A_e[x]
 
-	exp(ee_j[0]) = 1 - rho_ee_j + rho_ee_j * exp(ee_j[-1]) - e_j[x]
+	exp(ee_j[0]) = 1 - rho_ee_j + rho_ee_j * exp(ee_j[-1]) - σ_j * e_j[x]
 
-	exp(m_i[0]) = (1 - rho_mi) * m_i_ss + rho_mi * exp(m_i[-1]) + e_mi[x]
+	exp(m_i[0]) = (1 - rho_mi) * m_i_ss + rho_mi * exp(m_i[-1]) + σ_mi * e_mi[x]
 
-	exp(m_e[0]) = (1 - rho_me) * m_e_ss + rho_me * exp(m_e[-1]) + e_me[x]
+	exp(m_e[0]) = (1 - rho_me) * m_e_ss + rho_me * exp(m_e[-1]) + σ_me * e_me[x]
 
-	exp(mk_d[0]) = (1 - rho_mk_d) * mk_d_ss + rho_mk_d * exp(mk_d[-1]) + e_mk_d[x]
+	exp(mk_d[0]) = (1 - rho_mk_d) * mk_d_ss + rho_mk_d * exp(mk_d[-1]) + σ_mk_d * e_mk_d[x]
 
-	exp(mk_be[0]) = (1 - rho_mk_be) * mk_be_ss + rho_mk_be * exp(mk_be[-1]) + e_mk_be[x]
+	exp(mk_be[0]) = (1 - rho_mk_be) * mk_be_ss + rho_mk_be * exp(mk_be[-1]) + σ_mk_be * e_mk_be[x]
 
-	exp(mk_bh[0]) = (1 - rho_mk_bh) * mk_bh_ss + rho_mk_bh * exp(mk_bh[-1]) + e_mk_bh[x]
+	exp(mk_bh[0]) = (1 - rho_mk_bh) * mk_bh_ss + rho_mk_bh * exp(mk_bh[-1]) + σ_mk_bh * e_mk_bh[x]
 
-	exp(ee_qk[0]) = 1 - rho_ee_qk + rho_ee_qk * exp(ee_qk[-1]) + e_qk[x]
+	exp(ee_qk[0]) = 1 - rho_ee_qk + rho_ee_qk * exp(ee_qk[-1]) + σ_qk * e_qk[x]
 
-	exp(eps_y[0]) = (1 - rho_eps_y) * eps_y_ss + rho_eps_y * exp(eps_y[-1]) + e_y[x]
+	exp(eps_y[0]) = (1 - rho_eps_y) * eps_y_ss + rho_eps_y * exp(eps_y[-1]) + σ_y * e_y[x]
 
-	exp(eps_l[0]) = (1 - rho_eps_l) * eps_l_ss + rho_eps_l * exp(eps_l[-1]) + e_l[x]
+	exp(eps_l[0]) = (1 - rho_eps_l) * eps_l_ss + rho_eps_l * exp(eps_l[-1]) + σ_l * e_l[x]
 
-	exp(eps_K_b[0]) = 1 - rho_eps_K_b + rho_eps_K_b * exp(eps_K_b[-1]) + e_eps_K_b[x]
+	exp(eps_K_b[0]) = 1 - rho_eps_K_b + rho_eps_K_b * exp(eps_K_b[-1]) + σ_eps_K_b * e_eps_K_b[x]
 
 	rr_e[0] = lam_e[0] - beta_e * lam_e[1] * (1 + r_be[0]) / pie[1]
 
@@ -209,57 +209,83 @@ end
 
 	ind_bh = 0.0
 
-	rho_ee_z = 0.385953438168178
+	rho_ee_z =   3.9352753242570521e-001
 
-	rho_A_e = 0.93816527333294
+	rho_A_e =   9.3900015678945492e-001
 
-	rho_ee_j = 0.921872719102206
+	rho_ee_j =   9.2117909414787280e-001
 
-	rho_me = 0.90129485520182
+	rho_me =   8.9386514435074682e-001
 
-	rho_mi = 0.922378382753078
+	rho_mi =   9.2864864780617762e-001
 
-	rho_mk_d = 0.892731352899547
+	rho_mk_d =   8.3804796415016769e-001
 
-	rho_mk_bh = 0.851229673864555
+	rho_mk_bh =   8.1946217303357627e-001
 
-	rho_mk_be = 0.873901213475799
+	rho_mk_be =   8.3428100562221263e-001
 
-	rho_ee_qk = 0.571692383714171
+	rho_ee_qk =   5.4749146204441368e-001
 
-	rho_eps_y = 0.294182239567384
+	rho_eps_y =   3.0473409634573673e-001
 
-	rho_eps_l = 0.596186440884132
+	rho_eps_l =   6.3992225476484799e-001
 
-	rho_eps_K_b = 0.813022758608552
+	rho_eps_K_b =   8.1297958524412761e-001
 
-	kappa_p = 33.7705265016395
+	kappa_p =   2.8650196538695269e+001
 
-	kappa_w = 107.352040072465
+	kappa_w =   9.9898283585301883e+001
 
-	kappa_i = 10.0305562248008
+	kappa_i =   1.0182155670839322e+001
 
-	kappa_d = 2.77537377104213
+	kappa_d =   3.5029734165847466e+000
 
-	kappa_be = 7.98005959044637
+	kappa_be =   9.3638233191517397e+000
 
-	kappa_bh = 9.04426718749482
+	kappa_bh =   1.0086654447226444e+001
 
-	kappa_kb = 8.91481958034669
+	kappa_kb =   1.1068335540791962e+001
 
-	phi_pie = 2.00384780180824
+	phi_pie =   1.9816026561910398e+000
 
-	rho_ib = 0.750481873084311
+	rho_ib =   7.6855514559469518e-001
 
-	phi_y = 0.303247771697294
+	phi_y =   3.4591496570352009e-001
 
-	ind_p = 0.158112794106546
+	ind_p =   1.6051347848216171e-001
 
-	ind_w = 0.300197804017489
+	ind_w =   2.7569624058316433e-001
 
-	a_i = 0.867003766306404
+	a_i =   8.5595219718425664e-001
 
 	a_e = 0.0
 
 	a_p = 0.0
+
+	σ_z         = 0.0144
+
+	σ_A_e       = 0.0062
+
+	σ_j         = 0.0658
+
+	σ_me        = 0.0034
+
+	σ_mi        = 0.0023
+
+	σ_mk_d      = 0.0488
+
+	σ_mk_bh     = 0.0051
+
+	σ_mk_be     = 0.1454
+
+	σ_qk        = 0.0128
+
+	σ_r_ib      = 0.0018
+
+	σ_y         = 1.0099
+
+	σ_l         = 0.3721
+
+	σ_eps_K_b   = 0.050
 end
