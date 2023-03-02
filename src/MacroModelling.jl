@@ -2,7 +2,7 @@ module MacroModelling
 
 
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
-import StatsFuns: normcdf, normpdf
+# import StatsFuns: normcdf
 import SpecialFunctions: erfcinv, erfc
 import SymPy: @vars, solve, subs, free_symbols
 import SymPy
@@ -65,11 +65,12 @@ export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve
 # StatsFuns
 norminvcdf(p) = -erfcinv(2*p) * 1.4142135623730951
 norminv(p::Number) = norminvcdf(p)
-pnorm(p::Number) = normcdf(p)
-dnorm(p::Number) = normpdf(p)
 qnorm(p::Number) = norminvcdf(p)
 normlogpdf(z) = -(abs2(z) + 1.8378770664093453)/2
-
+normpdf(z) = exp(-abs2(z)/2) * 0.3989422804014327
+normcdf(z) = erfc(-z * 0.7071067811865475)/2
+pnorm(p::Number) = normcdf(p)
+dnorm(p::Number) = normpdf(p)
 
 
 
@@ -991,7 +992,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     end
     
     # try NLboxsolve first
-    for transformer_option ∈ 0:2 #[2,1,0]
+    for transformer_option ∈ [2,1,0]
         if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
             SS_optimizer = nlboxsolve
 
@@ -1110,7 +1111,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     # cycle through NLopt solvers
     for SS_optimizer in optimizers
-        for transformer_option ∈ 0:2 #[2,1,0]
+        for transformer_option ∈ [2,1,0]
             if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
 
                 previous_sol_init = max.(lbs,min.(ubs, sol_values))
