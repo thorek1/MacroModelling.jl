@@ -855,8 +855,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     # fix parameter bounds
     par_bounds = []
-
-    for varpar in intersect(𝓂.bounded_vars, 𝓂.parameters)
+    
+    for varpar in intersect(𝓂.bounded_vars, intersect(𝓂.parameters,union(Symbol.(atoms_in_equations),relevant_pars_across)))
         i = indexin([varpar],𝓂.bounded_vars)
         push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.lower_bounds[i...])),$(𝓂.upper_bounds[i...]))))
     end
