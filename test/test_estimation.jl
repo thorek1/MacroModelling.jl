@@ -59,14 +59,13 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, observables)
 
 n_samples = 1000
 
-Random.seed!(30)
 # using Zygote
 # Turing.setadbackend(:zygote)
 samps = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
 # println(mean(samps).nt.mean)
 
-
+Random.seed!(30)
 
 function calculate_posterior_loglikelihood(parameters, u)
     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
