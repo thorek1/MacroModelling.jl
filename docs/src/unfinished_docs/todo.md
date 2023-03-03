@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] flag if equations contaij no info for SS, suggest to set ss values as parameters
 - [ ] handle SS case where there are equations which have no information for the SS. use SS definitions in parameter block to complete system
 - [ ] weed out SS solver and saved objects
 - [ ] streamline estimation part (dont do string matching... but rely on precomputed indices...)
