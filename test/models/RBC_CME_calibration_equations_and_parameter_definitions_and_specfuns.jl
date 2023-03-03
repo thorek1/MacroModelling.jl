@@ -47,6 +47,11 @@ end
     eta = 0.01
     
     1 => eta > -1
+    -1 < gamma <= 1
+    -1 <= std_z_delta < 1
+    -1 <= rho_z_delta <= 1
+    -100 >= Pi_real >= 100
+    alpha < 10
     A >= -10
     c <= 1000
     10 >= R
