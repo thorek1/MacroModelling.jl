@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] handle SS case where there are equations which have no information for the SS. use SS definitions in parameter block to complete system
 - [ ] weed out SS solver and saved objects
 - [ ] streamline estimation part (dont do string matching... but rely on precomputed indices...)
 - [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
