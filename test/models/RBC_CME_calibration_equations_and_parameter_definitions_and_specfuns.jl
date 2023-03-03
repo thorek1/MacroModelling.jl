@@ -33,7 +33,7 @@ end
     # I_K_ratio = .15
     delta = .0226
 
-    Pibar | Pi[ss] = Pi_ss
+    Pi[ss] = Pi_ss | Pibar
     Pi_ss = R_ss - Pi_real
     Pi_real = 1/1000
     # Pibar = 1.0008
@@ -45,4 +45,10 @@ end
     std_z_delta = .005
     gamma = .99
     eta = 0.01
+    
+    1 => eta > -1
+    A >= -10
+    c <= 1000
+    10 >= R
+    0 <= k
 end
