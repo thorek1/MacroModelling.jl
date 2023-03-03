@@ -48,10 +48,10 @@ Parameters: 9</code></pre><p>First, we load the package and then use the <a href
            del     = 0.01
            z_e_a   = 0.035449
            z_e_m   = 0.008862
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	2.85 seconds
-Set up non stochastic steady state problem:	0.343 seconds
-Take symbolic derivatives up to third order:	7.754 seconds
-Find non stochastic steady state:	5.774 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	2.735 seconds
+Set up non stochastic steady state problem:	0.34 seconds
+Take symbolic derivatives up to third order:	7.826 seconds
+Find non stochastic steady state:	5.749 seconds
 Model:      FS2000
 Variables
  Total:     16
@@ -140,15 +140,15 @@ Parameters: 9
   parameters      mean
       Symbol   Float64
 
-         alp    0.4038
-         bet    0.9904
+         alp    0.4037
+         bet    0.9905
          gam    0.0047
-         mst    1.0142
-         rho    0.8454
-         psi    0.6833
+         mst    1.0143
+         rho    0.8448
+         psi    0.6815
          del    0.0025
-       z_e_a    0.0138
-       z_e_m    0.0034</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; pars = ComponentArray(parameter_mean.nt[2],Axis(parameter_mean.nt[1]))</code><code class="nohighlight hljs ansi" style="display:block;">ComponentVector{Float64}(alp = 0.4038289819861444, bet = 0.9903599143687264, gam = 0.0046629926414528166, mst = 1.0142298357642836, rho = 0.8454097543421514, psi = 0.6832904378452125, del = 0.0024929933776116973, z_e_a = 0.013770549715655118, z_e_m = 0.003350998572187371)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; logjoint(FS2000_loglikelihood, pars)</code><code class="nohighlight hljs ansi" style="display:block;">1343.3626295280533</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
+       z_e_a    0.0137
+       z_e_m    0.0033</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; pars = ComponentArray(parameter_mean.nt[2],Axis(parameter_mean.nt[1]))</code><code class="nohighlight hljs ansi" style="display:block;">ComponentVector{Float64}(alp = 0.40366715315628887, bet = 0.9904695406422434, gam = 0.00465659577501718, mst = 1.0142549991641385, rho = 0.844797729730986, psi = 0.681538876900514, del = 0.0024950436594746513, z_e_a = 0.013745034361476503, z_e_m = 0.0033409828531831484)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; logjoint(FS2000_loglikelihood, pars)</code><code class="nohighlight hljs ansi" style="display:block;">1343.3973028806336</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
            orig_pars[pars_syms] = [par1, par2]
            logjoint(model, orig_pars)
        end</code><code class="nohighlight hljs ansi" style="display:block;">calculate_log_probability (generic function with 1 method)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; granularity = 32;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par1 = :del;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par2 = :gam;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range1 = collect(range(minimum(chain_NUTS[par1]), stop = maximum(chain_NUTS[par1]), length = granularity));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range2 = collect(range(minimum(chain_NUTS[par2]), stop = maximum(chain_NUTS[par2]), length = granularity));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; p = surface(par_range1, par_range2,
@@ -156,26 +156,26 @@ Parameters: 9
                    camera=(30, 65),
                    colorbar=false,
                    color=:inferno);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray(reduce(hcat, get(chain_NUTS, FS2000.parameters)[FS2000.parameters])[s,:], Axis(FS2000.parameters))) for s in 1:length(chain_NUTS)]</code><code class="nohighlight hljs ansi" style="display:block;">1000-element Vector{Float64}:
- 1340.0487273276337
- 1342.8289679547022
- 1339.4596634387653
- 1337.9493316785179
- 1338.6791315999558
- 1338.946785365799
- 1335.5962480524731
- 1337.8675523710906
- 1340.0463013120723
- 1342.0540733510486
+ 1339.626130843955
+ 1337.315480585361
+ 1337.904585647657
+ 1337.6954021016813
+ 1338.0358796283751
+ 1334.9424172759611
+ 1337.6026690937908
+ 1337.5687410129956
+ 1341.0449884149825
+ 1341.637985790684
     ⋮
- 1335.638893477163
- 1335.7338165006777
- 1335.4643530311837
- 1338.438265715607
- 1341.8444829752495
- 1341.7169042022817
- 1338.7603419618754
- 1339.6721935597623
- 1336.4794763615314</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; scatter3d!(vec(collect(chain_NUTS[par1])),
+ 1342.4208417965908
+ 1338.592006626434
+ 1338.872363901787
+ 1335.6558665942844
+ 1335.7825821826607
+ 1338.8955089574995
+ 1341.4676263458914
+ 1341.9633136176942
+ 1338.2732284145375</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; scatter3d!(vec(collect(chain_NUTS[par1])),
                   vec(collect(chain_NUTS[par2])),
                   joint_loglikelihood,
                    mc = :viridis,
@@ -201,21 +201,21 @@ Parameters: 9
            log_lik -= logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...),z_e_m)
            return log_lik
        end</code><code class="nohighlight hljs ansi" style="display:block;">calculate_posterior_loglikelihood (generic function with 1 method)</code></pre><p>Next, we set up the optimisation problem and first use the ADAM global optimiser for 1000 iterations in order to avoid local optima and then fine tune with L-BFGS.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using Optimization, OptimizationNLopt, OptimizationOptimisers</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoForwardDiff())</code><code class="nohighlight hljs ansi" style="display:block;">(::OptimizationFunction{true,Optimization.AutoForwardDiff{nothing},…}) (generic function with 1 method)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; prob = OptimizationProblem(f, collect(pars), []);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol = solve(prob, Optimisers.Adam(), maxiters = 1000)</code><code class="nohighlight hljs ansi" style="display:block;">u: 9-element Vector{Float64}:
- 0.40272130614229085
- 0.9909439049256377
- 0.004550077284794265
- 1.0143227321142032
- 0.8457080502076098
- 0.6910342545065061
- 0.0016353132402103347
- 0.01347992249512825
- 0.003257545118077999</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimum</code><code class="nohighlight hljs ansi" style="display:block;">-1343.7491257513962</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; lbs = fill(-1e12, length(FS2000.parameters));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; ubs = fill(1e12, length(FS2000.parameters));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; bounds_index_in_pars = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.parameters);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; bounds_index_in_bounds = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.bounded_vars);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; lbs[bounds_index_in_pars] = max.(-1e12,FS2000.lower_bounds[bounds_index_in_bounds]);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; ubs[bounds_index_in_pars] = min.(1e12,FS2000.upper_bounds[bounds_index_in_bounds]);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; prob = OptimizationProblem(f, min.(max.(sol.u,lbs),ubs), [], lb = lbs, ub = ubs);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol = solve(prob, NLopt.LD_LBFGS())</code><code class="nohighlight hljs ansi" style="display:block;">u: 9-element Vector{Float64}:
- 0.40272130614229085
- 0.9909439049256377
- 0.004550077284794265
- 1.0143227321142032
- 0.8457080502076098
- 0.6910342545065061
- 0.0016353132402103347
- 0.01347992249512825
- 0.003257545118077999</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimum</code><code class="nohighlight hljs ansi" style="display:block;">-1343.7491257513962</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../sw03/">« Smets and Wouters (2003)</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Thursday 2 March 2023 23:37">Thursday 2 March 2023</span>. Using Julia version 1.8.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ 0.40272157603357117
+ 0.9909437578928603
+ 0.004550147302924602
+ 1.014322718899514
+ 0.8457082733312352
+ 0.6910345078353306
+ 0.0016353688264390182
+ 0.013479936933808338
+ 0.003257535892210055</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimum</code><code class="nohighlight hljs ansi" style="display:block;">-1343.7491290255252</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; lbs = fill(-1e12, length(FS2000.parameters));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; ubs = fill(1e12, length(FS2000.parameters));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; bounds_index_in_pars = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.parameters);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; bounds_index_in_bounds = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.bounded_vars);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; lbs[bounds_index_in_pars] = max.(-1e12,FS2000.lower_bounds[bounds_index_in_bounds]);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; ubs[bounds_index_in_pars] = min.(1e12,FS2000.upper_bounds[bounds_index_in_bounds]);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; prob = OptimizationProblem(f, min.(max.(sol.u,lbs),ubs), [], lb = lbs, ub = ubs);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol = solve(prob, NLopt.LD_LBFGS())</code><code class="nohighlight hljs ansi" style="display:block;">u: 9-element Vector{Float64}:
+ 0.40272157605819925
+ 0.9909437588858951
+ 0.004550144844105614
+ 1.0143227191914452
+ 0.8457082733232524
+ 0.6910345078310025
+ 0.0016353673083919003
+ 0.013479936459522364
+ 0.003257549321450027</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimum</code><code class="nohighlight hljs ansi" style="display:block;">-1343.7491290285552</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../sw03/">« Smets and Wouters (2003)</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Friday 3 March 2023 06:53">Friday 3 March 2023</span>. Using Julia version 1.8.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
