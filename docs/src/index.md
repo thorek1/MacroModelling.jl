@@ -12,13 +12,13 @@ As of now the package can:
 - calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts
 - calibrate parameters using (non stochastic) steady state relationships
 - match model moments
-- estimate the model on data (kalman filter using first order perturbation)
-- **differentiate** (forward AD) the model solution (first order perturbation), kalman filter loglikelihood (reverse-mode AD), model moments, steady state, **with respect to the parameters**
+- estimate the model on data (Kalman filter using first order perturbation)
+- **differentiate** (forward AD) the model solution (first order perturbation), Kalman filter loglikelihood (reverse-mode AD), model moments, steady state, **with respect to the parameters**
 
 The package is not:
 
 - guaranteed to find the non stochastic steady state
-- the fastest package around
+- the fastest package around if you already have a fast way to find the NSSS
 
 The former has to do with the fact that solving systems of nonlinear equations is hard (an active area of research). Especially in cases where the values of the solution are far apart (have a high standard deviation - e.g. `sol = [-46.324, .993457, 23523.3856]`), the algorithms have a hard time finding a solution. The recommended way to tackle this is to set bounds in the [`@parameters`](@ref) part (e.g. `r < 0.2`), so that the initial points are closer to the final solution (think of steady state interest rates not being higher than 20% - meaning not being higher than 0.2 or 1.2 depending on the definition).
 <!-- Furthermore, the package cannot solve incomplete non stochastic steady state problems. This is to say that often with other packages the non stochastic steady state is solved for in a separate file or calculation. This allows for more flexibility but also more involvement from the developer side. This package tries to automatise that process as much as possible but the user nonetheless has to think about the validity of the non stochastic steady state problem. -->
