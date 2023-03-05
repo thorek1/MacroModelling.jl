@@ -242,7 +242,11 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
 
     parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhols,crhoqs,crhoas,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
 
-    Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters_combined)
+    kalman_prob = calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters_combined)
+
+    println(kalman_prob)
+    
+    Turing.@addlogprob! kalman_prob 
 end
 
 
@@ -258,7 +262,7 @@ pars = ComponentArray(Float64[SW07.parameter_values[setdiff(1:length(SW07.parame
 logjoint(SW07_loglikelihood, pars)
 
 n_samples = 1000
-using Zygote
+
 Turing.setadbackend(:zygote)
 samps = sample(SW07_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
