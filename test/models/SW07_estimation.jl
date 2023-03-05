@@ -1,7 +1,7 @@
 using MacroModelling
 import Turing
 import Turing: Normal, Beta, Gamma, InverseGamma, NUTS, sample, logpdf, Truncated
-using Random, CSV, DataFrames, AxisKeys, ComponentArrays, Optimization, OptimizationNLopt, OptimizationOptimisers, MCMCChains
+using Random, CSV, DataFrames, Zygote, AxisKeys, ComponentArrays, Optimization, OptimizationNLopt, OptimizationOptimisers, MCMCChains
 import DynamicPPL: logjoint
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
 
@@ -200,6 +200,76 @@ end
 
 
 
+Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_parameters)
+    z_ea    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
+    z_eb    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.025,5)
+    z_eg    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
+    z_eqs   ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
+    z_em    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
+    z_epinf ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
+    z_ew    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
+    crhoa   ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
+    crhob   ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
+    crhog   ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
+    crhoqs  ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
+    crhoms  ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
+    crhopinf~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
+    crhow   ~   Truncated(Beta(beta_map(0.5,0.20)...),.001,.9999)
+    cmap    ~   Truncated(Beta(beta_map(0.5,0.2)...),0.01,.9999)
+    cmaw    ~   Truncated(Beta(beta_map(0.5,0.2)...),0.01,.9999)
+    csadjcost~  Truncated(Normal(4,1.5),2,15)
+    csigma  ~   Truncated(Normal(1.50,0.375),0.25,3)
+    chabb   ~   Truncated(Beta(beta_map(0.7,0.1)...),0.001,0.99)
+    cprobw  ~   Truncated(Beta(beta_map(0.5,0.1)...),0.05,0.95)
+    csigl   ~   Truncated(Normal(2,0.75),0.25,10)
+    cprobp  ~   Truncated(Beta(beta_map(0.5,0.10)...),0.05,0.95)
+    cindw   ~   Truncated(Beta(beta_map(0.5,0.15)...),0.01,0.99)
+    cindp   ~   Truncated(Beta(beta_map(0.5,0.15)...),0.01,0.99)
+    czcap   ~   Truncated(Beta(beta_map(0.5,0.15)...),0.01,1)
+    cfc     ~   Truncated(Normal(1.25,0.125),1.0,3)
+    crpi    ~   Truncated(Normal(1.5,0.25),1.0,3)
+    crr     ~   Truncated(Beta(beta_map(0.75,0.10)...),0.05,0.975)
+    cry     ~   Truncated(Normal(0.125,0.05),0.001,0.5)
+    crdy    ~   Truncated(Normal(0.125,0.05),0.001,0.5)
+    constepinf~ Truncated(Gamma(gamma_map(0.625,0.1)...),0.1,2.0)
+    constebeta~ Truncated(Gamma(gamma_map(0.25,0.1)...),0.01,2.0)
+    constelab ~ Truncated(Normal(0.0,2.0),-10.0,10.0)
+    ctrend  ~   Truncated(Normal(0.4,0.10),0.1,0.8)
+    cgy     ~   Truncated(Normal(0.5,0.25),0.01,2.0)
+    calfa   ~   Truncated(Normal(0.3,0.05),0.01,1.0)
+
+    ctou, clandaw, cg, curvp, curvw, crhols, crhoas = fixed_parameters
+
+    parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhols,crhoqs,crhoas,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
+
+    Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters_combined)
+end
+
+
+SW07.parameter_values[indexin([:crhoms, :crhopinf, :crhow, :cmap, :cmaw],SW07.parameters)] .= 0.02
+
+fixed_parameters = SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters)]
+
+SW07_loglikelihood = SW07_loglikelihood_function(data, SW07, observables, fixed_parameters)
+
+
+pars = ComponentArray(Float64[SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]...],Axis(SW07.parameters[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]))
+
+logjoint(SW07_loglikelihood, pars)
+
+n_samples = 1000
+using Zygote
+Turing.setadbackend(:zygote)
+samps = sample(SW07_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
+
+
+
+
+
+
+
+# Mode calculation
+
 function calculate_posterior_loglikelihood(parameters, u)
     ctou, clandaw, cg, curvp, curvw, crhols, crhoas = @ignore_derivatives SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters)]
 
@@ -310,66 +380,3 @@ sol.minimum
 # ([a-z_]+),([\d\.\s-]+),([\d\.\s-]+),([\d\.\s-]+),([a-z_]+),([\d\.\s-]+),([\d\.\s-]+);
 # logpdf(Truncated($5($5_map($6,$7)...),$3,$4),$1)
 
-
-
-Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_parameters)
-    z_ea    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
-    z_eb    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.025,5)
-    z_eg    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
-    z_eqs   ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
-    z_em    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
-    z_epinf ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
-    z_ew    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
-    crhoa   ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
-    crhob   ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
-    crhog   ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
-    crhoqs  ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
-    crhoms  ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
-    crhopinf~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
-    crhow   ~   Truncated(Beta(beta_map(0.5,0.20)...),.001,.9999)
-    cmap    ~   Truncated(Beta(beta_map(0.5,0.2)...),0.01,.9999)
-    cmaw    ~   Truncated(Beta(beta_map(0.5,0.2)...),0.01,.9999)
-    csadjcost~  Truncated(Normal(4,1.5),2,15)
-    csigma  ~   Truncated(Normal(1.50,0.375),0.25,3)
-    chabb   ~   Truncated(Beta(beta_map(0.7,0.1)...),0.001,0.99)
-    cprobw  ~   Truncated(Beta(beta_map(0.5,0.1)...),0.05,0.95)
-    csigl   ~   Truncated(Normal(2,0.75),0.25,10)
-    cprobp  ~   Truncated(Beta(beta_map(0.5,0.10)...),0.05,0.95)
-    cindw   ~   Truncated(Beta(beta_map(0.5,0.15)...),0.01,0.99)
-    cindp   ~   Truncated(Beta(beta_map(0.5,0.15)...),0.01,0.99)
-    czcap   ~   Truncated(Beta(beta_map(0.5,0.15)...),0.01,1)
-    cfc     ~   Truncated(Normal(1.25,0.125),1.0,3)
-    crpi    ~   Truncated(Normal(1.5,0.25),1.0,3)
-    crr     ~   Truncated(Beta(beta_map(0.75,0.10)...),0.05,0.975)
-    cry     ~   Truncated(Normal(0.125,0.05),0.001,0.5)
-    crdy    ~   Truncated(Normal(0.125,0.05),0.001,0.5)
-    constepinf~ Truncated(Gamma(gamma_map(0.625,0.1)...),0.1,2.0)
-    constebeta~ Truncated(Gamma(gamma_map(0.25,0.1)...),0.01,2.0)
-    constelab ~ Truncated(Normal(0.0,2.0),-10.0,10.0)
-    ctrend  ~   Truncated(Normal(0.4,0.10),0.1,0.8)
-    cgy     ~   Truncated(Normal(0.5,0.25),0.01,2.0)
-    calfa   ~   Truncated(Normal(0.3,0.05),0.01,1.0)
-
-    ctou, clandaw, cg, curvp, curvw, crhols, crhoas = fixed_parameters
-
-    parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhols,crhoqs,crhoas,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
-
-    Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters_combined)
-end
-
-
-SW07.parameter_values[indexin([:crhoms, :crhopinf, :crhow, :cmap, :cmaw],SW07.parameters)] .= 0.02
-
-fixed_parameters = SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters)]
-
-SW07_loglikelihood = SW07_loglikelihood_function(data, SW07, observables, fixed_parameters)
-
-
-pars = ComponentArray(Float64[SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]...],Axis(SW07.parameters[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]))
-
-logjoint(SW07_loglikelihood, pars)
-
-n_samples = 1000
-using Zygote
-Turing.setadbackend(:zygote)
-samps = sample(SW07_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
