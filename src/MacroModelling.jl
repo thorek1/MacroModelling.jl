@@ -2035,7 +2035,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
         T₁₁    = @view schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
-        Z₁₁inv = inv(Z₁₁)
+        Z₁₁inv = ℒ.pinv(Z₁₁)
     end
     
     D      = Z₂₁ * Z₁₁inv

@@ -168,7 +168,7 @@ end
 end
 
 # load data
-dat = CSV.read("data/usmodel.csv", DataFrame)
+dat = CSV.read("test/data/usmodel.csv", DataFrame)
 data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
 
 
@@ -301,18 +301,18 @@ sol.minimum
 sol = solve(prob, NLopt.LN_SBPLX(), maxtime = 10)
 sol.minimum
 
-using MAT
+# using MAT
 
-vars = matread("/Users/thorekockerols/Downloads/sw07/usmodel_mode.mat")
+# vars = matread("/Users/thorekockerols/Downloads/sw07/usmodel_mode.mat")
 
 
-calculate_posterior_loglikelihood(vec(vars["xparam1"]),[])
+# calculate_posterior_loglikelihood(vec(vars["xparam1"]),[])
 # ([a-z_]+),([\d\.\s-]+),([\d\.\s-]+),([\d\.\s-]+),([a-z_]+),([\d\.\s-]+),([\d\.\s-]+);
 # logpdf(Truncated($5($5_map($6,$7)...),$3,$4),$1)
 
 
 
-Turing.@model function SW07_loglikelihood_function(data, m, observables)
+Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_parameters)
     z_ea    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
     z_eb    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.025,5)
     z_eg    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
@@ -350,17 +350,26 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables)
     cgy     ~   Truncated(Normal(0.5,0.25),0.01,2.0)
     calfa   ~   Truncated(Normal(0.3,0.05),0.01,1.0)
 
-    ctou, clandaw, cg, curvp, curvw, crhols, crhoas = @ignore_derivatives SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters)]
+    ctou, clandaw, cg, curvp, curvw, crhols, crhoas = fixed_parameters
 
     parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhols,crhoqs,crhoas,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
 
     Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters_combined)
 end
 
-SW07_loglikelihood = SW07_loglikelihood_function(data, SW07, observables)
 
+SW07.parameter_values[indexin([:crhoms, :crhopinf, :crhow, :cmap, :cmaw],SW07.parameters)] .= 0.02
+
+fixed_parameters = SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters)]
+
+SW07_loglikelihood = SW07_loglikelihood_function(data, SW07, observables, fixed_parameters)
+
+
+pars = ComponentArray(Float64[SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]...],Axis(SW07.parameters[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]))
+
+logjoint(SW07_loglikelihood, pars)
 
 n_samples = 1000
-# using Zygote
+using Zygote
 Turing.setadbackend(:zygote)
 samps = sample(SW07_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
