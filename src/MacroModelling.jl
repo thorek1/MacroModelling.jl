@@ -21,6 +21,7 @@ using ComponentArrays
 using ImplicitDifferentiation
 # using NamedArrays
 using AxisKeys
+import RecursiveFactorization
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
 
 using RuntimeGeneratedFunctions
@@ -60,7 +61,7 @@ export irf, girf
 
 # Remove comment for debugging
 # export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer
-# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, levenberg_marquardt_ar
+# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, levenberg_marquardt_ar, calculate_covariance_forward, calculate_covariance_conditions
 
 # StatsFuns
 norminvcdf(p) = -erfcinv(2*p) * 1.4142135623730951
@@ -1222,6 +1223,8 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
         # B = Zygote.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)[1]
         # A = Zygote.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)[1]
 
+        A = RecursiveFactorization.lu!(A)
+
         jvp = (-A \ B) * ps
     end
 
@@ -2085,6 +2088,8 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explos
     # B = Zygote.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)[1]
     # A = Zygote.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)[1]
 
+    A = RecursiveFactorization.lu!(A)
+
     jvp = (-A \ B) * ps
 
     # pack: SoA -> AoS
@@ -2611,6 +2616,8 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; 
     # get J(f, vs) * ps (cheating). Write your custom rule here
     B = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, T = T, subset_indices = subset_indices), 𝑺₁̂)
     A = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, T = T, subset_indices = subset_indices), val)
+
+    A = RecursiveFactorization.lu!(A)
 
     jvp = (-A \ B) * ps
 
