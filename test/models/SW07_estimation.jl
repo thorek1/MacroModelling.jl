@@ -171,12 +171,12 @@ end
 dat = CSV.read("test/data/usmodel.csv", DataFrame)
 data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
 
-
 # declare observables
 observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs]
 
+# Subsample from 1966Q1 - 2004Q4
 # subset observables in data
-data = data(observables,:)
+data = data(observables,75:230)
 
 # functions to map mean and standard deviations to distribution parameters
 function beta_map(μ, σ) 
@@ -220,15 +220,15 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
     csadjcost~  Truncated(Normal(4,1.5),2,15)
     csigma  ~   Truncated(Normal(1.50,0.375),0.25,3)
     chabb   ~   Truncated(Beta(beta_map(0.7,0.1)...),0.001,0.99)
-    cprobw  ~   Truncated(Beta(beta_map(0.5,0.1)...),0.05,0.95)
+    cprobw  ~   Truncated(Beta(beta_map(0.5,0.1)...),0.3,0.95)
     csigl   ~   Truncated(Normal(2,0.75),0.25,10)
-    cprobp  ~   Truncated(Beta(beta_map(0.5,0.10)...),0.05,0.95)
+    cprobp  ~   Truncated(Beta(beta_map(0.5,0.10)...),0.5,0.95)
     cindw   ~   Truncated(Beta(beta_map(0.5,0.15)...),0.01,0.99)
     cindp   ~   Truncated(Beta(beta_map(0.5,0.15)...),0.01,0.99)
     czcap   ~   Truncated(Beta(beta_map(0.5,0.15)...),0.01,1)
     cfc     ~   Truncated(Normal(1.25,0.125),1.0,3)
     crpi    ~   Truncated(Normal(1.5,0.25),1.0,3)
-    crr     ~   Truncated(Beta(beta_map(0.75,0.10)...),0.05,0.975)
+    crr     ~   Truncated(Beta(beta_map(0.75,0.10)...),0.5,0.975)
     cry     ~   Truncated(Normal(0.125,0.05),0.001,0.5)
     crdy    ~   Truncated(Normal(0.125,0.05),0.001,0.5)
     constepinf~ Truncated(Gamma(gamma_map(0.625,0.1)...),0.1,2.0)
@@ -244,7 +244,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
 
     kalman_prob = calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters_combined)
 
-    println(kalman_prob)
+    # println(kalman_prob)
     
     Turing.@addlogprob! kalman_prob 
 end
@@ -257,33 +257,32 @@ fixed_parameters = SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:cur
 SW07_loglikelihood = SW07_loglikelihood_function(data, SW07, observables, fixed_parameters)
 
 
-pars = ComponentArray(Float64[SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]...],Axis(SW07.parameters[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]))
-
-logjoint(SW07_loglikelihood, pars)
 
 n_samples = 1000
 
-Turing.setadbackend(:zygote)
+# Turing.setadbackend(:zygote)
 samps = sample(SW07_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
 
+serialize("chain-file.jls", samps)
 
 
 
+
+# pars = ComponentArray(Float64[SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]...],Axis(SW07.parameters[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]))
 
 
 # Mode calculation
 
-function calculate_posterior_loglikelihood(parameters, u)
+function calculate_posterior_loglikelihoods(parameters, u)
     ctou, clandaw, cg, curvp, curvw, crhols, crhoas = @ignore_derivatives SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters)]
 
     calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhoqs,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta = parameters
 
     parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhols,crhoqs,crhoas,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
 
-
     log_lik = 0
-    log_lik -= calculate_kalman_filter_loglikelihood(SW07, data(observables), observables; parameters = parameters_combined)
+    log_lik -= calculate_kalman_filter_loglikelihoods(SW07, data(observables), observables; parameters = parameters_combined)
     log_lik -= logpdf(Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3),z_ea)
     log_lik -= logpdf(Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.025,5),z_eb)
     log_lik -= logpdf(Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3),z_eg)
@@ -336,13 +335,289 @@ SW07.parameter_values[indexin([:crhoms, :crhopinf, :crhow, :cmap, :cmaw],SW07.pa
 calculate_posterior_loglikelihood(SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))],[])
 
 
+𝓂 = SW07
+verbose = true
+parameters = nothing
+tol = eps()
+import LinearAlgebra as ℒ
+using ImplicitDifferentiation
+import MacroModelling: ℳ 
+
+calculate_covariance_AD(sol; T, subset_indices) = ImplicitFunction(sol->calculate_covariance_forward(sol, T=T, subset_indices = subset_indices), (x,y)->calculate_covariance_conditions(x,y,T=T, subset_indices = subset_indices))
+# calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+
+
+
+function calculate_kalman_filter_loglikelihoods(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose::Bool = false, tol::Float64 = eps())
+    @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
+    @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+
+    @ignore_derivatives sort!(observables)
+
+    # @ignore_derivatives solve!(𝓂, verbose = verbose)
+
+    if isnothing(parameters)
+        parameters = 𝓂.parameter_values
+    else
+        ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters))
+        lb = @ignore_derivatives -ub
+
+        for (i,v) in enumerate(𝓂.bounded_vars)
+            if v ∈ 𝓂.parameters
+                @ignore_derivatives lb[i] = 𝓂.lower_bounds[i]
+                @ignore_derivatives ub[i] = 𝓂.upper_bounds[i]
+            end
+        end
+
+        if min(max(parameters,lb),ub) != parameters 
+            return -Inf
+        end
+    end
+
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, true, verbose)
+    
+    if solution_error > tol || isnan(solution_error)
+        return -Inf
+    end
+
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
+
+    data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
+
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+
+    sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
+
+    A = @views sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
+    B = @views sol[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+
+    C = @views ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states)),:]
+
+    𝐁 = B * B'
+
+    # Gaussian Prior
+
+    calculate_covariance_ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+
+    P = calculate_covariance_(sol)
+    # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+    u = zeros(length(observables_and_states))
+    # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
+    z = C * u
+
+    loglik = 0.0
+
+    v = similar(z)
+    F = C * C'
+    K = similar(C')
+
+    for t in 1:size(data)[2]
+        v .= data_in_deviations[:,t] - z
+
+        F .= C * P * C'
+
+        # F = (F + F') / 2
+
+        # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
+        # K = P * C' * ℒ.pinv(F)
+
+        # loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
+        Fdet = ℒ.det(F)
+
+        if Fdet < eps() return -Inf end
+
+        loglik += log(Fdet) + v' / F  * v
+        
+        K .= P * C' / F
+
+        P .= A * (P - K * C * P) * A' + 𝐁
+
+        u .= A * (u + K * v)
+        
+        z .= C * u 
+    end
+
+    return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
+end
+
+
+
+
+function calculate_kalman_filter_loglikelihoods(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose::Bool = false, tol::Float64 = eps())
+    @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
+    @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+
+    @ignore_derivatives sort!(observables)
+
+    # @ignore_derivatives solve!(𝓂, verbose = verbose)
+
+    if isnothing(parameters)
+        parameters = 𝓂.parameter_values
+    else
+        ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters))
+        lb = @ignore_derivatives -ub
+
+        for (i,v) in enumerate(𝓂.bounded_vars)
+            if v ∈ 𝓂.parameters
+                @ignore_derivatives lb[i] = 𝓂.lower_bounds[i]
+                @ignore_derivatives ub[i] = 𝓂.upper_bounds[i]
+            end
+        end
+
+        if min(max(parameters,lb),ub) != parameters 
+            return -Inf
+        end
+    end
+
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, true, verbose)
+    
+    if solution_error > tol || isnan(solution_error)
+        return -Inf
+    end
+
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
+
+    data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
+
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+
+    sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
+
+    A = @views sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
+    B = @views sol[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+
+    C = @views ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states)),:]
+
+    𝐁 = B * B'
+
+    # Gaussian Prior
+
+    calculate_covariance_ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+
+    P = calculate_covariance_(sol)
+    # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+    u = zeros(length(observables_and_states))
+    # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
+    z = C * u
+
+    loglik = 0.0
+
+    for t in 1:size(data)[2]
+        v = data_in_deviations[:,t] - z
+
+        F = P * C * C'
+
+        # F = (F + F') / 2
+
+        # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
+        # K = P * C' * ℒ.pinv(F)
+
+        # loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
+        Fdet = ℒ.det(F)
+
+        if Fdet < eps() return -Inf end
+
+        loglik += log(Fdet) + v' / F  * v
+        
+        F = RecursiveFactorization.lu!(F)
+        
+        K = P * C' / F
+
+        P = A * (P - K * C * P) * A' + 𝐁
+
+        u = A * (u + K * v)
+        
+        z = C * u 
+    end
+
+    return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
+end
+
+
 using BenchmarkTools, Zygote, ForwardDiff
+using TriangularSolve, RecursiveFactorization, Octavian
+
+F = C * P * C'
+F = RecursiveFactorization.lu!(F)
+C' / F
+TriangularSolve.rdiv!(AA, collect(C'), UpperTriangular(F.U))
+BB = similar(AA)
+TriangularSolve.ldiv!(AA, LowerTriangular(F.L), AA)
+TriangularSolve.rdiv!(BB, AA, (F.L))
+C' / F.U / F.L
+F.U / C' * F.L
+
+F.L \ C' / F.U
+ForwardDiff.jacobian(P-> begin F = C * P * C'
+F = RecursiveFactorization.lu!(F)
+C' / F
+end, P)
+
+@benchmark begin F = C * P * C'
+    # F = RecursiveFactorization.lu!(F)
+    C' / F
+    end
+
+
+N = 100
+A = rand(N,N); B = rand(N,N); C = similar(A);
+TriangularSolve.rdiv!(C, A, UpperTriangular(B))* UpperTriangular(B)
+A
+
+A / UpperTriangular(B)
+
+C
+
+F
+det
+using LinearAlgebra, Octavian
+@benchmark F .= RecursiveFactorization.lu!(F)
+@benchmark FS = lu!(F)
+TriangularSolve.rdiv!(AA,C',F)
+AA = similar(C')
+
+
+Fdet = ℒ.det(F)
+
+if Fdet < eps() return -Inf end
+
+loglik += log(Fdet) + v' / F  * v
+
+K = P * C' / F
+
+P = A * (P - K * C * P) * A' + 𝐁
+
+u = A * (u + K * v)
+
+z = C * u 
+
+
+@benchmark calculate_posterior_loglikelihoods(SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))],[])
 
 @benchmark calculate_posterior_loglikelihood(SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))],[])
 
 ForwardDiff.gradient(x->calculate_posterior_loglikelihood(x,[]),Float64[SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]...])
 
 @benchmark ForwardDiff.gradient(x->calculate_posterior_loglikelihood(x,[]),Float64[SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]...])
+
+using Profile
+@profile for i in 1:3 ForwardDiff.gradient(x->calculate_posterior_loglikelihood(x,[]),Float64[SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]...]) end
+
+
+import ForwardDiff
+@profview ForwardDiff.gradient(x->calculate_posterior_loglikelihood(x,[]),Float64[SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]...])
+
+
+import ProfileView, ForwardDiff
+ProfileView.@profview ForwardDiff.gradient(x->calculate_posterior_loglikelihood(x,[]),Float64[SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]...])
 
 
 Zygote.gradient(x->calculate_posterior_loglikelihood(x,[]),Float64[SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]...])[1]
