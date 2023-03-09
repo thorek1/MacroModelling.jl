@@ -19,6 +19,7 @@ import DataStructures: CircularBuffer
 using LinearMaps
 using ComponentArrays
 using ImplicitDifferentiation
+import SpeedMapping: speedmapping
 # using NamedArrays
 using AxisKeys
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
@@ -59,8 +60,8 @@ export write_mod_file, write_dynare_file, write_to_dynare_file, export_dynare, e
 export irf, girf
 
 # Remove comment for debugging
-# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer
-# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, levenberg_marquardt_ar
+export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer
+export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, levenberg_marquardt_ar, calculate_jacobian, calculate_first_order_solution, calculate_quadratic_iteration_solution, calculate_linear_time_iteration_solution
 
 # StatsFuns
 norminvcdf(p) = -erfcinv(2*p) * 1.4142135623730951
@@ -1243,7 +1244,7 @@ function solve!(𝓂::ℳ;
     symbolic_SS::Bool = false,
     verbose = false)
 
-    @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :second_order, :third_order]
+    @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :second_order, :third_order]
 
     if dynamics
         𝓂.solution.outdated_algorithms = union(intersect(𝓂.solution.algorithms,[algorithm]),𝓂.solution.outdated_algorithms)
@@ -1379,6 +1380,23 @@ function solve!(𝓂::ℳ;
             
         end
         
+        if any([:quadratic_iteration, :binder_pesaran] .∈ ([algorithm],)) && any([:quadratic_iteration, :binder_pesaran] .∈ (𝓂.solution.outdated_algorithms,))
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+            
+            sol_mat = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
+            
+            state_update₁ₜ = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            
+            𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
+            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:quadratic_iteration, :binder_pesaran])
+
+            𝓂.solution.non_stochastic_steady_state = SS_and_pars
+            𝓂.solution.outdated_NSSS = false
+            
+        end
+
         if :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
             SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
@@ -1651,7 +1669,7 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics)
 
     # 𝓂.solution.valid_steady_state_solution = @RuntimeGeneratedFunction(test_func)
 
-    𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :first_order, :second_order, :third_order])
+    𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :first_order, :second_order, :third_order])
     return nothing
 end
 
@@ -1701,7 +1719,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,<: Number}; 
         
         if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters)))
             if verbose println("Parameter changes: ") end
-            𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :first_order, :second_order, :third_order])
+            𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :first_order, :second_order, :third_order])
         end
             
         for i in 1:length(parameters)
@@ -1754,7 +1772,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Number}; verbo
         println("Parameters unchanged.")
     else
         if !all(parameters .== 𝓂.parameter_values[1:length(parameters)])
-            𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :first_order, :second_order, :third_order])
+            𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :first_order, :second_order, :third_order])
 
             match_idx = []
             for (i, v) in enumerate(parameters)
@@ -1935,7 +1953,7 @@ end
 
 
 
-function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings)
+function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = eps(Float32))
     expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
               ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
@@ -1945,7 +1963,6 @@ function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64
     ∇ₑ = @views ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
   
     maxiter = 1000
-    tol = eps(Float32)
 
     F = zero(∇₋)
     S = zero(∇₋)
@@ -1978,6 +1995,33 @@ function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64
     Q = -(∇₊ * F + ∇₀) \ ∇ₑ
 
     @views hcat(F[:,T.past_not_future_and_mixed_idx],Q)
+end
+
+
+
+function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = 1e-8)
+    # see Binder and Pesaran (1997) for more details on this approach
+    expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
+            ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    ∇₀ = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇₋ = @views ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+    ∇ₑ = @views ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+
+    A = ∇₀ \ ∇₋
+    B = ∇₀ \ ∇₊
+
+    C = similar(A)
+    C̄ = similar(A)
+
+    sol = speedmapping(zero(A); m! = (C̄, C) -> C̄ .=  A + B * C^2, tol = tol)
+
+    C = -sol.minimizer
+
+    D = -(∇₊ * C + ∇₀) \ ∇ₑ
+
+    @views hcat(C[:,T.past_not_future_and_mixed_idx],D)
 end
 
 
