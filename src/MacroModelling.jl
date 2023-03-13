@@ -1056,7 +1056,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     if !fail_fast_solvers_only
         # try modified LM AR next
-        for transformer_option ∈ 0:2 #[2,1,0]#
+        for transformer_option ∈ [2,1,0]# works with NAWM #0:2 #
             if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
                 SS_optimizer = levenberg_marquardt_ar
 
