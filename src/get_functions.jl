@@ -587,8 +587,12 @@ function get_steady_state(𝓂::ℳ;
 
     var_idx = indexin([vars_in_ss_equations...,𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
-    if length_par * length(var_idx) > 200
+    if length_par * length(var_idx) > 200 
         derivatives = false
+    end
+
+    if parameter_derivatives != :all
+        derivatives = true
     end
 
     if derivatives && !stochastic
