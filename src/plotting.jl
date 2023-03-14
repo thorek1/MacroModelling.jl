@@ -425,7 +425,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                         framestyle = :none, 
                                         legend = :inside, 
                                         legend_columns = -1), 
-                                        layout = grid(2, 1, heights=[0.99, 0.01]),
+                                        layout = Plots.grid(2, 1, heights=[0.99, 0.01]),
                                         plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
 
             push!(return_plots,gr_backend ? p : ppp)
@@ -452,7 +452,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                     framestyle = :none, 
                                     legend = :inside, 
                                     legend_columns = -1), 
-                                    layout = grid(2, 1, heights=[0.99, 0.01]),
+                                    layout = Plots.grid(2, 1, heights=[0.99, 0.01]),
                                     plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
 
         push!(return_plots,gr_backend ? p : ppp)
@@ -1080,7 +1080,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                                 framestyle = :none, 
                                                 legend = :inside)
                                             end, 
-                                                layout = grid(2, 1, heights=[0.99, 0.01]),
+                                                layout = Plots.grid(2, 1, heights=[0.99, 0.01]),
                                                 plot_title = "Model: "*𝓂.model_name*"        " * shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
                     
                     push!(return_plots,p)
@@ -1127,7 +1127,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     framestyle = :none, 
                                     legend = :inside)
                                     end, 
-                                        layout = grid(2, 1, heights=[0.99, 0.01]),
+                                        layout = Plots.grid(2, 1, heights=[0.99, 0.01]),
                                         plot_title = "Model: "*𝓂.model_name*"        " * shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
             
             push!(return_plots,p)
