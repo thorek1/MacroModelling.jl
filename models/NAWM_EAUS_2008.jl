@@ -1,4 +1,4 @@
-@model NAWM_2008 begin
+@model NAWM_EAUS_2008 begin
 	EA_R[0] ^ 4 - 1 = EA_PHIRR * (EA_R[-1] ^ 4 - 1) + (1 - EA_PHIRR) * (EA_RRSTAR ^ 4 * EA_PI4TARGET - 1 + EA_PHIRPI * (EA_PIC4[0] - EA_PI4TARGET)) + EA_PHIRGY * (EA_Y[0] / EA_Y[-1] - 1) + EA_EPSR[x]
 
 	US_R[0] ^ 4 - 1 = US_PHIRR * (US_R[-1] ^ 4 - 1) + (1 - US_PHIRR) * (US_RRSTAR ^ 4 * US_PI4TARGET - 1 + US_PHIRPI * (US_PIC4[0] - US_PI4TARGET)) + US_PHIRGY * (US_Y[0] / US_Y[-1] - 1) + US_EPSR[x]
@@ -450,7 +450,7 @@
 end
 
 
-@parameters NAWM_2008 verbose = true begin
+@parameters NAWM_EAUS_2008 verbose = true begin
 	EA_RRSTAR = 1 / EA_BETA 
 
 	US_RRSTAR = 1 / US_BETA
