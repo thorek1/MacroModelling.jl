@@ -3,8 +3,6 @@ import Plots, Plots.PlotMeasures
 import LaTeXStrings
 import StatsPlots
 
-
-
 """
 ```gr_backend()```
 Renaming and reexport of Plot.jl function `gr()` to define GR.jl as backend
@@ -18,6 +16,7 @@ gr_backend = Plots.gr
 Renaming and reexport of Plot.jl function `plotlyjs()` to define PlotlyJS.jl as backend
 """
 plotlyjs_backend = Plots.plotlyjs
+
 
 
 """
@@ -84,6 +83,14 @@ function plot(𝓂::ℳ;
 
     gr_backend = Plots.backend() == Plots.GRBackend()
 
+    Plots.default(size=(700,500),
+                    plot_titlefont = 10, 
+                    titlefont = 10, 
+                    guidefont = 8, 
+                    legendfontsize = 8, 
+                    tickfontsize = 8,
+                    framestyle = :box)
+
     write_parameters_input!(𝓂,parameters, verbose = verbose)
 
     solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
@@ -140,25 +147,6 @@ function plot(𝓂::ℳ;
     # fontt = "symbol"#"serif-roman"#
 
     # plots = []
-    default(size=(700,500),
-            # leg = false,
-            # plot_titlefont = (10, fontt), 
-            # titlefont = (10, fontt), 
-            # guidefont = (8, fontt), 
-            plot_titlefont = (10), 
-            titlefont = (10), 
-            guidefont = (8), 
-            legendfontsize = 8, 
-            # tickfont = (8, fontt),
-            # tickfontfamily = fontt,
-            tickfontsize = 8,
-            # tickfontrotation = 9,
-            # rotation = 90,
-            # tickfontvalign = :center,
-            # topmargin = 10mm,
-            # rightmargin = 17mm, 
-            framestyle = :box)
-
 		if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
 				periods += size(shocks)[2]
 		end
@@ -197,7 +185,7 @@ function plot(𝓂::ℳ;
                     if all((Y[i,:,shock] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:,shock] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                    if gr_backend Plots.plot!(Plots.twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                     Plots.hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "")                               
                         end)
                     else
@@ -213,7 +201,7 @@ function plot(𝓂::ℳ;
                     if all((Y[i,:,shock] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:,shock] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                    if gr_backend Plots.plot!(Plots.twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                     Plots.hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")                               
                         end)
                     else
@@ -388,20 +376,20 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
 
     gr_backend = Plots.backend() == Plots.GRBackend()
 
+    Plots.default(size=(700,500),
+                    plot_titlefont = 10, 
+                    titlefont = 10, 
+                    guidefont = 8, 
+                    legendfontsize = 8, 
+                    tickfontsize = 8,
+                    framestyle = :box)
+
     fevds = get_conditional_variance_decomposition(𝓂,
                                                     periods = 1:periods,
                                                     parameters = parameters,
                                                     verbose = verbose)
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
-
-    default(size=(700,500),
-            plot_titlefont = (10), 
-            titlefont = (10), 
-            guidefont = (8), 
-            legendfontsize = 8, 
-            tickfontsize = 8,
-            framestyle = :box)
 
     vars_to_plot = intersect(axiskeys(fevds)[1],𝓂.timings.var[var_idx])
     
@@ -560,6 +548,14 @@ function plot_solution(𝓂::ℳ,
     plots_per_page::Int = 4,
     verbose = false)
 
+    Plots.default(size=(700,500),
+                    plot_titlefont = 10, 
+                    titlefont = 10, 
+                    guidefont = 8, 
+                    legendfontsize = 8, 
+                    tickfontsize = 8,
+                    framestyle = :box)
+
     @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(𝓂.timings.past_not_future_and_mixed)
 
     @assert length(setdiff(algorithm isa Symbol ? [algorithm] : algorithm, [:third_order, :second_order, :first_order])) == 0 "Invalid algorithm. Choose any combination of: :third_order, :second_order, :first_order"
@@ -590,14 +586,6 @@ function plot_solution(𝓂::ℳ,
     full_SS = [s ∈ 𝓂.exo_present ? 0 : SS_and_std[1](s) for s in full_NSSS]
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
-
-    default(size=(700,500),
-            plot_titlefont = (10), 
-            titlefont = (10), 
-            guidefont = (8), 
-            legendfontsize = 8, 
-            tickfontsize = 8,
-            framestyle = :box)
 
     vars_to_plot = intersect(axiskeys(SS_and_std[1])[1],𝓂.timings.var[var_idx])
 
@@ -896,6 +884,14 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     gr_backend = Plots.backend() == Plots.GRBackend()
 
+    Plots.default(size=(700,500),
+                    plot_titlefont = 10, 
+                    titlefont = 10, 
+                    guidefont = 8, 
+                    legendfontsize = 8, 
+                    tickfontsize = 8,
+                    framestyle = :box)
+
     Y = get_conditional_forecast(𝓂,
                                 conditions,
                                 shocks = shocks, 
@@ -971,32 +967,12 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
 
     # plots = []
-    default(size=(700,500),
-            # leg = false,
-            # plot_titlefont = (10, fontt), 
-            # titlefont = (10, fontt), 
-            # guidefont = (8, fontt), 
-            plot_titlefont = (10), 
-            titlefont = (10), 
-            guidefont = (8), 
-            legendfontsize = 8, 
-            # tickfont = (8, fontt),
-            # tickfontfamily = fontt,
-            tickfontsize = 8,
-            # tickfontrotation = 9,
-            # rotation = 90,
-            # tickfontvalign = :center,
-            # topmargin = 10mm,
-            # rightmargin = 17mm, 
-            framestyle = :box)
-
-
     # for i in 1:length(var_idx)
         n_subplots = length(var_idx)
         pp = []
         pane = 1
         plot_count = 1
-        
+
         return_plots = []
 
         for i in 1:length(var_idx)
@@ -1016,14 +992,14 @@ function plot_conditional_forecast(𝓂::ℳ,
                         if length(cond_idx) > 0
                             push!(pp,begin
                                         Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                        if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                        if gr_backend Plots.plot!(Plots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                         Plots.hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "") 
                                         Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                             
                             end)
                         else
                             push!(pp,begin
                                         Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                        if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                        if gr_backend Plots.plot!(Plots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                         Plots.hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "")                         
                             end)
                         end
@@ -1051,14 +1027,14 @@ function plot_conditional_forecast(𝓂::ℳ,
                         if length(cond_idx) > 0
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                    if gr_backend Plots.plot!(Plots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                     Plots.hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")   
                                     Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
                         end)
                     else
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                    if gr_backend Plots.plot!(Plots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                     Plots.hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")                              
                         end)
                     end
