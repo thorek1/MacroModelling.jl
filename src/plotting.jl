@@ -196,12 +196,12 @@ function plot(𝓂::ℳ;
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:,shock] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
                                     if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
-                                    hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "")                               
+                                    Plots.hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "")                               
                         end)
                     else
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:,shock] .+ SS, title = string(𝓂.timings.var[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                    hline!([SS], color = :black, label = "")
+                                    Plots.hline!([SS], color = :black, label = "")
                         end)
 
                     end
@@ -212,12 +212,12 @@ function plot(𝓂::ℳ;
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:,shock] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
                                     if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
-                                    hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")                               
+                                    Plots.hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")                               
                         end)
                     else
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:,shock] .+ SS, title = string(𝓂.timings.var[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                    hline!([SS], color = :black, label = "")
+                                    Plots.hline!([SS], color = :black, label = "")
                         end)
 
                     end
@@ -1012,14 +1012,14 @@ function plot_conditional_forecast(𝓂::ℳ,
                             push!(pp,begin
                                         Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
                                         if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
-                                        hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "") 
+                                        Plots.hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "") 
                                         Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                             
                             end)
                         else
                             push!(pp,begin
                                         Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
                                         if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
-                                        hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "")                         
+                                        Plots.hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "")                         
                             end)
                         end
                     else
@@ -1027,13 +1027,13 @@ function plot_conditional_forecast(𝓂::ℳ,
                         if length(cond_idx) > 0
                             push!(pp,begin
                                         Plots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                        hline!([SS], color = :black, label = "")
+                                        Plots.hline!([SS], color = :black, label = "")
                                         Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)   
                             end)
                         else
                             push!(pp,begin
                                         Plots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                        hline!([SS], color = :black, label = "")
+                                        Plots.hline!([SS], color = :black, label = "")
                             end)
                         end
 
@@ -1047,14 +1047,14 @@ function plot_conditional_forecast(𝓂::ℳ,
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
                                     if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
-                                    hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")   
+                                    Plots.hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")   
                                     Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
                         end)
                     else
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
                                     if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
-                                    hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")                              
+                                    Plots.hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")                              
                         end)
                     end
                     else
@@ -1062,13 +1062,13 @@ function plot_conditional_forecast(𝓂::ℳ,
                         if length(cond_idx) > 0
                             push!(pp,begin
                                         Plots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                        hline!([SS], color = :black, label = "")
+                                        Plots.hline!([SS], color = :black, label = "")
                                         Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)  
                             end)
                         else 
                             push!(pp,begin
                                         Plots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                        hline!([SS], color = :black, label = "")
+                                        Plots.hline!([SS], color = :black, label = "")
                             end)
                         end
 
