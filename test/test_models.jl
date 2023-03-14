@@ -1,3 +1,15 @@
+include("models/NAWM_EAUS_2008.jl")
+moments = get_moments(NAWM_EAUS_2008, derivatives = false)
+
+@test isapprox(moments[1]([:EAUS_RER,:EA_Y,:EA_K,:EA_C,:US_Y,:US_K],:),[0.937577, 3.62701, 33.4238, 2.18955, 3.92449, 33.6712],atol = 1e-4)
+
+var_dec = get_var_decomp(NAWM_EAUS_2008)
+
+@test isapprox(var_dec(:EAUS_RER,[:EA_EPSR,:EA_EPSRP,:US_EPSTAUN]) * 100, [22.15, 54.99, 0.03],rtol = 1e-3)
+@test isapprox(var_dec(:EA_Y,[:EA_EPSR,:EA_EPSZ,:US_EPSZ]) * 100, [50.02, 13.54, 4.35],rtol = 1e-3)
+@test isapprox(var_dec(:US_K,[:EA_EPSRP,:US_EPSR,:US_EPSZ]) * 100, [17.48, 26.83, 27.76],rtol = 1e-3)
+
+
 include("models/SGU_2003_debt_premium.jl")
 moments = get_moments(SGU_2003_debt_premium, derivatives = false)
 
