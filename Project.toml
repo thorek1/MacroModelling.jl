@@ -32,6 +32,7 @@ SpeedMapping = "f1835b91-879b-4a3f-a438-e4baacf14412"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Subscripts = "2b7f82d5-8785-4f63-971e-f18ddbeb808e"
 SymPy = "24249f21-da20-56a4-8eb1-6a02cf4ae2e6"
+Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 
 [compat]
 AxisKeys = "^0.2"
@@ -59,6 +60,7 @@ SpeedMapping = "^0.3"
 StatsPlots = "^0.15"
 Subscripts = "^0.1"
 SymPy = "^1"
+Symbolics = "^5"
 julia = "1.8"
 
 [extras]

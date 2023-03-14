@@ -1296,7 +1296,7 @@ macro parameters(𝓂,ex...)
         start_time = time()
 
         # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(mod.$𝓂, symbolics, $perturbation_order)
+        write_functions_mapping!(mod.$𝓂, $perturbation_order)
         mod.$𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :first_order, :second_order, :third_order])
         
         if $perturbation_order == 1

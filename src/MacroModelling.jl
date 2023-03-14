@@ -6,6 +6,7 @@ import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDF
 import SpecialFunctions: erfcinv, erfc
 import SymPy: @vars, solve, subs, free_symbols
 import SymPy
+import Symbolics
 import ForwardDiff as ℱ 
 # import Zygote
 import SparseArrays: SparseMatrixCSC, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
@@ -1274,13 +1275,11 @@ function solve!(𝓂::ℳ;
 
         if 𝓂.model_hessian == Function[] && algorithm == :second_order
             start_time = time()
-            symbolics = create_symbols_eqs!(𝓂)
-            write_functions_mapping!(𝓂, symbolics, 2)
+            write_functions_mapping!(𝓂, 2)
             println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds")
         elseif 𝓂.model_third_order_derivatives == Function[] && algorithm == :third_order
             start_time = time()
-            symbolics = create_symbols_eqs!(𝓂)
-            write_functions_mapping!(𝓂, symbolics, 3)
+            write_functions_mapping!(𝓂, 3)
             println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
         end
         
@@ -1434,7 +1433,7 @@ end
 
 
 
-function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, max_perturbation_order::Int)
+function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
     past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
@@ -1498,23 +1497,27 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, max_perturbat
     # 𝓂.model_function = @RuntimeGeneratedFunction(mod_func2)
     # 𝓂.model_function = eval(mod_func2)
 
-
-    dyn_future_list = collect(reduce(union, Symbolics.dyn_future_list))
-    dyn_present_list = collect(reduce(union, Symbolics.dyn_present_list))
-    dyn_past_list = collect(reduce(union, Symbolics.dyn_past_list))
-    dyn_exo_list = collect(reduce(union,Symbolics.dyn_exo_list))
-
+    dyn_future_list = collect(reduce(union, 𝓂.dyn_future_list))
+    dyn_present_list = collect(reduce(union, 𝓂.dyn_present_list))
+    dyn_past_list = collect(reduce(union, 𝓂.dyn_past_list))
+    dyn_exo_list = collect(reduce(union,𝓂.dyn_exo_list))
+    
     future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_future_list))
     present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_present_list))
     past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")),string.(dyn_past_list))
     exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")),string.(dyn_exo_list))
     
-    vars = [dyn_future_list[indexin(sort(future),future)]...,
+    vars_raw = [dyn_future_list[indexin(sort(future),future)]...,
             dyn_present_list[indexin(sort(present),present)]...,
             dyn_past_list[indexin(sort(past),past)]...,
             dyn_exo_list[indexin(sort(exo),exo)]...]
-    
-    eqs = Symbolics.dyn_equations
+
+    # overwrite SymPy names
+    eval(:(Symbolics.@variables $(reduce(union,get_symbols.(𝓂.dyn_equations))...)))
+
+    vars = eval(:(Symbolics.@variables $(vars_raw...)))
+
+    eqs = Symbolics.parse_expr_to_symbolic.(𝓂.dyn_equations,(@__MODULE__,))
 
     first_order = []
     second_order = []
@@ -1531,43 +1534,46 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, max_perturbat
     
     for (c1,var1) in enumerate(vars)
         for (r,eq) in enumerate(eqs)
-            if var1 ∈ free_symbols(eq)
-                deriv_first = diff(eq,var1)
-                if deriv_first != 0 
-                    deriv_expr = Meta.parse(string(deriv_first.subs(SymPy.PI,SymPy.N(SymPy.PI))))
-                    push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+            if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
+                deriv_first = Symbolics.derivative(eq,var1)
+                # if deriv_first != 0 
+                #     deriv_expr = Meta.parse(string(deriv_first.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                    push!(first_order, Symbolics.toexpr(deriv_first))
                     push!(row1,r)
                     push!(column1,c1)
                     i1 += 1
                     if max_perturbation_order >= 2 
                         for (c2,var2) in enumerate(vars)
-                            if var2 ∈ free_symbols(deriv_first)
-                                deriv_second = diff(deriv_first,var2)
-                                if deriv_second != 0 
-                                    deriv_expr = Meta.parse(string(deriv_second.subs(SymPy.PI,SymPy.N(SymPy.PI))))
-                                    push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                            if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
+                                deriv_second = Symbolics.derivative(deriv_first,var2)
+                                # if deriv_second != 0 
+                                #     deriv_expr = Meta.parse(string(deriv_second.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                                #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                                    push!(second_order,Symbolics.toexpr(deriv_second))
                                     push!(row2,r)
                                     push!(column2,(c1 - 1) * length(vars) + c2)
                                     i2 += 1
                                     if max_perturbation_order == 3
                                         for (c3,var3) in enumerate(vars)
-                                            if var3 ∈ free_symbols(deriv_second)
-                                                deriv_third = diff(deriv_second,var3)
-                                                if deriv_third != 0 
-                                                    deriv_expr = Meta.parse(string(deriv_third.subs(SymPy.PI,SymPy.N(SymPy.PI))))
-                                                    push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                                            if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
+                                                deriv_third = Symbolics.derivative(deriv_second,var3)
+                                                # if deriv_third != 0 
+                                                #     deriv_expr = Meta.parse(string(deriv_third.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                                                #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                                                    push!(third_order,Symbolics.toexpr(deriv_third))
                                                     push!(row3,r)
                                                     push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
                                                     i3 += 1
-                                                end
+                                                # end
                                             end
                                         end
                                     end
-                                end
+                                # end
                             end
                         end
                     end
-                end
+                # end
             end
         end
     end
@@ -1601,13 +1607,13 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, max_perturbat
             $out
         end)
 
-        for l in 1:length(second_order)
+        for (l,second) in enumerate(second_order)
             exx = :(function(X::Vector, params::Vector{Number}, X̄::Vector)
             $(alll...)
             $(paras...)
             $(𝓂.calibration_equations_no_var...)
             $(steady_state...)
-            return $(second_order[l]), $(row2[l]), $(column2[l])
+            return $second, $(row2[l]), $(column2[l])
             end)
             push!(𝓂.model_hessian,@RuntimeGeneratedFunction(exx))
         end
@@ -1633,13 +1639,13 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, max_perturbat
         end)
 
 
-        for l in  1:length(third_order)
+        for (l,third) in enumerate(third_order)
             exx = :(function(X::Vector, params::Vector{Number}, X̄::Vector)
             $(alll...)
             $(paras...)
             $(𝓂.calibration_equations_no_var...)
             $(steady_state...)
-            return $(third_order[l]), $(row3[l]), $(column3[l])
+            return $third, $(row3[l]), $(column3[l])
             end)
             push!(𝓂.model_third_order_derivatives,@RuntimeGeneratedFunction(exx))
         end
