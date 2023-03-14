@@ -450,8 +450,8 @@
 end
 
 
-@parameters NAWM_EAUS_2008 verbose = true begin
-	EA_RRSTAR = 1 / EA_BETA 
+@parameters NAWM_EAUS_2008 begin
+	EA_RRSTAR = 1 / EA_BETA
 
 	US_RRSTAR = 1 / US_BETA
 

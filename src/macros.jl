@@ -950,11 +950,16 @@ macro parameters(𝓂,ex...)
                         x :
                 x.args[2].head == :block ?
                     x.args[1].args[1] == :| ?
-                            x :
-                    begin # this is calibration by targeting SS values (conditional parameter at the end)
-                        if x.args[2].args[end].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end].args[end]) end
-                        push!(calib_eq_parameters,x.args[2].args[end].args[end])
-                        push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
+                        x :
+                    x.args[2].args[2].args[1] == :| ?
+                        begin # this is calibration by targeting SS values (conditional parameter at the end)
+                            if x.args[2].args[end].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end].args[end]) end
+                            push!(calib_eq_parameters,x.args[2].args[end].args[end])
+                            push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
+                        end :
+                    begin 
+                        @warn "Invalid parameter input ignored: " * repr(x)
+                        x
                     end :
                 x.args[2].head == :call ?
                     x.args[1].args[1] == :| ?
