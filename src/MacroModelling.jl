@@ -1421,7 +1421,7 @@ end
 
 
 
-function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics)
+function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, only_1st_order::Bool)
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
     past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
@@ -1526,24 +1526,26 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics)
                     push!(row1,r)
                     push!(column1,c1)
                     i1 += 1
-                    for (c2,var2) in enumerate(vars)
-                        if var2 ∈ free_symbols(deriv_first)
-                            deriv_second = diff(deriv_first,var2)
-                            if deriv_second != 0 
-                                deriv_expr = Meta.parse(string(deriv_second.subs(SymPy.PI,SymPy.N(SymPy.PI))))
-                                push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                                push!(row2,r)
-                                push!(column2,(c1 - 1) * length(vars) + c2)
-                                i2 += 1
-                                for (c3,var3) in enumerate(vars)
-                                    if var3 ∈ free_symbols(deriv_second)
-                                        deriv_third = diff(deriv_second,var3)
-                                        if deriv_third != 0 
-                                            deriv_expr = Meta.parse(string(deriv_third.subs(SymPy.PI,SymPy.N(SymPy.PI))))
-                                            push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                                            push!(row3,r)
-                                            push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
-                                            i3 += 1
+                    if !only_1st_order
+                        for (c2,var2) in enumerate(vars)
+                            if var2 ∈ free_symbols(deriv_first)
+                                deriv_second = diff(deriv_first,var2)
+                                if deriv_second != 0 
+                                    deriv_expr = Meta.parse(string(deriv_second.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                                    push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                                    push!(row2,r)
+                                    push!(column2,(c1 - 1) * length(vars) + c2)
+                                    i2 += 1
+                                    for (c3,var3) in enumerate(vars)
+                                        if var3 ∈ free_symbols(deriv_second)
+                                            deriv_third = diff(deriv_second,var3)
+                                            if deriv_third != 0 
+                                                deriv_expr = Meta.parse(string(deriv_third.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                                                push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                                                push!(row3,r)
+                                                push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
+                                                i3 += 1
+                                            end
                                         end
                                     end
                                 end
@@ -1567,60 +1569,62 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics)
     # 𝓂.model_jacobian = eval(mod_func3)
 
 
-    if length(row2) == 0 
-        out = :(spzeros($(length(eqs)), $(length(vars)^2)))
-    else 
-        out = :(sparse([$(row2...)], [$(column2...)], [$(second_order...)], $(length(eqs)), $(length(vars)^2)))
-    end
+    if !only_1st_order
+        if length(row2) == 0 
+            out = :(spzeros($(length(eqs)), $(length(vars)^2)))
+        else 
+            out = :(sparse([$(row2...)], [$(column2...)], [$(second_order...)], $(length(eqs)), $(length(vars)^2)))
+        end
 
-    mod_func4 = :(function model_hessian(X::Vector, params::Vector{Number}, X̄::Vector)
-        $(alll...)
-        $(paras...)
-        $(𝓂.calibration_equations_no_var...)
-        $(steady_state...)
-        $out
-    end)
-
-
-    for l in 1:length(second_order)
-        exx = :(function(X::Vector, params::Vector{Number}, X̄::Vector)
-        $(alll...)
-        $(paras...)
-        $(𝓂.calibration_equations_no_var...)
-        $(steady_state...)
-        return $(second_order[l]), $(row2[l]), $(column2[l])
+        mod_func4 = :(function model_hessian(X::Vector, params::Vector{Number}, X̄::Vector)
+            $(alll...)
+            $(paras...)
+            $(𝓂.calibration_equations_no_var...)
+            $(steady_state...)
+            $out
         end)
-        push!(𝓂.model_hessian,@RuntimeGeneratedFunction(exx))
-    end
-
-    # 𝓂.model_hessian = @RuntimeGeneratedFunction(mod_func4)
-    # 𝓂.model_hessian = eval(mod_func4)
 
 
-    if length(row3) == 0 
-        out = :(spzeros($(length(eqs)), $(length(vars)^3)))
-    else 
-        out = :(sparse([$(row3...)], [$(column3...)], [$(third_order...)], $(length(eqs)), $(length(vars)^3)))
-    end
+        for l in 1:length(second_order)
+            exx = :(function(X::Vector, params::Vector{Number}, X̄::Vector)
+            $(alll...)
+            $(paras...)
+            $(𝓂.calibration_equations_no_var...)
+            $(steady_state...)
+            return $(second_order[l]), $(row2[l]), $(column2[l])
+            end)
+            push!(𝓂.model_hessian,@RuntimeGeneratedFunction(exx))
+        end
 
-    mod_func5 = :(function model_hessian(X::Vector, params::Vector{Number}, X̄::Vector)
-        $(alll...)
-        $(paras...)
-        $(𝓂.calibration_equations_no_var...)
-        $(steady_state...)
-        $out
-    end)
+        # 𝓂.model_hessian = @RuntimeGeneratedFunction(mod_func4)
+        # 𝓂.model_hessian = eval(mod_func4)
 
 
-    for l in  1:length(third_order)
-        exx = :(function(X::Vector, params::Vector{Number}, X̄::Vector)
-        $(alll...)
-        $(paras...)
-        $(𝓂.calibration_equations_no_var...)
-        $(steady_state...)
-        return $(third_order[l]), $(row3[l]), $(column3[l])
+        if length(row3) == 0 
+            out = :(spzeros($(length(eqs)), $(length(vars)^3)))
+        else 
+            out = :(sparse([$(row3...)], [$(column3...)], [$(third_order...)], $(length(eqs)), $(length(vars)^3)))
+        end
+
+        mod_func5 = :(function model_hessian(X::Vector, params::Vector{Number}, X̄::Vector)
+            $(alll...)
+            $(paras...)
+            $(𝓂.calibration_equations_no_var...)
+            $(steady_state...)
+            $out
         end)
-        push!(𝓂.model_third_order_derivatives,@RuntimeGeneratedFunction(exx))
+
+
+        for l in  1:length(third_order)
+            exx = :(function(X::Vector, params::Vector{Number}, X̄::Vector)
+            $(alll...)
+            $(paras...)
+            $(𝓂.calibration_equations_no_var...)
+            $(steady_state...)
+            return $(third_order[l]), $(row3[l]), $(column3[l])
+            end)
+            push!(𝓂.model_third_order_derivatives,@RuntimeGeneratedFunction(exx))
+        end
     end
 
     # 𝓂.model_third_order_derivatives = @RuntimeGeneratedFunction(mod_func5)

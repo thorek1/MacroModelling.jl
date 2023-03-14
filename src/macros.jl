@@ -821,6 +821,10 @@ Parameters can be defined in either of the following ways:
 # Optional arguments to be placed between `𝓂` and `ex`
 - `verbose` [Default: `false`]: print more information about how the non stochastic steady state is solved
 - `symbolic` [Default: `false`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
+- `only_1st_order` [Default: `false`]: take derivatives only up to first order (up to third order otherwise) in order to save time
+- `only_first_order` [Default: `false`]: same as `only_1st_order`
+
+
 
 # Examples
 ```julia
@@ -871,6 +875,7 @@ macro parameters(𝓂,ex...)
     # parse options
     verbose = false
     symbolic = false
+    only_1st_order = false
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -880,6 +885,10 @@ macro parameters(𝓂,ex...)
                         symbolic = x.args[2] :
                     x.args[1] == :verbose && x.args[2] isa Bool ?
                         verbose = x.args[2] :
+                    x.args[1] == :only_1st_order && x.args[2] isa Bool ?
+                        only_1st_order = x.args[2] :
+                    x.args[1] == :only_first_order && x.args[2] isa Bool ?
+                        only_1st_order = x.args[2] :
                     begin
                         @warn "Invalid options." 
                         x
@@ -1291,8 +1300,12 @@ macro parameters(𝓂,ex...)
         start_time = time()
 
         # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(mod.$𝓂, symbolics)
-        println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
+        write_functions_mapping!(mod.$𝓂, symbolics, $only_1st_order)
+        if $only_1st_order
+            println("Take symbolic derivatives up to first order:\t",round(time() - start_time, digits = 3), " seconds")
+        else
+            println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
+        end
         start_time = time()
 
         mod.$𝓂.solution.functions_written = true
