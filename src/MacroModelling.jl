@@ -1270,6 +1270,18 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_NSSS = false
 
         end
+
+        if 𝓂.model_hessian == Function[] && algorithm == :second_order
+            start_time = time()
+            symbolics = create_symbols_eqs!(𝓂)
+            write_functions_mapping!(𝓂, symbolics, 2)
+            println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds")
+        elseif 𝓂.model_third_order_derivatives == Function[] && algorithm == :third_order
+            start_time = time()
+            symbolics = create_symbols_eqs!(𝓂)
+            write_functions_mapping!(𝓂, symbolics, 3)
+            println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
+        end
         
         if any([:second_order, :third_order] .∈ ([algorithm],)) && :second_order ∈ 𝓂.solution.outdated_algorithms
             SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
@@ -1421,7 +1433,7 @@ end
 
 
 
-function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, only_1st_order::Bool)
+function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, max_perturbation_order::Int)
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
     past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
@@ -1526,7 +1538,7 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, only_1st_orde
                     push!(row1,r)
                     push!(column1,c1)
                     i1 += 1
-                    if !only_1st_order
+                    if max_perturbation_order >= 2 
                         for (c2,var2) in enumerate(vars)
                             if var2 ∈ free_symbols(deriv_first)
                                 deriv_second = diff(deriv_first,var2)
@@ -1536,15 +1548,17 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, only_1st_orde
                                     push!(row2,r)
                                     push!(column2,(c1 - 1) * length(vars) + c2)
                                     i2 += 1
-                                    for (c3,var3) in enumerate(vars)
-                                        if var3 ∈ free_symbols(deriv_second)
-                                            deriv_third = diff(deriv_second,var3)
-                                            if deriv_third != 0 
-                                                deriv_expr = Meta.parse(string(deriv_third.subs(SymPy.PI,SymPy.N(SymPy.PI))))
-                                                push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                                                push!(row3,r)
-                                                push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
-                                                i3 += 1
+                                    if max_perturbation_order == 3
+                                        for (c3,var3) in enumerate(vars)
+                                            if var3 ∈ free_symbols(deriv_second)
+                                                deriv_third = diff(deriv_second,var3)
+                                                if deriv_third != 0 
+                                                    deriv_expr = Meta.parse(string(deriv_third.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                                                    push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                                                    push!(row3,r)
+                                                    push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
+                                                    i3 += 1
+                                                end
                                             end
                                         end
                                     end
@@ -1557,6 +1571,7 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, only_1st_orde
         end
     end
 
+
     mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Number}, X̄::Vector)
         $(alll...)
         $(paras...)
@@ -1566,10 +1581,11 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, only_1st_orde
     end)
 
     𝓂.model_jacobian = @RuntimeGeneratedFunction(mod_func3)
+
     # 𝓂.model_jacobian = eval(mod_func3)
 
 
-    if !only_1st_order
+    if max_perturbation_order >= 2 && 𝓂.model_hessian == Function[]
         if length(row2) == 0 
             out = :(spzeros($(length(eqs)), $(length(vars)^2)))
         else 
@@ -1584,7 +1600,6 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, only_1st_orde
             $out
         end)
 
-
         for l in 1:length(second_order)
             exx = :(function(X::Vector, params::Vector{Number}, X̄::Vector)
             $(alll...)
@@ -1598,7 +1613,9 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, only_1st_orde
 
         # 𝓂.model_hessian = @RuntimeGeneratedFunction(mod_func4)
         # 𝓂.model_hessian = eval(mod_func4)
+    end
 
+    if max_perturbation_order == 3 && 𝓂.model_third_order_derivatives == Function[]
 
         if length(row3) == 0 
             out = :(spzeros($(length(eqs)), $(length(vars)^3)))
@@ -1673,7 +1690,7 @@ function write_functions_mapping!(𝓂::ℳ, Symbolics::symbolics, only_1st_orde
 
     # 𝓂.solution.valid_steady_state_solution = @RuntimeGeneratedFunction(test_func)
 
-    𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :first_order, :second_order, :third_order])
+    # 𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :first_order, :second_order, :third_order])
     return nothing
 end
 

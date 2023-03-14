@@ -821,8 +821,8 @@ Parameters can be defined in either of the following ways:
 # Optional arguments to be placed between `𝓂` and `ex`
 - `verbose` [Default: `false`]: print more information about how the non stochastic steady state is solved
 - `symbolic` [Default: `false`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
-- `only_1st_order` [Default: `false`]: take derivatives only up to first order (up to third order otherwise) in order to save time
-- `only_first_order` [Default: `false`]: same as `only_1st_order`
+- `only_1st_order` [Default: `true`]: take derivatives only up to first order (up to third order otherwise) in order to save time
+- `only_first_order` [Default: `true`]: same as `only_1st_order`
 
 
 
@@ -875,7 +875,7 @@ macro parameters(𝓂,ex...)
     # parse options
     verbose = false
     symbolic = false
-    only_1st_order = false
+    only_1st_order = true
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -1256,6 +1256,7 @@ macro parameters(𝓂,ex...)
         x,bound)
     end
 
+    max_perturbation_order = only_1st_order ? 1 : 3
 
     # println($m)
     return quote
@@ -1300,7 +1301,8 @@ macro parameters(𝓂,ex...)
         start_time = time()
 
         # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(mod.$𝓂, symbolics, $only_1st_order)
+        write_functions_mapping!(mod.$𝓂, symbolics, $max_perturbation_order)
+        mod.$𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :first_order, :second_order, :third_order])
         if $only_1st_order
             println("Take symbolic derivatives up to first order:\t",round(time() - start_time, digits = 3), " seconds")
         else
