@@ -65,6 +65,8 @@ function plot(𝓂::ℳ;
     initial_state::Vector{Float64} = [0.0],
     verbose = false)
 
+    gr_backend = Plots.backend() == Plots.GRBackend()
+
     write_parameters_input!(𝓂,parameters, verbose = verbose)
 
     solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
@@ -156,6 +158,8 @@ function plot(𝓂::ℳ;
         shock_dir = ""
     end
 
+    return_plots = []
+
     for shock in 1:length(shock_idx)
         n_subplots = length(var_idx)
         pp = []
@@ -176,8 +180,8 @@ function plot(𝓂::ℳ;
                     if all((Y[i,:,shock] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:,shock] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
-                                    Plots.plot!(twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
-                                    hline!([SS 0], color = :black, label = "")                               
+                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
+                                    hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "")                               
                         end)
                     else
                         push!(pp,begin
@@ -192,8 +196,8 @@ function plot(𝓂::ℳ;
                     if all((Y[i,:,shock] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:,shock] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
-                                    Plots.plot!(twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
-                                    hline!([SS 0],color = :black,label = "")                               
+                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
+                                    hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")                               
                         end)
                     else
                         push!(pp,begin
@@ -222,7 +226,7 @@ function plot(𝓂::ℳ;
                     # p[:plot_title] = String(𝓂.timings.exo[shock])
 
                     # end
-
+                    push!(return_plots,p)
 
                     if show_plots# & (length(pp) > 0)
                         display(p)
@@ -260,6 +264,8 @@ function plot(𝓂::ℳ;
 
             p = Plots.plot(pp...,plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
 
+            push!(return_plots,p)
+
             if show_plots# & (length(pp) > 0)
                 #println(length(pp))
                 display(p)
@@ -271,6 +277,8 @@ function plot(𝓂::ℳ;
             end
         end
     end
+
+    return return_plots
 end
 
 
@@ -361,6 +369,8 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     plots_per_page::Int = 9, 
     verbose = false)
 
+    gr_backend = Plots.backend() == Plots.GRBackend()
+
     fevds = get_conditional_variance_decomposition(𝓂,
                                                     periods = 1:periods,
                                                     parameters = parameters,
@@ -384,16 +394,24 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     pp = []
     pane = 1
     plot_count = 1
+    return_plots = []
 
     for k in vars_to_plot
         if !(plot_count % plots_per_page == 0)
             plot_count += 1
-            push!(pp,groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
+            if gr_backend
+                push!(pp,groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
+            else
+                push!(pp,groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot))))
+            end
         else
             plot_count = 1
 
-            push!(pp,groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
-            
+            if gr_backend
+                push!(pp,groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
+            else
+                push!(pp,groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot))))
+            end
             ppp = Plots.plot(pp...)
 
             p = Plots.plot(ppp,Plots.bar(fill(0,1,length(shocks_to_plot)), 
@@ -404,6 +422,8 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                         legend_columns = -1), 
                                         layout = grid(2, 1, heights=[0.99, 0.01]),
                                         plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+
+            push!(return_plots,gr_backend ? p : ppp)
 
             if show_plots
                 display(p)
@@ -430,6 +450,8 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                     layout = grid(2, 1, heights=[0.99, 0.01]),
                                     plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
 
+        push!(return_plots,gr_backend ? p : ppp)
+
         if show_plots
             display(p)
         end
@@ -438,6 +460,8 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
+
+    return return_plots
 end
 
 
@@ -568,6 +592,7 @@ function plot_solution(𝓂::ℳ,
     pp = []
     pane = 1
     plot_count = 1
+    return_plots = []
 
     for k in vars_to_plot
 
@@ -724,6 +749,8 @@ function plot_solution(𝓂::ℳ,
 
             p = Plots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
 
+            push!(return_plots,p)
+
             if show_plots
                 display(p)
             end
@@ -740,6 +767,8 @@ function plot_solution(𝓂::ℳ,
     if length(pp) > 0
         p = Plots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
 
+        push!(return_plots,p)
+
         if show_plots
             display(p)
         end
@@ -748,6 +777,8 @@ function plot_solution(𝓂::ℳ,
             savefig(p, save_plots_path * "/solution__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
+
+    return return_plots
 end
 
 
@@ -846,6 +877,8 @@ function plot_conditional_forecast(𝓂::ℳ,
     plots_per_page::Int = 9,
     verbose = false)
 
+    gr_backend = Plots.backend() == Plots.GRBackend()
+
     Y = get_conditional_forecast(𝓂,
                                 conditions,
                                 shocks = shocks, 
@@ -855,7 +888,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 conditions_in_levels = conditions_in_levels,
                                 levels = levels,
                                 verbose = verbose)
-                       
+
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
     full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
@@ -919,7 +952,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     elseif isnothing(shocks)
         shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
     end
-                       
+
     # plots = []
     default(size=(700,500),
             # leg = false,
@@ -963,15 +996,15 @@ function plot_conditional_forecast(𝓂::ℳ,
                         if length(cond_idx) > 0
                             push!(pp,begin
                                         Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                        Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
-                                        hline!([SS 0], color = :black, label = "") 
+                                        if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
+                                        hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "") 
                                         Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                             
                             end)
                         else
                             push!(pp,begin
                                         Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                        Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
-                                        hline!([SS 0], color = :black, label = "")                         
+                                        if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
+                                        hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "")                         
                             end)
                         end
                     else
@@ -998,15 +1031,15 @@ function plot_conditional_forecast(𝓂::ℳ,
                         if length(cond_idx) > 0
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                    Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
-                                    hline!([SS 0],color = :black,label = "")   
+                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
+                                    hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")   
                                     Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
                         end)
                     else
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                    Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "")
-                                    hline!([SS 0],color = :black,label = "")                              
+                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
+                                    hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")                              
                         end)
                     end
                     else
@@ -1054,6 +1087,8 @@ function plot_conditional_forecast(𝓂::ℳ,
                                                 layout = grid(2, 1, heights=[0.99, 0.01]),
                                                 plot_title = "Model: "*𝓂.model_name*"        " * shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
                     
+                    push!(return_plots,p)
+
                     if show_plots# & (length(pp) > 0)
                         display(p)
                     end
@@ -1099,6 +1134,8 @@ function plot_conditional_forecast(𝓂::ℳ,
                                         layout = grid(2, 1, heights=[0.99, 0.01]),
                                         plot_title = "Model: "*𝓂.model_name*"        " * shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
             
+            push!(return_plots,p)
+
             if show_plots
                 display(p)
             end
@@ -1107,8 +1144,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                 savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
-    # end
 
-
+    return return_plots
 
 end

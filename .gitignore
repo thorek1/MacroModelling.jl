@@ -49,3 +49,4 @@ irf*.png
 fevd*.png
 solution*.png
 conditional_fcst*.png
+.CondaPkg/
