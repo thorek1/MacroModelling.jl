@@ -4,7 +4,9 @@ import LaTeXStrings
 import StatsPlots
 
 """
-```gr_backend()```
+```
+gr_backend()
+```
 Renaming and reexport of Plot.jl function `gr()` to define GR.jl as backend
 """
 gr_backend = Plots.gr
@@ -12,7 +14,9 @@ gr_backend = Plots.gr
 
 
 """
-```plotlyjs_backend()```
+```
+plotlyjs_backend()
+```
 Renaming and reexport of Plot.jl function `plotlyjs()` to define PlotlyJS.jl as backend
 """
 plotlyjs_backend = Plots.plotlyjs
