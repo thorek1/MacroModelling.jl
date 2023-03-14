@@ -819,10 +819,9 @@ Parameters can be defined in either of the following ways:
 - expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneaously with the non-stochastic steady state using the equation defined with it.
 
 # Optional arguments to be placed between `𝓂` and `ex`
-- `verbose` [Default: `false`]: print more information about how the non stochastic steady state is solved
-- `symbolic` [Default: `false`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
-- `only_1st_order` [Default: `true`]: take derivatives only up to first order (up to third order otherwise) in order to save time
-- `only_first_order` [Default: `true`]: same as `only_1st_order`
+- `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non stochastic steady state is solved
+- `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
+- `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. In case you want to work with higher order perturbation later on, respective derivatives will be taken at that stage.
 
 
 
@@ -875,7 +874,7 @@ macro parameters(𝓂,ex...)
     # parse options
     verbose = false
     symbolic = false
-    only_1st_order = true
+    perturbation_order = 1
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -885,10 +884,8 @@ macro parameters(𝓂,ex...)
                         symbolic = x.args[2] :
                     x.args[1] == :verbose && x.args[2] isa Bool ?
                         verbose = x.args[2] :
-                    x.args[1] == :only_1st_order && x.args[2] isa Bool ?
-                        only_1st_order = x.args[2] :
-                    x.args[1] == :only_first_order && x.args[2] isa Bool ?
-                        only_1st_order = x.args[2] :
+                    x.args[1] == :perturbation_order && x.args[2] isa Int ?
+                        perturbation_order = x.args[2] :
                     begin
                         @warn "Invalid options." 
                         x
@@ -1256,8 +1253,6 @@ macro parameters(𝓂,ex...)
         x,bound)
     end
 
-    max_perturbation_order = only_1st_order ? 1 : 3
-
     # println($m)
     return quote
         mod = @__MODULE__
@@ -1301,11 +1296,14 @@ macro parameters(𝓂,ex...)
         start_time = time()
 
         # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(mod.$𝓂, symbolics, $max_perturbation_order)
+        write_functions_mapping!(mod.$𝓂, symbolics, $perturbation_order)
         mod.$𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :first_order, :second_order, :third_order])
-        if $only_1st_order
+        
+        if $perturbation_order == 1
             println("Take symbolic derivatives up to first order:\t",round(time() - start_time, digits = 3), " seconds")
-        else
+        elseif $perturbation_order == 2
+            println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds")
+        elseif $perturbation_order == 3
             println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
         end
         start_time = time()
