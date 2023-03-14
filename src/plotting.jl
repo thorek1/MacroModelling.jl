@@ -1,21 +1,23 @@
 
-import Plots, Plots.PlotMeasures, LaTeXStrings
+import Plots, Plots.PlotMeasures
+import LaTeXStrings
 import StatsPlots
 
 
 
 """
-$(SIGNATURES)
+```gr_backend()```
 Renaming and reexport of Plot.jl function `gr()` to define GR.jl as backend
 """
-gr_backend() = Plots.gr()
+gr_backend = Plots.gr
+
 
 
 """
-$(SIGNATURES)
+```plotlyjs_backend()```
 Renaming and reexport of Plot.jl function `plotlyjs()` to define PlotlyJS.jl as backend
 """
-plotlyjs_backend() = Plots.plotlyjs()
+plotlyjs_backend = Plots.plotlyjs
 
 
 """
@@ -195,7 +197,7 @@ function plot(𝓂::ℳ;
                     if all((Y[i,:,shock] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:,shock] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
+                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                     Plots.hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "")                               
                         end)
                     else
@@ -211,7 +213,7 @@ function plot(𝓂::ℳ;
                     if all((Y[i,:,shock] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:,shock] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
+                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                     Plots.hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")                               
                         end)
                     else
@@ -994,6 +996,9 @@ function plot_conditional_forecast(𝓂::ℳ,
         pp = []
         pane = 1
         plot_count = 1
+        
+        return_plots = []
+
         for i in 1:length(var_idx)
             if all(isapprox.(Y[i,:], 0, atol = eps(Float32)))
                 n_subplots -= 1
@@ -1011,14 +1016,14 @@ function plot_conditional_forecast(𝓂::ℳ,
                         if length(cond_idx) > 0
                             push!(pp,begin
                                         Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                        if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
+                                        if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                         Plots.hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "") 
                                         Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                             
                             end)
                         else
                             push!(pp,begin
                                         Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                        if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
+                                        if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                         Plots.hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "")                         
                             end)
                         end
@@ -1046,14 +1051,14 @@ function plot_conditional_forecast(𝓂::ℳ,
                         if length(cond_idx) > 0
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
+                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                     Plots.hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")   
                                     Plots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
                         end)
                     else
                         push!(pp,begin
                                     Plots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = L"\% \Delta", label = "") end
+                                    if gr_backend Plots.plot!(twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                     Plots.hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")                              
                         end)
                     end

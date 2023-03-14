@@ -1195,6 +1195,10 @@ function get_moments(𝓂::ℳ;
         derivatives = false
     end
 
+    if parameter_derivatives != :all && (variance || standard_deviation || non_stochastic_steady_state)
+        derivatives = true
+    end
+
     if derivatives
         if non_stochastic_steady_state
             dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), Float64.(𝓂.parameter_values[param_idx]))
