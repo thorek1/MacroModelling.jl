@@ -1,6 +1,21 @@
 
-using Plots, Plots.PlotMeasures, LaTeXStrings
-using StatsPlots
+import Plots, Plots.PlotMeasures, LaTeXStrings
+import StatsPlots
+
+
+
+"""
+$(SIGNATURES)
+Renaming and reexport of Plot.jl function `gr()` to define GR.jl as backend
+"""
+gr_backend() = Plots.gr()
+
+
+"""
+$(SIGNATURES)
+Renaming and reexport of Plot.jl function `plotlyjs()` to define PlotlyJS.jl as backend
+"""
+plotlyjs_backend() = Plots.plotlyjs()
 
 
 """
@@ -233,7 +248,7 @@ function plot(𝓂::ℳ;
                     end
 
                     if save_plots# & (length(pp) > 0)
-                        savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                        Plots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
                     end
 
                     pane += 1
@@ -273,7 +288,7 @@ function plot(𝓂::ℳ;
 
             if save_plots# & (length(pp) > 0)
                 # savefig(p,"irf__"*string(𝓂.timings.exo[shock_idx[shock]])*"__"*string(pane)*".pdf")
-                savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                Plots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
     end
@@ -400,17 +415,17 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         if !(plot_count % plots_per_page == 0)
             plot_count += 1
             if gr_backend
-                push!(pp,groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
+                push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
             else
-                push!(pp,groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot))))
+                push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot))))
             end
         else
             plot_count = 1
 
             if gr_backend
-                push!(pp,groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
+                push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
             else
-                push!(pp,groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot))))
+                push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot))))
             end
             ppp = Plots.plot(pp...)
 
@@ -430,7 +445,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             end
 
             if save_plots
-                savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                Plots.savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -457,7 +472,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         end
 
         if save_plots
-            savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            Plots.savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -756,7 +771,7 @@ function plot_solution(𝓂::ℳ,
             end
 
             if save_plots
-                savefig(p, save_plots_path * "/solution__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                Plots.savefig(p, save_plots_path * "/solution__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -774,7 +789,7 @@ function plot_solution(𝓂::ℳ,
         end
 
         if save_plots
-            savefig(p, save_plots_path * "/solution__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            Plots.savefig(p, save_plots_path * "/solution__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -1094,7 +1109,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                     end
 
                     if save_plots# & (length(pp) > 0)
-                        savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                        Plots.savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
                     end
 
                     pane += 1
@@ -1141,7 +1156,7 @@ function plot_conditional_forecast(𝓂::ℳ,
             end
 
             if save_plots
-                savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                Plots.savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
 
