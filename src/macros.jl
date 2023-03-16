@@ -700,7 +700,7 @@ macro model(𝓂,ex)
     end
 
 
-    default_optimizer = NLopt.LD_LBFGS
+    default_optimizer = nlboxsolve
     # default_optimizer = Optimisers.Adam
     # default_optimizer = NLopt.LN_BOBYQA
     
@@ -873,7 +873,9 @@ macro parameters(𝓂,ex...)
 
     # parse options
     verbose = false
+    silent = false
     symbolic = false
+    precompile = false
     perturbation_order = 1
 
     for exp in ex[1:end-1]
@@ -884,6 +886,10 @@ macro parameters(𝓂,ex...)
                         symbolic = x.args[2] :
                     x.args[1] == :verbose && x.args[2] isa Bool ?
                         verbose = x.args[2] :
+                    x.args[1] == :silent && x.args[2] isa Bool ?
+                        silent = x.args[2] :
+                    x.args[1] == :precompile && x.args[2] isa Bool ?
+                        precompile = x.args[2] :
                     x.args[1] == :perturbation_order && x.args[2] isa Int ?
                         perturbation_order = x.args[2] :
                     begin
@@ -1287,37 +1293,42 @@ macro parameters(𝓂,ex...)
         symbolics = create_symbols_eqs!(mod.$𝓂)
         # time_rm_red_SS_vars = @elapsed 
         remove_redundant_SS_vars!(mod.$𝓂, symbolics)
-        println("Remove redundant variables in non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds")
+        if !$silent println("Remove redundant variables in non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
         start_time = time()
 
         # time_SS_solve = @elapsed 
         solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 1nd argument is SS_symbolic
-        println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds")
+        if !$silent println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
         start_time = time()
 
         # time_dynamic_derivs = @elapsed 
         write_functions_mapping!(mod.$𝓂, $perturbation_order)
         mod.$𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :first_order, :second_order, :third_order])
         
-        if $perturbation_order == 1
-            println("Take symbolic derivatives up to first order:\t",round(time() - start_time, digits = 3), " seconds")
-        elseif $perturbation_order == 2
-            println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds")
-        elseif $perturbation_order == 3
-            println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
+        if !$silent
+            if $perturbation_order == 1
+                println("Take symbolic derivatives up to first order:\t",round(time() - start_time, digits = 3), " seconds")
+            elseif $perturbation_order == 2
+                println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds")
+            elseif $perturbation_order == 3
+                println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
+            end
         end
+
         start_time = time()
 
         mod.$𝓂.solution.functions_written = true
 
-        # time_SS_real_solve = @elapsed 
-        SS_and_pars, solution_error = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, false, $verbose)
-        println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds")
+        if !$precompile
+            # time_SS_real_solve = @elapsed 
+            SS_and_pars, solution_error = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, false, $verbose)
+            if !$silent println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds") end
 
-        mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
-        mod.$𝓂.solution.outdated_NSSS = false
+            mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
+            mod.$𝓂.solution.outdated_NSSS = false
+        end
 
-        Base.show(mod.$𝓂)
+        if !$silent Base.show(mod.$𝓂) end
         nothing
     end
 end
