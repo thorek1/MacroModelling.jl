@@ -1110,7 +1110,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     end
 
     # optimizers = fail_fast_solvers_only ? [NLopt.LD_LBFGS] : [NLopt.LD_LBFGS, NLopt.LN_BOBYQA, NLopt.LN_PRAXIS, NLopt.LD_SLSQP, NLopt.LN_SBPLX]
-    
+    SS_optimizer = Optim.LBFGS
     # if (sol_minimum > tol)
     #     f = OptimizationFunction(SS_solve_block_wrapper, Optimization.AutoForwardDiff())
     # end
@@ -1122,7 +1122,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
                  previous_sol_init = max.(lbs,min.(ubs, sol_values))
     #             prob = OptimizationProblem(f, transformer(previous_sol_init,lbs,ubs, option = transformer_option), (parameters_and_solved_vars,transformer_option, ss_solve_blocks, lbs, ubs), lb = transformer(lbs,lbs,ubs, option = transformer_option), ub = transformer(ubs,lbs,ubs, option = transformer_option))
-                 sol_new = Optim.optimize(x->sum(abs2,ss_solve_blocks(parameters_and_solved_vars,x,0,lbs,ubs)),lbs,ubs,previous_sol_init,Optim.Fminbox(Optim.LBFGS()); autodiff = :forward)
+                 sol_new = Optim.optimize(x->sum(abs2,ss_solve_blocks(parameters_and_solved_vars,x,0,lbs,ubs)),lbs,ubs,previous_sol_init,Optim.Fminbox(SS_optimizer()); autodiff = :forward)
 
                  if sol_new.minimum < sol_minimum
                      sol_minimum = sol_new.minimum
@@ -1140,7 +1140,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                              standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
                              standard_inits[ubs .<= 1] .= .1 # capture cases where part of values is small
     #                         prob = OptimizationProblem(f, transformer(standard_inits,lbs,ubs, option = transformer_option), (parameters_and_solved_vars, transformer_option, ss_solve_blocks, lbs, ubs), lb = transformer(lbs,lbs,ubs, option = transformer_option), ub = transformer(ubs,lbs,ubs, option = transformer_option))
-			     sol_new = Optim.optimize(x->sum(abs2,ss_solve_blocks(parameters_and_solved_vars,x,0,lbs,ubs)),lbs,ubs,standard_inits,Optim.Fminbox(Optim.LBFGS()); autodiff = :forward)
+			     sol_new = Optim.optimize(x->sum(abs2,ss_solve_blocks(parameters_and_solved_vars,x,0,lbs,ubs)),lbs,ubs,standard_inits,Optim.Fminbox(SS_optimizer()); autodiff = :forward)
 
 
                              if sol_new.minimum < sol_minimum
@@ -1160,7 +1160,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                      # if the the standard starting point doesnt work try the provided guess
                      if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values, parameters_and_solved_vars)) > tol)
     #                     prob = OptimizationProblem(f, transformer(guess,lbs,ubs, option = transformer_option), (parameters_and_solved_vars, transformer_option, ss_solve_blocks, lbs, ubs), lb = transformer(lbs,lbs,ubs, option = transformer_option), ub = transformer(ubs,lbs,ubs, option = transformer_option))
-			 sol_new = Optim.optimize(x->sum(abs2,ss_solve_blocks(parameters_and_solved_vars,x,0,lbs,ubs)),lbs,ubs,guess,Optim.Fminbox(Optim.LBFGS()); autodiff = :forward)
+			 sol_new = Optim.optimize(x->sum(abs2,ss_solve_blocks(parameters_and_solved_vars,x,0,lbs,ubs)),lbs,ubs,guess,Optim.Fminbox(SS_optimizer()); autodiff = :forward)
                          if sol_new.minimum < sol_minimum
                              sol_minimum  = sol_new.minimum
                              sol_values = undo_transformer(sol_new.minimizer,lbs,ubs, option = transformer_option)
