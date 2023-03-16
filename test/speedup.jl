@@ -20,6 +20,12 @@ end
     α = 0.5
 end
 
+get_SS(RBC)
+
+@time get_solution(RBC)
+# with precompilation 2.224324 seconds (1.10 M allocations: 46.159 MiB, 0.67% gc time, 99.92% compilation time)
+# 2.505074 seconds (5.66 M allocations: 264.101 MiB, 1.49% gc time, 99.93% compilation time)
+
 # @time get_SS(RBC)
 # with precomp 1.596658 seconds (9.10 M allocations: 499.542 MiB, 1.91% gc time, 99.63% compilation time: 68% of which was recompilation)
 # 5.689448 seconds (48.08 M allocations: 2.510 GiB, 7.24% gc time, 99.91% compilation time)
