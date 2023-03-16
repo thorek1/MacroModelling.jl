@@ -1014,7 +1014,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
             if (sol_minimum < tol) && verbose
                 println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
-            elseif !fail_fast_solvers_only
+	    else#if !fail_fast_solvers_only
                 # if the previous non-converged best guess as a starting point does not work, try the standard starting points
                 for starting_point in starting_points
                     if sol_minimum > tol
@@ -1057,7 +1057,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
     end
 
-    if !fail_fast_solvers_only
+    # if !fail_fast_solvers_only
         # try modified LM AR next
         for transformer_option ∈ [2,1,0]# works with NAWM #0:2 #
             if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
@@ -1106,7 +1106,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 end
             end
         end
-    end
+    # end
 
     # optimizers = fail_fast_solvers_only ? [NLopt.LD_LBFGS] : [NLopt.LD_LBFGS, NLopt.LN_BOBYQA, NLopt.LN_PRAXIS, NLopt.LD_SLSQP, NLopt.LN_SBPLX]
     
