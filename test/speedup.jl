@@ -1,6 +1,6 @@
-using Requires
 @time_imports using MacroModelling
 @time using MacroModelling
+# 22.4 seconds with precompilation @model @parameters get_SS get_solution and Optim instead of Optimization
 # 22 seconds with precompilation @model @parameters get_SS get_solution
 # 22 seconds with precompilation @model @parameters get_SS
 # 20 seconds with precompilation @model @parameters
