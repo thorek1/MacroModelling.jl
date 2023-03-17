@@ -15,7 +15,7 @@ m = nothing
 end
 
 
-@parameters m begin
+@parameters m verbose = true begin
     # alpha | k[ss] / (4 * y[ss]) = cap_share
     # cap_share = 1.66
     alpha = .157

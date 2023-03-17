@@ -68,7 +68,7 @@
 end
 
 
-@parameters Ghironi_Melitz_2005 begin
+@parameters Ghironi_Melitz_2005 verbose = true begin
     σᶻ = .01
 
     σᶻ̄ = .01

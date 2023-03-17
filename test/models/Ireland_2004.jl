@@ -15,7 +15,7 @@
 end
 
 
-@parameters Ireland_2004 begin
+@parameters Ireland_2004 verbose = true begin
 	β = 0.99
 
 	ψ = 0.1
