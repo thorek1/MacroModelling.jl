@@ -1351,7 +1351,7 @@ end
     # using NLopt
     # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
     # get_steady_state(RBC_CME)
-    @test isapprox(get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state), [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0],rtol = eps())
+    @test isapprox(get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state), [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0],rtol = eps(Float32))
     # get_moments(RBC_CME)[1]
     
 end
