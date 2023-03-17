@@ -820,6 +820,7 @@ Parameters can be defined in either of the following ways:
 
 # Optional arguments to be placed between `𝓂` and `ex`
 - `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non stochastic steady state is solved
+- `silent` [Default: `false`, Type: `Bool`]: do not print any information
 - `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. In case you want to work with higher order perturbation later on, respective derivatives will be taken at that stage.
 
