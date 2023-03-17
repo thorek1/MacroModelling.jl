@@ -79,7 +79,7 @@ end
         I[1]  = ((ρ + δ - Z[0])/(1 - δ))  + ((1 + ρ)/(1 - δ)) * I[0]
     end
 
-    @parameters m begin
+    @parameters m verbose = true begin
         ρ = 0.05
         δ = 0.10
         μ = .17
@@ -133,7 +133,7 @@ end
     end
 
 
-    @parameters RBC_CME begin
+    @parameters RBC_CME verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -158,7 +158,7 @@ end
         std_z_delta = .005
     end
 
-    solve!(RBC_CME, dynamics = true)
+    get_solution(RBC_CME)
 
 
     @model finacc begin
@@ -182,7 +182,7 @@ end
     end
 
 
-    @parameters finacc begin
+    @parameters finacc verbose = true begin
         beta = 0.99 
         delta = 0.02 
         We = 1e-12 
@@ -199,7 +199,7 @@ end
         0 < L < .45
     end
 
-    solve!(finacc)
+    # solve!(finacc)
     @test isapprox(get_steady_state(finacc,derivatives = false)[:,1],[1.0, 7.004987166460695, 1.2762549358842095, 0.0008293608419033882, 0.0009318065746306208, 0.0003952537570055814, 0.30743973601435376, 15.371986800781423, 0.4435430773517457, 8.366999635233856, 1.0000000000593001, 1.0101010101010102, 1.0172249577970442, 1.5895043340984303, 0.4529051354389826, 2.2935377097663356, -1.4597012487627126e-10], rtol = eps(Float32))
     
 end
@@ -227,7 +227,7 @@ end
     end
 
 
-    @parameters RBC_CME begin
+    @parameters RBC_CME verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -252,13 +252,13 @@ end
         std_z_delta = .005
     end
 
-    solve!(RBC_CME, dynamics = true)
+    get_solution(RBC_CME)
 
-    solve!(RBC_CME, dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME, algorithm = :linear_time_iteration)
 
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
 
-    solve!(RBC_CME, dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
@@ -290,7 +290,7 @@ end
     end
 
 
-    @parameters RBC_CME_exo_mult begin
+    @parameters RBC_CME_exo_mult verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -315,9 +315,9 @@ end
         std_z_delta = .005
     end
     
-    solve!(RBC_CME_exo_mult, dynamics = true)
+    get_solution(RBC_CME_exo_mult)
 
-    solve!(RBC_CME_exo_mult, dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME_exo_mult, algorithm = :linear_time_iteration)
 
     # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_mult.solution.perturbation.first_order.solution_matrix[[1:4...,16:end...],15], atol = 1e-4)
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_mult.solution.perturbation.first_order.solution_matrix[[1:4...,16:end...],[1,10:12...,14]], atol = 1e-4)
@@ -325,7 +325,7 @@ end
     @test isapprox(RBC_CME_exo_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
 
 
-    solve!(RBC_CME_exo_mult, dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME_exo_mult, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_mult.solution.perturbation.quadratic_iteration.solution_matrix[[1:4...,16:end...],[1,10:12...,14]], atol = 1e-4)
 
@@ -355,7 +355,7 @@ end
     end
 
 
-    @parameters RBC_CME_all_mult begin
+    @parameters RBC_CME_all_mult verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -380,16 +380,16 @@ end
         std_z_delta = .005
     end
     
-    solve!(RBC_CME_all_mult, dynamics = true)
+    get_solution(RBC_CME_all_mult)
 
-    solve!(RBC_CME_all_mult, dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME_all_mult, algorithm = :linear_time_iteration)
 
     # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix[[1,6,7,10,22:end...],21], atol = 1e-4)
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix[[1,6,7,10,22:end...],[1,12:14...,16]], atol = 1e-4)
 
     @test isapprox(RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_all_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
 
-    solve!(RBC_CME_all_mult, dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME_all_mult, algorithm = :quadratic_iteration)
 
     # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix[[1,6,7,10,22:end...],21], atol = 1e-4)
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_all_mult.solution.perturbation.quadratic_iteration.solution_matrix[[1,6,7,10,22:end...],[1,12:14...,16]], atol = 1e-4)
@@ -421,7 +421,7 @@ end
     end
 
 
-    @parameters RBC_CME_exo_lead1 begin
+    @parameters RBC_CME_exo_lead1 verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -446,16 +446,16 @@ end
         std_z_delta = .005
     end
     
-    solve!(RBC_CME_exo_lead1, dynamics = true)
+    get_solution(RBC_CME_exo_lead1)
 
-    solve!(RBC_CME_exo_lead1, dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME_exo_lead1, algorithm = :linear_time_iteration)
 
     # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],12], atol = 1e-4)
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[1:4...]], RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix[[1:4...,13:15...],[1:4...]], atol = 1e-4)
 
     @test isapprox(RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead1.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
 
-    solve!(RBC_CME_exo_lead1, dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME_exo_lead1, algorithm = :quadratic_iteration)
 
     # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],12], atol = 1e-4)
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[1:4...]], RBC_CME_exo_lead1.solution.perturbation.quadratic_iteration.solution_matrix[[1:4...,13:15...],[1:4...]], atol = 1e-4)
@@ -488,7 +488,7 @@ end
     end
 
 
-    @parameters RBC_CME_exo_lag_mult begin
+    @parameters RBC_CME_exo_lag_mult verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -513,16 +513,16 @@ end
         std_z_delta = .005
     end
     
-    solve!(RBC_CME_exo_lag_mult, dynamics = true)
+    get_solution(RBC_CME_exo_lag_mult)
 
-    solve!(RBC_CME_exo_lag_mult, dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME_exo_lag_mult, algorithm = :linear_time_iteration)
 
     # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lag_mult.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],12], atol = 1e-4)
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag_mult.solution.perturbation.first_order.solution_matrix[[1:4...,13:15...],[1,10:12...,14]], atol = 1e-4)
 
     @test isapprox(RBC_CME_exo_lag_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
 
-    solve!(RBC_CME_exo_lag_mult, dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME_exo_lag_mult, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME_exo_lag_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag_mult.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
     # @test isapprox(RBC_CME_exo_lag_mult.solution.perturbation.first_order.C, RBC_CME_exo_lag_mult.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
@@ -557,7 +557,7 @@ end
     end
 
 
-    @parameters RBC_CME_exo_lag1 begin
+    @parameters RBC_CME_exo_lag1 verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -582,9 +582,9 @@ end
         std_z_delta = .005
     end
     
-    solve!(RBC_CME_exo_lag1, dynamics = true)
+    get_solution(RBC_CME_exo_lag1)
 
-    solve!(RBC_CME_exo_lag1, dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME_exo_lag1, algorithm = :linear_time_iteration)
 
     # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],12], atol = 1e-4)
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],[1,10:12...,9]], atol = 1e-4)
@@ -592,7 +592,7 @@ end
     @test isapprox(RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag1.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
     # @test isapprox(RBC_CME_exo_lag1.solution.perturbation.first_order.C, RBC_CME_exo_lag1.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
 
-    solve!(RBC_CME_exo_lag1, dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME_exo_lag1, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag1.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
@@ -620,7 +620,7 @@ end
     end
 
 
-    @parameters RBC_CME_exo_lead begin
+    @parameters RBC_CME_exo_lead verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -645,9 +645,9 @@ end
         std_z_delta = .005
     end
     
-    solve!(RBC_CME_exo_lead, dynamics = true)
+    get_solution(RBC_CME_exo_lead)
 
-    solve!(RBC_CME_exo_lead, dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME_exo_lead, algorithm = :linear_time_iteration)
 
     # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix[[1:4...,6:8...],5], atol = 1e-4)
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[1:(end-1)...]], RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix[[1:4...,6:end...],[1:(end-1)...]], atol = 1e-4)
@@ -655,7 +655,7 @@ end
     @test isapprox(RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
     # @test isapprox(RBC_CME_exo_lead.solution.perturbation.first_order.C, RBC_CME_exo_lead.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
 
-    solve!(RBC_CME_exo_lead, dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME_exo_lead, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
@@ -683,7 +683,7 @@ end
     end
 
 
-    @parameters RBC_CME_exo_lag begin
+    @parameters RBC_CME_exo_lag verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -708,9 +708,9 @@ end
         std_z_delta = .005
     end
     
-    solve!(RBC_CME_exo_lag, dynamics = true)
+    get_solution(RBC_CME_exo_lag)
 
-    solve!(RBC_CME_exo_lag, dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME_exo_lag, algorithm = :linear_time_iteration)
 
     # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix[[1:4...,6:8...],5], atol = 1e-4)
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix[[1:4...,6:end...],[1,3,4,5,2]], atol = 1e-4)
@@ -718,7 +718,7 @@ end
     @test isapprox(RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
     # @test isapprox(RBC_CME_exo_lag.solution.perturbation.first_order.C, RBC_CME_exo_lag.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
 
-    solve!(RBC_CME_exo_lag, dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME_exo_lag, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
@@ -746,7 +746,7 @@ end
     end
 
 
-    @parameters RBC_CME_lag begin
+    @parameters RBC_CME_lag verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -771,17 +771,17 @@ end
         std_z_delta = .005
     end
     
-    solve!(RBC_CME_lag,dynamics = true)
+    get_solution(RBC_CME_lag)
 
     @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lag.solution.perturbation.first_order.solution_matrix[[1,4,5,8:11...],[1,4:end...]]
     # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lag.solution.perturbation.first_order.C[[1,4,5,8:11...],:]
 
-    solve!(RBC_CME_lag,dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME_lag, algorithm = :linear_time_iteration)
 
     @test isapprox(RBC_CME_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lag.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
     # @test isapprox(RBC_CME_lag.solution.perturbation.first_order.C, RBC_CME_lag.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
 
-    solve!(RBC_CME_lag,dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME_lag, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lag.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
@@ -808,7 +808,7 @@ end
         # log(A[0]) = rhoz * log(A[-1]) + std_eps * eps_z[x]
     end
     
-    @parameters RBC_CME_lead begin
+    @parameters RBC_CME_lead verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -833,17 +833,17 @@ end
         std_z_delta = .005
     end
     
-    solve!(RBC_CME_lead,dynamics = true)
+    get_solution(RBC_CME_lead)
 
     @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lead.solution.perturbation.first_order.solution_matrix[[1,4,5,8:11...],:]
     # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lead.solution.perturbation.first_order.C[[1,4,5,8:11...],:]
 
-    solve!(RBC_CME_lead,dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME_lead, algorithm = :linear_time_iteration)
 
     @test isapprox(RBC_CME_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_lead.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
     # @test isapprox(RBC_CME_lead.solution.perturbation.first_order.C, RBC_CME_lead.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
 
-    solve!(RBC_CME_lead,dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME_lead, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_lead.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
@@ -870,7 +870,7 @@ end
     end
 
 
-    @parameters RBC_CME_lead_lag begin
+    @parameters RBC_CME_lead_lag verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -895,17 +895,17 @@ end
         std_z_delta = .005
     end
     
-    solve!(RBC_CME_lead_lag,dynamics = true)
+    get_solution(RBC_CME_lead_lag)
 
     @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lead_lag.solution.perturbation.first_order.solution_matrix[[1,6,7,10:13...],[1,4:end...]]
     # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lead_lag.solution.perturbation.first_order.C[[1,6,7,(10:13)...],:]
 
-    solve!(RBC_CME_lead_lag,dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME_lead_lag, algorithm = :linear_time_iteration)
 
     @test isapprox(RBC_CME_lead_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
     # @test isapprox(RBC_CME_lead_lag.solution.perturbation.first_order.C, RBC_CME_lead_lag.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
 
-    solve!(RBC_CME_lead_lag,dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME_lead_lag, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME_lead_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
@@ -935,7 +935,7 @@ end
     end
 
 
-    @parameters RBC_CME_lead_lag10 begin
+    @parameters RBC_CME_lead_lag10 verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -960,17 +960,17 @@ end
         std_z_delta = .005
     end
     
-    solve!(RBC_CME_lead_lag10,dynamics = true)
+    get_solution(RBC_CME_lead_lag10)
 
     @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lead_lag10.solution.perturbation.first_order.solution_matrix[[1,13,14,18:21...],[1,4:end...]]
     # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lead_lag10.solution.perturbation.first_order.C[[1,13,14,(18:21)...],:]
 
-    solve!(RBC_CME_lead_lag10,dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME_lead_lag10, algorithm = :linear_time_iteration)
 
     @test isapprox(RBC_CME_lead_lag10.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag10.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
     # @test isapprox(RBC_CME_lead_lag10.solution.perturbation.first_order.C, RBC_CME_lead_lag10.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
 
-    solve!(RBC_CME_lead_lag10,dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME_lead_lag10, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME_lead_lag10.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag10.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
@@ -999,7 +999,7 @@ end
     end
 
 
-    @parameters RBC_CME_lead_lag20 begin
+    @parameters RBC_CME_lead_lag20 verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -1024,17 +1024,17 @@ end
         std_z_delta = .005
     end
     
-    solve!(RBC_CME_lead_lag20,dynamics = true)
+    get_solution(RBC_CME_lead_lag20)
 
     @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lead_lag20.solution.perturbation.first_order.solution_matrix[[1,20,21,(26:29)...],[1,11:end...]]
     # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lead_lag20.solution.perturbation.first_order.C[[1,20,21,(26:29)...],:]
 
-    solve!(RBC_CME_lead_lag20,dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME_lead_lag20, algorithm = :linear_time_iteration)
 
     @test isapprox(RBC_CME_lead_lag20.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag20.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
     # @test isapprox(RBC_CME_lead_lag20.solution.perturbation.first_order.C, RBC_CME_lead_lag20.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
 
-    solve!(RBC_CME_lead_lag20,dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME_lead_lag20, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME_lead_lag20.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag20.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
@@ -1060,7 +1060,7 @@ end
     end
 
 
-    @parameters RBC_CME begin
+    @parameters RBC_CME verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -1085,7 +1085,8 @@ end
         std_z_delta = .005
     end
 
-    solve!(RBC_CME,dynamics = true)
+    get_solution(RBC_CME)
+    # solve!(RBC_CME,dynamics = true)
 
 end
 
@@ -1113,7 +1114,7 @@ end
     end
 
 
-    @parameters RBC_CME begin
+    @parameters RBC_CME verbose = true begin
         # alpha | k[ss] / (4 * y[ss]) = cap_share
         # cap_share = 1.66
         alpha = .157
@@ -1140,7 +1141,7 @@ end
     # get_steady_state(RBC_CME)[1]
     # using NLopt
     # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
-    solve!(RBC_CME)
+    # solve!(RBC_CME)
     @test get_steady_state(RBC_CME)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0024019205374952, 1.003405325870413, 1.2092444352939415, 9.467573947982233, 1.42321160651834, 1.0]
     # get_moments(RBC_CME)[1]
     # irf(RBC_CME)
@@ -1233,7 +1234,7 @@ end
     end
 
 
-    @parameters RBC_CME begin
+    @parameters RBC_CME verbose = true begin
         alpha | k[ss] / (4 * y[ss]) = cap_share
         cap_share = 1.66
         # alpha = .157
@@ -1278,7 +1279,7 @@ end
     # get_steady_state(RBC_CME)[1]
     # using NLopt
     # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
-    solve!(RBC_CME, verbose = true)
+    # solve!(RBC_CME, verbose = true)
     # RBC_CME.SS_init_guess[1:7] = [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
     # get_steady_state(RBC_CME)
     @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023824176236, 9.437411552284384, 1.4212969205027686, 1.0]
@@ -1305,7 +1306,7 @@ end
     end
 
 
-    @parameters RBC_CME begin
+    @parameters RBC_CME symbolic = true verbose = true begin
         alpha | k[ss] / (4 * y[ss]) = cap_share
         cap_share = 1.66
         # alpha = .157
@@ -1349,11 +1350,9 @@ end
     # get_steady_state(RBC_CME)[1]
     # using NLopt
     # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
-    solve!(RBC_CME, symbolic_SS = true, verbose = true)
     # get_steady_state(RBC_CME)
-    @test get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state) ≈ [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0]
+    @test isapprox(get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state), [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0],rtol = eps())
     # get_moments(RBC_CME)[1]
-
     
 end
 
@@ -1422,7 +1421,7 @@ end
     end
 
 
-    @parameters SW03 begin  
+    @parameters SW03 verbose = true begin  
         calibr_pi_obj | 1 = pi_obj[ss]
         calibr_pi | pi[ss] = pi_obj[ss]
         # Phi | Y_s[ss] * .408 = Phi
@@ -1483,7 +1482,7 @@ end
     end
 
 
-    solve!(SW03, verbose = true)
+    # solve!(SW03, verbose = true)
 
 
     @test isapprox(get_steady_state(SW03, verbose = true)(SW03.timings.var),
@@ -1724,7 +1723,7 @@ end
     end
 
 
-    @parameters RBC_CME begin
+    @parameters RBC_CME verbose = true begin
         alpha | k[ss] / (4 * y[ss]) = cap_share
         cap_share = 1.66
         # alpha = .157
@@ -1749,8 +1748,7 @@ end
         std_z_delta = .005
     end
 
-    solve!(RBC_CME,dynamics = true)
-
+    get_solution(RBC_CME)
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
                                                                 6.73489e-6   0.000168887
                                                                 1.01124e-5   0.000253583
@@ -1759,7 +1757,7 @@ end
                                                                 0.0          0.00966482
                                                                 0.005        0.0], atol = 1e-6)
 
-    solve!(RBC_CME,dynamics = true, parameters = :I_K_ratio => .1)
+    get_solution(RBC_CME, parameters = :I_K_ratio => .1)
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
         3.42408e-6   0.000111417
         5.14124e-6   0.000167292
@@ -1768,7 +1766,7 @@ end
         0.0          0.00852381
         0.005        0.0], atol = 1e-6)
 
-    solve!(RBC_CME,dynamics = true, parameters = :cap_share => 1.5)
+    get_solution(RBC_CME, parameters = :cap_share => 1.5)
     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
     4.00629e-6   0.000118171
     6.01543e-6   0.000177434
@@ -1797,7 +1795,7 @@ end
     end
 
 
-    @parameters RBC_CME begin
+    @parameters RBC_CME verbose = true begin
         alpha | k[ss] / (4 * y[ss]) = cap_share
         cap_share = 1.66
         # alpha = .157
@@ -1822,7 +1820,7 @@ end
         std_z_delta = .005
     end
 
-    solve!(RBC_CME,dynamics = true, algorithm = :linear_time_iteration)
+    get_solution(RBC_CME, algorithm = :linear_time_iteration)
 
     @test isapprox(RBC_CME.solution.perturbation.linear_time_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
                                                                 6.73489e-6   0.000168887
@@ -1833,7 +1831,7 @@ end
                                                                 0.005        0.0], atol = 1e-6)
 
 
-    solve!(RBC_CME, dynamics = true, algorithm = :linear_time_iteration, parameters = :I_K_ratio => .1)
+    get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :I_K_ratio => .1)
 
     @test isapprox(RBC_CME.solution.perturbation.linear_time_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
         3.42408e-6   0.000111417
@@ -1844,7 +1842,7 @@ end
         0.005        0.0], atol = 1e-6)
 
 
-    solve!(RBC_CME,dynamics = true, algorithm = :linear_time_iteration, parameters = :cap_share => 1.5)
+    get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :cap_share => 1.5)
 
     @test isapprox(RBC_CME.solution.perturbation.linear_time_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
     4.00629e-6   0.000118171
@@ -1874,7 +1872,7 @@ end
     end
 
 
-    @parameters RBC_CME begin
+    @parameters RBC_CME verbose = true begin
         alpha | k[ss] / (4 * y[ss]) = cap_share
         cap_share = 1.66
         # alpha = .157
@@ -1899,7 +1897,7 @@ end
         std_z_delta = .005
     end
 
-    solve!(RBC_CME,dynamics = true, algorithm = :quadratic_iteration)
+    get_solution(RBC_CME, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME.solution.perturbation.quadratic_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
                                                                 6.73489e-6   0.000168887
@@ -1910,7 +1908,7 @@ end
                                                                 0.005        0.0], atol = 1e-6)
 
 
-    solve!(RBC_CME, dynamics = true, algorithm = :quadratic_iteration, parameters = :I_K_ratio => .1)
+    get_solution(RBC_CME, algorithm = :quadratic_iteration, parameters = :I_K_ratio => .1)
 
     @test isapprox(RBC_CME.solution.perturbation.quadratic_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
         3.42408e-6   0.000111417
@@ -1921,7 +1919,7 @@ end
         0.005        0.0], atol = 1e-6)
 
 
-    solve!(RBC_CME,dynamics = true, algorithm = :quadratic_iteration, parameters = :cap_share => 1.5)
+    get_solution(RBC_CME, algorithm = :quadratic_iteration, parameters = :cap_share => 1.5)
 
     @test isapprox(RBC_CME.solution.perturbation.quadratic_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
     4.00629e-6   0.000118171
@@ -1954,7 +1952,7 @@ end
     end
 
 
-    @parameters RBC_CME begin
+    @parameters RBC_CME verbose = true begin
         alpha | k[ss] / (4 * y[ss]) = cap_share
         cap_share = 1.66
         # alpha = .157
