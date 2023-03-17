@@ -791,7 +791,7 @@ macro model(𝓂,ex)
                             ),
                             Float64[], 
                             Set([:first_order]),
-                            Set([:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :second_order, :third_order]),
+                            Set([:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :second_order, :third_order]),
                             true,
                             false
                         )
@@ -1303,7 +1303,7 @@ macro parameters(𝓂,ex...)
 
         # time_dynamic_derivs = @elapsed 
         write_functions_mapping!(mod.$𝓂, $perturbation_order)
-        mod.$𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :first_order, :second_order, :third_order])
+        mod.$𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :binder_pesaran, :first_order, :second_order, :third_order])
         
         if !$silent
             if $perturbation_order == 1
