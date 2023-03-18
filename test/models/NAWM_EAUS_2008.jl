@@ -752,9 +752,9 @@ end
 	
 	US_KI	> 20
 	
-	US_GI > 10
+	# US_GI > 10
 
-	US_GJ > 10
+	# US_GJ > 10
 end
 
 
@@ -796,3 +796,22 @@ end
 # Block: 6 - Solved using nr, iterations: 6, transformer level: 3 and previous best non-converged solution; maximum residual = 3.1086244689504383e-15
 
 # lm_ar 
+# Block: 1 - Solved using lm_ar, iterations: 3, transformer level: 4 and previous best non-converged solution; maximum residual = 4.440892098500626e-16
+# Block: 2 - Solved using lm_ar, iterations: 3, transformer level: 4 and previous best non-converged solution; maximum residual = 4.440892098500626e-16
+# Block: 3 - Solved using lm_ar, iterations: 5, transformer level: 4 and previous best non-converged solution; maximum residual = 2.4158453015843406e-13
+# Block: 4 - Solved using lm_ar, iterations: 5, transformer level: 4 and previous best non-converged solution; maximum residual = 2.4158453015843406e-13
+# Block: 5 - Solved using lm_ar, iterations: 4, transformer level: 4 and previous best non-converged solution; maximum residual = 3.400058012914542e-16
+# Block: 6 - Solved using lm_ar, iterations: 4, transformer level: 4 and previous best non-converged solution; maximum residual = 3.400058012914542e-16
+# Block: 7 - Solved using lm_ar, iterations: 338, transformer level: 4 and previous best non-converged solution; maximum residual = 9.278267043555388e-11
+
+# lm_ar no 10 lower bounds 
+# Block: 1 - Solved using lm_ar, iterations: 3, transformer level: 4 and previous best non-converged solution; maximum residual = 4.440892098500626e-16
+# Block: 2 - Solved using lm_ar, iterations: 3, transformer level: 4 and previous best non-converged solution; maximum residual = 4.440892098500626e-16
+# Block: 3 - Solved using lm_ar, iterations: 5, transformer level: 4 and previous best non-converged solution; maximum residual = 2.4158453015843406e-13
+# Block: 4 - Solved using lm_ar, iterations: 5, transformer level: 4 and previous best non-converged solution; maximum residual = 2.4158453015843406e-13
+# Block: 5 - Solved using lm_ar, iterations: 4, transformer level: 4 and previous best non-converged solution; maximum residual = 3.400058012914542e-16
+# Block: 6 - Solved using lm_ar, iterations: 4, transformer level: 4 and previous best non-converged solution; maximum residual = 3.400058012914542e-16
+# Block: 7 - Solved using lm_ar, iterations: 778, transformer level: 4 and previous best non-converged solution; maximum residual = 8.15703060652595e-12
+
+
+# lm_ar no 20 lower bounds 

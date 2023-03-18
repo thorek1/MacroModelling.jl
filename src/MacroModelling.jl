@@ -925,8 +925,17 @@ end
 
 # transformation of NSSS problem
 function transformer(x,lb,ub; option::Int = 2)
-    if option == 4
+    # if option > 1
+    #     for i in 1:option
+    #         x .= asinh.(x)
+    #     end
+    #     return x
+    if option == 6
         return  @. tanh((x * 2 - (ub + lb) / 2) / (ub - lb)) * (ub - lb) / 2 # project to unbounded
+    elseif option == 5
+        return asinh.(asinh.(asinh.(asinh.(asinh.(x ./ 100)))))
+    elseif option == 4
+        return asinh.(asinh.(asinh.(asinh.(x))))
     elseif option == 3
         return asinh.(asinh.(asinh.(x)))
     elseif option == 2
@@ -939,8 +948,17 @@ function transformer(x,lb,ub; option::Int = 2)
 end
 
 function undo_transformer(x,lb,ub; option::Int = 2)
-    if option == 4
+    # if option > 1
+    #     for i in 1:option
+    #         x .= sinh.(x)
+    #     end
+    #     return x
+    if option == 6
         return  @. atanh(x * 2 / (ub - lb)) * (ub - lb) / 2 + (ub + lb) / 2 # project to bounded
+    elseif option == 5
+        return sinh.(sinh.(sinh.(sinh.(sinh.(x))))) .* 100
+    elseif option == 4
+        return sinh.(sinh.(sinh.(sinh.(x))))
     elseif option == 3
         return sinh.(sinh.(sinh.(x)))
     elseif option == 2
@@ -1004,7 +1022,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     end
     
     # try NLboxsolve first
-    for transformer_option ∈ [3,2,1,0]
+    for transformer_option ∈ [4,3,2,1,0]
         for method ∈ [:lm_ar, :nk]#, :lm_kyf, :tr, :dogleg, :nr]  
             if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
                 SS_optimizer = nlboxsolve
