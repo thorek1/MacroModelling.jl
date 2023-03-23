@@ -1207,10 +1207,22 @@ end
 
 
 
-function levenberg_marquardt_ar(f::Function, x::Array{T,1}, lb::Array{T,1}, ub::Array{T,1}; xtol::T = eps(), ftol::T = 1e-8,iterations::S = 100000, r::T = .5, μ::T = 1e-4, ρ::T  = 0.8, σ1::T = 0.005, σ2::T = 0.005, steps::S = 4) where {T <: AbstractFloat, S <: Integer}
+function levenberg_marquardt_ar(f::Function, 
+    initial_guess::Array{T,1}, 
+    lower_bounds::Array{T,1}, 
+    upper_bounds::Array{T,1}; 
+    xtol::T = eps(), 
+    ftol::T = 1e-8, 
+    iterations::S = 10000, 
+    r::T = .5, 
+    μ::T = 1e-4, 
+    ρ::T  = 0.8, 
+    σ1::T = 0.005, 
+    σ2::T = 0.005, 
+    steps::S = 4) where {T <: AbstractFloat, S <: Integer}
 
-    @assert size(lb) == size(ub) == size(x)
-    @assert lb < ub
+    @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
+    @assert lower_bounds < upper_bounds
 
     # This is an implementation of Algorithm 2.1 from Amini and Rostami (2016), "Three-steps modified Levenberg-Marquardt 
     # method with a new line search for systems of nonlinear equations", Journal of Computational and Applied Mathematics, 
@@ -1218,65 +1230,65 @@ function levenberg_marquardt_ar(f::Function, x::Array{T,1}, lb::Array{T,1}, ub::
 
     # Modified to allow for box-constraints by Richard Dennis.
 
-    n = length(x)
-    xk = copy(x)
-    jk = Array{T,2}(undef,n,n)
-    Â = similar(jk)
-    xk̄ = similar(xk)
-    xk̂ = similar(xk)
-    # d̄ = similar(xk)
+    current_guess = copy(initial_guess)
+    ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
+    Â = similar(∇)
+    previous_guess = similar(current_guess)
+    intermediate_guess = similar(current_guess)
+    # d̄ = similar(current_guess)
 
-    lenx = zero(T)
-    lenf = zero(T)
-    xkhist = []
+    largest_step = zero(T)
+    largest_residual = zero(T)
+    guess_history = []
     # Initialize solver-parameters
     γ  = eps()
     
-    push!(xkhist,copy(xk))
+    push!(guess_history,copy(current_guess))
 
 	for iter in 1:iterations
-        jk .= ℱ.jacobian(f,xk)
+        ∇ .= ℱ.jacobian(f,current_guess)
 
-        if !all(isfinite,jk)
-            return xk, (iter, xkhist, Inf, Inf, fill(Inf,length(xk)))
+        if !all(isfinite,∇)
+            return current_guess, (iter, guess_history, Inf, Inf, fill(Inf,length(current_guess)))
         end
 
-        Â .= inv(-(jk'jk + μ * ℒ.norm(f(xk))^2 * ℒ.I))
+        Â .= inv(-(∇' * ∇ + μ * sum(abs2, f(current_guess)) * ℒ.I))
 
-        xk̄ .= xk
+        previous_guess .= current_guess
 
-        for i in 1:steps
-            # N̄ = sum(abs2,f(xk))
+        for step in 1:steps
+            # N̄ = sum(abs2,f(current_guess))
 
-            # d̄ .= Â * jk'f(xk)
+            # d̄ .= Â * ∇'f(current_guess)
 
-            xk .+= Â * jk'f(xk)
+            current_guess .+= Â * ∇' * f(current_guess)
 
-            minmax!(xk, lb, ub)
+            minmax!(current_guess, lower_bounds, upper_bounds)
 
-            if i == 1# || sum(abs2,f(xk)) < N̄ 
-                xk̂ .= xk 
+            if step == 1# || sum(abs2,f(current_guess)) < N̄ 
+                intermediate_guess .= current_guess 
             end
 
-            if i == steps println((xk - xk̄)[1]) end
-            if f(xk̄)'jk * (xk - xk̄) > -γ
-                println((xk - xk̄)[1])
-                xk .= xk̂
+            # if step == steps println((current_guess - previous_guess)[1]) end
+
+            if f(previous_guess)' * ∇ * (current_guess - previous_guess) > -γ
+                # println((current_guess - previous_guess)[1])
+                current_guess .= intermediate_guess
                 break
             end
         end
 
-        lenx = maximum(abs, xk̄ - xk)
-        lenf = maximum(abs, f(xk))
+        largest_step = maximum(abs, previous_guess - current_guess)
+        largest_residual = maximum(abs, f(current_guess))
 
-        push!(xkhist,copy(xk))
-        if lenx <= xtol || lenf <= ftol
-            return xk, (iter, xkhist, lenx, lenf, f(xk))
+        push!(guess_history,copy(current_guess))
+        if largest_step <= xtol || largest_residual <= ftol
+            return current_guess, (iter, guess_history, largest_step, largest_residual, f(current_guess))
         end
 
     end
 
-    return xk, (iterations, xkhist, lenx, lenf, f(xk))
+    return current_guess, (iterations, guess_history, largest_step, largest_residual, f(current_guess))
 end
 
 
@@ -1289,7 +1301,7 @@ inits = max.(lbs, min.(ubs, fill(.9,length(ubs))))
 
 
 
-transformer_option = 3
+transformer_option = 1
 
 sol_new = levenberg_marquardt_ar(x->ss_solve_blocks[7](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option),iterations = 1000, ρ = .9, σ1 = .001, σ2 = .001, μ = 1e-4);#, steps = 4);
 
