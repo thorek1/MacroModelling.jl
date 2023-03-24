@@ -1217,9 +1217,12 @@ function levenberg_marquardt_ar(f::Function,
     r::T = .5, 
     μ::T = 1e-4, 
     ρ::T  = 0.8, 
-    σ1::T = 0.005, 
-    σ2::T = 0.005, 
-    steps::S = 4) where {T <: AbstractFloat, S <: Integer}
+    σ¹::T = 0.005, 
+    σ²::T = 0.005, 
+    ϵ::T = .1,
+    γ::T = eps(),
+    steps::S = 4,
+    trace::Bool = false) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
     @assert lower_bounds < upper_bounds
@@ -1239,17 +1242,21 @@ function levenberg_marquardt_ar(f::Function,
 
     largest_step = zero(T)
     largest_residual = zero(T)
-    guess_history = []
-    # Initialize solver-parameters
-    γ  = eps()
-    
-    push!(guess_history,copy(current_guess))
+
+    if trace 
+        guess_history = []
+        push!(guess_history,copy(current_guess)) 
+    end
 
 	for iter in 1:iterations
         ∇ .= ℱ.jacobian(f,current_guess)
 
         if !all(isfinite,∇)
-            return current_guess, (iter, guess_history, Inf, Inf, fill(Inf,length(current_guess)))
+            if trace 
+                return current_guess, (iter, Inf, Inf, fill(Inf,length(current_guess)), guess_history)
+            else
+                return current_guess, (iter, Inf, Inf, fill(Inf,length(current_guess)))
+            end
         end
 
         Â .= inv(-(∇' * ∇ + μ * sum(abs2, f(current_guess)) * ℒ.I))
@@ -1257,10 +1264,6 @@ function levenberg_marquardt_ar(f::Function,
         previous_guess .= current_guess
 
         for step in 1:steps
-            # N̄ = sum(abs2,f(current_guess))
-
-            # d̄ .= Â * ∇'f(current_guess)
-
             current_guess .+= Â * ∇' * f(current_guess)
 
             minmax!(current_guess, lower_bounds, upper_bounds)
@@ -1278,17 +1281,36 @@ function levenberg_marquardt_ar(f::Function,
             end
         end
 
+        α = 1.0
+
+        if sum(abs2,f(current_guess)) > ρ^2 * sum(abs2,f(previous_guess))
+            while sum(abs2,f(previous_guess + α * (current_guess - previous_guess))) > (1 + ϵ - σ² * α^2) * sum(abs2,f(previous_guess)) - σ¹ * α^2 * sum(abs2,current_guess - previous_guess)
+                α *= r
+                ϵ *= r
+            end
+        end
+
+        current_guess .= previous_guess + α * (current_guess - previous_guess)
+
         largest_step = maximum(abs, previous_guess - current_guess)
         largest_residual = maximum(abs, f(current_guess))
 
-        push!(guess_history,copy(current_guess))
+        if trace push!(guess_history,copy(current_guess)) end
         if largest_step <= xtol || largest_residual <= ftol
-            return current_guess, (iter, guess_history, largest_step, largest_residual, f(current_guess))
+            if trace 
+                return current_guess, (iter, largest_step, largest_residual, f(current_guess), guess_history)
+            else
+                return current_guess, (iter, largest_step, largest_residual, f(current_guess))
+            end
         end
 
     end
 
-    return current_guess, (iterations, guess_history, largest_step, largest_residual, f(current_guess))
+    if trace 
+        return current_guess, (iterations, largest_step, largest_residual, f(current_guess), guess_history)
+    else
+        return current_guess, (iterations, largest_step, largest_residual, f(current_guess))
+    end
 end
 
 
@@ -1303,21 +1325,104 @@ inits = max.(lbs, min.(ubs, fill(.9,length(ubs))))
 
 transformer_option = 1
 
-sol_new = levenberg_marquardt_ar(x->ss_solve_blocks[7](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option),iterations = 1000, ρ = .9, σ1 = .001, σ2 = .001, μ = 1e-4);#, steps = 4);
+sol_new = levenberg_marquardt_ar(x->ss_solve_blocks[7](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option),iterations = 1000, ρ = .9, σ¹ = .001, σ² = .001, μ = 1e-4);#, steps = 4);
 
 solution = undo_transformer(sol_new[1],lbs,ubs, option = transformer_option)
 solls = reduce(hcat,[undo_transformer(i,lbs,ubs, option = transformer_option) for i in sol_new[2][2]])
 solls_trans = reduce(hcat,sol_new[2][2])
 sol_new[1]
 sol_new[2][1]
-sol_new[2][4]
+sol_new[2][3]
 sol_new[2][2]
 sol_new[2][4]
 sol_new[2][2][1]
-err = [sum(abs,ss_solve_blocks[7](parameters_and_solved_vars, i, transformer_option,lbs,ubs)) for i in sol_new[2][2]]
-normm = [ℒ.norm(ss_solve_blocks[7](parameters_and_solved_vars, i, transformer_option,lbs,ubs)) for i in sol_new[2][2]]
+# err = [sum(abs,ss_solve_blocks[7](parameters_and_solved_vars, i, transformer_option,lbs,ubs)) for i in sol_new[2][2]]
+# normm = [ℒ.norm(ss_solve_blocks[7](parameters_and_solved_vars, i, transformer_option,lbs,ubs)) for i in sol_new[2][2]]
 
-sortperm(abs.(sol_new[1]))
+# sortperm(abs.(sol_new[1]))
+
+
+# go over parameters
+parameter_find = []
+itter = 1
+for σ¹ in exp10.(-4:1:-2) .* 5 
+    for σ² in exp10.(-4:1:-2) .* 5 
+        for γ in exp10.(-15:12:-3)
+            for ϵ in .1:.2:.3
+                for ρ in .5:.1:.9 
+                    for r in .2:.2:.7 
+                        for μ in exp10.(-6:.5:-3) 
+                            for steps in 1:2:5
+                                println(itter)
+                                itter += 1
+                                sol = levenberg_marquardt_ar(x->ss_solve_blocks[7](parameters_and_solved_vars, x, transformer_option,lbs,ubs),
+                                transformer(previous_sol_init,lbs,ubs, option = transformer_option),
+                                transformer(lbs,lbs,ubs, option = transformer_option),
+                                transformer(ubs,lbs,ubs, option = transformer_option),
+                                iterations = 1000, 
+                                ρ = ρ, 
+                                σ¹ = σ¹, 
+                                σ² = σ², 
+                                r = r,
+                                ϵ = ϵ,
+                                steps = steps,
+                                γ = γ,
+                                μ = μ)
+                                push!(parameter_find,[sol[2][[1,3]]..., ρ, μ, σ¹, σ², r, ϵ, steps, γ])
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+
+parameter_find = [[levenberg_marquardt_ar(x->ss_solve_blocks[7](parameters_and_solved_vars, x, transformer_option,lbs,ubs),
+                    transformer(previous_sol_init,lbs,ubs, option = transformer_option),
+                    transformer(lbs,lbs,ubs, option = transformer_option),
+                    transformer(ubs,lbs,ubs, option = transformer_option),
+                    iterations = 1000, 
+                    ρ = ρ, 
+                    σ¹ = σ¹, 
+                    σ² = σ², 
+                    r = r,
+                    ϵ = ϵ,
+                    steps = steps,
+                    γ = γ,
+                    μ = μ)[2][[1,3]]..., ρ, μ, σ¹, σ², r, ϵ, steps, γ]
+                    for ρ in .5:.1:.9 
+                        for μ in exp10.(-6:.5:-3) 
+                            for σ¹ in exp10.(-4:1:-2) .* 5 
+                                for σ² in exp10.(-4:1:-2) .* 5 
+                                    for r in .2:.2:.7 
+                                        for ϵ in .1:.1:.3
+                                            for steps in 1:2:5
+                                                for γ in exp10.(-15:6:-3)]
+
+[[ρ, μ, σ¹, σ², r, ϵ, step, γ] 
+for ρ in .5:.1:.9 
+    for μ in exp10.(-6:.5:-3) 
+        for σ¹ in exp10.(-4:1:-2) .* 5 
+            for σ² in exp10.(-4:1:-2) .* 5 
+                for r in .2:.2:.7 
+                    for ϵ in .1:.2:.3
+                        for steps in 1:2:5
+                            for γ in exp10.(-15:12:-3)]
+
+# r::T = .5, 
+# μ::T = 1e-4, 
+# ρ::T  = 0.8, 
+# σ¹::T = 0.005, 
+# σ²::T = 0.005, 
+# ϵ::T = .1,
+# γ::T = eps(),
+# steps::S = 4,
+
+
+log10(eps())
+
 
 using Plots
 
