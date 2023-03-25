@@ -66,7 +66,7 @@ export irf, girf
 # export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer
 # export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, calculate_quadratic_iteration_solution, calculate_linear_time_iteration_solution
 
-# levenberg_marquardt_ar
+# levenberg_marquardt
 
 # StatsFuns
 norminvcdf(p) = -erfcinv(2*p) * 1.4142135623730951
@@ -176,9 +176,13 @@ function levenberg_marquardt(f::Function,
     ftol::T = 1e-8, 
     iterations::S = 1000, 
     r::T = .5, 
-    λ::T = .6, # μ decay factor. first steps mostly gradient descent and then switch to squared approx
-    μ::T = .0005, # or 1e-7 for no transform (more iters anyway)
-    p::T  = 1.1 # or 1.4
+    ρ::T = .1, 
+    p::T = 1.8,
+    λ¹::T = .5, 
+    λ²::T = .5,
+    λᵖ::T = .9, 
+    μ¹::T = .0001,
+    μ²::T = .0001
     ) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
@@ -187,7 +191,9 @@ function levenberg_marquardt(f::Function,
     current_guess = copy(initial_guess)
     previous_guess = similar(current_guess)
     guess_update = similar(current_guess)
+
     ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
+    ∇̂ = similar(∇)
 
     largest_step = zero(T)
     largest_residual = zero(T)
@@ -201,22 +207,28 @@ function levenberg_marquardt(f::Function,
 
         previous_guess .= current_guess
 
-        current_guess .+= -(∇' * ∇ + μ * sum(abs2, f(current_guess))^p * ℒ.I) \ (∇' * f(current_guess))
+        ḡ = sum(abs2,f(previous_guess))
 
-        μ = max(λ * μ, 1e-7)
+        ∇̂ .= ∇' * ∇
+
+        current_guess .+= -(∇̂ + μ¹ * sum(abs2, f(current_guess))^p * ℒ.I + μ² * ℒ.Diagonal(∇̂)) \ (∇' * f(current_guess))
 
         minmax!(current_guess, lower_bounds, upper_bounds)
 
-        α = 1.0
-
-        ḡ = sum(abs2,f(previous_guess))
-
         guess_update .= current_guess - previous_guess
 
-        if sum(abs2,f(previous_guess + α * guess_update)) > 0.8 * ḡ 
+        α = 1.0
+
+        if sum(abs2,f(previous_guess + α * guess_update)) > ρ * ḡ 
             while sum(abs2,f(previous_guess + α * guess_update)) > ḡ  - 0.005 * α^2 * sum(abs2,guess_update)
                 α *= r
             end
+            μ¹ = μ¹ * λ¹ #max(μ¹ * λ¹, 1e-7)
+            μ² = μ² * λ² #max(μ² * λ², 1e-7)
+            p = λᵖ * p + (1 - λᵖ) * 1.1
+        else
+            μ¹ = min(μ¹ / λ¹, 1e-3)
+            μ² = min(μ² / λ², 1e-3)
         end
 
         current_guess .= previous_guess + α * guess_update
