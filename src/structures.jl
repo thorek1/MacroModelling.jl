@@ -123,7 +123,7 @@ end
 
 mutable struct ℳ
     model_name
-    SS_optimizer
+    # SS_optimizer
     exo::Vector{Symbol}
     parameters_in_equations::Vector{Symbol}
     parameters_as_function_of_parameters::Vector{Symbol}

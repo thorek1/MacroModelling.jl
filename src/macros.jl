@@ -700,7 +700,7 @@ macro model(𝓂,ex)
     end
 
 
-    default_optimizer = nlboxsolve
+    # default_optimizer = nlboxsolve
     # default_optimizer = Optimisers.Adam
     # default_optimizer = NLopt.LN_BOBYQA
     
@@ -709,7 +709,7 @@ macro model(𝓂,ex)
     quote
        global $𝓂 =  ℳ(
                         $model_name,
-                        $default_optimizer,
+                        # $default_optimizer,
                         sort(collect($exo)), 
                         sort(collect($parameters_in_equations)), 
 
