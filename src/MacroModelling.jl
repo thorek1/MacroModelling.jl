@@ -177,12 +177,12 @@ function levenberg_marquardt(f::Function,
     iterations::S = 1000, 
     r::T = .5, 
     ρ::T = .1, 
-    p::T = 1.8,
-    λ¹::T = .5, 
-    λ²::T = .5,
+    p::T = 1.9,
+    λ¹::T = .6, 
+    λ²::T = .7,
     λᵖ::T = .9, 
-    μ¹::T = .0001,
-    μ²::T = .0001
+    μ¹::T = .0001, # alternatively use .001 for hard problems (Ascari Sbordone starts at .9 and needs to go to 1 but fails)
+    μ²::T = .00001 # alternatively use .001
     ) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
