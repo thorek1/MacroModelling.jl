@@ -1,8 +1,87 @@
-using NLboxsolve
+# using NLboxsolve
 
 method = :lm_ar
 verbose = true
-transformer_option = 4
+transformer_option = 1
+
+function levenberg_marquardt(f::Function, 
+    initial_guess::Array{T,1}, 
+    lower_bounds::Array{T,1}, 
+    upper_bounds::Array{T,1}; 
+    xtol::T = eps(), 
+    ftol::T = 1e-8, 
+    iterations::S = 1000, 
+    r::T = .5, 
+    ρ::T = .1, 
+    p::T = 1.8,
+    λ¹::T = .5, 
+    λ²::T = .5,
+    λᵖ::T = .9, 
+    μ¹::T = .0001,
+    μ²::T = .0001
+    ) where {T <: AbstractFloat, S <: Integer}
+
+    @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
+    @assert lower_bounds < upper_bounds
+
+    current_guess = copy(initial_guess)
+    previous_guess = similar(current_guess)
+    guess_update = similar(current_guess)
+    ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
+
+    ∇̂ = similar(∇)
+
+    largest_step = zero(T)
+    largest_residual = zero(T)
+
+	for iter in 1:iterations
+        ∇ .= ℱ.jacobian(f,current_guess)
+
+        if !all(isfinite,∇)
+            return current_guess, (iter, Inf, Inf, fill(Inf,length(current_guess)))
+        end
+
+        previous_guess .= current_guess
+
+        ḡ = sum(abs2,f(previous_guess))
+
+        ∇̂ .= ∇' * ∇
+
+        current_guess .+= -(∇̂ + μ¹ * sum(abs2, f(current_guess))^p * ℒ.I + μ² * ℒ.Diagonal(∇̂)) \ (∇' * f(current_guess))
+
+        minmax!(current_guess, lower_bounds, upper_bounds)
+
+        guess_update .= current_guess - previous_guess
+
+        α = 1.0
+
+        if sum(abs2,f(previous_guess + α * guess_update)) > ρ * ḡ 
+            while sum(abs2,f(previous_guess + α * guess_update)) > ḡ  - 0.005 * α^2 * sum(abs2,guess_update)
+                α *= r
+            end
+            μ¹ = μ¹ * λ¹ #max(μ¹ * λ¹, 1e-7)
+            μ² = μ² * λ² #max(μ² * λ², 1e-7)
+            p = λᵖ * p + (1 - λᵖ) * 1.1
+        else
+            μ¹ = min(μ¹ / λ¹, 1e-3)
+            μ² = min(μ² / λ², 1e-3)
+        end
+
+        current_guess .= previous_guess + α * guess_update
+
+        largest_step = maximum(abs, previous_guess - current_guess)
+        largest_residual = maximum(abs, f(current_guess))
+# println([sum(abs2, f(current_guess)),μ])
+        if largest_step <= xtol || largest_residual <= ftol
+            return current_guess, (iter, largest_step, largest_residual, f(current_guess))
+        end
+    end
+
+    return current_guess, (iterations, largest_step, largest_residual, f(current_guess))
+end
+
+
+
 
 
 # transformation of NSSS problem
@@ -761,8 +840,8 @@ parameters_and_solved_vars = [US_BETA, US_PI4TARGET, US_PHIRR, US_PHIRPI, US_PHI
 
 previous_sol_init = inits
 
-sol_new = nlboxsolve(x->ss_solve_blocks[1](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option),method = method, iterations = 1000)
-solution = undo_transformer(sol_new.zero,lbs,ubs, option = transformer_option)
+sol_new = levenberg_marquardt(x->ss_solve_blocks[1](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option), iterations = 1000)
+solution = undo_transformer(sol_new[1],lbs,ubs, option = transformer_option)
                 #   block_solver_RD = block_solver_AD([US_BETA, US_PI4TARGET, US_PHIRR, US_PHIRPI, US_PHIRGY, US_RRSTAR], 1, ss_solve_blocks[1], inits, lbs, ubs, fail_fast_solvers_only = fail_fast_solvers_only, verbose = verbose)
                 #   solution = block_solver_RD([US_BETA, US_PI4TARGET, US_PHIRR, US_PHIRPI, US_PHIRGY, US_RRSTAR])
 solution_error += sum(abs2, (ss_solve_blocks[1])([US_BETA, US_PI4TARGET, US_PHIRR, US_PHIRPI, US_PHIRGY, US_RRSTAR], solution, 0, lbs, ubs))
@@ -778,8 +857,8 @@ inits = max.(lbs, min.(ubs, fill(.9,length(ubs))))
 parameters_and_solved_vars = [EA_BETA, EA_PI4TARGET, EA_PHIRR, EA_PHIRPI, EA_PHIRGY, EA_RRSTAR]
 previous_sol_init = inits
 
-sol_new = nlboxsolve(x->ss_solve_blocks[2](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option),method = method, iterations = 1000)
-solution = undo_transformer(sol_new.zero,lbs,ubs, option = transformer_option)
+sol_new = levenberg_marquardt(x->ss_solve_blocks[2](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option), iterations = 1000)
+solution = undo_transformer(sol_new[1],lbs,ubs, option = transformer_option)
 
                 #   block_solver_RD = block_solver_AD([EA_BETA, EA_PI4TARGET, EA_PHIRR, EA_PHIRPI, EA_PHIRGY, EA_RRSTAR], 2, ss_solve_blocks[2], inits, lbs, ubs, fail_fast_solvers_only = fail_fast_solvers_only, verbose = verbose)
                 #   solution = block_solver_RD([EA_BETA, EA_PI4TARGET, EA_PHIRR, EA_PHIRPI, EA_PHIRGY, EA_RRSTAR])
@@ -805,8 +884,8 @@ parameters_and_solved_vars = [US_BETA, US_GAMMAV1, US_GAMMAV2, US_PIC]
 
 previous_sol_init = inits
 
-sol_new = nlboxsolve(x->ss_solve_blocks[3](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option),method = method, iterations = 1000)
-solution = undo_transformer(sol_new.zero,lbs,ubs, option = transformer_option)
+sol_new = levenberg_marquardt(x->ss_solve_blocks[3](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option), iterations = 1000)
+solution = undo_transformer(sol_new[1],lbs,ubs, option = transformer_option)
 
 
                 #   block_solver_RD = block_solver_AD([US_BETA, US_GAMMAV1, US_GAMMAV2, US_PIC], 3, ss_solve_blocks[3], inits, lbs, ubs, fail_fast_solvers_only = fail_fast_solvers_only, verbose = verbose)
@@ -838,8 +917,8 @@ parameters_and_solved_vars = [US_BETA, US_GAMMAV1, US_GAMMAV2, US_PIC]
 
 previous_sol_init = inits
 
-sol_new = nlboxsolve(x->ss_solve_blocks[4](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option),method = method, iterations = 1000)
-solution = undo_transformer(sol_new.zero,lbs,ubs, option = transformer_option)
+sol_new = levenberg_marquardt(x->ss_solve_blocks[4](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option), iterations = 1000)
+solution = undo_transformer(sol_new[1],lbs,ubs, option = transformer_option)
 
                 #   block_solver_RD = block_solver_AD([US_BETA, US_GAMMAV1, US_GAMMAV2, US_PIC], 4, ss_solve_blocks[4], inits, lbs, ubs, fail_fast_solvers_only = fail_fast_solvers_only, verbose = verbose)
                 #   solution = block_solver_RD([US_BETA, US_GAMMAV1, US_GAMMAV2, US_PIC])
@@ -898,8 +977,8 @@ parameters_and_solved_vars = [EA_BETA, EA_GAMMAV1, EA_GAMMAV2, EA_PIC]
 
 previous_sol_init = inits
 
-sol_new = nlboxsolve(x->ss_solve_blocks[5](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option),method = method, iterations = 1000)
-solution = undo_transformer(sol_new.zero,lbs,ubs, option = transformer_option)
+sol_new = levenberg_marquardt(x->ss_solve_blocks[5](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option), iterations = 1000)
+solution = undo_transformer(sol_new[1],lbs,ubs, option = transformer_option)
 
 
                 #   block_solver_RD = block_solver_AD([EA_BETA, EA_GAMMAV1, EA_GAMMAV2, EA_PIC], 5, ss_solve_blocks[5], inits, lbs, ubs, fail_fast_solvers_only = fail_fast_solvers_only, verbose = verbose)
@@ -924,8 +1003,8 @@ parameters_and_solved_vars = [EA_BETA, EA_GAMMAV1, EA_GAMMAV2, EA_PIC]
 
 previous_sol_init = inits
 
-sol_new = nlboxsolve(x->ss_solve_blocks[6](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option),method = method, iterations = 1000)
-solution = undo_transformer(sol_new.zero,lbs,ubs, option = transformer_option)
+sol_new = levenberg_marquardt(x->ss_solve_blocks[6](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option), iterations = 1000)
+solution = undo_transformer(sol_new[1],lbs,ubs, option = transformer_option)
 
 
 # block_solver_RD = block_solver_AD([EA_BETA, EA_GAMMAV1, EA_GAMMAV2, EA_PIC], 6, ss_solve_blocks[6], inits, lbs, ubs, fail_fast_solvers_only = fail_fast_solvers_only, verbose = verbose)
@@ -977,345 +1056,6 @@ end
 
 
 
-function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})
-    for i in 1:length(x)
-        if x[i] <= lb[i]
-            x[i] = lb[i]
-        elseif x[i] >= ub[i]
-            x[i] = ub[i]
-        end
-    end
-end
-
-using Statistics
-import ForwardDiff as ℱ
-import LinearAlgebra as ℒ
-function levenberg_marquardt_ar(f::Function, x::Array{T,1}, lb::Array{T,1}, ub::Array{T,1}; xtol::T = eps(), ftol::T = 1e-8,iterations::S = 100000, r::T = .5, μ::T = 1e-4, ρ::T  = 0.8, σ1::T = 0.005, σ2::T = 0.005) where {T <: AbstractFloat, S <: Integer}
-
-    @assert size(lb) == size(ub) == size(x)
-    @assert lb < ub
-
-    # This is an implementation of Algorithm 2.1 from Amini and Rostami (2016), "Three-steps modified Levenberg-Marquardt 
-    # method with a new line search for systems of nonlinear equations", Journal of Computational and Applied Mathematics, 
-    # 300, pp. 30--42.
-
-    # Modified to allow for box-constraints by Richard Dennis.
-
-    n = length(x)
-    xk = copy(x)
-    xk1 = copy(x)
-    xk2 = copy(x)
-    xk3 = copy(x)
-    xn = similar(x)
-    z  = similar(x)
-    s  = similar(x)
-    jk = Array{T,2}(undef,n,n)
-    A = similar(jk)
-    dk = similar(xk)
-    d1k = similar(dk)
-    d2k = similar(dk)
-    d3k = similar(dk)
-    d4k = similar(dk)
-
-    lenx = zero(T)
-    lenf = zero(T)
-    xkhist = []
-    αhist = []
-    # Initialize solver-parameters
-    γ  = eps()
-    
-    push!(xkhist,copy(xk))
-
-	for iter in 1:iterations
-        jk .= ℱ.jacobian(f,xk)
-
-        xk_norm = ℒ.norm(f(xk))
-        # xk_norm = median(f(xk).^2) * n
-        Â = inv(-(jk'jk + μ * xk_norm * ℒ.I))
-        # d1k .= -(jk'jk + μ * ℒ.norm(f(xk))^2 * ℒ.I) \ (jk'f(xk))
-        d1k .= Â * (jk'f(xk))
-        # d1k .= -(jk'jk + ℒ.diagm(μ * abs.(f(xk)))) \ (jk'f(xk))
-        xk1 .= xk + d1k
-        minmax!(xk1, lb, ub)
-        # println(xk1[1])
-        # println(d1k[1])
-
-        # d2k .= -(jk'jk + μ * ℒ.norm(f(xk1))^2 * ℒ.I) \ (jk'f(xk1))
-        d2k .= Â * (jk'f(xk1))
-        xk2 .= xk1 + d2k
-        minmax!(xk2, lb, ub)
-        # println(xk2[1])
-        # println(d2k[1])
-
-        # d3k .= -(jk'jk + μ * ℒ.norm(f(xk2))^2 * ℒ.I) \ (jk'f(xk1))
-        d3k .= Â * (jk'f(xk2))
-        xk3 .= xk2 + d3k
-        minmax!(xk3, lb, ub)
-        # println(xk3[1])
-        # println(d3k[1])
-
-        # d4k .= -(jk'jk + μ * ℒ.norm(f(xk3))^2 * ℒ.I) \ (jk'f(xk3))
-        d4k .= Â * (jk'f(xk3))
-        z .= xk3 + d4k
-        minmax!(z, lb, ub)
-        # println(z[1])
-        # println(d4k[1])
-
-        dk .= d1k + d2k + d3k + d4k
-
-        s .= z - xk
-        println(s[1])
-
-        if !all(isfinite,s)
-            return xk, (iter, xkhist, αhist, Inf, Inf, fill(Inf,length(xk)))
-        end
-
-        # if ℒ.norm(f(z)) <= ρ * xk_norm
-        # # # if maximum(abs2,f(z)) <= ρ * xk_norm
-        #     α = 1.0
-        # else
-            if f(xk)'jk * dk > -γ
-                s .= xk1 - xk
-            end
-
-        #     α = 1.0
-
-        #     epsilon = 1/10
-
-        #     while ℒ.norm(f(xk + α * s))^2 > (1 + epsilon) * xk_norm^2 - σ1 * α^2 * ℒ.norm(s)^2 - σ2 * α^2 * xk_norm^2
-        #         α *= r
-
-        #         epsilon *= r
-        #     end
-        # end
-
-        xn .= xk + s
-        # xn .= xk + α * s
-
-        lenx = maximum(abs, xn - xk)
-        lenf = maximum(abs, f(xn))
-
-        xk .= xn
-
-        # push!(αhist,copy(α))
-        push!(xkhist,copy(xk))
-        if lenx <= xtol || lenf <= ftol
-            return xk, (iter, xkhist, αhist, lenx, lenf, f(xn))
-        end
-
-    end
-
-    return xk, (iterations, xkhist, αhist, lenx, lenf, f(xk))
-end
-
-
-
-
-
-function levenberg_marquardt_ar(f::Function, x::Array{T,1}, lb::Array{T,1}, ub::Array{T,1}; xtol::T = eps(), ftol::T = 1e-8,iterations::S = 100000, r::T = .5, μ::T = 1e-4, ρ::T  = 0.8, σ1::T = 0.005, σ2::T = 0.005, steps::S = 4) where {T <: AbstractFloat, S <: Integer}
-
-    @assert size(lb) == size(ub) == size(x)
-    @assert lb < ub
-
-    # This is an implementation of Algorithm 2.1 from Amini and Rostami (2016), "Three-steps modified Levenberg-Marquardt 
-    # method with a new line search for systems of nonlinear equations", Journal of Computational and Applied Mathematics, 
-    # 300, pp. 30--42.
-
-    # Modified to allow for box-constraints by Richard Dennis.
-
-    n = length(x)
-    xk = copy(x)
-    # xk1 = copy(x)
-    # xk2 = copy(x)
-    # xk3 = copy(x)
-    xn = similar(x)
-    z  = similar(x)
-    s  = similar(x)
-    jk = Array{T,2}(undef,n,n)
-    A = similar(jk)
-    dk = similar(xk)
-    d̄ = similar(xk)
-    # d1k = similar(dk)
-    # d2k = similar(dk)
-    # d3k = similar(dk)
-    # d4k = similar(dk)
-
-    lenx = zero(T)
-    lenf = zero(T)
-    xkhist = []
-    αhist = []
-    # Initialize solver-parameters
-    γ  = eps()
-    
-    push!(xkhist,copy(xk))
-
-	for iter in 1:iterations
-        jk .= ℱ.jacobian(f,xk)
-
-        xk_norm = ℒ.norm(f(xk))
-
-        xk̄ = copy(xk)
-
-        for i in 1:steps
-            d̄ .= -(jk'jk + μ * ℒ.norm(f(xk))^2 * ℒ.I) \ (jk'f(xk))
-            xk .= xk + d̄
-            minmax!(xk, lb, ub)
-        end
-
-        s .= xk̄ - xk
-
-        if !all(isfinite,s)
-            return xk, (iter, xkhist,  Inf, Inf, fill(Inf,length(xk)))
-        end
-
-        if ℒ.norm(f(xk)) <= ρ * xk_norm
-            α = 1.0
-        else
-            if f(xk̄)'jk * s > -γ
-                s /= 2
-            end
-
-            α = 1.0
-
-            epsilon = 1/10
-
-            while ℒ.norm(f(xk̄ + α * s))^2 > (1 + epsilon) * xk_norm^2 - σ1 * α^2 * ℒ.norm(s)^2 - σ2 * α^2 * xk_norm^2
-                α *= r
-
-                epsilon *= r
-            end
-        end
-
-        xn .= xk + α * s
-
-        lenx = maximum(abs, xn - xk)
-        lenf = maximum(abs, f(xn))
-
-        xk .= xn
-
-        push!(αhist,copy(α))
-        push!(xkhist,copy(xk))
-        if lenx <= xtol || lenf <= ftol
-            return xk, (iter, xkhist, αhist, lenx, lenf, f(xn))
-        end
-
-    end
-
-    return xk, (iterations, xkhist, lenx, lenf, f(xk))
-end
-
-
-
-
-function levenberg_marquardt_ar(f::Function, 
-    initial_guess::Array{T,1}, 
-    lower_bounds::Array{T,1}, 
-    upper_bounds::Array{T,1}; 
-    xtol::T = eps(), 
-    ftol::T = 1e-8, 
-    iterations::S = 1000, 
-    r::T = .5, 
-    μ::T = 1e-6, 
-    ρ::T  = 0.8, 
-    p::T  = 1.0, 
-    σ¹::T = 0.005, 
-    σ²::T = 0.005, 
-    ϵ::T = .1,
-    γ::T = eps(),
-    steps::S = 1,
-    trace::Bool = false) where {T <: AbstractFloat, S <: Integer}
-
-    @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
-    @assert lower_bounds < upper_bounds
-
-    # This is an implementation of Algorithm 2.1 from Amini and Rostami (2016), "Three-steps modified Levenberg-Marquardt 
-    # method with a new line search for systems of nonlinear equations", Journal of Computational and Applied Mathematics, 
-    # 300, pp. 30--42.
-
-    # Modified to allow for box-constraints by Richard Dennis.
-
-    current_guess = copy(initial_guess)
-    ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
-    Â = similar(∇)
-    previous_guess = similar(current_guess)
-    intermediate_guess = similar(current_guess)
-    # d̄ = similar(current_guess)
-
-    largest_step = zero(T)
-    largest_residual = zero(T)
-
-    if trace 
-        guess_history = []
-        push!(guess_history,copy(current_guess)) 
-    end
-
-	for iter in 1:iterations
-        ∇ .= ℱ.jacobian(f,current_guess)
-
-        if !all(isfinite,∇)
-            if trace 
-                return current_guess, (iter, Inf, Inf, fill(Inf,length(current_guess)), guess_history)
-            else
-                return current_guess, (iter, Inf, Inf, fill(Inf,length(current_guess)))
-            end
-        end
-
-        Â .= inv(-(∇' * ∇ + μ * sum(abs2, f(current_guess))^p * ℒ.I))
-
-        previous_guess .= current_guess
-
-        for step in 1:steps
-            current_guess .+= Â * ∇' * f(current_guess)
-
-            minmax!(current_guess, lower_bounds, upper_bounds)
-
-            if step == 1# || sum(abs2,f(current_guess)) < N̄ 
-                intermediate_guess .= current_guess 
-            end
-
-            # if step == steps println((current_guess - previous_guess)[1]) end
-
-            if f(previous_guess)' * ∇ * (current_guess - previous_guess) > -γ
-                # println((current_guess - previous_guess)[1])
-                current_guess .= intermediate_guess
-                break
-            end
-        end
-
-        α = 1.0
-
-        if sum(abs2,f(current_guess)) > ρ^2 * sum(abs2,f(previous_guess))
-            while sum(abs2,f(previous_guess + α * (current_guess - previous_guess))) > (1 + ϵ - σ² * α^2) * sum(abs2,f(previous_guess)) - σ¹ * α^2 * sum(abs2,current_guess - previous_guess)
-                α *= r
-                ϵ *= r
-            end
-        end
-
-        current_guess .= previous_guess + α * (current_guess - previous_guess)
-
-        largest_step = maximum(abs, previous_guess - current_guess)
-        largest_residual = maximum(abs, f(current_guess))
-
-        if trace push!(guess_history,copy(current_guess)) end
-        if largest_step <= xtol || largest_residual <= ftol
-            if trace 
-                return current_guess, (iter, largest_step, largest_residual, f(current_guess), guess_history)
-            else
-                return current_guess, (iter, largest_step, largest_residual, f(current_guess))
-            end
-        end
-
-    end
-
-    if trace 
-        return current_guess, (iterations, largest_step, largest_residual, f(current_guess), guess_history)
-    else
-        return current_guess, (iterations, largest_step, largest_residual, f(current_guess))
-    end
-end
-
-
-
 
 function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})
     @inbounds for i in eachindex(x)
@@ -1323,70 +1063,6 @@ function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})
     end
 end
 
-
-function levenberg_marquardt(f::Function, 
-    initial_guess::Array{T,1}, 
-    lower_bounds::Array{T,1}, 
-    upper_bounds::Array{T,1}; 
-    xtol::T = eps(), 
-    ftol::T = 1e-8, 
-    iterations::S = 1000, 
-    r::T = .5, 
-    λ::T = .6,
-    μ::T = .0005, # or 1e-7 for no transform (more iters anyway)
-    p::T  = 1.1 # or 1.4
-    ) where {T <: AbstractFloat, S <: Integer}
-
-    @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
-    @assert lower_bounds < upper_bounds
-
-    current_guess = copy(initial_guess)
-    previous_guess = similar(current_guess)
-    guess_update = similar(current_guess)
-    ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
-
-    largest_step = zero(T)
-    largest_residual = zero(T)
-
-	for iter in 1:iterations
-        ∇ .= ℱ.jacobian(f,current_guess)
-
-        if !all(isfinite,∇)
-            return current_guess, (iter, Inf, Inf, fill(Inf,length(current_guess)))
-        end
-
-        previous_guess .= current_guess
-
-        current_guess .+= -(∇' * ∇ + μ * sum(abs2, f(current_guess))^p * ℒ.I) \ (∇' * f(current_guess))
-
-        μ = max(μ * λ, 1e-6)
-
-        minmax!(current_guess, lower_bounds, upper_bounds)
-
-        α = 1.0
-
-        ḡ = sum(abs2,f(previous_guess))
-
-        guess_update .= current_guess - previous_guess
-
-        if sum(abs2,f(previous_guess + α * guess_update)) > 0.8 * ḡ 
-            while sum(abs2,f(previous_guess + α * guess_update)) > ḡ  - 0.005 * α^2 * sum(abs2,guess_update)
-                α *= r
-            end
-        end
-
-        current_guess .= previous_guess + α * guess_update
-
-        largest_step = maximum(abs, previous_guess - current_guess)
-        largest_residual = maximum(abs, f(current_guess))
-
-        if largest_step <= xtol || largest_residual <= ftol
-            return current_guess, (iter, largest_step, largest_residual, f(current_guess))
-        end
-    end
-
-    return current_guess, (iterations, largest_step, largest_residual, f(current_guess))
-end
 
 
 
@@ -1402,7 +1078,7 @@ inits = max.(lbs, min.(ubs, fill(.9,length(ubs))))
 previous_sol_init = inits
 
 
-transformer_option = 1
+# transformer_option = 1
 # using BenchmarkTools
 # @profview for i in 1:20 levenberg_marquardt(x->ss_solve_blocks[7](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option)) end#, steps = 4);
 
@@ -1410,71 +1086,102 @@ transformer_option = 1
 # sol_new
 
 
-sol_new = levenberg_marquardt(x->ss_solve_blocks[7](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option), p = 1.1)#, μ = 1e-4,λ = .6
+# λ²::T = .9, 
+# p::T = 1.5, 
+# λ¹::T = .9,  
+# μ::T = .001
+sol_new = levenberg_marquardt(x->ss_solve_blocks[7](parameters_and_solved_vars, x, transformer_option,lbs,ubs),
+                                transformer(previous_sol_init,lbs,ubs, option = transformer_option),
+                                transformer(lbs,lbs,ubs, option = transformer_option),
+                                transformer(ubs,lbs,ubs, option = transformer_option),
+                                # μ¹ = .0001, 
+                                # μ² = 1e-5, 
+                                # p = 1.5, 
+                                # λ¹ = .7, 
+                                # λ² = .4, 
+                                # λᵖ = .5, 
+                                # ρ = .1
+                                )#, λ² = .9999, p = .25, λ¹ = .9,  μ = .0001, iterations = 100)#, p = 1.1)#, μ = 1e-4,λ = .6
 # sum(abs2,sol_new[2][4])
 sol_new[2][[1,3]]
 
-solution = undo_transformer(sol_new[1],lbs,ubs, option = transformer_option)
-solls = reduce(hcat,[undo_transformer(i,lbs,ubs, option = transformer_option) for i in sol_new[2][2]])
-solls_trans = reduce(hcat,sol_new[2][2])
-sol_new[1]
-sol_new[2][1]
-sol_new[2][3]
-sol_new[2][2]
-sol_new[2][4]
-sol_new[2][2][1]
+
+# solution = undo_transformer(sol_new[1],lbs,ubs, option = transformer_option)
+# solls = reduce(hcat,[undo_transformer(i,lbs,ubs, option = transformer_option) for i in sol_new[2][2]])
+# solls_trans = reduce(hcat,sol_new[2][2])
+# sol_new[1]
+# sol_new[2][1]
+# sol_new[2][3]
+# sol_new[2][2]
+# sol_new[2][4]
+# sol_new[2][2][1]
 # err = [sum(abs,ss_solve_blocks[7](parameters_and_solved_vars, i, transformer_option,lbs,ubs)) for i in sol_new[2][2]]
 # normm = [ℒ.norm(ss_solve_blocks[7](parameters_and_solved_vars, i, transformer_option,lbs,ubs)) for i in sol_new[2][2]]
 
 # sortperm(abs.(sol_new[1]))
 
-
+# λ² = .9999, p = .25, λ¹ = .9,  μ = .0001
 # go over parameters
 parameter_find = []
 itter = 1
-# for transformer_option in 0:1
-# for σ¹ in exp10.(-4:1:-2) .* 5 
-    # for σ² in exp10.(-4:1:-2) .* 5 
-        # for γ in exp10.(-15:5:0)
-            # for ϵ in .1:.2:.3
-                for p in .8:.05:1.6
-                    for λ in .4:.05:.8
-                        for μ in exp10.(-4:.5:-3) 
-                            # for steps in 1:1:5
-                                # transformer_option = 1
-                                println(itter)
-                                itter += 1
-                                sol = levenberg_marquardt(x->ss_solve_blocks[7](parameters_and_solved_vars, x, transformer_option,lbs,ubs),
-                                transformer(previous_sol_init,lbs,ubs, option = transformer_option),
-                                transformer(lbs,lbs,ubs, option = transformer_option),
-                                transformer(ubs,lbs,ubs, option = transformer_option),
-                                iterations = 1000, 
-                                p = p, 
-                                # σ¹ = σ¹, 
-                                # σ² = σ², 
-                                # r = r,
-                                # ϵ = .1,
-                                # steps = 1,
-                                λ = λ,
-                                μ = μ)
-                                push!(parameter_find,[sol[2][[1,3]]..., μ, p, λ])
-                            end
+
+for ρ in .1:.2:.5
+    for λ¹ in .4:.1:.7
+        for λ² in .4:.1:.7
+            for λᵖ in .5:.2:.9
+                for μ¹ in exp10.(-5:1:-4) 
+                    for μ² in exp10.(-5:1:-4) 
+                        for p in 1.3:.1:2.0
+                            println(itter)
+                            itter += 1
+                            sol = levenberg_marquardt(x->ss_solve_blocks[7](parameters_and_solved_vars, x, transformer_option,lbs,ubs),
+                            transformer(previous_sol_init,lbs,ubs, option = transformer_option),
+                            transformer(lbs,lbs,ubs, option = transformer_option),
+                            transformer(ubs,lbs,ubs, option = transformer_option),
+                            iterations = 200, 
+                            p = p, 
+                            # σ¹ = σ¹, 
+                            # σ² = σ², 
+                            ρ = ρ,
+                            # ϵ = .1,
+                            # steps = 1,
+                            λ¹ = λ¹,
+                            λ² = λ²,
+                            λᵖ = λᵖ,
+                            μ¹ = μ¹,
+                            μ² = μ²)
+                            push!(parameter_find,[sol[2][[1,3]]..., μ¹, μ², p, λ¹, λ², λᵖ, ρ])
                         end
                     end
-                # end
-            # end
-#         end
-#     end
+                end
+            end
+        end
+    end
+end
 # end
+
 
 
 using DataFrames, GLM
 
 # simul = DataFrame(reduce(hcat,parameter_find)',[:iter,:tol,:ρ, :μ, :σ¹, :σ², :r, :ϵ, :steps, :γ])
 # simul = DataFrame(reduce(hcat, parameter_find)', [:iter, :tol, :μ, :σ², :r, :steps, :γ])
-simul = DataFrame(reduce(hcat, parameter_find)', [:iter, :tol, :μ, :p, :λ])
-sort!(simul, [:μ, :p, :λ])
-simul[simul.tol .> 1e-8,:iter] .= 1000.0
+simulNAWM = DataFrame(reduce(hcat, parameter_find)', [:iter, :tol, :μ¹, :μ², :p, :λ¹, :λ², :λᵖ, :ρ])
+sort!(simulNAWM, [:μ¹, :μ², :p, :λ¹, :λ², :λᵖ, :ρ])
+simulNAWM[simulNAWM.tol .> 1e-8,:iter] .= 200.0
+
+simulNAWMsub = simulNAWM[simulNAWM.tol .< 1e-8,:]
+
+results = innerjoin(simulNAWMsub, result, makeunique = true, on=["μ¹", "μ²", "p", "λ¹", "λ²", "λᵖ", "ρ"])
+sort!(results, [:μ¹, :μ², :ρ, :p, :λ¹, :λ², :λᵖ])
+
+# [p for ρ in .1:.2:.5
+#     for λ¹ in .4:.1:.7
+#         for λ² in .4:.1:.7
+#             for λᵖ in .5:.2:.9
+#                 for μ¹ in exp10.(-5:1:-4) 
+#                     for μ² in exp10.(-5:1:-4) 
+#                         for p in 1.3:.1:2.0]
 
 simul[:,:iter] = simul.iter .< 1000
 
@@ -1586,8 +1293,8 @@ end
 
 
 
-sol_new = nlboxsolve(x->ss_solve_blocks[7](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option),method = method, iterations = 1000)
-solution = undo_transformer(sol_new.zero,lbs,ubs, option = transformer_option)
+sol_new = levenberg_marquardt(x->ss_solve_blocks[7](parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option), iterations = 1000)
+solution = undo_transformer(sol_new[1],lbs,ubs, option = transformer_option)
 
 
 
