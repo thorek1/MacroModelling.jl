@@ -212,7 +212,9 @@ function levenberg_marquardt(f::Function,
 
         ∇̂ .= ∇' * ∇
 
-        Â .= ℒ.pinv(∇̂ + μ¹ * sum(abs2, f(current_guess))^p * ℒ.I + μ² * ℒ.Diagonal(∇̂))
+        ∇̂ .= ℒ.Symmetric(∇̂ + μ¹ * sum(abs2, f(current_guess))^p * ℒ.I + μ² * ℒ.Diagonal(∇̂))
+
+        Â .= ℒ.pinv(∇̂)
 
         current_guess .+= - Â * ∇' * f(current_guess)
 
