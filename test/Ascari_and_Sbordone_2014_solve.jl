@@ -281,8 +281,8 @@ for ρ in .05:.05:.15
     for λ¹ in .4:.1:.7
         for λ² in .4:.1:.7
             for λᵖ in .5:.2:.9
-                for μ¹ in exp10.(-5:1:-4) 
-                    for μ² in exp10.(-5:1:-4) 
+                for μ¹ in exp10.(-5:1:-3) 
+                    for μ² in exp10.(-5:1:-3) 
                         for p in 1.4:.1:2.5
                             println(itter)
                             itter += 1
