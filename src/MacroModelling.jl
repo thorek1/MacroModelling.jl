@@ -2973,6 +2973,8 @@ end
         z_e_a   = 0.035449
         z_e_m   = 0.008862
     end
+    
+    ENV["GKSwstype"] = "nul"
 
     @precompile_all_calls begin
         # all calls in this block will be precompiled, regardless of whether
@@ -2989,15 +2991,18 @@ end
         end
 
         get_SS(FS2000)
-        get_SS(FS2000, parameters = :α => 0.45)
+        get_SS(FS2000, parameters = :alp => 0.36)
         get_solution(FS2000)
-        get_solution(FS2000, parameters = :α => 0.475)
+        get_solution(FS2000, parameters = :alp => 0.35)
         get_standard_deviation(FS2000)
         get_correlation(FS2000)
         get_autocorrelation(FS2000)
         get_variance_decomposition(FS2000)
         get_conditional_variance_decomposition(FS2000)
-        get_irf(SW03)
+        get_irf(FS2000)
+        plot_irf(FS2000)
+        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+        plot_conditional_variance_decomposition(FS2000)
     end
 end
 
