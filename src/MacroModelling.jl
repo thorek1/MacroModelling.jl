@@ -194,6 +194,7 @@ function levenberg_marquardt(f::Function,
 
     ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
     ∇̂ = similar(∇)
+    Â = similar(∇)
 
     largest_step = zero(T)
     largest_residual = zero(T)
@@ -211,7 +212,9 @@ function levenberg_marquardt(f::Function,
 
         ∇̂ .= ∇' * ∇
 
-        current_guess .+= -(∇̂ + μ¹ * sum(abs2, f(current_guess))^p * ℒ.I + μ² * ℒ.Diagonal(∇̂)) \ (∇' * f(current_guess))
+        Â .= ℒ.pinv(∇̂ + μ¹ * sum(abs2, f(current_guess))^p * ℒ.I + μ² * ℒ.Diagonal(∇̂))
+
+        current_guess .+= - Â * ∇' * f(current_guess)
 
         minmax!(current_guess, lower_bounds, upper_bounds)
 
