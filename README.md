@@ -64,7 +64,7 @@ end;
     β = 0.95
 end;
 
-plot(RBC)
+plot_irf(RBC)
 ```
 
 ![RBC IRF](docs/src/assets/irf__RBC__eps_z__1.png)
