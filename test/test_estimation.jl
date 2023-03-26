@@ -1,7 +1,7 @@
 using MacroModelling
 import Turing
 import Turing: Normal, Beta, InverseGamma, NUTS, sample, logpdf
-using Random, CSV, DataFrames, ComponentArrays, Optimization, OptimizationNLopt, OptimizationOptimisers, MCMCChains
+using Random, CSV, DataFrames, ComponentArrays, Optimization, OptimizationNLopt, OptimizationOptimisers, MCMCChains, AxisKeys
 import DynamicPPL: logjoint
 
 include("models/FS2000.jl")

@@ -1993,7 +1993,7 @@ end
         # 0 < y < 10
         # 0 < c < 10
     end
-    plot(RBC_CME)
+    plot_irf(RBC_CME)
     @test true
 end
 
