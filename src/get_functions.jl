@@ -646,6 +646,11 @@ See [`get_steady_state`](@ref)
 """
 get_SS = get_steady_state
 
+"""
+See [`get_steady_state`](@ref)
+"""
+get_ss = get_steady_state
+
 
 
 
