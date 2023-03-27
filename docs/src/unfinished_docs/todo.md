@@ -3,6 +3,8 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
+- [ ] add SSS for third order (can be different than the one from 2nd order, see Gali (2015)) in solution plot; also put legend to the bottom as with Condition
 - [ ] weed out SS solver and saved objects
 - [ ] streamline estimation part (dont do string matching... but rely on precomputed indices...)
 - [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
