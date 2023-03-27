@@ -3,6 +3,7 @@ module MacroModelling
 
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 # import StatsFuns: normcdf
+using SnoopPrecompile
 import SpecialFunctions: erfcinv, erfc
 import SymPy: @vars, solve, subs, free_symbols
 import SymPy
@@ -18,7 +19,6 @@ import Subscripts: super, sub
 import IterativeSolvers as ℐ
 import DataStructures: CircularBuffer
 using LinearMaps
-using ComponentArrays
 using ImplicitDifferentiation
 import SpeedMapping: speedmapping
 # using NamedArrays
@@ -432,7 +432,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     eqs = hcat(Q, R̂)'
 
     # @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
-    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant euqations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄)." # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
+    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant euqations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄). Nonstationay variables are not supported as of now." # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
     
     n = n_blocks
 
@@ -2802,6 +2802,71 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
 end
 
+@precompile_setup begin
+    # Putting some things in `setup` can reduce the size of the
+    # precompile file and potentially make loading faster.
+    @model FS2000 begin
+        dA[0] = exp(gam + z_e_a  *  e_a[x])
+        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+        W[0] = l[0] / n[0]
+        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+        P[0] * c[0] = m[0]
+        m[0] - 1 + d[0] = l[0]
+        e[0] = exp(z_e_a  *  e_a[x])
+        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+        gy_obs[0] = dA[0] * y[0] / y[-1]
+        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+        log_gy_obs[0] = log(gy_obs[0])
+        log_gp_obs[0] = log(gp_obs[0])
+    end
+
+    @parameters FS2000 silent = true begin  
+        alp     = 0.356
+        bet     = 0.993
+        gam     = 0.0085
+        mst     = 1.0002
+        rho     = 0.129
+        psi     = 0.65
+        del     = 0.01
+        z_e_a   = 0.035449
+        z_e_m   = 0.008862
+    end
+    
+    ENV["GKSwstype"] = "nul"
+
+    @precompile_all_calls begin
+        # all calls in this block will be precompiled, regardless of whether
+        # they belong to your package or not (on Julia 1.8 and higher)
+        @model RBC begin
+            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+        end
+
+        @parameters RBC silent = true precompile = true begin
+            δ = 0.02
+            α = 0.5
+        end
+
+        get_SS(FS2000)
+        get_SS(FS2000, parameters = :alp => 0.36)
+        get_solution(FS2000)
+        get_solution(FS2000, parameters = :alp => 0.35)
+        get_standard_deviation(FS2000)
+        get_correlation(FS2000)
+        get_autocorrelation(FS2000)
+        get_variance_decomposition(FS2000)
+        get_conditional_variance_decomposition(FS2000)
+        get_irf(FS2000)
+        plot_irf(FS2000)
+        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+        plot_conditional_variance_decomposition(FS2000)
+    end
+end
 
 
 end

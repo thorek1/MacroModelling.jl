@@ -2,77 +2,96 @@ using Test
 using MacroModelling
 using Random
 using AxisKeys, SparseArrays
+import Aqua
+using JuliaFormatter
 
 include("functionality_tests.jl")
 
-@testset "Standalone functions" begin
+
+@testset verbose = true "Code quality (Aqua.jl)" begin
+    # Aqua.test_all(MacroModelling)
+    @testset "Compare Project.toml and test/Project.toml" Aqua.test_project_extras(MacroModelling)
+    @testset "Project.toml formatting" Aqua.test_project_toml_formatting(MacroModelling)
+    @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling)
+    @testset "Unbound type parameters" Aqua.test_unbound_args(MacroModelling)
+    @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
+    @testset "Piracy" Aqua.test_piracy(MacroModelling)
+    @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
+end
+
+# @testset verbose = true "Code formatting (JuliaFormatter.jl)" begin
+#     @test format(MacroModelling; verbose=true, overwrite=false)
+# end
+
+
+@testset verbose = true "Standalone functions" begin
     include("test_standalone_function.jl")
 end
 
-@testset "Test various models: NSSS and 1st order solution" begin
+@testset verbose = true "Test various models: NSSS and 1st order solution" begin
     include("test_models.jl")
 end
 
-@testset "SW07 with calibration equations" begin
+@testset verbose = true "SW07 with calibration equations" begin
     include("models/SW07.jl")
     functionality_test(m, plots = false)
 end
 
-@testset "SW03 with calibration equations" begin
+@testset verbose = true "SW03 with calibration equations" begin
     include("models/SW03.jl")
     functionality_test(m)
 end
 
-@testset "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
+@testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
     functionality_test(m)
 end
 
-@testset "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables numerical SS" begin
+@testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables numerical SS" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
     functionality_test(m)
 end
 
-@testset "RBC_CME with calibration equations, parameter definitions, and special functions" begin
+@testset verbose = true "RBC_CME with calibration equations, parameter definitions, and special functions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
     functionality_test(m, plots = false)
 end
 
-@testset "RBC_CME with calibration equations and parameter definitions" begin
+@testset verbose = true "RBC_CME with calibration equations and parameter definitions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
     functionality_test(m, plots = false)
     functionality_test(m, algorithm = :second_order)
     functionality_test(m, algorithm = :third_order)
 end
 
-@testset "RBC_CME with calibration equations" begin
+@testset verbose = true "RBC_CME with calibration equations" begin
     include("models/RBC_CME_calibration_equations.jl")
     functionality_test(m, plots = false)
     functionality_test(m, algorithm = :second_order, plots = false)
     functionality_test(m, algorithm = :third_order, plots = false)
 end
 
-@testset "RBC_CME" begin
+@testset verbose = true "RBC_CME" begin
     include("models/RBC_CME.jl")
     functionality_test(m, plots = false)
     functionality_test(m, algorithm = :second_order, plots = false)
     functionality_test(m, algorithm = :third_order, plots = false)
 end
 
-@testset "FS2000" begin
+@testset verbose = true "FS2000" begin
     include("models/FS2000.jl")
     functionality_test(m, plots = false)
     functionality_test(m, algorithm = :second_order, plots = false)
     # functionality_test(m, algorithm = :third_order, plots = false)
 end
 
-@testset "Test dynare read/write" begin
+@testset verbose = true "Test dynare read/write" begin
     include("models/FS2000.jl")
     write_to_dynare_file(m)
     translate_mod_file("m.mod")
 end
 
-@testset "Model without shocks" begin
+@testset verbose = true "Model without shocks" begin
     @model m begin
         K[0] = (1 - δ) * K[-1] + I[0]
         Z[0] = (1 - ρ) * μ + ρ * Z[-1] 
@@ -100,7 +119,7 @@ end
     @test true
 end
 
-@testset "Distribution functions, general and SS" begin
+@testset verbose = true "Distribution functions, general and SS" begin
     
     @model RBC_CME begin
         y[0]=A[0]*k[-1]^alpha
@@ -204,7 +223,7 @@ end
     
 end
 
-@testset "Lead and lag > 1" begin
+@testset verbose = true "Lead and lag > 1" begin
     
     @model RBC_CME begin
         y[0]=A[0]*k[-1]^alpha
@@ -1090,7 +1109,7 @@ end
 end
 
 
-@testset "Steady state RBC CME model" begin
+@testset verbose = true "Steady state RBC CME model" begin
     # Basic test
     @model RBC_CME begin
         y[0]=A[0]*k[-1]^alpha
@@ -1362,7 +1381,7 @@ end
 
 # using MacroModelling: @model, @parameters, get_steady_state, solve!
 
-@testset "Steady state SW03 model" begin 
+@testset verbose = true "Steady state SW03 model" begin 
     
     @model SW03 begin
         -q[0] + beta * ((1 - tau) * q[1] + epsilon_b[1] * (r_k[1] * z[1] - psi^-1 * r_k[ss] * (-1 + exp(psi * (-1 + z[1])))) * (C[1] - h * C[0])^(-sigma_c)) = 0
@@ -1709,7 +1728,7 @@ end
 end
 
 
-@testset "First order perturbation" begin
+@testset verbose = true "First order perturbation" begin
     RBC_CME = nothing
 
     # Numerical test with calibration targets
@@ -1782,7 +1801,7 @@ end
 
 
 
-@testset "First order: linear time iteration" begin
+@testset verbose = true "First order: linear time iteration" begin
     RBC_CME = nothing
 
     # Numerical test with calibration targets
@@ -1859,7 +1878,7 @@ end
 
 
 
-@testset "First order: quadratic iteration" begin
+@testset verbose = true "First order: quadratic iteration" begin
     RBC_CME = nothing
 
     # Numerical test with calibration targets
@@ -1936,7 +1955,7 @@ end
 
 
 
-@testset "Plotting" begin
+@testset verbose = true "Plotting" begin
 
     # Symbolic test with calibration targets
     @model RBC_CME begin
