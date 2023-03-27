@@ -22,7 +22,7 @@ using LinearMaps
 using ComponentArrays
 using ImplicitDifferentiation
 import SpeedMapping: speedmapping
-import NLboxsolve
+import NLboxsolve: nlboxsolve
 # using NamedArrays
 using AxisKeys
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
