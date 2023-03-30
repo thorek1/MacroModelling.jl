@@ -1,17 +1,11 @@
 using MacroModelling
-# loading times
-# 4.8  w/o plots
-# 7.9 including all plots
 import Turing
 import Turing: Normal, Beta, InverseGamma, NUTS, sample, logpdf
 using Random, CSV, DataFrames, ComponentArrays, Optimization, OptimizationNLopt, OptimizationOptimisers, MCMCChains, AxisKeys
 import DynamicPPL: logjoint
 
 include("models/FS2000.jl")
-# @time plot_irf(m)
-# plottin times for first plot
-# 6.853619 seconds (9.78 M allocations: 538.147 MiB, 1.01% gc time, 96.45% compilation time: 16% of which was recompilation)
-# 11.319076 seconds (42.79 M allocations: 2.258 GiB, 3.01% gc time, 97.45% compilation time: 45% of which was recompilation) if not precompiled
+
 FS2000 = m
 
 # load data
