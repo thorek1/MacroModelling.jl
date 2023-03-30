@@ -42,7 +42,7 @@ DataStructures = "^0.18"
 DocStringExtensions = "^0.9"
 DynarePreprocessor_jll = "^6.2"
 ForwardDiff = "^0.10"
-ImplicitDifferentiation = "^0.2"
+ImplicitDifferentiation = "^0.3"
 IterativeSolvers = "^0.9"
 JSON = "^0.21"
 LaTeXStrings = "^1"
@@ -62,6 +62,7 @@ Symbolics = "^5"
 julia = "1.8"
 
 [extras]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
@@ -75,4 +76,4 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["CSV", "DataFrames", "DynamicPPL", "MCMCChains", "Optimization", "OptimizationNLopt", "OptimizationOptimisers", "Test", "Turing", "FiniteDifferences", "Zygote"]
+test = ["Aqua", "CSV", "DataFrames", "DynamicPPL", "MCMCChains", "Optimization", "OptimizationNLopt", "OptimizationOptimisers", "Test", "Turing", "FiniteDifferences", "Zygote"]
