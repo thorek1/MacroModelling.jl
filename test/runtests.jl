@@ -2,8 +2,8 @@ using Test
 using MacroModelling
 using Random
 using AxisKeys, SparseArrays
-import Aqua
-using JuliaFormatter
+using Aqua
+# using JuliaFormatter
 
 include("functionality_tests.jl")
 
