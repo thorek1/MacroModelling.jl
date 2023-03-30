@@ -37,7 +37,7 @@ m = nothing
 end
 
 
-@parameters m begin  
+@parameters m verbose = true begin  
     alp     = 0.356
     bet     = 0.993
     gam     = 0.0085

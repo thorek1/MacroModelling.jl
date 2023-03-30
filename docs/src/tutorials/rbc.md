@@ -42,7 +42,7 @@ Parameter definitions are similar to assigning values in julia. Note that we hav
 
 ## Plot impulse response functions (IRFs)
 
-Given the equations and parameters, we have everything to solve the model and do some analysis. A common output are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), [`plot_IRF`](@ref), or simply [`plot`](@ref)) will take care of this. In the background the package solves (symbolically in this simple case) for the non stochastic steady state (SS) and calculates the first order perturbation solution.
+Given the equations and parameters, we have everything to solve the model and do some analysis. A common output are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. In the background the package solves (symbolically in this simple case) for the non stochastic steady state (SS) and calculates the first order perturbation solution.
 
 ```@repl tutorial_1
 plot_irf(RBC)
@@ -68,7 +68,7 @@ First, the package finds the new steady state, solves the model dynamics around 
 
 ## Plot model simulation
 
-Another insightful output is simulations of the model. Here we can use the [`plot_simulations`](@ref) function. To the same effect we can use the [`plot`](@ref) function and specify in the `shocks` argument that we want to `:simulate` the model and set the `periods` argument to 100.
+Another insightful output is simulations of the model. Here we can use the [`plot_simulations`](@ref) function. To the same effect we can use the [`plot_irf`](@ref) function and specify in the `shocks` argument that we want to `:simulate` the model and set the `periods` argument to 100.
 
 ```@repl tutorial_1
 plot_simulations(RBC)
@@ -80,13 +80,13 @@ The plots show the models endogenous variables in response to random draws for a
 
 ## Plot specific series of shocks
 
-Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or `KeyedArray` of the series of shocks to the `shocks` argument of the [`plot`](@ref) function:
+Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or `KeyedArray` of the series of shocks to the `shocks` argument of the [`plot_irf`](@ref) function:
 
 ```@repl tutorial_1
 shock_series = zeros(1,4)
 shock_series[1,2] = 1
 shock_series[1,4] = -1
-plot(RBC, shocks = shock_series)
+plot_irf(RBC, shocks = shock_series)
 ```
 
 ![Series of shocks RBC](../assets/irf__RBC__shock_matrix__1.png)

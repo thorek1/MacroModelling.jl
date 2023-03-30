@@ -39,7 +39,7 @@
 end
 
 
-@parameters Ascari_Sbordone_2014 begin
+@parameters Ascari_Sbordone_2014 verbose = true begin
     Pi_bar = (1+trend_inflation/100)^(1/4)
 
 	N[ss] = 1/3 | d_n

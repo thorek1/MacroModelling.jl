@@ -48,7 +48,7 @@
 end
 
 
-@parameters Gali_2015_chapter_3_nonlinear begin
+@parameters Gali_2015_chapter_3_nonlinear verbose = true begin
 	σ = 1
 
 	φ = 5

@@ -28,7 +28,7 @@
 	1 + r[0] = (R[0] - τ) / (1 - τ)
 end
 
-@parameters JQ_2012_RBC begin
+@parameters JQ_2012_RBC verbose = true begin
 	b[ss] / (y[ss] * (1 + r[ss])) = BY_ratio | ξ̄
 	
 	n[ss] = n̄ | α

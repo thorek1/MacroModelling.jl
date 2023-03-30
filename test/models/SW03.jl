@@ -58,7 +58,7 @@ m = nothing
 end
 
 
-@parameters m begin  
+@parameters m verbose = true begin  
     calibr_pi_obj | 1 = pi_obj[ss]
     calibr_pi | pi[ss] = pi_obj[ss]
     # Phi | Y_s[ss] * .408 = Phi

@@ -66,10 +66,10 @@ end;
     β = 0.95
 end;
 
-plot(RBC)
+plot_irf(RBC)
 ```
 """
-function plot(𝓂::ℳ;
+function plot_irf(𝓂::ℳ;
     periods::Int = 40, 
     shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Symbol_input = :all,
@@ -292,27 +292,23 @@ end
 
 
 
-"""
-See [`plot`](@ref)
-"""
-plot_irf = plot
 
 """
-See [`plot`](@ref)
+See [`plot_irf`](@ref)
 """
-plot_IRF = plot
+plot_IRF = plot_irf
 
 
 """
-See [`plot`](@ref)
+See [`plot_irf`](@ref)
 """
-plot_irfs = plot
+plot_irfs = plot_irf
 
 
 """
-Wrapper for [`plot`](@ref) with `shocks = :simulate` and `periods = 100`.
+Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
 """
-plot_simulations(args...; kwargs...) =  plot(args...; kwargs..., shocks = :simulate, periods = 100)
+plot_simulations(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
 
 
 

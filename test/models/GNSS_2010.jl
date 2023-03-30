@@ -132,7 +132,7 @@
 	spr_b[0] = r_bh[0] * 0.5 + r_be[0] * 0.5 - r_d[0]
 end
 
-@parameters GNSS_2010 begin
+@parameters GNSS_2010 verbose = true begin
 	beta_p = 0.9943
 
 	beta_i = 0.975

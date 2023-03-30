@@ -726,34 +726,34 @@ end
 	US_RER = 1
 
 	# Help steady state solver
-	EA_FI > 100
+	# EA_FI > 100
 
-	US_FI > 100
+	# US_FI > 100
 
-	EA_FH	> 20
+	# EA_FH	> 20
 	
-	EA_GH	> 20
+	# EA_GH	> 20
 	
-	EA_K	> 20
+	# EA_K	> 20
 	
-	EA_KD	> 20
+	# EA_KD	> 20
 	
-	EA_KI	> 20
+	# EA_KI	> 20
 	
-	US_FH	> 20
+	# US_FH	> 20
 	
-	US_FJ	> 20
+	# US_FJ	> 20
 	
-	US_GH	> 20
+	# US_GH	> 20
 	
-	US_K	> 20
+	# US_K	> 20
 	
-	US_KD	> 20
+	# US_KD	> 20
 	
-	US_KI	> 20
+	# US_KI	> 20
 	
-	US_GI > 10
+	# US_GI > 10
 
-	US_GJ > 10
+	# US_GJ > 10
 end
 

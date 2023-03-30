@@ -34,7 +34,7 @@
 end
 
 
-@parameters Aguiar_Gopinath_2007 begin
+@parameters Aguiar_Gopinath_2007 verbose = true begin
 	beta = 1 / 1.02
 
 	gamma = 0.36

@@ -84,7 +84,7 @@ m = nothing
 end
 
 
-@parameters m begin  
+@parameters m verbose = true begin  
     ctou=.025
     clandaw=1.5
     cg=0.18

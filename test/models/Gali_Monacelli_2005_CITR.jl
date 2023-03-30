@@ -32,7 +32,7 @@
 end
 
 
-@parameters Gali_Monacelli_2005_CITR begin
+@parameters Gali_Monacelli_2005_CITR verbose = true begin
 	σ = 1
 
 	η = 1

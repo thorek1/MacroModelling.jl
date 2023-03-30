@@ -1,3 +1,7 @@
+using SparseArrays
+using MacroModelling: timings
+using ForwardDiff, FiniteDifferences, Zygote
+import Optimization, OptimizationNLopt
 
 Random.seed!(3)
 
@@ -12,7 +16,7 @@ Random.seed!(3)
 end
 
 
-@parameters RBC_CME begin
+@parameters RBC_CME verbose = true begin
     # alpha | k[ss] / (4 * y[ss]) = cap_share
     # cap_share = 1.66
     alpha = .157
@@ -50,15 +54,13 @@ momm = get_moments(RBC_CME)
 
 SS_and_pars, _ = RBC_CME.SS_solve_func(RBC_CME.parameter_values, RBC_CME, true, true)
 
-solve!(RBC_CME, dynamics = true, algorithm = :third_order)
+get_irf(RBC_CME, algorithm = :third_order)
 
 ∇₁ = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, RBC_CME)
 ∇₂ = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
 ∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
 #SS = get_steady_state(RBC_CME, derivatives = false)
 
-using SparseArrays
-using MacroModelling: timings
 
 NSSS =  [1.0
 1.0024019205374952
@@ -263,8 +265,6 @@ iirrff3 = irf(third_order_state_update, zeros(T.nVars), T)
 
 
 
-import Optimization, OptimizationNLopt
-using ForwardDiff
 
 # derivatives of paramteres wrt standard deviations
 stdev_deriv = ForwardDiff.jacobian(x -> get_moments(RBC_CME, x)[2], Float64.(RBC_CME.parameter_values))
@@ -346,7 +346,7 @@ Random.seed!(3)
 end
 
 
-@parameters RBC_CME begin
+@parameters RBC_CME verbose = true begin
     # alpha | k[ss] / (4 * y[ss]) = cap_share
     # cap_share = 1.66
     alpha = .157
@@ -371,9 +371,8 @@ end
     std_z_delta = .005
 end
 
-solve!(RBC_CME, dynamics = true)
+get_solution(RBC_CME)
 
-using ForwardDiff, FiniteDifferences, Zygote
 get_irf(RBC_CME; parameters = RBC_CME.parameter_values)
 
 forw_grad = ForwardDiff.gradient(x->get_irf(RBC_CME, x)[4,1,2],Float64.(RBC_CME.parameter_values))

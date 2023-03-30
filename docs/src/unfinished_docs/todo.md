@@ -8,7 +8,6 @@
 - [ ] weed out SS solver and saved objects
 - [ ] streamline estimation part (dont do string matching... but rely on precomputed indices...)
 - [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
-- [ ] catch cases where you define calibration equation without declaring conditional variable
 - [ ] check out Aqua.jl as additional tests
 - [ ] write functions to debug (fix_SS.jl...)
 - [ ] parser model into per equation functions instead of single big functions
@@ -36,6 +35,7 @@
 - [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] catch cases where you define calibration equation without declaring conditional variable
 - [x] flag if equations contain no info for SS, suggest to set ss values as parameters
 - [x] handle SS case where there are equations which have no information for the SS. use SS definitions in parameter block to complete system | no, set steady state values to parameters instead. might fail if redundant equation has y[0] - y[-1] instead of y[0] - y[ss]
 - [x] try eval instead of runtimegeneratedfunctions; eval is slower but can be typed

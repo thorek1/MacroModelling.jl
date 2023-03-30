@@ -95,7 +95,7 @@ function get_conditional_forecast(𝓂::ℳ,
     variables::Symbol_input = :all_including_auxilliary, 
     conditions_in_levels::Bool = false,
     levels::Bool = false,
-    verbose = false)
+    verbose::Bool = false)
 
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
@@ -272,7 +272,7 @@ function get_irf(𝓂::ℳ,
                     negative_shock::Bool = false, 
                     initial_state::Vector{Float64} = [0.0],
                     levels::Bool = false,
-                    verbose = false)
+                    verbose::Bool = false)
 
     solve!(𝓂, verbose = verbose)
 
@@ -415,7 +415,7 @@ function get_irf(𝓂::ℳ;
     generalised_irf::Bool = false,
     initial_state::Vector{Float64} = [0.0],
     levels::Bool = false,
-    verbose = false)
+    verbose::Bool = false)
 
     write_parameters_input!(𝓂,parameters, verbose = verbose)
 
@@ -554,7 +554,7 @@ function get_steady_state(𝓂::ℳ;
     derivatives::Bool = true, 
     stochastic::Bool = false,
     parameter_derivatives::Symbol_input = :all,
-    verbose = false)
+    verbose::Bool = false)
 
     solve!(𝓂, verbose = verbose)
 
@@ -662,6 +662,7 @@ Return the linearised solution and the non stochastic steady state (SS) of the m
 - $MODEL
 # Keyword Arguments
 - $PARAMETERS
+- `algorithm` [Default: `:first_order`, Type: `Symbol`]: algorithm to solve for the dynamics of the model. Only linear algorithms allowed.
 - $VERBOSE
 
 The returned `KeyedArray` shows the SS, policy and transition functions of the model. The columns show the varibales including auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows are the SS, followed by the states, and exogenous shocks. 
@@ -700,13 +701,24 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
 """
 function get_solution(𝓂::ℳ; 
     parameters = nothing,
-    verbose = false)
+    algorithm::Symbol = :first_order, 
+    verbose::Bool = false)
 
     write_parameters_input!(𝓂,parameters, verbose = verbose)
+    
+    @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran] "This function only works for linear solutions. Choose a respective algorithm."
 
-    solve!(𝓂, verbose = verbose, dynamics = true)
+    solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
 
-    KeyedArray([𝓂.solution.non_stochastic_steady_state[1:length(𝓂.var)] 𝓂.solution.perturbation.first_order.solution_matrix]';
+    if algorithm == :linear_time_iteration
+        solution_matrix = 𝓂.solution.perturbation.linear_time_iteration.solution_matrix
+    elseif algorithm ∈ [:riccati, :first_order]
+        solution_matrix = 𝓂.solution.perturbation.first_order.solution_matrix
+    elseif algorithm ∈ [:quadratic_iteration, :binder_pesaran]
+        solution_matrix = 𝓂.solution.perturbation.quadratic_iteration.solution_matrix
+    end
+
+    KeyedArray([𝓂.solution.non_stochastic_steady_state[1:length(𝓂.var)] solution_matrix]';
     Steady_state__States__Shocks = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
     Variables = 𝓂.var)
 end
@@ -804,7 +816,7 @@ And data, 7×2×21 Array{Float64, 3}:
 function get_conditional_variance_decomposition(𝓂::ℳ; 
     periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}} = [1:20...,Inf],
     parameters = nothing,  
-    verbose = false)
+    verbose::Bool = false)
 
     solve!(𝓂, verbose = verbose)
 
@@ -924,7 +936,7 @@ And data, 7×2 Matrix{Float64}:
 """
 function get_variance_decomposition(𝓂::ℳ; 
     parameters = nothing,  
-    verbose = false)
+    verbose::Bool = false)
     
     solve!(𝓂, verbose = verbose)
 
@@ -997,7 +1009,7 @@ And data, 4×4 Matrix{Float64}:
 """
 function get_correlation(𝓂::ℳ; 
     parameters = nothing,  
-    verbose = false)
+    verbose::Bool = false)
     
     solve!(𝓂, verbose = verbose)
 
@@ -1070,7 +1082,7 @@ And data, 4×5 Matrix{Float64}:
 """
 function get_autocorrelation(𝓂::ℳ; 
     parameters = nothing,  
-    verbose = false)
+    verbose::Bool = false)
     
     solve!(𝓂, verbose = verbose)
 
@@ -1172,7 +1184,7 @@ function get_moments(𝓂::ℳ;
     covariance::Bool = false, 
     derivatives::Bool = true,
     parameter_derivatives::Symbol_input = :all,
-    verbose = false)#limit output by selecting pars and vars like for plots and irfs!?
+    verbose::Bool = false)#limit output by selecting pars and vars like for plots and irfs!?
     
     solve!(𝓂, verbose = verbose)
 
@@ -1333,7 +1345,7 @@ function get_moments(𝓂::ℳ, parameters::Vector;
     standard_deviation::Bool = true, 
     variance::Bool = false, 
     covariance::Bool = false,
-    verbose = false)
+    verbose::Bool = false)
 
     solve!(𝓂, verbose = verbose)
 

@@ -1,3 +1,63 @@
+# struct FWrap#{F}
+#     f#::F
+# end
+# (F::FWrap)(x...) = F.f(x...)
+
+# struct MyFunction{T, S}
+#     f
+# end
+
+# # Define a method for the custom type that takes in an input of type T
+# # and returns an output of type S
+# function (mf::MyFunction{T, S})(x::T) where {T, S}
+#     return mf.f(x)::S
+# end
+
+# # Example function to be wrapped
+# function square(x)
+#     return x^2
+# end
+
+# # Wrap the square function in the custom type with input and output type specialization
+# my_square = MyFunction{Int, Int}(square)
+
+# # Test the wrapped function
+# println(my_square(2.0))  # Output: 4
+
+
+# struct FWrap{T, S}
+#     f#::Function
+# end
+
+# # Define a method for the custom type that takes in an input of type T
+# # and returns an output of type S
+# function (mf::FWrap{T, S})(x::T) where {T, S}
+#     return mf.f(x...)::S
+# end
+
+# # Example function to be wrapped
+# function square(x::Int)
+#     return x^2
+# end
+
+# # Wrap the square function in the custom type with input and output type specialization
+# my_square = MyFunction{Int, Int}(square)
+
+# # Test the wrapped function
+# println(my_square(2))  # Output: 4
+# using SparseArrays
+
+# function model_jacobian(x,y,z) sparse(rand(2,2)) end
+
+
+# my_jac = FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64,Int64}}(model_jacobian)
+
+# my_jac(([1.0], Number[1.0], [.9]))
+
+# typeof(my_jac)
+
+# using ForwardDiff
+
 
 struct timings
     present_only::Vector{Symbol}
@@ -120,10 +180,9 @@ mutable struct solution
 end
 
 
-
 mutable struct ℳ
     model_name
-    SS_optimizer
+    # SS_optimizer
     exo::Vector{Symbol}
     parameters_in_equations::Vector{Symbol}
     parameters_as_function_of_parameters::Vector{Symbol}
@@ -235,8 +294,8 @@ mutable struct ℳ
     lower_bounds::Vector{Float64}
     upper_bounds::Vector{Float64}
 
-    # model_function::Function
     model_jacobian::Function
+    # model_jacobian::FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}#{typeof(model_jacobian)}
     model_hessian::Vector{Function}
     model_third_order_derivatives::Vector{Function}
 
