@@ -19,7 +19,6 @@ import Subscripts: super, sub
 import IterativeSolvers as ℐ
 import DataStructures: CircularBuffer
 using LinearMaps
-using ComponentArrays
 using ImplicitDifferentiation
 import SpeedMapping: speedmapping
 import NLboxsolve: nlboxsolve
@@ -48,7 +47,7 @@ export plot_conditional_variance_decomposition, plot_forecast_error_variance_dec
 export get_irfs, get_irf, get_IRF, simulate
 export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution
-export get_steady_state, get_SS, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS
+export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS
 export get_moments, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_cov, var, std, cov
 export get_autocorrelation, get_correlation, get_variance_decomposition, get_corr, get_autocorr, get_var_decomp, corr, autocorr
 export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
@@ -253,7 +252,6 @@ function levenberg_marquardt(f::Function,
 end
 
 
-
 # function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})
 #     for i in 1:length(x)
 #         if x[i] <= lb[i]
@@ -263,6 +261,7 @@ end
 #         end
 #     end
 # end
+
 
 
 
@@ -319,6 +318,7 @@ end
 #         if !all(isfinite,s)
 #             return xk, (iter, Inf, Inf, fill(Inf,length(xk)))
 #         end
+
 
 #         if ℒ.norm(f(z)) <= ρ * xk_norm
 #             α = 1.0
@@ -524,7 +524,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     eqs = hcat(Q, R̂)'
 
     # @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
-    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant euqations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄)." # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
+    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant euqations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄). Nonstationay variables are not supported as of now." # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
     
     n = n_blocks
 
@@ -1240,6 +1240,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         sol_minimum = isnan(sum(abs2,sol_new.fzero)) ? Inf : sum(abs2,sol_new.fzero)
                         sol_values = max.(lbs,min.(ubs, undo_transformer(sol_new.zero,lbs,ubs, option = transformer_option) ))
 
+
                         if (sol_minimum < tol) && verbose
                             println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
                         end
@@ -1268,6 +1269,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     sol_minimum = sol_new.minimum
                     sol_values = max.(lbs,min.(ubs, undo_transformer(sol_new.minimizer,lbs,ubs, option = transformer_option) ))
 
+
                     if (sol_minimum < tol) && verbose
                         println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
                     end
@@ -1286,6 +1288,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                                 sol_minimum = sol_new.minimum
                                 sol_values = max.(lbs,min.(ubs, undo_transformer(sol_new.minimizer,lbs,ubs, option = transformer_option) ))
 
+
                                 if (sol_minimum < tol) && verbose
                                     println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
                                 end
@@ -1303,6 +1306,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         if sol_new.minimum < sol_minimum
                             sol_minimum  = sol_new.minimum
                             sol_values = max.(lbs,min.(ubs, undo_transformer(sol_new.minimizer,lbs,ubs, option = transformer_option) ))
+
 
                             if (sol_minimum < tol) && verbose
                                 println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
@@ -2940,6 +2944,71 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
 end
 
+@precompile_setup begin
+    # Putting some things in `setup` can reduce the size of the
+    # precompile file and potentially make loading faster.
+    @model FS2000 begin
+        dA[0] = exp(gam + z_e_a  *  e_a[x])
+        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+        W[0] = l[0] / n[0]
+        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+        P[0] * c[0] = m[0]
+        m[0] - 1 + d[0] = l[0]
+        e[0] = exp(z_e_a  *  e_a[x])
+        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+        gy_obs[0] = dA[0] * y[0] / y[-1]
+        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+        log_gy_obs[0] = log(gy_obs[0])
+        log_gp_obs[0] = log(gp_obs[0])
+    end
+
+    @parameters FS2000 silent = true begin  
+        alp     = 0.356
+        bet     = 0.993
+        gam     = 0.0085
+        mst     = 1.0002
+        rho     = 0.129
+        psi     = 0.65
+        del     = 0.01
+        z_e_a   = 0.035449
+        z_e_m   = 0.008862
+    end
+    
+    ENV["GKSwstype"] = "nul"
+
+    @precompile_all_calls begin
+        # all calls in this block will be precompiled, regardless of whether
+        # they belong to your package or not (on Julia 1.8 and higher)
+        @model RBC begin
+            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+        end
+
+        @parameters RBC silent = true precompile = true begin
+            δ = 0.02
+            α = 0.5
+        end
+
+        get_SS(FS2000)
+        get_SS(FS2000, parameters = :alp => 0.36)
+        get_solution(FS2000)
+        get_solution(FS2000, parameters = :alp => 0.35)
+        get_standard_deviation(FS2000)
+        get_correlation(FS2000)
+        get_autocorrelation(FS2000)
+        get_variance_decomposition(FS2000)
+        get_conditional_variance_decomposition(FS2000)
+        get_irf(FS2000)
+        plot_irf(FS2000)
+        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+        plot_conditional_variance_decomposition(FS2000)
+    end
+end
 
 
 @precompile_setup begin
