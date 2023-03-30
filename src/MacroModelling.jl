@@ -1194,7 +1194,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             SS_optimizer = nlboxsolve
 
             previous_sol_init = max.(lbs,min.(ubs, sol_values))
-            sol_new = try SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option),method = :nk) catch e end
+            sol_new = SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(previous_sol_init,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option),method = :lm_ar)
 
             if isnothing(sol_new)
                 sol_minimum = Inf
