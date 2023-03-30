@@ -1730,6 +1730,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     end)
 
     𝓂.model_jacobian = @RuntimeGeneratedFunction(mod_func3)
+    # 𝓂.model_jacobian = FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(@RuntimeGeneratedFunction(mod_func3))
 
     # 𝓂.model_jacobian = eval(mod_func3)
 
@@ -2029,6 +2030,7 @@ function calculate_jacobian(parameters::Vector{<: Number}, SS_and_pars::Abstract
     shocks_ss = zeros(length(dyn_exo))
 
     # return ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
+    # return Matrix(𝓂.model_jacobian(([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])))
     return Matrix(𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]))
 end
 

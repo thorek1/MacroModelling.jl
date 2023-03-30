@@ -775,8 +775,8 @@ macro model(𝓂,ex)
                         $unique_lower_bounds,
                         $unique_upper_bounds,
 
-                        # x->x,
                         x->x,
+                        # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
                         [],#x->x,
                         [],#x->x,
 

@@ -5,7 +5,24 @@ using AxisKeys, SparseArrays
 
 include("functionality_tests.jl")
 
-@testset "Standalone functions" begin
+
+@testset verbose = true "Code quality (Aqua.jl)" begin
+    # Aqua.test_all(MacroModelling)
+    @testset "Compare Project.toml and test/Project.toml" Aqua.test_project_extras(MacroModelling)
+    @testset "Project.toml formatting" Aqua.test_project_toml_formatting(MacroModelling)
+    @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling)
+    @testset "Unbound type parameters" Aqua.test_unbound_args(MacroModelling)
+    @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
+    @testset "Piracy" Aqua.test_piracy(MacroModelling)
+    @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
+end
+
+# @testset verbose = true "Code formatting (JuliaFormatter.jl)" begin
+#     @test format(MacroModelling; verbose=true, overwrite=true)
+# end
+
+
+@testset verbose = true "Standalone functions" begin
     include("test_standalone_function.jl")
 end
 
