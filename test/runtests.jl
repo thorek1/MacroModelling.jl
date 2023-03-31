@@ -19,6 +19,13 @@ include("functionality_tests.jl")
     @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
 end
 
+
+@testset verbose = true "Test dynare read/write" begin
+    include("models/FS2000.jl")
+    write_to_dynare_file(m)
+    translate_mod_file("m.mod")
+end
+
 # @testset verbose = true "Code formatting (JuliaFormatter.jl)" begin
 #     @test format(MacroModelling; verbose=true, overwrite=true)
 # end
@@ -83,12 +90,6 @@ end
     functionality_test(m, plots = false)
     functionality_test(m, algorithm = :second_order, plots = false)
     # functionality_test(m, algorithm = :third_order, plots = false)
-end
-
-@testset verbose = true "Test dynare read/write" begin
-    include("models/FS2000.jl")
-    write_to_dynare_file(m)
-    translate_mod_file("m.mod")
 end
 
 @testset verbose = true "Model without shocks" begin
