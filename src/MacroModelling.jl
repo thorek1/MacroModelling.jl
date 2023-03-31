@@ -218,7 +218,7 @@ function levenberg_marquardt(f::Function,
         if ℒ.det(∇̂) < eps(Float32) #catch singular matrices before error is thrown
             ∇̄ = ℒ.svd(∇̂)
         else
-            ∇̄ = ℒ.bunchkaufmann(∇̂)
+            ∇̄ = ℒ.bunchkaufman(∇̂)
             # return current_guess, (iter, Inf, Inf, upper_bounds)
         end
 
