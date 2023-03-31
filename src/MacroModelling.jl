@@ -202,9 +202,6 @@ function levenberg_marquardt(f::Function,
 	for iter in 1:iterations
         ∇ .= ℱ.jacobian(f,current_guess)
 
-        if !all(isfinite,∇)
-            return current_guess, (iter, Inf, Inf, upper_bounds)
-        end
 
         previous_guess .= current_guess
 
@@ -214,6 +211,10 @@ function levenberg_marquardt(f::Function,
 
         ∇̂ .+= μ¹ * sum(abs2, f(current_guess))^p * ℒ.I + μ² * ℒ.Diagonal(∇̂)
 
+        if !all(isfinite,∇̂)
+            return current_guess, (iter, Inf, Inf, upper_bounds)
+        end
+        
         if ℒ.det(∇̂) < eps(Float32) #catch singular matrices before error is thrown
             return current_guess, (iter, Inf, Inf, upper_bounds)
         end
@@ -250,111 +251,6 @@ function levenberg_marquardt(f::Function,
 
     return current_guess, (iterations, largest_step, largest_residual, f(current_guess))
 end
-
-
-# function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})
-#     for i in 1:length(x)
-#         if x[i] <= lb[i]
-#             x[i] = lb[i]
-#         elseif x[i] >= ub[i]
-#             x[i] = ub[i]
-#         end
-#     end
-# end
-
-
-
-
-# function levenberg_marquardt_ar(f::Function, x::Array{T,1}, lb::Array{T,1}, ub::Array{T,1}; xtol::T = eps(), ftol::T = 1e-8,iterations::S = 100000, r::T = .5, μ::T = 1e-4, ρ::T  = 0.8) where {T <: AbstractFloat, S <: Integer}
-
-#     @assert size(lb) == size(ub) == size(x)
-#     @assert lb < ub
-
-#     # This is an implementation of Algorithm 2.1 from Amini and Rostami (2016), "Three-steps modified Levenberg-Marquardt 
-#     # method with a new line search for systems of nonlinear equations", Journal of Computational and Applied Mathematics, 
-#     # 300, pp. 30--42.
-
-#     # Modified to allow for box-constraints by Richard Dennis.
-
-#     n = length(x)
-#     xk = copy(x)
-#     xk1 = copy(x)
-#     xk2 = copy(x)
-#     xn = similar(x)
-#     z  = similar(x)
-#     s  = similar(x)
-#     jk = Array{T,2}(undef,n,n)
-#     A = similar(jk)
-#     dk = similar(xk)
-#     d1k = similar(dk)
-
-#     lenx = zero(T)
-#     lenf = zero(T)
-
-#     # Initialize solver-parameters
-#     σ1 = 0.005
-#     σ2 = 0.005
-#     γ  = eps()
-    
-# 	for iter in 1:iterations
-#         jk .= ℱ.jacobian(f,xk)
-
-#         xk_norm = ℒ.norm(f(xk))
-
-#         A .= -(jk'jk + μ * xk_norm^2 * ℒ.I)
-
-#         d1k .= A \ (jk'f(xk))
-#         xk1 .= xk + d1k
-#         minmax!(xk1, lb, ub)
-
-#         xk2 .= xk1 + A \ (jk'f(xk1))
-#         minmax!(xk2, lb, ub)
-
-#         z .= xk2 + A \ (jk'f(xk2))
-#         minmax!(z, lb, ub)
-
-#         s .= z - xk
-
-#         if !all(isfinite,s)
-#             return xk, (iter, Inf, Inf, fill(Inf,length(xk)))
-#         end
-
-
-#         if ℒ.norm(f(z)) <= ρ * xk_norm
-#             α = 1.0
-#         else
-#             if f(xk)'jk * dk > -γ
-#                 s .= xk1 - xk
-#             end
-
-#             α = 1.0
-
-#             epsilon = 1/10
-
-#             while ℒ.norm(f(xk + α * s))^2 > (1 + epsilon) * xk_norm^2 - σ1 * α^2 * ℒ.norm(s)^2 - σ2 * α^2 * xk_norm^2
-#                 α *= r
-
-#                 epsilon *= r
-#             end
-#         end
-
-#         xn .= xk + α * s
-
-#         lenx = maximum(abs, xn - xk)
-#         lenf = maximum(abs, f(xn))
-
-#         xk .= xn
-
-#         if lenx <= xtol || lenf <= ftol
-#             return xk, (iter, lenx, lenf, f(xn))
-#         end
-
-#     end
-
-#     return xk, (iterations, lenx, lenf, f(xk))
-# end
-
-
 
 
 function create_symbols_eqs!(𝓂::ℳ)
