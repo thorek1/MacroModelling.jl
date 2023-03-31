@@ -214,12 +214,15 @@ function levenberg_marquardt(f::Function,
         if !all(isfinite,∇̂)
             return current_guess, (iter, Inf, Inf, upper_bounds)
         end
-        
+
         if ℒ.det(∇̂) < eps(Float32) #catch singular matrices before error is thrown
-            return current_guess, (iter, Inf, Inf, upper_bounds)
+            ∇̄ = ℒ.svd(∇̂)
+        else
+            ∇̄ = ℒ.bunchkaufmann(∇̂)
+            # return current_guess, (iter, Inf, Inf, upper_bounds)
         end
 
-        current_guess .-= ∇̂ \ ∇' * f(current_guess)
+        current_guess .-= ∇̄ \ ∇' * f(current_guess)
 
         minmax!(current_guess, lower_bounds, upper_bounds)
 
