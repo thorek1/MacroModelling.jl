@@ -12,12 +12,18 @@ The recommended workflow is to use this function to translate a .mod-file, and t
 - `path_to_mod_file` [Type: `AbstractString`]: path including filename of the .mod-file to be translated
 """
 function translate_mod_file(path_to_mod_file::AbstractString)
-    args = [basename(path_to_mod_file), "language=julia", "json=compute"]
-    
     directory = dirname(path_to_mod_file)
 
     directory_2 = replace(basename(path_to_mod_file),r"\.mod$"=>"")
 
+    tmp = tempdir()
+
+    mkpath(tmp * "/" * directory_2)
+
+    cp(path_to_mod_file, tmp * "/" * basename(path_to_mod_file), force = true)
+
+    args = [tmp * "/" * basename(path_to_mod_file), "language=julia", "json=compute"]
+    
     if length(directory) > 0
         current_directory = pwd()
         cd(directory)
@@ -25,11 +31,13 @@ function translate_mod_file(path_to_mod_file::AbstractString)
     
     dynare_preprocessor_path = dynare_preprocessor()
 
-    mkpath(directory_2)
+    function parse_model()
+        run(pipeline(`$dynare_preprocessor_path $args`, stdout = "log.txt"))
+    end
 
-    run(pipeline(`$dynare_preprocessor_path $args`, stdout = directory_2 * "/log.txt"))
+    cd(parse_model, tmp)
 
-    son = JSON.parsefile(directory_2 * "/model/json/modfile.json");
+    son = JSON.parsefile(tmp * "/" * directory_2 * "/model/json/modfile.json");
 
     vars = [i["name"] for i in son["endogenous"]];
     shocks = [i["name"] for i in son["exogenous"]];
@@ -84,7 +92,7 @@ function translate_mod_file(path_to_mod_file::AbstractString)
         println(io,"end\n")
     end
 
-    rm(directory_2, recursive = true)
+    # rm(directory_2, recursive = true)
 
     if length(directory) > 0
         cd(current_directory)

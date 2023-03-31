@@ -19,7 +19,7 @@ jobs:
         os:
           - ubuntu-latest
           # - macOS-latest #slow
-          # - windows-latest #slow
+          - windows-latest #slow
         arch:
           - x64
           # - aarch64 #fails (wrong naming?)
