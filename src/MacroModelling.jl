@@ -1329,7 +1329,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 return sol_values, sol_minimum
             end
         end
-    # end
+    end
 
     return sol_values, sol_minimum
 end
