@@ -25,6 +25,7 @@ import NLboxsolve: nlboxsolve
 # using NamedArrays
 using AxisKeys
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
+import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
@@ -215,11 +216,10 @@ function levenberg_marquardt(f::Function,
             return current_guess, (iter, Inf, Inf, upper_bounds)
         end
 
-        if ℒ.det(∇̂) < eps(Float32) #catch singular matrices before error is thrown
+        ∇̄ = RF.lu(∇̂, check = false)
+
+        if !ℒ.issuccess(∇̄)
             ∇̄ = ℒ.svd(∇̂)
-        else
-            ∇̄ = ℒ.bunchkaufman(∇̂)
-            # return current_guess, (iter, Inf, Inf, upper_bounds)
         end
 
         current_guess .-= ∇̄ \ ∇' * f(current_guess)
