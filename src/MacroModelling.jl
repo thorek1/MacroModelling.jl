@@ -25,6 +25,7 @@ import NLboxsolve: nlboxsolve
 # using NamedArrays
 using AxisKeys
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
+import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
@@ -175,14 +176,14 @@ function levenberg_marquardt(f::Function,
     xtol::T = eps(), 
     ftol::T = 1e-8, 
     iterations::S = 200, 
-    r::T = .5, 
-    ρ::T = .1, 
-    p::T = 1.9,
-    λ¹::T = .6, 
-    λ²::T = .7,
-    λᵖ::T = .9, 
-    μ¹::T = .0001, # alternatively use .001 for hard problems (Ascari Sbordone starts at .9 and needs to go to 1 but fails)
-    μ²::T = .00001 # alternatively use .001
+    r::T = .9076, 
+    ρ::T = .026, 
+    p::T = 2.31,
+    λ¹::T = .022, 
+    λ²::T = .0085,
+    λᵖ::T = .0345, 
+    μ¹::T = .0049, # alternatively use .001 for hard problems (Ascari Sbordone starts at .9 and needs to go to 1 but fails)
+    μ²::T = .51 # alternatively use .001
     ) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
@@ -214,7 +215,7 @@ function levenberg_marquardt(f::Function,
             return current_guess, (iter, Inf, Inf, upper_bounds)
         end
 
-        ∇̄ = ℒ.lu(∇̂, check = false)
+        ∇̄ = RF.lu(∇̂, check = false)
 
         if !ℒ.issuccess(∇̄)
             ∇̄ = ℒ.svd(∇̂)

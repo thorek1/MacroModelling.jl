@@ -4,8 +4,14 @@ include("models/SW03.jl")
 include("models/GNSS_2010.jl")
 include("models/Ghironi_Melitz_2005.jl")
 include("models/SGU_2003_debt_premium.jl")
-include("models/NAWM_EAUS_2008.jl")
+include("models/NAWM_EAUS_2008.jl") # stands out
 include("models/JQ_2012_RBC.jl")
+include("models/Ireland_2004.jl")
+include("models/Caldara_et_al_2012.jl")
+include("models/Gali_Monacelli_2005_CITR.jl")
+include("models/Gali_2015_chapter_3_nonlinear.jl")
+include("models/Aguiar_Gopinath_2007.jl")
+include("models/Ascari_Sbordone_2014.jl")# stands out
 include("models/FS2000.jl")
 
 
@@ -20,9 +26,30 @@ f = OptimizationFunction((x,u)-> begin
                         :λᵖ => x[6], 
                         :μ¹ => x[7], 
                         :μ² => x[8])
+
+    outGali_Monacelli_2005_CITR = Gali_Monacelli_2005_CITR.SS_solve_func(Gali_Monacelli_2005_CITR.parameter_values, Gali_Monacelli_2005_CITR, false, false, par_inputs, x[9])
+    
+    total_iters += outGali_Monacelli_2005_CITR[2] > 1e-8 ? 1000000 : outGali_Monacelli_2005_CITR[3]
+    
+    outGali_2015_chapter_3_nonlinear = Gali_2015_chapter_3_nonlinear.SS_solve_func(Gali_2015_chapter_3_nonlinear.parameter_values, Gali_2015_chapter_3_nonlinear, false, false, par_inputs, x[9])
+    
+    total_iters += outGali_2015_chapter_3_nonlinear[2] > 1e-8 ? 1000000 : outGali_2015_chapter_3_nonlinear[3]
+
+    outAscari_Sbordone_2014 = Ascari_Sbordone_2014.SS_solve_func(Ascari_Sbordone_2014.parameter_values, Ascari_Sbordone_2014, false, false, par_inputs, x[9])
+    
+    total_iters += outAscari_Sbordone_2014[2] > 1e-8 ? 1000000 : outAscari_Sbordone_2014[3]
+
+    outAguiar_Gopinath_2007 = Aguiar_Gopinath_2007.SS_solve_func(Aguiar_Gopinath_2007.parameter_values, Aguiar_Gopinath_2007, false, false, par_inputs, x[9])
+    
+    total_iters += outAguiar_Gopinath_2007[2] > 1e-8 ? 1000000 : outAguiar_Gopinath_2007[3]
+
     outSW03 = SW03.SS_solve_func(SW03.parameter_values, SW03, false, false, par_inputs, x[9])
     
     total_iters += outSW03[2] > 1e-8 ? 1000000 : outSW03[3]
+
+    outCaldara_et_al_2012 = Caldara_et_al_2012.SS_solve_func(Caldara_et_al_2012.parameter_values, Caldara_et_al_2012, false, false, par_inputs, x[9])
+    
+    total_iters += outCaldara_et_al_2012[2] > 1e-8 ? 1000000 : outCaldara_et_al_2012[3]
 
     outGhironi_Melitz_2005 = Ghironi_Melitz_2005.SS_solve_func(Ghironi_Melitz_2005.parameter_values, Ghironi_Melitz_2005, false, false, par_inputs, x[9])
     
@@ -44,6 +71,10 @@ f = OptimizationFunction((x,u)-> begin
 
     total_iters += outJQ_2012_RBC[2] > 1e-8 ? 1000000 : outJQ_2012_RBC[3]
 
+    outIreland_2004 = Ireland_2004.SS_solve_func(Ireland_2004.parameter_values, Ireland_2004, false, false, par_inputs, x[9])
+
+    total_iters += outIreland_2004[2] > 1e-8 ? 1000000 : outIreland_2004[3]
+
     outFS2000 = m.SS_solve_func(m.parameter_values, m, false, false, par_inputs, x[9])
 
     total_iters += outFS2000[2] > 1e-8 ? 1000000 : outFS2000[3]
@@ -52,12 +83,14 @@ f = OptimizationFunction((x,u)-> begin
     return Float64(total_iters)
 end)
 
-init = xx#[.9,.05,2.33,.0166,.00925,.03333,4e-5,1e-9,.9]
+innit = [.90768,.026714,2.312,.022,.0085,.0345,0.004821,0.5106,.8128]
+innit = [.9076,.026,2.31,.022,.0085,.0345,0.0048,0.51,.81]
+innit = [.923466,.027651,2.22439,.02645,.008459,.041527,0.004649,0.5132,1.247]
 lbs = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-10.0]
 ubs = [1.0,1.0,10.0,1.0,1.0,1.0,1.0,1.0,10.0]
-prob = OptimizationProblem(f, init, [1], lb = lbs, ub = ubs)
+prob = OptimizationProblem(f, innit, [1], lb = lbs, ub = ubs)
 
-f(init,1)
+f(innit,1)
 
 
 maxt = 60
@@ -85,7 +118,7 @@ sol_Metaheuristics   =   solve(prob, WOA(),   maxtime = maxt); sol_Metaheuristic
 
 
 using OptimizationMultistartOptimization
-sol_Multi = solve(prob, MultistartOptimization.TikTak(40), NLopt.LN_SBPLX())
+sol_Multi = solve(prob, MultistartOptimization.TikTak(20), NLopt.LN_SBPLX())
 
 sol_Multi = solve(prob, NLopt.G_MLSL_LDS(), local_method =  NLopt.LN_SBPLX(), maxtime = maxt)
 
@@ -100,7 +133,7 @@ init = [0.9085377918862518
 0.8128464356325741]
 
 
-init = [ 0.9072851162787691
+innit = [ 0.9072851162787691
 0.00769189510088665
 2.312782406457346
 0.02196011356205182
@@ -109,6 +142,7 @@ init = [ 0.9072851162787691
 0.00483563092050365
 0.5096198727629895
 0.8114656217080681]
+
 sqrt(170)
 xx = sol_PRAXIS.u
 xx = sol_BOBYQA.u
@@ -133,6 +167,16 @@ GNSS_2010.SS_solve_func(GNSS_2010.parameter_values, GNSS_2010, false, true,
                         :μ² => xx[8]),xx[9])
 
 
+Ascari_Sbordone_2014.SS_solve_func(Ascari_Sbordone_2014.parameter_values, Ascari_Sbordone_2014, false, true, 
+                        Dict(:r =>  xx[1], 
+                            :ρ =>  xx[2], 
+                            :p =>  xx[3], 
+                            :λ¹ => xx[4], 
+                            :λ² => xx[5], 
+                            :λᵖ => xx[6], 
+                            :μ¹ => xx[7], 
+                            :μ² => xx[8]),xx[9])
+    
 
 
 NAWM_EAUS_2008.SS_solve_func(NAWM_EAUS_2008.parameter_values, NAWM_EAUS_2008, false, true, 
