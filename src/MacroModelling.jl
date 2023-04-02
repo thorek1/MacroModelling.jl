@@ -175,14 +175,14 @@ function levenberg_marquardt(f::Function,
     xtol::T = eps(), 
     ftol::T = 1e-8, 
     iterations::S = 200, 
-    r::T = .5, 
-    ρ::T = .1, 
-    p::T = 1.9,
-    λ¹::T = .6, 
-    λ²::T = .7,
-    λᵖ::T = .9, 
-    μ¹::T = .0001, # alternatively use .001 for hard problems (Ascari Sbordone starts at .9 and needs to go to 1 but fails)
-    μ²::T = .00001 # alternatively use .001
+    r::T = .9076, 
+    ρ::T = .026, 
+    p::T = 2.31,
+    λ¹::T = .022, 
+    λ²::T = .0085,
+    λᵖ::T = .0345, 
+    μ¹::T = .0049, # alternatively use .001 for hard problems (Ascari Sbordone starts at .9 and needs to go to 1 but fails)
+    μ²::T = .51 # alternatively use .001
     ) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
@@ -718,7 +718,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     #return sum(abs2,[$(solved_vals...),$(nnaux_linear...)])
                 #end)
             
-                push!(NSSS_solver_cache_init_tmp,fill(.9,length(sorted_vars)))
+                push!(NSSS_solver_cache_init_tmp,fill(.81,length(sorted_vars)))
 
                 # WARNING: infinite bounds are transformed to 1e12
                 lbs = []
@@ -977,7 +977,7 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Number},
     ubs::Vector{Float64};
     tol = eps(Float64),
     timeout = 120,
-    starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25],
+    starting_points = [.81, 1.2, .9, .75, 1.5, -.5, 2, .25],
     fail_fast_solvers_only = true,
     verbose = false) = ImplicitFunction(x -> block_solver(x,
                                                             n_block, 
@@ -1003,7 +1003,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         ubs::Vector{Float64};
                         tol = eps(Float64),
                         timeout = 120,
-                        starting_points = [.9, 1, 1.1, .75, 1.5, 0.0, -.5, 2, .25],
+                        starting_points = [.81, 1.2, .9, .75, 1.5, -.5, 2, .25],
                         fail_fast_solvers_only = true,
                         verbose = false)
     
@@ -1030,22 +1030,22 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
                 sol_values = max.(lbs,min.(ubs, undo_transformer(sol_new,lbs,ubs, option = transformer_option) ))
 
-                if sol_minimum > tol # try other parametrization
-                    sol_new, info = SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x, transformer_option,lbs,ubs),
-                                                transformer(previous_sol_init,lbs,ubs, option = transformer_option),
-                                                transformer(lbs,lbs,ubs, option = transformer_option),
-                                                transformer(ubs,lbs,ubs, option = transformer_option),
-                                                ρ  = 0.8^2, 
-                                                p  = 1.0,
-                                                λ¹ = 1.0, 
-                                                λ² = 0.0,
-                                                λᵖ = 1.0, 
-                                                μ¹ = 1e-5, # alternatively use .001 for hard problems (Ascari Sbordone starts at .9 and needs to go to 1 but fails)
-                                                μ² = eps())#, μ = μ, p = p)# catch e end
+                # if sol_minimum > tol # try other parametrization
+                #     sol_new, info = SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x, transformer_option,lbs,ubs),
+                #                                 transformer(previous_sol_init,lbs,ubs, option = transformer_option),
+                #                                 transformer(lbs,lbs,ubs, option = transformer_option),
+                #                                 transformer(ubs,lbs,ubs, option = transformer_option),
+                #                                 ρ  = 0.8^2, 
+                #                                 p  = 1.0,
+                #                                 λ¹ = 1.0, 
+                #                                 λ² = 0.0,
+                #                                 λᵖ = 1.0, 
+                #                                 μ¹ = 1e-5, # alternatively use .001 for hard problems (Ascari Sbordone starts at .9 and needs to go to 1 but fails)
+                #                                 μ² = eps())#, μ = μ, p = p)# catch e end
 
-                    sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
-                    sol_values = max.(lbs,min.(ubs, undo_transformer(sol_new,lbs,ubs, option = transformer_option) ))
-                end
+                #     sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
+                #     sol_values = max.(lbs,min.(ubs, undo_transformer(sol_new,lbs,ubs, option = transformer_option) ))
+                # end
 
                 if sol_minimum < tol
                     if verbose
@@ -1246,7 +1246,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     ubs::Vector{Float64};
     tol = eps(Float64),
     timeout = 120,
-    starting_points = [.9, 1, 1.1, .75, 1.5, -.5, 2, .25],
+    starting_points = [.81, 1.2, .9, .75, 1.5, -.5, 2, .25],
     fail_fast_solvers_only = true,
     verbose = false) where {Z,S,N}
 
@@ -2921,70 +2921,70 @@ end
 end
 
 
-@precompile_setup begin
-    # Putting some things in `setup` can reduce the size of the
-    # precompile file and potentially make loading faster.
-    @model FS2000 begin
-        dA[0] = exp(gam + z_e_a  *  e_a[x])
-        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-        W[0] = l[0] / n[0]
-        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-        P[0] * c[0] = m[0]
-        m[0] - 1 + d[0] = l[0]
-        e[0] = exp(z_e_a  *  e_a[x])
-        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-        gy_obs[0] = dA[0] * y[0] / y[-1]
-        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-        log_gy_obs[0] = log(gy_obs[0])
-        log_gp_obs[0] = log(gp_obs[0])
-    end
+# @precompile_setup begin
+#     # Putting some things in `setup` can reduce the size of the
+#     # precompile file and potentially make loading faster.
+#     @model FS2000 begin
+#         dA[0] = exp(gam + z_e_a  *  e_a[x])
+#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#         W[0] = l[0] / n[0]
+#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#         P[0] * c[0] = m[0]
+#         m[0] - 1 + d[0] = l[0]
+#         e[0] = exp(z_e_a  *  e_a[x])
+#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#         gy_obs[0] = dA[0] * y[0] / y[-1]
+#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#         log_gy_obs[0] = log(gy_obs[0])
+#         log_gp_obs[0] = log(gp_obs[0])
+#     end
 
-    @parameters FS2000 silent = true begin  
-        alp     = 0.356
-        bet     = 0.993
-        gam     = 0.0085
-        mst     = 1.0002
-        rho     = 0.129
-        psi     = 0.65
-        del     = 0.01
-        z_e_a   = 0.035449
-        z_e_m   = 0.008862
-    end
+#     @parameters FS2000 silent = true begin  
+#         alp     = 0.356
+#         bet     = 0.993
+#         gam     = 0.0085
+#         mst     = 1.0002
+#         rho     = 0.129
+#         psi     = 0.65
+#         del     = 0.01
+#         z_e_a   = 0.035449
+#         z_e_m   = 0.008862
+#     end
     
-    ENV["GKSwstype"] = "nul"
+#     ENV["GKSwstype"] = "nul"
 
-    @precompile_all_calls begin
-        # all calls in this block will be precompiled, regardless of whether
-        # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
+#     @precompile_all_calls begin
+#         # all calls in this block will be precompiled, regardless of whether
+#         # they belong to your package or not (on Julia 1.8 and higher)
+#         @model RBC begin
+#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#         end
 
-        @parameters RBC silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
+#         @parameters RBC silent = true precompile = true begin
+#             δ = 0.02
+#             α = 0.5
+#         end
 
-        get_SS(FS2000)
-        get_SS(FS2000, parameters = :alp => 0.36)
-        get_solution(FS2000)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)
-        plot_irf(FS2000)
-        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        plot_conditional_variance_decomposition(FS2000)
-    end
-end
+#         get_SS(FS2000)
+#         get_SS(FS2000, parameters = :alp => 0.36)
+#         get_solution(FS2000)
+#         get_solution(FS2000, parameters = :alp => 0.35)
+#         get_standard_deviation(FS2000)
+#         get_correlation(FS2000)
+#         get_autocorrelation(FS2000)
+#         get_variance_decomposition(FS2000)
+#         get_conditional_variance_decomposition(FS2000)
+#         get_irf(FS2000)
+#         plot_irf(FS2000)
+#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#         plot_conditional_variance_decomposition(FS2000)
+#     end
+# end
 
 end
