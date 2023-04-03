@@ -15,78 +15,86 @@ include("models/Ascari_Sbordone_2014.jl")# stands out
 include("models/FS2000.jl")
 
 
-
-
 using Optimization, OptimizationNLopt
 f = OptimizationFunction((x,u)-> begin 
     total_iters = 0
-    par_inputs = Dict(  :r =>  x[1], 
-                        :ρ =>  x[2], 
-                        :ρ¹ => x[3], 
-                        :p =>  x[4], 
-                        :λ¹ => x[5], 
-                        :λ² => x[6], 
-                        :λᵖ => x[7], 
-                        :μ¹ => x[8], 
-                        :μ² => x[9])
+    par_inputs = Dict(    
+    :ϕ̄  =>  x[1],
+    :ϕ̂  =>  x[2],
+    :μ̄¹ =>  x[3],
+    :μ̄² =>  x[4],
+    :p̄¹ =>  x[5],
+    :p̄² =>  x[6],
+    :ρ  =>  x[7],
+    :ρ¹ =>  x[8],
+    :ρ² =>  x[9],
+    :ρ³ =>  x[10],
+    :ν  =>  x[11],
+    :λ¹ =>  x[12],
+    :λ² =>  x[13],
+    :λ̂¹ =>  x[14],
+    :λ̂² =>  x[15]
+    )
 # println(par_inputs)
-    outAscari_Sbordone_2014 = try Ascari_Sbordone_2014.SS_solve_func(Ascari_Sbordone_2014.parameter_values, Ascari_Sbordone_2014, false, false, par_inputs, x[10]) catch end
+    outAscari_Sbordone_2014 = try Ascari_Sbordone_2014.SS_solve_func(Ascari_Sbordone_2014.parameter_values, Ascari_Sbordone_2014, false, false, par_inputs, x[end]) catch end
     
-    total_iters += outAscari_Sbordone_2014 isa Tuple{Vector{Float64}, Float64, Int64} ? outAscari_Sbordone_2014[2] > eps(Float64) ? 1000000 : outAscari_Sbordone_2014[3] : 1000000
+    total_iters += outAscari_Sbordone_2014 isa Tuple{Vector{Float64}, Float64, Int64} ? (outAscari_Sbordone_2014[2] > eps(Float64)) || !isfinite(outAscari_Sbordone_2014[2]) ? 1000000 : outAscari_Sbordone_2014[3] : 1000000
 
-    outSW03 = try SW03.SS_solve_func(SW03.parameter_values, SW03, false, false, par_inputs, x[10]) catch end
+    outSW03 = try SW03.SS_solve_func(SW03.parameter_values, SW03, false, false, par_inputs, x[end]) catch end
     
-    total_iters += outSW03 isa Tuple{Vector{Float64}, Float64, Int64} ? outSW03[2] > eps(Float64) ? 1000000 : outSW03[3] : 1000000
+    total_iters += outSW03 isa Tuple{Vector{Float64}, Float64, Int64} ? (outSW03[2] > eps(Float64)) || !isfinite(outSW03[2]) ? 1000000 : outSW03[3] : 1000000
 
-    outNAWM_EAUS_2008 = try NAWM_EAUS_2008.SS_solve_func(NAWM_EAUS_2008.parameter_values, NAWM_EAUS_2008, false, false, par_inputs, x[10]) catch end
+    outNAWM_EAUS_2008 = try NAWM_EAUS_2008.SS_solve_func(NAWM_EAUS_2008.parameter_values, NAWM_EAUS_2008, false, false, par_inputs, x[end]) catch end
 
-    total_iters += outNAWM_EAUS_2008 isa Tuple{Vector{Float64}, Float64, Int64} ? outNAWM_EAUS_2008[2] > eps(Float64) ? 1000000 : outNAWM_EAUS_2008[3] : 1000000
+    total_iters += outNAWM_EAUS_2008 isa Tuple{Vector{Float64}, Float64, Int64} ? (outNAWM_EAUS_2008[2] > eps(Float64)) || !isfinite(outNAWM_EAUS_2008[2]) ? 1000000 : outNAWM_EAUS_2008[3] : 1000000
 
-    outGali_Monacelli_2005_CITR = try Gali_Monacelli_2005_CITR.SS_solve_func(Gali_Monacelli_2005_CITR.parameter_values, Gali_Monacelli_2005_CITR, false, false, par_inputs, x[10]) catch end
+    outGali_Monacelli_2005_CITR = try Gali_Monacelli_2005_CITR.SS_solve_func(Gali_Monacelli_2005_CITR.parameter_values, Gali_Monacelli_2005_CITR, false, false, par_inputs, x[end]) catch end
     
-    total_iters += outGali_Monacelli_2005_CITR isa Tuple{Vector{Float64}, Float64, Int64} ? outGali_Monacelli_2005_CITR[2] > eps(Float64) ? 1000000 : outGali_Monacelli_2005_CITR[3] : 1000000
+    total_iters += outGali_Monacelli_2005_CITR isa Tuple{Vector{Float64}, Float64, Int64} ? (outGali_Monacelli_2005_CITR[2] > eps(Float64)) || !isfinite(outGali_Monacelli_2005_CITR[2]) ? 1000000 : outGali_Monacelli_2005_CITR[3] : 1000000
     
-    outGali_2015_chapter_3_nonlinear = try Gali_2015_chapter_3_nonlinear.SS_solve_func(Gali_2015_chapter_3_nonlinear.parameter_values, Gali_2015_chapter_3_nonlinear, false, false, par_inputs, x[10]) catch end
+    outGali_2015_chapter_3_nonlinear = try Gali_2015_chapter_3_nonlinear.SS_solve_func(Gali_2015_chapter_3_nonlinear.parameter_values, Gali_2015_chapter_3_nonlinear, false, false, par_inputs, x[end]) catch end
     
-    total_iters += outGali_2015_chapter_3_nonlinear isa Tuple{Vector{Float64}, Float64, Int64} ? outGali_2015_chapter_3_nonlinear[2] > eps(Float64) ? 1000000 : outGali_2015_chapter_3_nonlinear[3] : 1000000
+    total_iters += outGali_2015_chapter_3_nonlinear isa Tuple{Vector{Float64}, Float64, Int64} ? (outGali_2015_chapter_3_nonlinear[2] > eps(Float64)) || !isfinite(outGali_2015_chapter_3_nonlinear[2]) ? 1000000 : outGali_2015_chapter_3_nonlinear[3] : 1000000
 
-    outAguiar_Gopinath_2007 = try Aguiar_Gopinath_2007.SS_solve_func(Aguiar_Gopinath_2007.parameter_values, Aguiar_Gopinath_2007, false, false, par_inputs, x[10]) catch end
+    outAguiar_Gopinath_2007 = try Aguiar_Gopinath_2007.SS_solve_func(Aguiar_Gopinath_2007.parameter_values, Aguiar_Gopinath_2007, false, false, par_inputs, x[end]) catch end
     
-    total_iters += outAguiar_Gopinath_2007 isa Tuple{Vector{Float64}, Float64, Int64} ? outAguiar_Gopinath_2007[2] > eps(Float64) ? 1000000 : outAguiar_Gopinath_2007[3] : 1000000
+    total_iters += outAguiar_Gopinath_2007 isa Tuple{Vector{Float64}, Float64, Int64} ? (outAguiar_Gopinath_2007[2] > eps(Float64)) || !isfinite(outAguiar_Gopinath_2007[2]) ? 1000000 : outAguiar_Gopinath_2007[3] : 1000000
 
-    outCaldara_et_al_2012 = try Caldara_et_al_2012.SS_solve_func(Caldara_et_al_2012.parameter_values, Caldara_et_al_2012, false, false, par_inputs, x[10]) catch end
+    outCaldara_et_al_2012 = try Caldara_et_al_2012.SS_solve_func(Caldara_et_al_2012.parameter_values, Caldara_et_al_2012, false, false, par_inputs, x[end]) catch end
     
-    total_iters += outCaldara_et_al_2012 isa Tuple{Vector{Float64}, Float64, Int64} ? outCaldara_et_al_2012[2] > eps(Float64) ? 1000000 : outCaldara_et_al_2012[3] : 1000000
+    total_iters += outCaldara_et_al_2012 isa Tuple{Vector{Float64}, Float64, Int64} ? (outCaldara_et_al_2012[2] > eps(Float64)) || !isfinite(outCaldara_et_al_2012[2]) ? 1000000 : outCaldara_et_al_2012[3] : 1000000
 
-    outGhironi_Melitz_2005 = try Ghironi_Melitz_2005.SS_solve_func(Ghironi_Melitz_2005.parameter_values, Ghironi_Melitz_2005, false, false, par_inputs, x[10]) catch end
+    outGhironi_Melitz_2005 = try Ghironi_Melitz_2005.SS_solve_func(Ghironi_Melitz_2005.parameter_values, Ghironi_Melitz_2005, false, false, par_inputs, x[end]) catch end
     
-    total_iters += outGhironi_Melitz_2005 isa Tuple{Vector{Float64}, Float64, Int64} ? outGhironi_Melitz_2005[2] > eps(Float64) ? 1000000 : outGhironi_Melitz_2005[3] : 1000000
+    total_iters += outGhironi_Melitz_2005 isa Tuple{Vector{Float64}, Float64, Int64} ? (outGhironi_Melitz_2005[2] > eps(Float64)) || !isfinite(outGhironi_Melitz_2005[2]) ? 1000000 : outGhironi_Melitz_2005[3] : 1000000
 
-    outGNSS_2010 = try GNSS_2010.SS_solve_func(GNSS_2010.parameter_values, GNSS_2010, false, false, par_inputs, x[10]) catch end
+    outGNSS_2010 = try GNSS_2010.SS_solve_func(GNSS_2010.parameter_values, GNSS_2010, false, false, par_inputs, x[end]) catch end
 
-    total_iters += outGNSS_2010 isa Tuple{Vector{Float64}, Float64, Int64} ? outGNSS_2010[2] > eps(Float64) ? 1000000 : outGNSS_2010[3] : 1000000
+    total_iters += outGNSS_2010 isa Tuple{Vector{Float64}, Float64, Int64} ? (outGNSS_2010[2] > eps(Float64)) || !isfinite(outGNSS_2010[2]) ? 1000000 : outGNSS_2010[3] : 1000000
 
-    outSGU_2003_debt_premium = try SGU_2003_debt_premium.SS_solve_func(SGU_2003_debt_premium.parameter_values, SGU_2003_debt_premium, false, false, par_inputs, x[10]) catch end
+    outSGU_2003_debt_premium = try SGU_2003_debt_premium.SS_solve_func(SGU_2003_debt_premium.parameter_values, SGU_2003_debt_premium, false, false, par_inputs, x[end]) catch end
 
-    total_iters += outSGU_2003_debt_premium isa Tuple{Vector{Float64}, Float64, Int64} ? outSGU_2003_debt_premium[2] > eps(Float64) ? 1000000 : outSGU_2003_debt_premium[3] : 1000000
+    total_iters += outSGU_2003_debt_premium isa Tuple{Vector{Float64}, Float64, Int64} ? (outSGU_2003_debt_premium[2] > eps(Float64)) || !isfinite(outSGU_2003_debt_premium[2]) ? 1000000 : outSGU_2003_debt_premium[3] : 1000000
 
-    outJQ_2012_RBC = try JQ_2012_RBC.SS_solve_func(JQ_2012_RBC.parameter_values, JQ_2012_RBC, false, false, par_inputs, x[10]) catch end
+    outJQ_2012_RBC = try JQ_2012_RBC.SS_solve_func(JQ_2012_RBC.parameter_values, JQ_2012_RBC, false, false, par_inputs, x[end]) catch end
 
-    total_iters += outJQ_2012_RBC isa Tuple{Vector{Float64}, Float64, Int64} ? outJQ_2012_RBC[2] > eps(Float64) ? 1000000 : outJQ_2012_RBC[3] : 1000000
+    total_iters += outJQ_2012_RBC isa Tuple{Vector{Float64}, Float64, Int64} ? (outJQ_2012_RBC[2] > eps(Float64)) || !isfinite(outJQ_2012_RBC[2]) ? 1000000 : outJQ_2012_RBC[3] : 1000000
 
-    outIreland_2004 = try Ireland_2004.SS_solve_func(Ireland_2004.parameter_values, Ireland_2004, false, false, par_inputs, x[10]) catch end
+    outIreland_2004 = try Ireland_2004.SS_solve_func(Ireland_2004.parameter_values, Ireland_2004, false, false, par_inputs, x[end]) catch end
 
-    total_iters += outIreland_2004 isa Tuple{Vector{Float64}, Float64, Int64} ? outIreland_2004[2] > eps(Float64) ? 1000000 : outIreland_2004[3] : 1000000
+    total_iters += outIreland_2004 isa Tuple{Vector{Float64}, Float64, Int64} ? (outIreland_2004[2] > eps(Float64)) || !isfinite(outIreland_2004[2]) ? 1000000 : outIreland_2004[3] : 1000000
 
-    outFS2000 = try m.SS_solve_func(m.parameter_values, m, false, false, par_inputs, x[10]) catch end
+    outFS2000 = try m.SS_solve_func(m.parameter_values, m, false, false, par_inputs, x[end]) catch end
 
-    total_iters += outFS2000 isa Tuple{Vector{Float64}, Float64, Int64} ? outFS2000[2] > eps(Float64) ? 1000000 : outFS2000[3] : 1000000
+    total_iters += outFS2000 isa Tuple{Vector{Float64}, Float64, Int64} ? (outFS2000[2] > eps(Float64)) || !isfinite(outFS2000[2]) ? 1000000 : outFS2000[3] : 1000000
 
     total_iters >= 1000000 ? NaN : total_iters
     println(total_iters)
     return Float64(total_iters)
 end)
 
+
+# innit = [.95, .01, 1e-3, 1e-3, 2.0, 2.0, .026, 0.005, 0.005, 0.005, .1, .022, .0085, .022, .0085, .65]
 # innit = [.90768,.026714,2.312,.022,.0085,.0345,0.004821,0.5106,.8128]
 # innit = [.9076,.026,.005,2.31,.022,.0085,.0345,0.0048,0.51,.81]
 
@@ -94,49 +102,91 @@ end)
 
 
 
-# innit = [ 0.45567742151369633
-# 0.08590458687304815
-# 0.004361331164980951
-# 1.9319469544673178
-# 0.4764333429474666
-# 0.008382020383011873
-# 0.017055420068894822
-# 0.7400358368511979
-# 0.5742458069998582
-# 1.783195678100702]
+innit = [  0.5475112419870285
+0.2988331428474936
+0.013923721041719241
+0.06780051685553298
+0.7826125360037275
+11.293948209858987
+0.03475334155977826
+0.06959962527081097
+0.1773822586654144
+0.00602829361652491
+0.9416064188125651
+0.2642024871647881
+0.04010535645243133
+0.6125798054069717
+0.07410783267384798
+0.9999929493590685]
 
 
-innit = [0.7601771571577032
-0.0943561881214804
-0.00023002168948737015
-1.9319469544673178
-0.01799771246781962
-0.011659782477032993
-0.5595714701091195
-0.12338605153655616
-0.5739263737494038
-0.6764214269683286]
+innit = [ 0.7656375646856255
+0.359261450198468
+0.6583739036522531
+0.4872714575226943
+0.6324004207807832
+0.3236088943134699
+0.36252942193278137
+0.012067482776580632
+8.451648711586003e-6
+0.0011828942570755532
+0.9416064188125651
+0.004852936014041009
+0.001084986560298134
+0.6848084089822762
+0.09681666794853977
+0.9999929493590685]
+
+
+# innit = [1e-4
+# .5
+# .1
+# 1e-4
+# 1e-4
+# 1.0
+# 1.0]
 
 
 
-innit = [0.76015
-0.09435
-0.00023
-1.932
-0.018
-0.0116
-0.56
-0.123
-0.574
-0.675]
-lbs = [0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,-30.0]
-ubs = [1.0,1.0,1.0,20.0,1.0,1.0,1.0,1.0,1.0,30.0]
+lbs = zero(innit)
+lbs .+= eps()*2
+lbs[1] = .5
+lbs[16] = -100
+ubs = zero(innit)
+ubs .+= 1 - eps()*2
+ubs[2] = .5
+ubs[5:6] .= 100
+ubs[16] = 100
+
+
+
+innit = [ 0.76
+0.359 # here
+0.65
+0.487 #here
+0.63
+0.32
+0.36
+0.01
+1e-6
+0.001
+0.94
+0.0048 # here
+0.001
+0.685 # here
+0.09
+0.999993 #here
+]
+
+
+
+
 prob = OptimizationProblem(f, innit, [1], lb = lbs, ub = ubs)
 
 f(innit,1)
 
 
-maxt = 20 * 60
+maxt = 10 * 60
 
 
 using OptimizationBBO
@@ -209,7 +259,7 @@ innit = [ 0.9072851162787691
 innit = xx
 xx = innit
 sqrt(170)
-xx = sol_ESCH.u
+xx = sol_BBO.u
 xx = sol_PRAXIS.u
 
 innit = [0.944993042979484
@@ -224,51 +274,103 @@ innit = [0.944993042979484
 
 
 m.SS_solve_func(m.parameter_values, m, false, true, 
-                    Dict(:r =>  xx[1], 
-                    :ρ =>  xx[2], 
-                    :ρ¹ => xx[3], 
-                    :p =>  xx[4], 
-                    :λ¹ => xx[5], 
-                    :λ² => xx[6], 
-                    :λᵖ => xx[7], 
-                    :μ¹ => xx[8], 
-                    :μ² => xx[9]),xx[10])
+                    Dict(
+                        :ϕ̄  =>  xx[1],
+                        :ϕ̂  =>  xx[2],
+                        :μ̄¹ =>  xx[3],
+                        :μ̄² =>  xx[4],
+                        :p̄¹ =>  xx[5],
+                        :p̄² =>  xx[6],
+                        :ρ  =>  xx[7],
+                        :ρ¹ =>  xx[8],
+                        :ρ² =>  xx[9],
+                        :ρ³ =>  xx[10],
+                        :ν  =>  xx[11],
+                        :λ¹ =>  xx[12],
+                        :λ² =>  xx[13],
+                        :λ̂¹ =>  xx[14],
+                        :λ̂² =>  xx[15]
+                    ),xx[16])
 
 GNSS_2010.SS_solve_func(GNSS_2010.parameter_values, GNSS_2010, false, true, 
-                    Dict(:r =>  xx[1], 
-                    :ρ =>  xx[2], 
-                    :ρ¹ => xx[3], 
-                    :p =>  xx[4], 
-                    :λ¹ => xx[5], 
-                    :λ² => xx[6], 
-                    :λᵖ => xx[7], 
-                    :μ¹ => xx[8], 
-                    :μ² => xx[9]),xx[10])
+Dict(
+    :ϕ̄  =>  xx[1],
+    :ϕ̂  =>  xx[2],
+    :μ̄¹ =>  xx[3],
+    :μ̄² =>  xx[4],
+    :p̄¹ =>  xx[5],
+    :p̄² =>  xx[6],
+    :ρ  =>  xx[7],
+    :ρ¹ =>  xx[8],
+    :ρ² =>  xx[9],
+    :ρ³ =>  xx[10],
+    :ν  =>  xx[11],
+    :λ¹ =>  xx[12],
+    :λ² =>  xx[13],
+    :λ̂¹ =>  xx[14],
+    :λ̂² =>  xx[15]
+),xx[16])
 
 
 asdasd = Ascari_Sbordone_2014.SS_solve_func(Ascari_Sbordone_2014.parameter_values, Ascari_Sbordone_2014, false, true, 
-                        Dict(:r =>  xx[1], 
-                        :ρ =>  xx[2], 
-                        :ρ¹ => xx[3], 
-                        :p =>  xx[4], 
-                        :λ¹ => xx[5], 
-                        :λ² => xx[6], 
-                        :λᵖ => xx[7], 
-                        :μ¹ => xx[8], 
-                        :μ² => xx[9]),xx[10])
+Dict(
+    :ϕ̄  =>  xx[1],
+    :ϕ̂  =>  xx[2],
+    :μ̄¹ =>  xx[3],
+    :μ̄² =>  xx[4],
+    :p̄¹ =>  xx[5],
+    :p̄² =>  xx[6],
+    :ρ  =>  xx[7],
+    :ρ¹ =>  xx[8],
+    :ρ² =>  xx[9],
+    :ρ³ =>  xx[10],
+    :ν  =>  xx[11],
+    :λ¹ =>  xx[12],
+    :λ² =>  xx[13],
+    :λ̂¹ =>  xx[14],
+    :λ̂² =>  xx[15]
+),xx[16])
    typeof(asdasd) 
 
 
+   SW03.SS_solve_func(SW03.parameter_values, SW03, false, true, 
+   Dict(
+       :ϕ̄  =>  xx[1],
+       :ϕ̂  =>  xx[2],
+       :μ̄¹ =>  xx[3],
+       :μ̄² =>  xx[4],
+       :p̄¹ =>  xx[5],
+       :p̄² =>  xx[6],
+       :ρ  =>  xx[7],
+       :ρ¹ =>  xx[8],
+       :ρ² =>  xx[9],
+       :ρ³ =>  xx[10],
+       :ν  =>  xx[11],
+       :λ¹ =>  xx[12],
+       :λ² =>  xx[13],
+       :λ̂¹ =>  xx[14],
+       :λ̂² =>  xx[15]
+   ),xx[16])
+    
+   
 NAWM_EAUS_2008.SS_solve_func(NAWM_EAUS_2008.parameter_values, NAWM_EAUS_2008, false, true, 
-                        Dict(:r =>  xx[1], 
-                        :ρ =>  xx[2], 
-                        :ρ¹ => xx[3], 
-                        :p =>  xx[4], 
-                        :λ¹ => xx[5], 
-                        :λ² => xx[6], 
-                        :λᵖ => xx[7], 
-                        :μ¹ => xx[8], 
-                        :μ² => xx[9]),xx[10])
+Dict(
+    :ϕ̄  =>  xx[1],
+    :ϕ̂  =>  xx[2],
+    :μ̄¹ =>  xx[3],
+    :μ̄² =>  xx[4],
+    :p̄¹ =>  xx[5],
+    :p̄² =>  xx[6],
+    :ρ  =>  xx[7],
+    :ρ¹ =>  xx[8],
+    :ρ² =>  xx[9],
+    :ρ³ =>  xx[10],
+    :ν  =>  xx[11],
+    :λ¹ =>  xx[12],
+    :λ² =>  xx[13],
+    :λ̂¹ =>  xx[14],
+    :λ̂² =>  xx[15]
+),xx[16])
     
 prob = OptimizationProblem(f, 
 transformer(previous_sol_init,lbs,ubs, option = transformer_option), 

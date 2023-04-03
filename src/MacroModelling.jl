@@ -168,46 +168,73 @@ function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})
     end
 end
 
+# function line_search(previous_guess, f, ∇, guess_update, lb, ub; σ = 1e-4, ϕ̄ = .5, ϕ̂ = .1)
+#     # Quadratic backtracking line search
+#     α = 1.0
 
-function line_search(f, previous_guess, ∇, guess_update, lb, ub)
-    # Armijo line search with projected gradient
-    γ = 0.1  # sufficient decrease parameter
-    ρ = 0.1  # curvature parameter
-    p = 2.0  # curvature parameter
-    β = 0.5  # step size reduction factor
-    σ = 1e-4  # backtracking parameter
+#     current_guess = previous_guess + α * guess_update
+#     minmax!(current_guess, lb, ub)
 
-    current_guess = previous_guess + guess_update
-    box_projection!(current_guess, lb, ub)
+#     g = f(previous_guess)' * ∇ * guess_update
+#     P = sum(abs2, f(previous_guess))
+#     P̋ = sum(abs2, f(current_guess))
 
-    if sum(abs2,f(current_guess)) <= γ * sum(abs2,f(previous_guess))
-        return 1.0  # step size is 1.0
-    else
-        g = ∇' * f(previous_guess)
-        if g' * guess_update <= -ρ * sum(abs2,guess_update)^p
-            # Armijo line search
-            α = 1.0
-            while sum(abs2,f(previous_guess + α * guess_update)) > sum(abs2,f(previous_guess)) + 2 * α * β * g' * guess_update
-                α = β * α
-            end
-            current_guess .= previous_guess + α * guess_update
-            box_projection!(current_guess, lb, ub)
-            return α
-        else
-            # Backtracking line search with strong Wolfe conditions
-            α = 1.0
-            epsilon = 1 / 10
-            while true
-                if sum(abs2,f(previous_guess + α * guess_update)) > (1 + epsilon) * sum(abs2,f(previous_guess)) - σ1 * α^2 * sum(abs2,guess_update) - σ2 * α^2 * sum(abs2,f(previous_guess))
-                    α = α / 2
-                    epsilon = 2 * epsilon
-                else
-                    return α
-                end
-            end
-        end
-    end
-end
+
+#     while P̋ > P + σ * α * g
+#         α̂ = -g * α^2 / (2 * (P̋ - P - g * α))
+
+#         α̂ = min(α̂, ϕ̄ * α)
+#         α = max(α̂, ϕ̂ * α)
+
+#         current_guess .= previous_guess + α * guess_update
+#         minmax!(current_guess, lb, ub)
+
+#         P̋ = sum(abs2,f(current_guess))
+#     end
+
+#     return current_guess
+# end
+
+
+# function line_search(f, previous_guess, ∇, guess_update, lb, ub)
+#     # Armijo line search with projected gradient
+#     γ = 0.1  # sufficient decrease parameter
+#     ρ = 0.1  # curvature parameter
+#     p = 2.0  # curvature parameter
+#     β = 0.5  # step size reduction factor
+#     σ = 1e-4  # backtracking parameter
+
+#     current_guess = previous_guess + guess_update
+#     box_projection!(current_guess, lb, ub)
+
+#     if sum(abs2,f(current_guess)) <= γ * sum(abs2,f(previous_guess))
+#         return 1.0  # step size is 1.0
+#     else
+#         g = ∇' * f(previous_guess)
+#         if g' * guess_update <= -ρ * sum(abs2,guess_update)^p
+#             # Armijo line search
+#             α = 1.0
+#             while sum(abs2,f(previous_guess + α * guess_update)) > sum(abs2,f(previous_guess)) + 2 * α * β * g' * guess_update
+#                 α = β * α
+#             end
+#             current_guess .= previous_guess + α * guess_update
+#             box_projection!(current_guess, lb, ub)
+#             return α
+#         else
+#             # Backtracking line search with strong Wolfe conditions
+#             α = 1.0
+#             epsilon = 1 / 10
+#             while true
+#                 if sum(abs2,f(previous_guess + α * guess_update)) > (1 + epsilon) * sum(abs2,f(previous_guess)) - σ1 * α^2 * sum(abs2,guess_update) - σ2 * α^2 * sum(abs2,f(previous_guess))
+#                     α = α / 2
+#                     epsilon = 2 * epsilon
+#                 else
+#                     return α
+#                 end
+#             end
+#         end
+#     end
+# end
 
 
 function levenberg_marquardt(f::Function, 
@@ -217,38 +244,46 @@ function levenberg_marquardt(f::Function,
     xtol::T = eps(), 
     ftol::T = 1e-8, 
     iterations::S = 250, 
-    r::T = .9076, 
-    ρ::T = .026, 
-    ρ¹::T = 0.005,
-    p¹::T = 2.31,
-    p²::T = 2.31,
-    λ¹::T = .022, 
-    λ²::T = .0085,
-    λᵖ::T = .0345, 
-    μ¹::T = .0048, # alternatively use .001 for hard problems (Ascari Sbordone starts at .9 and needs to go to 1 but fails)
-    μ²::T = .51 # alternatively use .001
+    ϕ̄::T    = 0.76,
+    ϕ̂::T    = 0.359,
+    μ̄¹::T   = 0.65,
+    μ̄²::T   = 0.487,
+    p̄¹::T   = 0.63,
+    p̄²::T   = 0.32,
+    ρ::T    = 0.36,
+    ρ¹::T   = 0.01,
+    ρ²::T   = 1e-6,
+    ρ³::T   = 0.001,
+    ν::T    = 0.94,
+    λ¹::T   = 0.0048,
+    λ²::T   = 0.001,
+    λ̂¹::T   = 0.685,
+    λ̂²::T   = 0.09
     ) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
     @assert lower_bounds < upper_bounds
-# println(initial_guess)
+    
     current_guess = copy(initial_guess)
     previous_guess = similar(current_guess)
     guess_update = similar(current_guess)
 
     ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
     ∇̂ = similar(∇)
-    # Â = similar(∇)
 
     largest_step = zero(T)
     largest_residual = zero(T)
+
+    μ¹ = μ̄¹
+    μ² = μ̄²
+
+    p¹ = p̄¹
+    p² = p̄²
 
 	for iter in 1:iterations
         ∇ .= ℱ.jacobian(f,current_guess)
 
         previous_guess .= current_guess
-
-        ḡ = sum(abs2,f(previous_guess))
 
         ∇̂ .= ∇' * ∇
 
@@ -270,22 +305,42 @@ function levenberg_marquardt(f::Function,
 
         guess_update .= current_guess - previous_guess
 
-
+        g = f(previous_guess)' * ∇ * guess_update
+        U = sum(abs2,guess_update)
+        P = sum(abs2, f(previous_guess))
+        P̋ = sum(abs2, f(current_guess))
+        
         α = 1.0
 
-        if sum(abs2,f(previous_guess + α * guess_update)) > ρ * ḡ 
-            while sum(abs2,f(previous_guess + α * guess_update)) > ḡ  - ρ¹ * α^2 * sum(abs2,guess_update)
-                α *= r
-            end
-            μ¹ = μ¹ * λ¹ #max(μ¹ * λ¹, 1e-7)
-            μ² = μ² * λ² #max(μ² * λ², 1e-7)
-            p = λᵖ * p + (1 - λᵖ)
-        else
-            μ¹ = min(μ¹ / λ¹, 1e-3)
-            μ² = min(μ² / λ², 1e-3)
-        end
+        ν̂ = ν
+        
+        if P̋ > ρ * P 
+            while P̋ > (1 + ν̂ - ρ¹ * α^2) * P + ρ² * α^2 * g - ρ³ * α^2 * U
+                # Quadratic backtracking line search
+                α̂ = -g * α^2 / (2 * (P̋ - P - g * α))
+                
+                α̂ = min(α̂, ϕ̄ * α)
+                α = max(α̂, ϕ̂ * α)
 
-        current_guess .= previous_guess + α * guess_update
+                current_guess .= previous_guess + α * guess_update
+
+                P̋ = sum(abs2,f(current_guess))
+
+                ν̂ *= α
+            end
+
+            μ¹ *= λ¹
+            μ² *= λ²
+
+            p¹ *= λ̂¹
+            p² *= λ̂²
+        else
+            μ¹ = min(μ¹ / λ¹, μ̄¹)
+            μ² = min(μ² / λ², μ̄²)
+
+            p¹ = min(p¹ / λ̂¹, p̄¹)
+            p² = min(p² / λ̂², p̄²)
+        end
 
         largest_step = maximum(abs, previous_guess - current_guess)
         largest_residual = maximum(abs, f(current_guess))
@@ -1024,7 +1079,7 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Number},
     ubs::Vector{Float64};
     tol = eps(Float64),
     timeout = 120,
-    starting_points = [.81],#, 1, 1.1, .75, 1.5, -.5, 2, .25],
+    starting_points = [0.999993],#, 1, 1.1, .75, 1.5, -.5, 2, .25],
     fail_fast_solvers_only = true,
     verbose = false,
     solver_parameters = Dict()) = ImplicitFunction(x -> block_solver(x,
@@ -1052,7 +1107,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         ubs::Vector{Float64};
                         tol = eps(Float64),
                         timeout = 120,
-                        starting_points = [.81],#, 1, 1.1, .75, 1.5, 0.0, -.5, 2, .25],
+                        starting_points = [0.999993],#, 1, 1.1, .75, 1.5, 0.0, -.5, 2, .25],
                         fail_fast_solvers_only = true,
                         verbose = false,
                         solver_parameters = Dict())
@@ -1376,7 +1431,7 @@ function solve!(𝓂::ℳ;
 
     if dynamics
         if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
-            SS_and_pars, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [.81]) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [0.999993]) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
@@ -1403,7 +1458,7 @@ function solve!(𝓂::ℳ;
         end
         
         if any([:second_order, :third_order] .∈ ([algorithm],)) && :second_order ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [.81]) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [0.999993]) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
                 ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -1454,7 +1509,7 @@ function solve!(𝓂::ℳ;
         end
         
         if :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [.81]) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [0.999993]) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
                 ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -1512,7 +1567,7 @@ function solve!(𝓂::ℳ;
         end
         
         if any([:quadratic_iteration, :binder_pesaran] .∈ ([algorithm],)) && any([:quadratic_iteration, :binder_pesaran] .∈ (𝓂.solution.outdated_algorithms,))
-            SS_and_pars, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [.81]) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [0.999993]) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
@@ -1529,7 +1584,7 @@ function solve!(𝓂::ℳ;
         end
 
         if :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [.81]) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [0.999993]) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
@@ -1956,13 +2011,13 @@ end
 
 function SS_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [.81])
+    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [0.999993])
 end
 
 
 function SS_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
     𝓂.parameter_values[parameters_idx] = parameters
-    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [.81])
+    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [0.999993])
 end
 
 
@@ -2768,7 +2823,7 @@ end
 
 
 function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ; verbose = false)
-    SS_and_pars, solution_error, iter = 𝓂.SS_solve_func(parameters, 𝓂, false, verbose, Dict(), [.81])
+    SS_and_pars, solution_error, iter = 𝓂.SS_solve_func(parameters, 𝓂, false, verbose, Dict(), [0.999993])
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
@@ -2851,7 +2906,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         end
     end
 
-    SS_and_pars, solution_error, iter = 𝓂.SS_solve_func(parameters, 𝓂, true, verbose, Dict(), [.81])
+    SS_and_pars, solution_error, iter = 𝓂.SS_solve_func(parameters, 𝓂, true, verbose, Dict(), [0.999993])
     
     if solution_error > tol || isnan(solution_error)
         return -Inf
