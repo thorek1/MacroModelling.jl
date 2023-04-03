@@ -174,44 +174,52 @@ function levenberg_marquardt(f::Function,
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
     xtol::T = eps(), 
-    ftol::T = 1e-10, 
-    iterations::S = 200, 
-    r::T = 0.76015, 
-    ρ::T = 0.09435, 
-    ρ¹::T = 0.00023,
-    p::T = 1.932,
-    λ¹::T = 0.018, 
-    λ²::T = 0.0116,
-    λᵖ::T = 0.56, 
-    μ¹::T = 0.123, # alternatively use .001 for hard problems (Ascari Sbordone starts at .9 and needs to go to 1 but fails)
-    μ²::T = 0.574 # alternatively use .001
+    ftol::T = 1e-8, 
+    iterations::S = 250, 
+    ϕ̄::T    = 0.76,
+    ϕ̂::T    = 0.359,
+    μ̄¹::T   = 0.65,
+    μ̄²::T   = 0.487,
+    p̄¹::T   = 0.63,
+    p̄²::T   = 0.32,
+    ρ::T    = 0.36,
+    ρ¹::T   = 0.01,
+    ρ²::T   = 1e-6,
+    ρ³::T   = 0.001,
+    ν::T    = 0.94,
+    λ¹::T   = 0.0048,
+    λ²::T   = 0.001,
+    λ̂¹::T   = 0.685,
+    λ̂²::T   = 0.09
     ) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
     @assert lower_bounds < upper_bounds
-
+    
     current_guess = copy(initial_guess)
     previous_guess = similar(current_guess)
     guess_update = similar(current_guess)
 
     ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
     ∇̂ = similar(∇)
-    # Â = similar(∇)
 
     largest_step = zero(T)
     largest_residual = zero(T)
 
+    μ¹ = μ̄¹
+    μ² = μ̄²
+
+    p¹ = p̄¹
+    p² = p̄²
+
 	for iter in 1:iterations
         ∇ .= ℱ.jacobian(f,current_guess)
 
-
         previous_guess .= current_guess
-
-        ḡ = sum(abs2,f(previous_guess))
 
         ∇̂ .= ∇' * ∇
 
-        ∇̂ .+= μ¹ * sum(abs2, f(current_guess))^p * ℒ.I + μ² * ℒ.Diagonal(∇̂)
+        ∇̂ .+= μ¹ * sum(abs2, f(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
 
         if !all(isfinite,∇̂)
             return current_guess, (iter, Inf, Inf, upper_bounds)
@@ -229,27 +237,47 @@ function levenberg_marquardt(f::Function,
 
         guess_update .= current_guess - previous_guess
 
+        g = f(previous_guess)' * ∇ * guess_update
+        U = sum(abs2,guess_update)
+        P = sum(abs2, f(previous_guess))
+        P̋ = sum(abs2, f(current_guess))
+        
         α = 1.0
 
-        if sum(abs2,f(previous_guess + α * guess_update)) > ρ * ḡ 
-            while sum(abs2,f(previous_guess + α * guess_update)) > ḡ  - ρ¹ * α^2 * sum(abs2,guess_update)
-                α *= r
-            end
-            μ¹ = μ¹ * λ¹ #max(μ¹ * λ¹, 1e-7)
-            μ² = μ² * λ² #max(μ² * λ², 1e-7)
-            p = λᵖ * p + (1 - λᵖ)
-        else
-            μ¹ = min(μ¹ / λ¹, 1e-3)
-            μ² = min(μ² / λ², 1e-3)
-        end
+        ν̂ = ν
+        
+        if P̋ > ρ * P 
+            while P̋ > (1 + ν̂ - ρ¹ * α^2) * P + ρ² * α^2 * g - ρ³ * α^2 * U
+                # Quadratic backtracking line search
+                α̂ = -g * α^2 / (2 * (P̋ - P - g * α))
+                
+                α̂ = min(α̂, ϕ̄ * α)
+                α = max(α̂, ϕ̂ * α)
 
-        current_guess .= previous_guess + α * guess_update
+                current_guess .= previous_guess + α * guess_update
+
+                P̋ = sum(abs2,f(current_guess))
+
+                ν̂ *= α
+            end
+
+            μ¹ *= λ¹
+            μ² *= λ²
+
+            p¹ *= λ̂¹
+            p² *= λ̂²
+        else
+            μ¹ = min(μ¹ / λ¹, μ̄¹)
+            μ² = min(μ² / λ², μ̄²)
+
+            p¹ = min(p¹ / λ̂¹, p̄¹)
+            p² = min(p² / λ̂², p̄²)
+        end
 
         largest_step = maximum(abs, previous_guess - current_guess)
         largest_residual = maximum(abs, f(current_guess))
 
         if largest_step <= xtol || largest_residual <= ftol
-            # println(iter)
             return current_guess, (iter, largest_step, largest_residual, f(current_guess))
         end
     end
@@ -720,7 +748,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     #return sum(abs2,[$(solved_vals...),$(nnaux_linear...)])
                 #end)
             
-                push!(NSSS_solver_cache_init_tmp,fill(0.675,length(sorted_vars)))
+                push!(NSSS_solver_cache_init_tmp,fill(0.999993,length(sorted_vars)))
 
                 # WARNING: infinite bounds are transformed to 1e12
                 lbs = []
@@ -979,7 +1007,7 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Number},
     ubs::Vector{Float64};
     tol = eps(Float64),
     timeout = 120,
-    starting_points = [0.675, 1.2, .9, .75, 1.5, -.5, 2, .25],
+    starting_points = [0.999993, 1.2, .9, .75, 1.5, -.5, 2, .25],
     fail_fast_solvers_only = true,
     verbose = false) = ImplicitFunction(x -> block_solver(x,
                                                             n_block, 
@@ -1005,7 +1033,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         ubs::Vector{Float64};
                         tol = eps(Float64),
                         timeout = 120,
-                        starting_points = [0.675, 1.2, .9, .75, 1.5, -.5, 2, .25],
+                        starting_points = [0.999993, 1.2, .9, .75, 1.5, -.5, 2, .25],
                         fail_fast_solvers_only = true,
                         verbose = false)
     
@@ -1055,7 +1083,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     end
                 else
                     # if the previous non-converged best guess as a starting point does not work, try the standard starting points
-                    for starting_point in [0.675,1.22]
+                    for starting_point in [0.999993,1.22]
                         if sol_minimum > tol
                             standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
                             standard_inits[ubs .<= 1] .= .1 # capture cases where part of values is small
@@ -1255,7 +1283,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     ubs::Vector{Float64};
     tol = eps(Float64),
     timeout = 120,
-    starting_points = [0.675, 1.2, .9, .75, 1.5, -.5, 2, .25],
+    starting_points = [0.999993, 1.2, .9, .75, 1.5, -.5, 2, .25],
     fail_fast_solvers_only = true,
     verbose = false) where {Z,S,N}
 
