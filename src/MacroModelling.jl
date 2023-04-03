@@ -174,16 +174,17 @@ function levenberg_marquardt(f::Function,
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
     xtol::T = eps(), 
-    ftol::T = 1e-8, 
+    ftol::T = 1e-10, 
     iterations::S = 200, 
-    r::T = .9076, 
-    ρ::T = .026, 
-    p::T = 2.31,
-    λ¹::T = .022, 
-    λ²::T = .0085,
-    λᵖ::T = .0345, 
-    μ¹::T = .0049, # alternatively use .001 for hard problems (Ascari Sbordone starts at .9 and needs to go to 1 but fails)
-    μ²::T = .51 # alternatively use .001
+    r::T = 0.76015, 
+    ρ::T = 0.09435, 
+    ρ¹::T = 0.00023,
+    p::T = 1.932,
+    λ¹::T = 0.018, 
+    λ²::T = 0.0116,
+    λᵖ::T = 0.56, 
+    μ¹::T = 0.123, # alternatively use .001 for hard problems (Ascari Sbordone starts at .9 and needs to go to 1 but fails)
+    μ²::T = 0.574 # alternatively use .001
     ) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
@@ -231,7 +232,7 @@ function levenberg_marquardt(f::Function,
         α = 1.0
 
         if sum(abs2,f(previous_guess + α * guess_update)) > ρ * ḡ 
-            while sum(abs2,f(previous_guess + α * guess_update)) > ḡ  - 0.005 * α^2 * sum(abs2,guess_update)
+            while sum(abs2,f(previous_guess + α * guess_update)) > ḡ  - ρ¹ * α^2 * sum(abs2,guess_update)
                 α *= r
             end
             μ¹ = μ¹ * λ¹ #max(μ¹ * λ¹, 1e-7)
@@ -719,7 +720,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     #return sum(abs2,[$(solved_vals...),$(nnaux_linear...)])
                 #end)
             
-                push!(NSSS_solver_cache_init_tmp,fill(.81,length(sorted_vars)))
+                push!(NSSS_solver_cache_init_tmp,fill(0.675,length(sorted_vars)))
 
                 # WARNING: infinite bounds are transformed to 1e12
                 lbs = []
@@ -978,7 +979,7 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Number},
     ubs::Vector{Float64};
     tol = eps(Float64),
     timeout = 120,
-    starting_points = [.81, 1.2, .9, .75, 1.5, -.5, 2, .25],
+    starting_points = [0.675, 1.2, .9, .75, 1.5, -.5, 2, .25],
     fail_fast_solvers_only = true,
     verbose = false) = ImplicitFunction(x -> block_solver(x,
                                                             n_block, 
@@ -1004,7 +1005,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         ubs::Vector{Float64};
                         tol = eps(Float64),
                         timeout = 120,
-                        starting_points = [.81, 1.2, .9, .75, 1.5, -.5, 2, .25],
+                        starting_points = [0.675, 1.2, .9, .75, 1.5, -.5, 2, .25],
                         fail_fast_solvers_only = true,
                         verbose = false)
     
@@ -1017,7 +1018,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     # try modified LM to solve hard SS problems but not for estimation
     # if !fail_fast_solvers_only
-        for transformer_option ∈ [2]# works with NAWM #0:2 #
+        for transformer_option ∈ [1]# works with NAWM #0:2 #
             if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
                 SS_optimizer = levenberg_marquardt
 
@@ -1054,7 +1055,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     end
                 else
                     # if the previous non-converged best guess as a starting point does not work, try the standard starting points
-                    for starting_point in [.81,1.22]
+                    for starting_point in [0.675,1.22]
                         if sol_minimum > tol
                             standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
                             standard_inits[ubs .<= 1] .= .1 # capture cases where part of values is small
@@ -1254,7 +1255,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     ubs::Vector{Float64};
     tol = eps(Float64),
     timeout = 120,
-    starting_points = [.81, 1.2, .9, .75, 1.5, -.5, 2, .25],
+    starting_points = [0.675, 1.2, .9, .75, 1.5, -.5, 2, .25],
     fail_fast_solvers_only = true,
     verbose = false) where {Z,S,N}
 
