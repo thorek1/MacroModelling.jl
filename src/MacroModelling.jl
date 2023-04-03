@@ -249,6 +249,7 @@ function levenberg_marquardt(f::Function,
         if P̋ > ρ * P 
             while P̋ > (1 + ν̂ - ρ¹ * α^2) * P + ρ² * α^2 * g - ρ³ * α^2 * U
                 # Quadratic backtracking line search
+                println("linesearch")
                 α̂ = -g * α^2 / (2 * (P̋ - P - g * α))
                 
                 α̂ = min(α̂, ϕ̄ * α)
