@@ -176,21 +176,21 @@ function levenberg_marquardt(f::Function,
     xtol::T = eps(), 
     ftol::T = 1e-8, 
     iterations::S = 250, 
-    ϕ̄::T    = 0.76,
-    ϕ̂::T    = 0.359,
-    μ̄¹::T   = 0.65,
-    μ̄²::T   = 0.487,
-    p̄¹::T   = 0.63,
-    p̄²::T   = 0.32,
-    ρ::T    = 0.36,
-    ρ¹::T   = 0.01,
-    ρ²::T   = 1e-6,
-    ρ³::T   = 0.001,
-    ν::T    = 0.94,
-    λ¹::T   = 0.0048,
-    λ²::T   = 0.001,
-    λ̂¹::T   = 0.685,
-    λ̂²::T   = 0.09
+    ϕ̄::T    =         0.8887,
+    ϕ̂::T    =         0.499,
+    μ̄¹::T   =         0.0332,
+    μ̄²::T   =         0.095,
+    p̄¹::T   =         2.443,
+    p̄²::T   =         1.5,
+    ρ::T    =         0.032,
+    ρ¹::T   =         0.001,
+    ρ²::T   =         0.001,
+    ρ³::T   =         1e-7,
+    ν::T    =         0.94,
+    λ¹::T   =         0.1427,
+    λ²::T   =         0.0835,
+    λ̂¹::T   =         0.9172,
+    λ̂²::T   =         0.16
     ) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
@@ -748,7 +748,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     #return sum(abs2,[$(solved_vals...),$(nnaux_linear...)])
                 #end)
             
-                push!(NSSS_solver_cache_init_tmp,fill(0.999993,length(sorted_vars)))
+                push!(NSSS_solver_cache_init_tmp,fill(0.99778,length(sorted_vars)))
 
                 # WARNING: infinite bounds are transformed to 1e12
                 lbs = []
@@ -1007,7 +1007,7 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Number},
     ubs::Vector{Float64};
     tol = eps(Float64),
     timeout = 120,
-    starting_points = [0.999993, 1.2, .9, .75, 1.5, -.5, 2, .25],
+    starting_points = [0.99778, 1.2, .9, .75, 1.5, -.5, 2, .25],
     fail_fast_solvers_only = true,
     verbose = false) = ImplicitFunction(x -> block_solver(x,
                                                             n_block, 
@@ -1033,7 +1033,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         ubs::Vector{Float64};
                         tol = eps(Float64),
                         timeout = 120,
-                        starting_points = [0.999993, 1.2, .9, .75, 1.5, -.5, 2, .25],
+                        starting_points = [0.99778, 1.2, .9, .75, 1.5, -.5, 2, .25],
                         fail_fast_solvers_only = true,
                         verbose = false)
     
@@ -1083,7 +1083,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     end
                 else
                     # if the previous non-converged best guess as a starting point does not work, try the standard starting points
-                    for starting_point in [0.999993,1.22]
+                    for starting_point in [0.99778,1.22]
                         if sol_minimum > tol
                             standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
                             standard_inits[ubs .<= 1] .= .1 # capture cases where part of values is small
@@ -1283,7 +1283,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     ubs::Vector{Float64};
     tol = eps(Float64),
     timeout = 120,
-    starting_points = [0.999993, 1.2, .9, .75, 1.5, -.5, 2, .25],
+    starting_points = [0.99778, 1.2, .9, .75, 1.5, -.5, 2, .25],
     fail_fast_solvers_only = true,
     verbose = false) where {Z,S,N}
 
