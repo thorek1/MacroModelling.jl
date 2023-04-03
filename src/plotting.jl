@@ -101,7 +101,7 @@ function plot_irf(𝓂::ℳ;
 
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
 
-    NSSS, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [0.999993]) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [0.99778]) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
@@ -906,7 +906,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
 
-    NSSS, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [0.999993]) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, solution_error, iter = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose, Dict(), [0.99778]) : (𝓂.solution.non_stochastic_steady_state, eps())
     
     var_names = axiskeys(Y,1)   
 
