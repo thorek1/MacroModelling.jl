@@ -868,16 +868,16 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
     push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [params_scaled_flt] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp...,params_scaled_flt] end))
     
-    push!(SS_solve_func,:(current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt) / max(sum(abs2,𝓂.NSSS_solver_cache[end][end]), sum(abs2,params_flt))))
+    push!(SS_solve_func,:(current_best = sqrt(sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt))))# / max(sum(abs2,𝓂.NSSS_solver_cache[end][end]), sum(abs2,params_flt))))
 
     push!(SS_solve_func,:(for pars in 𝓂.NSSS_solver_cache
-                                latest = sum(abs2,pars[end] - params_flt) / max(sum(abs2,pars[end]), sum(abs2,params_flt))
+                                latest = sqrt(sum(abs2,pars[end] - params_flt))# / max(sum(abs2,pars[end]), sum(abs,params_flt))
                                 if latest <= current_best
                                     current_best = latest
                                 end
                             end))
 
-    push!(SS_solve_func,:(if (current_best > eps(Float32)) && (solution_error < eps(Float64))
+    push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < eps(Float64))
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
                                 solved_scale = scale
                             end))
