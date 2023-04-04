@@ -1,7 +1,5 @@
 # Translated from: https://archives.dynare.org/documentation/examples.html
 
-m = nothing
-
 @model m begin
     dA[0] = exp(gam + z_e_a  *  e_a[x])
 

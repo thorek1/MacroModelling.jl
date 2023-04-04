@@ -1,6 +1,5 @@
-m = nothing
 
-@model m begin
+@model SW07 begin
     a[0] = calfa * rkf[0] + (1 - calfa) * (wf[0])
 
     zcapf[0] = (1 / (czcap / (1 - czcap))) * rkf[0]
@@ -84,7 +83,7 @@ m = nothing
 end
 
 
-@parameters m verbose = true begin  
+@parameters SW07 verbose = true begin  
     ctou=.025
     clandaw=1.5
     cg=0.18
