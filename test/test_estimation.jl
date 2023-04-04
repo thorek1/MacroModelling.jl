@@ -1,7 +1,7 @@
 using MacroModelling
 import Turing
 import Turing: Normal, Beta, InverseGamma, NUTS, sample, logpdf
-using Random, CSV, DataFrames, Optimization, OptimizationNLopt, OptimizationOptimisers, MCMCChains, AxisKeys
+using Random, CSV, DataFrames, Optim, OptimizationOptimisers, MCMCChains, AxisKeys
 import DynamicPPL: logjoint
 
 include("models/FS2000.jl")
@@ -98,8 +98,8 @@ bounds_index_in_bounds = indexin(intersect(FS2000.bounded_vars,FS2000.parameters
 lbs[bounds_index_in_pars] = max.(-1e12,FS2000.lower_bounds[bounds_index_in_bounds]);
 ubs[bounds_index_in_pars] = min.(1e12,FS2000.upper_bounds[bounds_index_in_bounds]);
 
-prob = OptimizationProblem(f, min.(max.(sol.u,lbs),ubs), [], lb = lbs, ub = ubs);
-sol = solve(prob, NLopt.LD_LBFGS())
+sol = Optim.optimize(calculate_posterior_loglikelihood, lbs, ubs, min.(max.(sol.u,lbs),ubs), Optim.Fminbox(LBFGS()); autodiff = :forward)
+
 # println(sol.minimum)
 
 
