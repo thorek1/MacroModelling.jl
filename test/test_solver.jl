@@ -125,6 +125,7 @@ lbs .+= eps()*2
 lbs[16] = -100
 ubs = zero(innit)
 ubs .+= 1 - eps()*2
+ubs[1:2] .= 4
 ubs[5:6] .= 100
 ubs[16] = 100
 
@@ -133,7 +134,7 @@ prob = OptimizationProblem(f, innit, [1], lb = lbs, ub = ubs)
 f(innit,1)
 
 
-maxt = 10 * 60
+maxt = 20 * 60
 
 
 using OptimizationBBO
@@ -218,6 +219,26 @@ innit = [0.944993042979484
 0.4443797645968635
 0.7411904946987461
 1.6576262439641378]
+
+
+SW07.SS_solve_func(SW07.parameter_values, SW07, false, true, 
+                    Dict(
+                        :ϕ̄  =>  xx[1],
+                        :ϕ̂  =>  xx[2],
+                        :μ̄¹ =>  xx[3],
+                        :μ̄² =>  xx[4],
+                        :p̄¹ =>  xx[5],
+                        :p̄² =>  xx[6],
+                        :ρ  =>  xx[7],
+                        :ρ¹ =>  xx[8],
+                        :ρ² =>  xx[9],
+                        :ρ³ =>  xx[10],
+                        :ν  =>  xx[11],
+                        :λ¹ =>  xx[12],
+                        :λ² =>  xx[13],
+                        :λ̂¹ =>  xx[14],
+                        :λ̂² =>  xx[15]
+                    ),xx[16])
 
 
 m.SS_solve_func(m.parameter_values, m, false, true, 
