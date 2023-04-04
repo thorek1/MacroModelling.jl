@@ -1,7 +1,7 @@
 using MacroModelling
 import Turing
 import Turing: Normal, Beta, InverseGamma, NUTS, sample, logpdf
-using Random, CSV, DataFrames, Optim, OptimizationOptimisers, MCMCChains, AxisKeys
+using Random, CSV, DataFrames, Optimization, OptimizationOptimisers, MCMCChains, AxisKeys
 import DynamicPPL: logjoint
 
 include("models/FS2000.jl")
@@ -88,17 +88,6 @@ f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoFor
 prob = OptimizationProblem(f, Float64.(FS2000.parameter_values), []);
 sol = solve(prob, Optimisers.Adam(), maxiters = 1000)
 sol.minimum
-
-lbs = fill(-1e12, length(FS2000.parameters));
-ubs = fill(1e12, length(FS2000.parameters));
-
-bounds_index_in_pars = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.parameters);
-bounds_index_in_bounds = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.bounded_vars);
-
-lbs[bounds_index_in_pars] = max.(-1e12,FS2000.lower_bounds[bounds_index_in_bounds]);
-ubs[bounds_index_in_pars] = min.(1e12,FS2000.upper_bounds[bounds_index_in_bounds]);
-
-sol = Optim.optimize(calculate_posterior_loglikelihood, lbs, ubs, min.(max.(sol.u,lbs),ubs), Optim.Fminbox(LBFGS()); autodiff = :forward)
 
 # println(sol.minimum)
 
