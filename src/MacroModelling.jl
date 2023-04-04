@@ -242,23 +242,23 @@ function levenberg_marquardt(f::Function,
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
     xtol::T = eps(), 
-    ftol::T = eps(), 
+    ftol::T = 1e-10, 
     iterations::S = 250, 
-    ϕ̄::T    =       2.1647152584010425,
-    ϕ̂::T    =       0.8887,
-    μ̄¹::T   =       0.0018114789718030515,
-    μ̄²::T   =       0.019168819733408005,
-    p̄¹::T   =       2.443,
-    p̄²::T   =       1.5,
-    ρ::T    =       0.0015,
-    ρ¹::T   =       0.440022761659077,
-    ρ²::T   =       0.38,
-    ρ³::T   =       0.005642845264996996,
-    ν::T    =       0.5361865576979085,
-    λ¹::T   =       0.14270000107025,
-    λ²::T   =       0.00011521307648447248,
-    λ̂¹::T   =       0.9172000000028568,
-    λ̂²::T   =       0.03791484384480812
+    ϕ̄::T    =   2.182994514048513,
+    ϕ̂::T    =   0.8887,
+    μ̄¹::T   =   0.4445064816655424,
+    μ̄²::T   =   0.026833357448752496,
+    p̄¹::T   =   2.442999999915716,
+    p̄²::T   =   1.49949375,
+    ρ::T    =   0.001482812473436255,
+    ρ¹::T   =   0.351305796384347,
+    ρ²::T   =   0.014263699174871457,
+    ρ³::T   =   0.005885546925840679,
+    ν::T    =   0.9314420552076146,
+    λ¹::T   =   0.11292946490096162,
+    λ²::T   =   0.00011413295388993985,
+    λ̂¹::T   =   0.6553524668348876,
+    λ̂²::T   =   0.3924244542785138
     ) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
@@ -2370,7 +2370,7 @@ end
 
 
 
-function  calculate_second_order_solution(∇₁::AbstractMatrix{Float64}, #first order derivatives
+function calculate_second_order_solution(∇₁::AbstractMatrix{Float64}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{Float64}, #second order derivatives
                                             𝑺₁::AbstractMatrix{Float64};  #first order solution
                                             T::timings)
@@ -2511,8 +2511,8 @@ function  calculate_third_order_solution(∇₁::AbstractMatrix{Float64}, #first
     # permutation matrices
     M = reshape(1:nₑ₋^3,1,nₑ₋,nₑ₋,nₑ₋)
     𝐏 = @views sparse(reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 4, 2, 3])],nₑ₋^3,nₑ₋^3)
-                           + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 4, 3])],nₑ₋^3,nₑ₋^3)
-                           + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 3, 4])],nₑ₋^3,nₑ₋^3))
+                        + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 4, 3])],nₑ₋^3,nₑ₋^3)
+                        + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 3, 4])],nₑ₋^3,nₑ₋^3))
     
 
     ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + 𝐒₁ * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
@@ -2520,7 +2520,7 @@ function  calculate_third_order_solution(∇₁::AbstractMatrix{Float64}, #first
             zeros(n₋ + nₑ, nₑ₋^2)];
         
     𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:] 
-             zeros(n₋ + n + nₑ, nₑ₋^2)];
+            zeros(n₋ + n + nₑ, nₑ₋^2)];
     
     𝐗₃ = -∇₃ * sparse(ℒ.kron(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋), ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
     

@@ -1,5 +1,6 @@
 using MacroModelling
 
+include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
 include("models/SW03.jl")
 include("models/GNSS_2010.jl")
 include("models/Ghironi_Melitz_2005.jl")
@@ -93,9 +94,13 @@ f = OptimizationFunction((x,u)-> begin
 
     total_iters += outIreland_2004 isa Tuple{Vector{Float64}, Float64, Int64} ? (outIreland_2004[2] > eps(Float64)) || !isfinite(outIreland_2004[2]) ? 1000000 : outIreland_2004[3] : 1000000
 
-    outFS2000 = try m.SS_solve_func(m.parameter_values, m, false, false, par_inputs, x[end]) catch end
+    outFS2000 = try FS2000.SS_solve_func(FS2000.parameter_values, FS2000, false, false, par_inputs, x[end]) catch end
 
     total_iters += outFS2000 isa Tuple{Vector{Float64}, Float64, Int64} ? (outFS2000[2] > eps(Float64)) || !isfinite(outFS2000[2]) ? 1000000 : outFS2000[3] : 1000000
+
+    outRBC = try m.SS_solve_func(m.parameter_values, m, false, false, par_inputs, x[end]) catch end
+
+    total_iters += outRBC isa Tuple{Vector{Float64}, Float64, Int64} ? (outRBC[2] > eps(Float64)) || !isfinite(outRBC[2]) ? 1000000 : outRBC[3] : 1000000
 
     total_iters >= 1000000 ? NaN : total_iters
     # println(total_iters)
@@ -103,22 +108,21 @@ f = OptimizationFunction((x,u)-> begin
 end)
 
 innit = [ 
-    2.1647152584010425
+    2.182994514048513
     0.8887
-    0.0018114789718030515
-    0.019168819733408005
-    2.443
-    1.5
-    0.0015
-    0.440022761659077
-    0.38
-    0.005642845264996996
-    0.5361865576979085
-    0.14270000107025
-    0.00011521307648447248
-    0.9172000000028568
-    0.03791484384480812
-
+    0.4445064816655424
+    0.026833357448752496
+    2.442999999915716
+    1.49949375
+    0.001482812473436255
+    0.351305796384347
+    0.014263699174871457
+    0.005885546925840679
+    0.9314420552076146
+    0.11292946490096162
+    0.00011413295388993985
+    0.6553524668348876
+    0.3924244542785138
     0.99778
 ]
 
@@ -136,7 +140,7 @@ prob = OptimizationProblem(f, innit, [1], lb = lbs, ub = ubs)
 f(innit,1)
 
 
-maxt = 20 * 60
+maxt = 10 * 60
 
 
 using OptimizationBBO
@@ -144,13 +148,11 @@ sol_BBO   =   solve(prob, BBO_adaptive_de_rand_1_bin_radiuslimited(),   maxtime 
 sol_BBO   =   solve(prob, BBO_dxnes(),   maxtime = maxt); sol_BBO.minimum
 # sol_BBO   =   solve(prob, BBO_resampling_inheritance_memetic_search(),   maxtime = maxt); sol_BBO.minimum
 
-
 sol_BOBYQA  =   solve(prob, NLopt.LN_BOBYQA()); sol_BOBYQA.minimum # fast and solves
 sol_COBYLA  =   solve(prob, NLopt.LN_COBYLA()); sol_COBYLA.minimum # slow
 sol_NM      =   solve(prob, NLopt.LN_NELDERMEAD()); sol_NM.minimum
 sol_PRAXIS  =   solve(prob, NLopt.LN_PRAXIS()); sol_PRAXIS.minimum
 sol_SBPLX   =   solve(prob, NLopt.LN_SBPLX()); sol_SBPLX.minimum
-
 
 sol_AGS     =   solve(prob, NLopt.GN_AGS()); sol_AGS.minimum # slow and unreliable
 sol_CRS2    =   solve(prob, NLopt.GN_CRS2_LM(), maxtime = maxt); sol_CRS2.minimum
@@ -158,8 +160,6 @@ sol_DIRECT  =   solve(prob, NLopt.GN_DIRECT_L_RAND(),  maxtime = maxt); sol_DIRE
 sol_ESCH    =   solve(prob, NLopt.GN_ESCH(),    maxtime = maxt); sol_ESCH.minimum
 sol_ISRES   =   solve(prob, NLopt.GN_ISRES(),   maxtime = maxt); sol_ISRES.minimum
 sol_Multi   =   solve(prob, NLopt.G_MLSL_LDS(), local_method =  NLopt.LN_BOBYQA(), maxtime = maxt); sol_Multi.minimum
-
-
 
 
 using OptimizationMetaheuristics
@@ -172,55 +172,11 @@ sol_Multi = solve(prob, MultistartOptimization.TikTak(40), NLopt.LN_SBPLX()); so
 sol_Multi = solve(prob, NLopt.G_MLSL_LDS(), local_method =  NLopt.LN_SBPLX(), maxtime = maxt)
 
 
-
-
-
-innit = [0.9085377918862518
-0.03861742976500958
-2.3154091936573424
-0.0218875125940833
-0.008232256097897564
-0.03415564785252073
-0.004838443809642127
-0.5128636449212913
-0.8128464356325741]
-
-
-innit = [ 0.8393922298135471
-0.4233763369516246
-7.165513682560418
-0.7314042269858947
-0.014419253427264342
-0.27053813459079223
-0.3896905168010871
-0.5201633597387922
-0.7241371889045571]
-
-innit = [ 0.9072851162787691
-0.00769189510088665
-2.312782406457346
-0.02196011356205182
-0.008505877227656958
-0.034532455173425056
-0.00483563092050365
-0.5096198727629895
-0.8114656217080681]
-
 innit = xx
 xx = innit
 sqrt(170)
 xx = sol_SBPLX.u
 xx = sol_ESCH.u
-
-innit = [0.944993042979484
-0.0032265667045325934
-1.1413009165087014
-0.34896994145261045
-0.0957920419047839
-0.15341302276628957
-0.4443797645968635
-0.7411904946987461
-1.6576262439641378]
 
 
 SW07.SS_solve_func(SW07.parameter_values, SW07, false, true, 

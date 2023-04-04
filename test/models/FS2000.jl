@@ -1,6 +1,6 @@
 # Translated from: https://archives.dynare.org/documentation/examples.html
 
-@model m begin
+@model FS2000 begin
     dA[0] = exp(gam + z_e_a  *  e_a[x])
 
     log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
@@ -35,7 +35,7 @@
 end
 
 
-@parameters m verbose = true begin  
+@parameters FS2000 verbose = true begin  
     alp     = 0.356
     bet     = 0.993
     gam     = 0.0085

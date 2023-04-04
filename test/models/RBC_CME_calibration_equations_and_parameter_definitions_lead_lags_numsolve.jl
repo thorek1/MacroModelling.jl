@@ -1,4 +1,4 @@
-m = nothing
+
 @model m begin
     y[0]=A[0]*k[-1]^alpha
     1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
