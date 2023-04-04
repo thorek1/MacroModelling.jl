@@ -212,7 +212,7 @@ function levenberg_marquardt(f::Function,
     p¹ = p̄¹
     p² = p̄²
 
-    max_linesearch_iterations = 1000
+    max_linesearch_iterations = 100
 
 	for iter in 1:iterations
         ∇ .= ℱ.jacobian(f,current_guess)
