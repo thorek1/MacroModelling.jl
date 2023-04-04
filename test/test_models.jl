@@ -1,7 +1,7 @@
 include("models/NAWM_EAUS_2008.jl")
-moments = get_moments(NAWM_EAUS_2008, derivatives = false)
+SS = get_SS(NAWM_EAUS_2008)
 
-@test isapprox(moments[1]([:EAUS_RER,:EA_Y,:EA_K,:EA_C,:US_Y,:US_K],:),[0.937577, 3.62701, 33.4238, 2.18955, 3.92449, 33.6712],rtol = 1e-5)
+@test isapprox(SS([:EAUS_RER,:EA_Y,:EA_K,:EA_C,:US_Y,:US_K]),[0.937577, 3.62701, 33.4238, 2.18955, 3.92449, 33.6712],rtol = 1e-5)
 
 var_dec = get_var_decomp(NAWM_EAUS_2008)
 
