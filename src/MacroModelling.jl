@@ -174,7 +174,7 @@ function levenberg_marquardt(f::Function,
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
     xtol::T = eps(), 
-    ftol::T = 1e-10, 
+    ftol::T = 1e-12, 
     iterations::S = 250, 
     ϕ̄::T    =   2.182994514048513,
     ϕ̂::T    =   0.8887,
@@ -877,7 +877,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                 end
                             end))
 
-    push!(SS_solve_func,:(if (current_best > .01) && (solution_error < eps(Float64))
+    push!(SS_solve_func,:(if (current_best > .001) && (solution_error < eps(Float64))
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
                                 solved_scale = scale
                             end))

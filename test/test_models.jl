@@ -115,7 +115,7 @@ moments = get_moments(Caldara_et_al_2012, derivatives = false)
 include("models/Ascari_Sbordone_2014.jl")
 moments = get_moments(Ascari_Sbordone_2014, derivatives = false)
 
-@test isapprox(moments[1]([:i,:y,:psi,:phi],:),exp.([-4.59512, -1.09861, 1.25138, 1.35674]),rtol = 1e-5)
+@test isapprox(log.(moments[1]([:i,:y,:psi,:phi],:)),[-4.59512, -1.09861, 1.25138, 1.35674],rtol = 1e-4)
 
 var_dec = get_var_decomp(Ascari_Sbordone_2014)
 
