@@ -243,7 +243,7 @@ function levenberg_marquardt(f::Function,
     upper_bounds::Array{T,1}; 
     xtol::T = eps(), 
     ftol::T = eps(), 
-    iterations::S = 250, 
+    iterations::S = 100, 
     ϕ̄::T    =   2.1647152584010425,
     ϕ̂::T    =   0.8887,
     μ̄¹::T   =   0.0018114789718030515,
@@ -264,7 +264,7 @@ function levenberg_marquardt(f::Function,
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
     @assert lower_bounds < upper_bounds
 
-    max_linesearch_iterations = 1000
+    max_linesearch_iterations = 100
 
     current_guess = copy(initial_guess)
     previous_guess = similar(current_guess)
