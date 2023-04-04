@@ -12,7 +12,7 @@ import ForwardDiff as ℱ
 # import Zygote
 import SparseArrays: SparseMatrixCSC, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
-using Optimization, OptimizationNLopt
+# using Optimization, OptimizationNLopt
 # import Optim
 import BlockTriangularForm
 import Subscripts: super, sub
@@ -21,7 +21,7 @@ import DataStructures: CircularBuffer
 using LinearMaps
 using ImplicitDifferentiation
 import SpeedMapping: speedmapping
-import NLboxsolve: nlboxsolve
+# import NLboxsolve: nlboxsolve
 # using NamedArrays
 using AxisKeys
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
@@ -249,7 +249,7 @@ function levenberg_marquardt(f::Function,
         if P̋ > ρ * P 
             while P̋ > (1 + ν̂ - ρ¹ * α^2) * P + ρ² * α^2 * g - ρ³ * α^2 * U
                 # Quadratic backtracking line search
-                println("linesearch")
+                # println("linesearch")
                 α̂ = -g * α^2 / (2 * (P̋ - P - g * α))
                 
                 α̂ = min(α̂, ϕ̄ * α)
@@ -1008,7 +1008,7 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Number},
     ubs::Vector{Float64};
     tol = eps(Float64),
     timeout = 120,
-    starting_points = [0.99778, 1.2, .9, .75, 1.5, -.5, 2, .25],
+    starting_points = [0.99778, 1.2, .9, .75, 1.5, -.5, 2.0, .25],
     fail_fast_solvers_only = true,
     verbose = false) = ImplicitFunction(x -> block_solver(x,
                                                             n_block, 
@@ -1061,30 +1061,13 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
                 sol_values = max.(lbs,min.(ubs, undo_transformer(sol_new,lbs,ubs, option = transformer_option) ))
 
-                # if sol_minimum > tol # try other parametrization
-                #     sol_new, info = SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x, transformer_option,lbs,ubs),
-                #                                 transformer(previous_sol_init,lbs,ubs, option = transformer_option),
-                #                                 transformer(lbs,lbs,ubs, option = transformer_option),
-                #                                 transformer(ubs,lbs,ubs, option = transformer_option),
-                #                                 ρ  = 0.8^2, 
-                #                                 p  = 1.0,
-                #                                 λ¹ = 1.0, 
-                #                                 λ² = 0.0,
-                #                                 λᵖ = 1.0, 
-                #                                 μ¹ = 1e-5, # alternatively use .001 for hard problems (Ascari Sbordone starts at .9 and needs to go to 1 but fails)
-                #                                 μ² = eps())#, μ = μ, p = p)# catch e end
-
-                #     sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
-                #     sol_values = max.(lbs,min.(ubs, undo_transformer(sol_new,lbs,ubs, option = transformer_option) ))
-                # end
-
                 if sol_minimum < tol
                     if verbose
                         println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
                     end
                 else
                     # if the previous non-converged best guess as a starting point does not work, try the standard starting points
-                    for starting_point in [0.99778,1.22]
+                    for starting_point in starting_points
                         if sol_minimum > tol
                             standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
                             standard_inits[ubs .<= 1] .= .1 # capture cases where part of values is small
@@ -1103,18 +1086,6 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                             break
                         end
                     end
-
-                    # # if the the standard starting point doesnt work try the provided guess
-                    # if sol_minimum > tol
-                    #     sol_new, info = SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x, transformer_option,lbs,ubs),transformer(guess,lbs,ubs, option = transformer_option),transformer(lbs,lbs,ubs, option = transformer_option),transformer(ubs,lbs,ubs, option = transformer_option))# catch e end
-
-                    #     sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
-                    #     sol_values = max.(lbs,min.(ubs, undo_transformer(sol_new,lbs,ubs, option = transformer_option) ))
-
-                    #     if (sol_minimum < tol) && verbose
-                    #         println("Block: ",n_block," - Solved using ",string(SS_optimizer),", transformer level: ",transformer_option," and initial guess; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, transformer(sol_values,lbs,ubs, option = transformer_option), transformer_option,lbs,ubs)))
-                    #     end
-                    # end
                 end
             end
         end
