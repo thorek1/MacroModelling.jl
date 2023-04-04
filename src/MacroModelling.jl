@@ -877,7 +877,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                 end
                             end))
 
-    push!(SS_solve_func,:(if (current_best > .001) && (solution_error < eps(Float64))
+    push!(SS_solve_func,:(if (current_best > eps(Float32)) && (solution_error < eps(Float64))
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
                                 solved_scale = scale
                             end))
