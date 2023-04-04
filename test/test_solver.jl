@@ -45,8 +45,9 @@ f = OptimizationFunction((x,u)-> begin
     total_iters += outSW07 isa Tuple{Vector{Float64}, Float64, Int64} ? (outSW07[2] > eps(Float64)) || !isfinite(outSW07[2]) ? 1000000 : outSW07[3] : 1000000
 
     outAscari_Sbordone_2014 = try Ascari_Sbordone_2014.SS_solve_func(Ascari_Sbordone_2014.parameter_values, Ascari_Sbordone_2014, false, false, par_inputs, x[end]) catch end
-    
+    # println(outAscari_Sbordone_2014[1][10])
     total_iters += outAscari_Sbordone_2014 isa Tuple{Vector{Float64}, Float64, Int64} ? (outAscari_Sbordone_2014[2] > eps(Float64)) || !isfinite(outAscari_Sbordone_2014[2]) ? 1000000 : outAscari_Sbordone_2014[3] : 1000000
+    #  || !isapprox(outAscari_Sbordone_2014[1][10], 3.88351239274375, atol = 1e-6)
 
     outSW03 = try SW03.SS_solve_func(SW03.parameter_values, SW03, false, false, par_inputs, x[end]) catch end
     
@@ -97,27 +98,26 @@ f = OptimizationFunction((x,u)-> begin
     total_iters += outFS2000 isa Tuple{Vector{Float64}, Float64, Int64} ? (outFS2000[2] > eps(Float64)) || !isfinite(outFS2000[2]) ? 1000000 : outFS2000[3] : 1000000
 
     total_iters >= 1000000 ? NaN : total_iters
-    println(total_iters)
+    # println(total_iters)
     return Float64(total_iters)
 end)
 
 innit = [ 
-    2.15
-    0.842
-    0.03342
-    0.0153
+    2.1647152584010425
+    0.8887
+    0.0018114789718030515
+    0.019168819733408005
     2.443
-    0.378
-    3e-6
-    0.002
-    0.023
-    1.0e-7
-    0.94
-    0.14751
-    0.0038
-    0.9172
-    0.876
-
+    1.5
+    0.0015
+    0.51
+    0.38
+    0.0073
+    0.68
+    0.14270000107025
+    0.00011521307648447248
+    0.9172000000028568
+    0.03791484384480812
     0.99778
 ]
 
@@ -208,8 +208,8 @@ innit = [ 0.9072851162787691
 innit = xx
 xx = innit
 sqrt(170)
+xx = sol_SBPLX.u
 xx = sol_ESCH.u
-xx = sol_PRAXIS.u
 
 innit = [0.944993042979484
 0.0032265667045325934
@@ -299,6 +299,7 @@ Dict(
     :λ̂¹ =>  xx[14],
     :λ̂² =>  xx[15]
 ),xx[16])
+asdasd[1]
    typeof(asdasd) 
 
 
