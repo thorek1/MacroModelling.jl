@@ -174,7 +174,7 @@ function levenberg_marquardt(f::Function,
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
     xtol::T = eps(), 
-    ftol::T = eps(), 
+    ftol::T = 1e-10, 
     iterations::S = 250, 
     ϕ̄::T    =       2.1647152584010425,
     ϕ̂::T    =       0.8887,
@@ -252,14 +252,14 @@ function levenberg_marquardt(f::Function,
             linesearch_iteration = 0
             while P̋ > (1 + ν̂ - ρ¹ * α^2) * P + ρ² * α^2 * g - ρ³ * α^2 * U && linesearch_iteration < max_linesearch_iterations
                 # Quadratic backtracking line search
-                # println("linesearch")
                 α̂ = -g * α^2 / (2 * (P̋ - P - g * α))
                 
                 α̂ = min(α̂, ϕ̄ * α)
                 α = max(α̂, ϕ̂ * α)
 
                 current_guess .= previous_guess + α * guess_update
-
+                minmax!(current_guess, lower_bounds, upper_bounds)
+        
                 P̋ = sum(abs2,f(current_guess))
 
                 ν̂ *= α
