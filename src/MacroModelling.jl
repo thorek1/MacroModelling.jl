@@ -242,7 +242,7 @@ function levenberg_marquardt(f::Function,
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
     xtol::T = eps(), 
-    ftol::T = 1e-10, 
+    ftol::T = 1e-8, 
     iterations::S = 250, 
     ϕ̄::T    =   2.15,
     ϕ̂::T    =   0.842,
