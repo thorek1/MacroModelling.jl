@@ -174,23 +174,23 @@ function levenberg_marquardt(f::Function,
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
     xtol::T = eps(), 
-    ftol::T = 1e-10, 
+    ftol::T = eps(), 
     iterations::S = 250, 
-    ϕ̄::T    =         0.8887,
-    ϕ̂::T    =         0.499,
-    μ̄¹::T   =         0.0332,
-    μ̄²::T   =         0.095,
-    p̄¹::T   =         2.443,
-    p̄²::T   =         1.5,
-    ρ::T    =         0.032,
-    ρ¹::T   =         0.001,
-    ρ²::T   =         0.001,
-    ρ³::T   =         1e-7,
-    ν::T    =         0.94,
-    λ¹::T   =         0.1427,
-    λ²::T   =         0.0835,
-    λ̂¹::T   =         0.9172,
-    λ̂²::T   =         0.16
+    ϕ̄::T    =   2.1647152584010425,
+    ϕ̂::T    =   0.8887,
+    μ̄¹::T   =   0.0018114789718030515,
+    μ̄²::T   =   0.019168819733408005,
+    p̄¹::T   =   2.443,
+    p̄²::T   =   1.5,
+    ρ::T    =   0.0015,
+    ρ¹::T   =   0.51,
+    ρ²::T   =   0.38,
+    ρ³::T   =   0.0073,
+    ν::T    =   0.68,
+    λ¹::T   =   0.14270000107025,
+    λ²::T   =   0.00011521307648447248,
+    λ̂¹::T   =   0.9172000000028568,
+    λ̂²::T   =   0.03791484384480812
     ) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
@@ -211,6 +211,8 @@ function levenberg_marquardt(f::Function,
 
     p¹ = p̄¹
     p² = p̄²
+
+    max_linesearch_iterations = 1000
 
 	for iter in 1:iterations
         ∇ .= ℱ.jacobian(f,current_guess)
@@ -247,7 +249,8 @@ function levenberg_marquardt(f::Function,
         ν̂ = ν
         
         if P̋ > ρ * P 
-            while P̋ > (1 + ν̂ - ρ¹ * α^2) * P + ρ² * α^2 * g - ρ³ * α^2 * U
+            linesearch_iteration = 0
+            while P̋ > (1 + ν̂ - ρ¹ * α^2) * P + ρ² * α^2 * g - ρ³ * α^2 * U && linesearch_iteration < max_linesearch_iterations
                 # Quadratic backtracking line search
                 # println("linesearch")
                 α̂ = -g * α^2 / (2 * (P̋ - P - g * α))
@@ -260,6 +263,8 @@ function levenberg_marquardt(f::Function,
                 P̋ = sum(abs2,f(current_guess))
 
                 ν̂ *= α
+
+                linesearch_iteration += 1
             end
 
             μ¹ *= λ¹
@@ -2928,72 +2933,5 @@ end
         plot_conditional_variance_decomposition(FS2000)
     end
 end
-
-
-# @precompile_setup begin
-#     # Putting some things in `setup` can reduce the size of the
-#     # precompile file and potentially make loading faster.
-#     @model FS2000 begin
-#         dA[0] = exp(gam + z_e_a  *  e_a[x])
-#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-#         W[0] = l[0] / n[0]
-#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-#         P[0] * c[0] = m[0]
-#         m[0] - 1 + d[0] = l[0]
-#         e[0] = exp(z_e_a  *  e_a[x])
-#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-#         gy_obs[0] = dA[0] * y[0] / y[-1]
-#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-#         log_gy_obs[0] = log(gy_obs[0])
-#         log_gp_obs[0] = log(gp_obs[0])
-#     end
-
-#     @parameters FS2000 silent = true begin  
-#         alp     = 0.356
-#         bet     = 0.993
-#         gam     = 0.0085
-#         mst     = 1.0002
-#         rho     = 0.129
-#         psi     = 0.65
-#         del     = 0.01
-#         z_e_a   = 0.035449
-#         z_e_m   = 0.008862
-#     end
-    
-#     ENV["GKSwstype"] = "nul"
-
-#     @precompile_all_calls begin
-#         # all calls in this block will be precompiled, regardless of whether
-#         # they belong to your package or not (on Julia 1.8 and higher)
-#         @model RBC begin
-#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-#         end
-
-#         @parameters RBC silent = true precompile = true begin
-#             δ = 0.02
-#             α = 0.5
-#         end
-
-#         get_SS(FS2000)
-#         get_SS(FS2000, parameters = :alp => 0.36)
-#         get_solution(FS2000)
-#         get_solution(FS2000, parameters = :alp => 0.35)
-#         get_standard_deviation(FS2000)
-#         get_correlation(FS2000)
-#         get_autocorrelation(FS2000)
-#         get_variance_decomposition(FS2000)
-#         get_conditional_variance_decomposition(FS2000)
-#         get_irf(FS2000)
-#         plot_irf(FS2000)
-#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-#         plot_conditional_variance_decomposition(FS2000)
-#     end
-# end
 
 end

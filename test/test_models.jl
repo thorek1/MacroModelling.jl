@@ -1,7 +1,7 @@
 include("models/NAWM_EAUS_2008.jl")
 moments = get_moments(NAWM_EAUS_2008, derivatives = false)
 
-@test isapprox(moments[1]([:EAUS_RER,:EA_Y,:EA_K,:EA_C,:US_Y,:US_K],:),[0.937577, 3.62701, 33.4238, 2.18955, 3.92449, 33.6712],atol = 1e-4)
+@test isapprox(moments[1]([:EAUS_RER,:EA_Y,:EA_K,:EA_C,:US_Y,:US_K],:),[0.937577, 3.62701, 33.4238, 2.18955, 3.92449, 33.6712],rtol = 1e-5)
 
 var_dec = get_var_decomp(NAWM_EAUS_2008)
 
@@ -51,7 +51,7 @@ var_dec = get_variance_decomposition(Ireland_2004)
 include("models/GNSS_2010.jl")
 moments = get_moments(GNSS_2010, derivatives = false)
 
-@test isapprox(moments[1]([:x,:C,:Y,:D,:BE,:BH,:B],:),exp.([0.182322,0.1305,0.273583,1.04257,0.674026,0.144027,1.13688]),atol = 1e-4)
+@test isapprox(moments[1]([:x,:C,:Y,:D,:BE,:BH,:B],:),exp.([0.182322,0.1305,0.273583,1.04257,0.674026,0.144027,1.13688]),rtol = 1e-5)
 
 var_dec = get_var_decomp(GNSS_2010)
 
@@ -64,7 +64,7 @@ var_dec = get_var_decomp(GNSS_2010)
 include("models/Ghironi_Melitz_2005.jl")
 moments = get_moments(Ghironi_Melitz_2005, derivatives = false)
 
-@test isapprox(moments[1]([:Nd,:Nd̄,:Ne,:Nē,:Nx,:Nx̄],:),[7.50695, 7.50695,0.192486, 0.192486, 1.57988, 1.57988],atol = 1e-4)
+@test isapprox(moments[1]([:Nd,:Nd̄,:Ne,:Nē,:Nx,:Nx̄],:),[7.50695, 7.50695,0.192486, 0.192486, 1.57988, 1.57988],rtol = 1e-5)
 
 var_dec = get_var_decomp(Ghironi_Melitz_2005)
 
@@ -91,7 +91,7 @@ var_dec = get_var_decomp(Gali_Monacelli_2005_CITR)
 include("models/Gali_2015_chapter_3_nonlinear.jl")
 moments = get_moments(Gali_2015_chapter_3_nonlinear, derivatives = false)
 
-@test isapprox(moments[1]([:C,:N,:M_real,:Y],:),[0.95058, 0.934655, 0.915236, 0.95058],atol = 1e-4)
+@test isapprox(moments[1]([:C,:N,:M_real,:Y],:),[0.95058, 0.934655, 0.915236, 0.95058],rtol = 1e-5)
 
 var_dec = get_var_decomp(Gali_2015_chapter_3_nonlinear)
 
@@ -105,7 +105,7 @@ var_dec = get_var_decomp(Gali_2015_chapter_3_nonlinear)
 include("models/Caldara_et_al_2012.jl")
 moments = get_moments(Caldara_et_al_2012, derivatives = false)
 
-@test isapprox(moments[1]([:Rᵏ,:V,:c,:i],:),[0.00908174, 0.687139, 0.724731, 0.18689],atol = 1e-4)
+@test isapprox(moments[1]([:Rᵏ,:V,:c,:i],:),[0.00908174, 0.687139, 0.724731, 0.18689],rtol = 1e-5)
 
 @test isapprox(moments[2]([:Rᵏ,:V,:c,:i],:),[0.0022, 0.0061, 0.0566, 0.0528],atol = 1e-4)
 
@@ -115,7 +115,7 @@ moments = get_moments(Caldara_et_al_2012, derivatives = false)
 include("models/Ascari_Sbordone_2014.jl")
 moments = get_moments(Ascari_Sbordone_2014, derivatives = false)
 
-@test isapprox(moments[1]([:i,:y,:psi,:phi],:),exp.([-4.59512, -1.09861, 1.25138, 1.35674]),atol = 1e-3)
+@test isapprox(moments[1]([:i,:y,:psi,:phi],:),exp.([-4.59512, -1.09861, 1.25138, 1.35674]),rtol = 1e-5)
 
 var_dec = get_var_decomp(Ascari_Sbordone_2014)
 
@@ -128,7 +128,7 @@ var_dec = get_var_decomp(Ascari_Sbordone_2014)
 include("models/Aguiar_Gopinath_2007.jl")
 moments = get_moments(Aguiar_Gopinath_2007, derivatives = false)
 
-@test isapprox(moments[1]([:b,:c,:u,:ul],:),[0.0645177, 0.496156, -1.66644, -1.597],atol = 1e-3)
+@test isapprox(moments[1]([:b,:c,:u,:ul],:),[0.0645177, 0.496156, -1.66644, -1.597],rtol = 1e-5)
 
 var_dec = get_var_decomp(Aguiar_Gopinath_2007)
 
