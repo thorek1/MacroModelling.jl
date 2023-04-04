@@ -13,11 +13,15 @@ include("models/Gali_2015_chapter_3_nonlinear.jl")
 include("models/Aguiar_Gopinath_2007.jl")
 include("models/Ascari_Sbordone_2014.jl")# stands out
 include("models/FS2000.jl")
+include("models/SW07.jl")
 
 
 using Optimization, OptimizationNLopt
 f = OptimizationFunction((x,u)-> begin 
     total_iters = 0
+
+    x[1:2] = sort(x[1:2], rev = true)
+    
     par_inputs = Dict(    
     :ϕ̄  =>  x[1],
     :ϕ̂  =>  x[2],
@@ -36,6 +40,10 @@ f = OptimizationFunction((x,u)-> begin
     :λ̂² =>  x[15]
     )
 # println(par_inputs)
+    outSW07 = try SW07.SS_solve_func(SW07.parameter_values, SW07, false, false, par_inputs, x[end]) catch end
+    
+    total_iters += outSW07 isa Tuple{Vector{Float64}, Float64, Int64} ? (outSW07[2] > eps(Float64)) || !isfinite(outSW07[2]) ? 1000000 : outSW07[3] : 1000000
+
     outAscari_Sbordone_2014 = try Ascari_Sbordone_2014.SS_solve_func(Ascari_Sbordone_2014.parameter_values, Ascari_Sbordone_2014, false, false, par_inputs, x[end]) catch end
     
     total_iters += outAscari_Sbordone_2014 isa Tuple{Vector{Float64}, Float64, Int64} ? (outAscari_Sbordone_2014[2] > eps(Float64)) || !isfinite(outAscari_Sbordone_2014[2]) ? 1000000 : outAscari_Sbordone_2014[3] : 1000000
@@ -93,93 +101,32 @@ f = OptimizationFunction((x,u)-> begin
     return Float64(total_iters)
 end)
 
-
-# innit = [.95, .01, 1e-3, 1e-3, 2.0, 2.0, .026, 0.005, 0.005, 0.005, .1, .022, .0085, .022, .0085, .65]
-# innit = [.90768,.026714,2.312,.022,.0085,.0345,0.004821,0.5106,.8128]
-# innit = [.9076,.026,.005,2.31,.022,.0085,.0345,0.0048,0.51,.81]
-
-# innit = [.923466,.027651,0.005,2.22439,.02645,.008459,.041527,0.004649,0.5132,1.247]
-
-
-
-innit = [  0.5475112419870285
-0.2988331428474936
-0.013923721041719241
-0.06780051685553298
-0.7826125360037275
-11.293948209858987
-0.03475334155977826
-0.06959962527081097
-0.1773822586654144
-0.00602829361652491
-0.9416064188125651
-0.2642024871647881
-0.04010535645243133
-0.6125798054069717
-0.07410783267384798
-0.9999929493590685]
-
-
-innit = [ 0.7656375646856255
-0.359261450198468
-0.6583739036522531
-0.4872714575226943
-0.6324004207807832
-0.3236088943134699
-0.36252942193278137
-0.012067482776580632
-8.451648711586003e-6
-0.0011828942570755532
-0.9416064188125651
-0.004852936014041009
-0.001084986560298134
-0.6848084089822762
-0.09681666794853977
-0.9999929493590685]
-
-
-# innit = [1e-4
-# .5
-# .1
-# 1e-4
-# 1e-4
-# 1.0
-# 1.0]
-
-
+innit = [ 
+    0.8887
+    0.499
+    0.0332
+    0.095
+    2.443
+    1.5
+    0.032
+    0.001
+    0.001
+    1e-7
+    0.94
+    0.1427
+    0.0835
+    0.9172
+    0.16
+    0.99778
+]
 
 lbs = zero(innit)
 lbs .+= eps()*2
-lbs[1] = .5
 lbs[16] = -100
 ubs = zero(innit)
 ubs .+= 1 - eps()*2
-ubs[2] = .5
 ubs[5:6] .= 100
 ubs[16] = 100
-
-
-
-innit = [ 0.76
-0.359 # here
-0.65
-0.487 #here
-0.63
-0.32
-0.36
-0.01
-1e-6
-0.001
-0.94
-0.0048 # here
-0.001
-0.685 # here
-0.09
-0.999993 #here
-]
-
-
-
 
 prob = OptimizationProblem(f, innit, [1], lb = lbs, ub = ubs)
 
@@ -259,7 +206,7 @@ innit = [ 0.9072851162787691
 innit = xx
 xx = innit
 sqrt(170)
-xx = sol_BBO.u
+xx = sol_SBPLX.u
 xx = sol_PRAXIS.u
 
 innit = [0.944993042979484
