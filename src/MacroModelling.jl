@@ -189,7 +189,7 @@ function levenberg_marquardt(f::Function,
     ν::T    =       0.62,
     λ¹::T   =       0.422,
     # λ²::T   =       1.0,
-    λ̂¹::T   =       0.5047,
+    λ̂¹::T   =       0.5047
     # λ̂²::T   =       1.0
     ) where {T <: AbstractFloat, S <: Integer}
 
