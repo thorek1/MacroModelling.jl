@@ -240,8 +240,8 @@ function levenberg_marquardt(f::Function,
         guess_update .= current_guess - previous_guess
 
         g = f(previous_guess)' * ∇ * guess_update
-        U = sum(abs2,guess_update)
-        # P = sum(abs2, f(previous_guess))
+        # U = sum(abs2,guess_update)
+        P = sum(abs2, f(previous_guess))
         P̋ = sum(abs2, f(current_guess))
         
         α = 1.0
