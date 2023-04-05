@@ -221,7 +221,7 @@ function levenberg_marquardt(f::Function,
 
         ∇̂ .= ∇' * ∇
 
-        ∇̂ .+= μ¹ * sum(abs2, f(current_guess))^p¹ * ℒ.I# + μ² * ℒ.Diagonal(∇̂).^p²
+        ∇̂ .+= ℒ.diagm(fill(μ¹ * sum(abs2, f(current_guess))^p¹, size(∇̂)[1])) # + μ² * ℒ.Diagonal(∇̂).^p²
 
         if !all(isfinite,∇̂)
             return current_guess, (iter, Inf, Inf, upper_bounds)
