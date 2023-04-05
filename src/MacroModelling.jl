@@ -175,22 +175,22 @@ function levenberg_marquardt(f::Function,
     upper_bounds::Array{T,1}; 
     xtol::T = eps(), 
     ftol::T = 1e-12, 
-    iterations::S = 250, 
-    ϕ̄::T    =   2.182994514048513,
-    ϕ̂::T    =   0.8887,
-    μ̄¹::T   =   0.4445064816655424,
-    μ̄²::T   =   0.026833357448752496,
-    p̄¹::T   =   2.442999999915716,
-    p̄²::T   =   1.49949375,
-    ρ::T    =   0.001482812473436255,
-    ρ¹::T   =   0.351305796384347,
-    ρ²::T   =   0.014263699174871457,
-    ρ³::T   =   0.005885546925840679,
-    ν::T    =   0.9314420552076146,
-    λ¹::T   =   0.11292946490096162,
-    λ²::T   =   0.00011413295388993985,
-    λ̂¹::T   =   0.6553524668348876,
-    λ̂²::T   =   0.3924244542785138
+    iterations::S = 250,     
+    ϕ̄::T    =       5.0,
+    ϕ̂::T    =       0.8725,
+    μ̄¹::T   =       0.0027,
+    # μ̄²::T   =       0.0,
+    p̄¹::T   =       8.04,
+    # p̄²::T   =       0.0,
+    ρ::T    =       0.076,
+    ρ¹::T   =       0.235,
+    ρ²::T   =       0.51,
+    # ρ³::T   =       0.0,
+    ν::T    =       0.62,
+    λ¹::T   =       0.422,
+    # λ²::T   =       1.0,
+    λ̂¹::T   =       0.5047,
+    # λ̂²::T   =       1.0
     ) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
@@ -207,10 +207,10 @@ function levenberg_marquardt(f::Function,
     largest_residual = zero(T)
 
     μ¹ = μ̄¹
-    μ² = μ̄²
+    # μ² = μ̄²
 
     p¹ = p̄¹
-    p² = p̄²
+    # p² = p̄²
 
     max_linesearch_iterations = 100
 
@@ -221,7 +221,7 @@ function levenberg_marquardt(f::Function,
 
         ∇̂ .= ∇' * ∇
 
-        ∇̂ .+= μ¹ * sum(abs2, f(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
+        ∇̂ .+= μ¹ * sum(abs2, f(current_guess))^p¹ * ℒ.I# + μ² * ℒ.Diagonal(∇̂).^p²
 
         if !all(isfinite,∇̂)
             return current_guess, (iter, Inf, Inf, upper_bounds)
@@ -241,7 +241,7 @@ function levenberg_marquardt(f::Function,
 
         g = f(previous_guess)' * ∇ * guess_update
         U = sum(abs2,guess_update)
-        P = sum(abs2, f(previous_guess))
+        # P = sum(abs2, f(previous_guess))
         P̋ = sum(abs2, f(current_guess))
         
         α = 1.0
@@ -250,7 +250,7 @@ function levenberg_marquardt(f::Function,
         
         if P̋ > ρ * P 
             linesearch_iteration = 0
-            while P̋ > (1 + ν̂ - ρ¹ * α^2) * P + ρ² * α^2 * g - ρ³ * α^2 * U && linesearch_iteration < max_linesearch_iterations
+            while P̋ > (1 + ν̂ - ρ¹ * α^2) * P + ρ² * α^2 * g && linesearch_iteration < max_linesearch_iterations #  - ρ³ * α^2 * U
                 # Quadratic backtracking line search
                 α̂ = -g * α^2 / (2 * (P̋ - P - g * α))
                 
@@ -268,16 +268,16 @@ function levenberg_marquardt(f::Function,
             end
 
             μ¹ *= λ¹
-            μ² *= λ²
+            # μ² *= λ²
 
             p¹ *= λ̂¹
-            p² *= λ̂²
+            # p² *= λ̂²
         else
             μ¹ = min(μ¹ / λ¹, μ̄¹)
-            μ² = min(μ² / λ², μ̄²)
+            # μ² = min(μ² / λ², μ̄²)
 
             p¹ = min(p¹ / λ̂¹, p̄¹)
-            p² = min(p² / λ̂², p̄²)
+            # p² = min(p² / λ̂², p̄²)
         end
 
         largest_step = maximum(abs, previous_guess - current_guess)
@@ -754,7 +754,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     #return sum(abs2,[$(solved_vals...),$(nnaux_linear...)])
                 #end)
             
-                push!(NSSS_solver_cache_init_tmp,fill(0.99778,length(sorted_vars)))
+                push!(NSSS_solver_cache_init_tmp,fill(0.7688,length(sorted_vars)))
 
                 # WARNING: infinite bounds are transformed to 1e12
                 lbs = []
@@ -1013,7 +1013,7 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Number},
     ubs::Vector{Float64};
     tol = eps(Float64),
     timeout = 120,
-    starting_points = [0.99778, 1.2, .9, .75, 1.5, -.5, 2.0, .25],
+    starting_points = [0.7688, 1.2, .9, .75, 1.5, -.5, 2.0, .25],
     fail_fast_solvers_only = true,
     verbose = false) = ImplicitFunction(x -> block_solver(x,
                                                             n_block, 
@@ -1039,7 +1039,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         ubs::Vector{Float64};
                         tol = eps(Float64),
                         timeout = 120,
-                        starting_points = [0.99778, 1.2, .9, .75, 1.5, -.5, 2, .25],
+                        starting_points = [0.7688, 1.2, .9, .75, 1.5, -.5, 2, .25],
                         fail_fast_solvers_only = true,
                         verbose = false)
     
@@ -1260,7 +1260,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     ubs::Vector{Float64};
     tol = eps(Float64),
     timeout = 120,
-    starting_points = [0.99778, 1.2, .9, .75, 1.5, -.5, 2, .25],
+    starting_points = [0.7688, 1.2, .9, .75, 1.5, -.5, 2, .25],
     fail_fast_solvers_only = true,
     verbose = false) where {Z,S,N}
 
