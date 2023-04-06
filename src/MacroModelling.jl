@@ -12,6 +12,7 @@ import ForwardDiff as ℱ
 # import Zygote
 import SparseArrays: SparseMatrixCSC, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
+import ComponentArrays as 𝒞
 # using Optimization, OptimizationNLopt
 # import Optim
 import BlockTriangularForm
@@ -787,7 +788,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                                                         inits,
                                                                         lbs, 
                                                                         ubs,
-                                                                        fail_fast_solvers_only = fail_fast_solvers_only,
+                                                                        # fail_fast_solvers_only = fail_fast_solvers_only,
                                                                         verbose = verbose)))
                 
                 push!(SS_solve_func,:(solution = block_solver_RD([$(calib_pars_input...),$(other_vars_input...)])))#, 
@@ -899,7 +900,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     end
 
 
-    solve_exp = :(function solve_SS(parameters::Vector{Number}, 𝓂::ℳ, fail_fast_solvers_only::Bool, verbose::Bool)
+    solve_exp = :(function solve_SS(parameters::Vector{Number}, 𝓂::ℳ, 
+    # fail_fast_solvers_only::Bool, 
+    verbose::Bool)
                     params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                     current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
                     closest_solution_init = 𝓂.NSSS_solver_cache[end]
@@ -911,7 +914,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                         end
                     end
                     solved_scale = 0
-                    range_length = fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
+                    range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
                     for r in range_length
                         rangee = ignore_derivatives(range(0,1,r+1))
                         for scale in rangee[2:end]
@@ -1811,7 +1814,7 @@ end
 
 
 
-function calculate_hessian(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
+function calculate_hessian(parameters::Vector{T}, SS_and_pars::AbstractArray{U}, 𝓂::ℳ) where {T,U}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
@@ -1847,7 +1850,7 @@ function calculate_hessian(parameters::Vector{<: Number}, SS_and_pars::AbstractA
     
     second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_hessian]
     
-    vals = [Float64(i[1]) for i in second_out]
+    vals = [convert(T,i[1]) for i in second_out]
     rows = [i[2] for i in second_out]
     cols = [i[3] for i in second_out]
 
@@ -1856,7 +1859,7 @@ end
 
 
 
-function calculate_third_order_derivatives(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
+function calculate_third_order_derivatives(parameters::Vector{T}, SS_and_pars::AbstractArray{U}, 𝓂::ℳ) where {T,U}
     
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
@@ -1891,7 +1894,7 @@ function calculate_third_order_derivatives(parameters::Vector{<: Number}, SS_and
     
     third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
     
-    vals = [Float64(i[1]) for i in third_out]
+    vals = [convert(T,i[1])  for i in third_out]
     rows = [i[2] for i in third_out]
     cols = [i[3] for i in third_out]
 
@@ -2106,13 +2109,74 @@ function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive
 end
 
 
+function solve_sylvester_equation_forward(A::SparseMatrixCSC{S},
+                                    B::SparseMatrixCSC{S},
+                                    C::SparseMatrixCSC{S},
+                                    X::SparseMatrixCSC{S})::SparseMatrixCSC{S}  where S
 
-function  calculate_second_order_solution(∇₁::AbstractMatrix{Float64}, #first order derivatives
-                                            ∇₂::SparseMatrixCSC{Float64}, #second order derivatives
-                                            𝑺₁::AbstractMatrix{Float64};  #first order solution
-                                            T::timings)
+    lm = LinearMap{Float64}(x -> A * reshape(x, size(X)) - B * reshape(x, size(X)) * C, size(X)[1] * size(X)[2])
+
+    sparse(reshape(ℐ.gmres(lm, vec(-X)), size(X)))
+end
+
+
+function solve_sylvester_equation_condition(ABCX, S)
+    (; A, B, C, X) = ABCX
+
+    X + A * S - B * S * C
+end
+
+
+function solve_sylvester_equation(ABCX::AbstractArray{Float64})
+    (; A, B, C, X) = ABCX
+
+    lm = LinearMap{Float64}(x -> A * reshape(x, size(X)) - B * reshape(x, size(X)) * C, size(X)[1] * size(X)[2])
+
+    reshape(ℐ.gmres(lm, vec(-X)), size(X))
+end
+
+
+function solve_sylvester_equation(ABCX::AbstractArray{ℱ.Dual{Z,S,N}}) where {Z,S,N}
+    # unpack: AoS -> SoA
+    abcx = ℱ.value.(ABCX)
+
+    # you can play with the dimension here, sometimes it makes sense to transpose
+    ps = mapreduce(ℱ.partials, hcat, ABCX)'
+
+    # get f(vs)
+    val = solve_sylvester_equation(abcx)
+
+    # get J(f, vs) * ps (cheating). Write your custom rule here
+    B = ℱ.jacobian(x -> solve_sylvester_equation_condition(x, val), abcx)
+    A = ℱ.jacobian(x -> solve_sylvester_equation_condition(abcx, x), val)
+    
+    Â = RF.lu(A, check = false)
+
+    if !ℒ.issuccess(Â)
+        Â = ℒ.svd(A)
+    end
+    
+    jvp = -(Â \ B) * ps
+
+    # lm = LinearMap{Float64}(x -> A * reshape(x, size(B)), length(B))
+
+    # jvp = - sparse(reshape(ℐ.gmres(lm, sparsevec(B)), size(B))) * ps
+    # jvp *= -ps
+
+    # pack: SoA -> AoS
+    return reshape(map(val, eachrow(jvp)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end,size(val))
+end
+
+
+
+function calculate_second_order_solution(∇₁::Matrix{S}, #first order derivatives
+                                            ∇₂::SparseMatrixCSC{S}, #second order derivatives
+                                            𝑺₁::Matrix{S};  #first order solution
+                                            T::timings)::SparseMatrixCSC{S} where S <: Number
     # inspired by Levintal
-    tol = eps(Float32)
+    tol = 1e-10
 
     # Indices and number of variables
     i₊ = T.future_not_past_and_mixed_idx;
@@ -2123,7 +2187,6 @@ function  calculate_second_order_solution(∇₁::AbstractMatrix{Float64}, #firs
     nₑ = T.nExo;
     n  = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
-
 
     # 1st order solution
     𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]] |> sparse
@@ -2143,12 +2206,10 @@ function  calculate_second_order_solution(∇₁::AbstractMatrix{Float64}, #firs
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
                     zeros(n₋ + n + nₑ, nₑ₋)];
 
-
     # setup compression matrices
     colls2 = [nₑ₋ * (i-1) + k for i in 1:nₑ₋ for k in 1:i]
     𝐂₂ = sparse(colls2, 1:length(colls2) , 1)
     𝐔₂ = 𝐂₂' * sparse([i <= k ? (k - 1) * nₑ₋ + i : (i - 1) * nₑ₋ + k for k in 1:nₑ₋ for i in 1:nₑ₋], 1:nₑ₋^2, 1)
-
 
     ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
@@ -2157,37 +2218,33 @@ function  calculate_second_order_solution(∇₁::AbstractMatrix{Float64}, #firs
     X = sparse(∇₁₊𝐒₁➕∇₁₀ \ ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹)
     droptol!(X,tol)
 
-
     ∇₁₊ = @views sparse(∇₁[:,1:n₊] * spdiagm(ones(n))[i₊,:])
 
     B = sparse(∇₁₊𝐒₁➕∇₁₀ \ ∇₁₊)
     droptol!(B,tol)
-
 
     C = (𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + 𝐔₂ * 𝛔) * 𝐂₂
     droptol!(C,tol)
 
     A = spdiagm(ones(n))
 
-    lm = LinearMap{Float64}(x -> A * reshape(x,size(X)) - B * reshape(x,size(X)) * C, size(X)[1] * size(X)[2])
-
-    # 𝐒₂ = sparse(reshape(ℐ.bicgstabl(lm, vec(-X)), size(X))) * 𝐔₂ # fastest
-    𝐒₂ = sparse(reshape(ℐ.gmres(lm, vec(-X)), size(X))) * 𝐔₂ # numerically more stable
+    𝐒₂ = sparse(solve_sylvester_equation(𝒞.ComponentArray(;A,B,C,X)))
     droptol!(𝐒₂,tol)
+
+    𝐒₂ *= 𝐔₂
 
     return 𝐒₂
 end
 
 
-
-function  calculate_third_order_solution(∇₁::AbstractMatrix{Float64}, #first order derivatives
-                                            ∇₂::SparseMatrixCSC{Float64}, #second order derivatives
-                                            ∇₃::SparseMatrixCSC{Float64}, #third order derivatives
-                                            𝑺₁::AbstractMatrix{Float64}, #first order solution
-                                            𝐒₂::AbstractMatrix{Float64}; #second order solution
-                                            T::timings)
+function  calculate_third_order_solution(∇₁::Matrix{S}, #first order derivatives
+                                            ∇₂::SparseMatrixCSC{S}, #second order derivatives
+                                            ∇₃::SparseMatrixCSC{S}, #third order derivatives
+                                            𝑺₁::Matrix{S}, #first order solution
+                                            𝐒₂::SparseMatrixCSC{S}; #second order solution
+                                            T::timings)::SparseMatrixCSC{S} where S <: Number
     # inspired by Levintal
-    tol = eps(Float32)
+    tol = 1e-10
 
     # Indices and number of variables
     i₊ = T.future_not_past_and_mixed_idx;
@@ -2199,7 +2256,6 @@ function  calculate_third_order_solution(∇₁::AbstractMatrix{Float64}, #first
     n = T.nVars
     n̄ = n₋ + n + n₊ + nₑ
     nₑ₋ = n₋ + 1 + nₑ
-
 
     # 1st order solution
     𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]] |> sparse
@@ -2244,20 +2300,18 @@ function  calculate_third_order_solution(∇₁::AbstractMatrix{Float64}, #first
     
     𝐔₃ = 𝐂₃' * sparse(idxs,1:nₑ₋ ^ 3, 1)
     
-    
     # permutation matrices
     M = reshape(1:nₑ₋^3,1,nₑ₋,nₑ₋,nₑ₋)
     𝐏 = @views sparse(reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 4, 2, 3])],nₑ₋^3,nₑ₋^3)
-                           + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 4, 3])],nₑ₋^3,nₑ₋^3)
-                           + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 3, 4])],nₑ₋^3,nₑ₋^3))
+                        + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 4, 3])],nₑ₋^3,nₑ₋^3)
+                        + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 3, 4])],nₑ₋^3,nₑ₋^3))
     
-
     ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + 𝐒₁ * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
             𝐒₂
             zeros(n₋ + nₑ, nₑ₋^2)];
         
     𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:] 
-             zeros(n₋ + n + nₑ, nₑ₋^2)];
+            zeros(n₋ + n + nₑ, nₑ₋^2)];
     
     𝐗₃ = -∇₃ * sparse(ℒ.kron(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋), ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
     
@@ -2269,8 +2323,6 @@ function  calculate_third_order_solution(∇₁::AbstractMatrix{Float64}, #first
     tmpkron = sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * 𝛔))
     out = - ∇₃ * tmpkron - ∇₃ * 𝐏₁ₗ * tmpkron * 𝐏₁ᵣ - ∇₃ * 𝐏₂ₗ * tmpkron * 𝐏₂ᵣ
     𝐗₃ += out
-    
-    
     
     tmp𝐗₃ = -∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎))
     
@@ -2286,10 +2338,8 @@ function  calculate_third_order_solution(∇₁::AbstractMatrix{Float64}, #first
     𝐗₃ += @views -∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]) * 𝐏
     droptol!(𝐗₃,tol)
     
-    
     X = sparse(∇₁₊𝐒₁➕∇₁₀ \ 𝐗₃ * 𝐂₃)
     droptol!(X,tol)
-    
     
     𝐏₁ₗ = @views sparse(spdiagm(ones(nₑ₋^3))[vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(1,3,2))),:])
     𝐏₁ᵣ = @views sparse(spdiagm(ones(nₑ₋^3))[:,vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(1,3,2)))])
@@ -2303,15 +2353,13 @@ function  calculate_third_order_solution(∇₁::AbstractMatrix{Float64}, #first
     C *= 𝐂₃
     droptol!(C,tol)
     
-    
     A = spdiagm(ones(n))
-    lm = LinearMap{Float64}(x -> A * reshape(x,size(X)) - B * reshape(x,size(X)) * C, size(X)[1] * size(X)[2])
-    
-    # 𝐒₃ = sparse(reshape(ℐ.bicgstabl(lm, vec(-X)),size(X))) * 𝐔₃ # fastest
-    𝐒₃ = sparse(reshape(ℐ.gmres(lm, vec(-X)),size(X))) * 𝐔₃ # numerically more stable
+
+    𝐒₃ = sparse(solve_sylvester_equation(𝒞.ComponentArray(;A,B,C,X)))
     droptol!(𝐒₃,tol)
-    
-    
+
+    𝐒₃ *= 𝐔₃
+
     return 𝐒₃
 end
 
