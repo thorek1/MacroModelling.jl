@@ -1814,7 +1814,7 @@ end
 
 
 
-function calculate_hessian(parameters::Vector{T}, SS_and_pars::AbstractArray{U}, 𝓂::ℳ) where {T,U}
+function calculate_hessian(parameters::Vector{M}, SS_and_pars::AbstractArray{N}, 𝓂::ℳ) where {M,N}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
@@ -1850,7 +1850,7 @@ function calculate_hessian(parameters::Vector{T}, SS_and_pars::AbstractArray{U},
     
     second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_hessian]
     
-    vals = [convert(T,i[1]) for i in second_out]
+    vals = [convert(typeof(parameters[1]),i[1]) for i in second_out]
     rows = [i[2] for i in second_out]
     cols = [i[3] for i in second_out]
 
@@ -1894,7 +1894,7 @@ function calculate_third_order_derivatives(parameters::Vector{T}, SS_and_pars::A
     
     third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
     
-    vals = [convert(T,i[1])  for i in third_out]
+    vals = [convert(typeof(parameters[1]),i[1])  for i in third_out]
     rows = [i[2] for i in third_out]
     cols = [i[3] for i in third_out]
 
@@ -2170,11 +2170,10 @@ function solve_sylvester_equation(ABCX::AbstractArray{ℱ.Dual{Z,S,N}}) where {Z
 end
 
 
-
-function calculate_second_order_solution(∇₁::Matrix{S}, #first order derivatives
-                                            ∇₂::SparseMatrixCSC{S}, #second order derivatives
-                                            𝑺₁::Matrix{S};  #first order solution
-                                            T::timings)::SparseMatrixCSC{S} where S <: Number
+function  calculate_second_order_solution(∇₁::AbstractMatrix{<: Number}, #first order derivatives
+                                            ∇₂::SparseMatrixCSC{<: Number}, #second order derivatives
+                                            𝑺₁::AbstractMatrix{<: Number};  #first order solution
+                                            T::timings)
     # inspired by Levintal
     tol = 1e-10
 
@@ -2208,12 +2207,12 @@ function calculate_second_order_solution(∇₁::Matrix{S}, #first order derivat
 
     # setup compression matrices
     colls2 = [nₑ₋ * (i-1) + k for i in 1:nₑ₋ for k in 1:i]
-    𝐂₂ = sparse(colls2, 1:length(colls2) , 1)
+    𝐂₂ = sparse(colls2, 1:length(colls2) , 1.0)
     𝐔₂ = 𝐂₂' * sparse([i <= k ? (k - 1) * nₑ₋ + i : (i - 1) * nₑ₋ + k for k in 1:nₑ₋ for i in 1:nₑ₋], 1:nₑ₋^2, 1)
 
     ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
-    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = -∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * 𝛔) * 𝐂₂ 
+    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = - ∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * 𝛔) * 𝐂₂ 
 
     X = sparse(∇₁₊𝐒₁➕∇₁₀ \ ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹)
     droptol!(X,tol)
@@ -2237,12 +2236,13 @@ function calculate_second_order_solution(∇₁::Matrix{S}, #first order derivat
 end
 
 
-function  calculate_third_order_solution(∇₁::Matrix{S}, #first order derivatives
-                                            ∇₂::SparseMatrixCSC{S}, #second order derivatives
-                                            ∇₃::SparseMatrixCSC{S}, #third order derivatives
-                                            𝑺₁::Matrix{S}, #first order solution
-                                            𝐒₂::SparseMatrixCSC{S}; #second order solution
-                                            T::timings)::SparseMatrixCSC{S} where S <: Number
+
+function  calculate_third_order_solution(∇₁::AbstractMatrix{<: Number}, #first order derivatives
+                                            ∇₂::SparseMatrixCSC{<: Number}, #second order derivatives
+                                            ∇₃::SparseMatrixCSC{<: Number}, #third order derivatives
+                                            𝑺₁::AbstractMatrix{<: Number}, #first order solution
+                                            𝐒₂::AbstractMatrix{<: Number}; #second order solution
+                                            T::timings)
     # inspired by Levintal
     tol = 1e-10
 
@@ -2286,7 +2286,7 @@ function  calculate_third_order_solution(∇₁::Matrix{S}, #first order derivat
     
     # compression matrices for third order
     colls3 = [nₑ₋^2 * (i-1) + nₑ₋ * (k-1) + l for i in 1:nₑ₋ for k in 1:i for l in 1:k]
-    𝐂₃ = sparse(colls3, 1:length(colls3) , 1)
+    𝐂₃ = sparse(colls3, 1:length(colls3) , 1.0)
     
     idxs = []
     for k in 1:nₑ₋

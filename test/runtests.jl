@@ -89,7 +89,7 @@ end
     include("models/FS2000.jl")
     functionality_test(m, plots = false)
     functionality_test(m, algorithm = :second_order, plots = false)
-    # functionality_test(m, algorithm = :third_order, plots = false)
+    functionality_test(m, algorithm = :third_order, plots = false)
 end
 
 @testset verbose = true "Model without shocks" begin
