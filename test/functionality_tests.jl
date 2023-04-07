@@ -213,7 +213,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     end
 
     if algorithm ∈ [:second_order, :third_order]
-        SSS = get_stochastic_steady_state(m)
+        SSS = get_stochastic_steady_state(m, algorithm = algorithm)
     end
     
     # irfs

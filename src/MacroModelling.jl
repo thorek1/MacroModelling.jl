@@ -1155,6 +1155,76 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
 end
 
 
+function calculate_second_order_stochastic_steady_state(𝐒₁𝐒₂SSpars::AbstractArray{Float64}, 𝓂::ℳ)
+    (; 𝐒₁, 𝐒₂, SS_and_pars) = 𝐒₁𝐒₂SSpars
+
+    S₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+
+    state = zeros(𝓂.timings.nVars)
+    shock = zeros(𝓂.timings.nExo)
+
+    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+    1.0
+    shock]
+
+    state .= speedmapping(state; 
+                m! = (SSS, sss) -> begin 
+                    aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
+                    1.0
+                    shock]
+
+                    SSS .= S₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+                end, 
+            tol = eps()).minimizer
+
+    all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+    all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    
+    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    
+    all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
+    # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
+
+    all_SS + state
+end
+
+
+
+
+function calculate_third_order_stochastic_steady_state(𝐒₁𝐒₂𝐒₃SSpars::AbstractArray{Float64}, 𝓂::ℳ)
+    (; 𝐒₁, 𝐒₂, 𝐒₃, SS_and_pars) = 𝐒₁𝐒₂𝐒₃SSpars
+
+    S₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+
+    state = zeros(𝓂.timings.nVars)
+    shock = zeros(𝓂.timings.nExo)
+
+    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+    1.0
+    shock]
+
+    state .= speedmapping(state; 
+                m! = (SSS, sss) -> begin 
+                    aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
+                    1.0
+                    shock]
+
+                    SSS .= S₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                end, 
+            tol = eps()).minimizer
+
+    all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+    all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    
+    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    
+    all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
+    # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
+
+    all_SS + state
+end
 
 
 
@@ -1216,7 +1286,11 @@ function solve!(𝓂::ℳ;
                                                 𝓂.solution.perturbation.first_order.solution_matrix; 
                                                 T = 𝓂.timings)
 
-            𝐒₁ = [𝓂.solution.perturbation.first_order.solution_matrix[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+            𝐒₁ = 𝓂.solution.perturbation.first_order.solution_matrix
+
+            stochastic_steady_state = calculate_second_order_stochastic_steady_state(𝒞.ComponentArray(; 𝐒₁, 𝐒₂, SS_and_pars), 𝓂)
+
+            𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
             
             state_update₂ = function(state::Vector{Float64}, shock::Vector{Float64})
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
@@ -1224,29 +1298,6 @@ function solve!(𝓂::ℳ;
                             shock]
                 return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
             end
-
-            # Calculate stochastic SS
-            state = zeros(𝓂.timings.nVars)
-            shock = zeros(𝓂.timings.nExo)
-
-            delta = 1
-
-            while delta > eps(Float64)
-                state_tmp =  state_update₂(state,shock)
-                delta = sum(abs,state_tmp - state)
-                state = state_tmp
-            end
-
-            all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
-            all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-            
-            NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
-            
-            all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
-            # we need all variables for the stochastic steady state because even laads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
-
-            stochastic_steady_state = all_SS + state
 
             𝓂.solution.perturbation.second_order = higher_order_perturbation_solution(𝐒₂,stochastic_steady_state,state_update₂)
 
@@ -1276,35 +1327,18 @@ function solve!(𝓂::ℳ;
                                                 𝓂.solution.perturbation.second_order.solution_matrix; 
                                                 T = 𝓂.timings)
 
+            𝐒₁ = 𝓂.solution.perturbation.first_order.solution_matrix
+
+            stochastic_steady_state = calculate_third_order_stochastic_steady_state(𝒞.ComponentArray(; 𝐒₁, 𝐒₂, 𝐒₃, SS_and_pars), 𝓂)
+
+            𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+
             state_update₃ = function(state::Vector{Float64}, shock::Vector{Float64})
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                                 1
                                 shock]
                 return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
             end
-
-            # Calculate stochastic SS
-            state = zeros(𝓂.timings.nVars)
-            shock = zeros(𝓂.timings.nExo)
-
-            delta = 1
-
-            while delta > eps(Float64)
-                state_tmp =  state_update₃(state,shock)
-                delta = sum(abs,state_tmp - state)
-                state = state_tmp
-            end
-
-            all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
-            all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-            
-            NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
-            
-            all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
-            # we need all variables for the stochastic steady state because even laads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
-            
-            stochastic_steady_state = all_SS + state
 
             𝓂.solution.perturbation.third_order = higher_order_perturbation_solution(𝐒₃,stochastic_steady_state,state_update₃)
 
@@ -1958,9 +1992,11 @@ function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64};
     ∇₀ = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇₋ = @views ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
     ∇ₑ = @views ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
-
-    A = ∇₀ \ ∇₋
-    B = ∇₀ \ ∇₊
+    
+    ∇̂₀ =  RF.lu(∇₀)
+    
+    A = ∇̂₀ \ ∇₋
+    B = ∇̂₀ \ ∇₊
 
     C = similar(A)
     C̄ = similar(A)

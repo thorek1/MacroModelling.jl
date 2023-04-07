@@ -513,6 +513,7 @@ Return the (non stochastic) steady state and derivatives with respect to model p
 - $PARAMETERS
 - $DERIVATIVES
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation. No derivatives are calculated.
+- $ALGORITHM
 - `parameter_derivatives` [Default: :all]: parameters for which to calculate partial derivatives. Inputs can be either a `Symbol` (e.g. `:alpha`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`.
 - $VERBOSE
 
@@ -553,6 +554,7 @@ function get_steady_state(𝓂::ℳ;
     parameters = nothing, 
     derivatives::Bool = true, 
     stochastic::Bool = false,
+    algorithm::Symbol = :first_order,
     parameter_derivatives::Symbol_input = :all,
     verbose::Bool = false)
 
@@ -581,8 +583,13 @@ function get_steady_state(𝓂::ℳ;
     SS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     if stochastic
-        solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order)
-        SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
+        if  algorithm == :third_order
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
+            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+        else
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order)
+            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
+        end
     end
 
     var_idx = indexin([vars_in_ss_equations...,𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
