@@ -52,7 +52,7 @@ momm = get_moments(RBC_CME)
 @test isapprox(momm[2][1], 0.015600269903198518, rtol = eps(Float32))
 
 
-SS_and_pars, _ = RBC_CME.SS_solve_func(RBC_CME.parameter_values, RBC_CME, true, true)
+SS_and_pars, _ = RBC_CME.SS_solve_func(RBC_CME.parameter_values, RBC_CME, true)
 
 get_irf(RBC_CME, algorithm = :third_order)
 
