@@ -150,12 +150,12 @@ end
 
 
 struct perturbation_solution
-    solution_matrix::AbstractMatrix{Float64}
+    solution_matrix::Matrix{Float64}
     state_update::Function
-end
+end 
 
 struct higher_order_perturbation_solution
-    solution_matrix::AbstractMatrix{Float64}
+    solution_matrix::SparseMatrixCSC{Float64}
     stochastic_steady_state::Vector{Float64}
     state_update::Function
 end
