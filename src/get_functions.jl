@@ -602,18 +602,32 @@ function get_steady_state(𝓂::ℳ;
         derivatives = true
     end
 
-    if derivatives && !stochastic
-        # dSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
-        dSS = ℱ.jacobian(x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx], Float64.(𝓂.parameter_values[param_idx]))
-        𝓂.parameter_values = ℱ.value.(𝓂.parameter_values)
+    if derivatives 
+        if stochastic
+                if algorithm == :third_order
+                    dSSS = ℱ.jacobian(x->collect(SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx], Float64.(𝓂.parameter_values[param_idx]))
+                    𝓂.parameter_values = ℱ.value.(𝓂.parameter_values)
 
-        # if length(𝓂.calibration_equations_parameters) == 0        
-        #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters))
-        # else
-        # return ComponentMatrix(hcat(collect(NSSS), dNSSS)',Axis(vcat(:SS, 𝓂.parameters)),Axis([sort(union(𝓂.exo_present,var))...,𝓂.calibration_equations_parameters...]))
-        # return NamedArray(hcat(collect(NSSS), dNSSS), ([sort(union(𝓂.exo_present,var))..., 𝓂.calibration_equations_parameters...], vcat(:Steady_state, 𝓂.parameters)), ("Var. and par.", "∂x/∂y"))
-        return KeyedArray(hcat(SS[var_idx],dSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
-        # end
+                    return KeyedArray(hcat(SS[var_idx],dSSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+                else
+                    dSSS = ℱ.jacobian(x->collect(SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx], Float64.(𝓂.parameter_values[param_idx]))
+                    𝓂.parameter_values = ℱ.value.(𝓂.parameter_values)
+
+                    return KeyedArray(hcat(SS[var_idx],dSSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+                end
+        else
+            # dSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
+            dSS = ℱ.jacobian(x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx], Float64.(𝓂.parameter_values[param_idx]))
+            𝓂.parameter_values = ℱ.value.(𝓂.parameter_values)
+
+            # if length(𝓂.calibration_equations_parameters) == 0        
+            #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters))
+            # else
+            # return ComponentMatrix(hcat(collect(NSSS), dNSSS)',Axis(vcat(:SS, 𝓂.parameters)),Axis([sort(union(𝓂.exo_present,var))...,𝓂.calibration_equations_parameters...]))
+            # return NamedArray(hcat(collect(NSSS), dNSSS), ([sort(union(𝓂.exo_present,var))..., 𝓂.calibration_equations_parameters...], vcat(:Steady_state, 𝓂.parameters)), ("Var. and par.", "∂x/∂y"))
+            return KeyedArray(hcat(SS[var_idx],dSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+            # end
+        end
     else
         # return ComponentVector(collect(NSSS),Axis([sort(union(𝓂.exo_present,var))...,𝓂.calibration_equations_parameters...]))
         # return NamedArray(collect(NSSS), [sort(union(𝓂.exo_present,var))..., 𝓂.calibration_equations_parameters...], ("Variables and calibrated parameters"))

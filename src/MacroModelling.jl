@@ -1155,27 +1155,91 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
 end
 
 
-function calculate_second_order_stochastic_steady_state(𝐒₁𝐒₂SSpars::AbstractArray{Float64}, 𝓂::ℳ)
-    (; 𝐒₁, 𝐒₂, SS_and_pars) = 𝐒₁𝐒₂SSpars
 
-    S₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{Float64}, 𝓂::ℳ)
+    (; 𝐒₁, 𝐒₂) = 𝐒₁𝐒₂
 
     state = zeros(𝓂.timings.nVars)
     shock = zeros(𝓂.timings.nExo)
 
     aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-    1.0
+    1
     shock]
 
     state .= speedmapping(state; 
                 m! = (SSS, sss) -> begin 
-                    aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
-                    1.0
-                    shock]
+                                    aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
+                                                1
+                                                shock]
 
-                    SSS .= S₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+                                    SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
                 end, 
-            tol = eps()).minimizer
+    tol = eps()).minimizer
+end
+
+
+function second_order_stochastic_steady_state_iterative_solution_condition(𝐒₁𝐒₂, SSS, 𝓂::ℳ)
+    (; 𝐒₁, 𝐒₂) = 𝐒₁𝐒₂
+
+    shock = zeros(𝓂.timings.nExo)
+
+    aug_state = [SSS[𝓂.timings.past_not_future_and_mixed_idx]
+    1
+    shock]
+    
+    𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 - SSS
+end
+
+
+function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{ℱ.Dual{Z,S,N}}, 𝓂::ℳ) where {Z,S,N}
+
+    # unpack: AoS -> SoA
+    S₁S₂ = ℱ.value.(𝐒₁𝐒₂)
+
+    # you can play with the dimension here, sometimes it makes sense to transpose
+    ps = mapreduce(ℱ.partials, hcat, 𝐒₁𝐒₂)'
+
+    # get f(vs)
+    val = second_order_stochastic_steady_state_iterative_solution(S₁S₂, 𝓂)
+
+    # get J(f, vs) * ps (cheating). Write your custom rule here
+    B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_condition(x, val, 𝓂), S₁S₂)
+    A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_condition(S₁S₂, x, 𝓂), val)
+    
+    Â = RF.lu(A, check = false)
+
+    if !ℒ.issuccess(Â)
+        Â = ℒ.svd(A)
+    end
+    
+    jvp = -(Â \ B) * ps
+
+    # lm = LinearMap{Float64}(x -> A * reshape(x, size(B)), length(B))
+
+    # jvp = - sparse(reshape(ℐ.gmres(lm, sparsevec(B)), size(B))) * ps
+    # jvp *= -ps
+
+    # pack: SoA -> AoS
+    return reshape(map(val, eachrow(jvp)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end,size(val))
+end
+
+
+function calculate_second_order_stochastic_steady_state(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false) where T
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+    
+    𝐒₁ = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+    
+    𝐒₂ = calculate_second_order_solution(∇₁,∇₂,𝐒₁; T = 𝓂.timings)
+
+    𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+
+    state = second_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂), 𝓂)
 
     all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
@@ -1186,33 +1250,100 @@ function calculate_second_order_stochastic_steady_state(𝐒₁𝐒₂SSpars::Ab
     all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
-    all_SS + state
+    all_SS + state, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 end
 
 
 
 
-function calculate_third_order_stochastic_steady_state(𝐒₁𝐒₂𝐒₃SSpars::AbstractArray{Float64}, 𝓂::ℳ)
-    (; 𝐒₁, 𝐒₂, 𝐒₃, SS_and_pars) = 𝐒₁𝐒₂𝐒₃SSpars
-
-    S₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::AbstractArray{Float64}, 𝓂::ℳ)
+    (; 𝐒₁, 𝐒₂, 𝐒₃) = 𝐒₁𝐒₂𝐒₃
 
     state = zeros(𝓂.timings.nVars)
     shock = zeros(𝓂.timings.nExo)
 
     aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-    1.0
+    1
     shock]
 
     state .= speedmapping(state; 
                 m! = (SSS, sss) -> begin 
-                    aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
-                    1.0
-                    shock]
+                                    aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
+                                                1
+                                                shock]
 
-                    SSS .= S₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                                    SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
                 end, 
-            tol = eps()).minimizer
+    tol = eps()).minimizer
+end
+
+
+function third_order_stochastic_steady_state_iterative_solution_condition(𝐒₁𝐒₂𝐒₃, SSS, 𝓂::ℳ)
+    (; 𝐒₁, 𝐒₂, 𝐒₃) = 𝐒₁𝐒₂𝐒₃
+
+    shock = zeros(𝓂.timings.nExo)
+
+    aug_state = [SSS[𝓂.timings.past_not_future_and_mixed_idx]
+    1
+    shock]
+    
+    𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6 - SSS
+end
+
+
+function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::AbstractArray{ℱ.Dual{Z,S,N}}, 𝓂::ℳ) where {Z,S,N}
+
+    # unpack: AoS -> SoA
+    S₁S₂S₃ = ℱ.value.(𝐒₁𝐒₂𝐒₃)
+
+    # you can play with the dimension here, sometimes it makes sense to transpose
+    ps = mapreduce(ℱ.partials, hcat, 𝐒₁𝐒₂𝐒₃)'
+
+    # get f(vs)
+    val = third_order_stochastic_steady_state_iterative_solution(S₁S₂S₃, 𝓂)
+
+    # get J(f, vs) * ps (cheating). Write your custom rule here
+    B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_condition(x, val, 𝓂), S₁S₂S₃)
+    A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_condition(S₁S₂S₃, x, 𝓂), val)
+    
+    Â = RF.lu(A, check = false)
+
+    if !ℒ.issuccess(Â)
+        Â = ℒ.svd(A)
+    end
+    
+    jvp = -(Â \ B) * ps
+
+    # lm = LinearMap{Float64}(x -> A * reshape(x, size(B)), length(B))
+
+    # jvp = - sparse(reshape(ℐ.gmres(lm, sparsevec(B)), size(B))) * ps
+    # jvp *= -ps
+
+    # pack: SoA -> AoS
+    return reshape(map(val, eachrow(jvp)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end,size(val))
+end
+
+
+function calculate_third_order_stochastic_steady_state(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false) where T
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+    
+    𝐒₁ = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+    
+    𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁; T = 𝓂.timings)
+
+    ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,SS_and_pars,𝓂)
+            
+    𝐒₃ = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂; T = 𝓂.timings)
+
+    𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+
+    state = third_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂, 𝐒₃), 𝓂)
 
     all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
@@ -1223,7 +1354,7 @@ function calculate_third_order_stochastic_steady_state(𝐒₁𝐒₂𝐒₃SSpa
     all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
-    all_SS + state
+    all_SS + state, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃
 end
 
 
@@ -1234,7 +1365,7 @@ function solve!(𝓂::ℳ;
     dynamics::Bool = false, 
     algorithm::Symbol = :riccati, 
     symbolic_SS::Bool = false,
-    verbose = false)
+    verbose::Bool = false)
 
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :second_order, :third_order]
 
@@ -1274,24 +1405,8 @@ function solve!(𝓂::ℳ;
         end
         
         if any([:second_order, :third_order] .∈ ([algorithm],)) && :second_order ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+            stochastic_steady_state, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
 
-            if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
-                ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-            end
-
-            ∇₂ = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
-            𝐒₂ = calculate_second_order_solution(∇₁, 
-                                                ∇₂, 
-                                                𝓂.solution.perturbation.first_order.solution_matrix; 
-                                                T = 𝓂.timings)
-
-            𝐒₁ = 𝓂.solution.perturbation.first_order.solution_matrix
-
-            stochastic_steady_state = calculate_second_order_stochastic_steady_state(𝒞.ComponentArray(; 𝐒₁, 𝐒₂, SS_and_pars), 𝓂)
-
-            𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
-            
             state_update₂ = function(state::Vector{Float64}, shock::Vector{Float64})
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                             1
@@ -1302,36 +1417,10 @@ function solve!(𝓂::ℳ;
             𝓂.solution.perturbation.second_order = higher_order_perturbation_solution(𝐒₂,stochastic_steady_state,state_update₂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
-            
         end
         
         if :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
-
-            if !any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
-                ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-                𝐒₁ = [𝓂.solution.perturbation.first_order.solution_matrix[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
-            end
-
-            if :second_order ∉ 𝓂.solution.outdated_algorithms
-                ∇₂ = calculate_hessian(𝓂.parameter_values,SS_and_pars,𝓂)
-                𝐒₂ = 𝓂.solution.perturbation.second_order.solution_matrix
-            end
-            
-            ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,SS_and_pars,𝓂)
-            
-            𝐒₃ = calculate_third_order_solution(∇₁, 
-                                                ∇₂, 
-                                                ∇₃, 
-                                                𝓂.solution.perturbation.first_order.solution_matrix, 
-                                                𝓂.solution.perturbation.second_order.solution_matrix; 
-                                                T = 𝓂.timings)
-
-            𝐒₁ = 𝓂.solution.perturbation.first_order.solution_matrix
-
-            stochastic_steady_state = calculate_third_order_stochastic_steady_state(𝒞.ComponentArray(; 𝐒₁, 𝐒₂, 𝐒₃, SS_and_pars), 𝓂)
-
-            𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+            stochastic_steady_state, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
 
             state_update₃ = function(state::Vector{Float64}, shock::Vector{Float64})
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
@@ -1343,7 +1432,6 @@ function solve!(𝓂::ℳ;
             𝓂.solution.perturbation.third_order = higher_order_perturbation_solution(𝐒₃,stochastic_steady_state,state_update₃)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order])
-            
         end
         
         if any([:quadratic_iteration, :binder_pesaran] .∈ ([algorithm],)) && any([:quadratic_iteration, :binder_pesaran] .∈ (𝓂.solution.outdated_algorithms,))
@@ -1760,7 +1848,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Number}; verbo
             match_idx = []
             for (i, v) in enumerate(parameters)
                 if v != 𝓂.parameter_values[i]
-                     push!(match_idx,i)
+                    push!(match_idx,i)
                 end
             end
             
@@ -1787,6 +1875,30 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Number}; verbo
     if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
 end
 
+
+
+function SSS_third_order_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
+    𝓂.parameter_values[parameters_idx] = parameters
+    calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+end
+
+
+function SSS_third_order_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
+    𝓂.parameter_values[parameters_idx] = parameters
+    calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+end
+
+
+function SSS_second_order_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
+    𝓂.parameter_values[parameters_idx] = parameters
+    calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+end
+
+
+function SSS_second_order_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
+    𝓂.parameter_values[parameters_idx] = parameters
+    calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+end
 
 
 function SS_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
@@ -2144,16 +2256,6 @@ function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive
     return hcat(A, B)
 end
 
-
-function solve_sylvester_equation_forward(A::SparseMatrixCSC{S},
-                                    B::SparseMatrixCSC{S},
-                                    C::SparseMatrixCSC{S},
-                                    X::SparseMatrixCSC{S})::SparseMatrixCSC{S}  where S
-
-    lm = LinearMap{Float64}(x -> A * reshape(x, size(X)) - B * reshape(x, size(X)) * C, size(X)[1] * size(X)[2])
-
-    sparse(reshape(ℐ.gmres(lm, vec(-X)), size(X)))
-end
 
 
 function solve_sylvester_equation_condition(ABCX, S)
@@ -2799,70 +2901,70 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
 end
 
-@precompile_setup begin
-    # Putting some things in `setup` can reduce the size of the
-    # precompile file and potentially make loading faster.
-    @model FS2000 begin
-        dA[0] = exp(gam + z_e_a  *  e_a[x])
-        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-        W[0] = l[0] / n[0]
-        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-        P[0] * c[0] = m[0]
-        m[0] - 1 + d[0] = l[0]
-        e[0] = exp(z_e_a  *  e_a[x])
-        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-        gy_obs[0] = dA[0] * y[0] / y[-1]
-        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-        log_gy_obs[0] = log(gy_obs[0])
-        log_gp_obs[0] = log(gp_obs[0])
-    end
+# @precompile_setup begin
+#     # Putting some things in `setup` can reduce the size of the
+#     # precompile file and potentially make loading faster.
+#     @model FS2000 begin
+#         dA[0] = exp(gam + z_e_a  *  e_a[x])
+#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#         W[0] = l[0] / n[0]
+#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#         P[0] * c[0] = m[0]
+#         m[0] - 1 + d[0] = l[0]
+#         e[0] = exp(z_e_a  *  e_a[x])
+#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#         gy_obs[0] = dA[0] * y[0] / y[-1]
+#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#         log_gy_obs[0] = log(gy_obs[0])
+#         log_gp_obs[0] = log(gp_obs[0])
+#     end
 
-    @parameters FS2000 silent = true begin  
-        alp     = 0.356
-        bet     = 0.993
-        gam     = 0.0085
-        mst     = 1.0002
-        rho     = 0.129
-        psi     = 0.65
-        del     = 0.01
-        z_e_a   = 0.035449
-        z_e_m   = 0.008862
-    end
+#     @parameters FS2000 silent = true begin  
+#         alp     = 0.356
+#         bet     = 0.993
+#         gam     = 0.0085
+#         mst     = 1.0002
+#         rho     = 0.129
+#         psi     = 0.65
+#         del     = 0.01
+#         z_e_a   = 0.035449
+#         z_e_m   = 0.008862
+#     end
     
-    ENV["GKSwstype"] = "nul"
+#     ENV["GKSwstype"] = "nul"
 
-    @precompile_all_calls begin
-        # all calls in this block will be precompiled, regardless of whether
-        # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
+#     @precompile_all_calls begin
+#         # all calls in this block will be precompiled, regardless of whether
+#         # they belong to your package or not (on Julia 1.8 and higher)
+#         @model RBC begin
+#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#         end
 
-        @parameters RBC silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
+#         @parameters RBC silent = true precompile = true begin
+#             δ = 0.02
+#             α = 0.5
+#         end
 
-        get_SS(FS2000)
-        get_SS(FS2000, parameters = :alp => 0.36)
-        get_solution(FS2000)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)
-        plot_irf(FS2000)
-        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        plot_conditional_variance_decomposition(FS2000)
-    end
-end
+#         get_SS(FS2000)
+#         get_SS(FS2000, parameters = :alp => 0.36)
+#         get_solution(FS2000)
+#         get_solution(FS2000, parameters = :alp => 0.35)
+#         get_standard_deviation(FS2000)
+#         get_correlation(FS2000)
+#         get_autocorrelation(FS2000)
+#         get_variance_decomposition(FS2000)
+#         get_conditional_variance_decomposition(FS2000)
+#         get_irf(FS2000)
+#         plot_irf(FS2000)
+#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#         plot_conditional_variance_decomposition(FS2000)
+#     end
+# end
 
 end
