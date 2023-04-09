@@ -187,7 +187,7 @@ mutable struct ℳ
     parameters_in_equations::Vector{Symbol}
     parameters_as_function_of_parameters::Vector{Symbol}
     parameters::Vector{Symbol}
-    parameter_values::Vector{Number}
+    parameter_values::Vector{Float64}
     # ss
     # dynamic_variables::Vector{Symbol}
     # dyn_ss_past::Vector{Symbol}

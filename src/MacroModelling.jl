@@ -428,7 +428,7 @@ end
 
 
 
-function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose = false)
+function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false)
     unknowns = union(Symbolics.vars_in_ss_equations,Symbolics.calibration_equations_parameters)
 
     @assert length(unknowns) <= length(Symbolics.ss_equations) + length(Symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
@@ -900,7 +900,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     end
 
 
-    solve_exp = :(function solve_SS(parameters::Vector{Number}, 𝓂::ℳ, 
+    solve_exp = :(function solve_SS(parameters::Vector{Real}, 𝓂::ℳ, 
     # fail_fast_solvers_only::Bool, 
     verbose::Bool)
                     params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
@@ -1006,7 +1006,7 @@ function SS_solve_block_wrapper(guess, transformer_parameters_and_solved_vars)
     sum(abs2, transformer_parameters_and_solved_vars[3](transformer_parameters_and_solved_vars[1], guess, transformer_parameters_and_solved_vars[2],transformer_parameters_and_solved_vars[4],transformer_parameters_and_solved_vars[5]))
 end
 
-block_solver_AD(parameters_and_solved_vars::Vector{<: Number}, 
+block_solver_AD(parameters_and_solved_vars::Vector{<: Real}, 
     n_block::Int, 
     ss_solve_blocks::Function, 
     # ss_solve_blocks_no_transform::Function, 
@@ -1014,11 +1014,11 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Number},
     guess::Vector{Float64}, 
     lbs::Vector{Float64}, 
     ubs::Vector{Float64};
-    tol = eps(Float64),
+    tol::Float64 = eps(Float64),
     # timeout = 120,
-    starting_points = [0.7688, 1.2, .9, .75, 1.5, -.5, 2.0, .25],
+    starting_points::Vector{Float64} = [0.7688, 1.2, .9, .75, 1.5, -.5, 2.0, .25],
     # fail_fast_solvers_only = true,
-    verbose = false) = ImplicitFunction(x -> block_solver(x,
+    verbose::Bool = false) = ImplicitFunction(x -> block_solver(x,
                                                             n_block, 
                                                             ss_solve_blocks,
                                                             # f,
@@ -1040,11 +1040,11 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         guess::Vector{Float64}, 
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64};
-                        tol = eps(Float64),
+                        tol::Float64 = eps(Float64),
                         # timeout = 120,
-                        starting_points = [0.7688, 1.2, .9, .75, 1.5, -.5, 2, .25],
+                        starting_points::Vector{Float64} = [0.7688, 1.2, .9, .75, 1.5, -.5, 2, .25],
                         # fail_fast_solvers_only = true,
-                        verbose = false)
+                        verbose::Bool = false)
     
     sol_values = guess
     sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,transformer(sol_values,lbs,ubs, option = 0),0,lbs,ubs))
@@ -1108,11 +1108,11 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     guess::Vector{Float64}, 
     lbs::Vector{Float64}, 
     ubs::Vector{Float64};
-    tol = eps(Float64),
+    tol::Float64 = eps(Float64),
     # timeout = 120,
-    starting_points = [0.7688, 1.2, .9, .75, 1.5, -.5, 2, .25],
+    starting_points::Vector{Float64} = [0.7688, 1.2, .9, .75, 1.5, -.5, 2, .25],
     # fail_fast_solvers_only = true,
-    verbose = false) where {Z,S,N}
+    verbose::Bool = false) where {Z,S,N}
 
     # unpack: AoS -> SoA
     inp = ℱ.value.(parameters_and_solved_vars)
@@ -1226,7 +1226,7 @@ function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂:
 end
 
 
-function calculate_second_order_stochastic_steady_state(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false) where T
+function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false) where M
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
@@ -1235,7 +1235,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{T}, �
     
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₂ = calculate_second_order_solution(∇₁,∇₂,𝐒₁; T = 𝓂.timings)
+    𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁; T = 𝓂.timings)
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
@@ -1326,7 +1326,7 @@ function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂�
 end
 
 
-function calculate_third_order_stochastic_steady_state(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false) where T
+function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false) where M
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
@@ -1337,7 +1337,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{T}, �
     
     𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁; T = 𝓂.timings)
 
-    ∇₃ = calculate_third_order_derivatives(𝓂.parameter_values,SS_and_pars,𝓂)
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
             
     𝐒₃ = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂; T = 𝓂.timings)
 
@@ -1621,7 +1621,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     end
 
 
-    mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Number}, X̄::Vector)
+    mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
         $(alll...)
         $(paras...)
         $(𝓂.calibration_equations_no_var...)
@@ -1642,7 +1642,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             out = :(sparse([$(row2...)], [$(column2...)], [$(second_order...)], $(length(eqs)), $(length(vars)^2)))
         end
 
-        mod_func4 = :(function model_hessian(X::Vector, params::Vector{Number}, X̄::Vector)
+        mod_func4 = :(function model_hessian(X::Vector, params::Vector{Real}, X̄::Vector)
             $(alll...)
             $(paras...)
             $(𝓂.calibration_equations_no_var...)
@@ -1651,7 +1651,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         end)
 
         for (l,second) in enumerate(second_order)
-            exx = :(function(X::Vector, params::Vector{Number}, X̄::Vector)
+            exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
             $(alll...)
             $(paras...)
             $(𝓂.calibration_equations_no_var...)
@@ -1673,7 +1673,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             out = :(sparse([$(row3...)], [$(column3...)], [$(third_order...)], $(length(eqs)), $(length(vars)^3)))
         end
 
-        mod_func5 = :(function model_hessian(X::Vector, params::Vector{Number}, X̄::Vector)
+        mod_func5 = :(function model_hessian(X::Vector, params::Vector{Real}, X̄::Vector)
             $(alll...)
             $(paras...)
             $(𝓂.calibration_equations_no_var...)
@@ -1683,7 +1683,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
 
         for (l,third) in enumerate(third_order)
-            exx = :(function(X::Vector, params::Vector{Number}, X̄::Vector)
+            exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
             $(alll...)
             $(paras...)
             $(𝓂.calibration_equations_no_var...)
@@ -1746,14 +1746,14 @@ end
 
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Nothing; verbose = true) = return parameters
-write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,<: Number}; verbose = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,<: Number},Vararg{Pair{Symbol,<: Number}}}; verbose = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; verbose = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Nothing; verbose::Bool = true) = return parameters
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,<: Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,<: Real},Vararg{Pair{Symbol,<: Real}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
 
 
 
-function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,<: Number}; verbose = true)
+function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,<: Real}; verbose::Bool = true)
     if length(setdiff(collect(keys(parameters)),𝓂.parameters))>0
         println("Parameters not part of the model: ",setdiff(collect(keys(parameters)),𝓂.parameters))
         for kk in setdiff(collect(keys(parameters)),𝓂.parameters)
@@ -1810,11 +1810,11 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,<: Number}; 
 end
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{<: Number,Vararg{<: Number}}; verbose = true) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Matrix{<: Number}; verbose = true) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{<: Real,Vararg{<: Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Matrix{<: Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)), verbose = verbose)
 
 
-function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Number}; verbose = true)
+function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Real}; verbose::Bool = true)
     if length(parameters) > length(𝓂.parameter_values)
         println("Model has "*string(length(𝓂.parameter_values))*" parameters. "*string(length(parameters))*" were provided. The following will be ignored: "*string(parameters[length(𝓂.parameter_values)+1:end]...))
 
@@ -1877,56 +1877,72 @@ end
 
 
 
-function SSS_third_order_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
-    𝓂.parameter_values[parameters_idx] = parameters
-    calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+function SSS_third_order_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    calculate_third_order_stochastic_steady_state(params, 𝓂, verbose = verbose)
 end
 
 
-function SSS_third_order_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
-    𝓂.parameter_values[parameters_idx] = parameters
-    calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+function SSS_third_order_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    calculate_third_order_stochastic_steady_state(params, 𝓂, verbose = verbose)
 end
 
 
-function SSS_second_order_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
-    𝓂.parameter_values[parameters_idx] = parameters
-    calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+function SSS_second_order_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    calculate_second_order_stochastic_steady_state(params, 𝓂, verbose = verbose)
 end
 
 
-function SSS_second_order_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
-    𝓂.parameter_values[parameters_idx] = parameters
-    calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+function SSS_second_order_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    calculate_second_order_stochastic_steady_state(params, 𝓂, verbose = verbose)
 end
 
 
-function SS_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
-    𝓂.parameter_values[parameters_idx] = parameters
-    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
+function SS_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    𝓂.SS_solve_func(params, 𝓂, verbose)
 end
 
 
-function SS_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
-    𝓂.parameter_values[parameters_idx] = parameters
-    𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
+function SS_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    𝓂.SS_solve_func(params, 𝓂, verbose)
 end
 
 
-function covariance_parameter_derivatives(parameters::Vector{<: Number}, parameters_idx, 𝓂::ℳ; verbose = false)
-    𝓂.parameter_values[parameters_idx] = parameters
-    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]),eps(Float64)))
+function covariance_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_covariance(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
 end
 
 
-function covariance_parameter_derivatives(parameters::Number, parameters_idx::Int, 𝓂::ℳ; verbose = false)
-    𝓂.parameter_values[parameters_idx] = parameters
-    convert(Vector{Number},max.(ℒ.diag(calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]),eps(Float64)))
+function covariance_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_covariance(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
 end
 
 
 
-function calculate_jacobian(parameters::Vector{<: Number}, SS_and_pars::AbstractArray{<: Number}, 𝓂::ℳ)
+function calculate_jacobian(parameters::Vector{M}, SS_and_pars::AbstractArray{N}, 𝓂::ℳ) where {M,N}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     # par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
@@ -1960,7 +1976,7 @@ end
 
 
 
-function calculate_hessian(parameters::Vector{M}, SS_and_pars::AbstractArray{N}, 𝓂::ℳ) where {M,N}
+function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ) where {M,N}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
@@ -1996,16 +2012,18 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::AbstractArray{N},
     
     second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_hessian]
     
-    vals = [convert(typeof(parameters[1]),i[1]) for i in second_out]
+    vals = [i[1] for i in second_out]
     rows = [i[2] for i in second_out]
     cols = [i[3] for i in second_out]
+
+    vals = convert(Vector{M}, vals)
 
     sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^2)
 end
 
 
 
-function calculate_third_order_derivatives(parameters::Vector{T}, SS_and_pars::AbstractArray{U}, 𝓂::ℳ) where {T,U}
+function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ) where {M,N}
     
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
@@ -2040,9 +2058,11 @@ function calculate_third_order_derivatives(parameters::Vector{T}, SS_and_pars::A
     
     third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
     
-    vals = [convert(typeof(parameters[1]),i[1])  for i in third_out]
+    vals = [i[1] for i in third_out]
     rows = [i[2] for i in third_out]
     cols = [i[3] for i in third_out]
+
+    vals = convert(Vector{M}, vals)
 
     sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
 end
@@ -2196,7 +2216,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
 end
 
 
-function riccati_conditions(∇₁::AbstractMatrix{<: Number}, sol_d::AbstractMatrix{<: Number}; T::timings, explosive::Bool = false) #::AbstractMatrix{Real},
+function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatrix{<: Real}; T::timings, explosive::Bool = false) #::AbstractMatrix{Real},
     expand = @ignore_derivatives @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
     A = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
@@ -2239,7 +2259,7 @@ end
 
 riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive), (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
 
-function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Matrix{S} where S <: Number
+function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Matrix{S} where S <: Real
     # A = riccati_AD(∇₁, T = T, explosive = explosive)
     riccati = riccati_(∇₁, T = T, explosive = explosive)
     A = riccati(∇₁)
@@ -2308,10 +2328,15 @@ function solve_sylvester_equation(ABCX::AbstractArray{ℱ.Dual{Z,S,N}}) where {Z
 end
 
 
-function  calculate_second_order_solution(∇₁::AbstractMatrix{<: Number}, #first order derivatives
-                                            ∇₂::SparseMatrixCSC{<: Number}, #second order derivatives
-                                            𝑺₁::AbstractMatrix{<: Number};  #first order solution
+function  calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
+                                            ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
+                                            𝑺₁::AbstractMatrix{<: Real};  #first order solution
                                             T::timings)
+
+    # println(typeof(∇₁))
+    # println(typeof(∇₂))
+    # println(typeof(𝑺₁))
+
     # inspired by Levintal
     tol = 1e-10
 
@@ -2345,7 +2370,7 @@ function  calculate_second_order_solution(∇₁::AbstractMatrix{<: Number}, #fi
 
     # setup compression matrices
     colls2 = [nₑ₋ * (i-1) + k for i in 1:nₑ₋ for k in 1:i]
-    𝐂₂ = sparse(colls2, 1:length(colls2) , 1.0)
+    𝐂₂ = sparse(colls2, 1:length(colls2), 1.0)
     𝐔₂ = 𝐂₂' * sparse([i <= k ? (k - 1) * nₑ₋ + i : (i - 1) * nₑ₋ + k for k in 1:nₑ₋ for i in 1:nₑ₋], 1:nₑ₋^2, 1)
 
     ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
@@ -2375,11 +2400,11 @@ end
 
 
 
-function  calculate_third_order_solution(∇₁::AbstractMatrix{<: Number}, #first order derivatives
-                                            ∇₂::SparseMatrixCSC{<: Number}, #second order derivatives
-                                            ∇₃::SparseMatrixCSC{<: Number}, #third order derivatives
-                                            𝑺₁::AbstractMatrix{<: Number}, #first order solution
-                                            𝐒₂::AbstractMatrix{<: Number}; #second order solution
+function  calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
+                                            ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
+                                            ∇₃::SparseMatrixCSC{<: Real}, #third order derivatives
+                                            𝑺₁::AbstractMatrix{<: Real}, #first order solution
+                                            𝐒₂::AbstractMatrix{<: Real}; #second order solution
                                             T::timings)
     # inspired by Levintal
     tol = 1e-10
@@ -2751,7 +2776,7 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ)
 end
 
 
-function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ; verbose = false)
+function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false)
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
@@ -2763,7 +2788,7 @@ function calculate_covariance(parameters::Vector{<: Number}, 𝓂::ℳ; verbose 
     return covar_raw, sol , ∇₁, SS_and_pars
 end
 
-function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Number}; T::timings, subset_indices::Vector{Int64})
+function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Real}; T::timings, subset_indices::Vector{Int64})
     A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[indexin(T.past_not_future_and_mixed_idx,subset_indices),:]
     C = @views 𝑺₁[subset_indices,T.nPast_not_future_and_mixed+1:end]
     
@@ -2798,7 +2823,7 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; 
 end
 
 
-function calculate_covariance_conditions(𝑺₁::AbstractMatrix{<: Number}, covar::AbstractMatrix{<: Number}; T::timings, subset_indices::Vector{Int64})
+function calculate_covariance_conditions(𝑺₁::AbstractMatrix{<: Real}, covar::AbstractMatrix{<: Real}; T::timings, subset_indices::Vector{Int64})
     A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,subset_indices)),:]
     C = @views 𝑺₁[subset_indices,T.nPast_not_future_and_mixed+1:end]
     

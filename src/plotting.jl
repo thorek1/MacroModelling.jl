@@ -83,7 +83,7 @@ function plot_irf(𝓂::ℳ;
     negative_shock::Bool = false,
     generalised_irf::Bool = false,
     initial_state::Vector{Float64} = [0.0],
-    verbose = false)
+    verbose::Bool = false)
 
     gr_backend = Plots.backend() == Plots.GRBackend()
 
@@ -372,7 +372,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
     plots_per_page::Int = 9, 
-    verbose = false)
+    verbose::Bool = false)
 
     gr_backend = Plots.backend() == Plots.GRBackend()
 
@@ -546,7 +546,7 @@ function plot_solution(𝓂::ℳ,
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
     plots_per_page::Int = 4,
-    verbose = false)
+    verbose::Bool = false)
 
     Plots.default(size=(700,500),
                     plot_titlefont = 10, 
@@ -880,7 +880,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
     plots_per_page::Int = 9,
-    verbose = false)
+    verbose::Bool = false)
 
     gr_backend = Plots.backend() == Plots.GRBackend()
 
