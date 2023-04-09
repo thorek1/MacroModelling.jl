@@ -1205,7 +1205,7 @@ function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂:
     # get J(f, vs) * ps (cheating). Write your custom rule here
     B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_condition(x, val, 𝓂), S₁S₂)
     A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_condition(S₁S₂, x, 𝓂), val)
-    
+
     Â = RF.lu(A, check = false)
 
     if !ℒ.issuccess(Â)
@@ -1374,7 +1374,7 @@ function solve!(𝓂::ℳ;
         𝓂.solution.algorithms = union(𝓂.solution.algorithms,[algorithm])
     end
 
-    write_parameters_input!(𝓂,parameters, verbose = verbose)
+    write_parameters_input!(𝓂, parameters, verbose = verbose)
 
     if dynamics
         if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
@@ -1747,13 +1747,13 @@ end
 
 
 write_parameters_input!(𝓂::ℳ, parameters::Nothing; verbose::Bool = true) = return parameters
-write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,<: Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,<: Real},Vararg{Pair{Symbol,<: Real}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Float64},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
 write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
 
 
 
-function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,<: Real}; verbose::Bool = true)
+function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; verbose::Bool = true)
     if length(setdiff(collect(keys(parameters)),𝓂.parameters))>0
         println("Parameters not part of the model: ",setdiff(collect(keys(parameters)),𝓂.parameters))
         for kk in setdiff(collect(keys(parameters)),𝓂.parameters)
@@ -1810,11 +1810,11 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,<: Real}; ve
 end
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{<: Real,Vararg{<: Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Matrix{<: Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Float64,Vararg{Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Matrix{Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)), verbose = verbose)
 
 
-function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Real}; verbose::Bool = true)
+function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose::Bool = true)
     if length(parameters) > length(𝓂.parameter_values)
         println("Model has "*string(length(𝓂.parameter_values))*" parameters. "*string(length(parameters))*" were provided. The following will be ignored: "*string(parameters[length(𝓂.parameter_values)+1:end]...))
 
@@ -1853,19 +1853,19 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{<: Real}; verbose
             end
             
             changed_vals = parameters[match_idx]
-            changes_pars = 𝓂.parameters[match_idx]
+            changed_pars = 𝓂.parameters[match_idx]
 
-            for p in changes_pars
-                if p ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
-                    𝓂.solution.outdated_NSSS = true
+            # for p in changes_pars
+            #     if p ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
+                    𝓂.solution.outdated_NSSS = true # fix the SS_dependencies
                     # println("SS outdated.")
-                end
-            end
+            #     end
+            # end
 
             if verbose 
                 println("Parameter changes: ")
                 for (i,m) in enumerate(match_idx)
-                    println("\t",changes_pars[i],"\tfrom ",𝓂.parameter_values[m],"\tto ",changed_vals[i])
+                    println("\t",changed_pars[i],"\tfrom ",𝓂.parameter_values[m],"\tto ",changed_vals[i])
                 end
             end
 
