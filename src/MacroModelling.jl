@@ -1145,7 +1145,13 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
         # B = Zygote.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)[1]
         # A = Zygote.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)[1]
 
-        jvp = (-A \ B) * ps
+        Â = RF.lu(A, check = false)
+
+        if !ℒ.issuccess(Â)
+            Â = ℒ.svd(A)
+        end
+        
+        jvp = -(Â \ B) * ps
     end
 
     # pack: SoA -> AoS
@@ -2247,7 +2253,13 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explos
     # B = Zygote.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)[1]
     # A = Zygote.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)[1]
 
-    jvp = (-A \ B) * ps
+    Â = RF.lu(A, check = false)
+
+    if !ℒ.issuccess(Â)
+        Â = ℒ.svd(A)
+    end
+    
+    jvp = -(Â \ B) * ps
 
     # pack: SoA -> AoS
     return reshape(map(val, eachrow(jvp)) do v, p
@@ -2814,7 +2826,13 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; 
     B = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, T = T, subset_indices = subset_indices), 𝑺₁̂)
     A = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, T = T, subset_indices = subset_indices), val)
 
-    jvp = (-A \ B) * ps
+    Â = RF.lu(A, check = false)
+
+    if !ℒ.issuccess(Â)
+        Â = ℒ.svd(A)
+    end
+    
+    jvp = -(Â \ B) * ps
 
     # pack: SoA -> AoS
     return reshape(map(val, eachrow(jvp)) do v, p
