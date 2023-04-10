@@ -1376,6 +1376,16 @@ function solve!(𝓂::ℳ;
 
     write_parameters_input!(𝓂, parameters, verbose = verbose)
 
+    if 𝓂.model_hessian == Function[] && algorithm == :second_order
+        start_time = time()
+        write_functions_mapping!(𝓂, 2)
+        println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds")
+    elseif 𝓂.model_third_order_derivatives == Function[] && algorithm == :third_order
+        start_time = time()
+        write_functions_mapping!(𝓂, 3)
+        println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
+    end
+
     if dynamics
         if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
             SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
@@ -1394,16 +1404,6 @@ function solve!(𝓂::ℳ;
 
         end
 
-        if 𝓂.model_hessian == Function[] && algorithm == :second_order
-            start_time = time()
-            write_functions_mapping!(𝓂, 2)
-            println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds")
-        elseif 𝓂.model_third_order_derivatives == Function[] && algorithm == :third_order
-            start_time = time()
-            write_functions_mapping!(𝓂, 3)
-            println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
-        end
-        
         if any([:second_order, :third_order] .∈ ([algorithm],)) && :second_order ∈ 𝓂.solution.outdated_algorithms
             stochastic_steady_state, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
 
