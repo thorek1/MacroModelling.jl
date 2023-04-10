@@ -8,9 +8,9 @@
 
 **Author: Thore Kockerols (@thorek1)**
 
-The goal of `MacroModelling.jl` is to reduce coding time and speed up model development.
+`MacroModelling.jl` is a package for developing and solving dynamic stochastic general equilibrium (DSGE) models. The package provides functions for creating, calibrating, simulating and estimating discrete-time DSGE models.
 
-The package currently supports dicsrete-time DSGE models with end-of-period timing.
+The goal of `MacroModelling.jl` is to reduce coding time and speed up model development.
 
 As of now the package can:
 
@@ -21,7 +21,7 @@ As of now the package can:
 - calibrate parameters using (non stochastic) steady state relationships
 - match model moments
 - estimate the model on data (Kalman filter using first order perturbation)
-- **differentiate** (forward AD) the model solution (first order perturbation), Kalman filter loglikelihood (reverse-mode AD), model moments, steady state, **with respect to the parameters**
+- **differentiate** (forward AD) the model solution, Kalman filter loglikelihood (reverse-mode AD), model moments, steady state, **with respect to the parameters**
 
 The package is not:
 
