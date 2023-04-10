@@ -19,6 +19,13 @@ include("functionality_tests.jl")
     @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
 end
 
+@testset verbose = true "FS2000" begin
+    include("models/FS2000.jl")
+    functionality_test(m, plots = false)
+    functionality_test(m, algorithm = :second_order, plots = false)
+    functionality_test(m, algorithm = :third_order, plots = false)
+end
+m = nothing
 
 @testset verbose = true "Test dynare read/write" begin
     include("models/FS2000.jl")
@@ -30,11 +37,6 @@ m = nothing
 # @testset verbose = true "Code formatting (JuliaFormatter.jl)" begin
 #     @test format(MacroModelling; verbose=true, overwrite=true)
 # end
-
-
-@testset verbose = true "Standalone functions" begin
-    include("test_standalone_function.jl")
-end
 
 @testset verbose = true "Test various models: NSSS and 1st order solution" begin
     include("test_models.jl")
@@ -94,13 +96,11 @@ m = nothing
 end
 m = nothing
 
-@testset verbose = true "FS2000" begin
-    include("models/FS2000.jl")
-    functionality_test(m, plots = false)
-    functionality_test(m, algorithm = :second_order, plots = false)
-    # functionality_test(m, algorithm = :third_order, plots = false)
+
+@testset verbose = true "Standalone functions" begin
+    include("test_standalone_function.jl")
 end
-m = nothing
+
 
 @testset verbose = true "Model without shocks" begin
     @model m begin
