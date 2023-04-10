@@ -446,7 +446,6 @@ end
             parameters)[1]
 
     @test isapprox(SSS3finitediff, SSSdiff3[:,2:end], rtol = 1e-8)
-
-    m = nothing
-    𝓂 = nothing
 end
+m = nothing
+𝓂 = nothing
