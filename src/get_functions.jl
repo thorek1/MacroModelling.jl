@@ -762,6 +762,62 @@ get_perturbation_solution = get_solution
 
 
 
+
+function get_solution(𝓂::ℳ, parameters::Vector{<: Real}; algorithm::Symbol = :first_order, verbose::Bool = false, tol::Float64 = eps())
+    @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
+    @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+
+    @ignore_derivatives sort!(observables)
+
+    @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
+
+    ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters))
+    lb = @ignore_derivatives -ub
+
+    for (i,v) in enumerate(𝓂.bounded_vars)
+        if v ∈ 𝓂.parameters
+            @ignore_derivatives lb[i] = 𝓂.lower_bounds[i]
+            @ignore_derivatives ub[i] = 𝓂.upper_bounds[i]
+        end
+    end
+
+    if min(max(parameters,lb),ub) != parameters 
+        return -Inf
+    end
+
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    
+    if solution_error > tol || isnan(solution_error)
+        return -Inf
+    end
+
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+
+    𝐒₁ = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+    if algorithm == :second_order
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+    
+        𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁; T = 𝓂.timings)
+
+        return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂
+    elseif algorithm == :third_order
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+    
+        𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁; T = 𝓂.timings)
+    
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
+                
+        𝐒₃ = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂; T = 𝓂.timings)
+
+        return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, 𝐒₃
+    else
+        return SS_and_pars[1:length(𝓂.var)], 𝐒₁
+    end
+end
+
+
+
 """
 $(SIGNATURES)
 Return the conditional variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
