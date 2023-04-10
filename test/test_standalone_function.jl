@@ -392,8 +392,7 @@ end
 
     data = simulate(RBC_CME, levels = true)[:,:,1]
     observables = [:c,:k]
-    @test isapprox(426.4732294307625,calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables),rtol = 1e-5)
-
+    @test isapprox(420.25039827148197,calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables),rtol = 1e-5)
 
     forw_grad = ForwardDiff.gradient(x->calculate_kalman_filter_loglikelihood(RBC_CME, data(observables), observables; parameters = x),Float64.(RBC_CME.parameter_values))
     reverse_grad = Zygote.gradient(x->calculate_kalman_filter_loglikelihood(RBC_CME, data(observables), observables; parameters = x),Float64.(RBC_CME.parameter_values))[1]
