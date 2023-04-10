@@ -2077,13 +2077,13 @@ end
 
 function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = eps(Float32))
     expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
-              ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+            ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
     ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
     ∇₀ = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇₋ = @views ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
     ∇ₑ = @views ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
-  
+
     maxiter = 1000
 
     F = zero(∇₋)
