@@ -1,5 +1,5 @@
 # commonly used DocStrings
-const VERBOSE = "`verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (L-BFGS...), and the maximum absolute error."
+const VERBOSE = "`verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error."
 const MODEL = "`𝓂`: the object created by [`@model`](@ref) and [`@parameters`](@ref) for which to get the solution."
 const PARAMETER_VALUES = "`parameters` [Type: `Vector`]: Parameter values in alphabetical order (sorted by parameter name)." 
 const PARAMETERS = "`parameters` [Default: `nothing`]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated."

@@ -153,7 +153,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     state_update = parse_algorithm_to_state_update(:first_order, 𝓂)
 
-    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
@@ -306,7 +306,7 @@ function get_irf(𝓂::ℳ,
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
     end
 
-    reference_steady_state, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, false, verbose)
+    reference_steady_state, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)
 								
@@ -427,7 +427,7 @@ function get_irf(𝓂::ℳ;
 
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
 
-    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     if algorithm == :second_order
         SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.second_order.stochastic_steady_state
@@ -513,6 +513,7 @@ Return the (non stochastic) steady state and derivatives with respect to model p
 - $PARAMETERS
 - $DERIVATIVES
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation. No derivatives are calculated.
+- $ALGORITHM
 - `parameter_derivatives` [Default: :all]: parameters for which to calculate partial derivatives. Inputs can be either a `Symbol` (e.g. `:alpha`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`.
 - $VERBOSE
 
@@ -553,6 +554,7 @@ function get_steady_state(𝓂::ℳ;
     parameters = nothing, 
     derivatives::Bool = true, 
     stochastic::Bool = false,
+    algorithm::Symbol = :first_order,
     parameter_derivatives::Symbol_input = :all,
     verbose::Bool = false)
 
@@ -578,14 +580,21 @@ function get_steady_state(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    SS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    SS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     if stochastic
-        solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order)
-        SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
+        if  algorithm == :third_order
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
+            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+        else
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order)
+            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
+        end
     end
 
-    var_idx = indexin([vars_in_ss_equations...,𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+    var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+    calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
     if length_par * length(var_idx) > 200 
         derivatives = false
@@ -595,22 +604,39 @@ function get_steady_state(𝓂::ℳ;
         derivatives = true
     end
 
-    if derivatives && !stochastic
-        # dSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
-        dSS = ℱ.jacobian(x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[var_idx], Float64.(𝓂.parameter_values[param_idx]))
-        𝓂.parameter_values = ℱ.value.(𝓂.parameter_values)
+    if derivatives 
+        if stochastic
+                if algorithm == :third_order
+                    dSSS = ℱ.jacobian(x->begin 
+                                SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
+                                [collect(SSS[1])[var_idx]...,collect(SSS[2])[calib_idx]...]
+                            end, 𝓂.parameter_values[param_idx])
 
-        # if length(𝓂.calibration_equations_parameters) == 0        
-        #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters))
-        # else
-        # return ComponentMatrix(hcat(collect(NSSS), dNSSS)',Axis(vcat(:SS, 𝓂.parameters)),Axis([sort(union(𝓂.exo_present,var))...,𝓂.calibration_equations_parameters...]))
-        # return NamedArray(hcat(collect(NSSS), dNSSS), ([sort(union(𝓂.exo_present,var))..., 𝓂.calibration_equations_parameters...], vcat(:Steady_state, 𝓂.parameters)), ("Var. and par.", "∂x/∂y"))
-        return KeyedArray(hcat(SS[var_idx],dSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
-        # end
+                    return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+                else
+                    dSSS = ℱ.jacobian(x->begin 
+                                SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
+                                [collect(SSS[1])[var_idx]...,collect(SSS[2])[calib_idx]...]
+                            end, 𝓂.parameter_values[param_idx])
+
+                    return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+                end
+        else
+            # dSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
+            dSS = ℱ.jacobian(x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[[var_idx...,calib_idx...]], 𝓂.parameter_values[param_idx])
+
+            # if length(𝓂.calibration_equations_parameters) == 0        
+            #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters))
+            # else
+            # return ComponentMatrix(hcat(collect(NSSS), dNSSS)',Axis(vcat(:SS, 𝓂.parameters)),Axis([sort(union(𝓂.exo_present,var))...,𝓂.calibration_equations_parameters...]))
+            # return NamedArray(hcat(collect(NSSS), dNSSS), ([sort(union(𝓂.exo_present,var))..., 𝓂.calibration_equations_parameters...], vcat(:Steady_state, 𝓂.parameters)), ("Var. and par.", "∂x/∂y"))
+            return KeyedArray(hcat(SS[[var_idx...,calib_idx...]],dSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+            # end
+        end
     else
         # return ComponentVector(collect(NSSS),Axis([sort(union(𝓂.exo_present,var))...,𝓂.calibration_equations_parameters...]))
         # return NamedArray(collect(NSSS), [sort(union(𝓂.exo_present,var))..., 𝓂.calibration_equations_parameters...], ("Variables and calibrated parameters"))
-        return KeyedArray(SS[var_idx];  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...])
+        return KeyedArray(SS[[var_idx...,calib_idx...]];  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...])
     end
     # ComponentVector(non_stochastic_steady_state = ComponentVector(NSSS.non_stochastic_steady_state, Axis(sort(union(𝓂.exo_present,var)))),
     #                 calibrated_parameters = ComponentVector(NSSS.non_stochastic_steady_state, Axis(𝓂.calibration_equations_parameters)),
@@ -736,6 +762,62 @@ get_perturbation_solution = get_solution
 
 
 
+
+function get_solution(𝓂::ℳ, parameters::Vector{<: Real}; algorithm::Symbol = :first_order, verbose::Bool = false, tol::Float64 = eps())
+    @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
+    @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+
+    @ignore_derivatives sort!(observables)
+
+    @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
+
+    ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters))
+    lb = @ignore_derivatives -ub
+
+    for (i,v) in enumerate(𝓂.bounded_vars)
+        if v ∈ 𝓂.parameters
+            @ignore_derivatives lb[i] = 𝓂.lower_bounds[i]
+            @ignore_derivatives ub[i] = 𝓂.upper_bounds[i]
+        end
+    end
+
+    if min(max(parameters,lb),ub) != parameters 
+        return -Inf
+    end
+
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    
+    if solution_error > tol || isnan(solution_error)
+        return -Inf
+    end
+
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+
+    𝐒₁ = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+    if algorithm == :second_order
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+    
+        𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁; T = 𝓂.timings)
+
+        return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂
+    elseif algorithm == :third_order
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+    
+        𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁; T = 𝓂.timings)
+    
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
+                
+        𝐒₃ = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂; T = 𝓂.timings)
+
+        return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, 𝐒₃
+    else
+        return SS_and_pars[1:length(𝓂.var)], 𝐒₁
+    end
+end
+
+
+
 """
 $(SIGNATURES)
 Return the conditional variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
@@ -822,7 +904,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose)
+    SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
@@ -942,7 +1024,7 @@ function get_variance_decomposition(𝓂::ℳ;
 
     write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
@@ -1206,7 +1288,7 @@ function get_moments(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     if length_par * length(NSSS) > 200 || (!variance && !standard_deviation && !non_stochastic_steady_state)
         derivatives = false
@@ -1218,8 +1300,8 @@ function get_moments(𝓂::ℳ;
 
     if derivatives
         if non_stochastic_steady_state
-            dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), Float64.(𝓂.parameter_values[param_idx]))
-            𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
+            dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), 𝓂.parameter_values[param_idx])
+            
             # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
             SS =  KeyedArray(hcat(collect(NSSS),dNSSS);  Variables = [𝓂.var...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
         end
@@ -1227,18 +1309,18 @@ function get_moments(𝓂::ℳ;
         if variance
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
 
-            vari = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
+            vari = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
 
             # dvariance = ℱ.jacobian(x-> convert(Vector{Number},max.(ℒ.diag(calculate_covariance(x, 𝓂)),eps(Float64))), Float64.(𝓂.parameter_values))
-            dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose), Float64.(𝓂.parameter_values[param_idx]))
-            𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
+            dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
+            
             
             varrs =  KeyedArray(hcat(vari,dvariance);  Variables = 𝓂.var, Variance_and_∂variance∂parameter = vcat(:Variance, 𝓂.parameters[param_idx]))
 
             if standard_deviation
-                standard_dev = sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))))
-                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), Float64.(𝓂.parameter_values[param_idx]))
-                𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
+                standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
+                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                
 
                 st_dev =  KeyedArray(hcat(standard_dev,dst_dev);  Variables = 𝓂.var, Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
             end
@@ -1247,10 +1329,10 @@ function get_moments(𝓂::ℳ;
         if standard_deviation
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
 
-            standard_dev = sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))))
+            standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
 
-            dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), Float64.(𝓂.parameter_values[param_idx]))
-            𝓂.parameter_values[param_idx] = ℱ.value.(𝓂.parameter_values[param_idx])
+            dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+            
 
             st_dev =  KeyedArray(hcat(standard_dev,dst_dev);  Variables = 𝓂.var, Standard_deviation_and_∂standard_deviation∂parameter = vcat(:Standard_deviation, 𝓂.parameters[param_idx]))
         end
@@ -1261,7 +1343,7 @@ function get_moments(𝓂::ℳ;
 
         if variance
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
-            varr = convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64)))
+            varr = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
             varrs = KeyedArray(varr;  Variables = 𝓂.var)
             if standard_deviation
                 st_dev = KeyedArray(sqrt.(varr);  Variables = 𝓂.var)
@@ -1270,7 +1352,7 @@ function get_moments(𝓂::ℳ;
 
         if standard_deviation
             covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
-            st_dev = KeyedArray(sqrt.(convert(Vector{Number},max.(ℒ.diag(covar_dcmp),eps(Float64))));  Variables = 𝓂.var)
+            st_dev = KeyedArray(sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))));  Variables = 𝓂.var)
         end
 
         if covariance
@@ -1354,13 +1436,13 @@ function get_moments(𝓂::ℳ, parameters::Vector;
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
 
     if variance
-        varrs = convert(Vector{Number},ℒ.diag(covar_dcmp))
+        varrs = convert(Vector{Real},ℒ.diag(covar_dcmp))
         if standard_deviation
             st_dev = sqrt.(varrs)
         end
     else
         if standard_deviation
-            st_dev = sqrt.(convert(Vector{Number},ℒ.diag(covar_dcmp)))
+            st_dev = sqrt.(convert(Vector{Real},ℒ.diag(covar_dcmp)))
         end
     end
 

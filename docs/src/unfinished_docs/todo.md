@@ -3,6 +3,10 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] higher order solution derivs with Zygote
+- [ ] custom LM: optimize for other RBC models, use third order backtracking
+- [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
+- [ ] use krylov instead of linearsolve and speed up sparse matrix calcs in implicit diff of higher order funcs
 - [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
 - [ ] add SSS for third order (can be different than the one from 2nd order, see Gali (2015)) in solution plot; also put legend to the bottom as with Condition
 - [ ] weed out SS solver and saved objects

@@ -83,7 +83,7 @@ function plot_irf(𝓂::ℳ;
     negative_shock::Bool = false,
     generalised_irf::Bool = false,
     initial_state::Vector{Float64} = [0.0],
-    verbose = false)
+    verbose::Bool = false)
 
     gr_backend = Plots.backend() == Plots.GRBackend()
 
@@ -101,7 +101,7 @@ function plot_irf(𝓂::ℳ;
 
     state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
@@ -372,7 +372,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
     plots_per_page::Int = 9, 
-    verbose = false)
+    verbose::Bool = false)
 
     gr_backend = Plots.backend() == Plots.GRBackend()
 
@@ -546,7 +546,7 @@ function plot_solution(𝓂::ℳ,
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
     plots_per_page::Int = 4,
-    verbose = false)
+    verbose::Bool = false)
 
     Plots.default(size=(700,500),
                     plot_titlefont = 10, 
@@ -880,7 +880,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
     plots_per_page::Int = 9,
-    verbose = false)
+    verbose::Bool = false)
 
     gr_backend = Plots.backend() == Plots.GRBackend()
 
@@ -906,7 +906,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
     
     var_names = axiskeys(Y,1)   
 

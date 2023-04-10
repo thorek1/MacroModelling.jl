@@ -1,7 +1,8 @@
 using MacroModelling
 import Turing
 import Turing: Normal, Beta, InverseGamma, NUTS, sample, logpdf
-using Random, CSV, DataFrames, Optimization, OptimizationOptimisers, MCMCChains, AxisKeys
+import Optim, LineSearches
+using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL: logjoint
 
 include("models/FS2000.jl")
@@ -67,7 +68,7 @@ samps = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_
 
 Random.seed!(30)
 
-function calculate_posterior_loglikelihood(parameters, u)
+function calculate_posterior_loglikelihood(parameters)
     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
     log_lik = 0
     log_lik -= calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables; parameters = parameters)
@@ -83,17 +84,12 @@ function calculate_posterior_loglikelihood(parameters, u)
     return log_lik
 end
 
-f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoForwardDiff())
-
-prob = OptimizationProblem(f, Float64.(FS2000.parameter_values), []);
-sol = solve(prob, Optimisers.Adam(), maxiters = 1000)
-sol.minimum
-
-# println(sol.minimum)
-
+sol = Optim.optimize(calculate_posterior_loglikelihood, 
+[0,0,-10,-10,0,0,0,0,0], [1,1,10,10,1,1,1,100,100] ,FS2000.parameter_values, 
+Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
 @testset "Estimation results" begin
-    @test isapprox(sol.minimum, -1343.749008345221, rtol = eps(Float32))
+    @test isapprox(sol.minimum, -1343.7491257498598, rtol = eps(Float32))
     @test isapprox(mean(samps).nt.mean, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
 end
 
