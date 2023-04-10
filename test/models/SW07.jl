@@ -1,5 +1,3 @@
-m = nothing
-
 @model m begin
     a[0] = calfa * rkf[0] + (1 - calfa) * (wf[0])
 

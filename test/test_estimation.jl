@@ -93,6 +93,9 @@ Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); a
     @test isapprox(mean(samps).nt.mean, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
 end
 
+
+FS2000 = nothing
+m = nothing
 # @profview sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)
 
 # chain_NUTS  = sample(FS2000_loglikelihood, NUTS(), n_samples, init_params = FS2000.parameter_values, progress = true)#, init_params = FS2000.parameter_values)#init_theta = FS2000.parameter_values)

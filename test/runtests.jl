@@ -24,6 +24,7 @@ end
     include("models/FS2000.jl")
     write_to_dynare_file(m)
     translate_mod_file("m.mod")
+    m = nothing
 end
 
 # @testset verbose = true "Code formatting (JuliaFormatter.jl)" begin
@@ -42,26 +43,31 @@ end
 @testset verbose = true "SW07 with calibration equations" begin
     include("models/SW07.jl")
     functionality_test(m, plots = false)
+    m = nothing
 end
 
 @testset verbose = true "SW03 with calibration equations" begin
     include("models/SW03.jl")
     functionality_test(m)
+    m = nothing
 end
 
 @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
     functionality_test(m)
+    m = nothing
 end
 
 @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables numerical SS" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
     functionality_test(m)
+    m = nothing
 end
 
 @testset verbose = true "RBC_CME with calibration equations, parameter definitions, and special functions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
     functionality_test(m, plots = false)
+    m = nothing
 end
 
 @testset verbose = true "RBC_CME with calibration equations and parameter definitions" begin
@@ -69,6 +75,7 @@ end
     functionality_test(m, plots = false)
     functionality_test(m, algorithm = :second_order)
     functionality_test(m, algorithm = :third_order)
+    m = nothing
 end
 
 @testset verbose = true "RBC_CME with calibration equations" begin
@@ -76,6 +83,7 @@ end
     functionality_test(m, plots = false)
     functionality_test(m, algorithm = :second_order, plots = false)
     functionality_test(m, algorithm = :third_order, plots = false)
+    m = nothing
 end
 
 @testset verbose = true "RBC_CME" begin
@@ -83,6 +91,7 @@ end
     functionality_test(m, plots = false)
     functionality_test(m, algorithm = :second_order, plots = false)
     functionality_test(m, algorithm = :third_order, plots = false)
+    m = nothing
 end
 
 @testset verbose = true "FS2000" begin
@@ -90,6 +99,7 @@ end
     functionality_test(m, plots = false)
     functionality_test(m, algorithm = :second_order, plots = false)
     functionality_test(m, algorithm = :third_order, plots = false)
+    m = nothing
 end
 
 @testset verbose = true "Model without shocks" begin
@@ -118,6 +128,7 @@ end
 
     plot_irf(m, initial_state = init, shocks = :none)
     @test true
+    m = nothing
 end
 
 @testset verbose = true "Distribution functions, general and SS" begin
@@ -222,6 +233,8 @@ end
     # solve!(finacc)
     @test isapprox(get_steady_state(finacc,derivatives = false)[:,1],[1.0, 7.004987166460695, 1.2762549358842095, 0.0008293608419033882, 0.0009318065746306208, 0.0003952537570055814, 0.30743973601435376, 15.371986800781423, 0.4435430773517457, 8.366999635233856, 1.0000000000593001, 1.0101010101010102, 1.0172249577970442, 1.5895043340984303, 0.4529051354389826, 2.2935377097663356, -1.4597012487627126e-10], rtol = 1e-6)
     
+    RBC_CME = nothing
+    finacc = nothing
 end
 
 @testset verbose = true "Lead and lag > 1" begin
@@ -417,6 +430,7 @@ end
     # @test isapprox(RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_all_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
     # @test isapprox(RBC_CME_all_mult.solution.perturbation.first_order.C, RBC_CME_all_mult.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
 
+    RBC_CME_exo_mult = nothing
 
 
     # exo lead >> 1
@@ -483,6 +497,7 @@ end
     # @test isapprox(RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead1.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
     # @test isapprox(RBC_CME_exo_lead1.solution.perturbation.first_order.C, RBC_CME_exo_lead1.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
 
+    RBC_CME_exo_lead1 = nothing
 
 
 
@@ -553,6 +568,7 @@ end
 
     # irf(RBC_CME_exo_lag1)
 
+    RBC_CME_exo_lag_mult = nothing
 
 
     # exo lag >> 1
@@ -616,6 +632,7 @@ end
 
     @test isapprox(RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag1.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
+    RBC_CME_exo_lag1 = nothing
 
 
     # exo lead > 1
@@ -679,6 +696,7 @@ end
 
     @test isapprox(RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
+    RBC_CME_exo_lead = nothing
 
 
     # exo lag > 1
@@ -742,6 +760,7 @@ end
 
     @test isapprox(RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
+    RBC_CME_exo_lag = nothing
 
     # Lags > 1
     @model RBC_CME_lag begin
@@ -805,6 +824,7 @@ end
 
     @test isapprox(RBC_CME_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lag.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
+    RBC_CME_lag = nothing
 
     # Leads > 1
     @model RBC_CME_lead begin
@@ -867,6 +887,9 @@ end
 
     @test isapprox(RBC_CME_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_lead.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
+    RBC_CME_lead = nothing
+
+
     # Leads and lags > 1
     @model RBC_CME_lead_lag begin
         y[0]=A[0]*k[-1]^alpha
@@ -928,6 +951,8 @@ end
     get_solution(RBC_CME_lead_lag, algorithm = :quadratic_iteration)
 
     @test isapprox(RBC_CME_lead_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+
+    RBC_CME_lead_lag = nothing
 
 
     # Leads and lags > 10
@@ -994,6 +1019,9 @@ end
 
     @test isapprox(RBC_CME_lead_lag10.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag10.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
+    RBC_CME_lead_lag10 = nothing
+
+
     # Leads and lags > 10
     @model RBC_CME_lead_lag20 begin
         y[0]=A[0]*k[-1]^alpha
@@ -1058,56 +1086,7 @@ end
 
     @test isapprox(RBC_CME_lead_lag20.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag20.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
-
-    @model RBC_CME begin
-        y[0]=A[0]*k[-1]^alpha
-        1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
-        1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
-        R[0] * beta =(Pi[0]/Pibar)^phi_pi
-        # A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta)*k[-1]
-        A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
-        z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
-        # z[0]=rhoz*z[-1]+std_eps*eps_z[x]
-        # A[0]=exp(z[0])
-        A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
-        # ZZ_avg[0] = (A[0] + A[-1] + A[-2] + A[-3]) / 4
-        # A_annual[0] = (A[0] + A[-4] + A[-8] + A[-12]) / 4
-        # y_avg[0] = log(y[0] / y[-4])
-        # y_growth[0] = log(y[1] / y[2])
-        # y_growthl[0] = log(y[0] / y[1])
-        # y_growthl1[0] = log(y[-1] / y[0])
-        # log(A[0]) = rhoz * log(A[-1]) + std_eps * eps_z[x]
-    end
-
-
-    @parameters RBC_CME verbose = true begin
-        # alpha | k[ss] / (4 * y[ss]) = cap_share
-        # cap_share = 1.66
-        alpha = .157
-
-        # beta | R[ss] = R_ss
-        # R_ss = 1.0035
-        beta = .999
-
-        # delta | c[ss]/y[ss] = 1 - I_K_ratio
-        # delta | delta * k[ss]/y[ss] = I_K_ratio #check why this doesnt solve for y
-        # I_K_ratio = .15
-        delta = .0226
-
-        # Pibar | Pi[ss] = Pi_ss
-        # Pi_ss = 1.0025
-        Pibar = 1.0008
-
-        phi_pi = 1.5
-        rhoz = .9
-        std_eps = .0068
-        rho_z_delta = .9
-        std_z_delta = .005
-    end
-
-    get_solution(RBC_CME)
-    # solve!(RBC_CME,dynamics = true)
-
+    RBC_CME_lead_lag20 = nothing
 end
 
 
@@ -1374,6 +1353,7 @@ end
     @test isapprox(get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state), [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0],rtol = eps(Float32))
     # get_moments(RBC_CME)[1]
     
+    RBC_CME = nothing
 end
 
 
@@ -1506,61 +1486,64 @@ end
 
 
     @test isapprox(get_steady_state(SW03, verbose = true)(SW03.timings.var),
-    [  1.2043777509278788
-    1.2043777484127967
-    0.362
-    0.362
-    0.44153840098985714
-    0.44153839784516097
-   17.66153603957938
-   17.66153591381742
-    1.2891159430437658
-    1.2891159432893282
-    1.289115942962812
-    1.289115943290125
-    0.9999999999999677
-    0.5401411855429173
-    0.482173806623137
-    0.999999999999352
-    1.0000000000002556
-    1.0101010101010102
-    1.0101010101010102
-    0.362
-    0.362
-    -427.9858908413812
-    -427.98589116567274
-       1.122103431093411
-       0.7480689524203904
-       1.1221034286309022
-       1.122103428630708
-       2.0079161519182205
-       2.0079161462568305
-       2.0079161519185624
-       2.007916146256947
-       1.0
-       1.0
-       1.0
-       1.0
-       1.0
-       8.770699454739315
-       8.770699454739393
-      48.84717584575426
-      35.70699988724729
-      0.7309941520471651
-      0.730994152046712
-      1.0
-      0.9999999999372022
-      1.0
-      1.0
-      1.0
-      2.4590033452182944
-      2.459003352168301
-      0.035101010082054955
-      0.03510101010809239
-      1.1221034311168996
-      0.9999999999999698
-      1.0000000000000089],
-      rtol = eps(Float32))
+                    [  1.2043777509278788
+                    1.2043777484127967
+                    0.362
+                    0.362
+                    0.44153840098985714
+                    0.44153839784516097
+                    17.66153603957938
+                    17.66153591381742
+                    1.2891159430437658
+                    1.2891159432893282
+                    1.289115942962812
+                    1.289115943290125
+                    0.9999999999999677
+                    0.5401411855429173
+                    0.482173806623137
+                    0.999999999999352
+                    1.0000000000002556
+                    1.0101010101010102
+                    1.0101010101010102
+                    0.362
+                    0.362
+                    -427.9858908413812
+                    -427.98589116567274
+                    1.122103431093411
+                    0.7480689524203904
+                    1.1221034286309022
+                    1.122103428630708
+                    2.0079161519182205
+                    2.0079161462568305
+                    2.0079161519185624
+                    2.007916146256947
+                    1.0
+                    1.0
+                    1.0
+                    1.0
+                    1.0
+                    8.770699454739315
+                    8.770699454739393
+                    48.84717584575426
+                    35.70699988724729
+                    0.7309941520471651
+                    0.730994152046712
+                    1.0
+                    0.9999999999372022
+                    1.0
+                    1.0
+                    1.0
+                    2.4590033452182944
+                    2.459003352168301
+                    0.035101010082054955
+                    0.03510101010809239
+                    1.1221034311168996
+                    0.9999999999999698
+                    1.0000000000000089],
+                    rtol = eps(Float32)
+    )
+
+    SW03 = nothing
 #     # x = 1
 
 
@@ -1729,8 +1712,6 @@ end
 
 
 @testset verbose = true "First order perturbation" begin
-    RBC_CME = nothing
-
     # Numerical test with calibration targets
     @model RBC_CME begin
         y[0]=A[0]*k[-1]^alpha
@@ -1794,6 +1775,8 @@ end
    -0.00041124   0.00639229
     0.0          0.00840927
     0.005        0.0], atol = 1e-6)
+
+    RBC_CME = nothing
 end
 
 
@@ -1801,8 +1784,6 @@ end
 
 
 @testset verbose = true "First order: linear time iteration" begin
-    RBC_CME = nothing
-
     # Numerical test with calibration targets
     @model RBC_CME begin
         y[0]=A[0]*k[-1]^alpha
@@ -1871,6 +1852,8 @@ end
    -0.00041124   0.00639229
     0.0          0.00840927
     0.005        0.0], atol = 1e-6)
+
+    RBC_CME = nothing
 end
 
 
@@ -1878,8 +1861,6 @@ end
 
 
 @testset verbose = true "First order: quadratic iteration" begin
-    RBC_CME = nothing
-
     # Numerical test with calibration targets
     @model RBC_CME begin
         y[0]=A[0]*k[-1]^alpha
@@ -1948,6 +1929,8 @@ end
    -0.00041124   0.00639229
     0.0          0.00840927
     0.005        0.0], atol = 1e-6)
+
+    RBC_CME = nothing
 end
 
 
@@ -1955,7 +1938,6 @@ end
 
 
 @testset verbose = true "Plotting" begin
-
     # Symbolic test with calibration targets
     @model RBC_CME begin
         y[0]=A[0]*k[-1]^alpha
@@ -2015,6 +1997,8 @@ end
     end
     plot_irf(RBC_CME)
     @test true
+
+    RBC_CME = nothing
 end
 
 include("test_estimation.jl")

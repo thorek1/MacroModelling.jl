@@ -337,7 +337,7 @@ end
     sol.minimizer[3]],[1.45,.2,.02],rtol = 1e-6)
 end
 
-
+RBC_CME = nothing
 
 @testset verbose = true "Kalman filter and gradient" begin
     Random.seed!(3)
@@ -401,6 +401,8 @@ end
 
     @test isapprox(forw_grad,fin_grad, rtol = 1e-6)
     @test isapprox(forw_grad,reverse_grad, rtol = eps(Float32))
+
+    RBC_CME = nothing
 end
 
 # observables = [:c,:k,:Pi]
@@ -445,4 +447,6 @@ end
 
     @test isapprox(SSS3finitediff, SSSdiff3[:,2:end], rtol = 1e-8)
 
+    m = nothing
+    𝓂 = nothing
 end
