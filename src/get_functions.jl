@@ -445,35 +445,27 @@ function get_irf(𝓂::ℳ;
         end
     end
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
-    
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - reference_steady_state[1:length(𝓂.var)]
 
     if generalised_irf
         girfs =  girf(state_update, 
+                        levels ? reference_steady_state : SSS_delta,
                         𝓂.timings; 
                         periods = periods, 
                         shocks = shocks, 
                         variables = variables, 
                         negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
-        if levels
-            return girfs .+ reference_steady_state[var_idx]
-        else
-            return girfs
-        end
+        return girfs
     else
         irfs =  irf(state_update, 
                     initial_state, 
+                    levels ? reference_steady_state : SSS_delta,
                     𝓂.timings; 
                     periods = periods, 
                     shocks = shocks, 
                     variables = variables, 
                     negative_shock = negative_shock)
-        if levels
-            return irfs .+ reference_steady_state[var_idx]
-        else
-            return irfs .+ SSS_delta[var_idx]
-        end
+        return irfs
     end
 end
 

@@ -2542,7 +2542,7 @@ end
 
 
 
-function irf(state_update::Function, initial_state::Vector{Float64}, T::timings; 
+function irf(state_update::Function, initial_state::Vector{Float64}, level::Vector{Float64}, T::timings; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Symbol_input = :all, 
@@ -2615,13 +2615,13 @@ function irf(state_update::Function, initial_state::Vector{Float64}, T::timings;
             end
         end
 
-        return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
     end
 end
 
 
 
-function girf(state_update::Function, T::timings; 
+function girf(state_update::Function, level::Vector{Float64}, T::timings; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Symbol_input = :all, 
@@ -2697,7 +2697,7 @@ function girf(state_update::Function, T::timings;
         Y[:,:,i] /= draws
     end
     
-    return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
+    return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
 end
 
 
