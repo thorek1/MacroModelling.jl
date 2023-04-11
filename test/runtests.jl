@@ -18,6 +18,7 @@ include("functionality_tests.jl")
     @testset "Piracy" Aqua.test_piracy(MacroModelling)
     @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
 end
+GC.gc()
 
 @testset verbose = true "FS2000" begin
     include("models/FS2000.jl")
@@ -26,14 +27,16 @@ end
     functionality_test(m, algorithm = :third_order, plots = false)
 end
 m = nothing
+GC.gc()
 
 @testset verbose = true "Test dynare read/write" begin
     include("models/FS2000.jl")
     write_to_dynare_file(m)
     translate_mod_file("m.mod")
 end
-
 m = nothing
+GC.gc()
+
 # @testset verbose = true "Code formatting (JuliaFormatter.jl)" begin
 #     @test format(MacroModelling; verbose=true, overwrite=true)
 # end
@@ -41,18 +44,21 @@ m = nothing
 @testset verbose = true "Test various models: NSSS and 1st order solution" begin
     include("test_models.jl")
 end
+GC.gc()
 
 @testset verbose = true "SW07 with calibration equations" begin
     include("models/SW07.jl")
     functionality_test(m, plots = false)
 end
 m = nothing
+GC.gc()
 
 @testset verbose = true "SW03 with calibration equations" begin
     include("models/SW03.jl")
     functionality_test(m)
 end
 m = nothing
+GC.gc()
 
 @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
@@ -71,6 +77,7 @@ m = nothing
     functionality_test(m, plots = false)
 end
 m = nothing
+GC.gc()
 
 @testset verbose = true "RBC_CME with calibration equations and parameter definitions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
@@ -79,6 +86,7 @@ m = nothing
     functionality_test(m, algorithm = :third_order)
 end
 m = nothing
+GC.gc()
 
 @testset verbose = true "RBC_CME with calibration equations" begin
     include("models/RBC_CME_calibration_equations.jl")
@@ -87,6 +95,7 @@ m = nothing
     functionality_test(m, algorithm = :third_order, plots = false)
 end
 m = nothing
+GC.gc()
 
 @testset verbose = true "RBC_CME" begin
     include("models/RBC_CME.jl")
@@ -95,11 +104,13 @@ m = nothing
     functionality_test(m, algorithm = :third_order, plots = false)
 end
 m = nothing
+GC.gc()
 
 
 @testset verbose = true "Standalone functions" begin
     include("test_standalone_function.jl")
 end
+GC.gc()
 
 
 @testset verbose = true "Model without shocks" begin
@@ -1999,5 +2010,6 @@ end
 
     RBC_CME = nothing
 end
+GC.gc()
 
 include("test_estimation.jl")
