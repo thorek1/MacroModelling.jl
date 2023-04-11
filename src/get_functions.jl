@@ -568,7 +568,7 @@ function get_steady_state(𝓂::ℳ;
         length_par = length(𝓂.parameters)
         param_idx = 1:length_par
     elseif isa(parameter_derivatives,Symbol)
-        @assert parameter_derivatives ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
+        @assert parameter_derivatives ∈ 𝓂.parameters string(parameter_derivatives) * " is not part of the free model parameters."
 
         param_idx = indexin([parameter_derivatives], 𝓂.parameters)
         length_par = 1
@@ -1276,7 +1276,7 @@ function get_moments(𝓂::ℳ;
         length_par = length(𝓂.parameters)
         param_idx = 1:length_par
     elseif isa(parameter_derivatives,Symbol)
-        @assert parameter_derivatives ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
+        @assert parameter_derivatives ∈ 𝓂.parameters string(parameter_derivatives) * " is not part of the free model parameters."
 
         param_idx = indexin([parameter_derivatives], 𝓂.parameters)
         length_par = 1
