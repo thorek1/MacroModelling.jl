@@ -2586,7 +2586,7 @@ function irf(state_update::Function, initial_state::Vector{Float64}, level::Vect
             Y[:,t+1,1] = state_update(Y[:,t,1],shock_history[:,t+1])
         end
 
-        return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:simulate])
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:simulate])
     elseif shocks == :none
         Y = zeros(T.nVars,periods,1)
 
@@ -2598,7 +2598,7 @@ function irf(state_update::Function, initial_state::Vector{Float64}, level::Vect
             Y[:,t+1,1] = state_update(Y[:,t,1],shck)
         end
 
-        return KeyedArray(Y[var_idx,:,:];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:none])
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:none])
     else
         Y = zeros(T.nVars,periods,length(shock_idx))
 
