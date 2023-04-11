@@ -1,7 +1,7 @@
 @model NAWM_EAUS_2008 begin
-	EA_R[0] ^ 4 - 1 = EA_PHIRR * (EA_R[-1] ^ 4 - 1) + (1 - EA_PHIRR) * (EA_RRSTAR ^ 4 * EA_PI4TARGET - 1 + EA_PHIRPI * (EA_PIC4[0] - EA_PI4TARGET)) + EA_PHIRGY * (EA_Y[0] / EA_Y[-1] - 1) + EA_EPSR[x]
+	EA_R[0] ^ 4 - 1 = EA_PHIRR * (EA_R[-1] ^ 4 - 1) + (1 - EA_PHIRR) * (EA_RRSTAR ^ 4 * EA_PI4TARGET - 1 + EA_PHIRPI * (EA_PIC4[0] - EA_PI4TARGET)) + EA_PHIRGY * (EA_Y[0] / EA_Y[-1] - 1) + σ_EA_R * EA_EPSR[x]
 
-	US_R[0] ^ 4 - 1 = US_PHIRR * (US_R[-1] ^ 4 - 1) + (1 - US_PHIRR) * (US_RRSTAR ^ 4 * US_PI4TARGET - 1 + US_PHIRPI * (US_PIC4[0] - US_PI4TARGET)) + US_PHIRGY * (US_Y[0] / US_Y[-1] - 1) + US_EPSR[x]
+	US_R[0] ^ 4 - 1 = US_PHIRR * (US_R[-1] ^ 4 - 1) + (1 - US_PHIRR) * (US_RRSTAR ^ 4 * US_PI4TARGET - 1 + US_PHIRPI * (US_PIC4[0] - US_PI4TARGET)) + US_PHIRGY * (US_Y[0] / US_Y[-1] - 1) + σ_US_R * US_EPSR[x]
 
 	EA_UTILI[0] = 1 / (1 - EA_SIGMA) * (EA_CI[0] - EA_KAPPA * EA_CI[-1]) ^ (1 - EA_SIGMA) - 1 / (1 + EA_ZETA) * EA_NI[0] ^ (1 + EA_ZETA) + EA_BETA * EA_UTILI[1]
 
@@ -177,23 +177,23 @@
 
 	EA_Y[0] = EA_YS[0]
 
-	log(EA_Z[0]) = (1 - EA_RHOZ) * log(EA_ZBAR) + EA_RHOZ * log(EA_Z[-1]) + EA_EPSZ[x]
+	log(EA_Z[0]) = (1 - EA_RHOZ) * log(EA_ZBAR) + EA_RHOZ * log(EA_Z[-1]) + σ_EA_Z * EA_EPSZ[x]
 
-	EA_GY[0] = (1 - EA_RHOG) * EA_GYBAR + EA_RHOG * EA_GY[-1] + EA_EPSG[x]
+	EA_GY[0] = (1 - EA_RHOG) * EA_GYBAR + EA_RHOG * EA_GY[-1] + σ_EA_G * EA_EPSG[x]
 
-	EA_TRY[0] = (1 - EA_RHOTR) * EA_TRYBAR + EA_RHOTR * EA_TRY[-1] + EA_EPSTR[x]
+	EA_TRY[0] = (1 - EA_RHOTR) * EA_TRYBAR + EA_RHOTR * EA_TRY[-1] + σ_EA_TR * EA_EPSTR[x]
 
-	EA_TAUC[0] = (1 - EA_RHOTAUC) * EA_TAUCBAR + EA_TAUC[-1] * EA_RHOTAUC + EA_EPSTAUC[x]
+	EA_TAUC[0] = (1 - EA_RHOTAUC) * EA_TAUCBAR + EA_TAUC[-1] * EA_RHOTAUC + σ_EA_TAUC * EA_EPSTAUC[x]
 
-	EA_TAUD[0] = (1 - EA_RHOTAUD) * EA_TAUDBAR + EA_TAUD[-1] * EA_RHOTAUD + EA_EPSTAUD[x]
+	EA_TAUD[0] = (1 - EA_RHOTAUD) * EA_TAUDBAR + EA_TAUD[-1] * EA_RHOTAUD + σ_EA_TAUD * EA_EPSTAUD[x]
 
-	EA_TAUK[0] = EA_TAUKBAR * (1 - EA_RHOTAUK) + EA_TAUK[-1] * EA_RHOTAUK + EA_EPSTAUK[x]
+	EA_TAUK[0] = EA_TAUKBAR * (1 - EA_RHOTAUK) + EA_TAUK[-1] * EA_RHOTAUK + σ_EA_TAUK * EA_EPSTAUK[x]
 
-	EA_TAUN[0] = (1 - EA_RHOTAUN) * EA_TAUNBAR + EA_TAUN[-1] * EA_RHOTAUN + EA_EPSTAUN[x]
+	EA_TAUN[0] = (1 - EA_RHOTAUN) * EA_TAUNBAR + EA_TAUN[-1] * EA_RHOTAUN + σ_EA_TAUN * EA_EPSTAUN[x]
 
-	EA_TAUWH[0] = (1 - EA_RHOTAUWH) * EA_TAUWHBAR + EA_TAUWH[-1] * EA_RHOTAUWH + EA_EPSTAUWH[x]
+	EA_TAUWH[0] = (1 - EA_RHOTAUWH) * EA_TAUWHBAR + EA_TAUWH[-1] * EA_RHOTAUWH + σ_EA_TAUWH * EA_EPSTAUWH[x]
 
-	EA_TAUWF[0] = (1 - EA_RHOTAUWF) * EA_TAUWFBAR + EA_TAUWF[-1] * EA_RHOTAUWF + EA_EPSTAUWF[x]
+	EA_TAUWF[0] = (1 - EA_RHOTAUWF) * EA_TAUWFBAR + EA_TAUWF[-1] * EA_RHOTAUWF + σ_EA_TAUWF * EA_EPSTAUWF[x]
 
 	EA_CY[0] = EA_C[0] / (EA_Y[0] * EA_PY[0])
 
@@ -391,23 +391,23 @@
 
 	US_Y[0] = US_YS[0]
 
-	log(US_Z[0]) = (1 - US_RHOZ) * log(US_ZBAR) + US_RHOZ * log(US_Z[-1]) + US_EPSZ[x]
+	log(US_Z[0]) = (1 - US_RHOZ) * log(US_ZBAR) + US_RHOZ * log(US_Z[-1]) + σ_US_Z * US_EPSZ[x]
 
-	US_GY[0] = (1 - US_RHOG) * US_GYBAR + US_RHOG * US_GY[-1] + US_EPSG[x]
+	US_GY[0] = (1 - US_RHOG) * US_GYBAR + US_RHOG * US_GY[-1] + σ_US_G * US_EPSG[x]
 
-	US_TRY[0] = (1 - US_RHOTR) * US_TRYBAR + US_RHOTR * US_TRY[-1] + US_EPSTR[x]
+	US_TRY[0] = (1 - US_RHOTR) * US_TRYBAR + US_RHOTR * US_TRY[-1] + σ_US_TR * US_EPSTR[x]
 
-	US_TAUC[0] = (1 - US_RHOTAUC) * US_TAUCBAR + US_TAUC[-1] * US_RHOTAUC + US_EPSTAUC[x]
+	US_TAUC[0] = (1 - US_RHOTAUC) * US_TAUCBAR + US_TAUC[-1] * US_RHOTAUC + σ_US_TAUC * US_EPSTAUC[x]
 
-	US_TAUD[0] = (1 - US_RHOTAUD) * US_TAUDBAR + US_TAUD[-1] * US_RHOTAUD + US_EPSTAUD[x]
+	US_TAUD[0] = (1 - US_RHOTAUD) * US_TAUDBAR + US_TAUD[-1] * US_RHOTAUD + σ_US_TAUD * US_EPSTAUD[x]
 
-	US_TAUK[0] = US_TAUKBAR * (1 - US_RHOTAUK) + US_TAUK[-1] * US_RHOTAUK + US_EPSTAUK[x]
+	US_TAUK[0] = US_TAUKBAR * (1 - US_RHOTAUK) + US_TAUK[-1] * US_RHOTAUK + σ_US_TAUK * US_EPSTAUK[x]
 
-	US_TAUN[0] = (1 - US_RHOTAUN) * US_TAUNBAR + US_TAUN[-1] * US_RHOTAUN + US_EPSTAUN[x]
+	US_TAUN[0] = (1 - US_RHOTAUN) * US_TAUNBAR + US_TAUN[-1] * US_RHOTAUN + σ_US_TAUN * US_EPSTAUN[x]
 
-	US_TAUWH[0] = (1 - US_RHOTAUWH) * US_TAUWHBAR + US_TAUWH[-1] * US_RHOTAUWH + US_EPSTAUWH[x]
+	US_TAUWH[0] = (1 - US_RHOTAUWH) * US_TAUWHBAR + US_TAUWH[-1] * US_RHOTAUWH + σ_US_TAUWH * US_EPSTAUWH[x]
 
-	US_TAUWF[0] = (1 - US_RHOTAUWF) * US_TAUWFBAR + US_TAUWF[-1] * US_RHOTAUWF + US_EPSTAUWF[x]
+	US_TAUWF[0] = (1 - US_RHOTAUWF) * US_TAUWFBAR + US_TAUWF[-1] * US_RHOTAUWF + σ_US_TAUWF * US_EPSTAUWF[x]
 
 	US_CY[0] = US_C[0] / (US_Y[0] * US_PY[0])
 
@@ -435,7 +435,7 @@
 
 	EA_GAMMAB[0] = EA_GAMMAB1 * (exp(EA_RER[0] * EA_BF[0] / US_PIC[0] / (EA_Y[0] * EA_PY[0]) - EA_BFYTARGET) - 1) - EA_RP[0]
 
-	EA_RP[0] = EA_RHORP * EA_RP[-1] + EA_EPSRP[x]
+	EA_RP[0] = EA_RHORP * EA_RP[-1] + σ_EA_RP * EA_EPSRP[x]
 
 	EA_RERDEP[0] = EA_RER[0] / EA_RER[-1]
 
@@ -451,6 +451,49 @@ end
 
 
 @parameters NAWM_EAUS_2008 begin
+
+	σ_EA_R	= 1.0
+
+	σ_US_R	= 1.0
+
+	σ_EA_Z	= 1.0
+
+	σ_EA_G	= 1.0
+
+	σ_EA_TR	= 1.0
+
+	σ_EA_TAUC	= 1.0
+
+	σ_EA_TAUD	= 1.0
+
+	σ_EA_TAUK	= 1.0
+
+	σ_EA_TAUN	= 1.0
+
+	σ_EA_TAUWH	= 1.0
+
+	σ_EA_TAUWF	= 1.0
+
+	σ_US_Z	= 1.0
+
+	σ_US_G	= 1.0
+
+	σ_US_TR	= 1.0
+
+	σ_US_TAUC	= 1.0
+
+	σ_US_TAUD	= 1.0
+
+	σ_US_TAUK	= 1.0
+
+	σ_US_TAUN	= 1.0
+
+	σ_US_TAUWH	= 1.0
+
+	σ_US_TAUWF	= 1.0
+
+	σ_EA_RP	= 1.0
+	
 	EA_RRSTAR = 1 / EA_BETA
 
 	US_RRSTAR = 1 / US_BETA
@@ -724,36 +767,6 @@ end
 	US_ZBAR = 1
 
 	US_RER = 1
-
-	# Help steady state solver
-	# EA_FI > 100
-
-	# US_FI > 100
-
-	# EA_FH	> 20
-	
-	# EA_GH	> 20
-	
-	# EA_K	> 20
-	
-	# EA_KD	> 20
-	
-	# EA_KI	> 20
-	
-	# US_FH	> 20
-	
-	# US_FJ	> 20
-	
-	# US_GH	> 20
-	
-	# US_K	> 20
-	
-	# US_KD	> 20
-	
-	# US_KI	> 20
-	
-	# US_GI > 10
-
-	# US_GJ > 10
 end
+
 
