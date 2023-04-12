@@ -88,16 +88,18 @@ end
     rho_a = 0.823
     rho_G = 0.949
     rho_pi_bar = 0.924
+    
+    std_scaling_factor = 100
 
-    std_eta_b = 0.336
-    std_eta_L = 3.52
-    std_eta_I = 0.085
-    std_eta_a = 0.598
-    std_eta_w = 0.6853261
-    std_eta_p = 0.7896512
-    std_eta_G = 0.325
-    std_eta_R = 0.081
-    std_eta_pi = 0.017
+    std_eta_b = 0.336 / std_scaling_factor
+    std_eta_L = 3.52 / std_scaling_factor
+    std_eta_I = 0.085 / std_scaling_factor
+    std_eta_a = 0.598 / std_scaling_factor
+    std_eta_w = 0.6853261 / std_scaling_factor
+    std_eta_p = 0.7896512 / std_scaling_factor
+    std_eta_G = 0.325 / std_scaling_factor
+    std_eta_R = 0.081 / std_scaling_factor
+    std_eta_pi = 0.017 / std_scaling_factor
 
     calibr_pi_obj | 1 = pi_obj[ss]
     calibr_pi | pi[ss] = pi_obj[ss]
