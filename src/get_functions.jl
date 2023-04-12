@@ -605,14 +605,14 @@ function get_steady_state(𝓂::ℳ;
                 if algorithm == :third_order
                     dSSS = ℱ.jacobian(x->begin 
                                 SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
-                                [collect(SSS[1])[var_idx]...,collect(SSS[2])[calib_idx]...]
+                                [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                             end, 𝓂.parameter_values[param_idx])
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
                 else
                     dSSS = ℱ.jacobian(x->begin 
                                 SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
-                                [collect(SSS[1])[var_idx]...,collect(SSS[2])[calib_idx]...]
+                                [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                             end, 𝓂.parameter_values[param_idx])
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))

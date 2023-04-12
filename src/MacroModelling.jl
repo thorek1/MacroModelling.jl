@@ -1040,7 +1040,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         guess::Vector{Float64}, 
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64};
-                        tol::Float64 = eps(Float64),
+                        tol::Float64 = eps(),
                         # timeout = 120,
                         starting_points::Vector{Float64} = [0.7688, 1.2, .9, .75, 1.5, -.5, 2, .25],
                         # fail_fast_solvers_only = true,
@@ -1108,7 +1108,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     guess::Vector{Float64}, 
     lbs::Vector{Float64}, 
     ubs::Vector{Float64};
-    tol::Float64 = eps(Float64),
+    tol::Float64 = eps(),
     # timeout = 120,
     starting_points::Vector{Float64} = [0.7688, 1.2, .9, .75, 1.5, -.5, 2, .25],
     # fail_fast_solvers_only = true,
@@ -1162,7 +1162,8 @@ end
 
 
 
-function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{Float64}, 𝓂::ℳ)
+function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{Float64}, 𝓂::ℳ;
+    tol::Float64 = 1e-10)
     (; 𝐒₁, 𝐒₂) = 𝐒₁𝐒₂
 
     state = zeros(𝓂.timings.nVars)
@@ -1172,7 +1173,7 @@ function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂:
     1
     shock]
 
-    state .= speedmapping(state; 
+    sol = speedmapping(state; 
                 m! = (SSS, sss) -> begin 
                                     aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
                                                 1
@@ -1180,7 +1181,10 @@ function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂:
 
                                     SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
                 end, 
-    tol = eps()).minimizer
+    tol = tol, maps_limit = 10000)
+    
+    return sol.minimizer, sol.converged
+
 end
 
 
@@ -1206,19 +1210,23 @@ function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂:
     ps = mapreduce(ℱ.partials, hcat, 𝐒₁𝐒₂)'
 
     # get f(vs)
-    val = second_order_stochastic_steady_state_iterative_solution(S₁S₂, 𝓂)
+    val, converged = second_order_stochastic_steady_state_iterative_solution(S₁S₂, 𝓂)
 
-    # get J(f, vs) * ps (cheating). Write your custom rule here
-    B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_condition(x, val, 𝓂), S₁S₂)
-    A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_condition(S₁S₂, x, 𝓂), val)
+    if converged
+        # get J(f, vs) * ps (cheating). Write your custom rule here
+        B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_condition(x, val, 𝓂), S₁S₂)
+        A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_condition(S₁S₂, x, 𝓂), val)
 
-    Â = RF.lu(A, check = false)
+        Â = RF.lu(A, check = false)
 
-    if !ℒ.issuccess(Â)
-        Â = ℒ.svd(A)
+        if !ℒ.issuccess(Â)
+            Â = ℒ.svd(A)
+        end
+        
+        jvp = -(Â \ B) * ps
+    else
+        jvp = fill(0,length(val),length(𝐒₁𝐒₂)) * ps
     end
-    
-    jvp = -(Â \ B) * ps
 
     # lm = LinearMap{Float64}(x -> A * reshape(x, size(B)), length(B))
 
@@ -1228,7 +1236,7 @@ function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂:
     # pack: SoA -> AoS
     return reshape(map(val, eachrow(jvp)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val))
+    end,size(val)), converged
 end
 
 
@@ -1245,7 +1253,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
-    state = second_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂), 𝓂)
+    state, converged = second_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂), 𝓂)
 
     all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
@@ -1256,13 +1264,14 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
     all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
-    return all_SS + state, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
+    return all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 end
 
 
 
 
-function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::AbstractArray{Float64}, 𝓂::ℳ)
+function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::AbstractArray{Float64}, 𝓂::ℳ;
+    tol::Float64 = 1e-10)
     (; 𝐒₁, 𝐒₂, 𝐒₃) = 𝐒₁𝐒₂𝐒₃
 
     state = zeros(𝓂.timings.nVars)
@@ -1272,7 +1281,7 @@ function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂�
     1
     shock]
 
-    state .= speedmapping(state; 
+    sol = speedmapping(state; 
                 m! = (SSS, sss) -> begin 
                                     aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
                                                 1
@@ -1280,7 +1289,9 @@ function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂�
 
                                     SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
                 end, 
-    tol = eps()).minimizer
+    tol = tol, maps_limit = 10000)
+
+    return sol.minimizer, sol.converged
 end
 
 
@@ -1306,19 +1317,23 @@ function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂�
     ps = mapreduce(ℱ.partials, hcat, 𝐒₁𝐒₂𝐒₃)'
 
     # get f(vs)
-    val = third_order_stochastic_steady_state_iterative_solution(S₁S₂S₃, 𝓂)
+    val, converged = third_order_stochastic_steady_state_iterative_solution(S₁S₂S₃, 𝓂)
 
-    # get J(f, vs) * ps (cheating). Write your custom rule here
-    B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_condition(x, val, 𝓂), S₁S₂S₃)
-    A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_condition(S₁S₂S₃, x, 𝓂), val)
+    if converged
+        # get J(f, vs) * ps (cheating). Write your custom rule here
+        B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_condition(x, val, 𝓂), S₁S₂S₃)
+        A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_condition(S₁S₂S₃, x, 𝓂), val)
+        
+        Â = RF.lu(A, check = false)
     
-    Â = RF.lu(A, check = false)
-
-    if !ℒ.issuccess(Â)
-        Â = ℒ.svd(A)
+        if !ℒ.issuccess(Â)
+            Â = ℒ.svd(A)
+        end
+        
+        jvp = -(Â \ B) * ps
+    else
+        jvp = fill(0,length(val),length(𝐒₁𝐒₂𝐒₃)) * ps
     end
-    
-    jvp = -(Â \ B) * ps
 
     # lm = LinearMap{Float64}(x -> A * reshape(x, size(B)), length(B))
 
@@ -1328,7 +1343,7 @@ function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂�
     # pack: SoA -> AoS
     return reshape(map(val, eachrow(jvp)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val))
+    end,size(val)), converged
 end
 
 
@@ -1349,7 +1364,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
-    state = third_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂, 𝐒₃), 𝓂)
+    state, converged = third_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂, 𝐒₃), 𝓂)
 
     all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
@@ -1360,7 +1375,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
     all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
-    return all_SS + state, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃
+    return all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃
 end
 
 
@@ -1411,7 +1426,9 @@ function solve!(𝓂::ℳ;
         end
 
         if any([:second_order, :third_order] .∈ ([algorithm],)) && :second_order ∈ 𝓂.solution.outdated_algorithms
-            stochastic_steady_state, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+            
+            @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
             state_update₂ = function(state::Vector{Float64}, shock::Vector{Float64})
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
@@ -1426,7 +1443,9 @@ function solve!(𝓂::ℳ;
         end
         
         if :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
-            stochastic_steady_state, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+            @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
             state_update₃ = function(state::Vector{Float64}, shock::Vector{Float64})
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
@@ -1445,7 +1464,7 @@ function solve!(𝓂::ℳ;
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
-            sol_mat = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
+            sol_mat, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
             
             state_update₁ₜ = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
@@ -1759,6 +1778,12 @@ write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; ve
 
 
 
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Real},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+
+
+
 function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; verbose::Bool = true)
     if length(setdiff(collect(keys(parameters)),𝓂.parameters))>0
         println("Parameters not part of the model: ",setdiff(collect(keys(parameters)),𝓂.parameters))
@@ -1818,6 +1843,10 @@ end
 
 write_parameters_input!(𝓂::ℳ, parameters::Tuple{Float64,Vararg{Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)), verbose = verbose)
 write_parameters_input!(𝓂::ℳ, parameters::Matrix{Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, vec(collect(parameters)), verbose = verbose)
+
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Real,Vararg{Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Float64.(vec(collect(parameters))), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Matrix{Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Float64.(vec(collect(parameters))), verbose = verbose)
+
 
 
 function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose::Bool = true)
@@ -1887,7 +1916,11 @@ function SSS_third_order_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    calculate_third_order_stochastic_steady_state(params, 𝓂, verbose = verbose)
+    SSS = calculate_third_order_stochastic_steady_state(params, 𝓂, verbose = verbose)
+
+    @assert SSS[2] "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
+
+    return SSS
 end
 
 
@@ -1895,7 +1928,11 @@ function SSS_third_order_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, para
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    calculate_third_order_stochastic_steady_state(params, 𝓂, verbose = verbose)
+    SSS = calculate_third_order_stochastic_steady_state(params, 𝓂, verbose = verbose)
+
+    @assert SSS[2] "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
+
+    return SSS
 end
 
 
@@ -1903,7 +1940,11 @@ function SSS_second_order_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    calculate_second_order_stochastic_steady_state(params, 𝓂, verbose = verbose)
+    SSS = calculate_second_order_stochastic_steady_state(params, 𝓂, verbose = verbose)
+
+    @assert SSS[2] "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
+
+    return SSS
 end
 
 
@@ -1911,7 +1952,11 @@ function SSS_second_order_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, par
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    calculate_second_order_stochastic_steady_state(params, 𝓂, verbose = verbose)
+    SSS = calculate_second_order_stochastic_steady_state(params, 𝓂, verbose = verbose)
+
+    @assert SSS[2] "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
+
+    return SSS
 end
 
 
@@ -2075,7 +2120,7 @@ end
 
 
 
-function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = eps(Float32))
+function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::Float64 = eps(Float32))
     expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
             ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
@@ -2121,7 +2166,7 @@ end
 
 
 
-function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = 1e-8)
+function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::Float64 = 1e-10)
     # see Binder and Pesaran (1997) for more details on this approach
     expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
             ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
@@ -2139,13 +2184,13 @@ function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64};
     C = similar(A)
     C̄ = similar(A)
 
-    sol = speedmapping(zero(A); m! = (C̄, C) -> C̄ .=  A + B * C^2, tol = tol)
+    sol = speedmapping(zero(A); m! = (C̄, C) -> C̄ .=  A + B * C^2, tol = tol, maps_limit = 10000)
 
     C = -sol.minimizer
 
     D = -(∇₊ * C + ∇₀) \ ∇ₑ
 
-    @views hcat(C[:,T.past_not_future_and_mixed_idx],D)
+    @views hcat(C[:,T.past_not_future_and_mixed_idx],D), sol.converged
 end
 
 
@@ -2340,17 +2385,17 @@ function solve_sylvester_equation(ABCX::AbstractArray{ℱ.Dual{Z,S,N}}) where {Z
 end
 
 
-function  calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
+function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
                                             𝑺₁::AbstractMatrix{<: Real};  #first order solution
-                                            T::timings)
+                                            T::timings,
+                                            tol::Float64 = 1e-10)
 
     # println(typeof(∇₁))
     # println(typeof(∇₂))
     # println(typeof(𝑺₁))
 
     # inspired by Levintal
-    tol = 1e-10
 
     # Indices and number of variables
     i₊ = T.future_not_past_and_mixed_idx;
@@ -2417,9 +2462,9 @@ function  calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first
                                             ∇₃::SparseMatrixCSC{<: Real}, #third order derivatives
                                             𝑺₁::AbstractMatrix{<: Real}, #first order solution
                                             𝐒₂::AbstractMatrix{<: Real}; #second order solution
-                                            T::timings)
+                                            T::timings,
+                                            tol::Float64 = 1e-10)
     # inspired by Levintal
-    tol = 1e-10
 
     # Indices and number of variables
     i₊ = T.future_not_past_and_mixed_idx;
