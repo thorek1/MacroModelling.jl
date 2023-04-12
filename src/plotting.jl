@@ -124,7 +124,7 @@ function plot_irf(𝓂::ℳ;
         reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
     end
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
@@ -310,6 +310,11 @@ Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
 """
 plot_simulations(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
 
+
+"""
+Wrapper for [`plot_irf`](@ref) with `generalised_irf = true`.
+"""
+plot_girf(args...; kwargs...) =  plot_irf(args...; kwargs..., generalised_irf = true)
 
 
 
