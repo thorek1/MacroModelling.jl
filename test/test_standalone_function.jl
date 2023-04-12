@@ -251,10 +251,10 @@ end
 
     @test isapprox(iirrff[4,1,:],[ -0.00036685520477089503
     0.0021720718769730014],rtol = eps(Float32))
-    ggiirrff = girf(first_order_state_update, T)
+    ggiirrff = girf(first_order_state_update, zeros(T.nVars), T)
     @test isapprox(iirrff[4,1,:],ggiirrff[4,1,:],rtol = eps(Float32))
 
-    ggiirrff2 = girf(second_order_state_update, zeros(T.nVars), T,draws = 1000,warmup_periods = 100)
+    ggiirrff2 = girf(second_order_state_update, zeros(T.nVars), T, draws = 1000,warmup_periods = 100)
     @test isapprox(ggiirrff2[4,1,:],[-0.0003668849861768406
     0.0021711333455274096],rtol = 1e-3)
 
