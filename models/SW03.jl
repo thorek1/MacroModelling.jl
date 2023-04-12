@@ -88,8 +88,8 @@ end
     rho_a = 0.823
     rho_G = 0.949
     rho_pi_bar = 0.924
-    
-    std_scaling_factor = 100
+
+    std_scaling_factor = 10
 
     std_eta_b = 0.336 / std_scaling_factor
     std_eta_L = 3.52 / std_scaling_factor
