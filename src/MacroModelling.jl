@@ -1014,7 +1014,7 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Real},
     guess::Vector{Float64}, 
     lbs::Vector{Float64}, 
     ubs::Vector{Float64};
-    tol::Float64 = eps(Float64),
+    tol::AbstractFloat = eps(Float64),
     # timeout = 120,
     starting_points::Vector{Float64} = [0.7688, 1.2, .9, .75, 1.5, -.5, 2.0, .25],
     # fail_fast_solvers_only = true,
@@ -1040,7 +1040,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         guess::Vector{Float64}, 
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64};
-                        tol::Float64 = eps(),
+                        tol::AbstractFloat = eps(),
                         # timeout = 120,
                         starting_points::Vector{Float64} = [0.7688, 1.2, .9, .75, 1.5, -.5, 2, .25],
                         # fail_fast_solvers_only = true,
@@ -1108,7 +1108,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     guess::Vector{Float64}, 
     lbs::Vector{Float64}, 
     ubs::Vector{Float64};
-    tol::Float64 = eps(),
+    tol::AbstractFloat = eps(),
     # timeout = 120,
     starting_points::Vector{Float64} = [0.7688, 1.2, .9, .75, 1.5, -.5, 2, .25],
     # fail_fast_solvers_only = true,
@@ -1163,7 +1163,7 @@ end
 
 
 function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{Float64}, 𝓂::ℳ;
-    tol::Float64 = 1e-10)
+    tol::AbstractFloat = 1e-10)
     (; 𝐒₁, 𝐒₂) = 𝐒₁𝐒₂
 
     state = zeros(𝓂.timings.nVars)
@@ -1271,7 +1271,7 @@ end
 
 
 function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::AbstractArray{Float64}, 𝓂::ℳ;
-    tol::Float64 = 1e-10)
+    tol::AbstractFloat = 1e-10)
     (; 𝐒₁, 𝐒₂, 𝐒₃) = 𝐒₁𝐒₂𝐒₃
 
     state = zeros(𝓂.timings.nVars)
@@ -2120,7 +2120,7 @@ end
 
 
 
-function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::Float64 = eps(Float32))
+function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = eps(Float32))
     expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
             ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
@@ -2166,7 +2166,7 @@ end
 
 
 
-function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::Float64 = 1e-10)
+function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = 1e-10)
     # see Binder and Pesaran (1997) for more details on this approach
     expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
             ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
@@ -2389,7 +2389,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
                                             ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
                                             𝑺₁::AbstractMatrix{<: Real};  #first order solution
                                             T::timings,
-                                            tol::Float64 = 1e-10)
+                                            tol::AbstractFloat = 1e-10)
 
     # println(typeof(∇₁))
     # println(typeof(∇₂))
@@ -2463,7 +2463,7 @@ function  calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first
                                             𝑺₁::AbstractMatrix{<: Real}, #first order solution
                                             𝐒₂::AbstractMatrix{<: Real}; #second order solution
                                             T::timings,
-                                            tol::Float64 = 1e-10)
+                                            tol::AbstractFloat = 1e-10)
     # inspired by Levintal
 
     # Indices and number of variables
@@ -2897,7 +2897,7 @@ end
 calculate_covariance_AD(sol; T, subset_indices) = ImplicitFunction(sol->calculate_covariance_forward(sol, T=T, subset_indices = subset_indices), (x,y)->calculate_covariance_conditions(x,y,T=T, subset_indices = subset_indices))
 # calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose::Bool = false, tol::Float64 = eps())
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose::Bool = false, tol::AbstractFloat = eps())
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
