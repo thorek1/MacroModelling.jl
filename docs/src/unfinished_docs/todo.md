@@ -4,6 +4,8 @@
 
 - [ ] add balanced growth path handling
 - [ ] kick out unsused parameters from m.parameters
+- [ ] have parameters keyword accept Int and 2/3
+- [ ] plot_solution colors change from 2nd to 2rd order
 - [ ] higher order solution derivs with Zygote
 - [ ] custom LM: optimize for other RBC models, use third order backtracking
 - [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
