@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] kick out unsused parameters from m.parameters
 - [ ] higher order solution derivs with Zygote
 - [ ] custom LM: optimize for other RBC models, use third order backtracking
 - [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
