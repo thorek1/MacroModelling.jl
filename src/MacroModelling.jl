@@ -237,6 +237,37 @@ end
 # end
 
 
+
+# transformation of NSSS problem
+function transform(x::Vector{T}, option::Int) where T <: Real
+    if option == 4
+        return asinh.(asinh.(asinh.(asinh.(x))))
+    elseif option == 3
+        return asinh.(asinh.(asinh.(x)))
+    elseif option == 2
+        return asinh.(asinh.(x))
+    elseif option == 1
+        return asinh.(x)
+    elseif option == 0
+        return x
+    end
+end
+
+function undo_transform(x::Vector{T}, option::Int) where T <: Real
+    if option == 4
+        return sinh.(sinh.(sinh.(sinh.(x))))
+    elseif option == 3
+        return sinh.(sinh.(sinh.(x)))
+    elseif option == 2
+        return sinh.(sinh.(x))
+    elseif option == 1
+        return sinh.(x)
+    elseif option == 0
+        return x
+    end
+end
+
+
 function levenberg_marquardt(f::Function, 
     initial_guess::Array{T,1}, 
     lower_bounds::Array{T,1}, 
@@ -258,15 +289,29 @@ function levenberg_marquardt(f::Function,
     λ¹::T   =       0.422,
     λ²::T   =       1.0,
     λ̂¹::T   =       0.5047,
-    λ̂²::T   =       1.0
+    λ̂²::T   =       1.0,
+    λ̅¹::T   =       0.422,
+    λ̅²::T   =       1.0,
+    λ̂̅¹::T   =       0.5047,
+    λ̂̅²::T   =       1.0,
+    transformation_level::S = 1,
+    backtracking_order::S = 3
     ) where {T <: AbstractFloat, S <: Integer}
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
     @assert lower_bounds < upper_bounds
+    @assert backtracking_order ∈ [2,3] "Backtracking order can only be quadratic (2) or cubic (3)."
 
-    max_linesearch_iterations = 100
+    max_linesearch_iterations = 1000
 
-    current_guess = copy(initial_guess)
+    function f̂(x) 
+        f(undo_transform(x,transformation_level))  
+    end
+
+    upper_bounds  = transform(upper_bounds,transformation_level)
+    lower_bounds  = transform(lower_bounds,transformation_level)
+
+    current_guess = copy(transform(initial_guess,transformation_level))
     previous_guess = similar(current_guess)
     guess_update = similar(current_guess)
 
@@ -283,16 +328,16 @@ function levenberg_marquardt(f::Function,
     p² = p̄²
 
 	for iter in 1:iterations
-        ∇ .= ℱ.jacobian(f,current_guess)
+        ∇ .= ℱ.jacobian(f̂,current_guess)
 
         previous_guess .= current_guess
 
         ∇̂ .= ∇' * ∇
 
-        ∇̂ .+= μ¹ * sum(abs2, f(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
+        ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
 
         if !all(isfinite,∇̂)
-            return current_guess, (iter, Inf, Inf, upper_bounds)
+            return undo_transform(current_guess,transformation_level), (iter, Inf, Inf, upper_bounds)
         end
 
         ∇̄ = RF.lu(∇̂, check = false)
@@ -301,45 +346,80 @@ function levenberg_marquardt(f::Function,
             ∇̄ = ℒ.svd(∇̂)
         end
 
-        current_guess .-= ∇̄ \ ∇' * f(current_guess)
+        current_guess .-= ∇̄ \ ∇' * f̂(current_guess)
 
         minmax!(current_guess, lower_bounds, upper_bounds)
 
-        guess_update .= current_guess - previous_guess
+        P = sum(abs2, f̂(previous_guess))
+        P̃ = P
 
-        g = f(previous_guess)' * ∇ * guess_update
-        U = sum(abs2,guess_update)
-        P = sum(abs2, f(previous_guess))
-        P̋ = sum(abs2, f(current_guess))
-        
+        P̋ = sum(abs2, f̂(current_guess))
+
         α = 1.0
+        ᾱ = 1.0
 
         ν̂ = ν
-        
+
+        # iterfinitemax = -log(2,eps())
+
+        # iterfinite = 0
+        # while !isfinite(P̋) && iterfinite < iterfinitemax
+        #     iterfinite += 1
+        #     ᾱ = α
+        #     α = ᾱ / 2
+
+        #     current_guess .= previous_guess + α * guess_update
+        #     minmax!(current_guess, lower_bounds, upper_bounds)
+        #     P̋ = sum(abs2, f̂(current_guess))
+        # end
+
+        guess_update .= current_guess - previous_guess
+        g = f̂(previous_guess)' * ∇ * guess_update
+        U = sum(abs2,guess_update)
+
         if P̋ > ρ * P 
             linesearch_iterations = 0
-            while P̋ > (1 + ν̂ - ρ¹ * α^2) * P + ρ² * α^2 * g - ρ³ * α^2 * U && linesearch_iterations < max_linesearch_iterations
-                # Quadratic backtracking line search
-                α̂ = -g * α^2 / (2 * (P̋ - P - g * α))
-                
+            while P̋ > (1 + ν̂ - ρ¹ * α^2) * P̃ + ρ² * α^2 * g - ρ³ * α^2 * U && linesearch_iterations < max_linesearch_iterations
+                if backtracking_order == 2
+                    # Quadratic backtracking line search
+                    α̂ = -g * α^2 / (2 * (P̋ - P̃ - g * α))
+                elseif backtracking_order == 3
+                    # Cubic backtracking line search
+                    a = (ᾱ^2 * (P̋ - P̃ - g * α) - α^2 * (P - P̃ - g * ᾱ)) / (ᾱ^2 * α^2 * (α - ᾱ))
+                    b = (α^3 * (P - P̃ - g * ᾱ) - ᾱ^3 * (P̋ - P̃ - g * α)) / (ᾱ^2 * α^2 * (α - ᾱ))
+
+                    if isapprox(a, zero(a), atol=eps())
+                        α̂ = g / (2 * b)
+                    else
+                        # discriminant
+                        d = max(b^2 - 3 * a * g, 0)
+                        # quadratic equation root
+                        α̂ = (sqrt(d) - b) / (3 * a)
+                    end
+
+                    ᾱ = α
+                end
+
                 α̂ = min(α̂, ϕ̄ * α)
                 α = max(α̂, ϕ̂ * α)
 
                 current_guess .= previous_guess + α * guess_update
                 minmax!(current_guess, lower_bounds, upper_bounds)
+                
+                P = P̋
 
-                P̋ = sum(abs2,f(current_guess))
+                P̋ = sum(abs2,f̂(current_guess))
 
                 ν̂ *= α
 
                 linesearch_iterations += 1
             end
 
-            μ¹ *= λ¹
-            μ² *= λ²
+            μ¹ *= λ̅¹
+            μ² *= λ̅²
 
-            p¹ *= λ̂¹
-            p² *= λ̂²
+            p¹ *= λ̂̅¹
+            p² *= λ̂̅²
         else
             μ¹ = min(μ¹ / λ¹, μ̄¹)
             μ² = min(μ² / λ², μ̄²)
@@ -349,14 +429,14 @@ function levenberg_marquardt(f::Function,
         end
 
         largest_step = maximum(abs, previous_guess - current_guess)
-        largest_residual = maximum(abs, f(current_guess))
+        largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level)))
 
         if largest_step <= xtol || largest_residual <= ftol
-            return current_guess, (iter, largest_step, largest_residual, f(current_guess))
+            return undo_transform(current_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level)))
         end
     end
 
-    return current_guess, (iterations, largest_step, largest_residual, f(current_guess))
+    return undo_transform(current_guess,transformation_level), (iterations, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level)))
 end
 
 
@@ -1132,7 +1212,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     # try modified LM to solve hard SS problems but not for estimation
     # if !fail_fast_solvers_only
-        for transformer_option ∈ [1]# works with NAWM #0:2 #
+        for transformer_option ∈ [0]# works with NAWM #0:2 #
             if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
                 SS_optimizer = levenberg_marquardt
 
