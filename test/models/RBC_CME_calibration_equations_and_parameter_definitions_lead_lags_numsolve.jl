@@ -1,5 +1,5 @@
 
-@model m begin
+@model RBC_lead_lags begin
     y[0]=A[0]*k[-1]^alpha
     1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
     1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
@@ -15,7 +15,7 @@
 end
 
 
-@parameters m verbose = true begin
+@parameters RBC_lead_lags verbose = true begin
     k[ss] / (4 * y[ss]) = cap_share | alpha
     cap_share = 1.66
     # alpha = .157

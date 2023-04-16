@@ -1,6 +1,7 @@
 using MacroModelling
 
 include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
 include("models/SW03.jl")
 include("models/GNSS_2010.jl")
 include("models/Ghironi_Melitz_2005.jl")
@@ -97,9 +98,13 @@ f = OptimizationFunction((x,u)-> begin
 
     total_iters += outFS2000 isa Tuple{Vector{Float64}, Float64, Int64} ? (outFS2000[2] > eps(Float64)) || !isfinite(outFS2000[2]) ? 1000000 : outFS2000[3] : 1000000
 
-    outRBC = try m.SS_solve_func(m.parameter_values, m, false, false, par_inputs, x[end]) catch end
+    outRBC_lead_lags = try RBC_lead_lags.SS_solve_func(RBC_lead_lags.parameter_values, RBC_lead_lags, false, false, par_inputs, x[end]) catch end
 
-    total_iters += outRBC isa Tuple{Vector{Float64}, Float64, Int64} ? (outRBC[2] > eps(Float64)) || !isfinite(outRBC[2]) ? 1000000 : outRBC[3] : 1000000
+    total_iters += outRBC_lead_lags isa Tuple{Vector{Float64}, Float64, Int64} ? (outRBC_lead_lags[2] > eps(Float64)) || !isfinite(outRBC_lead_lags[2]) ? 1000000 : outRBC_lead_lags[3] : 1000000
+
+    outRBC_specfuns = try RBC_specfuns.SS_solve_func(RBC_specfuns.parameter_values, RBC_specfuns, false, false, par_inputs, x[end]) catch end
+
+    total_iters += outRBC_specfuns isa Tuple{Vector{Float64}, Float64, Int64} ? (outRBC_specfuns[2] > eps(Float64)) || !isfinite(outRBC_specfuns[2]) ? 1000000 : outRBC_specfuns[3] : 1000000
 
     # total_iters >= 1000000 ? NaN : total_iters
 

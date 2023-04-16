@@ -1,5 +1,5 @@
-m = nothing
-@model m begin
+
+@model RBC_specfuns begin
     y[0]=A[0]*k[-1]^alpha
     1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
     1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
@@ -19,7 +19,7 @@ m = nothing
 end
 
 
-@parameters m verbose = true begin
+@parameters RBC_specfuns verbose = true begin
     # alpha | k[ss] / (4 * y[ss]) = cap_share
     # cap_share = 1.66
     alpha = .157
