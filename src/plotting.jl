@@ -739,7 +739,7 @@ function plot_solution(𝓂::ℳ,
             
             p = Plots.plot(ppp,
                             legend_plot, 
-                            layout = Plots.grid(2, 1, heights=[0.9, 0.1]),
+                            layout = Plots.grid(2, 1, heights=[0.8, 0.2]),
                             plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
             )
 
@@ -763,7 +763,7 @@ function plot_solution(𝓂::ℳ,
             
         p = Plots.plot(ppp,
                         legend_plot, 
-                        layout = Plots.grid(2, 1, heights=[0.9, 0.1]),
+                        layout = Plots.grid(2, 1, heights=[0.8, 0.2]),
                         plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
         )
 
