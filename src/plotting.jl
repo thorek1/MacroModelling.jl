@@ -550,7 +550,7 @@ function plot_solution(𝓂::ℳ,
     save_plots::Bool = false,
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
-    plots_per_page::Int = 4,
+    plots_per_page::Int = 6,
     verbose::Bool = false)
 
     Plots.default(size=(700,500),
