@@ -567,6 +567,7 @@ function plot_solution(𝓂::ℳ,
 
     if algorithm isa Symbol
         max_algorithm = algorithm
+        min_algorithm = algorithm
         algorithm = [algorithm]
     else
         if :third_order ∈ algorithm 
@@ -575,6 +576,14 @@ function plot_solution(𝓂::ℳ,
             max_algorithm = :second_order 
         else 
             max_algorithm = :first_order 
+        end
+
+        if :first_order ∈ algorithm 
+            min_algorithm = :first_order 
+        elseif :second_order ∈ algorithm 
+            min_algorithm = :second_order 
+        else 
+            min_algorithm = :third_order 
         end
     end
 
@@ -604,160 +613,135 @@ function plot_solution(𝓂::ℳ,
     plot_count = 1
     return_plots = []
 
+    
+    legend_plot = Plots.plot(framestyle = :none) 
+    if :first_order ∈ algorithm          
+        Plots.plot!(fill(0,1,1), 
+        framestyle = :none, 
+        legend = :inside, 
+        label = "1st order perturbation")
+    end
+    if :second_order ∈ algorithm    
+        Plots.plot!(fill(0,1,1), 
+        framestyle = :none, 
+        legend = :inside, 
+        label = "2nd order perturbation")
+    end
+    if :third_order ∈ algorithm    
+        Plots.plot!(fill(0,1,1), 
+        framestyle = :none, 
+        legend = :inside, 
+        label = "3rd order perturbation")
+    end
+
+    if :first_order ∈ algorithm   
+        Plots.scatter!(fill(0,1,1), 
+        framestyle = :none, 
+        legend = :inside, 
+        label = "Non Stochastic Steady State")
+    end
+    if :second_order ∈ algorithm    
+        Plots.scatter!(fill(0,1,1), 
+        framestyle = :none, 
+        legend = :inside, 
+        label = "Stochastic Steady State (2nd order)")
+    end
+    if :third_order ∈ algorithm    
+        Plots.scatter!(fill(0,1,1), 
+        framestyle = :none, 
+        legend = :inside, 
+        label = "Stochastic Steady State (3rd order)")
+    end
+    Plots.scatter!(fill(0,1,1), 
+    label = "", 
+    marker = :rect,
+    markerstrokecolor = :white,
+    markerstrokewidth = 0, 
+    markercolor = :white,
+    linecolor = :white, 
+    linewidth = 0, 
+    framestyle = :none, 
+    legend = :inside)
+
+
     for k in vars_to_plot
 
         kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
 
-        if !(plot_count % plots_per_page == 0)
-            plot_count += 1
-            
-            if :first_order ∈ algorithm
-                variable_first = [𝓂.solution.perturbation.first_order.state_update(state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
+        if :first_order ∈ algorithm
+            variable_first = [𝓂.solution.perturbation.first_order.state_update(state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
 
-                variable_first = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_first]
-            end
+            variable_first = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_first]
+        end
 
-            if :second_order ∈ algorithm
-                SSS = 𝓂.solution.perturbation.second_order.stochastic_steady_state
+        if :second_order ∈ algorithm
+            SSS2 = 𝓂.solution.perturbation.second_order.stochastic_steady_state
 
-                variable_second = [𝓂.solution.perturbation.second_order.state_update(SSS - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
+            variable_second = [𝓂.solution.perturbation.second_order.state_update(SSS2 - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
 
-                variable_second = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_second]
-            end
+            variable_second = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_second]
+        end
 
-            if :third_order ∈ algorithm
-                SSS = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+        if :third_order ∈ algorithm
+            SSS3 = 𝓂.solution.perturbation.third_order.stochastic_steady_state
 
-                variable_third = [𝓂.solution.perturbation.third_order.state_update(SSS - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
+            variable_third = [𝓂.solution.perturbation.third_order.state_update(SSS3 - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
 
-                variable_third = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_third]
-            end
+            variable_third = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_third]
+        end
 
-            push!(pp,begin 
-                        if :third_order ∈ algorithm 
-                            Pl = Plots.plot(state_range .+ SSS[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                variable_third, 
+        push!(pp,begin
+                        Pl = Plots.plot() 
+                        if :first_order ∈ algorithm
+                                Plots.plot!(state_range .+ SS_and_std[1](state), 
+                                variable_first, 
                                 ylabel = string(k)*"₍₀₎", 
-                                xlabel = string(state)*"₍₋₁₎",
-                                label = "3rd order perturbation")
+                                xlabel = string(state)*"₍₋₁₎", 
+                                label = "")
                         end
                         if :second_order ∈ algorithm
-                            if :second_order == max_algorithm 
-                                Pl = Plots.plot(state_range .+ SSS[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                    variable_second, 
-                                    ylabel = string(k)*"₍₀₎", 
-                                    xlabel = string(state)*"₍₋₁₎",
-                                    label = "2nd order perturbation")
-                            else
-                                Plots.plot!(state_range .+ SSS[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                    variable_second, 
-                                    ylabel = string(k)*"₍₀₎", 
-                                    xlabel = string(state)*"₍₋₁₎",
-                                    label = "2nd order perturbation")
-                            end
+                                Plots.plot!(state_range .+ SSS2[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
+                                variable_second, 
+                                ylabel = string(k)*"₍₀₎", 
+                                xlabel = string(state)*"₍₋₁₎", 
+                                label = "")
                         end
+                        if :third_order ∈ algorithm
+                                Plots.plot!(state_range .+ SSS3[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
+                                variable_third, 
+                                ylabel = string(k)*"₍₀₎", 
+                                xlabel = string(state)*"₍₋₁₎", 
+                                label = "")
+                        end
+
                         if :first_order ∈ algorithm
-                            if :first_order  == max_algorithm 
-                                Pl = Plots.plot(state_range .+ SS_and_std[1](state), 
-                                    variable_first, 
-                                    ylabel = string(k)*"₍₀₎", 
-                                    xlabel = string(state)*"₍₋₁₎",
-                                    label = "1st order perturbation")
-
-                                Plots.scatter!([SS_and_std[1](state)], [SS_and_std[1](kk)], label = "Non Stochastic Steady State")
-                            else
-                                Plots.plot!(state_range .+ SS_and_std[1](state), 
-                                    variable_first, 
-                                    ylabel = string(k)*"₍₀₎", 
-                                    xlabel = string(state)*"₍₋₁₎",
-                                    label = "1st order perturbation")
-
-                                Plots.scatter!([SS_and_std[1](state)], [SS_and_std[1](kk)], label = "Non Stochastic Steady State")
-                            end
+                            Plots.scatter!([SS_and_std[1](state)], [SS_and_std[1](kk)], 
+                            label = "")
                         end
-
-                        if :second_order ∈ algorithm || :third_order ∈ algorithm
-                            Plots.scatter!([SSS[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], [SSS[indexin([k],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], label = "Stochastic Steady State")
+                        if :second_order ∈ algorithm
+                            Plots.scatter!([SSS2[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], [SSS2[indexin([k],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], 
+                            label = "")
+                        end
+                        if :third_order ∈ algorithm
+                            Plots.scatter!([SSS3[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], [SSS3[indexin([k],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], 
+                            label = "")
                         end
 
                         Pl
-                    end)
+        end)
+
+        if !(plot_count % plots_per_page == 0)
+            plot_count += 1
         else
             plot_count = 1
 
-            if :first_order ∈ algorithm
-                variable_first = [𝓂.solution.perturbation.first_order.state_update(state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
-
-                variable_first = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_first]
-            end
-
-            if :second_order ∈ algorithm
-                SSS = 𝓂.solution.perturbation.second_order.stochastic_steady_state
-
-                variable_second = [𝓂.solution.perturbation.second_order.state_update(SSS - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
-
-                variable_second = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_second]
-            end
-
-            if :third_order ∈ algorithm
-                SSS = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-
-                variable_third = [𝓂.solution.perturbation.third_order.state_update(SSS - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
-
-                variable_third = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_third]
-            end
-
-            push!(pp,begin 
-                        if :third_order ∈ algorithm 
-                            Pl = Plots.plot(state_range .+ SSS[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                variable_third, 
-                                ylabel = string(k)*"₍₀₎", 
-                                xlabel = string(state)*"₍₋₁₎",
-                                label = "3rd order perturbation")
-                        end
-                        if :second_order ∈ algorithm
-                            if :second_order == max_algorithm 
-                                Pl = Plots.plot(state_range .+ SSS[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                    variable_second, 
-                                    ylabel = string(k)*"₍₀₎", 
-                                    xlabel = string(state)*"₍₋₁₎",
-                                    label = "2nd order perturbation")
-                            else
-                                Plots.plot!(state_range .+ SSS[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                    variable_second, 
-                                    ylabel = string(k)*"₍₀₎", 
-                                    xlabel = string(state)*"₍₋₁₎",
-                                    label = "2nd order perturbation")
-                            end
-                        end
-                        if :first_order ∈ algorithm
-                            if :first_order  == max_algorithm 
-                                Pl = Plots.plot(state_range .+ SS_and_std[1](state), 
-                                    variable_first, 
-                                    ylabel = string(k)*"₍₀₎", 
-                                    xlabel = string(state)*"₍₋₁₎",
-                                    label = "1st order perturbation")
-
-                                Plots.scatter!([SS_and_std[1](state)], [SS_and_std[1](kk)], label = "Non Stochastic Steady State")
-                            else
-                                Plots.plot!(state_range .+ SS_and_std[1](state), 
-                                    variable_first, 
-                                    ylabel = string(k)*"₍₀₎", 
-                                    xlabel = string(state)*"₍₋₁₎",
-                                    label = "1st order perturbation")
-
-                                Plots.scatter!([SS_and_std[1](state)], [SS_and_std[1](kk)], label = "Non Stochastic Steady State")
-                            end
-                        end
-
-                        if :second_order ∈ algorithm || :third_order ∈ algorithm
-                            Plots.scatter!([SSS[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], [SSS[indexin([k],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], label = "Stochastic Steady State")
-                        end
-
-                        Pl
-                    end)
-
-            p = Plots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+            ppp = Plots.plot(pp...)
+            
+            p = Plots.plot(ppp,
+                            legend_plot, 
+                            layout = Plots.grid(2, 1, heights=[0.9, 0.1]),
+                            plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+            )
 
             push!(return_plots,p)
 
@@ -775,7 +759,13 @@ function plot_solution(𝓂::ℳ,
     end
 
     if length(pp) > 0
-        p = Plots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+        ppp = Plots.plot(pp...)
+            
+        p = Plots.plot(ppp,
+                        legend_plot, 
+                        layout = Plots.grid(2, 1, heights=[0.9, 0.1]),
+                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+        )
 
         push!(return_plots,p)
 
