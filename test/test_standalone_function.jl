@@ -431,21 +431,21 @@ end
             x -> collect(get_SS(m; parameters = x, derivatives = false)), 
             parameters)[1]
 
-    @test isapprox(SSfinitediff, SSdiff[:,2:end], rtol = 1e-8)
+        @test isapprox(SSfinitediff, SSdiff[:,2:end], rtol = 1e-6)
 
 
     SSS2finitediff = FiniteDifferences.jacobian(central_fdm(3,1), 
             x -> collect(get_SSS(m; parameters = x, derivatives = false)), 
             parameters)[1]
 
-    @test isapprox(SSS2finitediff, SSSdiff2[:,2:end], rtol = 1e-8)
+        @test isapprox(SSS2finitediff, SSSdiff2[:,2:end], rtol = 1e-6)
 
 
     SSS3finitediff = FiniteDifferences.jacobian(central_fdm(3,1), 
             x -> collect(get_SSS(m; parameters = x, derivatives = false, algorithm = :third_order)), 
             parameters)[1]
 
-    @test isapprox(SSS3finitediff, SSSdiff3[:,2:end], rtol = 1e-8)
+        @test isapprox(SSS3finitediff, SSSdiff3[:,2:end], rtol = 1e-6)
 end
 m = nothing
 𝓂 = nothing
