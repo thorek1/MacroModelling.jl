@@ -170,20 +170,24 @@ function get_conditional_forecast(𝓂::ℳ,
         conditions[cond_var_idx,1] .-= reference_steady_state[cond_var_idx]
     end
 
+        current_guess .-= ∇̄ \ ∇' * f̂(current_guess)
     if size(C[:,free_shock_idx],2) == length(cond_var_idx)
         @assert ℒ.det(C[cond_var_idx,free_shock_idx]) > eps(Float32) "Numerical stabiltiy issues for restrictions in period 1."
     elseif length(cond_var_idx) == 1
         @assert any(C[cond_var_idx,free_shock_idx] .!= 0) "Free shocks have no impact on conditioned variable in period 1."
     elseif length(cond_var_idx) > 1
-        lu_sol = try ℒ.lu(C[cond_var_idx,free_shock_idx]) catch end
-        @assert !isnothing(lu_sol) "Numerical stabiltiy issues for restrictions in period 1."
+        CC = RF.lu(C[cond_var_idx,free_shock_idx], check = false)
+
+        if !ℒ.issuccess(CC)
+            CC = ℒ.svd(C[cond_var_idx,free_shock_idx])
+        end
     end
 
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
     shocks[free_shock_idx,1] .= 0
 
-    shocks[free_shock_idx,1] = C[cond_var_idx,free_shock_idx] \ (conditions[cond_var_idx,1] - state_update(zeros(size(C,1)), Float64[shocks[:,1]...])[cond_var_idx])
+    shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(zeros(size(C,1)), Float64[shocks[:,1]...])[cond_var_idx])
 
     Y[:,1] = state_update(zeros(size(C,1)), Float64[shocks[:,1]...])
 
@@ -202,13 +206,16 @@ function get_conditional_forecast(𝓂::ℳ,
         elseif length(cond_var_idx) == 1
             @assert any(C[cond_var_idx,free_shock_idx] .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
         elseif length(cond_var_idx) > 1
-            lu_sol = try ℒ.lu(C[cond_var_idx,free_shock_idx]) catch end
-            @assert !isnothing(lu_sol) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
+		CC = RF.lu(C[cond_var_idx,free_shock_idx], check = false)
+
+		if !ℒ.issuccess(CC)
+		    CC = ℒ.svd(C[cond_var_idx,free_shock_idx])
+		end
         end
 
         @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
-        shocks[free_shock_idx,i] = C[cond_var_idx,free_shock_idx] \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
+        shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
 
         Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
     end
