@@ -170,16 +170,18 @@ function get_conditional_forecast(𝓂::ℳ,
         conditions[cond_var_idx,1] .-= reference_steady_state[cond_var_idx]
     end
 
+		CC = C[cond_var_idx,free_shock_idx]
+
     if size(C[:,free_shock_idx],2) == length(cond_var_idx)
         @assert ℒ.det(C[cond_var_idx,free_shock_idx]) > eps(Float32) "Numerical stabiltiy issues for restrictions in period 1."
     elseif length(cond_var_idx) == 1
         @assert any(C[cond_var_idx,free_shock_idx] .!= 0) "Free shocks have no impact on conditioned variable in period 1."
     elseif length(cond_var_idx) > 1
-        CC = RF.lu(C[cond_var_idx,free_shock_idx], check = false)
+        CC = RF.lu(CC, check = false)
 
-        if !ℒ.issuccess(CC)
-            CC = ℒ.svd(C[cond_var_idx,free_shock_idx])
-        end
+        @assert ℒ.issuccess(CC) "Numerical stability issue."
+            #CC = ℒ.svd(C[cond_var_idx,free_shock_idx])
+        #end
     end
 
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
@@ -200,16 +202,18 @@ function get_conditional_forecast(𝓂::ℳ,
         free_shock_idx = findall(shocks[:,i] .== nothing)
         shocks[free_shock_idx,i] .= 0
 
+				CC = C[cond_var_idx,free_shock_idx]
+
         if size(C[:,free_shock_idx],2) == length(cond_var_idx)
             @assert ℒ.det(C[cond_var_idx,free_shock_idx]) > eps(Float32) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
         elseif length(cond_var_idx) == 1
             @assert any(C[cond_var_idx,free_shock_idx] .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
         elseif length(cond_var_idx) > 1
-		CC = RF.lu(C[cond_var_idx,free_shock_idx], check = false)
+						CC = RF.lu(CC, check = false)
 
-		if !ℒ.issuccess(CC)
-		    CC = ℒ.svd(C[cond_var_idx,free_shock_idx])
-		end
+						@assert ℒ.issuccess(CC) "Numerical stability issue."
+	            #CC = ℒ.svd(C[cond_var_idx,free_shock_idx])
+		        #end
         end
 
         @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
