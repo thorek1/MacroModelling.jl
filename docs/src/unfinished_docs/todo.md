@@ -4,18 +4,13 @@
 
 - [ ] add balanced growth path handling
 - [ ] kick out unsused parameters from m.parameters
-- [ ] have parameters keyword accept Int and 2/3
-- [ ] plot_solution colors change from 2nd to 2rd order
 - [ ] higher order solution derivs with Zygote
-- [ ] custom LM: optimize for other RBC models, use third order backtracking
 - [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
 - [ ] use krylov instead of linearsolve and speed up sparse matrix calcs in implicit diff of higher order funcs
 - [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
-- [ ] add SSS for third order (can be different than the one from 2nd order, see Gali (2015)) in solution plot; also put legend to the bottom as with Condition
 - [ ] weed out SS solver and saved objects
 - [ ] streamline estimation part (dont do string matching... but rely on precomputed indices...)
 - [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
-- [ ] check out Aqua.jl as additional tests
 - [ ] write functions to debug (fix_SS.jl...)
 - [ ] parser model into per equation functions instead of single big functions
 - [ ] model compression -> model setup as maximisation problem (gEcon) -> HANK models
@@ -23,7 +18,6 @@
 - [ ] implement global solution methods
 - [ ] add more models
 - [ ] plot multiple solutions or models - multioptions in one graph
-- [ ] write tests and documentation for solution, estimation... making sure results are consistent
 - [ ] write documentation/docstrings
 
 - [ ] use @assert for errors and @test_throws
@@ -32,16 +26,22 @@
 - [ ] make the nonnegativity trick optional
 - [ ] get parameters (in function of parameters) into the dependencies
 - [ ] for larger models write a model compression. gradient loglikelihood is very slow due to large matmuls
-- [ ] see if we can avoid try catch and test for invertability instead
 - [ ] use packages for kalman filter
 - [ ] clean up different parameter types
 - [ ] clean up printouts/reporting
 - [ ] clean up function inputs and harmonise AD and standard commands
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
-- [ ] have Flux solve SS field
 - [ ] check control flow in SS solver
   
+- [x] see if we can avoid try catch and test for invertability instead
+- [x] have Flux solve SS field #gradient descent based is worse than LM based
+- [x] have parameters keyword accept Int and 2/3
+- [x] plot_solution colors change from 2nd to 2rd order
+- [x] custom LM: optimize for other RBC models, use third order backtracking
+- [x] add SSS for third order (can be different than the one from 2nd order, see Gali (2015)) in solution plot; also put legend to the bottom as with Condition
+- [x] check out Aqua.jl as additional tests
+- [x] write tests and documentation for solution, estimation... making sure results are consistent
 - [x] catch cases where you define calibration equation without declaring conditional variable
 - [x] flag if equations contain no info for SS, suggest to set ss values as parameters
 - [x] handle SS case where there are equations which have no information for the SS. use SS definitions in parameter block to complete system | no, set steady state values to parameters instead. might fail if redundant equation has y[0] - y[-1] instead of y[0] - y[ss]
