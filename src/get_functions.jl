@@ -170,7 +170,6 @@ function get_conditional_forecast(𝓂::ℳ,
         conditions[cond_var_idx,1] .-= reference_steady_state[cond_var_idx]
     end
 
-        current_guess .-= ∇̄ \ ∇' * f̂(current_guess)
     if size(C[:,free_shock_idx],2) == length(cond_var_idx)
         @assert ℒ.det(C[cond_var_idx,free_shock_idx]) > eps(Float32) "Numerical stabiltiy issues for restrictions in period 1."
     elseif length(cond_var_idx) == 1
