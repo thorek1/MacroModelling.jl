@@ -286,14 +286,10 @@ function levenberg_marquardt(f::Function,
     ρ²::T   =       0.51,
     ρ³::T   =       0.0,
     ν::T    =       0.62,
-    λ¹::T   =       0.422,
-    λ²::T   =       1.0,
-    λ̂¹::T   =       0.5047,
-    λ̂²::T   =       1.0,
     λ̅¹::T   =       0.422,
-    λ̅²::T   =       1.0,
+    λ̅²::T   =       .3,
     λ̂̅¹::T   =       0.5047,
-    λ̂̅²::T   =       1.0,
+    λ̂̅²::T   =       .3,
     transformation_level::S = 1,
     backtracking_order::S = 3
     ) where {T <: AbstractFloat, S <: Integer}
@@ -360,23 +356,10 @@ function levenberg_marquardt(f::Function,
 
         ν̂ = ν
 
-        # iterfinitemax = -log(2,eps())
-
-        # iterfinite = 0
-        # while !isfinite(P̋) && iterfinite < iterfinitemax
-        #     iterfinite += 1
-        #     ᾱ = α
-        #     α = ᾱ / 2
-
-        #     current_guess .= previous_guess + α * guess_update
-        #     minmax!(current_guess, lower_bounds, upper_bounds)
-        #     P̋ = sum(abs2, f̂(current_guess))
-        # end
-
         guess_update .= current_guess - previous_guess
         g = f̂(previous_guess)' * ∇ * guess_update
         U = sum(abs2,guess_update)
-
+        
         if P̋ > ρ * P 
             linesearch_iterations = 0
             while P̋ > (1 + ν̂ - ρ¹ * α^2) * P̃ + ρ² * α^2 * g - ρ³ * α^2 * U && linesearch_iterations < max_linesearch_iterations
@@ -414,19 +397,13 @@ function levenberg_marquardt(f::Function,
 
                 linesearch_iterations += 1
             end
-
-            μ¹ *= λ̅¹
-            μ² *= λ̅²
-
-            p¹ *= λ̂̅¹
-            p² *= λ̂̅²
-        else
-            μ¹ = min(μ¹ / λ¹, μ̄¹)
-            μ² = min(μ² / λ², μ̄²)
-
-            p¹ = min(p¹ / λ̂¹, p̄¹)
-            p² = min(p² / λ̂², p̄²)
         end
+
+        μ¹ = min(μ¹ * exp(λ̅¹ * log(P̃ / P)), μ̄¹)
+        μ² = min(μ² * exp(λ̅² * log(P̃ / P)), μ̄²)
+
+        p¹ = min(p¹ * exp(λ̂̅¹ * log(P̃ / P)), p̄¹)
+        p² = min(p² * exp(λ̂̅² * log(P̃ / P)), p̄²)
 
         largest_step = maximum(abs, previous_guess - current_guess)
         largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level)))
