@@ -664,6 +664,15 @@ Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
 get_SSS(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
 
+"""
+See [`get_steady_state`](@ref)
+"""
+SS = get_steady_state
+
+"""
+See [`get_steady_state`](@ref)
+"""
+steady_state = get_steady_state
 
 """
 See [`get_steady_state`](@ref)
