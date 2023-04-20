@@ -779,11 +779,6 @@ get_perturbation_solution = get_solution
 
 
 function get_solution(𝓂::ℳ, parameters::Vector{<: Real}; algorithm::Symbol = :first_order, verbose::Bool = false, tol::AbstractFloat = eps())
-    @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
-    @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
-
-    @ignore_derivatives sort!(observables)
-
     @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
 
     ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters))
