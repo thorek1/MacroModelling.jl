@@ -1,5 +1,5 @@
 using Test
-@time_imports using MacroModelling
+using MacroModelling
 using Random
 using AxisKeys, SparseArrays
 using Aqua
