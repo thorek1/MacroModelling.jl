@@ -1,5 +1,3 @@
-import Turing: Normal
-
 """
 $(SIGNATURES)
 Convenience wrapper for the truncated Beta distribution.

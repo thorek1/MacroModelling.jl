@@ -13,8 +13,7 @@ import ForwardDiff as ℱ
 import SparseArrays: SparseMatrixCSC, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import ComponentArrays as 𝒞
-# using Optimization, OptimizationNLopt
-# import Optim
+import Reexport
 import BlockTriangularForm
 import Subscripts: super, sub
 import IterativeSolvers as ℐ
@@ -47,7 +46,10 @@ function __init__()
     @require Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80" begin
         @require StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd" include("plotting.jl")
     end
-    @require Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0" include("priors.jl")
+    @require Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0" begin
+        include("priors.jl")
+        Reexport.@reexport import Turing: Normal
+    end
 end
 
 
