@@ -2,7 +2,7 @@ using Test
 using MacroModelling
 using Random
 using AxisKeys, SparseArrays
-import Plots, StatsPlot, Turing # has to come before Aqua, otherwise exports are not recognised
+import Plots, StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
 # using JuliaFormatter
 
