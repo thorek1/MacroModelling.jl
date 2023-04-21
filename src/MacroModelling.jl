@@ -13,7 +13,6 @@ import ForwardDiff as ℱ
 import SparseArrays: SparseMatrixCSC, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import ComponentArrays as 𝒞
-import Reexport
 import BlockTriangularForm
 import Subscripts: super, sub
 import IterativeSolvers as ℐ
@@ -48,7 +47,6 @@ function __init__()
     end
     @require Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0" begin
         include("priors.jl")
-        Reexport.@reexport import Turing: Normal
     end
 end
 
