@@ -2,8 +2,8 @@ using Test
 using MacroModelling
 using Random
 using AxisKeys, SparseArrays
+import Plots, StatsPlot, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
-import Plots, StatsPlots
 # using JuliaFormatter
 
 include("functionality_tests.jl")
