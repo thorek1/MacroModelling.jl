@@ -44,9 +44,10 @@ include("get_functions.jl")
 include("dynare.jl")
 
 function __init__()
-    @require Plots="91a5bcdd-55d7-5caf-9e0b-520d859cae80" begin
-        @require StatsPlots="f3b207a7-027a-5e70-b257-86293d7955fd" include("plotting.jl")
+    @require Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80" begin
+        @require StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd" include("plotting.jl")
     end
+    @require Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0" include("priors.jl")
 end
 
 
@@ -56,7 +57,7 @@ export plot_conditional_variance_decomposition, plot_forecast_error_variance_dec
 export get_irfs, get_irf, get_IRF, simulate
 export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution
-export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS
+export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS
 export get_moments, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_cov, var, std, cov
 export get_autocorrelation, get_correlation, get_variance_decomposition, get_corr, get_autocorr, get_var_decomp, corr, autocorr
 export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
@@ -64,6 +65,7 @@ export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution#, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export calculate_kalman_filter_loglikelihood
 export plotlyjs_backend, gr_backend
+export Beta, InverseGamma, Gamma, Normal
 
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
 export write_mod_file, write_dynare_file, write_to_dynare_file, export_dynare, export_to_dynare, export_mod_file
