@@ -554,7 +554,8 @@ function get_steady_state(𝓂::ℳ;
     stochastic::Bool = false,
     algorithm::Symbol = :first_order,
     parameter_derivatives::Symbol_input = :all,
-    verbose::Bool = false)
+    verbose::Bool = false,
+    silent::Bool = true)
 
     solve!(𝓂, verbose = verbose)
 
@@ -582,10 +583,10 @@ function get_steady_state(𝓂::ℳ;
 
     if stochastic
         if  algorithm == :third_order
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
         else
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order)
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order, silent = silent)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
         end
     end

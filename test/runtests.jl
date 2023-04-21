@@ -1,8 +1,9 @@
 using Test
-using MacroModelling
+@time_imports using MacroModelling
 using Random
 using AxisKeys, SparseArrays
 using Aqua
+import Plots, StatsPlots
 # using JuliaFormatter
 
 include("functionality_tests.jl")

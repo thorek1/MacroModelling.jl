@@ -1,7 +1,4 @@
-
-import Plots, Plots.PlotMeasures
 import LaTeXStrings
-import StatsPlots
 
 """
 ```

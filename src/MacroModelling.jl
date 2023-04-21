@@ -31,6 +31,8 @@ import RecursiveFactorization as RF
 using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
+using Requires
+
 # Type definitions
 Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
 
@@ -39,8 +41,13 @@ include("common_docstrings.jl")
 include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")
-include("plotting.jl")
 include("dynare.jl")
+
+function __init__()
+    @require Plots="91a5bcdd-55d7-5caf-9e0b-520d859cae80" begin
+        @require StatsPlots="f3b207a7-027a-5e70-b257-86293d7955fd" include("plotting.jl")
+    end
+end
 
 
 export @model, @parameters, solve!
@@ -1403,7 +1410,8 @@ function solve!(𝓂::ℳ;
     dynamics::Bool = false, 
     algorithm::Symbol = :riccati, 
     symbolic_SS::Bool = false,
-    verbose::Bool = false)
+    verbose::Bool = false,
+    silent::Bool = false)
 
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :second_order, :third_order]
 
@@ -1417,11 +1425,11 @@ function solve!(𝓂::ℳ;
     if 𝓂.model_hessian == Function[] && algorithm == :second_order
         start_time = time()
         write_functions_mapping!(𝓂, 2)
-        println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds")
+        if !silent println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds") end
     elseif 𝓂.model_third_order_derivatives == Function[] && algorithm == :third_order
         start_time = time()
         write_functions_mapping!(𝓂, 3)
-        println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
+        if !silent println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds") end
     end
 
     if dynamics
@@ -3073,9 +3081,13 @@ end
         get_variance_decomposition(FS2000)
         get_conditional_variance_decomposition(FS2000)
         get_irf(FS2000)
-        plot_irf(FS2000)
+        # get_SSS(FS2000, silent = true)
+        # get_SSS(FS2000, algorithm = :third_order, silent = true)
+
+        # import Plots, StatsPlots
+        # plot_irf(FS2000)
         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        plot_conditional_variance_decomposition(FS2000)
+        # plot_conditional_variance_decomposition(FS2000)
     end
 end
 
