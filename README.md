@@ -42,6 +42,12 @@ Once set up you can install `MacroModelling.jl` by typing the following in the j
 using Pkg; Pkg.add("MacroModelling")
 ```
 
+In order to plot you also need to install `Plots` and `StatsPlots`:
+
+```julia
+using Pkg; Pkg.add(["Plots","StatsPlots"])
+```
+
 ### Example
 
 See below an implementation of a simple RBC model. You can find more detailed tutorials in the [documentation](https://thorek1.github.io/MacroModelling.jl/stable).
