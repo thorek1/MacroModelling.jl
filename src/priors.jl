@@ -126,3 +126,5 @@ Convenience wrapper for the truncated Normal distribution.
 function Normal(μ::T, σ::T, lower_bound::T, upper_bound::T) where T <: Real
     Turing.truncated(Turing.Normal(μ, σ), lower_bound, upper_bound)
 end
+
+Normal(x,y) = Turing.Normal(x,y)
