@@ -48,6 +48,7 @@ See below an implementation of a simple RBC model. You can find more detailed tu
 
 ```julia
 using MacroModelling
+import Plots, StatsPlots
 
 @model RBC begin
     1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))

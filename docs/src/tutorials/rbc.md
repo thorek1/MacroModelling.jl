@@ -42,9 +42,10 @@ Parameter definitions are similar to assigning values in julia. Note that we hav
 
 ## Plot impulse response functions (IRFs)
 
-Given the equations and parameters, we have everything to solve the model and do some analysis. A common output are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. In the background the package solves (symbolically in this simple case) for the non stochastic steady state (SS) and calculates the first order perturbation solution.
+Given the equations and parameters, we have everything to solve the model and do some analysis. A common output are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `Plots` and `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non stochastic steady state (SS) and calculates the first order perturbation solution.
 
 ```@repl tutorial_1
+import Plots, StatsPlots
 plot_irf(RBC)
 ```
 
@@ -68,7 +69,7 @@ First, the package finds the new steady state, solves the model dynamics around 
 
 ## Plot model simulation
 
-Another insightful output is simulations of the model. Here we can use the [`plot_simulations`](@ref) function. To the same effect we can use the [`plot_irf`](@ref) function and specify in the `shocks` argument that we want to `:simulate` the model and set the `periods` argument to 100.
+Another insightful output is simulations of the model. Here we can use the [`plot_simulations`](@ref) function. Please note that you need to import the `Plots` and `StatsPlots` packages once before the first plot. To the same effect we can use the [`plot_irf`](@ref) function and specify in the `shocks` argument that we want to `:simulate` the model and set the `periods` argument to 100.
 
 ```@repl tutorial_1
 plot_simulations(RBC)
@@ -147,7 +148,7 @@ get_solution(RBC)
 
 The solution provides information about how past states and present shocks impact present variables. The first row contains the SS for the variables denoted in the columns. The second to last rows contain the past states, with the time index `₍₋₁₎`, and present shocks, with exogenous variables denoted by `₍ₓ₎`. For example, the immediate impact of a shock to `eps_z` on `q` is 0.0688.
 
-There is also the possibility to visually inspect the solution using the [`plot_solution`](@ref) function:
+There is also the possibility to visually inspect the solution. Please note that you need to import the `Plots` and `StatsPlots` packages once before the first plot. We can use the [`plot_solution`](@ref) function:
 
 ```@repl tutorial_1
 plot_solution(RBC, :k)
@@ -210,7 +211,7 @@ get_conditional_forecast(RBC, conditions, shocks = shocks)
 
 The function returns a `KeyedArray` with the values of the endogenous variables and shocks matching the conditions exactly.
 
-We can also plot the conditional forecast using:
+We can also plot the conditional forecast. Please note that you need to import the `Plots` and `StatsPlots` packages once before the first plot. In order to plot we can use:
 
 ```@repl tutorial_1
 plot_conditional_forecast(RBC, conditions, shocks = shocks)
