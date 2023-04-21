@@ -1,6 +1,6 @@
 using MacroModelling
 import Turing
-import Turing: Normal, Beta, InverseGamma, NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL: logjoint
@@ -20,36 +20,17 @@ observables = sort(Symbol.("log_".*names(dat)))
 # subset observables in data
 data = data(observables,:)
 
-# functions to map mean and standard deviations to distribution parameters
-function beta_map(μ, σ) 
-    α = ((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2
-    β = α * (1 / μ - 1)
-    return α, β
-end
-
-function inv_gamma_map(μ, σ)
-    α = (μ / σ) ^ 2 + 2
-    β = μ * ((μ / σ) ^ 2 + 1)
-    return α, β
-end
-
-function gamma_map(μ, σ)
-    k = μ^2/σ^2 
-    θ = σ^2 / μ
-    return k, θ
-end
-
 
 Turing.@model function FS2000_loglikelihood_function(data, m, observables)
-    alp     ~ Beta(beta_map(0.356, 0.02)...)
-    bet     ~ Beta(beta_map(0.993, 0.002)...)
+    alp     ~ Beta(0.356, 0.02, μσ = true)
+    bet     ~ Beta(0.993, 0.002, μσ = true)
     gam     ~ Normal(0.0085, 0.003)
     mst     ~ Normal(1.0002, 0.007)
-    rho     ~ Beta(beta_map(0.129, 0.223)...)
-    psi     ~ Beta(beta_map(0.65, 0.05)...)
-    del     ~ Beta(beta_map(0.01, 0.005)...)
-    z_e_a   ~ InverseGamma(inv_gamma_map(0.035449, Inf)...)
-    z_e_m   ~ InverseGamma(inv_gamma_map(0.008862, Inf)...)
+    rho     ~ Beta(0.129, 0.223, μσ = true)
+    psi     ~ Beta(0.65, 0.05, μσ = true)
+    del     ~ Beta(0.01, 0.005, μσ = true)
+    z_e_a   ~ InverseGamma(0.035449, Inf, μσ = true)
+    z_e_m   ~ InverseGamma(0.008862, Inf, μσ = true)
     # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
     Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
 end
@@ -72,15 +53,15 @@ function calculate_posterior_loglikelihood(parameters)
     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
     log_lik = 0
     log_lik -= calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables; parameters = parameters)
-    log_lik -= logpdf(Beta(beta_map(0.356, 0.02)...),alp)
-    log_lik -= logpdf(Beta(beta_map(0.993, 0.002)...),bet)
+    log_lik -= logpdf(Beta(0.356, 0.02, μσ = true),alp)
+    log_lik -= logpdf(Beta(0.993, 0.002, μσ = true),bet)
     log_lik -= logpdf(Normal(0.0085, 0.003),gam)
     log_lik -= logpdf(Normal(1.0002, 0.007),mst)
-    log_lik -= logpdf(Beta(beta_map(0.129, 0.223)...),rho)
-    log_lik -= logpdf(Beta(beta_map(0.65, 0.05)...),psi)
-    log_lik -= logpdf(Beta(beta_map(0.01, 0.005)...),del)
-    log_lik -= logpdf(InverseGamma(inv_gamma_map(0.035449, Inf)...),z_e_a)
-    log_lik -= logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...),z_e_m)
+    log_lik -= logpdf(Beta(0.129, 0.223, μσ = true),rho)
+    log_lik -= logpdf(Beta(0.65, 0.05, μσ = true),psi)
+    log_lik -= logpdf(Beta(0.01, 0.005, μσ = true),del)
+    log_lik -= logpdf(InverseGamma(0.035449, Inf, μσ = true),z_e_a)
+    log_lik -= logpdf(InverseGamma(0.008862, Inf, μσ = true),z_e_m)
     return log_lik
 end
 

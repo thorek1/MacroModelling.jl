@@ -74,7 +74,7 @@ The block defining the parameters above only describes the simple parameter defi
 
 Note that we have to write one parameter definition per line.
 
-## Load data, declare observables, and write moments mapping to distribution parameters
+## Load data and declare observables
 
 Given the equations and parameters, we only need the data and define the observables to be able to estimate the model.
 First, we load in the data from a CSV file (using the CSV and DataFrames packages) and convert it to a `KeyedArray` (using the AxisKeys package). Furthermore, we log transform the data provided in levels, and define the observables of the model. Last but not least we select only those variables in the data which are declared observables in the model.
@@ -94,48 +94,25 @@ observables = sort(Symbol.("log_".*names(dat)))
 data = data(observables,:)
 ```
 
-In order to make the prior definitions more intuitive for users we define helper functions translating the mean and standard deviation of the beta, inverse gamma, and gamma distributions to the respective distribution parameters (e.g. α and β for the beta distribution).
-
-```@repl tutorial_2
-# functions to map mean and standard deviations to distribution parameters
-function beta_map(μ, σ) 
-    α = ((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2
-    β = α * (1 / μ - 1)
-    return α, β
-end
-
-function inv_gamma_map(μ, σ)
-    α = (μ / σ) ^ 2 + 2
-    β = μ * ((μ / σ) ^ 2 + 1)
-    return α, β
-end
-
-function gamma_map(μ, σ)
-    k = μ^2/σ^2 
-    θ = σ^2 / μ
-    return k, θ
-end
-```
-
 ## Define bayesian model
 
-Next we define the parameter priors using the Turing package. The `@model` macro of the Turing package allows us to define the prior distributions over the parameters and combine it with the loglikelihood of the model and parameters given the data with the help of the `calculate_kalman_filter_loglikelihood` function. Inside the macro we first define the priors using distributions of the Distributions package (reexported by Turing) and the previously defined helper functions. See the documentation of the Turing package for more details. Next, we define the loglikelihood and add it to the posterior loglikelihood with the help of the `@addlogprob!` macro.
+Next we define the parameter priors using the Turing package. The `@model` macro of the Turing package allows us to define the prior distributions over the parameters and combine it with the loglikelihood of the model and parameters given the data with the help of the `calculate_kalman_filter_loglikelihood` function. Inside the macro we first define the prior distribution and their mean and standard deviation. Note that the `μσ` parameter allows us to hand over the moments (`μ` and `σ`) of the distribution as parameters in case of the non-normal distributions (Gamma, Beta, InverseGamma). Last but not least, we define the loglikelihood and add it to the posterior loglikelihood with the help of the `@addlogprob!` macro.
 
 ```@repl tutorial_2
 import Turing
 import Turing: Normal, Beta, InverseGamma, NUTS, sample, logpdf
 
 Turing.@model function FS2000_loglikelihood_function(data, m, observables)
-    alp     ~ Beta(beta_map(0.356, 0.02)...)
-    bet     ~ Beta(beta_map(0.993, 0.002)...)
+    alp     ~ Beta(0.356, 0.02, μσ = true)
+    bet     ~ Beta(0.993, 0.002, μσ = true)
     gam     ~ Normal(0.0085, 0.003)
     mst     ~ Normal(1.0002, 0.007)
-    rho     ~ Beta(beta_map(0.129, 0.223)...)
-    psi     ~ Beta(beta_map(0.65, 0.05)...)
-    del     ~ Beta(beta_map(0.01, 0.005)...)
-    z_e_a   ~ InverseGamma(inv_gamma_map(0.035449, Inf)...)
-    z_e_m   ~ InverseGamma(inv_gamma_map(0.008862, Inf)...)
-
+    rho     ~ Beta(0.129, 0.223, μσ = true)
+    psi     ~ Beta(0.65, 0.05, μσ = true)
+    del     ~ Beta(0.01, 0.005, μσ = true)
+    z_e_a   ~ InverseGamma(0.035449, Inf, μσ = true)
+    z_e_m   ~ InverseGamma(0.008862, Inf, μσ = true)
+    # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
     Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
 end
 ```
@@ -216,49 +193,37 @@ p
 
 ## Find posterior mode
 
-Other than the mean and median of the posterior distribution we can also calculate the mode. To this end we will use optimisation routines from the Optimization, OptimizationNLopt, and OptimizationOptimisers packages.
+Other than the mean and median of the posterior distribution we can also calculate the mode. To this end we will use L-BFGS optimisation routines from the Optim package.
 
 First, we define the posterior loglikelihood function, similar to how we defined it for the Turing model macro.
 
 ```@repl tutorial_2
-function calculate_posterior_loglikelihood(parameters, u)
+function calculate_posterior_loglikelihood(parameters)
     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
     log_lik = 0
     log_lik -= calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables; parameters = parameters)
-    log_lik -= logpdf(Beta(beta_map(0.356, 0.02)...),alp)
-    log_lik -= logpdf(Beta(beta_map(0.993, 0.002)...),bet)
+    log_lik -= logpdf(Beta(0.356, 0.02, μσ = true),alp)
+    log_lik -= logpdf(Beta(0.993, 0.002, μσ = true),bet)
     log_lik -= logpdf(Normal(0.0085, 0.003),gam)
     log_lik -= logpdf(Normal(1.0002, 0.007),mst)
-    log_lik -= logpdf(Beta(beta_map(0.129, 0.223)...),rho)
-    log_lik -= logpdf(Beta(beta_map(0.65, 0.05)...),psi)
-    log_lik -= logpdf(Beta(beta_map(0.01, 0.005)...),del)
-    log_lik -= logpdf(InverseGamma(inv_gamma_map(0.035449, Inf)...),z_e_a)
-    log_lik -= logpdf(InverseGamma(inv_gamma_map(0.008862, Inf)...),z_e_m)
+    log_lik -= logpdf(Beta(0.129, 0.223, μσ = true),rho)
+    log_lik -= logpdf(Beta(0.65, 0.05, μσ = true),psi)
+    log_lik -= logpdf(Beta(0.01, 0.005, μσ = true),del)
+    log_lik -= logpdf(InverseGamma(0.035449, Inf, μσ = true),z_e_a)
+    log_lik -= logpdf(InverseGamma(0.008862, Inf, μσ = true),z_e_m)
     return log_lik
 end
 ```
 
-Next, we set up the optimisation problem and first use the ADAM global optimiser for 1000 iterations in order to avoid local optima and then fine tune with L-BFGS.
+Next, we set up the optimisation problem, parameter bounds, and use the optimizer L-BFGS.
 
 ```@repl tutorial_2
-using Optimization, OptimizationNLopt, OptimizationOptimisers
+using Optim, LineSearches
 
-f = OptimizationFunction(calculate_posterior_loglikelihood, Optimization.AutoForwardDiff())
+lbs = [0,0,-10,-10,0,0,0,0,0]
+ubs = [1,1,10,10,1,1,1,100,100]
 
-prob = OptimizationProblem(f, collect(pars), []);
-sol = solve(prob, Optimisers.Adam(), maxiters = 1000)
-sol.minimum
+sol = optimize(calculate_posterior_loglikelihood, lbs, ubs , FS2000.parameter_values, Fminbox(LBFGS(linesearch = BackTracking(order = 3))); autodiff = :forward)
 
-lbs = fill(-1e12, length(FS2000.parameters));
-ubs = fill(1e12, length(FS2000.parameters));
-
-bounds_index_in_pars = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.parameters);
-bounds_index_in_bounds = indexin(intersect(FS2000.bounded_vars,FS2000.parameters),FS2000.bounded_vars);
-
-lbs[bounds_index_in_pars] = max.(-1e12,FS2000.lower_bounds[bounds_index_in_bounds]);
-ubs[bounds_index_in_pars] = min.(1e12,FS2000.upper_bounds[bounds_index_in_bounds]);
-
-prob = OptimizationProblem(f, min.(max.(sol.u,lbs),ubs), [], lb = lbs, ub = ubs);
-sol = solve(prob, NLopt.LD_LBFGS())
 sol.minimum
 ```
