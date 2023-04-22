@@ -107,10 +107,10 @@ Parameters: 39</code></pre><p>First, we load the package and then use the <a hre
        
            calibr_pi_obj | 1 = pi_obj[ss]
            calibr_pi | pi[ss] = pi_obj[ss]
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	5.911 seconds
-Set up non stochastic steady state problem:	2.051 seconds
-Take symbolic derivatives up to first order:	2.003 seconds
-Find non stochastic steady state:	7.164 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	5.874 seconds
+Set up non stochastic steady state problem:	2.134 seconds
+Take symbolic derivatives up to first order:	2.128 seconds
+Find non stochastic steady state:	7.021 seconds
 Model:      SW03
 Variables
  Total:     54
@@ -144,7 +144,7 @@ Calibration equations: 2</code></pre><p>The block defining the parameters above 
                 variables = [:U,:Y,:I,:R,:C],
                 shocks = :eta_R)</code><code class="nohighlight hljs ansi" style="display:block;">1-element Vector{Any}:
  Plot{Plots.GRBackend() n=18}</code></pre><p><img src="../../assets/irf__SW03_new__eta_R__1.png" alt="IRF plot"/></p><p>First, the package finds the new steady state, solves the model dynamics around it and saves the new parameters and solution in the model object. Second, note that with the parameters the IRFs changed (e.g. compare the y-axis values for <code>U</code>). Updating the plot for new parameters is significantly faster than calling it the first time. This is because the first call triggers compilations of the model functions, and once compiled the user benefits from the performance of the specialised compiled code. Furthermore, finding the SS from a valid SS as a starting point is faster.</p><h2 id="Plot-model-simulation"><a class="docs-heading-anchor" href="#Plot-model-simulation">Plot model simulation</a><a id="Plot-model-simulation-1"></a><a class="docs-heading-anchor-permalink" href="#Plot-model-simulation" title="Permalink"></a></h2><p>Another insightful output is simulations of the model. Here we can use the <a href="../../api/#MacroModelling.plot_simulations-Tuple"><code>plot_simulations</code></a> function. Again we want to only look at a subset of the variables and specify it in the <code>variables</code> argument. Please note that you need to import the <code>Plots</code> and <code>StatsPlots</code> packages once before the first plot. To the same effect we can use the <a href="../../api/#MacroModelling.plot_irf-Tuple{MacroModelling.ℳ}"><code>plot_irf</code></a> function and specify in the <code>shocks</code> argument that we want to <code>:simulate</code> the model and set the <code>periods</code> argument to 100.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_simulations(SW03, variables = [:U,:Y,:I,:R,:C])</code><code class="nohighlight hljs ansi" style="display:block;">1-element Vector{Any}:
- Plot{Plots.GRBackend() n=14}</code></pre><p><img src="../../assets/irf__SW03__simulation__1.png" alt="Simulate SW03"/></p><p>The plots show the models endogenous variables in response to random draws for all exogenous shocks over 100 periods.</p><h2 id="Plot-specific-series-of-shocks"><a class="docs-heading-anchor" href="#Plot-specific-series-of-shocks">Plot specific series of shocks</a><a id="Plot-specific-series-of-shocks-1"></a><a class="docs-heading-anchor-permalink" href="#Plot-specific-series-of-shocks" title="Permalink"></a></h2><p>Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a <code>Matrix</code> or <code>KeyedArray</code> of the series of shocks to the <code>shocks</code> argument of the <a href="../../api/#MacroModelling.plot_irf-Tuple{MacroModelling.ℳ}"><code>plot_irf</code></a> function. Let&#39;s assume there is a positive 1 standard deviation shock to <code>eta_b</code> in period 2 and a negative 1 standard deviation shock to <code>eta_w</code> in period 12. This can be implemented as follows:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using AxisKeys</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; shock_series = KeyedArray(zeros(2,12), Shocks = [:eta_b, :eta_w], Periods = 1:12)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+ Plot{Plots.GRBackend() n=12}</code></pre><p><img src="../../assets/irf__SW03__simulation__1.png" alt="Simulate SW03"/></p><p>The plots show the models endogenous variables in response to random draws for all exogenous shocks over 100 periods.</p><h2 id="Plot-specific-series-of-shocks"><a class="docs-heading-anchor" href="#Plot-specific-series-of-shocks">Plot specific series of shocks</a><a id="Plot-specific-series-of-shocks-1"></a><a class="docs-heading-anchor-permalink" href="#Plot-specific-series-of-shocks" title="Permalink"></a></h2><p>Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a <code>Matrix</code> or <code>KeyedArray</code> of the series of shocks to the <code>shocks</code> argument of the <a href="../../api/#MacroModelling.plot_irf-Tuple{MacroModelling.ℳ}"><code>plot_irf</code></a> function. Let&#39;s assume there is a positive 1 standard deviation shock to <code>eta_b</code> in period 2 and a negative 1 standard deviation shock to <code>eta_w</code> in period 12. This can be implemented as follows:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using AxisKeys</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; shock_series = KeyedArray(zeros(2,12), Shocks = [:eta_b, :eta_w], Periods = 1:12)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Shocks ∈ 2-element Vector{Symbol}
 →   Periods ∈ 12-element UnitRange{Int64}
 And data, 2×12 Matrix{Float64}:
@@ -163,11 +163,11 @@ And data, 56×3 Matrix{Float64}:
   (:I)               0.456928         3.13855      18.5261
   (:I_f)             0.456928         3.13855      18.5261
    ⋮
-  (:r_k)             0.035101         3.87481e-15  -1.0203
-  (:r_k_f)           0.035101         3.90153e-15  -1.0203
+  (:r_k)             0.035101         1.66245e-15  -1.0203
+  (:r_k_f)           0.035101         3.53784e-15  -1.0203
   (:w_star)          1.14353          4.37676      14.5872
-  (:z)               1.0             -2.27612e-15  -2.85365e-16
-  (:z_f)             1.0             -9.10446e-15   1.09515e-14
+  (:z)               1.0              4.55223e-15   7.50339e-15
+  (:z_f)             1.0             -4.55223e-15   4.88412e-15
   (:calibr_pi_obj)   1.0              0.0           0.0
   (:calibr_pi)       0.0              0.0           0.0</code></pre><p>The first column of the returned matrix shows the SS while the second to last columns show the derivatives of the SS values (indicated in the rows) with respect to the parameters (indicated in the columns). For example, the derivative of <code>C</code> with respect to <code>beta</code> is 14.4994. This means that if we increase <code>beta</code> by 1, <code>C</code> would increase by 14.4994 approximately. Let&#39;s see how this plays out by changing <code>beta</code> from 0.99 to 0.991 (a change of +0.001):</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_steady_state(SW03,
                         parameter_derivatives = [:alpha,:G_bar],
@@ -183,11 +183,11 @@ And data, 56×3 Matrix{Float64}:
   (:I)               0.47613          0.102174      3.29983
   (:I_f)             0.47613          0.102174      3.29983
    ⋮
-  (:r_k)             0.0340817        1.01903e-17  -2.95855e-16
-  (:r_k_f)           0.0340817       -2.48232e-13   3.81212e-12
-  (:w_star)          1.15842          1.79356e-15   4.5044
-  (:z)               1.0              2.7304e-16   -2.18432e-15
-  (:z_f)             1.0              2.7304e-16   -2.18432e-15
+  (:r_k)             0.0340817        3.88774e-17  -4.58896e-16
+  (:r_k_f)           0.0340817       -2.48307e-13   3.81318e-12
+  (:w_star)          1.15842          1.28747e-16   4.5044
+  (:z)               1.0             -2.7304e-16   -4.36864e-15
+  (:z_f)             1.0              0.0           0.0
   (:calibr_pi_obj)   1.0              0.0           0.0
   (:calibr_pi)       0.0              0.0           0.0</code></pre><p>Note that <a href="../../api/#MacroModelling.get_steady_state-Tuple{MacroModelling.ℳ}"><code>get_steady_state</code></a> like all other get functions has the <code>parameters</code> argument. Hence, whatever output we are looking at we can change the parameters of the model.</p><p>The new value of <code>beta</code> changed the SS as expected and <code>C</code> increased by 0.01465. The elasticity (0.01465/0.001) comes close to the partial derivative previously calculated. The derivatives help understanding the effect of parameter changes on the steady state and make for easier navigation of the parameter space.</p><h3 id="Standard-deviations"><a class="docs-heading-anchor" href="#Standard-deviations">Standard deviations</a><a id="Standard-deviations-1"></a><a class="docs-heading-anchor-permalink" href="#Standard-deviations" title="Permalink"></a></h3><p>Next to the SS we can also show the model implied standard deviations of the model. <a href="../../api/#MacroModelling.get_standard_deviation-Tuple"><code>get_standard_deviation</code></a> takes care of this. Additionally we will set the parameter values to what they were in the beginning by passing on a <code>Tuple</code> of <code>Pair</code>s containing the <code>Symbol</code>s of the parameters to be changed and their new (initial) values (e.g. <code>(:alpha =&gt; 0.3, :beta =&gt; .99)</code>).</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_standard_deviation(SW03,
                               parameter_derivatives = [:alpha,:beta],
@@ -198,8 +198,8 @@ And data, 54×3 Matrix{Float64}:
              (:Standard_deviation)   (:alpha)        (:beta)
   (:C)        2.0521                  9.69554        -9.78014
   (:C_f)      3.05478                13.0917         -0.834006
-  (:G)        0.373165               -8.74362e-13    -5.35134e-11
-  (:G_f)      0.373165               -1.38887e-12    -5.47781e-11
+  (:G)        0.373165                5.76342e-12     5.66009e-11
+  (:G_f)      0.373165                5.82334e-12     5.72822e-11
   (:I)        3.00453                13.9594         95.911
   (:I_f)      3.46854                14.3686        105.856
    ⋮
@@ -250,20 +250,20 @@ And data, 54×5 Matrix{Float64}:
 →   Shocks ∈ 9-element Vector{Symbol}
 And data, 54×9 Matrix{Float64}:
              (:eta_G)      (:eta_I)      …  (:eta_pi)     (:eta_w)
-  (:C)        0.00393946    0.0012092        0.00114386    3.04583e-7
-  (:C_f)      0.00271209    0.000559959      1.38759e-30   5.69019e-34
-  (:G)        1.0          -6.17226e-29      2.22265e-25   1.60859e-32
-  (:G_f)      1.0          -9.18424e-28      3.8959e-25    1.02158e-32
+  (:C)        0.00393946    0.0012092        0.00114385    3.04583e-7
+  (:C_f)      0.00271209    0.000559959     -4.88998e-27   2.97089e-32
+  (:G)        1.0           1.24292e-26     -4.13467e-28   3.404e-33
+  (:G_f)      1.0           4.95782e-24     -1.16713e-23   2.17045e-30
   (:I)        0.00281317    0.00430134   …   0.00143852    4.08763e-7
-  (:I_f)      0.00297832    0.00230662       2.62494e-29   7.46843e-33
+  (:I_f)      0.00297832    0.00230662       2.91132e-30   1.948e-33
    ⋮                                     ⋱
-  (:q)        0.00661399    0.00311207       0.00147593    5.46144e-7
-  (:q_f)      0.00680774    0.00191603       2.96935e-25   2.68634e-33
-  (:r_k)      0.00532775    0.0044839    …   0.00144015    1.57744e-6
-  (:r_k_f)    0.00496212    0.00271529       7.67551e-25   1.14306e-32
+  (:q)        0.006614      0.00311207       0.00147593    5.46144e-7
+  (:q_f)      0.00680774    0.00191603      -4.02314e-28   4.98531e-33
+  (:r_k)      0.00532775    0.00448391   …   0.00144015    1.57744e-6
+  (:r_k_f)    0.00496212    0.00271529      -1.13967e-25   3.0431e-32
   (:w_star)   0.000299473   0.000385553      0.00378742    5.33426e-5
-  (:z)        0.00532775    0.0044839        0.00144015    1.57744e-6
-  (:z_f)      0.00496212    0.00271529       7.68172e-25   1.144e-32</code></pre><h3 id="Conditional-variance-decomposition"><a class="docs-heading-anchor" href="#Conditional-variance-decomposition">Conditional variance decomposition</a><a id="Conditional-variance-decomposition-1"></a><a class="docs-heading-anchor-permalink" href="#Conditional-variance-decomposition" title="Permalink"></a></h3><p>Last but not least, we have look at the model implied contribution of each shock per period to the variance of the model variables (also called forecast error variance decomposition) by using the  <a href="../../api/#MacroModelling.get_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>get_conditional_variance_decomposition</code></a> function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_conditional_variance_decomposition(SW03)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+  (:z)        0.00532775    0.00448391       0.00144015    1.57744e-6
+  (:z_f)      0.00496212    0.00271529      -1.13398e-25   3.03237e-32</code></pre><h3 id="Conditional-variance-decomposition"><a class="docs-heading-anchor" href="#Conditional-variance-decomposition">Conditional variance decomposition</a><a id="Conditional-variance-decomposition-1"></a><a class="docs-heading-anchor-permalink" href="#Conditional-variance-decomposition" title="Permalink"></a></h3><p>Last but not least, we have look at the model implied contribution of each shock per period to the variance of the model variables (also called forecast error variance decomposition) by using the  <a href="../../api/#MacroModelling.get_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>get_conditional_variance_decomposition</code></a> function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_conditional_variance_decomposition(SW03)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 54-element Vector{Symbol}
 →   Shocks ∈ 9-element Vector{Symbol}
 ◪   Periods ∈ 21-element Vector{Float64}
@@ -272,54 +272,54 @@ And data, 54×9×21 Array{Float64, 3}:
 [:, :, 1] ~ (:, :, 1.0):
              (:eta_G)      (:eta_I)      …  (:eta_pi)     (:eta_w)
   (:C)        0.00112613    0.000121972      0.000641471   1.13378e-8
-  (:C_f)      0.000858896   8.75785e-6       1.34137e-32   1.7237e-36
-  (:G)        1.0           6.68417e-35      6.05661e-31   1.80522e-34
+  (:C_f)      0.000858896   8.75785e-6       4.99181e-32   4.06883e-35
+  (:G)        1.0           5.7866e-33       6.92125e-32   4.00431e-35
    ⋮                                     ⋱
-  (:r_k_f)    0.00247112    2.51971e-5   …   5.95689e-32   1.05434e-35
+  (:r_k_f)    0.00247112    2.51971e-5   …   2.00915e-31   4.49517e-35
   (:w_star)   0.000499182   5.21776e-5       0.00154091    0.000651141
   (:z)        0.00467774    2.66346e-5       0.000191172   1.41817e-5
-  (:z_f)      0.00247112    2.51971e-5       5.95689e-32   1.05434e-35
+  (:z_f)      0.00247112    2.51971e-5       2.00915e-31   4.49517e-35
 
 [:, :, 11] ~ (:, :, 11.0):
              (:eta_G)      (:eta_I)      …  (:eta_pi)     (:eta_w)
   (:C)        0.00206241    0.000426699      0.000835055   1.18971e-7
-  (:C_f)      0.00154049    0.000234041      2.41831e-31   1.90211e-34
-  (:G)        1.0           2.03003e-32      2.74776e-30   1.93232e-32
+  (:C_f)      0.00154049    0.000234041      4.15804e-29   1.40103e-33
+  (:G)        1.0           4.15429e-29      4.93781e-31   3.87666e-33
    ⋮                                     ⋱
-  (:r_k_f)    0.00172562    7.81447e-5   …   3.17969e-28   7.70675e-32
+  (:r_k_f)    0.00172562    7.81447e-5   …   1.70166e-27   9.39434e-32
   (:w_star)   0.000290106   0.000212217      0.00281349    7.51886e-5
   (:z)        0.0045622     0.000147997      0.00200035    8.29763e-6
-  (:z_f)      0.00172562    7.81447e-5       3.18187e-28   7.721e-32
+  (:z_f)      0.00172562    7.81447e-5       1.69416e-27   9.35976e-32
 
 [:, :, 21] ~ (:, :, Inf):
              (:eta_G)      (:eta_I)      …  (:eta_pi)     (:eta_w)
-  (:C)        0.00393946    0.0012092        0.00114386    3.04583e-7
-  (:C_f)      0.00271209    0.000559959      1.38759e-30   5.69019e-34
-  (:G)        1.0          -6.17226e-29      2.22265e-25   1.60859e-32
+  (:C)        0.00393946    0.0012092        0.00114385    3.04583e-7
+  (:C_f)      0.00271209    0.000559959     -4.88998e-27   2.97089e-32
+  (:G)        1.0           1.24292e-26     -4.13467e-28   3.404e-33
    ⋮                                     ⋱
-  (:r_k_f)    0.00496212    0.00271529   …   7.67551e-25   1.14306e-32
+  (:r_k_f)    0.00496212    0.00271529   …  -1.13967e-25   3.0431e-32
   (:w_star)   0.000299473   0.000385553      0.00378742    5.33426e-5
-  (:z)        0.00532775    0.0044839        0.00144015    1.57744e-6
-  (:z_f)      0.00496212    0.00271529       7.68172e-25   1.144e-32</code></pre><h3 id="Plot-conditional-variance-decomposition"><a class="docs-heading-anchor" href="#Plot-conditional-variance-decomposition">Plot conditional variance decomposition</a><a id="Plot-conditional-variance-decomposition-1"></a><a class="docs-heading-anchor-permalink" href="#Plot-conditional-variance-decomposition" title="Permalink"></a></h3><p>Especially for the conditional variance decomposition it is convenient to look at a plot instead of the raw numbers. This can be done using the <a href="../../api/#MacroModelling.plot_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>plot_conditional_variance_decomposition</code></a> function. Please note that you need to import the <code>Plots</code> and <code>StatsPlots</code> packages once before the first plot.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_conditional_variance_decomposition(SW03, variables = [:U,:Y,:I,:R,:C])</code><code class="nohighlight hljs ansi" style="display:block;">1-element Vector{Any}:
+  (:z)        0.00532775    0.00448391       0.00144015    1.57744e-6
+  (:z_f)      0.00496212    0.00271529      -1.13398e-25   3.03237e-32</code></pre><h3 id="Plot-conditional-variance-decomposition"><a class="docs-heading-anchor" href="#Plot-conditional-variance-decomposition">Plot conditional variance decomposition</a><a id="Plot-conditional-variance-decomposition-1"></a><a class="docs-heading-anchor-permalink" href="#Plot-conditional-variance-decomposition" title="Permalink"></a></h3><p>Especially for the conditional variance decomposition it is convenient to look at a plot instead of the raw numbers. This can be done using the <a href="../../api/#MacroModelling.plot_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>plot_conditional_variance_decomposition</code></a> function. Please note that you need to import the <code>Plots</code> and <code>StatsPlots</code> packages once before the first plot.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_conditional_variance_decomposition(SW03, variables = [:U,:Y,:I,:R,:C])</code><code class="nohighlight hljs ansi" style="display:block;">1-element Vector{Any}:
  Plot{Plots.GRBackend() n=54}</code></pre><p><img src="../../assets/fevd__SW03__1.png" alt="FEVD SW03"/></p><h2 id="Model-solution"><a class="docs-heading-anchor" href="#Model-solution">Model solution</a><a id="Model-solution-1"></a><a class="docs-heading-anchor-permalink" href="#Model-solution" title="Permalink"></a></h2><p>A further insightful output are the policy and transition functions of the the first order perturbation solution. To retrieve the solution we call the function <a href="../../api/#MacroModelling.get_solution-Tuple{MacroModelling.ℳ}"><code>get_solution</code></a>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_solution(SW03)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Steady_state__States__Shocks ∈ 29-element Vector{Symbol}
 →   Variables ∈ 54-element Vector{Symbol}
 And data, 29×54 adjoint(::Matrix{Float64}) with eltype Float64:
                    (:C)         (:C_f)        …  (:z)         (:z_f)
   (:Steady_state)   1.20438      1.20438          1.0          1.0
-  (:C₍₋₁₎)          0.536418     1.06058e-15      0.214756     2.58978e-15
+  (:C₍₋₁₎)          0.536418    -7.70507e-15      0.214756    -5.20866e-14
   (:C_f₍₋₁₎)        0.0163196    0.410787         0.00766973   0.139839
-  (:I₍₋₁₎)         -0.102895    -1.32271e-14      0.317145    -1.18491e-13
+  (:I₍₋₁₎)         -0.102895    -1.91122e-14      0.317145    -1.19943e-13
   (:I_f₍₋₁₎)        0.0447033   -0.24819      …   0.0276803    0.213957
-  (:K₍₋₁₎)          0.00880026   9.26209e-16     -0.0587166    5.81073e-15
+  (:K₍₋₁₎)          0.00880026   3.60828e-16     -0.0587166    5.99718e-15
    ⋮                                          ⋱   ⋮
   (:eta_L₍ₓ₎)       0.252424     0.838076         0.0982057    0.430915
-  (:eta_R₍ₓ₎)      -0.229757    -3.51373e-16     -0.179716     1.35593e-15
+  (:eta_R₍ₓ₎)      -0.229757    -2.50541e-15     -0.179716     3.45496e-15
   (:eta_a₍ₓ₎)       0.185454     0.699595     …  -0.551529     0.348639
   (:eta_b₍ₓ₎)       0.087379     0.0150811        0.0338767   -0.013001
-  (:eta_p₍ₓ₎)      -9.72053e-5  -2.77364e-17     -0.00134983  -5.7804e-18
-  (:eta_pi₍ₓ₎)      0.0100939    1.26505e-16      0.00816804  -1.35491e-16
-  (:eta_w₍ₓ₎)      -4.24362e-5   1.43405e-18      0.00222469   1.80256e-18</code></pre><p>The solution provides information about how past states and present shocks impact present variables. The first row contains the SS for the variables denoted in the columns. The second to last rows contain the past states, with the time index <code>₍₋₁₎</code>, and present shocks, with exogenous variables denoted by <code>₍ₓ₎</code>. For example, the immediate impact of a shock to <code>eta_w</code> on <code>z</code> is 0.00222469.</p><p>There is also the possibility to visually inspect the solution using the <a href="../../api/#MacroModelling.plot_solution-Tuple{MacroModelling.ℳ, Symbol}"><code>plot_solution</code></a> function. Please note that you need to import the <code>Plots</code> and <code>StatsPlots</code> packages once before the first plot.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_solution(SW03, :pi, variables = [:C,:I,:K,:L,:W,:R])</code><code class="nohighlight hljs ansi" style="display:block;">1-element Vector{Any}:
+  (:eta_p₍ₓ₎)      -9.72053e-5   1.2346e-17      -0.00134983   5.51131e-18
+  (:eta_pi₍ₓ₎)      0.0100939    2.4404e-16       0.00816804  -2.48831e-16
+  (:eta_w₍ₓ₎)      -4.24362e-5   6.96734e-18      0.00222469  -3.72196e-18</code></pre><p>The solution provides information about how past states and present shocks impact present variables. The first row contains the SS for the variables denoted in the columns. The second to last rows contain the past states, with the time index <code>₍₋₁₎</code>, and present shocks, with exogenous variables denoted by <code>₍ₓ₎</code>. For example, the immediate impact of a shock to <code>eta_w</code> on <code>z</code> is 0.00222469.</p><p>There is also the possibility to visually inspect the solution using the <a href="../../api/#MacroModelling.plot_solution-Tuple{MacroModelling.ℳ, Symbol}"><code>plot_solution</code></a> function. Please note that you need to import the <code>Plots</code> and <code>StatsPlots</code> packages once before the first plot.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_solution(SW03, :pi, variables = [:C,:I,:K,:L,:W,:R])</code><code class="nohighlight hljs ansi" style="display:block;">1-element Vector{Any}:
  Plot{Plots.GRBackend() n=15}</code></pre><p><img src="../../assets/solution__SW03__1.png" alt="SW03 solution"/></p><p>The chart shows the first order perturbation solution mapping from the past state <code>pi</code> to the present variables <code>C</code>, <code>I</code>, <code>K</code>, <code>L</code>, <code>W</code>, and <code>R</code>. The state variable covers a range of two standard deviations around the non stochastic steady state and all other states remain in the non stochastic steady state.</p><h2 id="Obtain-array-of-IRFs-or-model-simulations"><a class="docs-heading-anchor" href="#Obtain-array-of-IRFs-or-model-simulations">Obtain array of IRFs or model simulations</a><a id="Obtain-array-of-IRFs-or-model-simulations-1"></a><a class="docs-heading-anchor-permalink" href="#Obtain-array-of-IRFs-or-model-simulations" title="Permalink"></a></h2><p>Last but not least the user might want to obtain simulated time series of the model or IRFs without plotting them. For IRFs this is possible by calling <a href="../../api/#MacroModelling.get_irf-Tuple{MacroModelling.ℳ, Vector}"><code>get_irf</code></a>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_irf(SW03)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 54-element Vector{Symbol}
 →   Periods ∈ 40-element UnitRange{Int64}
@@ -341,7 +341,7 @@ And data, 54×40×9 Array{Float64, 3}:
              (1)            (2)            …  (39)            (40)
   (:C)         0.185454       0.266366           0.0448634       0.0445393
   (:C_f)       0.699595       0.807224           0.0641954       0.0635383
-  (:G)         4.92818e-16    1.18942e-14        7.23223e-16     7.12832e-16
+  (:G)        -2.12241e-16   -1.21593e-14       -7.56012e-15    -7.43981e-15
    ⋮                                       ⋱     ⋮
   (:r_k_f)     0.00206815     0.00250599   …    -0.0012247      -0.00120755
   (:w_star)   -0.0685999     -0.0257599          0.0104469       0.00989232
@@ -351,32 +351,32 @@ And data, 54×40×9 Array{Float64, 3}:
 [:, :, 9] ~ (:, :, :eta_w):
              (1)            (2)            …  (39)            (40)
   (:C)        -4.24362e-5    -7.53116e-5        -0.000102464    -0.000101596
-  (:C_f)       1.43405e-18   -1.61538e-17       -4.86297e-19    -8.02059e-19
-  (:G)         1.58073e-18   -2.01045e-17        2.66615e-18     2.65469e-18
+  (:C_f)       6.96734e-18   -5.10172e-17        1.22301e-17     1.15358e-17
+  (:G)        -7.44485e-19   -1.05465e-17        1.43189e-18     1.38997e-18
    ⋮                                       ⋱     ⋮
-  (:r_k_f)     1.06929e-20   -1.48576e-18  …     1.72125e-20     1.18117e-20
+  (:r_k_f)    -2.20789e-20   -1.74543e-18  …    -9.3931e-20     -1.10166e-19
   (:w_star)    0.012691       0.00165858        -8.17445e-5     -7.60783e-5
   (:z)         0.00222469     0.00187724         0.000271989     0.000277738
-  (:z_f)       1.80256e-18   -2.50668e-16        2.81763e-18     1.90679e-18</code></pre><p>which returns a 3-dimensional <code>KeyedArray</code> with variables in rows, the period in columns, and the shocks as the third dimension.</p><p>For simulations this is possible by calling <a href="../../api/#MacroModelling.simulate-Tuple"><code>simulate</code></a>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; simulate(SW03)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+  (:z_f)      -3.72196e-18   -2.93699e-16       -1.61783e-17    -1.89087e-17</code></pre><p>which returns a 3-dimensional <code>KeyedArray</code> with variables in rows, the period in columns, and the shocks as the third dimension.</p><p>For simulations this is possible by calling <a href="../../api/#MacroModelling.simulate-Tuple"><code>simulate</code></a>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; simulate(SW03)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 54-element Vector{Symbol}
 →   Periods ∈ 40-element UnitRange{Int64}
 ◪   Shocks ∈ 1-element Vector{Symbol}
 And data, 54×40×1 Array{Float64, 3}:
 [:, :, 1] ~ (:, :, :simulate):
-             (1)            (2)            …  (39)           (40)
-  (:C)        -0.41328       -0.298052           0.588889       0.505601
-  (:C_f)      -0.15681        0.0435219         -2.12851       -1.30319
-  (:G)        -0.13873       -0.401187          -0.644545      -0.490982
-  (:G_f)      -0.13873       -0.401187          -0.644545      -0.490982
-  (:I)        -0.20785       -0.247795     …     2.08363        2.07466
-  (:I_f)      -0.0312818      0.0229419         -1.13892       -1.04043
+             (1)            (2)            …  (39)          (40)
+  (:C)         0.0954259      0.430075           0.953923      1.44504
+  (:C_f)       0.438235       2.37797            0.317988      1.28777
+  (:G)        -0.0651118     -0.124139          -0.102261      0.0674935
+  (:G_f)      -0.0651118     -0.124139          -0.102261      0.0674935
+  (:I)        -0.0757328      0.0108539    …     0.0249448     0.677585
+  (:I_f)       0.0537273      0.778119          -0.327859      0.233817
    ⋮                                       ⋱     ⋮
-  (:q_f)      -0.122833      -0.4523             0.824458       0.429877
-  (:r_k)      -0.000139302    0.000233184  …    -0.00283259    -0.0107533
-  (:r_k_f)    -0.000722132   -0.000728529       -0.0106004     -0.00776817
-  (:w_star)   -0.596151      -0.557661           2.74233        2.68169
-  (:z)        -0.0234828      0.039309          -0.477504      -1.81274
-  (:z_f)      -0.121734      -0.122812          -1.78696       -1.30952</code></pre><p>which returns the simulated data in a 3-dimensional <code>KeyedArray</code> of the same structure as for the IRFs.</p><h2 id="Conditional-forecasts"><a class="docs-heading-anchor" href="#Conditional-forecasts">Conditional forecasts</a><a id="Conditional-forecasts-1"></a><a class="docs-heading-anchor-permalink" href="#Conditional-forecasts" title="Permalink"></a></h2><p>Conditional forecasting is a useful tool to incorporate for example forecasts into a model and then add shocks on top.</p><p>For example we might be interested in the model dynamics given a path for <code>Y</code> and <code>pi</code> for the first 4 quarters and the next quarter a negative shock to <code>eta_w</code> arrives. Furthermore, we want that the first two periods only a subset of shocks is used to match the conditions on the endogenous variables. This can be implemented using the <code>get_conditional_forecast</code> function and visualised with the <code>plot_conditional_forecast</code> function.</p><p>First, we define the conditions on the endogenous variables as deviations from the non stochastic steady state (<code>Y</code> and <code>pi</code> in this case) using a <code>KeyedArray</code> from the <code>AxisKeys</code> package (check <a href="../../api/#MacroModelling.get_conditional_forecast-Tuple{MacroModelling.ℳ, Union{AxisKeys.KeyedArray{Union{Nothing, Float64}}, AxisKeys.KeyedArray{Float64}, SparseArrays.SparseMatrixCSC{Float64}, Matrix{Union{Nothing, Float64}}}}"><code>get_conditional_forecast</code></a> for other ways to define the conditions):</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using AxisKeys</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,4),Variables = [:Y, :pi], Periods = 1:4)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+  (:q_f)      -0.0559598     -1.85462            1.9218        0.255902
+  (:r_k)      -0.00219993    -0.000747197  …     0.0201363     0.0206451
+  (:r_k_f)     0.000943152    0.00668027         0.0133154     0.0168512
+  (:w_star)   -0.2158        -1.4784             1.3454        0.860438
+  (:z)        -0.370854      -0.125959           3.39447       3.48026
+  (:z_f)       0.158992       1.12613            2.24465       2.8407</code></pre><p>which returns the simulated data in a 3-dimensional <code>KeyedArray</code> of the same structure as for the IRFs.</p><h2 id="Conditional-forecasts"><a class="docs-heading-anchor" href="#Conditional-forecasts">Conditional forecasts</a><a id="Conditional-forecasts-1"></a><a class="docs-heading-anchor-permalink" href="#Conditional-forecasts" title="Permalink"></a></h2><p>Conditional forecasting is a useful tool to incorporate for example forecasts into a model and then add shocks on top.</p><p>For example we might be interested in the model dynamics given a path for <code>Y</code> and <code>pi</code> for the first 4 quarters and the next quarter a negative shock to <code>eta_w</code> arrives. Furthermore, we want that the first two periods only a subset of shocks is used to match the conditions on the endogenous variables. This can be implemented using the <code>get_conditional_forecast</code> function and visualised with the <code>plot_conditional_forecast</code> function.</p><p>First, we define the conditions on the endogenous variables as deviations from the non stochastic steady state (<code>Y</code> and <code>pi</code> in this case) using a <code>KeyedArray</code> from the <code>AxisKeys</code> package (check <a href="../../api/#MacroModelling.get_conditional_forecast-Tuple{MacroModelling.ℳ, Union{AxisKeys.KeyedArray{Union{Nothing, Float64}}, AxisKeys.KeyedArray{Float64}, SparseArrays.SparseMatrixCSC{Float64}, Matrix{Union{Nothing, Float64}}}}"><code>get_conditional_forecast</code></a> for other ways to define the conditions):</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using AxisKeys</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,4),Variables = [:Y, :pi], Periods = 1:4)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 2-element Vector{Symbol}
 →   Periods ∈ 4-element UnitRange{Int64}
 And data, 2×4 Matrix{Union{Nothing, Float64}}:
@@ -391,4 +391,4 @@ And data, 2×4 Matrix{Union{Nothing, Float64}}:
  nothing  nothing  nothing  nothing  nothing
  nothing  nothing  nothing  nothing  nothing
  nothing  nothing  nothing  nothing  nothing
- nothing  nothing  nothing  nothing  nothing</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; shocks[[1:3...,5,9],1:2] .= 0;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; shocks[9,5] = -1;</code><code class="nohighlight hljs ansi" style="display:block;"></code></pre><p>The above shock <code>Matrix</code> means that for the first two periods shocks 1, 2, 3, 5, and 9 are fixed at zero and in the fifth period there is a negative shock of <code>eta_w</code> (the 9th shock).</p><p>Finally we can get the conditional forecast:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_conditional_forecast(SW03, conditions, shocks = shocks, variables = [:Y,:pi,:W])</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: DimensionMismatch: matrix is not square: dimensions are (2, 4)</code></pre><p>The function returns a <code>KeyedArray</code> with the values of the endogenous variables and shocks matching the conditions exactly.</p><p>We can also plot the conditional forecast. Please note that you need to import the <code>Plots</code> and <code>StatsPlots</code> packages once before the first plot.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_conditional_forecast(SW03,conditions, shocks = shocks, plots_per_page = 6,variables = [:Y,:pi,:W])</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: DimensionMismatch: matrix is not square: dimensions are (2, 4)</code></pre><p><img src="../../assets/conditional_fcst__SW03__conditional_forecast__1.png" alt="SW03 conditional forecast 1"/></p><p><img src="../../assets/conditional_fcst__SW03__conditional_forecast__2.png" alt="SW03 conditional forecast 2"/></p><p>Note that the stars indicate the values the model is conditioned on.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../rbc/">« RBC</a><a class="docs-footer-nextpage" href="../estimation/">Estimation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Saturday 22 April 2023 19:04">Saturday 22 April 2023</span>. Using Julia version 1.8.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ nothing  nothing  nothing  nothing  nothing</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; shocks[[1:3...,5,9],1:2] .= 0;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; shocks[9,5] = -1;</code><code class="nohighlight hljs ansi" style="display:block;"></code></pre><p>The above shock <code>Matrix</code> means that for the first two periods shocks 1, 2, 3, 5, and 9 are fixed at zero and in the fifth period there is a negative shock of <code>eta_w</code> (the 9th shock).</p><p>Finally we can get the conditional forecast:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_conditional_forecast(SW03, conditions, shocks = shocks, variables = [:Y,:pi,:W])</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: DimensionMismatch: matrix is not square: dimensions are (2, 4)</code></pre><p>The function returns a <code>KeyedArray</code> with the values of the endogenous variables and shocks matching the conditions exactly.</p><p>We can also plot the conditional forecast. Please note that you need to import the <code>Plots</code> and <code>StatsPlots</code> packages once before the first plot.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_conditional_forecast(SW03,conditions, shocks = shocks, plots_per_page = 6,variables = [:Y,:pi,:W])</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: DimensionMismatch: matrix is not square: dimensions are (2, 4)</code></pre><p><img src="../../assets/conditional_fcst__SW03__conditional_forecast__1.png" alt="SW03 conditional forecast 1"/></p><p><img src="../../assets/conditional_fcst__SW03__conditional_forecast__2.png" alt="SW03 conditional forecast 2"/></p><p>Note that the stars indicate the values the model is conditioned on.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../rbc/">« RBC</a><a class="docs-footer-nextpage" href="../estimation/">Estimation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Saturday 22 April 2023 21:20">Saturday 22 April 2023</span>. Using Julia version 1.8.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
