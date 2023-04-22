@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] check if you can do analytic derivatives for higher order derivatives
 - [ ] kick out unsused parameters from m.parameters
 - [ ] higher order solution derivs with Zygote
 - [ ] add other outputs from estimation (smoothed, filter states and shocks)
