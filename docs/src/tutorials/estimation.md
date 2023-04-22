@@ -220,10 +220,10 @@ Next, we set up the optimisation problem, parameter bounds, and use the optimize
 ```@repl tutorial_2
 using Optim, LineSearches
 
-lbs = [0,0,-10,-10,0,0,0,0,0]
-ubs = [1,1,10,10,1,1,1,100,100]
+lbs = [0,0,-10,-10,0,0,0,0,0];
+ubs = [1,1,10,10,1,1,1,100,100];
 
-sol = optimize(calculate_posterior_loglikelihood, lbs, ubs , FS2000.parameter_values, Fminbox(LBFGS(linesearch = BackTracking(order = 3))); autodiff = :forward)
+sol = optimize(calculate_posterior_loglikelihood, lbs, ubs , FS2000.parameter_values, Fminbox(LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
 sol.minimum
 ```
