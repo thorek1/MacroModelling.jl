@@ -584,7 +584,7 @@ function plot_solution(𝓂::ℳ,
         end
     end
 
-    solve!(𝓂, verbose = verbose, algorithm = max_algorithm, dynamics = true)
+    solve!(𝓂, verbose = verbose, algorithm = max_algorithm, dynamics = true, parameters = parameters)
 
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
@@ -665,10 +665,13 @@ function plot_solution(𝓂::ℳ,
 
         kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
 
+        has_impact = false
         if :first_order ∈ algorithm
             variable_first = [𝓂.solution.perturbation.first_order.state_update(state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
 
             variable_first = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_first]
+
+            has_impact = has_impact || sum(abs2,variable_first .- sum(variable_first)/length(variable_first))/(length(variable_first)-1) > eps()
         end
 
         if :second_order ∈ algorithm
@@ -677,6 +680,8 @@ function plot_solution(𝓂::ℳ,
             variable_second = [𝓂.solution.perturbation.second_order.state_update(SSS2 - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
 
             variable_second = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_second]
+
+            has_impact = has_impact || sum(abs2,variable_second .- sum(variable_second)/length(variable_second))/(length(variable_second)-1) > eps()
         end
 
         if :third_order ∈ algorithm
@@ -685,7 +690,11 @@ function plot_solution(𝓂::ℳ,
             variable_third = [𝓂.solution.perturbation.third_order.state_update(SSS3 - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
 
             variable_third = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_third]
+
+            has_impact = has_impact || sum(abs2,variable_third .- sum(variable_third)/length(variable_third))/(length(variable_third)-1) > eps()
         end
+
+        if !has_impact continue end
 
         push!(pp,begin
                         Pl = Plots.plot() 

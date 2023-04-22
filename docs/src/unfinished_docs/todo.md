@@ -30,6 +30,7 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
   
+- [x] fix solution plot
 - [x] see if we can avoid try catch and test for invertability instead
 - [x] have Flux solve SS field #gradient descent based is worse than LM based
 - [x] have parameters keyword accept Int and 2/3

@@ -1435,7 +1435,7 @@ function solve!(𝓂::ℳ;
     end
 
     if dynamics
-        if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))
+        if any([:riccati, :first_order, :second_order, :third_order] .∈ ([algorithm],)) && any([:riccati, :first_order, :second_order, :third_order] .∈ (𝓂.solution.outdated_algorithms,))
             SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -1452,7 +1452,7 @@ function solve!(𝓂::ℳ;
 
         end
 
-        if any([:second_order, :third_order] .∈ ([algorithm],)) && :second_order ∈ 𝓂.solution.outdated_algorithms
+        if any([:second_order, :third_order] .∈ ([algorithm],)) && any([:second_order, :third_order] .∈ (𝓂.solution.outdated_algorithms,))
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
             
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
