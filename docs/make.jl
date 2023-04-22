@@ -1,5 +1,6 @@
 using Documenter
-using MacroModelling
+using MacroModelling 
+import Turing, Plots, StatsPlots
 
 makedocs(
     sitename = "MacroModelling.jl",
