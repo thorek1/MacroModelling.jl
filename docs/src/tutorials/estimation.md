@@ -100,7 +100,7 @@ Next we define the parameter priors using the Turing package. The `@model` macro
 
 ```@repl tutorial_2
 import Turing
-import Turing: Normal, Beta, InverseGamma, NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf
 
 Turing.@model function FS2000_loglikelihood_function(data, m, observables)
     alp     ~ Beta(0.356, 0.02, μσ = true)
