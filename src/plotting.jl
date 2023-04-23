@@ -82,7 +82,7 @@ function plot_irf(𝓂::ℳ;
     initial_state::Vector{Float64} = [0.0],
     verbose::Bool = false)
 
-    gr_backend = StatsPlots.backend() == StatsPlots.GRBackend()
+    gr_backend = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     StatsPlots.default(size=(700,500),
                     plot_titlefont = 10, 
@@ -376,7 +376,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     plots_per_page::Int = 9, 
     verbose::Bool = false)
 
-    gr_backend = StatsPlots.backend() == StatsPlots.GRBackend()
+    gr_backend = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     StatsPlots.default(size=(700,500),
                     plot_titlefont = 10, 
@@ -883,7 +883,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     plots_per_page::Int = 9,
     verbose::Bool = false)
 
-    gr_backend = StatsPlots.backend() == StatsPlots.GRBackend()
+    gr_backend = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     StatsPlots.default(size=(700,500),
                     plot_titlefont = 10, 
