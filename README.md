@@ -36,10 +36,10 @@ For more details have a look at the [documentation](https://thorek1.github.io/Ma
 
 `MacroModelling.jl` requires [`julia`](https://julialang.org/downloads/) version 1.8 or higher and an IDE is recommended (e.g. [`VS Code`](https://code.visualstudio.com/download) with the [`julia extension`](https://marketplace.visualstudio.com/items?itemName=julialang.language-julia)).
 
-Once set up you can install `MacroModelling.jl` (and `Plots` and `StatsPlots` in order to plot) by typing the following in the Julia REPL:
+Once set up you can install `MacroModelling.jl` (and `StatsPlots` in order to plot) by typing the following in the Julia REPL:
 
 ```julia
-using Pkg; Pkg.add(["MacroModelling", "Plots", "StatsPlots"])
+using Pkg; Pkg.add(["MacroModelling", "StatsPlots"])
 ```
 
 ### Example
@@ -48,7 +48,7 @@ See below an implementation of a simple RBC model. You can find more detailed tu
 
 ```julia
 using MacroModelling
-import Plots, StatsPlots
+import StatsPlots
 
 @model RBC begin
     1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
