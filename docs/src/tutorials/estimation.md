@@ -246,7 +246,7 @@ get_estimated_variables(FS2000, data)
 
 Since we already solved the model with the parameters at the posterior mode we do not need to do so again. The function returns a KeyedArray with the values of the variables in levels at each point in time.
 
-Another useful tool is a historical shock decomposition. It allows us to understand the contribution of the shocks to the each variable. This can be done using the `get_shock_decomposition` function:
+Another useful tool is a historical shock decomposition. It allows us to understand the contribution of the shocks for each variable. This can be done using the `get_shock_decomposition` function:
 
 ```@repl tutorial_2
 get_shock_decomposition(FS2000, data)
@@ -254,7 +254,7 @@ get_shock_decomposition(FS2000, data)
 
 We get a 3-dimensional array with variables, shocks, and time periods as dimensions. The shocks dimension also includes the initial value as a residual between the actual value and what was explained by the shocks. This computation also relies on the Kalman smoother.
 
-Last but not least we can also plot the model estimates and the shock decomposition. The model estimates plot, using `plot_model_estimates`:
+Last but not least, we can also plot the model estimates and the shock decomposition. The model estimates plot, using `plot_model_estimates`:
 
 ```@repl tutorial_2
 plot_model_estimates(FS2000, data)
