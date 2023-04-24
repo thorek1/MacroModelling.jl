@@ -20,18 +20,12 @@ plotlyjs_backend = StatsPlots.plotlyjs
 
 
 
-
-
-
-
-
-
-
 """
 $(SIGNATURES)
-Plot model estimates of the variables given the data
+Plot model estimates of the variables given the data. The default plot shows the estimated variables, shocks, and the data to estimate the former.
+The left axis shows the level, and the right the deviation from the reference steady state. The horizontal black line indicates the non stochastic steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
 
-The left axis shows the level, and the right the deviation from the reference steady state. Linear solutions have the non stochastic steady state as reference other solution the stochastic steady state. The horizontal black line indicates the reference steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
+In case `shock_decomposition = true`, then the plot shows the variables, shocks, and data in absolute deviations from the non stochastic steady state plus the contribution of the shocks as a stacked bar chart per period.
 
 # Arguments
 - $MODEL
