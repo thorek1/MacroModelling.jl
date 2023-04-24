@@ -32,7 +32,7 @@ end;
 
 simulation = simulate(RBC);
 
-get_shock_decomposition(RBC,simulation([:c],:,:simulate))
+get_shock_decomposition(RBC,simulation([:c],:,:simulate), data_in_levels = false)
 # output
 3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 4-element Vector{Symbol}
@@ -129,7 +129,7 @@ end;
 
 simulation = simulate(RBC);
 
-get_estimated_shocks(RBC,simulation([:c],:,:simulate))
+get_estimated_shocks(RBC,simulation([:c],:,:simulate), data_in_levels = false)
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Shocks ∈ 1-element Vector{Symbol}
@@ -205,7 +205,7 @@ end;
 
 simulation = simulate(RBC);
 
-get_estimated_variables(RBC,simulation([:c],:,:simulate))
+get_estimated_variables(RBC,simulation([:c],:,:simulate), data_in_levels = false)
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 4-element Vector{Symbol}
@@ -284,7 +284,7 @@ end;
 
 simulation = simulate(RBC);
 
-get_estimated_variable_standard_deviations(RBC,simulation([:c],:,:simulate))
+get_estimated_variable_standard_deviations(RBC,simulation([:c],:,:simulate), data_in_levels = false)
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Standard_deviations ∈ 4-element Vector{Symbol}
