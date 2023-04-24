@@ -3,7 +3,7 @@ module MacroModelling
 
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 # import StatsFuns: normcdf
-using SnoopPrecompile
+using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SymPy: @vars, solve, subs, free_symbols
 import SymPy
@@ -3153,7 +3153,7 @@ end
 
 
 
-@precompile_setup begin
+@setup_workload begin
     # Putting some things in `setup` can reduce the size of the
     # precompile file and potentially make loading faster.
     @model FS2000 begin
@@ -3189,7 +3189,7 @@ end
     
     ENV["GKSwstype"] = "nul"
 
-    @precompile_all_calls begin
+    @compile_workload begin
         # all calls in this block will be precompiled, regardless of whether
         # they belong to your package or not (on Julia 1.8 and higher)
         @model RBC begin
