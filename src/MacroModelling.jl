@@ -10,7 +10,7 @@ import SymPy
 import Symbolics
 import ForwardDiff as ℱ 
 # import Zygote
-import SparseArrays: SparseMatrixCSC, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
+import SparseArrays: SparseMatrixCSC#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import ComponentArrays as 𝒞
 import BlockTriangularForm
@@ -33,7 +33,7 @@ using Requires
 
 import Reexport
 Reexport.@reexport using AxisKeys
-Reexport.@reexport import SparseArrays: sparse, spzeros
+Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
 # Type definitions
 Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
