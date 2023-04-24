@@ -33,6 +33,7 @@ using Requires
 
 import Reexport
 Reexport.@reexport using AxisKeys
+Reexport.@reexport import SparseArrays: sparse
 
 # Type definitions
 Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
@@ -53,7 +54,7 @@ end
 export @model, @parameters, solve!
 export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution
 export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd
-export get_irfs, get_irf, get_IRF, simulate
+export get_irfs, get_irf, get_IRF, simulate, get_simulation
 export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS
@@ -62,7 +63,7 @@ export get_autocorrelation, get_correlation, get_variance_decomposition, get_cor
 export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution#, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
-export calculate_kalman_filter_loglikelihood
+export calculate_kalman_filter_loglikelihood, get_shock_decomposition, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations
 export plotlyjs_backend, gr_backend
 export Beta, InverseGamma, Gamma, Normal
 
@@ -3022,15 +3023,16 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
 end
 
-function filter_and_smooth(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; verbose::Bool = false, tol::AbstractFloat = eps())
+
+function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}, observables::Vector{Symbol}; verbose::Bool = false, tol::AbstractFloat = eps())
     # Based on Durbin and Koopman (2012)
 
-    @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
+    @assert length(observables) == size(data_in_deviations)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
-    @ignore_derivatives sort!(observables)
+    sort!(observables)
 
-    @ignore_derivatives solve!(𝓂, verbose = verbose)
+    solve!(𝓂, verbose = verbose)
 
     parameters = 𝓂.parameter_values
 
@@ -3038,28 +3040,19 @@ function filter_and_smooth(𝓂::ℳ, data::AbstractArray{Float64}, observables:
     
     @assert solution_error < tol "Could not solve non stochastic steady state." 
 
-    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
-
-    obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
-
-    data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
-
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
     sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
+    A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
 
-    A = @views sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
-    B = @views sol[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+    B = @views sol[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
 
-    C = @views ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states)),:]
+    C = @views ℒ.diagm(ones(𝓂.timings.nVars))[sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),:]
 
     𝐁 = B * B'
 
-    calculate_covariance_ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
-
-    P̄ = calculate_covariance_(sol)
+    P̄ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
 
     n_obs = size(data_in_deviations,2)
 
@@ -3084,6 +3077,20 @@ function filter_and_smooth(𝓂::ℳ, data::AbstractArray{Float64}, observables:
         μ[:, t+1]   .= A * (μ[:, t] + PCiF * v[:, t])
         ϵ[:, t]     .= B' * C' * iF[:, :, t] * v[:, t]
     end
+
+
+    # Historical shock decompositionm (filter)
+    filter_decomposition = zeros(size(A,1), size(B,2)+2, n_obs)
+
+    filter_decomposition[:,end,:] .= μ[:, 2:end]
+    filter_decomposition[:,1:end-2,1] .= B .* repeat(ϵ[:, 1]', size(A,1))
+    filter_decomposition[:,end-1,1] .= filter_decomposition[:,end,1] - sum(filter_decomposition[:,1:end-2,1],dims=2)
+
+    for i in 2:size(data_in_deviations,2)
+        filter_decomposition[:,1:end-2,i] .= A * filter_decomposition[:,1:end-2,i-1]
+        filter_decomposition[:,1:end-2,i] .+= B .* repeat(ϵ[:, i]', size(A,1))
+        filter_decomposition[:,end-1,i] .= filter_decomposition[:,end,i] - sum(filter_decomposition[:,1:end-2,i],dims=2)
+    end
     
     μ̄ = zeros(size(A,1), n_obs) # smoothed_states
     σ̄ = zeros(size(A,1), n_obs) # smoothed_standard_deviations
@@ -3101,20 +3108,20 @@ function filter_and_smooth(𝓂::ℳ, data::AbstractArray{Float64}, observables:
         ϵ̄[:, t] .= B' * r
     end
 
-    # Historical shock decomposition
-    decomposition = zeros(size(A,1), size(B,2)+2, n_obs)
+    # Historical shock decompositionm (smoother)
+    smooth_decomposition = zeros(size(A,1), size(B,2)+2, n_obs)
 
-    decomposition[:,end,:] .= μ̄
-    decomposition[:,1:end-2,1] .= B .* repeat(ϵ̄[:, 1]', size(A,1))
-    decomposition[:,end-1,1] .= decomposition[:,end,1] - sum(decomposition[:,1:end-2,1],dims=2)
+    smooth_decomposition[:,end,:] .= μ̄
+    smooth_decomposition[:,1:end-2,1] .= B .* repeat(ϵ̄[:, 1]', size(A,1))
+    smooth_decomposition[:,end-1,1] .= smooth_decomposition[:,end,1] - sum(smooth_decomposition[:,1:end-2,1],dims=2)
 
     for i in 2:size(data_in_deviations,2)
-        decomposition[:,1:end-2,i] .= A * decomposition[:,1:end-2,i-1]
-        decomposition[:,1:end-2,i] .+= B .* repeat(ϵ̄[:, i]', size(A,1))
-        decomposition[:,end-1,i] .= decomposition[:,end,i] - sum(decomposition[:,1:end-2,i],dims=2)
+        smooth_decomposition[:,1:end-2,i] .= A * smooth_decomposition[:,1:end-2,i-1]
+        smooth_decomposition[:,1:end-2,i] .+= B .* repeat(ϵ̄[:, i]', size(A,1))
+        smooth_decomposition[:,end-1,i] .= smooth_decomposition[:,end,i] - sum(smooth_decomposition[:,1:end-2,i],dims=2)
     end
 
-    return μ̄, σ̄, ϵ̄, decomposition, μ[:, 2:end], σ, ϵ
+    return μ̄, σ̄, ϵ̄, smooth_decomposition, μ[:, 2:end], σ, ϵ, filter_decomposition
 end
 
 
