@@ -4,10 +4,10 @@ Return the shock decomposition in absolute deviations from the non stochastic st
 
 # Arguments
 - $MODEL
-- $CONDITIONS
+- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
 # Keyword Arguments
 - $PARAMETERS
-- `data_in_levels` [Default: `false`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
 - `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
 - $VERBOSE
 
@@ -76,7 +76,7 @@ function get_shock_decomposition(𝓂::ℳ,
     solve!(𝓂, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
-    
+
     obs_idx = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
 
     if data_in_levels
@@ -101,10 +101,10 @@ Return the estimated shocks based on the Kalman smoother or filter (depending on
 
 # Arguments
 - $MODEL
-- $CONDITIONS
+- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
 # Keyword Arguments
 - $PARAMETERS
-- `data_in_levels` [Default: `false`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
 - `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
 - $VERBOSE
 
@@ -151,7 +151,7 @@ function get_estimated_shocks(𝓂::ℳ,
     solve!(𝓂, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
-    
+
     obs_idx = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
 
     if data_in_levels
@@ -176,10 +176,10 @@ Return the estimated variables based on the Kalman smoother or filter (depending
 
 # Arguments
 - $MODEL
-- $CONDITIONS
+- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
 # Keyword Arguments
 - $PARAMETERS
-- `data_in_levels` [Default: `false`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
 - `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
 - $VERBOSE
 
@@ -230,7 +230,7 @@ function get_estimated_variables(𝓂::ℳ,
     solve!(𝓂, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
-    
+
     obs_idx = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
 
     if data_in_levels
@@ -254,10 +254,10 @@ Return the standard deviations of the Kalman smoother or filter (depending on th
 
 # Arguments
 - $MODEL
-- $CONDITIONS
+- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
 # Keyword Arguments
 - $PARAMETERS
-- `data_in_levels` [Default: `false`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
 - `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
 - $VERBOSE
 
@@ -308,7 +308,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
     solve!(𝓂, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
-    
+
     obs_idx = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
 
     if data_in_levels
