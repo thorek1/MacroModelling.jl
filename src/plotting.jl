@@ -20,6 +20,283 @@ plotlyjs_backend = StatsPlots.plotlyjs
 
 
 
+
+
+
+
+
+
+
+"""
+$(SIGNATURES)
+Plot model estimates of the variables given the data
+
+The left axis shows the level, and the right the deviation from the reference steady state. Linear solutions have the non stochastic steady state as reference other solution the stochastic steady state. The horizontal black line indicates the reference steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
+
+# Arguments
+- $MODEL
+- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
+# Keyword Arguments
+- $PARAMETERS
+- $VARIABLES
+- `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` (e.g. `:y`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}`, or `Vector{Symbol}`.
+- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- `shock_decomposition` [Default: `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks
+- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) values for the variables, shocks, and decomposition.
+- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
+- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
+- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
+- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
+- $VERBOSE
+
+# Examples
+```julia
+using MacroModelling, StatsPlots
+
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+simulation = simulate(RBC_CME)
+
+plot_model_estimates(RBC_CME, simulation([:k],:,:simulate), data_in_levels = false)
+```
+"""
+function plot_model_estimates(𝓂::ℳ,
+    data::AbstractArray{Float64};
+    parameters = nothing,
+    variables::Symbol_input = :all_including_auxilliary, 
+    shocks::Symbol_input = :all, 
+    data_in_levels::Bool = true,
+    shock_decomposition::Bool = false,
+    smooth::Bool = true,
+    show_plots::Bool = true,
+    save_plots::Bool = false,
+    save_plots_format::Symbol = :pdf,
+    save_plots_path::String = ".",
+    plots_per_page::Int = 9,
+    transparency::Float64 = .6,
+    verbose::Bool = false)
+
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+
+    StatsPlots.default(size=(700,500),
+                    plot_titlefont = 10, 
+                    titlefont = 10, 
+                    guidefont = 8, 
+                    legendfontsize = 8, 
+                    tickfontsize = 8,
+                    framestyle = :box)
+
+    write_parameters_input!(𝓂, parameters, verbose = verbose)
+
+    solve!(𝓂, verbose = verbose, dynamics = true)
+
+    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+
+    obs_idx     = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
+    var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) 
+    shock_idx   = parse_shocks_input_to_index(shocks,𝓂.timings)
+
+    if data_in_levels
+        data_in_deviations = data .- reference_steady_state[obs_idx]
+    else
+        data_in_deviations = data
+    end
+
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, sort(axiskeys(data)[1]); verbose = verbose)
+
+    variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
+    shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
+    decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
+
+    return_plots = []
+
+    estimate_color = :navy
+
+    data_color = :orangered
+
+    n_subplots = length(var_idx) + length(shock_idx)
+    pp = []
+    pane = 1
+    plot_count = 1
+
+    for i in 1:length(var_idx) + length(shock_idx)
+        if i > length(var_idx)
+            push!(pp,begin
+                    StatsPlots.plot()
+                    StatsPlots.plot!(shocks_to_plot[shock_idx[i - length(var_idx)],:],
+                        title = string(𝓂.timings.exo[shock_idx[i - length(var_idx)]]) * "₍ₓ₎", 
+                        ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
+                        color = shock_decomposition ? estimate_color : :auto)
+                    StatsPlots.hline!([0],
+                        color = :black,
+                        label = "")                               
+            end)
+        else
+            SS = reference_steady_state[var_idx[i]]
+
+            if shock_decomposition SS = zero(SS) end
+
+            can_double_axis = gr_back &&  all((variables_to_plot[var_idx[i],:] .+ SS) .> eps(Float32)) && (SS > eps(Float32)) && !shock_decomposition
+            
+            push!(pp,begin
+                    StatsPlots.plot()
+                    if shock_decomposition
+                        StatsPlots.groupedbar!(decomposition[var_idx[i],[end-1,shock_idx...],:]', 
+                            bar_position = :stack, 
+                            lw = 0,
+                            legend = :none, 
+                            alpha = transparency)
+                    end
+                    StatsPlots.plot!(variables_to_plot[var_idx[i],:] .+ SS,
+                        title = string(𝓂.timings.var[var_idx[i]]), 
+                        ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
+                        color = shock_decomposition ? estimate_color : :auto)
+                    if var_idx[i] ∈ obs_idx 
+                        StatsPlots.plot!(data_in_deviations[indexin([var_idx[i]],obs_idx),:]' .+ SS,
+                            title = string(𝓂.timings.var[var_idx[i]]),
+                            ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
+                            label = "", 
+                            color = shock_decomposition ? data_color : :auto) 
+                    end
+                    if can_double_axis 
+                        StatsPlots.plot!(StatsPlots.twinx(),
+                            100*((variables_to_plot[var_idx[i],:] .+ SS) ./ SS .- 1), 
+                            ylabel = LaTeXStrings.L"\% \Delta", 
+                            label = "") 
+                        if var_idx[i] ∈ obs_idx 
+                            StatsPlots.plot!(StatsPlots.twinx(),
+                                100*((data_in_deviations[indexin([var_idx[i]],obs_idx),:]' .+ SS) ./ SS .- 1), 
+                                ylabel = LaTeXStrings.L"\% \Delta", 
+                                label = "") 
+                        end
+                    end
+                    StatsPlots.hline!(can_double_axis ? [SS 0] : [SS],
+                        color = :black,
+                        label = "")                               
+            end)
+        end
+
+        if !(plot_count % plots_per_page == 0)
+            plot_count += 1
+        else
+            plot_count = 1
+
+            ppp = StatsPlots.plot(pp...)
+
+            p = StatsPlots.plot(ppp,begin
+                                        StatsPlots.plot(framestyle = :none)
+                                        if shock_decomposition
+                                            StatsPlots.bar!(fill(0,1,length(shock_idx)+1), 
+                                                                    label = reshape(vcat("Initial value",string.(𝓂.exo[shock_idx])),1,length(shock_idx)+1), 
+                                                                    linewidth = 0,
+                                                                    alpha = transparency,
+                                                                    lw = 0,
+                                                                    legend = :inside, 
+                                                                    legend_columns = -1)
+                                        end
+                                        StatsPlots.plot!(fill(0,1,1), 
+                                        label = "Estimate", 
+                                        color = shock_decomposition ? estimate_color : :auto,
+                                        legend = :inside)
+                                        StatsPlots.plot!(fill(0,1,1), 
+                                        label = "Data", 
+                                        color = shock_decomposition ? data_color : :auto,
+                                        legend = :inside)
+                                    end, 
+                                    layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
+                plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+
+            push!(return_plots,p)
+
+            if show_plots# & (length(pp) > 0)
+                display(p)
+            end
+
+            if save_plots# & (length(pp) > 0)
+                StatsPlots.savefig(p, save_plots_path * "/estimation__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            end
+
+            pane += 1
+            pp = []
+        end
+    end
+
+    if length(pp) > 0
+        ppp = StatsPlots.plot(pp...)
+
+        p = StatsPlots.plot(ppp,begin
+                                    StatsPlots.plot(framestyle = :none)
+                                    if shock_decomposition
+                                        StatsPlots.bar!(fill(0,1,length(shock_idx)+1), 
+                                                                label = reshape(vcat("Initial value",string.(𝓂.exo[shock_idx])),1,length(shock_idx)+1), 
+                                                                linewidth = 0,
+                                                                alpha = transparency,
+                                                                lw = 0,
+                                                                legend = :inside, 
+                                                                legend_columns = -1)
+                                    end
+                                    StatsPlots.plot!(fill(0,1,1), 
+                                    label = "Estimate", 
+                                    color = shock_decomposition ? :black : :auto,
+                                    legend = :inside)
+                                    StatsPlots.plot!(fill(0,1,1), 
+                                    label = "Data", 
+                                    color = shock_decomposition ? :darkred : :auto,
+                                    legend = :inside)
+                                end, 
+                                layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
+            plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+
+        push!(return_plots,p)
+
+        if show_plots
+            display(p)
+        end
+
+        if save_plots
+            StatsPlots.savefig(p, save_plots_path * "/estimation__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+        end
+    end
+
+    return return_plots
+end
+
+
+
+
+
+
+"""
+Wrapper for [`plot_model_estimates`](@ref) with `shock_decomposition = true`.
+"""
+plot_shock_decomposition(args...; kwargs...) =  plot_model_estimates(args...; kwargs..., shock_decomposition = true)
+
+
+
+
+
 """
 $(SIGNATURES)
 Plot impulse response functions (IRFs) of the model.
@@ -82,7 +359,7 @@ function plot_irf(𝓂::ℳ;
     initial_state::Vector{Float64} = [0.0],
     verbose::Bool = false)
 
-    gr_backend = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     StatsPlots.default(size=(700,500),
                     plot_titlefont = 10, 
@@ -186,8 +463,8 @@ function plot_irf(𝓂::ℳ;
                     if all((Y[i,:,shock] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
                         push!(pp,begin
                                     StatsPlots.plot(1:periods, Y[i,:,shock] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_backend StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                    StatsPlots.hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "")                               
+                                    if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                    StatsPlots.hline!(gr_back ? [SS 0] : [SS], color = :black, label = "")                               
                         end)
                     else
                         push!(pp,begin
@@ -202,8 +479,8 @@ function plot_irf(𝓂::ℳ;
                     if all((Y[i,:,shock] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
                         push!(pp,begin
                                     StatsPlots.plot(1:periods, Y[i,:,shock] .+ SS,title = string(𝓂.timings.var[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_backend StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                    StatsPlots.hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")                               
+                                    if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:,shock] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                    StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")                               
                         end)
                     else
                         push!(pp,begin
@@ -376,7 +653,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     plots_per_page::Int = 9, 
     verbose::Bool = false)
 
-    gr_backend = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     StatsPlots.default(size=(700,500),
                     plot_titlefont = 10, 
@@ -406,7 +683,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     for k in vars_to_plot
         if !(plot_count % plots_per_page == 0)
             plot_count += 1
-            if gr_backend
+            if gr_back
                 push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
             else
                 push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot))))
@@ -414,7 +691,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         else
             plot_count = 1
 
-            if gr_backend
+            if gr_back
                 push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
             else
                 push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot))))
@@ -430,7 +707,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                         layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
                                         plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
 
-            push!(return_plots,gr_backend ? p : ppp)
+            push!(return_plots,gr_back ? p : ppp)
 
             if show_plots
                 display(p)
@@ -457,7 +734,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                     layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
                                     plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
 
-        push!(return_plots,gr_backend ? p : ppp)
+        push!(return_plots,gr_back ? p : ppp)
 
         if show_plots
             display(p)
@@ -882,7 +1159,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     plots_per_page::Int = 9,
     verbose::Bool = false)
 
-    gr_backend = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     StatsPlots.default(size=(700,500),
                     plot_titlefont = 10, 
@@ -992,15 +1269,15 @@ function plot_conditional_forecast(𝓂::ℳ,
                         if length(cond_idx) > 0
                             push!(pp,begin
                                         StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                        if gr_backend StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                        StatsPlots.hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "") 
+                                        if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                        StatsPlots.hline!(gr_back ? [SS 0] : [SS], color = :black, label = "") 
                                         StatsPlots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                             
                             end)
                         else
                             push!(pp,begin
                                         StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                        if gr_backend StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                        StatsPlots.hline!(gr_backend ? [SS 0] : [SS], color = :black, label = "")                         
+                                        if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                        StatsPlots.hline!(gr_back ? [SS 0] : [SS], color = :black, label = "")                         
                             end)
                         end
                     else
@@ -1027,15 +1304,15 @@ function plot_conditional_forecast(𝓂::ℳ,
                         if length(cond_idx) > 0
                         push!(pp,begin
                                     StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_backend StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                    StatsPlots.hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")   
+                                    if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                    StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")   
                                     StatsPlots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
                         end)
                     else
                         push!(pp,begin
                                     StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_backend StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                    StatsPlots.hline!(gr_backend ? [SS 0] : [SS],color = :black,label = "")                              
+                                    if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                    StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")                              
                         end)
                     end
                     else
