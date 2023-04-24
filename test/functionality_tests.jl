@@ -210,6 +210,66 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
         cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = old_par_vals, variables = varnames[1], levels = true, verbose = true)
 
+        # Test filtering and smoothing
+        sol = get_solution(m)
+
+        if length(m.exo) > 1
+            var_idxs = findall(vec(sum(sol[end-length(m.exo)+1:end,:] .!= 0,dims = 1)) .> 0)[1:2]
+        else
+            var_idxs = [1]
+        end
+        
+        simulation = simulate(m)
+
+        data = simulation(m.var[var_idxs],:,:simulate)
+        data_in_levels = data .+ m.solution.non_stochastic_steady_state[var_idxs]
+
+        estim_vars1 = get_estimated_variables(m, data, data_in_levels = false, verbose = true)
+        estim_vars2 = get_estimated_variables(m, data_in_levels, verbose = true)
+        @test isapprox(estim_vars1,estim_vars2)
+
+        estim_vars1 = get_estimated_variables(m, data, data_in_levels = false, smooth = false, verbose = true)
+        estim_vars2 = get_estimated_variables(m, data_in_levels, smooth = false, verbose = true)
+        @test isapprox(estim_vars1,estim_vars2)
+
+        estim_vars1 = get_estimated_variables(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+        estim_vars2 = get_estimated_variables(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
+
+
+        estim_shocks1 = get_estimated_shocks(m, data, data_in_levels = false, verbose = true)
+        estim_shocks2 = get_estimated_shocks(m, data_in_levels, verbose = true)
+        @test isapprox(estim_shocks1,estim_shocks2)
+
+        estim_shocks1 = get_estimated_shocks(m, data, data_in_levels = false, smooth = false, verbose = true)
+        estim_shocks2 = get_estimated_shocks(m, data_in_levels, smooth = false, verbose = true)
+        @test isapprox(estim_shocks1,estim_shocks2)
+
+        estim_shocks1 = get_estimated_shocks(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+        estim_shocks2 = get_estimated_shocks(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
+
+
+        estim_stds1 = get_estimated_variable_standard_deviations(m, data, data_in_levels = false, verbose = true)
+        estim_stds2 = get_estimated_variable_standard_deviations(m, data_in_levels, verbose = true)
+        @test isapprox(estim_stds1,estim_stds2)
+
+        estim_stds1 = get_estimated_variable_standard_deviations(m, data, data_in_levels = false, smooth = false, verbose = true)
+        estim_stds2 = get_estimated_variable_standard_deviations(m, data_in_levels, smooth = false, verbose = true)
+        @test isapprox(estim_stds1,estim_stds2)
+
+        estim_stds1 = get_estimated_variable_standard_deviations(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+        estim_stds2 = get_estimated_variable_standard_deviations(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
+    
+
+        estim_decomp1 = get_shock_decomposition(m, data, data_in_levels = false, verbose = true)
+        estim_decomp2 = get_shock_decomposition(m, data_in_levels, verbose = true)
+        @test isapprox(estim_decomp1,estim_decomp2)
+
+        estim_decomp1 = get_shock_decomposition(m, data, data_in_levels = false, smooth = false, verbose = true)
+        estim_decomp2 = get_shock_decomposition(m, data_in_levels, smooth = false, verbose = true)
+        @test isapprox(estim_decomp1,estim_decomp2)
+
+        estim_decomp1 = get_shock_decomposition(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+        estim_decomp2 = get_shock_decomposition(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
     end
 
     if algorithm ∈ [:second_order, :third_order]
@@ -309,6 +369,73 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
             plot_fevd(m, verbose = true, show_plots = false, save_plots = true, plots_per_page = 6)
             plot_fevd(m, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png)
             plot_fevd(m, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png, plots_per_page = 4)
+
+
+            # Test filtering and smoothing
+            sol = get_solution(m)
+
+            if length(m.exo) > 1
+                var_idxs = findall(vec(sum(sol[end-length(m.exo)+1:end,:] .!= 0,dims = 1)) .> 0)[1:2]
+            else
+                var_idxs = [1]
+            end
+            
+            simulation = simulate(m)
+
+            data = simulation(m.var[var_idxs],:,:simulate)
+            data_in_levels = data .+ m.solution.non_stochastic_steady_state[var_idxs]
+
+            plot_model_estimates(m, data, data_in_levels = false)
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true)
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true)
+            plot_model_estimates(m, data, data_in_levels = false, shock_decomposition = true, verbose = true)
+            plot_model_estimates(m, data, data_in_levels = false, smooth = false, shock_decomposition = true, verbose = true)
+            plot_model_estimates(m, data_in_levels, verbose = true)
+            plot_model_estimates(m, data_in_levels, smooth = false, verbose = true)
+            plot_model_estimates(m, data_in_levels, smooth = false, shock_decomposition = true, verbose = true)
+
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false)
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true)
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, parameters = m.parameter_values * 1.0001)
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[1])
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[end-1:end])
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var)
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = Tuple(m.timings.var))
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = :all)
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = :all)
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = m.timings.exo)
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = m.timings.exo[1])
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = Tuple(m.timings.exo))
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, plots_per_page = 6)
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png)
+            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png, plots_per_page = 4)
+
+            plot_shock_decomposition(m, data, data_in_levels = false)
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true)
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true)
+            plot_shock_decomposition(m, data, data_in_levels = false, shock_decomposition = true, verbose = true)
+            plot_shock_decomposition(m, data, data_in_levels = false, smooth = false, shock_decomposition = true, verbose = true)
+            plot_shock_decomposition(m, data_in_levels, verbose = true)
+            plot_shock_decomposition(m, data_in_levels, smooth = false, verbose = true)
+            plot_shock_decomposition(m, data_in_levels, smooth = false, shock_decomposition = true, verbose = true)
+
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false)
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true)
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, parameters = m.parameter_values * 1.0001)
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[1])
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[end-1:end])
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var)
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = Tuple(m.timings.var))
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = :all)
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = :all)
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = m.timings.exo)
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = m.timings.exo[1])
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = Tuple(m.timings.exo))
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, plots_per_page = 6)
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png)
+            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png, plots_per_page = 4)
         end
 
 
