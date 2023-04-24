@@ -369,7 +369,7 @@ function levenberg_marquardt(f::Function,
 end
 
 
-function expand_steady_state(SS_and_pars::Vector{Float64},𝓂::ℳ)
+function expand_steady_state(SS_and_pars::Vector{M},𝓂::ℳ) where M
     all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
     all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
