@@ -46,7 +46,7 @@ The left axis shows the level, and the right the deviation from the reference st
 
 # Examples
 ```julia
-using MacroModelling
+using MacroModelling, StatsPlots
 
 @model RBC begin
     1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
@@ -338,7 +338,7 @@ The vertical axis shows the share of the shocks variance contribution, and horiz
 
 # Examples
 ```julia
-using MacroModelling
+using MacroModelling, StatsPlots
 
 @model RBC_CME begin
     y[0]=A[0]*k[-1]^alpha
@@ -510,7 +510,7 @@ The (non) stochastic steady state is plotted along with the mapping from the cho
 
 # Examples
 ```julia
-using MacroModelling
+using MacroModelling, StatsPlots
 
 @model RBC_CME begin
     y[0]=A[0]*k[-1]^alpha
@@ -814,8 +814,7 @@ Limited to the first order perturbation solution of the model.
 
 # Examples
 ```julia
-using MacroModelling
-using SparseArrays
+using MacroModelling, StatsPlots
 
 @model RBC_CME begin
     y[0]=A[0]*k[-1]^alpha
