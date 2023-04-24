@@ -180,6 +180,7 @@ Return the estimated variables based on the Kalman smoother or filter (depending
 # Keyword Arguments
 - $PARAMETERS
 - `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- $LEVELS
 - `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
 - $VERBOSE
 
@@ -222,6 +223,7 @@ function get_estimated_variables(𝓂::ℳ,
     parameters = nothing,
     # variables::Symbol_input = :all_including_auxilliary, 
     data_in_levels::Bool = true,
+    levels::Bool = true,
     smooth::Bool = true,
     verbose::Bool = false)
 
@@ -241,7 +243,7 @@ function get_estimated_variables(𝓂::ℳ,
 
     filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, sort(axiskeys(data)[1]); verbose = verbose)
 
-    return KeyedArray(filtered_and_smoothed[smooth ? 1 : 5];  Variables = 𝓂.timings.var, Periods = 1:size(data,2))
+    return KeyedArray(levels ? filtered_and_smoothed[smooth ? 1 : 5] .+ reference_steady_state : filtered_and_smoothed[smooth ? 1 : 5];  Variables = 𝓂.timings.var, Periods = 1:size(data,2))
 end
 
 
