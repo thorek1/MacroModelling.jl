@@ -1,5 +1,335 @@
 """
 $(SIGNATURES)
+Return the shock decomposition in absolute deviations from the non stochastic steady state based on the Kalman smoother or filter (depending on the `smooth` keyword argument) using the provided data and first order solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+
+# Arguments
+- $MODEL
+- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
+# Keyword Arguments
+- $PARAMETERS
+- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
+- $VERBOSE
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+simulation = simulate(RBC);
+
+get_shock_decomposition(RBC,simulation([:c],:,:simulate), data_in_levels = false)
+# output
+3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   Shocks ∈ 2-element Vector{Symbol}
+◪   Periods ∈ 40-element UnitRange{Int64}
+And data, 4×2×40 Array{Float64, 3}:
+[showing 3 of 40 slices]
+[:, :, 1] ~ (:, :, 1):
+        (:eps_z₍ₓ₎)   (:Initial_values)
+  (:c)   0.000407252  -0.00104779
+  (:k)   0.00374808   -0.0104645
+  (:q)   0.00415533   -0.000807161
+  (:z)   0.000603617  -1.99957e-6
+
+[:, :, 21] ~ (:, :, 21):
+        (:eps_z₍ₓ₎)  (:Initial_values)
+  (:c)   0.026511    -0.000433619
+  (:k)   0.25684     -0.00433108
+  (:q)   0.115858    -0.000328764
+  (:z)   0.0150266    0.0
+
+[:, :, 40] ~ (:, :, 40):
+        (:eps_z₍ₓ₎)  (:Initial_values)
+  (:c)   0.0437976   -0.000187505
+  (:k)   0.4394      -0.00187284
+  (:q)   0.00985518  -0.000142164
+  (:z)  -0.00366442   8.67362e-19
+```
+"""
+function get_shock_decomposition(𝓂::ℳ,
+    data::AbstractArray{Float64};
+    parameters = nothing,
+    # variables::Symbol_input = :all_including_auxilliary, 
+    # shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+    data_in_levels::Bool = true,
+    smooth::Bool = true,
+    verbose::Bool = false)
+
+    write_parameters_input!(𝓂, parameters, verbose = verbose)
+
+    solve!(𝓂, verbose = verbose, dynamics = true)
+
+    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+
+    obs_idx = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
+
+    if data_in_levels
+        data_in_deviations = data .- reference_steady_state[obs_idx]
+    else
+        data_in_deviations = data
+    end
+
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, sort(axiskeys(data)[1]); verbose = verbose)
+
+    # var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+
+    return KeyedArray(filtered_and_smoothed[smooth ? 4 : 8][:,1:end-1,:];  Variables = 𝓂.timings.var, Shocks = vcat(map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), :Initial_values), Periods = 1:size(data,2))
+end
+
+
+
+
+"""
+$(SIGNATURES)
+Return the estimated shocks based on the Kalman smoother or filter (depending on the `smooth` keyword argument) using the provided data and first order solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+
+# Arguments
+- $MODEL
+- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
+# Keyword Arguments
+- $PARAMETERS
+- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
+- $VERBOSE
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+simulation = simulate(RBC);
+
+get_estimated_shocks(RBC,simulation([:c],:,:simulate), data_in_levels = false)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Shocks ∈ 1-element Vector{Symbol}
+→   Periods ∈ 40-element UnitRange{Int64}
+And data, 1×40 Matrix{Float64}:
+               (1)          (2)         (3)         (4)         …  (37)         (38)        (39)         (40)
+  (:eps_z₍ₓ₎)    0.0603617    0.614652   -0.519048    0.711454       -0.873774     1.27918    -0.929701    -0.2255
+```
+"""
+function get_estimated_shocks(𝓂::ℳ,
+    data::AbstractArray{Float64};
+    parameters = nothing,
+    data_in_levels::Bool = true,
+    smooth::Bool = true,
+    verbose::Bool = false)
+
+    write_parameters_input!(𝓂, parameters, verbose = verbose)
+
+    solve!(𝓂, verbose = verbose, dynamics = true)
+
+    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+
+    obs_idx = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
+
+    if data_in_levels
+        data_in_deviations = data .- reference_steady_state[obs_idx]
+    else
+        data_in_deviations = data
+    end
+
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, sort(axiskeys(data)[1]); verbose = verbose)
+
+    return KeyedArray(filtered_and_smoothed[smooth ? 3 : 7];  Shocks = map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo), Periods = 1:size(data,2))
+end
+
+
+
+
+
+
+"""
+$(SIGNATURES)
+Return the estimated variables based on the Kalman smoother or filter (depending on the `smooth` keyword argument) using the provided data and first order solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+
+# Arguments
+- $MODEL
+- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
+# Keyword Arguments
+- $PARAMETERS
+- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- $LEVELS
+- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
+- $VERBOSE
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+simulation = simulate(RBC);
+
+get_estimated_variables(RBC,simulation([:c],:,:simulate), data_in_levels = false)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   Periods ∈ 40-element UnitRange{Int64}
+And data, 4×40 Matrix{Float64}:
+        (1)            (2)           (3)            (4)           …  (37)           (38)          (39)           (40)
+  (:c)   -0.000640535    0.00358475    0.000455785    0.00490466        0.0496719      0.055509      0.0477877      0.0436101
+  (:k)   -0.00671639     0.0324867     0.00663736     0.0456383         0.500217       0.548478      0.481045       0.437527
+  (:q)    0.00334817     0.0426535    -0.0247438      0.0440383        -0.0114766      0.113775     -0.00867574     0.00971302
+  (:z)    0.000601617    0.00626684   -0.00393712     0.00632712       -0.00771079     0.0112496    -0.00704709    -0.00366442
+```
+"""
+function get_estimated_variables(𝓂::ℳ,
+    data::AbstractArray{Float64};
+    parameters = nothing,
+    # variables::Symbol_input = :all_including_auxilliary, 
+    data_in_levels::Bool = true,
+    levels::Bool = true,
+    smooth::Bool = true,
+    verbose::Bool = false)
+
+    write_parameters_input!(𝓂, parameters, verbose = verbose)
+
+    solve!(𝓂, verbose = verbose, dynamics = true)
+
+    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+
+    obs_idx = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
+
+    if data_in_levels
+        data_in_deviations = data .- reference_steady_state[obs_idx]
+    else
+        data_in_deviations = data
+    end
+
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, sort(axiskeys(data)[1]); verbose = verbose)
+
+    return KeyedArray(levels ? filtered_and_smoothed[smooth ? 1 : 5] .+ reference_steady_state : filtered_and_smoothed[smooth ? 1 : 5];  Variables = 𝓂.timings.var, Periods = 1:size(data,2))
+end
+
+
+
+
+
+"""
+$(SIGNATURES)
+Return the standard deviations of the Kalman smoother or filter (depending on the `smooth` keyword argument) estimates of the model variables based on the provided data and first order solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+
+# Arguments
+- $MODEL
+- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
+# Keyword Arguments
+- $PARAMETERS
+- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
+- $VERBOSE
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+simulation = simulate(RBC);
+
+get_estimated_variable_standard_deviations(RBC,simulation([:c],:,:simulate), data_in_levels = false)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Standard_deviations ∈ 4-element Vector{Symbol}
+→   Periods ∈ 40-element UnitRange{Int64}
+And data, 4×40 Matrix{Float64}:
+        (1)           (2)            (3)            (4)            …  (38)            (39)            (40)
+  (:c)    1.23202e-9    1.84069e-10    8.23181e-11    8.23181e-11        8.23181e-11     8.23181e-11     0.0
+  (:k)    0.00509299    0.000382934    2.87922e-5     2.16484e-6         1.6131e-9       9.31323e-10     1.47255e-9
+  (:q)    0.0612887     0.0046082      0.000346483    2.60515e-5         1.31709e-9      1.31709e-9      9.31323e-10
+  (:z)    0.00961766    0.000723136    5.43714e-5     4.0881e-6          3.08006e-10     3.29272e-10     2.32831e-10
+```
+"""
+function get_estimated_variable_standard_deviations(𝓂::ℳ,
+    data::AbstractArray{Float64};
+    parameters = nothing,
+    # variables::Symbol_input = :all_including_auxilliary, 
+    data_in_levels::Bool = true,
+    smooth::Bool = true,
+    verbose::Bool = false)
+
+    write_parameters_input!(𝓂, parameters, verbose = verbose)
+
+    solve!(𝓂, verbose = verbose, dynamics = true)
+
+    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+
+    obs_idx = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
+
+    if data_in_levels
+        data_in_deviations = data .- reference_steady_state[obs_idx]
+    else
+        data_in_deviations = data
+    end
+
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, sort(axiskeys(data)[1]); verbose = verbose)
+
+    return KeyedArray(filtered_and_smoothed[smooth ? 2 : 6];  Standard_deviations = 𝓂.timings.var, Periods = 1:size(data,2))
+end
+
+
+
+
+
+"""
+$(SIGNATURES)
 Return the conditional forecast given restrictions on endogenous variables and shocks (optional) in a 2-dimensional array. The algorithm finds the combinations of shocks with the smallest magnitude to match the conditions.
 
 Limited to the first order perturbation solution of the model.
@@ -10,8 +340,9 @@ Limited to the first order perturbation solution of the model.
 # Keyword Arguments
 - $SHOCK_CONDITIONS
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
+- $PARAMETERS
 - $VARIABLES
-`conditions_in_levels` [Default: `false`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
+- `conditions_in_levels` [Default: `false`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
 - $LEVELS
 - $VERBOSE
 
@@ -487,6 +818,11 @@ get_IRF = get_irf
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`.
 """
 simulate(args...; kwargs...) =  get_irf(args...; kwargs..., shocks = :simulate)#[:,:,1]
+
+"""
+Wrapper for [`get_irf`](@ref) with `shocks = :simulate`.
+"""
+get_simulation(args...; kwargs...) =  get_irf(args...; kwargs..., shocks = :simulate)#[:,:,1]
 
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`.

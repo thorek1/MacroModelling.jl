@@ -227,3 +227,49 @@ sol = optimize(calculate_posterior_loglikelihood, lbs, ubs , FS2000.parameter_va
 
 sol.minimum
 ```
+
+## Model estimates given the data and the model solution
+
+Having found the parameters at the posterior mode we can retrieve model estimates of the shocks which explain the data used to estimate it. This can be done with the `get_estimated_shocks` function:
+
+```@repl tutorial_2
+get_estimated_shocks(FS2000, data, parameters = sol.minimum)
+```
+
+As the first argument we pass the model, followed by the data (in levels), and then we pass the parameters at the posterior mode. The model is solved with this parameterisation and the shocks are calculated using the Kalman smoother.
+
+We estimated the model on two variables but our model allows us to look at all variables given the data. Looking at the estimated variables can be done using the `get_estimated_variables` function:
+
+```@repl tutorial_2
+get_estimated_variables(FS2000, data)
+```
+
+Since we already solved the model with the parameters at the posterior mode we do not need to do so again. The function returns a KeyedArray with the values of the variables in levels at each point in time.
+
+Another useful tool is a historical shock decomposition. It allows us to understand the contribution of the shocks for each variable. This can be done using the `get_shock_decomposition` function:
+
+```@repl tutorial_2
+get_shock_decomposition(FS2000, data)
+```
+
+We get a 3-dimensional array with variables, shocks, and time periods as dimensions. The shocks dimension also includes the initial value as a residual between the actual value and what was explained by the shocks. This computation also relies on the Kalman smoother.
+
+Last but not least, we can also plot the model estimates and the shock decomposition. The model estimates plot, using `plot_model_estimates`:
+
+```@repl tutorial_2
+plot_model_estimates(FS2000, data)
+```
+
+![Model estimates](../assets/estimation__m__2.png)
+
+shows the variables of the model (blue), the estimated shocks (in the last panel), and the data (red) used to estimate the model.
+
+The shock decomposition can be plotted using `plot_shock_decomposition`:
+
+```@repl tutorial_2
+plot_shock_decomposition(FS2000, data)
+```
+
+![Shock decomposition](../assets/estimation_shock_decomp__m__2.png)
+
+and it shows the contribution of the shocks and the contribution of the initial value to the deviations of the variables.

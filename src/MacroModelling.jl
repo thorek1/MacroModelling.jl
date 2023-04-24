@@ -10,7 +10,7 @@ import SymPy
 import Symbolics
 import ForwardDiff as ℱ 
 # import Zygote
-import SparseArrays: SparseMatrixCSC, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
+import SparseArrays: SparseMatrixCSC#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import ComponentArrays as 𝒞
 import BlockTriangularForm
@@ -22,7 +22,7 @@ using ImplicitDifferentiation
 import SpeedMapping: speedmapping
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
-using AxisKeys
+# using AxisKeys
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
 import RecursiveFactorization as RF
 
@@ -30,6 +30,10 @@ using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
 using Requires
+
+import Reexport
+Reexport.@reexport using AxisKeys
+Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
 # Type definitions
 Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
@@ -49,8 +53,8 @@ end
 
 export @model, @parameters, solve!
 export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution
-export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd
-export get_irfs, get_irf, get_IRF, simulate
+export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
+export get_irfs, get_irf, get_IRF, simulate, get_simulation
 export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS
@@ -59,7 +63,7 @@ export get_autocorrelation, get_correlation, get_variance_decomposition, get_cor
 export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution#, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
-export calculate_kalman_filter_loglikelihood
+export calculate_kalman_filter_loglikelihood, get_shock_decomposition, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations
 export plotlyjs_backend, gr_backend
 export Beta, InverseGamma, Gamma, Normal
 
@@ -70,8 +74,8 @@ export write_mod_file, write_dynare_file, write_to_dynare_file, export_dynare, e
 export irf, girf
 
 # Remove comment for debugging
-# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, SSS_third_order_parameter_derivatives, SSS_second_order_parameter_derivatives, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state
-# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, calculate_quadratic_iteration_solution, calculate_linear_time_iteration_solution, get_symbols
+# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, SSS_third_order_parameter_derivatives, SSS_second_order_parameter_derivatives, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
+# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, calculate_quadratic_iteration_solution, calculate_linear_time_iteration_solution, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
 
 # levenberg_marquardt
 
@@ -363,6 +367,29 @@ function levenberg_marquardt(f::Function,
 
     return undo_transform(current_guess,transformation_level), (iterations, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level)))
 end
+
+
+function expand_steady_state(SS_and_pars::Vector{M},𝓂::ℳ) where M
+    all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+    all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    
+    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    
+    [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
+end
+
+
+
+# function add_auxilliary_variables_to_steady_state(SS_and_pars::Vector{Float64},𝓂::ℳ)
+#     all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+#     all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    
+#     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+
+#     [SS_and_pars[indexin([s],vars_in_ss_equations)...] for s in all_variables]
+# end
 
 
 function create_symbols_eqs!(𝓂::ℳ)
@@ -1277,13 +1304,15 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
 
     state, converged = second_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂), 𝓂)
 
-    all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    # all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+    # all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
     
-    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    # NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
     
-    all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
+    # all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
     return all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
@@ -1388,13 +1417,15 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
 
     state, converged = third_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂, 𝐒₃), 𝓂)
 
-    all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    # all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+    # all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
     
-    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    # NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
     
-    all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
+    # all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
     return all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃
@@ -3018,6 +3049,109 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
 end
+
+
+function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}, observables::Vector{Symbol}; verbose::Bool = false, tol::AbstractFloat = eps())
+    # Based on Durbin and Koopman (2012)
+
+    @assert length(observables) == size(data_in_deviations)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
+    @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+
+    sort!(observables)
+
+    solve!(𝓂, verbose = verbose)
+
+    parameters = 𝓂.parameter_values
+
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    
+    @assert solution_error < tol "Could not solve non stochastic steady state." 
+
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+
+    sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+    A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+
+    B = @views sol[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
+
+    C = @views ℒ.diagm(ones(𝓂.timings.nVars))[sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),:]
+
+    𝐁 = B * B'
+
+    P̄ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
+
+    n_obs = size(data_in_deviations,2)
+
+    v = zeros(size(C,1), n_obs)
+    μ = zeros(size(A,1), n_obs+1) # filtered_states
+    P = zeros(size(A,1), size(A,1), n_obs+1) # filtered_covariances
+    σ = zeros(size(A,1), n_obs) # filtered_standard_deviations
+    iF= zeros(size(C,1), size(C,1), n_obs)
+    L = zeros(size(A,1), size(A,1), n_obs)
+    ϵ = zeros(size(B,2), n_obs) # filtered_shocks
+
+    P[:, :, 1] = P̄
+
+    # Kalman Filter
+    for t in axes(data_in_deviations,2)
+        v[:, t]     .= data_in_deviations[:, t] - C * μ[:, t]
+        iF[:, :, t] .= inv(C * P[:, :, t] * C')
+        PCiF         = P[:, :, t] * C' * iF[:, :, t]
+        L[:, :, t]  .= A - A * PCiF * C
+        P[:, :, t+1].= A * P[:, :, t] * L[:, :, t]' + 𝐁
+        σ[:, t]     .= sqrt.(abs.(ℒ.diag(P[:, :, t+1]))) # small numerica errors in this computation
+        μ[:, t+1]   .= A * (μ[:, t] + PCiF * v[:, t])
+        ϵ[:, t]     .= B' * C' * iF[:, :, t] * v[:, t]
+    end
+
+
+    # Historical shock decompositionm (filter)
+    filter_decomposition = zeros(size(A,1), size(B,2)+2, n_obs)
+
+    filter_decomposition[:,end,:] .= μ[:, 2:end]
+    filter_decomposition[:,1:end-2,1] .= B .* repeat(ϵ[:, 1]', size(A,1))
+    filter_decomposition[:,end-1,1] .= filter_decomposition[:,end,1] - sum(filter_decomposition[:,1:end-2,1],dims=2)
+
+    for i in 2:size(data_in_deviations,2)
+        filter_decomposition[:,1:end-2,i] .= A * filter_decomposition[:,1:end-2,i-1]
+        filter_decomposition[:,1:end-2,i] .+= B .* repeat(ϵ[:, i]', size(A,1))
+        filter_decomposition[:,end-1,i] .= filter_decomposition[:,end,i] - sum(filter_decomposition[:,1:end-2,i],dims=2)
+    end
+    
+    μ̄ = zeros(size(A,1), n_obs) # smoothed_states
+    σ̄ = zeros(size(A,1), n_obs) # smoothed_standard_deviations
+    ϵ̄ = zeros(size(B,2), n_obs) # smoothed_shocks
+
+    r = zeros(size(A,1))
+    N = zeros(size(A,1), size(A,1))
+
+    # Kalman Smoother
+    for t in n_obs:-1:1
+        r       .= C' * iF[:, :, t] * v[:, t] + L[:, :, t]' * r
+        μ̄[:, t] .= μ[:, t] + P[:, :, t] * r
+        N       .= C' * iF[:, :, t] * C + L[:, :, t]' * N * L[:, :, t]
+        σ̄[:, t] .= sqrt.(abs.(ℒ.diag(P[:, :, t] - P[:, :, t] * N * P[:, :, t]'))) # can go negative
+        ϵ̄[:, t] .= B' * r
+    end
+
+    # Historical shock decompositionm (smoother)
+    smooth_decomposition = zeros(size(A,1), size(B,2)+2, n_obs)
+
+    smooth_decomposition[:,end,:] .= μ̄
+    smooth_decomposition[:,1:end-2,1] .= B .* repeat(ϵ̄[:, 1]', size(A,1))
+    smooth_decomposition[:,end-1,1] .= smooth_decomposition[:,end,1] - sum(smooth_decomposition[:,1:end-2,1],dims=2)
+
+    for i in 2:size(data_in_deviations,2)
+        smooth_decomposition[:,1:end-2,i] .= A * smooth_decomposition[:,1:end-2,i-1]
+        smooth_decomposition[:,1:end-2,i] .+= B .* repeat(ϵ̄[:, i]', size(A,1))
+        smooth_decomposition[:,end-1,i] .= smooth_decomposition[:,end,i] - sum(smooth_decomposition[:,1:end-2,i],dims=2)
+    end
+
+    return μ̄, σ̄, ϵ̄, smooth_decomposition, μ[:, 2:end], σ, ϵ, filter_decomposition
+end
+
+
 
 @precompile_setup begin
     # Putting some things in `setup` can reduce the size of the
