@@ -22,7 +22,7 @@ using ImplicitDifferentiation
 import SpeedMapping: speedmapping
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
-using AxisKeys
+# using AxisKeys
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
 import RecursiveFactorization as RF
 
@@ -30,6 +30,9 @@ using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
 using Requires
+
+import Reexport
+Reexport.@reexport using AxisKeys
 
 # Type definitions
 Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
@@ -70,8 +73,8 @@ export write_mod_file, write_dynare_file, write_to_dynare_file, export_dynare, e
 export irf, girf
 
 # Remove comment for debugging
-# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, SSS_third_order_parameter_derivatives, SSS_second_order_parameter_derivatives, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state
-# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, calculate_quadratic_iteration_solution, calculate_linear_time_iteration_solution, get_symbols
+export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, SSS_third_order_parameter_derivatives, SSS_second_order_parameter_derivatives, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
+export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, calculate_quadratic_iteration_solution, calculate_linear_time_iteration_solution, get_symbols, calculate_covariance_AD
 
 # levenberg_marquardt
 
@@ -3018,6 +3021,103 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
 end
+
+function filter_and_smooth(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; verbose::Bool = false, tol::AbstractFloat = eps())
+    # Based on Durbin and Koopman (2012)
+
+    @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
+    @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+
+    @ignore_derivatives sort!(observables)
+
+    @ignore_derivatives solve!(𝓂, verbose = verbose)
+
+    parameters = 𝓂.parameter_values
+
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    
+    @assert solution_error < tol "Could not solve non stochastic steady state." 
+
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
+
+    data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
+
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+
+    sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
+
+    A = @views sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
+    B = @views sol[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+
+    C = @views ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states)),:]
+
+    𝐁 = B * B'
+
+    calculate_covariance_ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+
+    P̄ = calculate_covariance_(sol)
+
+    n_obs = size(data_in_deviations,2)
+
+    v = zeros(size(C,1), n_obs)
+    μ = zeros(size(A,1), n_obs+1) # filtered_states
+    P = zeros(size(A,1), size(A,1), n_obs+1) # filtered_covariances
+    σ = zeros(size(A,1), n_obs) # filtered_standard_deviations
+    iF= zeros(size(C,1), size(C,1), n_obs)
+    L = zeros(size(A,1), size(A,1), n_obs)
+    ϵ = zeros(size(C,1), n_obs) # filtered_shocks
+
+    P[:, :, 1] = P̄
+
+    # Kalman Filter
+    for t in axes(data_in_deviations,2)
+        v[:, t]     .= data_in_deviations[:, t] - C * μ[:, t]
+        iF[:, :, t] .= inv(C * P[:, :, t] * C')
+        PCiF         = P[:, :, t] * C' * iF[:, :, t]
+        L[:, :, t]  .= A - A * PCiF * C
+        P[:, :, t+1].= A * P[:, :, t] * L[:, :, t]' + 𝐁
+        σ[:, t] = sqrt.(ℒ.diag(P[:, :, t+1]))
+        μ[:, t+1]   .= A * (μ[:, t] + PCiF * v[:, t])
+        ϵ[:, t]     .= B' * C' * iF[:, :, t] * v[:, t]
+    end
+    
+    μ̄ = zeros(size(A,1), n_obs) # smoothed_states
+    σ̄ = zeros(size(A,1), n_obs) # smoothed_standard_deviations
+    ϵ̄ = zeros(size(C,1), n_obs) # smoothed_shocks
+
+    r = zeros(size(A,1))
+    N = zeros(size(A,1), size(A,1))
+
+    # Kalman Smoother
+    for t in n_obs:-1:1
+        r       .= C' * iF[:, :, t] * v[:, t] + L[:, :, t]' * r
+        μ̄[:, t] .= μ[:, t] + P[:, :, t] * r
+        N       .= C' * iF[:, :, t] * C + L[:, :, t]' * N * L[:, :, t]
+        σ̄[:, t] .= sqrt.(abs.(ℒ.diag(P[:, :, t] - P[:, :, t] * N * P[:, :, t]'))) # can go negative
+        ϵ̄[:, t] .= B' * r
+    end
+
+    # Historical shock decomposition
+    decomposition = zeros(size(A,1), size(B,2)+2, n_obs)
+
+    decomposition[:,end,:] .= μ̄
+    decomposition[:,1:end-2,1] .= B .* repeat(ϵ̄[:, 1]', size(A,1))
+    decomposition[:,end-1,1] .= decomposition[:,end,1] - sum(decomposition[:,1:end-2,1],dims=2)
+
+    for i in 2:size(data_in_deviations,2)
+        decomposition[:,1:end-2,i] .= A * decomposition[:,1:end-2,i-1]
+        decomposition[:,1:end-2,i] .+= B .* repeat(ϵ̄[:, i]', size(A,1))
+        decomposition[:,end-1,i] .= decomposition[:,end,i] - sum(decomposition[:,1:end-2,i],dims=2)
+    end
+
+    return μ̄, σ̄, ϵ̄, decomposition, μ[:, 2:end], σ, ϵ
+end
+
+
 
 @precompile_setup begin
     # Putting some things in `setup` can reduce the size of the
