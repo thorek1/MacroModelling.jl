@@ -3100,7 +3100,7 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
         PCiF         = P[:, :, t] * C' * iF[:, :, t]
         L[:, :, t]  .= A - A * PCiF * C
         P[:, :, t+1].= A * P[:, :, t] * L[:, :, t]' + 𝐁
-        σ[:, t]     .= sqrt.(ℒ.diag(P[:, :, t+1]))
+        σ[:, t]     .= sqrt.(abs.(ℒ.diag(P[:, :, t+1]))) # small numerica errors in this computation
         μ[:, t+1]   .= A * (μ[:, t] + PCiF * v[:, t])
         ϵ[:, t]     .= B' * C' * iF[:, :, t] * v[:, t]
     end
