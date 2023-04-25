@@ -233,7 +233,7 @@ sol.minimum
 Having found the parameters at the posterior mode we can retrieve model estimates of the shocks which explain the data used to estimate it. This can be done with the `get_estimated_shocks` function:
 
 ```@repl tutorial_2
-get_estimated_shocks(FS2000, data, parameters = sol.minimum)
+get_estimated_shocks(FS2000, data, parameters = sol.minimizer)
 ```
 
 As the first argument we pass the model, followed by the data (in levels), and then we pass the parameters at the posterior mode. The model is solved with this parameterisation and the shocks are calculated using the Kalman smoother.
