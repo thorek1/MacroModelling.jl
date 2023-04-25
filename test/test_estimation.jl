@@ -75,11 +75,13 @@ Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); a
 end
 
 
+
+plot_model_estimates(FS2000, data, parameters = sol.minimizer)
+plot_shock_decomposition(FS2000, data)
+
 FS2000 = nothing
 m = nothing
 # @profview sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)
-plot_model_estimates(FS2000,data,parameters = sol.minimizer)
-plot_shock_decomposition(FS2000,data)
 
 
 # chain_NUTS  = sample(FS2000_loglikelihood, NUTS(), n_samples, init_params = FS2000.parameter_values, progress = true)#, init_params = FS2000.parameter_values)#init_theta = FS2000.parameter_values)
