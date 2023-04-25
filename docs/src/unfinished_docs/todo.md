@@ -3,12 +3,9 @@
 ## High priority
 
 - [ ] add balanced growth path handling
-- [ ] do large mat derivatives manually instead of autodiff
-- [ ] shorten plot_irf (take inspiration from model estimate)
 - [ ] check if you can do analytic derivatives for higher order derivatives
 - [ ] kick out unsused parameters from m.parameters
 - [ ] higher order solution derivs with Zygote
-- [ ] add other outputs from estimation (smoothed, filter states and shocks)
 - [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
 - [ ] use krylov instead of linearsolve and speed up sparse matrix calcs in implicit diff of higher order funcs
 - [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
@@ -33,6 +30,8 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
   
+- [x] add other outputs from estimation (smoothed, filter states and shocks)
+- [x] shorten plot_irf (take inspiration from model estimate)
 - [x] fix solution plot
 - [x] see if we can avoid try catch and test for invertability instead
 - [x] have Flux solve SS field #gradient descent based is worse than LM based
