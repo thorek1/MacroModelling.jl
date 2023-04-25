@@ -3053,7 +3053,8 @@ end
 
 function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}, observables::Vector{Symbol}; verbose::Bool = false, tol::AbstractFloat = eps())
     # Based on Durbin and Koopman (2012)
-
+    # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
+    
     @assert length(observables) == size(data_in_deviations)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
