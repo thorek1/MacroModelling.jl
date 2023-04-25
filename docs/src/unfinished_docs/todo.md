@@ -3,6 +3,8 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] do large mat derivatives manually instead of autodiff
+- [ ] shorten plot_irf (take inspiration from model estimate)
 - [ ] check if you can do analytic derivatives for higher order derivatives
 - [ ] kick out unsused parameters from m.parameters
 - [ ] higher order solution derivs with Zygote
