@@ -48,10 +48,10 @@ Parameters: 9</code></pre><p>First, we load the package and then use the <a href
            del     = 0.01
            z_e_a   = 0.035449
            z_e_m   = 0.008862
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	2.786 seconds
-Set up non stochastic steady state problem:	0.348 seconds
-Take symbolic derivatives up to first order:	0.857 seconds
-Find non stochastic steady state:	3.816 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	2.597 seconds
+Set up non stochastic steady state problem:	0.365 seconds
+Take symbolic derivatives up to first order:	0.898 seconds
+Find non stochastic steady state:	3.69 seconds
 Model:      FS2000
 Variables
  Total:     16
@@ -129,15 +129,15 @@ ERROR: ArgumentError: Package Plots not found in current path, maybe you meant `
   parameters      mean
       Symbol   Float64
 
-         alp    0.4056
+         alp    0.4040
          bet    0.9905
          gam    0.0046
-         mst    1.0142
-         rho    0.8479
-         psi    0.6832
-         del    0.0024
-       z_e_a    0.0138
-       z_e_m    0.0033</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; pars = ComponentArray(parameter_mean.nt[2],Axis(parameter_mean.nt[1]))</code><code class="nohighlight hljs ansi" style="display:block;">ComponentVector{Float64}(alp = 0.40559130998457665, bet = 0.9905009350583442, gam = 0.004640864919443897, mst = 1.0141557365905167, rho = 0.8479141282257541, psi = 0.6831630476948456, del = 0.0024202166025776213, z_e_a = 0.013806494959992149, z_e_m = 0.003329224761194059)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; logjoint(FS2000_loglikelihood, pars)</code><code class="nohighlight hljs ansi" style="display:block;">1343.4193756160048</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
+         mst    1.0143
+         rho    0.8460
+         psi    0.6870
+         del    0.0025
+       z_e_a    0.0137
+       z_e_m    0.0033</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; pars = ComponentArray(parameter_mean.nt[2],Axis(parameter_mean.nt[1]))</code><code class="nohighlight hljs ansi" style="display:block;">ComponentVector{Float64}(alp = 0.4040184179578578, bet = 0.9905106626709773, gam = 0.004602542101823455, mst = 1.0142865343564416, rho = 0.8459703748803123, psi = 0.687044912757688, del = 0.0025033485618040684, z_e_a = 0.013742468346121216, z_e_m = 0.0033382496296779133)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; logjoint(FS2000_loglikelihood, pars)</code><code class="nohighlight hljs ansi" style="display:block;">1343.4003554381188</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
            orig_pars[pars_syms] = [par1, par2]
            logjoint(model, orig_pars)
        end</code><code class="nohighlight hljs ansi" style="display:block;">calculate_log_probability (generic function with 1 method)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; granularity = 32;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par1 = :del;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par2 = :gam;</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range1 = collect(range(minimum(chain_NUTS[par1]), stop = maximum(chain_NUTS[par1]), length = granularity));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range2 = collect(range(minimum(chain_NUTS[par2]), stop = maximum(chain_NUTS[par2]), length = granularity));</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; p = surface(par_range1, par_range2,
@@ -145,26 +145,26 @@ ERROR: ArgumentError: Package Plots not found in current path, maybe you meant `
                    camera=(30, 65),
                    colorbar=false,
                    color=:inferno);</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray(reduce(hcat, get(chain_NUTS, FS2000.parameters)[FS2000.parameters])[s,:], Axis(FS2000.parameters))) for s in 1:length(chain_NUTS)]</code><code class="nohighlight hljs ansi" style="display:block;">1000-element Vector{Float64}:
- 1339.4003349152163
- 1337.8660775017859
- 1338.1005885457132
- 1336.8750344799791
- 1339.1851900867857
- 1339.4184889618498
- 1339.452306057955
- 1340.6540907793683
- 1341.7578460900259
- 1340.4501749927888
+ 1341.3010880912557
+ 1339.236537137642
+ 1338.5006898113493
+ 1338.782923296846
+ 1339.0114538095386
+ 1342.1661046628778
+ 1339.0326700465016
+ 1341.7558813250837
+ 1337.9509250983097
+ 1336.9485511635196
     ⋮
- 1338.1249106535774
- 1338.5810618176245
- 1339.0521157594342
- 1343.2333436779318
- 1342.63491387888
- 1341.4432934318902
- 1340.365759735274
- 1339.6166513023406
- 1342.2369156416355</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; scatter3d!(vec(collect(chain_NUTS[par1])),
+ 1341.2052568542765
+ 1339.5469463577235
+ 1337.1310733995383
+ 1335.2428123433463
+ 1341.54696550926
+ 1340.3367660282356
+ 1339.4130124223655
+ 1340.1073330821625
+ 1337.755296811688</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; scatter3d!(vec(collect(chain_NUTS[par1])),
                   vec(collect(chain_NUTS[par2])),
                   joint_loglikelihood,
                    mc = :viridis,
@@ -202,76 +202,77 @@ ERROR: ArgumentError: Package Plots not found in current path, maybe you meant `
     |x - x&#39;|/|x&#39;|          = 0.00e+00 ≤ 0.0e+00
     |f(x) - f(x&#39;)|         = 0.00e+00 ≤ 0.0e+00
     |f(x) - f(x&#39;)|/|f(x&#39;)| = 0.00e+00 ≤ 0.0e+00
-    |g(x)|                 = 3.26e-03 ≰ 1.0e-08
+    |g(x)|                 = 1.24e-02 ≰ 1.0e-08
 
  * Work counters
-    Seconds run:   34  (vs limit Inf)
-    Iterations:    8
-    f(x) calls:    608
-    ∇f(x) calls:   84</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimum</code><code class="nohighlight hljs ansi" style="display:block;">-1343.7491257509541</code></pre><h2 id="Model-estimates-given-the-data-and-the-model-solution"><a class="docs-heading-anchor" href="#Model-estimates-given-the-data-and-the-model-solution">Model estimates given the data and the model solution</a><a id="Model-estimates-given-the-data-and-the-model-solution-1"></a><a class="docs-heading-anchor-permalink" href="#Model-estimates-given-the-data-and-the-model-solution" title="Permalink"></a></h2><p>Having found the parameters at the posterior mode we can retrieve model estimates of the shocks which explain the data used to estimate it. This can be done with the <code>get_estimated_shocks</code> function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_estimated_shocks(FS2000, data, parameters = sol.minimum)</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: MethodError: no method matching write_parameters_input!(::MacroModelling.ℳ, ::Float64; verbose=false)
-Closest candidates are:
-  write_parameters_input!(::MacroModelling.ℳ, !Matched::Tuple{Int64, Vararg{Int64}}; verbose) at ~/work/MacroModelling.jl/MacroModelling.jl/src/MacroModelling.jl:1902
-  write_parameters_input!(::MacroModelling.ℳ, !Matched::Tuple{Pair{Symbol, Real}, Vararg{Pair{Symbol, Float64}}}; verbose) at ~/work/MacroModelling.jl/MacroModelling.jl/src/MacroModelling.jl:1840
-  write_parameters_input!(::MacroModelling.ℳ, !Matched::Tuple{Pair{Symbol, Int64}, Vararg{Pair{Symbol, Int64}}}; verbose) at ~/work/MacroModelling.jl/MacroModelling.jl/src/MacroModelling.jl:1835
-  ...</code></pre><p>As the first argument we pass the model, followed by the data (in levels), and then we pass the parameters at the posterior mode. The model is solved with this parameterisation and the shocks are calculated using the Kalman smoother.</p><p>We estimated the model on two variables but our model allows us to look at all variables given the data. Looking at the estimated variables can be done using the <code>get_estimated_variables</code> function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_estimated_variables(FS2000, data)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+    Seconds run:   31  (vs limit Inf)
+    Iterations:    7
+    f(x) calls:    606
+    ∇f(x) calls:   86</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimum</code><code class="nohighlight hljs ansi" style="display:block;">-1343.749125755449</code></pre><h2 id="Model-estimates-given-the-data-and-the-model-solution"><a class="docs-heading-anchor" href="#Model-estimates-given-the-data-and-the-model-solution">Model estimates given the data and the model solution</a><a id="Model-estimates-given-the-data-and-the-model-solution-1"></a><a class="docs-heading-anchor-permalink" href="#Model-estimates-given-the-data-and-the-model-solution" title="Permalink"></a></h2><p>Having found the parameters at the posterior mode we can retrieve model estimates of the shocks which explain the data used to estimate it. This can be done with the <code>get_estimated_shocks</code> function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_estimated_shocks(FS2000, data, parameters = sol.minimizer)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Shocks ∈ 2-element Vector{Symbol}
+→   Periods ∈ 192-element UnitRange{Int64}
+And data, 2×192 Matrix{Float64}:
+             (1)         (2)         …  (191)         (192)
+  (:e_a₍ₓ₎)    3.07802     2.02956          0.311919      0.0219202
+  (:e_m₍ₓ₎)   -0.338782    0.529111        -0.455175     -0.596635</code></pre><p>As the first argument we pass the model, followed by the data (in levels), and then we pass the parameters at the posterior mode. The model is solved with this parameterisation and the shocks are calculated using the Kalman smoother.</p><p>We estimated the model on two variables but our model allows us to look at all variables given the data. Looking at the estimated variables can be done using the <code>get_estimated_variables</code> function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_estimated_variables(FS2000, data)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 18-element Vector{Symbol}
 →   Periods ∈ 192-element UnitRange{Int64}
 And data, 18×192 Matrix{Float64}:
                  (1)          (2)          …  (191)           (192)
-  (:P)             0.674169     0.704951          0.941348        0.939687
-  (:Pᴸ⁽¹⁾)         0.677744     0.703854          0.934489        0.934376
-  (:R)             1.00829      1.00879           1.00845         1.00825
-  (:W)             2.55163      2.57728           2.70783         2.70358
-  (:c)             1.33859      1.31124    …      1.06892         1.06901
-  (:cᴸ⁽¹⁾)         1.32791      1.30194           1.06777         1.06768
+  (:P)             0.58587      0.596628          0.560846        0.559733
+  (:Pᴸ⁽¹⁾)         0.585109     0.595479          0.561547        0.560631
+  (:R)             1.02576      1.02692           1.01966         1.01858
+  (:W)             2.9987       3.01048           2.96334         2.95989
+  (:c)             1.73321      1.7013     …      1.80033         1.80164
+  (:cᴸ⁽¹⁾)         1.73494      1.7039            1.79936         1.80039
    ⋮                                       ⋱      ⋮
-  (:k)            29.6646      28.8024           21.0094         21.0055
-  (:l)             0.679186     0.697707          0.833146        0.831854
+  (:k)            53.4882      52.0316           56.2703         56.2511
+  (:l)             0.724385     0.733135          0.705016        0.704388
   (:log_gp_obs)   -0.0044494    0.0038943         0.00295712      0.00285919
   (:log_gy_obs)    0.0376443    0.026348   …      0.00793817      0.00487735
-  (:m)             1.00824      1.01208           1.00944         1.00785
-  (:n)             0.269282     0.273106          0.307716        0.307735
-  (:y)             1.50648      1.4943            1.38441         1.38436</code></pre><p>Since we already solved the model with the parameters at the posterior mode we do not need to do so again. The function returns a KeyedArray with the values of the variables in levels at each point in time.</p><p>Another useful tool is a historical shock decomposition. It allows us to understand the contribution of the shocks for each variable. This can be done using the <code>get_shock_decomposition</code> function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_shock_decomposition(FS2000, data)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+  (:m)             1.01686      1.01822           1.00971         1.00845
+  (:n)             0.241599     0.2436            0.237911        0.237975
+  (:y)             2.1224       2.11046           2.14601         2.14607</code></pre><p>Since we already solved the model with the parameters at the posterior mode we do not need to do so again. The function returns a KeyedArray with the values of the variables in levels at each point in time.</p><p>Another useful tool is a historical shock decomposition. It allows us to understand the contribution of the shocks for each variable. This can be done using the <code>get_shock_decomposition</code> function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_shock_decomposition(FS2000, data)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 18-element Vector{Symbol}
 →   Shocks ∈ 3-element Vector{Symbol}
 ◪   Periods ∈ 192-element UnitRange{Int64}
 And data, 18×3×192 Array{Float64, 3}:
 [showing 3 of 192 slices]
 [:, :, 1] ~ (:, :, 1):
-                 (:e_a₍ₓ₎)    (:e_m₍ₓ₎)    (:Initial_values)
-  (:P)            0.0232629    0.00894581  -0.351291
-  (:Pᴸ⁽¹⁾)        0.0224529    0.00112529  -0.339085
-  (:R)            1.4073e-16   0.00104053   3.69749e-6
+                 (:e_a₍ₓ₎)     (:e_m₍ₓ₎)     (:Initial_values)
+  (:P)            0.0148888    -0.00108997    0.00810032
+  (:Pᴸ⁽¹⁾)        0.0146127    -0.000913514   0.00743927
+  (:R)            1.10999e-15  -0.000955341   0.00312338
    ⋮
-  (:log_gy_obs)   0.0334631   -2.71057e-5  -0.00429163
-  (:m)           -0.0          0.00800965   2.84621e-5
-  (:n)            0.00336359  -1.3331e-5   -0.0507978
-  (:y)           -0.0106822   -3.6752e-5    0.161325
+  (:log_gy_obs)   0.0328866     8.71831e-5    0.000120402
+  (:m)           -0.0          -0.00111941    0.00365977
+  (:n)            0.00322234    3.46633e-5    0.000868552
+  (:y)           -0.018474      0.000187176  -0.00624117
 
 [:, :, 97] ~ (:, :, 97):
                  (:e_a₍ₓ₎)     (:e_m₍ₓ₎)     (:Initial_values)
-  (:P)           -0.0318694     0.0175998    -0.0116966
-  (:Pᴸ⁽¹⁾)       -0.0307596     0.000922605  -0.0112893
-  (:R)           -4.07711e-17   0.00222604    2.77556e-17
+  (:P)            0.0288474     0.00602703    0.000719117
+  (:Pᴸ⁽¹⁾)        0.0283124     0.00503279    0.000705781
+  (:R)           -5.72245e-15   0.0053957     3.21901e-10
    ⋮
-  (:log_gy_obs)  -0.0203647     4.03789e-5   -0.000142913
-  (:m)            3.24042e-17   0.0171354     2.08167e-17
-  (:n)           -0.004608     -0.000250948  -0.00169122
-  (:y)            0.0146342     0.000627772   0.00537103
+  (:log_gy_obs)  -0.0168618     0.000336675   7.85282e-6
+  (:m)            3.6702e-16    0.00632232    3.77183e-10
+  (:n)            0.00624334   -0.000223709   0.000155636
+  (:y)           -0.0357937    -0.000897015  -0.000892278
 
 [:, :, 192] ~ (:, :, 192):
                  (:e_a₍ₓ₎)     (:e_m₍ₓ₎)     (:Initial_values)
-  (:P)           -0.0604662     0.00730599   -0.000403466
-  (:Pᴸ⁽¹⁾)       -0.0583607    -0.000124702  -0.000389417
-  (:R)            1.31748e-16   0.000994424   8.67362e-19
+  (:P)            0.00129259   -0.00565098    0.000121482
+  (:Pᴸ⁽¹⁾)        0.00126862   -0.00472692    0.000119229
+  (:R)           -2.08211e-16  -0.00500928    2.1684e-17
    ⋮
-  (:log_gy_obs)  -0.00361954    1.81506e-6   -4.92966e-6
-  (:m)            1.0721e-16    0.00765475    0.0
-  (:n)           -0.00874282   -0.000192528  -5.83372e-5
-  (:y)            0.0277658     0.000535853   0.00018527</code></pre><p>We get a 3-dimensional array with variables, shocks, and time periods as dimensions. The shocks dimension also includes the initial value as a residual between the actual value and what was explained by the shocks. This computation also relies on the Kalman smoother.</p><p>Last but not least, we can also plot the model estimates and the shock decomposition. The model estimates plot, using <code>plot_model_estimates</code>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_model_estimates(FS2000, data)</code><code class="nohighlight hljs ansi" style="display:block;">3-element Vector{Any}:
+  (:log_gy_obs)   0.000247161   7.87658e-5    1.32659e-6
+  (:m)           -4.6437e-17   -0.00586955    4.68375e-17
+  (:n)            0.000279751   0.000195658   2.62919e-5
+  (:y)           -0.00160384    0.000901742  -0.000150734</code></pre><p>We get a 3-dimensional array with variables, shocks, and time periods as dimensions. The shocks dimension also includes the initial value as a residual between the actual value and what was explained by the shocks. This computation also relies on the Kalman smoother.</p><p>Last but not least, we can also plot the model estimates and the shock decomposition. The model estimates plot, using <code>plot_model_estimates</code>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_model_estimates(FS2000, data)</code><code class="nohighlight hljs ansi" style="display:block;">3-element Vector{Any}:
  Plot{Plots.GRBackend() n=38}
  Plot{Plots.GRBackend() n=36}
  Plot{Plots.GRBackend() n=6}</code></pre><p><img src="../../assets/estimation__m__2.png" alt="Model estimates"/></p><p>shows the variables of the model (blue), the estimated shocks (in the last panel), and the data (red) used to estimate the model.</p><p>The shock decomposition can be plotted using <code>plot_shock_decomposition</code>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_shock_decomposition(FS2000, data)</code><code class="nohighlight hljs ansi" style="display:block;">3-element Vector{Any}:
  Plot{Plots.GRBackend() n=50}
  Plot{Plots.GRBackend() n=52}
- Plot{Plots.GRBackend() n=9}</code></pre><p><img src="../../assets/estimation_shock_decomp__m__2.png" alt="Shock decomposition"/></p><p>and it shows the contribution of the shocks and the contribution of the initial value to the deviations of the variables.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../sw03/">« Smets and Wouters (2003)</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Tuesday 25 April 2023 10:17">Tuesday 25 April 2023</span>. Using Julia version 1.8.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ Plot{Plots.GRBackend() n=9}</code></pre><p><img src="../../assets/estimation_shock_decomp__m__2.png" alt="Shock decomposition"/></p><p>and it shows the contribution of the shocks and the contribution of the initial value to the deviations of the variables.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../sw03/">« Smets and Wouters (2003)</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.24 on <span class="colophon-date" title="Tuesday 25 April 2023 11:09">Tuesday 25 April 2023</span>. Using Julia version 1.8.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
