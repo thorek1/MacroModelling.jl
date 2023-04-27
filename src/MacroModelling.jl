@@ -2727,14 +2727,13 @@ end
 
 
 
-function girf(state_update::Function, level::Vector{Float64}, T::timings; 
+function girf(state_update::Function, initial_state::Vector{Float64}, level::Vector{Float64}, T::timings; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Symbol_input = :all, 
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
-    draws::Int = 50, 
-    iterations_to_steady_state::Int = 500)
+    draws::Int = 50)
 
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
@@ -2765,12 +2764,6 @@ function girf(state_update::Function, level::Vector{Float64}, T::timings;
     var_idx = parse_variables_input_to_index(variables, T)
 
     Y = zeros(T.nVars,periods,length(shock_idx))
-
-    initial_state = zeros(T.nVars)
-
-    for warm in 1:iterations_to_steady_state
-        initial_state = state_update(initial_state, zeros(T.nExo))
-    end
 
     for (i,ii) in enumerate(shock_idx)
         for draw in 1:draws
@@ -3054,7 +3047,7 @@ end
 function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}, observables::Vector{Symbol}; verbose::Bool = false, tol::AbstractFloat = eps())
     # Based on Durbin and Koopman (2012)
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
-    
+
     @assert length(observables) == size(data_in_deviations)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 

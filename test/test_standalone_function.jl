@@ -246,15 +246,17 @@ end
     end
 
 
-
     iirrff = irf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
 
     @test isapprox(iirrff[4,1,:],[ -0.00036685520477089503
     0.0021720718769730014],rtol = eps(Float32))
-    ggiirrff = girf(first_order_state_update, zeros(T.nVars), T)
+    ggiirrff = girf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
     @test isapprox(iirrff[4,1,:],ggiirrff[4,1,:],rtol = eps(Float32))
 
-    ggiirrff2 = girf(second_order_state_update, zeros(T.nVars), T, draws = 1000,warmup_periods = 100)
+
+    SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.second_order.stochastic_steady_state
+
+    ggiirrff2 = girf(second_order_state_update, SSS_delta, zeros(T.nVars), T, draws = 1000,warmup_periods = 100)
     @test isapprox(ggiirrff2[4,1,:],[-0.0003668849861768406
     0.0021711333455274096],rtol = 1e-3)
 
@@ -262,7 +264,9 @@ end
     @test isapprox(iirrff2[4,1,:],[-0.0004547347878067665, 0.0020831426377533636],rtol = 1e-6)
 
 
-    ggiirrff3 = girf(third_order_state_update, zeros(T.nVars), T,draws = 1000,warmup_periods = 100)
+    SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.third_order.stochastic_steady_state
+
+    ggiirrff3 = girf(third_order_state_update, SSS_delta, zeros(T.nVars), T,draws = 1000,warmup_periods = 100)
     @test isapprox(ggiirrff3[4,1,:],[ -0.00036686142588429404
     0.002171120660323429],rtol = 1e-3)
 
