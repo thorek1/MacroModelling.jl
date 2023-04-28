@@ -1255,6 +1255,10 @@ function get_solution(𝓂::ℳ, parameters::Vector{<: Real}; algorithm::Symbol 
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm == :third_order
+        if !success
+            return SS_and_pars[1:length(𝓂.var)], 𝐒₁, spzeros(𝓂.timings.nVars,2), spzeros(𝓂.timings.nVars,2), success
+        end
+
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
         𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁; T = 𝓂.timings)
