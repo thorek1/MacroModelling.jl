@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] check that there is an error if he cant find SS
 - [ ] check if you can do analytic derivatives for higher order derivatives
 - [ ] kick out unsused parameters from m.parameters
 - [ ] higher order solution derivs with Zygote
