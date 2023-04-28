@@ -2727,7 +2727,10 @@ end
 
 
 
-function girf(state_update::Function, initial_state::Vector{Float64}, level::Vector{Float64}, T::timings; 
+function girf(state_update::Function, 
+    initial_state::Vector{Float64}, 
+    level::Vector{Float64}, 
+    T::timings; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Symbol_input = :all, 
@@ -2752,7 +2755,7 @@ function girf(state_update::Function, initial_state::Vector{Float64}, level::Vec
 
         @assert length(setdiff(shock_input, T.exo)) == 0 "Provided shocks which are not part of the model."
 
-        shock_history = zeros(T.nExo, periods)
+        shock_history = zeros(T.nExo, periods + 1)
 
         shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
 
@@ -2763,7 +2766,7 @@ function girf(state_update::Function, initial_state::Vector{Float64}, level::Vec
 
     var_idx = parse_variables_input_to_index(variables, T)
 
-    Y = zeros(T.nVars,periods,length(shock_idx))
+    Y = zeros(T.nVars, periods + 1, length(shock_idx))
 
     for (i,ii) in enumerate(shock_idx)
         for draw in 1:draws
@@ -2771,8 +2774,8 @@ function girf(state_update::Function, initial_state::Vector{Float64}, level::Vec
                 initial_state = state_update(initial_state, randn(T.nExo))
             end
 
-            Y1 = zeros(T.nVars, periods)
-            Y2 = zeros(T.nVars, periods)
+            Y1 = zeros(T.nVars, periods + 1)
+            Y2 = zeros(T.nVars, periods + 1)
 
             baseline_noise = randn(T.nExo)
 
@@ -2782,9 +2785,9 @@ function girf(state_update::Function, initial_state::Vector{Float64}, level::Vec
             end
 
             Y1[:,1] = state_update(initial_state, baseline_noise)
-            Y2[:,1] = state_update(initial_state, baseline_noise + shock_history[:,1])
+            Y2[:,1] = state_update(initial_state, baseline_noise)
 
-            for t in 1:periods-1
+            for t in 1:periods
                 baseline_noise = randn(T.nExo)
 
                 Y1[:,t+1] = state_update(Y1[:,t],baseline_noise)
@@ -2796,7 +2799,7 @@ function girf(state_update::Function, initial_state::Vector{Float64}, level::Vec
         Y[:,:,i] /= draws
     end
     
-    return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
+    return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
 end
 
 
