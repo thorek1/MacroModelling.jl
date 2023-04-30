@@ -197,3 +197,13 @@ write_to_dynare_file = write_mod_file
 See [`write_mod_file`](@ref)
 """
 write_to_dynare = write_mod_file
+
+"""
+See [`write_mod_file`](@ref)
+"""
+export_model = write_mod_file
+
+"""
+See [`write_mod_file`](@ref)
+"""
+write_to_dynare = write_mod_file
