@@ -2665,12 +2665,12 @@ function irf(state_update::Function, initial_state::Vector{Float64}, level::Vect
 
         shock_idx = 1
     elseif shocks isa KeyedArray{Float64}
-        shock_input = axiskeys(shocks)[1]
+        shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
 
         periods += size(shocks)[2]
 
         @assert length(setdiff(shock_input, T.exo)) == 0 "Provided shocks which are not part of the model."
-
+        
         shock_history = zeros(T.nExo, periods)
 
         shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
@@ -2749,7 +2749,7 @@ function girf(state_update::Function,
 
         shock_idx = 1
     elseif shocks isa KeyedArray{Float64}
-        shock_input = axiskeys(shocks)[1]
+        shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
 
         periods += size(shocks)[2]
 
