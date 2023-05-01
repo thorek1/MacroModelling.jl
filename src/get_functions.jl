@@ -63,7 +63,7 @@ And data, 4×2×40 Array{Float64, 3}:
 ```
 """
 function get_shock_decomposition(𝓂::ℳ,
-    data::AbstractArray{Float64};
+    data::KeyedArray{Float64};
     parameters = nothing,
     # variables::Symbol_input = :all_including_auxilliary, 
     # shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
@@ -77,7 +77,9 @@ function get_shock_decomposition(𝓂::ℳ,
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
-    obs_idx = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
+    data = data(sort(axiskeys(data,1)))
+    
+    obs_idx = parse_variables_input_to_index(collect(axiskeys(data,1)), 𝓂.timings)
 
     if data_in_levels
         data_in_deviations = data .- reference_steady_state[obs_idx]
@@ -85,7 +87,7 @@ function get_shock_decomposition(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, sort(axiskeys(data)[1]); verbose = verbose)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, axiskeys(data,1); verbose = verbose)
 
     # var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
@@ -140,7 +142,7 @@ And data, 1×40 Matrix{Float64}:
 ```
 """
 function get_estimated_shocks(𝓂::ℳ,
-    data::AbstractArray{Float64};
+    data::KeyedArray{Float64};
     parameters = nothing,
     data_in_levels::Bool = true,
     smooth::Bool = true,
@@ -152,7 +154,9 @@ function get_estimated_shocks(𝓂::ℳ,
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
-    obs_idx = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
+    data = data(sort(axiskeys(data,1)))
+    
+    obs_idx = parse_variables_input_to_index(collect(axiskeys(data,1)), 𝓂.timings)
 
     if data_in_levels
         data_in_deviations = data .- reference_steady_state[obs_idx]
@@ -160,7 +164,7 @@ function get_estimated_shocks(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, sort(axiskeys(data)[1]); verbose = verbose)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, axiskeys(data,1); verbose = verbose)
 
     return KeyedArray(filtered_and_smoothed[smooth ? 3 : 7];  Shocks = map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo), Periods = 1:size(data,2))
 end
@@ -219,7 +223,7 @@ And data, 4×40 Matrix{Float64}:
 ```
 """
 function get_estimated_variables(𝓂::ℳ,
-    data::AbstractArray{Float64};
+    data::KeyedArray{Float64};
     parameters = nothing,
     # variables::Symbol_input = :all_including_auxilliary, 
     data_in_levels::Bool = true,
@@ -233,7 +237,9 @@ function get_estimated_variables(𝓂::ℳ,
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
-    obs_idx = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
+    data = data(sort(axiskeys(data,1)))
+
+    obs_idx = parse_variables_input_to_index(collect(axiskeys(data,1)), 𝓂.timings)
 
     if data_in_levels
         data_in_deviations = data .- reference_steady_state[obs_idx]
@@ -241,7 +247,7 @@ function get_estimated_variables(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, sort(axiskeys(data)[1]); verbose = verbose)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, axiskeys(data,1); verbose = verbose)
 
     return KeyedArray(levels ? filtered_and_smoothed[smooth ? 1 : 5] .+ reference_steady_state[1:length(𝓂.var)] : filtered_and_smoothed[smooth ? 1 : 5];  Variables = 𝓂.timings.var, Periods = 1:size(data,2))
 end
@@ -298,7 +304,7 @@ And data, 4×40 Matrix{Float64}:
 ```
 """
 function get_estimated_variable_standard_deviations(𝓂::ℳ,
-    data::AbstractArray{Float64};
+    data::KeyedArray{Float64};
     parameters = nothing,
     # variables::Symbol_input = :all_including_auxilliary, 
     data_in_levels::Bool = true,
@@ -311,7 +317,9 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
-    obs_idx = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
+    data = data(sort(axiskeys(data,1)))
+    
+    obs_idx = parse_variables_input_to_index(collect(axiskeys(data,1)), 𝓂.timings)
 
     if data_in_levels
         data_in_deviations = data .- reference_steady_state[obs_idx]
@@ -319,7 +327,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, sort(axiskeys(data)[1]); verbose = verbose)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, axiskeys(data,1); verbose = verbose)
 
     return KeyedArray(filtered_and_smoothed[smooth ? 2 : 6];  Standard_deviations = 𝓂.timings.var, Periods = 1:size(data,2))
 end
