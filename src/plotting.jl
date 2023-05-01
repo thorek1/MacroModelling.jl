@@ -1047,7 +1047,7 @@ Limited to the first order perturbation solution of the model.
 - $SHOCK_CONDITIONS
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $VARIABLES
-`conditions_in_levels` [Default: `false`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
+`conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
 - $LEVELS
 - `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
 - `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
@@ -1091,7 +1091,7 @@ conditions[2,2] = .02
 shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
 shocks[1,1] = .05
 
-plot_conditional_forecast(RBC_CME, conditions, shocks = shocks)
+plot_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_levels = false)
 
 # The same can be achieved with the other input formats:
 # conditions = Matrix{Union{Nothing,Float64}}(undef,7,2)
@@ -1114,10 +1114,11 @@ plot_conditional_forecast(RBC_CME, conditions, shocks = shocks)
 function plot_conditional_forecast(𝓂::ℳ,
     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
+    initial_state::Vector{Float64} = [0.0],
     periods::Int = 40, 
     parameters = nothing,
     variables::Symbol_input = :all_including_auxilliary, 
-    conditions_in_levels::Bool = false,
+    conditions_in_levels::Bool = true,
     levels::Bool = false,
     show_plots::Bool = true,
     save_plots::Bool = false,
@@ -1139,6 +1140,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     Y = get_conditional_forecast(𝓂,
                                 conditions,
                                 shocks = shocks, 
+                                initial_state = initial_state,
                                 periods = periods, 
                                 parameters = parameters,
                                 variables = variables, 
@@ -1218,7 +1220,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     return_plots = []
 
     for i in 1:length(var_idx)
-        if all(isapprox.(Y[i,:], 0, atol = eps(Float32)))
+        if all(isapprox.(Y[i,:], 0, atol = eps(Float32))) && !(any(vcat(conditions,shocks)[var_idx[i],:] .!= nothing))
             n_subplots -= 1
         end
     end
@@ -1226,75 +1228,44 @@ function plot_conditional_forecast(𝓂::ℳ,
     for i in 1:length(var_idx)
         SS = reference_steady_state[i]
         if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)) > 0
+            
+            if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
+                cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
+                if length(cond_idx) > 0
+                push!(pp,begin
+                            StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
+                            if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                            StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")   
+                            StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
+                end)
+            else
+                push!(pp,begin
+                            StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
+                            if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                            StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")                              
+                end)
+            end
+            else
+                cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
+                if length(cond_idx) > 0
+                    push!(pp,begin
+                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                StatsPlots.hline!([SS], color = :black, label = "")
+                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)  
+                    end)
+                else 
+                    push!(pp,begin
+                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                StatsPlots.hline!([SS], color = :black, label = "")
+                    end)
+                end
+
+            end
+
             if !(plot_count % plots_per_page == 0)
                 plot_count += 1
-                if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
-                    cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
-                    if length(cond_idx) > 0
-                        push!(pp,begin
-                                    StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                    StatsPlots.hline!(gr_back ? [SS 0] : [SS], color = :black, label = "") 
-                                    StatsPlots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                             
-                        end)
-                    else
-                        push!(pp,begin
-                                    StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                    StatsPlots.hline!(gr_back ? [SS 0] : [SS], color = :black, label = "")                         
-                        end)
-                    end
-                else
-                    cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
-                    if length(cond_idx) > 0
-                        push!(pp,begin
-                                    StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                    StatsPlots.hline!([SS], color = :black, label = "")
-                                    StatsPlots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)   
-                        end)
-                    else
-                        push!(pp,begin
-                                    StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                    StatsPlots.hline!([SS], color = :black, label = "")
-                        end)
-                    end
-
-                end
             else
-
                 plot_count = 1
-                if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
-                    cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
-                    if length(cond_idx) > 0
-                    push!(pp,begin
-                                StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")   
-                                StatsPlots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
-                    end)
-                else
-                    push!(pp,begin
-                                StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")                              
-                    end)
-                end
-                else
-                    cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
-                    if length(cond_idx) > 0
-                        push!(pp,begin
-                                    StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                    StatsPlots.hline!([SS], color = :black, label = "")
-                                    StatsPlots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)  
-                        end)
-                    else 
-                        push!(pp,begin
-                                    StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                    StatsPlots.hline!([SS], color = :black, label = "")
-                        end)
-                    end
-
-                end
 
                 shock_string = "Conditional forecast"
 

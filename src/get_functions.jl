@@ -342,7 +342,7 @@ Limited to the first order perturbation solution of the model.
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS
 - $VARIABLES
-- `conditions_in_levels` [Default: `false`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
+- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
 - $LEVELS
 - $VERBOSE
 
@@ -383,7 +383,7 @@ conditions[2,2] = .02
 shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
 shocks[1,1] = .05
 
-get_conditional_forecast(RBC_CME, conditions, shocks = shocks)
+get_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_levels = false)
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables_and_shocks ∈ 9-element Vector{Symbol}
@@ -421,10 +421,11 @@ And data, 9×42 Matrix{Float64}:
 function get_conditional_forecast(𝓂::ℳ,
     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
+    initial_state::Vector{Float64} = [0.0],
     periods::Int = 40, 
     parameters = nothing,
     variables::Symbol_input = :all_including_auxilliary, 
-    conditions_in_levels::Bool = false,
+    conditions_in_levels::Bool = true,
     levels::Bool = false,
     verbose::Bool = false)
 
@@ -486,6 +487,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - reference_steady_state[1:length(𝓂.var)]
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
@@ -515,9 +517,9 @@ function get_conditional_forecast(𝓂::ℳ,
 
     shocks[free_shock_idx,1] .= 0
 
-    shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(zeros(size(C,1)), Float64[shocks[:,1]...])[cond_var_idx])
+    shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(initial_state, Float64[shocks[:,1]...])[cond_var_idx])
 
-    Y[:,1] = state_update(zeros(size(C,1)), Float64[shocks[:,1]...])
+    Y[:,1] = state_update(initial_state, Float64[shocks[:,1]...])
 
     for i in 2:size(conditions,2)
         cond_var_idx = findall(conditions[:,i] .!= nothing)
@@ -531,11 +533,12 @@ function get_conditional_forecast(𝓂::ℳ,
 
         @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
-	CC = C[cond_var_idx,free_shock_idx]
+	    CC = C[cond_var_idx,free_shock_idx]
 
         if length(cond_var_idx) == 1
             @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
         elseif length(free_shock_idx) == length(cond_var_idx)
+
 	    CC = RF.lu(CC, check = false)
 
 	    @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
@@ -624,7 +627,7 @@ function get_irf(𝓂::ℳ,
 
         shock_idx = 1
     elseif shocks isa KeyedArray{Float64}
-        shock_input = axiskeys(shocks)[1]
+        shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
 
         periods += size(shocks)[2]
 
