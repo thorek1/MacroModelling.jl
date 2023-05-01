@@ -148,53 +148,53 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         conditions[var_idxs[1],1] = .01
         conditions[var_idxs[2],2] = .02
         
-        cond_fcst = get_conditional_forecast(m, conditions)
+        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false)
 
         if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
             shocks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
             shocks[1,1] = .1
-            cond_fcst = get_conditional_forecast(m, conditions, shocks = shocks)
+            cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, shocks = shocks)
         end
 
         conditions = spzeros(size(new_sub_irfs_all,1),2)
         conditions[var_idxs[1],1] = .01
         conditions[var_idxs[2],2] = .02
         
-        cond_fcst = get_conditional_forecast(m, conditions)
+        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false)
 
         if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
             shocks = spzeros(size(new_sub_irfs_all,3),1)
             shocks[1,1] = .1
-            cond_fcst = get_conditional_forecast(m, conditions, shocks = shocks)
+            cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, shocks = shocks)
         end
 
         conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[1:2]], Periods = 1:2)
         conditions[var_idxs[1],1] = .01
         conditions[var_idxs[2],2] = .02
 
-        cond_fcst = get_conditional_forecast(m, conditions)
+        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false)
 
         if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
             shocks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
             shocks[1,1] = .1
-            cond_fcst = get_conditional_forecast(m, conditions, shocks = shocks)
+            cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, shocks = shocks)
         end
 
-        cond_fcst = get_conditional_forecast(m, conditions)
-        cond_fcst = get_conditional_forecast(m, conditions, periods = 10, verbose = true)
-        cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
-        cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
-        cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
-        cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false)
+        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
 
 
         if plots
-            plot_conditional_forecast(m, conditions, save_plots = false, show_plots = true)
-            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = false, periods = 10, verbose = true)
-            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
-            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = false, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
-            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
-            plot_conditional_forecast(m, conditions, save_plots = true, show_plots = false, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
+            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = false, show_plots = true)
+            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, verbose = true)
+            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
+            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
+            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
+            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
         end
 
         NSSS = get_SS(m,derivatives = false)
@@ -206,9 +206,9 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         conditions_lvl[var_idxs[1],1] = .01 + reference_steady_state[var_idxs[1]]
         conditions_lvl[var_idxs[2],2] = .02 + reference_steady_state[var_idxs[2]]
 
-        cond_fcst = get_conditional_forecast(m, conditions_lvl, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], conditions_in_levels = true, verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions_lvl, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
 
-        cond_fcst = get_conditional_forecast(m, conditions, periods = 10, parameters = old_par_vals, variables = varnames[1], levels = true, verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = varnames[1], levels = true, verbose = true)
 
         # Test filtering and smoothing
         sol = get_solution(m)
