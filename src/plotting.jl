@@ -882,12 +882,16 @@ function plot_solution(𝓂::ℳ,
         label = "Non Stochastic Steady State")
     end
     if :second_order ∈ algorithm    
+        SSS2 = 𝓂.solution.perturbation.second_order.stochastic_steady_state
+
         StatsPlots.scatter!(fill(0,1,1), 
         framestyle = :none, 
         legend = :inside, 
         label = "Stochastic Steady State (2nd order)")
     end
     if :third_order ∈ algorithm    
+        SSS3 = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+
         StatsPlots.scatter!(fill(0,1,1), 
         framestyle = :none, 
         legend = :inside, 
@@ -904,12 +908,20 @@ function plot_solution(𝓂::ℳ,
     framestyle = :none, 
     legend = :inside)
 
+    variable_first_list = []
+    variable_second_list = []
+    variable_third_list = []
+    has_impact_list = []
 
     for k in vars_to_plot
-
         kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
 
         has_impact = false
+
+        variable_first = []
+        variable_second = []
+        variable_third = []
+
         if :first_order ∈ algorithm
             variable_first = [𝓂.solution.perturbation.first_order.state_update(state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
 
@@ -919,8 +931,6 @@ function plot_solution(𝓂::ℳ,
         end
 
         if :second_order ∈ algorithm
-            SSS2 = 𝓂.solution.perturbation.second_order.stochastic_steady_state
-
             variable_second = [𝓂.solution.perturbation.second_order.state_update(SSS2 - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
 
             variable_second = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_second]
@@ -929,8 +939,6 @@ function plot_solution(𝓂::ℳ,
         end
 
         if :third_order ∈ algorithm
-            SSS3 = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-
             variable_third = [𝓂.solution.perturbation.third_order.state_update(SSS3 - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
 
             variable_third = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_third]
@@ -938,27 +946,41 @@ function plot_solution(𝓂::ℳ,
             has_impact = has_impact || sum(abs2,variable_third .- sum(variable_third)/length(variable_third))/(length(variable_third)-1) > eps()
         end
 
-        if !has_impact continue end
+        push!(variable_first_list,  variable_first)
+        push!(variable_second_list, variable_second)
+        push!(variable_third_list,  variable_third)
+        push!(has_impact_list,      has_impact)
+
+        if !has_impact
+            n_subplots -= 1
+        end
+    end
+
+
+    for (i,k) in enumerate(vars_to_plot)
+        kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+        
+        if !has_impact_list[i] continue end
 
         push!(pp,begin
                         Pl = StatsPlots.plot() 
                         if :first_order ∈ algorithm
                                 StatsPlots.plot!(state_range .+ SS_and_std[1](state), 
-                                variable_first, 
+                                variable_first_list[i], 
                                 ylabel = string(k)*"₍₀₎", 
                                 xlabel = string(state)*"₍₋₁₎", 
                                 label = "")
                         end
                         if :second_order ∈ algorithm
                                 StatsPlots.plot!(state_range .+ SSS2[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                variable_second, 
+                                variable_second_list[i], 
                                 ylabel = string(k)*"₍₀₎", 
                                 xlabel = string(state)*"₍₋₁₎", 
                                 label = "")
                         end
                         if :third_order ∈ algorithm
                                 StatsPlots.plot!(state_range .+ SSS3[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                variable_third, 
+                                variable_third_list[i], 
                                 ylabel = string(k)*"₍₀₎", 
                                 xlabel = string(state)*"₍₋₁₎", 
                                 label = "")
