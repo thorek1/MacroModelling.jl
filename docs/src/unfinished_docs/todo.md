@@ -4,6 +4,7 @@
 
 - [ ] add balanced growth path handling
 - [ ] check that there is an error if he cant find SS
+- [ ] plot_model_estimates with unconditional forecast at the end
 - [ ] check if you can do analytic derivatives for higher order derivatives
 - [ ] kick out unsused parameters from m.parameters
 - [ ] higher order solution derivs with Zygote
