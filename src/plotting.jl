@@ -108,7 +108,9 @@ function plot_model_estimates(𝓂::ℳ,
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
-    obs_idx     = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
+    data = data(sort(axiskeys(data,1)))
+    
+    obs_idx     = parse_variables_input_to_index(collect(axiskeys(data,1)), 𝓂.timings)
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) 
     shock_idx   = parse_shocks_input_to_index(shocks,𝓂.timings)
 
@@ -118,7 +120,7 @@ function plot_model_estimates(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, sort(axiskeys(data)[1]); verbose = verbose)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, collect(axiskeys(data,1)); verbose = verbose)
 
     variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
     shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
@@ -959,7 +961,7 @@ function plot_solution(𝓂::ℳ,
 
     for (i,k) in enumerate(vars_to_plot)
         kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-        
+
         if !has_impact_list[i] continue end
 
         push!(pp,begin
