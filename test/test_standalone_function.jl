@@ -292,14 +292,14 @@ end
     [0], [1], [.16], 
     Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
-    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = [RBC_CME.parameters[1]], standard_deviation = [RBC_CME.var[5]])[1] ,[.21], rtol = 1e-6)
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = [RBC_CME.parameters[1]], standard_deviation = [RBC_CME.var[5]])[1] ,[.21], atol = 1e-6)
 
     # multiple parameter inputs and targets
     sol = Optim.optimize(x -> sum(abs2,get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[1:2], standard_deviation = RBC_CME.var[[2,5]])[1] - [.0008,.21]),
     [0,0], [1,1], [.006,.16], 
     Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
-    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:2], standard_deviation = RBC_CME.var[[2,5]])[1], [.0008,.21], rtol=1e-6)
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:2], standard_deviation = RBC_CME.var[[2,5]])[1], [.0008,.21], atol=1e-6)
 
     # function combining targets for SS and St.Dev.
     function get_variances_optim(x)
@@ -315,7 +315,7 @@ end
     [0,0.95], [1,1], [.16, .999], 
     Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
-    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:2], non_stochastic_steady_state = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]]),[[1.45],[.2]],rtol = 1e-6)
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:2], non_stochastic_steady_state = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]]),[[1.45],[.2]],atol = 1e-6)
 
 
 
@@ -332,7 +332,7 @@ end
     Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
     @test isapprox([get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:3], non_stochastic_steady_state = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]])
-    sol.minimizer[3]],[[1.45],[.2],.02],rtol = 1e-6)
+    sol.minimizer[3]],[[1.45],[.2],.02],atol = 1e-6)
 end
 
 RBC_CME = nothing
