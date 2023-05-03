@@ -2419,12 +2419,14 @@ end
 
 # riccati_AD = ImplicitFunction(riccati_forward, riccati_conditions)
 
-riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive), (x,y)->(riccati_conditions(x,y[1],T=T,explosive=explosive),y[2]))
+riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive)[1], (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
     # A = riccati_AD(∇₁, T = T, explosive = explosive)
     riccati = riccati_(∇₁, T = T, explosive = explosive)
-    A, solved = riccati(∇₁)
+    A = riccati(∇₁)
+
+    solved = @ignore_derivatives !(isapprox(sum(abs,A), 0, rtol = eps()))
 
     if !solved
         return hcat(A, zeros(size(A,1),T.nExo)), solved
