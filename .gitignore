@@ -50,3 +50,4 @@ fevd*.png
 solution*.png
 conditional_fcst*.png
 .CondaPkg/
+estimation__*
