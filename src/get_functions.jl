@@ -1749,10 +1749,12 @@ Function to use when differentiating model moments with repect to parameters.
 - $MODEL
 - $PARAMETER_VALUES
 # Keyword Arguments
-- `non_stochastic_steady_state` [Default: `true`, Type: `Bool`]: switch to return SS of endogenous variables
-- `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
-- `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
-- `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
+- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: switch to return SS of endogenous variables
+- `standard_deviation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the standard deviation of the mentioned variables
+- `variance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the variance of the mentioned variables
+- `covariance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the covariance of the mentioned variables
+- `autocorrelation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the autocorrelation of the mentioned variables
+- `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation of the mentioned variables
 - $VERBOSE
 
 # Examples
@@ -1774,53 +1776,80 @@ end;
     β = 0.95
 end;
 
-get_moments(RBC, RBC.parameter_values)
+get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_deviation = RBC.var)
 # output
-2-element Vector{Any}:
- [5.936252888048724, 47.39025414828808, 6.884057971014486, 0.0]
- [0.026664203785255254, 0.26467737291222343, 0.07393254045396497, 0.010206207261596576]
+1-element Vector{Any}:
+ [0.02666420378525503, 0.26467737291221793, 0.07393254045396483, 0.010206207261596574]
 ```
 """
-function get_moments(𝓂::ℳ, parameters::Vector; 
-    non_stochastic_steady_state::Bool = true, 
-    standard_deviation::Bool = true, 
-    variance::Bool = false, 
-    covariance::Bool = false,
-    verbose::Bool = false)
+function get_statistics(𝓂, parameter_values::Vector{T}; 
+    parameters::Vector{Symbol} = Symbol[], 
+    non_stochastic_steady_state::Vector{Symbol} = Symbol[], 
+    standard_deviation::Vector{Symbol} = Symbol[], 
+    variance::Vector{Symbol} = Symbol[], 
+    covariance::Vector{Symbol} = Symbol[],
+    autocorrelation::Vector{Symbol} = Symbol[],
+    autocorrelation_periods::U = 1:5,
+    verbose::Bool = false) where {U,T}
+
+    @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
+
+    SS_var_idx = indexin(non_stochastic_steady_state, 𝓂.var)
+
+    std_var_idx = indexin(standard_deviation, 𝓂.var)
+
+    var_var_idx = indexin(variance, 𝓂.var)
+
+    covar_var_idx = indexin(covariance, 𝓂.var)
+
+    autocorr_var_idx = indexin(autocorrelation, 𝓂.var)
+
+    other_parameter_values = 𝓂.parameter_values[indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters)]
+
+    sort_idx = sortperm(vcat(indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters), indexin(parameters, 𝓂.parameters)))
+
+    all_parameters = vcat(other_parameter_values, parameter_values)[sort_idx]
 
     solve!(𝓂, verbose = verbose)
 
-    covar_dcmp, __, _, SS_and_pars = calculate_covariance(parameters,𝓂, verbose = verbose)
+    covar_dcmp, sol, _, SS_and_pars = calculate_covariance(all_parameters,𝓂, verbose = verbose)
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
 
-    if variance
+    if !(variance == Symbol[])
         varrs = convert(Vector{Real},ℒ.diag(covar_dcmp))
-        if standard_deviation
+        if !(standard_deviation == Symbol[])
             st_dev = sqrt.(varrs)
         end
+    elseif !(autocorrelation == Symbol[])
+        A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+
+        autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp)) for i in autocorrelation_periods])
     else
-        if standard_deviation
+        if !(standard_deviation == Symbol[])
             st_dev = sqrt.(convert(Vector{Real},ℒ.diag(covar_dcmp)))
         end
     end
 
     ret = []
-    if non_stochastic_steady_state
-        push!(ret,SS)
+    if !(non_stochastic_steady_state == Symbol[])
+        push!(ret,SS[SS_var_idx])
     end
-    if standard_deviation
-        push!(ret,st_dev)
+    if !(standard_deviation == Symbol[])
+        push!(ret,st_dev[std_var_idx])
     end
-    if variance
-        push!(ret,varrs)
+    if !(variance == Symbol[])
+        push!(ret,varrs[var_var_idx])
     end
-    if covariance
+    if !(covariance == Symbol[])
         covar_dcmp_sp = sparse(ℒ.triu(covar_dcmp))
 
         droptol!(covar_dcmp_sp,eps(Float64))
 
-        push!(ret,covar_dcmp_sp)
+        push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
+    end
+    if !(autocorrelation == Symbol[]) 
+        push!(ret,autocorr[autocorr_var_idx,:] )
     end
 
     return ret
