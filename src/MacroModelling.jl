@@ -2324,19 +2324,11 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         Ẑ₁₁ = RF.lu(Z₁₁, check = false)
 
         if !ℒ.issuccess(Ẑ₁₁)
-            Ẑ₁₁ = ℒ.svd(Z₁₁, check = false)
-        end
-
-        if !ℒ.issuccess(Ẑ₁₁)
             return zeros(T.nVars,T.nPast_not_future_and_mixed), false
         end
     end
     
     Ŝ₁₁ = RF.lu(S₁₁, check = false)
-
-    if !ℒ.issuccess(Ŝ₁₁)
-        Ŝ₁₁ = ℒ.svd(S₁₁, check = false)
-    end
 
     if !ℒ.issuccess(Ŝ₁₁)
         return zeros(T.nVars,T.nPast_not_future_and_mixed), false
@@ -2355,11 +2347,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     Ā̂₀ᵤ = RF.lu(Ā₀ᵤ, check = false)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
-        Ā̂₀ᵤ = ℒ.svd(Ā₀ᵤ, check = false)
-    end
-
-    if !ℒ.issuccess(Ā̂₀ᵤ)
-        return zeros(T.nVars,T.nPast_not_future_and_mixed), false
+        Ā̂₀ᵤ = ℒ.svd(collect(Ā₀ᵤ))
     end
 
     A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)

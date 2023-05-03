@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] bring solution error into an object of the model so we dont have to pass it on as output
 - [ ] check that there is an error if he cant find SS
 - [ ] plot_model_estimates with unconditional forecast at the end
 - [ ] check if you can do analytic derivatives for higher order derivatives
