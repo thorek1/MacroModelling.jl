@@ -94,65 +94,69 @@
     -epsilon_b[0] * (C[0] - h * C[-1])^(-sigma_c) + q[0] * (1 - 0.5 * varphi * (-1 + I[-1]^-1 * epsilon_I[0] * I[0])^2 - varphi * I[-1]^-1 * epsilon_I[0] * I[0] * (-1 + I[-1]^-1 * epsilon_I[0] * I[0])) + beta * varphi * I[0]^-2 * epsilon_I[1] * q[1] * I[1]^2 * (-1 + I[0]^-1 * epsilon_I[1] * I[1])
     
     -epsilon_b[0] * (C_f[0] - h * C_f[-1])^(-sigma_c) + q_f[0] * (1 - 0.5 * varphi * (-1 + I_f[-1]^-1 * epsilon_I[0] * I_f[0])^2 - varphi * I_f[-1]^-1 * epsilon_I[0] * I_f[0] * (-1 + I_f[-1]^-1 * epsilon_I[0] * I_f[0])) + beta * varphi * I_f[0]^-2 * epsilon_I[1] * q_f[1] * I_f[1]^2 * (-1 + I_f[0]^-1 * epsilon_I[1] * I_f[1])
-    
-    std_eta_pi * eta_pi[x] - log(pi_obj[0]) + rho_pi_bar * log(pi_obj[-1]) + log(calibr_pi_obj) * (1 - rho_pi_bar)
-    
+
     -C[0] - I[0] - T[0] + Y[0] - psi^-1 * r_k[ss] * K[-1] * (-1 + exp(psi * (-1 + z[0])))
-    
-    -calibr_pi + std_eta_R * eta_R[x] - log(R[ss]^-1 * R[0]) + r_Delta_pi * (-log(pi[ss]^-1 * pi[-1]) + log(pi[ss]^-1 * pi[0])) + r_Delta_y * (-log(Y[ss]^-1 * Y[-1]) + log(Y[ss]^-1 * Y[0]) + log(Y_f[ss]^-1 * Y_f[-1]) - log(Y_f[ss]^-1 * Y_f[0])) + rho * log(R[ss]^-1 * R[-1]) + (1 - rho) * (log(pi_obj[0]) + r_pi * (-log(pi_obj[0]) + log(pi[ss]^-1 * pi[-1])) + r_Y * (log(Y[ss]^-1 * Y[0]) - log(Y_f[ss]^-1 * Y_f[0])))
-    
+
     -C_f[0] - I_f[0] + Pi_ws_f[0] - T_f[0] + Y_f[0] + L_s_f[0] * W_disutil_f[0] - L_f[0] * W_f[0] - psi^-1 * r_k_f[ss] * K_f[-1] * (-1 + exp(psi * (-1 + z_f[0])))
     
     epsilon_b[0] * (K[-1] * r_k[0] - r_k[ss] * K[-1] * exp(psi * (-1 + z[0]))) * (C[0] - h * C[-1])^(-sigma_c)
     
     epsilon_b[0] * (K_f[-1] * r_k_f[0] - r_k_f[ss] * K_f[-1] * exp(psi * (-1 + z_f[0]))) * (C_f[0] - h * C_f[-1])^(-sigma_c)
+
+
+    # Perceived inflation objective
+    std_eta_pi * eta_pi[x] - log(pi_obj[0]) + rho_pi_bar * log(pi_obj[-1]) + log(calibr_pi_obj) * (1 - rho_pi_bar)
+
+    # Taylor rule
+    -calibr_pi + std_eta_R * eta_R[x] - log(R[ss]^-1 * R[0]) + r_Delta_pi * (-log(pi[ss]^-1 * pi[-1]) + log(pi[ss]^-1 * pi[0])) + r_Delta_y * (-log(Y[ss]^-1 * Y[-1]) + log(Y[ss]^-1 * Y[0]) + log(Y_f[ss]^-1 * Y_f[-1]) - log(Y_f[ss]^-1 * Y_f[0])) + rho * log(R[ss]^-1 * R[-1]) + (1 - rho) * (log(pi_obj[0]) + r_pi * (-log(pi_obj[0]) + log(pi[ss]^-1 * pi[-1])) + r_Y * (log(Y[ss]^-1 * Y[0]) - log(Y_f[ss]^-1 * Y_f[0])))
+
 end
 
 @parameters SW03 begin  
-    lambda_p = .368
-    G_bar = .362
+    lambda_p = 0.368
+    G_bar    = 0.362
     lambda_w = 0.5
-    Phi = .819
+    Phi      = 0.819
 
-    alpha = 0.3
-    beta = 0.99
+    alpha   = 0.3
+    beta    = 0.99
     gamma_w = 0.763
     gamma_p = 0.469
-    h = 0.573
-    omega = 1
-    psi = 0.169
+    h       = 0.573
+    omega   = 1
+    psi     = 0.169
 
-    r_pi = 1.684
-    r_Y = 0.099
-    r_Delta_pi = 0.14
-    r_Delta_y = 0.159
+    r_pi        = 1.684
+    r_Y         = 0.099
+    r_Delta_pi  = 0.14
+    r_Delta_y   = 0.159
 
     sigma_c = 1.353
     sigma_l = 2.4
-    tau = 0.025
-    varphi = 6.771
-    xi_w = 0.737
-    xi_p = 0.908
+    tau     = 0.025
+    varphi  = 6.771
+    xi_w    = 0.737
+    xi_p    = 0.908
 
-    rho = 0.961
-    rho_b = 0.855
-    rho_L = 0.889
-    rho_I = 0.927
-    rho_a = 0.823
-    rho_G = 0.949
-    rho_pi_bar = 0.924
+    rho         = 0.961
+    rho_b       = 0.855
+    rho_L       = 0.889
+    rho_I       = 0.927
+    rho_a       = 0.823
+    rho_G       = 0.949
+    rho_pi_bar  = 0.924
 
     std_scaling_factor = 10
 
-    std_eta_b = 0.336 / std_scaling_factor
-    std_eta_L = 3.52 / std_scaling_factor
-    std_eta_I = 0.085 / std_scaling_factor
-    std_eta_a = 0.598 / std_scaling_factor
-    std_eta_w = 0.6853261 / std_scaling_factor
-    std_eta_p = 0.7896512 / std_scaling_factor
-    std_eta_G = 0.325 / std_scaling_factor
-    std_eta_R = 0.081 / std_scaling_factor
-    std_eta_pi = 0.017 / std_scaling_factor
+    std_eta_b   = 0.336     / std_scaling_factor
+    std_eta_L   = 3.52      / std_scaling_factor
+    std_eta_I   = 0.085     / std_scaling_factor
+    std_eta_a   = 0.598     / std_scaling_factor
+    std_eta_w   = 0.6853261 / std_scaling_factor
+    std_eta_p   = 0.7896512 / std_scaling_factor
+    std_eta_G   = 0.325     / std_scaling_factor
+    std_eta_R   = 0.081     / std_scaling_factor
+    std_eta_pi  = 0.017     / std_scaling_factor
 
     calibr_pi_obj | 1 = pi_obj[ss]
     calibr_pi | pi[ss] = pi_obj[ss]
