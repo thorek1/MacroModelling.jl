@@ -654,7 +654,7 @@ function get_irf(𝓂::ℳ,
     
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)
 								
-    sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    sol_mat, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
 
@@ -1147,19 +1147,35 @@ function get_solution(𝓂::ℳ, parameters::Vector{<: Real}; algorithm::Symbol 
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
     if solution_error > tol || isnan(solution_error)
-        return -Inf
+        if algorithm == :second_order
+            return SS_and_pars[1:length(𝓂.var)], zeros(𝓂.var,2), spzeros(𝓂.var,2), false
+        elseif algorithm == :third_order
+            return SS_and_pars[1:length(𝓂.var)], zeros(𝓂.var,2), spzeros(𝓂.var,2), spzeros(𝓂.var,2), false
+        else
+            return SS_and_pars[1:length(𝓂.var)], zeros(𝓂.var,2), false
+        end
     end
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
-    𝐒₁ = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+    if !solved
+        if algorithm == :second_order
+            return SS_and_pars[1:length(𝓂.var)], 𝐒₁, spzeros(𝓂.var,2), false
+        elseif algorithm == :third_order
+            return SS_and_pars[1:length(𝓂.var)], 𝐒₁, spzeros(𝓂.var,2), spzeros(𝓂.var,2), false
+        else
+            return SS_and_pars[1:length(𝓂.var)], 𝐒₁, false
+        end
+    end
 
     if algorithm == :second_order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
         𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁; T = 𝓂.timings)
 
-        return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂
+        return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm == :third_order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
@@ -1169,9 +1185,9 @@ function get_solution(𝓂::ℳ, parameters::Vector{<: Real}; algorithm::Symbol 
                 
         𝐒₃ = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂; T = 𝓂.timings)
 
-        return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, 𝐒₃
+        return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
     else
-        return SS_and_pars[1:length(𝓂.var)], 𝐒₁
+        return SS_and_pars[1:length(𝓂.var)], 𝐒₁, true
     end
 end
 
@@ -1267,7 +1283,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
-    𝑺₁ = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    𝑺₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
     A = @views 𝑺₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[indexin(𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nVars),:]
     
@@ -1387,7 +1403,7 @@ function get_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
-    sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     variances_by_shock = reduce(hcat,[ℒ.diag(calculate_covariance_forward(sol[:,[1:𝓂.timings.nPast_not_future_and_mixed..., 𝓂.timings.nPast_not_future_and_mixed+i]], T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))) for i in 1:𝓂.timings.nExo])
 

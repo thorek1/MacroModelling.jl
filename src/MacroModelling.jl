@@ -1294,7 +1294,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
     
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₁ = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
@@ -1403,7 +1403,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
     
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₁ = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
@@ -1465,10 +1465,14 @@ function solve!(𝓂::ℳ;
         if (any([:riccati, :first_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))) || (:second_order == algorithm && :second_order ∈ 𝓂.solution.outdated_algorithms) || (:third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms)
             SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
+            # @assert solution_error < eps() "Could not find non stochastic steady steady."
+            
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
-            sol_mat = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+            sol_mat, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
             
+            @assert solved "Could not find stable first order solution."
+
             state_update₁ = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
             𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update₁)
@@ -2256,7 +2260,7 @@ end
 
 
 
-function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)::Matrix{Float64}
+function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
     ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
@@ -2297,7 +2301,15 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
         T₁₁    = @view schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
-        Z₁₁inv = ℒ.pinv(Z₁₁)
+        Ẑ₁₁ = RF.lu(Z₁₁, check = false)
+
+        if !ℒ.issuccess(Ẑ₁₁)
+            Ẑ₁₁ = ℒ.svd(Z₁₁, check = false)
+        end
+
+        if !ℒ.issuccess(Ẑ₁₁)
+            return zeros(T.nVars,T.nPast_not_future_and_mixed), false
+        end
     else
         eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
 
@@ -2309,11 +2321,29 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
         T₁₁    = @view schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
-        Z₁₁inv = inv(Z₁₁)
+        Ẑ₁₁ = RF.lu(Z₁₁, check = false)
+
+        if !ℒ.issuccess(Ẑ₁₁)
+            Ẑ₁₁ = ℒ.svd(Z₁₁, check = false)
+        end
+
+        if !ℒ.issuccess(Ẑ₁₁)
+            return zeros(T.nVars,T.nPast_not_future_and_mixed), false
+        end
     end
     
-    D      = Z₂₁ * Z₁₁inv
-    L      = Z₁₁ * (S₁₁ \ T₁₁) * Z₁₁inv
+    Ŝ₁₁ = RF.lu(S₁₁, check = false)
+
+    if !ℒ.issuccess(Ŝ₁₁)
+        Ŝ₁₁ = ℒ.svd(S₁₁, check = false)
+    end
+
+    if !ℒ.issuccess(Ŝ₁₁)
+        return zeros(T.nVars,T.nPast_not_future_and_mixed), false
+    end
+    
+    D      = Z₂₁ / Ẑ₁₁
+    L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
 
     sol = @views vcat(L[T.not_mixed_in_past_idx,:], D)
 
@@ -2322,9 +2352,19 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     Ã₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_but_not_only_idx]
     A₋ᵤ  = @view A₋[1:T.nPresent_only,:]
 
-    A    = @views vcat(- Ā₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ), sol)
+    Ā̂₀ᵤ = RF.lu(Ā₀ᵤ, check = false)
+
+    if !ℒ.issuccess(Ā̂₀ᵤ)
+        Ā̂₀ᵤ = ℒ.svd(Ā₀ᵤ, check = false)
+    end
+
+    if !ℒ.issuccess(Ā̂₀ᵤ)
+        return zeros(T.nVars,T.nPast_not_future_and_mixed), false
+    end
+
+    A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     
-    @view A[T.reorder,:]
+    return @view(A[T.reorder,:]), true
 end
 
 
@@ -2351,37 +2391,44 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explos
     ps = mapreduce(ℱ.partials, hcat, ∇₁)'
 
     # get f(vs)
-    val = riccati_forward(∇̂₁;T = T, explosive = explosive)
+    val, solved = riccati_forward(∇̂₁;T = T, explosive = explosive)
 
-    # get J(f, vs) * ps (cheating). Write your custom rule here
-    B = ℱ.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)
-    A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)
-    # B = Zygote.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)[1]
-    # A = Zygote.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)[1]
+    if solved
+        # get J(f, vs) * ps (cheating). Write your custom rule here
+        B = ℱ.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)
+        A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)
+        # B = Zygote.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)[1]
+        # A = Zygote.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)[1]
 
-    Â = RF.lu(A, check = false)
+        Â = RF.lu(A, check = false)
 
-    if !ℒ.issuccess(Â)
-        Â = ℒ.svd(A)
+        if !ℒ.issuccess(Â)
+            Â = ℒ.svd(A)
+        end
+        
+        jvp = -(Â \ B) * ps
+    else
+        jvp = fill(0,length(val),length(∇̂₁)) * ps
     end
-    
-    jvp = -(Â \ B) * ps
 
     # pack: SoA -> AoS
     return reshape(map(val, eachrow(jvp)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val))
+    end,size(val)), solved
 end
 
 # riccati_AD = ImplicitFunction(riccati_forward, riccati_conditions)
 
-riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive), (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
+riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive), (x,y)->(riccati_conditions(x,y[1],T=T,explosive=explosive),y[2]))
 
-function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Matrix{S} where S <: Real
+function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
     # A = riccati_AD(∇₁, T = T, explosive = explosive)
     riccati = riccati_(∇₁, T = T, explosive = explosive)
-    A = riccati(∇₁)
-    # A = riccati_forward(∇₁, T = T, explosive = explosive)
+    A, solved = riccati(∇₁)
+
+    if !solved
+        return hcat(A, zeros(size(A,1),T.nExo)), solved
+    end
 
     Jm = @view(ℒ.diagm(ones(S,T.nVars))[T.past_not_future_and_mixed_idx,:])
     
@@ -2391,7 +2438,7 @@ function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive
 
     B = -((∇₊ * A * Jm + ∇₀) \ ∇ₑ)
 
-    return hcat(A, B)
+    return hcat(A, B), solved
 end
 
 
@@ -2895,7 +2942,7 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
-    sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     covar_raw = calculate_covariance_forward(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
 
@@ -2994,7 +3041,11 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
-    sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+    if !solved
+        return -Inf
+    end
 
     observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
 
@@ -3066,7 +3117,7 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
-    sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
 
