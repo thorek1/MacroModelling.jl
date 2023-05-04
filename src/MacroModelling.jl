@@ -3002,7 +3002,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     if isnothing(parameters)
         parameters = 𝓂.parameter_values
     else
-        ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters))
+        ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters) + length(𝓂.➕_vars))
         lb = @ignore_derivatives -ub
 
         for (i,v) in enumerate(𝓂.bounded_vars)
