@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] more informative errors when something gors wrong when writing a model
 - [ ] initial state accept keyed array 
 - [ ] bring solution error into an object of the model so we dont have to pass it on as output
 - [ ] check that there is an error if he cant find SS
