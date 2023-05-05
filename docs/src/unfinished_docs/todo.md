@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] initial state accept keyed array 
 - [ ] bring solution error into an object of the model so we dont have to pass it on as output
 - [ ] check that there is an error if he cant find SS
 - [ ] plot_model_estimates with unconditional forecast at the end
