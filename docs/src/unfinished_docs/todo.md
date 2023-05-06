@@ -5,6 +5,9 @@
 - [ ] add balanced growth path handling
 - [ ] have get_std take variables as an input
 - [ ] get_solution for higher order
+- [ ] get solution higher order with multidimensional array (states, 1 and 2 partial derivatives variables names as dimensions in 2order case)
+- [ ] more informative errors when something goes wrong when writing a model
+- [ ] initial state accept keyed array
 - [ ] bring solution error into an object of the model so we dont have to pass it on as output
 - [ ] check that there is an error if he cant find SS
 - [ ] plot_model_estimates with unconditional forecast at the end
