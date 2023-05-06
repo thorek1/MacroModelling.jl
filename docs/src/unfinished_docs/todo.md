@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] get solution hugher order with multidimensional array (states, 1 and 2 prtial derivatives variables names as dimensions in 2order case)
 - [ ] more informative errors when something gors wrong when writing a model
 - [ ] initial state accept keyed array 
 - [ ] bring solution error into an object of the model so we dont have to pass it on as output
