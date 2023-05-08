@@ -3,6 +3,12 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] for cond forecastind and kalman, get rid of observables input and use axis key of data input
+- [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
+- [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
+- [ ] when doing calibration with optiimiser have better return values when he doesnt find a solution (probably NaN)
+- [ ] add pruning
+- [ ] sampler returned negative std. investigate and come up with solution ensuring sampler can continue
 - [ ] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
 - [ ] have get_std take variables as an input
 - [ ] get_solution for higher order
