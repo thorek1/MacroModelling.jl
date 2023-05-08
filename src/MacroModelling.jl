@@ -1211,11 +1211,11 @@ end
 
 
 
-function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{Float64}, initial_state::Vector{Float64}, 𝓂::ℳ;
+function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{Float64}, 𝓂::ℳ;
     tol::AbstractFloat = 1e-10)
     (; 𝐒₁, 𝐒₂) = 𝐒₁𝐒₂
 
-    state = copy(initial_state)
+    state = zeros(𝓂.timings.nVars)
     shock = zeros(𝓂.timings.nExo)
 
     aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
@@ -1250,17 +1250,16 @@ function second_order_stochastic_steady_state_iterative_solution_condition(𝐒�
 end
 
 
-function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{ℱ.Dual{Z,S,N}},  initial_state::Vector{ℱ.Dual{Z,S,N}}, 𝓂::ℳ) where {Z,S,N}
+function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{ℱ.Dual{Z,S,N}}, 𝓂::ℳ) where {Z,S,N}
 
     # unpack: AoS -> SoA
     S₁S₂ = ℱ.value.(𝐒₁𝐒₂)
-    init_state = ℱ.value.(initial_state)
 
     # you can play with the dimension here, sometimes it makes sense to transpose
     ps = mapreduce(ℱ.partials, hcat, 𝐒₁𝐒₂)'
 
     # get f(vs)
-    val, converged = second_order_stochastic_steady_state_iterative_solution(S₁S₂, init_state, 𝓂)
+    val, converged = second_order_stochastic_steady_state_iterative_solution(S₁S₂, 𝓂)
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
@@ -1303,7 +1302,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
-    state, converged = second_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂), SS_and_pars, 𝓂)
+    state, converged = second_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂), 𝓂)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -1322,11 +1321,11 @@ end
 
 
 
-function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::AbstractArray{Float64}, initial_state::Vector{Float64}, 𝓂::ℳ;
+function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::AbstractArray{Float64}, 𝓂::ℳ;
     tol::AbstractFloat = 1e-10)
     (; 𝐒₁, 𝐒₂, 𝐒₃) = 𝐒₁𝐒₂𝐒₃
 
-    state = copy(initial_state)
+    state = zeros(𝓂.timings.nVars)
     shock = zeros(𝓂.timings.nExo)
 
     aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
@@ -1360,17 +1359,16 @@ function third_order_stochastic_steady_state_iterative_solution_condition(𝐒�
 end
 
 
-function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::AbstractArray{ℱ.Dual{Z,S,N}}, initial_state::Vector{ℱ.Dual{Z,S,N}}, 𝓂::ℳ) where {Z,S,N}
+function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::AbstractArray{ℱ.Dual{Z,S,N}}, 𝓂::ℳ) where {Z,S,N}
 
     # unpack: AoS -> SoA
     S₁S₂S₃ = ℱ.value.(𝐒₁𝐒₂𝐒₃)
-    init_state = ℱ.value.(initial_state)
 
     # you can play with the dimension here, sometimes it makes sense to transpose
     ps = mapreduce(ℱ.partials, hcat, 𝐒₁𝐒₂𝐒₃)'
 
     # get f(vs)
-    val, converged = third_order_stochastic_steady_state_iterative_solution(S₁S₂S₃, init_state, 𝓂)
+    val, converged = third_order_stochastic_steady_state_iterative_solution(S₁S₂S₃, 𝓂)
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
@@ -1417,7 +1415,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
-    state, converged = third_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂, 𝐒₃), SS_and_pars, 𝓂)
+    state, converged = third_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂, 𝐒₃), 𝓂)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
