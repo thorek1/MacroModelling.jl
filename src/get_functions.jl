@@ -933,6 +933,12 @@ function get_steady_state(𝓂::ℳ;
         if  algorithm == :third_order
             solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+        elseif  algorithm == :pruned_third_order
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent)
+            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
+        elseif  algorithm == :pruned_second_order
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent)
+            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
         else
             solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order, silent = silent)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
@@ -954,19 +960,41 @@ function get_steady_state(𝓂::ℳ;
     if derivatives 
         if stochastic
                 if algorithm == :third_order
+
                     dSSS = ℱ.jacobian(x->begin 
                                 SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
                                 [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                             end, 𝓂.parameter_values[param_idx])
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+
+                elseif algorithm == :pruned_third_order
+
+                    dSSS = ℱ.jacobian(x->begin 
+                                SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
+                                [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                            end, 𝓂.parameter_values[param_idx])
+
+                    return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+                
+                elseif algorithm == :pruned_second_order
+
+                    dSSS = ℱ.jacobian(x->begin 
+                                SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
+                                [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                            end, 𝓂.parameter_values[param_idx])
+
+                    return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+
                 else
+
                     dSSS = ℱ.jacobian(x->begin 
                                 SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
                                 [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                             end, 𝓂.parameter_values[param_idx])
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters[param_idx]))
+
                 end
         else
             # dSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
