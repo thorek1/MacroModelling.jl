@@ -272,7 +272,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         estim_decomp2 = get_shock_decomposition(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
     end
 
-    if algorithm ∈ [:second_order, :third_order]
+    if algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order]
         SSS = get_stochastic_steady_state(m, algorithm = algorithm)
     end
     
