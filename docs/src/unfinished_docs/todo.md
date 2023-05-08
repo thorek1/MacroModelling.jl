@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
 - [ ] have get_std take variables as an input
 - [ ] get_solution for higher order
 - [ ] get solution higher order with multidimensional array (states, 1 and 2 partial derivatives variables names as dimensions in 2order case)
