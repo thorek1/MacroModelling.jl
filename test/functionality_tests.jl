@@ -304,7 +304,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
     new_sub_lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])), levels = true)
 
-    if algorithm ∈ setdiff(all_available_algorithms,[:pruned_second_order,:pruned_third_order])
+    if algorithm ∈ setdiff(MacroModelling.all_available_algorithms, [:pruned_second_order,:pruned_third_order])
         @test isapprox(collect(new_sub_lvl_irfs(:,1,:)), collect(lvl_irfs(:,6,m.exo[1])),rtol = eps(Float32))
     end
 
