@@ -73,7 +73,7 @@ end
 
 simulation = simulate(RBC_CME)
 
-plot_model_estimates(RBC_CME, simulation([:k],:,:simulate), data_in_levels = false)
+plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 ```
 """
 function plot_model_estimates(𝓂::ℳ,

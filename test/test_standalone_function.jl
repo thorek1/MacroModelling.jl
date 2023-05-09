@@ -388,7 +388,7 @@ RBC_CME = nothing
 
 
 
-    data = simulate(RBC_CME, levels = true)[:,:,1]
+    data = simulate(RBC_CME)[:,:,1]
     observables = [:c,:k]
     @test isapprox(420.25039827148197,calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables),rtol = 1e-5)
 

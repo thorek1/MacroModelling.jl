@@ -32,7 +32,7 @@ end;
 
 simulation = simulate(RBC);
 
-get_shock_decomposition(RBC,simulation([:c],:,:simulate), data_in_levels = false)
+get_shock_decomposition(RBC,simulation([:c],:,:simulate))
 # output
 3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 4-element Vector{Symbol}
@@ -131,7 +131,7 @@ end;
 
 simulation = simulate(RBC);
 
-get_estimated_shocks(RBC,simulation([:c],:,:simulate), data_in_levels = false)
+get_estimated_shocks(RBC,simulation([:c],:,:simulate))
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Shocks ∈ 1-element Vector{Symbol}
@@ -209,7 +209,7 @@ end;
 
 simulation = simulate(RBC);
 
-get_estimated_variables(RBC,simulation([:c],:,:simulate), data_in_levels = false)
+get_estimated_variables(RBC,simulation([:c],:,:simulate))
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 4-element Vector{Symbol}
@@ -290,7 +290,7 @@ end;
 
 simulation = simulate(RBC);
 
-get_estimated_variable_standard_deviations(RBC,simulation([:c],:,:simulate), data_in_levels = false)
+get_estimated_variable_standard_deviations(RBC,simulation([:c],:,:simulate))
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Standard_deviations ∈ 4-element Vector{Symbol}
@@ -699,7 +699,7 @@ end
 
 """
 $(SIGNATURES)
-Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedArray
+Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedArray. Values are returned in absolute deviations from the (non) stochastic steady state by default.
 
 # Arguments
 - $MODEL
@@ -835,14 +835,14 @@ See [`get_irf`](@ref)
 get_IRF = get_irf
 
 """
-Wrapper for [`get_irf`](@ref) with `shocks = :simulate`.
+Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
 """
-simulate(args...; kwargs...) =  get_irf(args...; kwargs..., shocks = :simulate)#[:,:,1]
+simulate(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
 
 """
-Wrapper for [`get_irf`](@ref) with `shocks = :simulate`.
+Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
 """
-get_simulation(args...; kwargs...) =  get_irf(args...; kwargs..., shocks = :simulate)#[:,:,1]
+get_simulation(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
 
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`.
