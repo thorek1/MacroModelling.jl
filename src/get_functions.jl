@@ -1082,7 +1082,7 @@ get_ss = get_steady_state
 
 """
 $(SIGNATURES)
-Return the linearised solution and the non stochastic steady state (SS) of the model.
+Return the solutoin of the model. In the linear case it returns the linearised solution and the non stochastic steady state (SS) of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables and shocks as the other dimensions.
 
 # Arguments
 - $MODEL
@@ -1091,7 +1091,7 @@ Return the linearised solution and the non stochastic steady state (SS) of the m
 - `algorithm` [Default: `:first_order`, Type: `Symbol`]: algorithm to solve for the dynamics of the model. Only linear algorithms allowed.
 - $VERBOSE
 
-The returned `KeyedArray` shows the SS, policy and transition functions of the model. The columns show the varibales including auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows are the SS, followed by the states, and exogenous shocks. 
+The returned `KeyedArray` shows as columns the endogenous variables inlcuding the auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows and other dimensions (depending on the chosen perturbation order) include the SS for the linear case only, followed by the states, and exogenous shocks. 
 Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
 # Examples
 ```jldoctest
