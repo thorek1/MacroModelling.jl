@@ -2462,7 +2462,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
 end
 
 
-function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatrix{<: Real}; T::timings, explosive::Bool = false) #::AbstractMatrix{Real},
+function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatrix{<: Real}, solved::Bool; T::timings, explosive::Bool = false) #::AbstractMatrix{Real},
     expand = @ignore_derivatives @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
     A = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
@@ -2485,12 +2485,12 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explos
     ps = mapreduce(ℱ.partials, hcat, ∇₁)'
 
     # get f(vs)
-    val, solved = riccati_forward(∇̂₁;T = T, explosive = explosive)
+    val, solved = riccati_forward(∇̂₁; T = T, explosive = explosive)
 
     if solved
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)
-        A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)
+        B = ℱ.jacobian(x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)
+        A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x, solved; T = T), val)
         # B = Zygote.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)[1]
         # A = Zygote.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)[1]
 
@@ -2511,17 +2511,15 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explos
     end,size(val)), solved
 end
 
+riccati_ = ImplicitFunction(riccati_forward, riccati_conditions)
 # riccati_AD = ImplicitFunction(riccati_forward, riccati_conditions)
 
-riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive)[1], (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
+# riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive)[1], (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
     # A = riccati_AD(∇₁, T = T, explosive = explosive)
-    riccati = riccati_(∇₁, T = T, explosive = explosive)
-    A = riccati(∇₁)
-
-    solved = @ignore_derivatives !(isapprox(sum(abs,A), 0, rtol = eps()))
-
+    A, solved = riccati_(∇₁; T = T, explosive = explosive)
+    
     if !solved
         return hcat(A, zeros(size(A,1),T.nExo)), solved
     end
@@ -2661,7 +2659,7 @@ end
 
 
 
-function  calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
+function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
                                             ∇₃::SparseMatrixCSC{<: Real}, #third order derivatives
                                             𝑺₁::AbstractMatrix{<: Real}, #first order solution
