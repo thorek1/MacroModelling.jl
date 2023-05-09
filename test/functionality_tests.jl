@@ -222,7 +222,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         simulation = simulate(m)
 
         data_in_levels = simulation(m.var[var_idxs],:,:simulate)
-        # data_in_levels = data# .+ m.solution.non_stochastic_steady_state[var_idxs]
+        data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
 
         estim_vars1 = get_estimated_variables(m, data, data_in_levels = false, verbose = true)
         estim_vars2 = get_estimated_variables(m, data_in_levels, verbose = true)
@@ -384,8 +384,8 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
             simulation = simulate(m)
 
             data_in_levels = simulation(m.var[var_idxs],:,:simulate)
-            # data_in_levels = data .+ m.solution.non_stochastic_steady_state[var_idxs]
-
+            data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
+    
             plot_model_estimates(m, data, data_in_levels = false)
             plot_model_estimates(m, data, data_in_levels = false, verbose = true)
             plot_model_estimates(m, data, data_in_levels = false, verbose = true)
