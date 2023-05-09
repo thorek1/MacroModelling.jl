@@ -1132,7 +1132,7 @@ function get_solution(𝓂::ℳ;
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
     
-    @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran] "This function only works for linear solutions. Choose a respective algorithm."
+    # @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran] "This function only works for linear solutions. Choose a respective algorithm."
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
@@ -1144,9 +1144,51 @@ function get_solution(𝓂::ℳ;
         solution_matrix = 𝓂.solution.perturbation.quadratic_iteration.solution_matrix
     end
 
-    KeyedArray([𝓂.solution.non_stochastic_steady_state[1:length(𝓂.var)] solution_matrix]';
-    Steady_state__States__Shocks = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
-    Variables = 𝓂.var)
+    if algorithm == :second_order
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order.solution_matrix, 
+                                    𝓂.timings.nVars, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
+                                [2,1,3]);
+                            States__Shocks¹ = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
+                            Variables = 𝓂.var,
+                            States__Shocks² = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)])
+    elseif algorithm == :pruned_second_order
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.pruned_second_order.solution_matrix, 
+                                    𝓂.timings.nVars, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
+                                [2,1,3]);
+                            States__Shocks¹ = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
+                            Variables = 𝓂.var,
+                            States__Shocks² = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)])
+    elseif algorithm == :third_order
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order.solution_matrix, 
+                                    𝓂.timings.nVars, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
+                                [2,1,3,4]);
+                            States__Shocks¹ = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
+                            Variables = 𝓂.var,
+                            States__Shocks² = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
+                            States__Shocks³ = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)])
+    elseif algorithm == :pruned_third_order
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.pruned_third_order.solution_matrix, 
+                                    𝓂.timings.nVars, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
+                                [2,1,3,4]);
+                            States__Shocks¹ = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
+                            Variables = 𝓂.var,
+                            States__Shocks² = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
+                            States__Shocks³ = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)])
+    else
+        return KeyedArray([𝓂.solution.non_stochastic_steady_state[1:length(𝓂.var)] solution_matrix]';
+                            Steady_state__States__Shocks = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)],
+                            Variables = 𝓂.var)
+    end
 end
 
 

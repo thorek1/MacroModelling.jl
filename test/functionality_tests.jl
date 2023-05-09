@@ -21,13 +21,6 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     nsss = get_SS(m)
 
     if algorithm == :first_order
-        sols_nv = get_solution(m)
-        sols = get_solution(m, verbose = true)
-        new_sols1 = get_solution(m, verbose = true, parameters = m.parameter_values * 1.0001)
-        new_sols2 = get_solution(m, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
-        new_sols3 = get_solution(m, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
-        new_sols4 = get_solution(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-        old_sols = get_solution(m, verbose = true, parameters = old_par_vals)
 
         auto_corr_nv = get_autocorrelation(m)
         auto_corrr = get_autocorrelation(m, verbose = true)
@@ -276,6 +269,16 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         SSS = get_stochastic_steady_state(m, algorithm = algorithm)
     end
     
+
+    # get_solution
+    sols_nv = get_solution(m, algorithm = algorithm)
+    sols = get_solution(m, algorithm = algorithm, verbose = true)
+    new_sols1 = get_solution(m, algorithm = algorithm, verbose = true, parameters = m.parameter_values * 1.0001)
+    new_sols2 = get_solution(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
+    new_sols3 = get_solution(m, algorithm = algorithm, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+    new_sols4 = get_solution(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
+    old_sols = get_solution(m, algorithm = algorithm, verbose = true, parameters = old_par_vals)
+
     # irfs
     irfs_nv = get_irf(m, algorithm = algorithm)
     irfs = get_irf(m, verbose = true, algorithm = algorithm)
