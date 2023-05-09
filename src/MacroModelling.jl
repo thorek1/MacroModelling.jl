@@ -74,8 +74,8 @@ export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare,
 export irf, girf
 
 # Remove comment for debugging
-# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, SSS_third_order_parameter_derivatives, SSS_second_order_parameter_derivatives, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
-# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, calculate_quadratic_iteration_solution, calculate_linear_time_iteration_solution, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
+export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, SSS_third_order_parameter_derivatives, SSS_second_order_parameter_derivatives, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
+export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, calculate_quadratic_iteration_solution, calculate_linear_time_iteration_solution, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
 
 # levenberg_marquardt
 
@@ -823,7 +823,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 #     end)
 
 # println(solved_vals)
-                funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)
+                funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)#, sol_error::Float64)
                         # if guess isa Tuple guess = guess[1] end
                         # guess = undo_transformer(guess,lbs,ubs, option = transformer_option) 
                         # println(guess)
@@ -900,10 +900,10 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                         # ubs,
                         # fail_fast_solvers_only = fail_fast_solvers_only,
                         # verbose = verbose)))
-                # push!(SS_solve_func,:(solution_error += solution[2])) 
-                # push!(SS_solve_func,:(sol = solution[1]))
-                push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)]([$(calib_pars_input...),$(other_vars_input...)],solution))))
-                push!(SS_solve_func,:(sol = solution))
+                push!(SS_solve_func,:(solution_error += solution[2])) 
+                push!(SS_solve_func,:(sol = solution[1]))
+                # push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)]([$(calib_pars_input...),$(other_vars_input...)],solution))))
+                # push!(SS_solve_func,:(sol = solution))
 
                 # push!(SS_solve_func,:(println(sol))) 
 
@@ -1081,8 +1081,8 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Real},
                                                             # timeout = timeout,
                                                             starting_points = starting_points,
                                                             # fail_fast_solvers_only = fail_fast_solvers_only,
-                                                            verbose = verbose)[1],  
-                                        (x,y) -> ss_solve_blocks(x,y))
+                                                            verbose = verbose),  
+                                        (x,y,z) -> ss_solve_blocks(x,y,z))
 
 function block_solver(parameters_and_solved_vars::Vector{Float64}, 
                         n_block::Int, 
@@ -2458,7 +2458,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
 
     A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     
-    return @view(A[T.reorder,:]), true
+    return A[T.reorder,:], true
 end
 
 
@@ -2473,7 +2473,7 @@ function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatr
 
     err1 = A * sol_buf * sol_buf + B * sol_buf + C
 
-    @view err1[:,T.past_not_future_and_mixed_idx]
+    return err1[:,T.past_not_future_and_mixed_idx]
 end
 
 
@@ -2486,7 +2486,7 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explos
 
     # get f(vs)
     val, solved = riccati_forward(∇̂₁; T = T, explosive = explosive)
-
+println(val)
     if solved
         # get J(f, vs) * ps (cheating). Write your custom rule here
         B = ℱ.jacobian(x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)
@@ -2517,10 +2517,15 @@ riccati_ = ImplicitFunction(riccati_forward, riccati_conditions)
 # riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive)[1], (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
-    # A = riccati_AD(∇₁, T = T, explosive = explosive)
-    A, solved = riccati_(∇₁; T = T, explosive = explosive)
-    
-    if !solved
+    println(typeof(∇₁))    
+    println(∇₁ isa Matrix{ℱ.Dual})
+    if ∇₁ isa Matrix{ℱ.Dual}
+        A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
+    else
+        A, solved = riccati_(∇₁; T = T, explosive = explosive)
+    end
+
+    if !ℱ.value(solved)
         return hcat(A, zeros(size(A,1),T.nExo)), solved
     end
 
@@ -2529,7 +2534,12 @@ function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive
     ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(S,T.nVars))[T.future_not_past_and_mixed_idx,:]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
-
+    println(size(∇₊))
+    println(size(∇₀))
+    println(size(∇ₑ))
+    println(size(Jm))
+    println(size(A))
+    
     B = -((∇₊ * A * Jm + ∇₀) \ ∇ₑ)
 
     return hcat(A, B), solved
@@ -3105,47 +3115,49 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Real}; T::timin
     lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
     
     # reshape(ℐ.bicgstabl(lm, vec(-CC)), size(CC))
-    reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+    return reshape(ℐ.gmres(lm, vec(-CC)), size(CC)), true
 end
 
 
-function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T, subset_indices::Vector{Int64} = subset_indices) where {Z,S,N}
-    # unpack: AoS -> SoA
-    𝑺₁̂ = ℱ.value.(𝑺₁)
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, 𝑺₁)'
+# function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T, subset_indices::Vector{Int64} = subset_indices) where {Z,S,N}
+#     # unpack: AoS -> SoA
+#     𝑺₁̂ = ℱ.value.(𝑺₁)
+#     # you can play with the dimension here, sometimes it makes sense to transpose
+#     ps = mapreduce(ℱ.partials, hcat, 𝑺₁)'
 
-    # get f(vs)
-    val = calculate_covariance_forward(𝑺₁̂, T = T, subset_indices = subset_indices)
+#     # get f(vs)
+#     val = calculate_covariance_forward(𝑺₁̂, T = T, subset_indices = subset_indices)
 
-    # get J(f, vs) * ps (cheating). Write your custom rule here
-    B = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, T = T, subset_indices = subset_indices), 𝑺₁̂)
-    A = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, T = T, subset_indices = subset_indices), val)
+#     # get J(f, vs) * ps (cheating). Write your custom rule here
+#     B = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, true, T = T, subset_indices = subset_indices), 𝑺₁̂)
+#     A = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, true, T = T, subset_indices = subset_indices), val)
 
-    Â = RF.lu(A, check = false)
+#     Â = RF.lu(A, check = false)
 
-    if !ℒ.issuccess(Â)
-        Â = ℒ.svd(A)
-    end
+#     if !ℒ.issuccess(Â)
+#         Â = ℒ.svd(A)
+#     end
     
-    jvp = -(Â \ B) * ps
+#     jvp = -(Â \ B) * ps
 
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val))
-end
+#     # pack: SoA -> AoS
+#     return reshape(map(val, eachrow(jvp)) do v, p
+#         ℱ.Dual{Z}(v, p...) # Z is the tag
+#     end,size(val))
+# end
 
 
-function calculate_covariance_conditions(𝑺₁::AbstractMatrix{<: Real}, covar::AbstractMatrix{<: Real}; T::timings, subset_indices::Vector{Int64})
+function calculate_covariance_conditions(𝑺₁::AbstractMatrix{<: Real}, covar::AbstractMatrix{<: Real}, z::Bool; T::timings, subset_indices::Vector{Int64})
     A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,subset_indices)),:]
     C = @views 𝑺₁[subset_indices,T.nPast_not_future_and_mixed+1:end]
     
-    A * covar * A' + C * C' - covar
+    A * covar * A' + C * C' .- covar
 end
 
 
-calculate_covariance_AD(sol; T, subset_indices) = ImplicitFunction(sol->calculate_covariance_forward(sol, T=T, subset_indices = subset_indices), (x,y)->calculate_covariance_conditions(x,y,T=T, subset_indices = subset_indices))
+calculate_covariance_AD = ImplicitFunction(calculate_covariance_forward, calculate_covariance_conditions)
+
+# calculate_covariance_AD(sol; T, subset_indices) = ImplicitFunction(sol->calculate_covariance_forward(sol, T=T, subset_indices = subset_indices), (x,y)->calculate_covariance_conditions(x,y,T=T, subset_indices = subset_indices))
 # calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
 
 function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose::Bool = false, tol::AbstractFloat = eps())
@@ -3204,10 +3216,10 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     𝐁 = B * B'
 
     # Gaussian Prior
+    # println(sol)
+    P, _ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
 
-    calculate_covariance_ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
-
-    P = calculate_covariance_(sol)
+    # P = calculate_covariance_(sol)
     # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
     u = zeros(length(observables_and_states))
     # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
@@ -3348,74 +3360,74 @@ end
 
 
 
-@setup_workload begin
-    # Putting some things in `setup` can reduce the size of the
-    # precompile file and potentially make loading faster.
-    @model FS2000 begin
-        dA[0] = exp(gam + z_e_a  *  e_a[x])
-        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-        W[0] = l[0] / n[0]
-        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-        P[0] * c[0] = m[0]
-        m[0] - 1 + d[0] = l[0]
-        e[0] = exp(z_e_a  *  e_a[x])
-        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-        gy_obs[0] = dA[0] * y[0] / y[-1]
-        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-        log_gy_obs[0] = log(gy_obs[0])
-        log_gp_obs[0] = log(gp_obs[0])
-    end
+# @setup_workload begin
+#     # Putting some things in `setup` can reduce the size of the
+#     # precompile file and potentially make loading faster.
+#     @model FS2000 begin
+#         dA[0] = exp(gam + z_e_a  *  e_a[x])
+#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#         W[0] = l[0] / n[0]
+#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#         P[0] * c[0] = m[0]
+#         m[0] - 1 + d[0] = l[0]
+#         e[0] = exp(z_e_a  *  e_a[x])
+#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#         gy_obs[0] = dA[0] * y[0] / y[-1]
+#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#         log_gy_obs[0] = log(gy_obs[0])
+#         log_gp_obs[0] = log(gp_obs[0])
+#     end
 
-    @parameters FS2000 silent = true begin  
-        alp     = 0.356
-        bet     = 0.993
-        gam     = 0.0085
-        mst     = 1.0002
-        rho     = 0.129
-        psi     = 0.65
-        del     = 0.01
-        z_e_a   = 0.035449
-        z_e_m   = 0.008862
-    end
+#     @parameters FS2000 silent = true begin  
+#         alp     = 0.356
+#         bet     = 0.993
+#         gam     = 0.0085
+#         mst     = 1.0002
+#         rho     = 0.129
+#         psi     = 0.65
+#         del     = 0.01
+#         z_e_a   = 0.035449
+#         z_e_m   = 0.008862
+#     end
     
-    ENV["GKSwstype"] = "nul"
+#     ENV["GKSwstype"] = "nul"
 
-    @compile_workload begin
-        # all calls in this block will be precompiled, regardless of whether
-        # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
+#     @compile_workload begin
+#         # all calls in this block will be precompiled, regardless of whether
+#         # they belong to your package or not (on Julia 1.8 and higher)
+#         @model RBC begin
+#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#         end
 
-        @parameters RBC silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
+#         @parameters RBC silent = true precompile = true begin
+#             δ = 0.02
+#             α = 0.5
+#         end
 
-        get_SS(FS2000)
-        get_SS(FS2000, parameters = :alp => 0.36)
-        get_solution(FS2000)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)
-        # get_SSS(FS2000, silent = true)
-        # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#         get_SS(FS2000)
+#         get_SS(FS2000, parameters = :alp => 0.36)
+#         get_solution(FS2000)
+#         get_solution(FS2000, parameters = :alp => 0.35)
+#         get_standard_deviation(FS2000)
+#         get_correlation(FS2000)
+#         get_autocorrelation(FS2000)
+#         get_variance_decomposition(FS2000)
+#         get_conditional_variance_decomposition(FS2000)
+#         get_irf(FS2000)
+#         # get_SSS(FS2000, silent = true)
+#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-        # import Plots, StatsPlots
-        # plot_irf(FS2000)
-        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        # plot_conditional_variance_decomposition(FS2000)
-    end
-end
+#         # import Plots, StatsPlots
+#         # plot_irf(FS2000)
+#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#         # plot_conditional_variance_decomposition(FS2000)
+#     end
+# end
 
 end
