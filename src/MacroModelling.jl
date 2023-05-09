@@ -2940,11 +2940,17 @@ function girf(state_update::Function,
     var_idx = parse_variables_input_to_index(variables, T)
 
     Y = zeros(T.nVars, periods + 1, length(shock_idx))
+    
+    pruned_initial_state = copy(initial_state)
 
     for (i,ii) in enumerate(shock_idx)
         for draw in 1:draws
             for i in 1:warmup_periods
-                initial_state = state_update(initial_state, randn(T.nExo))
+                if pruning
+                    initial_state, pruned_initial_state = state_update(initial_state, randn(T.nExo), pruned_initial_state)
+                else
+                    initial_state = state_update(initial_state, randn(T.nExo))
+                end
             end
 
             Y1 = zeros(T.nVars, periods + 1)
@@ -2958,8 +2964,8 @@ function girf(state_update::Function,
             end
 
             if pruning
-                Y1[:,1], pruned_state1 = state_update(initial_state, baseline_noise, initial_state)
-                Y2[:,1], pruned_state2 = state_update(initial_state, baseline_noise, initial_state)
+                Y1[:,1], pruned_state1 = state_update(initial_state, baseline_noise, pruned_initial_state)
+                Y2[:,1], pruned_state2 = state_update(initial_state, baseline_noise, pruned_initial_state)
             else
                 Y1[:,1] = state_update(initial_state, baseline_noise)
                 Y2[:,1] = state_update(initial_state, baseline_noise)
