@@ -102,9 +102,9 @@ function plot_model_estimates(𝓂::ℳ,
                     tickfontsize = 8,
                     framestyle = :box)
 
-    write_parameters_input!(𝓂, parameters, verbose = verbose)
+    # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    solve!(𝓂, verbose = verbose, dynamics = true)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
@@ -366,33 +366,34 @@ function plot_irf(𝓂::ℳ;
                     tickfontsize = 8,
                     framestyle = :box)
 
-    write_parameters_input!(𝓂,parameters, verbose = verbose)
+    # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
-    state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
+    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
-
-    full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-    full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-
-    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
-
-    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[indexin([s],NSSS_labels)...] for s in full_SS]
+    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
     if algorithm == :second_order
-        SSS_delta = reference_steady_state - 𝓂.solution.perturbation.second_order.stochastic_steady_state
+        SSS_delta = reference_steady_state[1:𝓂.timings.nVars] - 𝓂.solution.perturbation.second_order.stochastic_steady_state
+    elseif algorithm == :pruned_second_order
+        SSS_delta = reference_steady_state[1:𝓂.timings.nVars] - 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
     elseif algorithm == :third_order
-        SSS_delta = reference_steady_state - 𝓂.solution.perturbation.third_order.stochastic_steady_state
+        SSS_delta = reference_steady_state[1:𝓂.timings.nVars] - 𝓂.solution.perturbation.third_order.stochastic_steady_state
+    elseif algorithm == :pruned_third_order
+        SSS_delta = reference_steady_state[1:𝓂.timings.nVars] - 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
     else
-        SSS_delta = zeros(length(reference_steady_state))
+        SSS_delta = zeros(𝓂.timings.nVars)
     end
 
     if algorithm == :second_order
         reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
+    elseif algorithm == :pruned_second_order
+        reference_steady_state = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
     elseif algorithm == :third_order
         reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+    elseif algorithm == :pruned_third_order
+        reference_steady_state = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
     end
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
@@ -412,9 +413,9 @@ function plot_irf(𝓂::ℳ;
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
     if generalised_irf
-        Y = girf(state_update, SSS_delta, zeros(𝓂.timings.nVars), 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
+        Y = girf(state_update, SSS_delta, zeros(𝓂.timings.nVars), pruning, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
     else
-        Y = irf(state_update, initial_state, zeros(𝓂.timings.nVars), 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        Y = irf(state_update, initial_state, zeros(𝓂.timings.nVars), pruning, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock) .+ SSS_delta[var_idx]
     end
 
     if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
@@ -457,13 +458,17 @@ function plot_irf(𝓂::ℳ;
                                                 title = string(𝓂.timings.var[var_idx[i]]),
                                                 ylabel = "Level",
                                                 label = "")
+
                                 if can_dual_axis
                                     StatsPlots.plot!(StatsPlots.twinx(), 
                                                         100*((Y[i,:,shock] .+ SS) ./ SS .- 1), 
                                                         ylabel = LaTeXStrings.L"\% \Delta", 
                                                         label = "") 
                                 end
-                                StatsPlots.hline!(gr_back ? [SS 0] : [SS], color = :black, label = "")                               
+
+                                StatsPlots.hline!(can_dual_axis ? [SS 0] : [SS], 
+                                                    color = :black, 
+                                                    label = "")                               
                 end)
 
                 if !(plot_count % plots_per_page == 0)
@@ -1326,39 +1331,35 @@ function plot_conditional_forecast(𝓂::ℳ,
     for i in 1:length(var_idx)
         SS = reference_steady_state[i]
         if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)) > 0
+            can_dual_axis = gr_back && all((Y[i,:] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
             
-            if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
-                cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
-                if length(cond_idx) > 0
-                push!(pp,begin
-                            StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                            if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                            StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")   
-                            StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
-                end)
-            else
-                push!(pp,begin
-                            StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                            if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                            StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")                              
-                end)
-            end
-            else
-                cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
-                if length(cond_idx) > 0
-                    push!(pp,begin
-                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                StatsPlots.hline!([SS], color = :black, label = "")
-                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)  
-                    end)
-                else 
-                    push!(pp,begin
-                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                StatsPlots.hline!([SS], color = :black, label = "")
-                    end)
-                end
+            cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
+            
+            push!(pp,begin
+                        StatsPlots.plot(Y[i,:] .+ SS,
+                                        title = string(full_SS[var_idx[i]]),
+                                        ylabel = "Level",
+                                        label = "")
 
-            end
+                        if can_dual_axis
+                            StatsPlots.plot!(StatsPlots.twinx(),
+                                            100*((Y[i,:] .+ SS) ./ SS .- 1), 
+                                            ylabel = LaTeXStrings.L"\% \Delta", 
+                                            label = "") 
+                        end
+
+                        StatsPlots.hline!(can_dual_axis ? [SS 0] : [SS],
+                                            color = :black,
+                                            label = "")   
+
+                        if length(cond_idx) > 0
+                            StatsPlots.scatter!(cond_idx, 
+                            conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, 
+                            label = "",
+                            marker = :star8, 
+                            markercolor = :black)    
+                        end                        
+            end)
 
             if !(plot_count % plots_per_page == 0)
                 plot_count += 1

@@ -71,9 +71,9 @@ function get_shock_decomposition(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    write_parameters_input!(𝓂, parameters, verbose = verbose)
+    # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    solve!(𝓂, verbose = verbose, dynamics = true)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
@@ -148,9 +148,9 @@ function get_estimated_shocks(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    write_parameters_input!(𝓂, parameters, verbose = verbose)
+    # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    solve!(𝓂, verbose = verbose, dynamics = true)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
@@ -231,9 +231,9 @@ function get_estimated_variables(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    write_parameters_input!(𝓂, parameters, verbose = verbose)
+    # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    solve!(𝓂, verbose = verbose, dynamics = true)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
@@ -311,9 +311,9 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    write_parameters_input!(𝓂, parameters, verbose = verbose)
+    # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    solve!(𝓂, verbose = verbose, dynamics = true)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
@@ -487,11 +487,11 @@ function get_conditional_forecast(𝓂::ℳ,
         shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
     end
 
-    write_parameters_input!(𝓂,parameters, verbose = verbose)
+    # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    solve!(𝓂, verbose = verbose, dynamics = true)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
-    state_update = parse_algorithm_to_state_update(:first_order, 𝓂)
+    state_update, pruning = parse_algorithm_to_state_update(:first_order, 𝓂)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
@@ -761,31 +761,37 @@ function get_irf(𝓂::ℳ;
     levels::Bool = false,
     verbose::Bool = false)
 
-    write_parameters_input!(𝓂,parameters, verbose = verbose)
-
-    solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
     @assert !(shocks == :none && generalised_irf) "Cannot compute generalised IRFs for model without shocks."
 
-    state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
+    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
     if algorithm == :second_order
         SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.second_order.stochastic_steady_state
+    elseif algorithm == :pruned_second_order
+        SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
     elseif algorithm == :third_order
         SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.third_order.stochastic_steady_state
+    elseif algorithm == :pruned_third_order
+        SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
     else
         SSS_delta = zeros(length(𝓂.var))
     end
 
     if levels
         if algorithm == :second_order
-            reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))]
+            reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
+        elseif algorithm == :pruned_second_order
+            reference_steady_state = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
         elseif algorithm == :third_order
-            reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state#[indexin(full_SS,sort(union(𝓂.var,𝓂.exo_present)))]
+            reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+        elseif algorithm == :pruned_third_order
+            reference_steady_state = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
         end
     end
 
@@ -795,6 +801,7 @@ function get_irf(𝓂::ℳ;
         girfs =  girf(state_update,
                         SSS_delta,
                         levels ? reference_steady_state : SSS_delta,
+                        pruning,
                         𝓂.timings; 
                         periods = periods, 
                         shocks = shocks, 
@@ -805,6 +812,7 @@ function get_irf(𝓂::ℳ;
         irfs =  irf(state_update, 
                     initial_state, 
                     levels ? reference_steady_state : SSS_delta,
+                    pruning,
                     𝓂.timings; 
                     periods = periods, 
                     shocks = shocks, 
@@ -905,9 +913,9 @@ function get_steady_state(𝓂::ℳ;
     verbose::Bool = false,
     silent::Bool = true)
 
-    solve!(𝓂, verbose = verbose)
+    solve!(𝓂, parameters = parameters, verbose = verbose)
 
-    write_parameters_input!(𝓂,parameters, verbose = verbose)
+    # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
     
@@ -1122,11 +1130,11 @@ function get_solution(𝓂::ℳ;
     algorithm::Symbol = :first_order, 
     verbose::Bool = false)
 
-    write_parameters_input!(𝓂,parameters, verbose = verbose)
+    # write_parameters_input!(𝓂,parameters, verbose = verbose)
     
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran] "This function only works for linear solutions. Choose a respective algorithm."
 
-    solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
     if algorithm == :linear_time_iteration
         solution_matrix = 𝓂.solution.perturbation.linear_time_iteration.solution_matrix
@@ -1303,9 +1311,9 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     parameters = nothing,  
     verbose::Bool = false)
 
-    solve!(𝓂, verbose = verbose)
+    solve!(𝓂, parameters = parameters, verbose = verbose)
 
-    write_parameters_input!(𝓂,parameters, verbose = verbose)
+    # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
     SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
     
@@ -1423,9 +1431,9 @@ function get_variance_decomposition(𝓂::ℳ;
     parameters = nothing,  
     verbose::Bool = false)
     
-    solve!(𝓂, verbose = verbose)
+    solve!(𝓂, parameters = parameters, verbose = verbose)
 
-    write_parameters_input!(𝓂,parameters, verbose = verbose)
+    # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
     SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
     
@@ -1496,9 +1504,9 @@ function get_correlation(𝓂::ℳ;
     parameters = nothing,  
     verbose::Bool = false)
     
-    solve!(𝓂, verbose = verbose)
+    solve!(𝓂, parameters = parameters, verbose = verbose)
 
-    write_parameters_input!(𝓂,parameters, verbose = verbose)
+    # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
     covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
 
@@ -1569,9 +1577,9 @@ function get_autocorrelation(𝓂::ℳ;
     parameters = nothing,  
     verbose::Bool = false)
     
-    solve!(𝓂, verbose = verbose)
+    solve!(𝓂, parameters = parameters, verbose = verbose)
 
-    write_parameters_input!(𝓂,parameters, verbose = verbose)
+    # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
     covar_dcmp, sol, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
 
@@ -1671,9 +1679,9 @@ function get_moments(𝓂::ℳ;
     parameter_derivatives::Symbol_input = :all,
     verbose::Bool = false)#limit output by selecting pars and vars like for plots and irfs!?
     
-    solve!(𝓂, verbose = verbose)
+    solve!(𝓂, parameters = parameters, verbose = verbose)
 
-    write_parameters_input!(𝓂,parameters, verbose = verbose)
+    # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
     if parameter_derivatives == :all
         length_par = length(𝓂.parameters)

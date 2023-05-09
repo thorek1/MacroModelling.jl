@@ -1486,13 +1486,13 @@ function solve!(𝓂::ℳ;
     verbose::Bool = false,
     silent::Bool = false)
 
-    @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+    @assert algorithm ∈ all_available_algorithms
 
     if dynamics
         𝓂.solution.outdated_algorithms = union(intersect(𝓂.solution.algorithms,[algorithm]),𝓂.solution.outdated_algorithms)
         𝓂.solution.algorithms = union(𝓂.solution.algorithms,[algorithm])
     end
-
+    
     write_parameters_input!(𝓂, parameters, verbose = verbose)
 
     if 𝓂.model_hessian == Function[] && algorithm ∈ [:second_order, :pruned_second_order]
@@ -1506,7 +1506,13 @@ function solve!(𝓂::ℳ;
     end
 
     if dynamics
-        if (any([:riccati, :first_order] .∈ ([algorithm],)) && any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))) || (any([:second_order,:pruned_second_order] .∈ ([algorithm],)) && any([:second_order,:pruned_second_order] .∈ (𝓂.solution.outdated_algorithms,))) || (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+        if (any([:riccati, :first_order] .∈ ([algorithm],)) && 
+                any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))) || 
+            (any([:second_order,:pruned_second_order] .∈ ([algorithm],)) && 
+                any([:second_order,:pruned_second_order] .∈ (𝓂.solution.outdated_algorithms,))) || 
+            (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && 
+                any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+
             SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             # @assert solution_error < eps() "Could not find non stochastic steady steady."
@@ -1527,7 +1533,11 @@ function solve!(𝓂::ℳ;
 
         end
 
-        if (:second_order == algorithm && :second_order ∈ 𝓂.solution.outdated_algorithms) || (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+        if (:second_order == algorithm && 
+                :second_order ∈ 𝓂.solution.outdated_algorithms) || 
+            (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && 
+                any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
             
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
@@ -1544,7 +1554,11 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
         end
         
-        if (:pruned_second_order == algorithm && :pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+        if (:pruned_second_order == algorithm && 
+                :pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || 
+            (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && 
+                any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
             
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
@@ -1567,6 +1581,7 @@ function solve!(𝓂::ℳ;
         end
         
         if :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
+
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
@@ -1584,6 +1599,7 @@ function solve!(𝓂::ℳ;
         end
         
         if :pruned_third_order == algorithm && :pruned_third_order ∈ 𝓂.solution.outdated_algorithms
+
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
@@ -1606,6 +1622,7 @@ function solve!(𝓂::ℳ;
         end
         
         if any([:quadratic_iteration, :binder_pesaran] .∈ ([algorithm],)) && any([:quadratic_iteration, :binder_pesaran] .∈ (𝓂.solution.outdated_algorithms,))
+            
             SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -1639,6 +1656,7 @@ function solve!(𝓂::ℳ;
             
         end
     end
+    
     return nothing
 end
 
@@ -1971,7 +1989,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
         
         if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters)))
             if verbose println("Parameter changes: ") end
-            𝓂.solution.outdated_algorithms = 𝓂.solution.algorithms
+            𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
         end
             
         for i in 1:length(parameters)
@@ -2031,7 +2049,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
         println("Parameters unchanged.")
     else
         if !all(parameters .== 𝓂.parameter_values[1:length(parameters)])
-            𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :binder_pesaran, :first_order, :second_order, :third_order])
+            𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
 
             match_idx = []
             for (i, v) in enumerate(parameters)
@@ -2773,7 +2791,11 @@ end
 
 
 
-function irf(state_update::Function, initial_state::Vector{Float64}, level::Vector{Float64}, T::timings; 
+function irf(state_update::Function, 
+    initial_state::Vector{Float64}, 
+    level::Vector{Float64}, 
+    pruning::Bool, 
+    T::timings; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Symbol_input = :all, 
@@ -2811,10 +2833,19 @@ function irf(state_update::Function, initial_state::Vector{Float64}, level::Vect
         shock_history = randn(T.nExo,periods)
 
         Y = zeros(T.nVars,periods,1)
-        Y[:,1,1] = state_update(initial_state,shock_history[:,1])
 
-        for t in 1:periods-1
-            Y[:,t+1,1] = state_update(Y[:,t,1],shock_history[:,t+1])
+        if pruning
+            Y[:,1,1], pruned_state = state_update(initial_state, shock_history[:,1], initial_state)
+
+            for t in 1:periods-1
+                Y[:,t+1,1], pruned_state = state_update(Y[:,t,1], shock_history[:,t+1], pruned_state)
+            end
+        else
+            Y[:,1,1] = state_update(initial_state,shock_history[:,1])
+
+            for t in 1:periods-1
+                Y[:,t+1,1] = state_update(Y[:,t,1],shock_history[:,t+1])
+            end
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:simulate])
@@ -2823,10 +2854,18 @@ function irf(state_update::Function, initial_state::Vector{Float64}, level::Vect
 
         shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
         
-        Y[:,1,1] = state_update(initial_state,shck)
+        if pruning
+            Y[:,1,1], pruned_state = state_update(initial_state, shck, initial_state)
 
-        for t in 1:periods-1
-            Y[:,t+1,1] = state_update(Y[:,t,1],shck)
+            for t in 1:periods-1
+                Y[:,t+1,1], pruned_state = state_update(Y[:,t,1], shck, pruned_state)
+            end
+        else 
+            Y[:,1,1] = state_update(initial_state,shck)
+    
+            for t in 1:periods-1
+                Y[:,t+1,1] = state_update(Y[:,t,1],shck)
+            end
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:none])
@@ -2839,10 +2878,18 @@ function irf(state_update::Function, initial_state::Vector{Float64}, level::Vect
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
 
-            Y[:,1,i] = state_update(initial_state,shock_history[:,1])
+            if pruning
+                Y[:,1,i], pruned_state = state_update(initial_state, shock_history[:,1], initial_state)
 
-            for t in 1:periods-1
-                Y[:,t+1,i] = state_update(Y[:,t,i],shock_history[:,t+1])
+                for t in 1:periods-1
+                    Y[:,t+1,i], pruned_state = state_update(Y[:,t,i], shock_history[:,t+1],pruned_state)
+                end
+            else
+                Y[:,1,i] = state_update(initial_state,shock_history[:,1])
+
+                for t in 1:periods-1
+                    Y[:,t+1,i] = state_update(Y[:,t,i],shock_history[:,t+1])
+                end
             end
         end
 
@@ -2855,6 +2902,7 @@ end
 function girf(state_update::Function, 
     initial_state::Vector{Float64}, 
     level::Vector{Float64}, 
+    pruning::Bool, 
     T::timings; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
@@ -2909,14 +2957,24 @@ function girf(state_update::Function,
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
 
-            Y1[:,1] = state_update(initial_state, baseline_noise)
-            Y2[:,1] = state_update(initial_state, baseline_noise)
+            if pruning
+                Y1[:,1], pruned_state1 = state_update(initial_state, baseline_noise, initial_state)
+                Y2[:,1], pruned_state2 = state_update(initial_state, baseline_noise, initial_state)
+            else
+                Y1[:,1] = state_update(initial_state, baseline_noise)
+                Y2[:,1] = state_update(initial_state, baseline_noise)
+            end
 
             for t in 1:periods
                 baseline_noise = randn(T.nExo)
 
-                Y1[:,t+1] = state_update(Y1[:,t],baseline_noise)
-                Y2[:,t+1] = state_update(Y2[:,t],baseline_noise + shock_history[:,t])
+                if pruning
+                    Y1[:,t+1], pruned_state1 = state_update(Y1[:,t], baseline_noise, pruned_state1)
+                    Y2[:,t+1], pruned_state2 = state_update(Y2[:,t], baseline_noise + shock_history[:,t], pruned_state2)
+                else
+                    Y1[:,t+1] = state_update(Y1[:,t],baseline_noise)
+                    Y2[:,t+1] = state_update(Y2[:,t],baseline_noise + shock_history[:,t])
+                end
             end
 
             Y[:,:,i] += Y2 - Y1
@@ -3000,24 +3058,25 @@ end
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ)
     if :linear_time_iteration == algorithm
         state_update = 𝓂.solution.perturbation.linear_time_iteration.state_update
-
+        pruning = false
     elseif algorithm ∈ [:riccati, :first_order]
         state_update = 𝓂.solution.perturbation.first_order.state_update
-
+        pruning = false
     elseif :second_order == algorithm
         state_update = 𝓂.solution.perturbation.second_order.state_update
-
+        pruning = false
     elseif :pruned_second_order == algorithm
         state_update = 𝓂.solution.perturbation.pruned_second_order.state_update
-
+        pruning = true
     elseif :third_order == algorithm
         state_update = 𝓂.solution.perturbation.third_order.state_update
-
+        pruning = false
     elseif :pruned_third_order == algorithm
         state_update = 𝓂.solution.perturbation.pruned_third_order.state_update
+        pruning = true
     end
 
-    return state_update
+    return state_update, pruning
 end
 
 
