@@ -1082,7 +1082,7 @@ get_ss = get_steady_state
 
 """
 $(SIGNATURES)
-Return the solutoin of the model. In the linear case it returns the linearised solution and the non stochastic steady state (SS) of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables and shocks as the other dimensions.
+Return the solution of the model. In the linear case it returns the linearised solution and the non stochastic steady state (SS) of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables and shocks as the other dimensions.
 
 # Arguments
 - $MODEL
