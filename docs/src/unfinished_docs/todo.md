@@ -8,6 +8,7 @@
 - [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
 - [ ] when doing calibration with optimiser have better return values when he doesnt find a solution (probably NaN)
 - [ ] sampler returned negative std. investigate and come up with solution ensuring sampler can continue
+- [ ] automatically adjust plots for different legend widhts and heights
 - [ ] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
 - [ ] have get_std take variables as an input
 - [ ] more informative errors when something goes wrong when writing a model
