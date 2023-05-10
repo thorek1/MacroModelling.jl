@@ -10,6 +10,7 @@
 - [ ] sampler returned negative std. investigate and come up with solution ensuring sampler can continue
 - [ ] automatically adjust plots for different legend widhts and heights
 - [ ] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
+- [ ] write to mod file for unicode characters. have them take what you would type: \alpha\bar
 - [ ] have get_std take variables as an input
 - [ ] more informative errors when something goes wrong when writing a model
 - [ ] initial state accept keyed array
