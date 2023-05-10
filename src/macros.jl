@@ -1,6 +1,8 @@
 
 import MacroTools: postwalk, unblock
 
+const all_available_algorithms = [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+
 
 """
 $(SIGNATURES)
@@ -787,11 +789,13 @@ macro model(𝓂,ex)
                                             perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
                                             perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
                                             higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x),
+                                            higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x),
+                                            higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x),
                                             higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x)
                             ),
                             Float64[], 
                             Set([:first_order]),
-                            Set([:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :second_order, :third_order]),
+                            Set(all_available_algorithms),
                             true,
                             false
                         )
@@ -1304,7 +1308,7 @@ macro parameters(𝓂,ex...)
 
         # time_dynamic_derivs = @elapsed 
         write_functions_mapping!(mod.$𝓂, $perturbation_order)
-        mod.$𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :binder_pesaran, :first_order, :second_order, :third_order])
+        mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
         
         if !$silent
             if $perturbation_order == 1

@@ -26,10 +26,10 @@ jobs:
         include:
           - os: ubuntu-latest
             prefix: xvfb-run
-#           - version: 'nightly'
-#             os: ubuntu-latest
-#             arch: x64
-#             allow_failure: true
+          # - version: 'nightly'
+          #   os: ubuntu-latest
+          #   arch: x64
+          #   allow_failure: true
     steps:
       - uses: actions/checkout@v3
       - uses: julia-actions/setup-julia@latest

@@ -6,13 +6,11 @@
 - [ ] for cond forecastind and kalman, get rid of observables input and use axis key of data input
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
 - [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
-- [ ] when doing calibration with optiimiser have better return values when he doesnt find a solution (probably NaN)
-- [ ] add pruning
+- [ ] when doing calibration with optimiser have better return values when he doesnt find a solution (probably NaN)
 - [ ] sampler returned negative std. investigate and come up with solution ensuring sampler can continue
+- [ ] automatically adjust plots for different legend widhts and heights
 - [ ] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
 - [ ] have get_std take variables as an input
-- [ ] get_solution for higher order
-- [ ] get solution higher order with multidimensional array (states, 1 and 2 partial derivatives variables names as dimensions in 2order case)
 - [ ] more informative errors when something goes wrong when writing a model
 - [ ] initial state accept keyed array
 - [ ] bring solution error into an object of the model so we dont have to pass it on as output
@@ -44,7 +42,9 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
-  
+
+- [x] get solution higher order with multidimensional array (states, 1 and 2 partial derivatives variables names as dimensions in 2order case)
+- [x] add pruning
 - [x] add other outputs from estimation (smoothed, filter states and shocks)
 - [x] shorten plot_irf (take inspiration from model estimate)
 - [x] fix solution plot

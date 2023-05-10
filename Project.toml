@@ -54,9 +54,11 @@ Requires = "^1"
 RuntimeGeneratedFunctions = "^0.5"
 SpecialFunctions = "^2"
 SpeedMapping = "^0.3"
+StatsPlots = "^0.15"
 Subscripts = "^0.1"
 SymPy = "^1"
 Symbolics = "^5"
+Turing = "^0.25"
 julia = "1.8"
 
 [extras]
@@ -76,3 +78,7 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
 test = ["Aqua", "CSV", "DataFrames", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "FiniteDifferences", "Zygote", "Plots", "StatsPlots"]
+
+[weakdeps]
+StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
+Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
