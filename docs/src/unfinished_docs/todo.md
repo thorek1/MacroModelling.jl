@@ -3,7 +3,7 @@
 ## High priority
 
 - [ ] add balanced growth path handling
-- [ ] fix ss of pruned solution in plotsolution. seems detached
+- [ ] write docs for (non-linear) solution algorithms
 - [ ] for cond forecastind and kalman, get rid of observables input and use axis key of data input
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
 - [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
@@ -45,6 +45,7 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
+- [x] fix ss of pruned solution in plotsolution. seems detached
 - [x] get solution higher order with multidimensional array (states, 1 and 2 partial derivatives variables names as dimensions in 2order case)
 - [x] add pruning
 - [x] add other outputs from estimation (smoothed, filter states and shocks)
