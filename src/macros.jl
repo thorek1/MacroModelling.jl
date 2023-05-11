@@ -1,5 +1,5 @@
 
-import MacroTools: postwalk, unblock
+import MacroTools: unblock, postwalk, @capture
 
 const all_available_algorithms = [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
@@ -73,6 +73,8 @@ macro model(𝓂,ex)
 
     ss_eq_aux_ind = Int[]
     dyn_eq_aux_ind = Int[]
+
+    ex = parse_for_loops(ex)
 
     # write down dynamic equations and add auxilliary variables for leads and lags > 1
     for (i,arg) in enumerate(ex.args)

@@ -171,6 +171,66 @@ function convert_to_ss_equation(eq::Expr)
 end
 
 
+function replace_for_loop_indices(exxpr,index_variable,indices,concatenate)
+    calls = []
+    for idx in indices
+        push!(calls, postwalk(x -> begin
+            x isa Expr ?
+                x.head == :ref ?
+                @capture(x, name_{index_}[time_]) ?
+                        index == index_variable ?
+                            :($(Expr(:ref, Symbol(string(name) * "◖" * string(idx) * "◗"),time))) :
+                        x :
+                    x :
+                @capture(x, name_{index_}) ?
+                    index == index_variable ?
+                        :($(Symbol(string(name) * "◖" * string(idx) * "◗"))) :
+                    x :
+                x :
+            x
+        end,
+        exxpr))
+    end
+
+    if concatenate
+        return :($(Expr(:call, :+, calls...)))
+    else
+        return calls
+    end
+end
+
+function parse_for_loops(equations_block)
+    eqs = Expr[]
+    for arg in equations_block.args
+        if isa(arg,Expr)
+            parsed_eqs = postwalk(x -> begin
+                    x isa Expr ? 
+                        x.head == :for ?
+                            x.args[2].args[2].head == :(=) ?
+                                replace_for_loop_indices(unblock(x.args[2]), 
+                                                        Symbol(x.args[1].args[1]), 
+                                                        [i.value for i  in x.args[1].args[2].args], 
+                                                        false) :
+                            replace_for_loop_indices(unblock(x.args[2]), 
+                                                    Symbol(x.args[1].args[1]), 
+                                                    [i.value for i  in x.args[1].args[2].args], 
+                                                    true)  :
+                        x :
+                    x
+                end,
+            arg)
+            if parsed_eqs isa Expr
+                push!(eqs,parsed_eqs)
+            else
+                push!(eqs,parsed_eqs...)
+            end
+        end
+    end
+    return Expr(:block,eqs...)
+end
+
+
+
 
 function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})
     @inbounds for i in eachindex(x)
