@@ -751,6 +751,8 @@ Plot the solution of the model (mapping of past states to present variables) aro
 
 The (non) stochastic steady state is plotted along with the mapping from the chosen past state to one present variable per plot. All other (non-chosen) states remain in the (non) stochastic steady state.
 
+In the case of pruned solutions the "pruned" state has as a baseline the non stochastic steady state and the "actual" state refers to the stochastic steady state. The plot then shows the mapping from `σ` standard deviations added to these two steady states and the present variables. Note that there is no unique mapping between the "pruned" and "actual" states. Furthermore, the mapping of the "actual" state is itself dependend on the "pruned" state so that the plots shown are just one realisation of inifite possible mappings.
+
 # Arguments
 - $MODEL
 - `state` [Type: `Symbol`]: state variable to be shown on x-axis.
@@ -841,15 +843,12 @@ function plot_solution(𝓂::ℳ,
         else 
             solve!(𝓂, verbose = verbose, algorithm = :first_order, dynamics = true, parameters = parameters)
         end
-
     end
-
 
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
                             parameters = parameters,
                             verbose = verbose)
-
 
     full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
@@ -871,6 +870,7 @@ function plot_solution(𝓂::ℳ,
 
     
     legend_plot = StatsPlots.plot(framestyle = :none) 
+
     if :first_order ∈ algorithm          
         StatsPlots.plot!(fill(0,1,1), 
         framestyle = :none, 
@@ -985,9 +985,9 @@ function plot_solution(𝓂::ℳ,
 
             has_impact = has_impact || sum(abs2,variable_second .- sum(variable_second)/length(variable_second))/(length(variable_second)-1) > eps()
         end
-
+        
         if :pruned_second_order ∈ algorithm
-            variable_pruned_second = [𝓂.solution.perturbation.pruned_second_order.state_update(SSS2p - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo), SSS2p - full_SS .+ state_selector * x)[1][indexin([k],𝓂.timings.var)][1] for x in state_range]
+            variable_pruned_second = [𝓂.solution.perturbation.pruned_second_order.state_update(SSS2p - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo), state_selector * x)[1][indexin([k],𝓂.timings.var)][1] for x in state_range]
 
             variable_pruned_second = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_pruned_second]
 
@@ -1003,7 +1003,7 @@ function plot_solution(𝓂::ℳ,
         end
 
         if :pruned_third_order ∈ algorithm
-            variable_pruned_third = [𝓂.solution.perturbation.pruned_third_order.state_update(SSS3p - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo), SSS3p - full_SS .+ state_selector * x)[1][indexin([k],𝓂.timings.var)][1] for x in state_range]
+            variable_pruned_third = [𝓂.solution.perturbation.pruned_third_order.state_update(SSS3p - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo), state_selector * x)[1][indexin([k],𝓂.timings.var)][1] for x in state_range]
 
             variable_pruned_third = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_pruned_third]
 
