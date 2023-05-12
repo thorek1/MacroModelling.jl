@@ -135,7 +135,7 @@ end
 
 
 function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
-    return filter(r -> match(pattern, string(r)) != nothing, strings)
+    return filter(r -> match(pattern, string(r)) !== nothing, strings)
 end
 
 
@@ -221,6 +221,8 @@ function parse_for_loops(equations_block)
             arg)
             if parsed_eqs isa Expr
                 push!(eqs,parsed_eqs)
+            # elseif parsed_eqs isa Array
+            #     [push!(eqs,b) for B in parsed_eqs for b in B.args if b isa Expr]
             else
                 push!(eqs,parsed_eqs...)
             end
