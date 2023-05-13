@@ -1,6 +1,6 @@
 using MacroModelling
 import MacroModelling as MM
-import MacroTools: postwalk, @capture
+import MacroTools: postwalk, @capture, unblock
 
 
 
@@ -136,11 +136,12 @@ index_variable ∈ MM.get_symbols(tt)
 
 function replace_for_loop_indices(exxpr,index_variable,indices,concatenate)
     calls = []
+    println(exxpr)
     for idx in indices
         push!(calls, postwalk(x -> begin
             x isa Expr ?
                 x.head == :ref ?
-                    @capture(x, name{index_}[time_]) ?
+                    @capture(x, name_{index_}[time_]) ?
                         index == index_variable ?
                             :($(Expr(:ref, Symbol(string(name) * "◖" * string(idx) * "◗"),time))) :
                         x :
@@ -149,7 +150,7 @@ function replace_for_loop_indices(exxpr,index_variable,indices,concatenate)
                             :($(Expr(:ref, name,Meta.parse(replace(string(time),string(index_variable) =>idx))))) :
                         x :
                     x :
-                @capture(x, name{index_}) ?
+                @capture(x, name_{index_}) ?
                     index == index_variable ?
                         :($(Symbol(string(name) * "◖" * string(idx) * "◗"))) :
                     x :
@@ -182,18 +183,21 @@ replace_for_loop_indices(:(K{k}[J-1]),:J,4:-1:1,true)
 function parse_for_loops(equations_block)
     eqs = Expr[]
     for arg in equations_block.args
+        println(arg)
         if isa(arg,Expr)
-            parsed_eqs = MacroTools.postwalk(x -> begin
+            parsed_eqs = postwalk(x -> begin
                     x isa Expr ? 
                         x.head == :for ?
-                            x.args[2].args[2].head == :(=) || (x.args[2].head == :block && x.args[2].args[2].head == :call) ? #equations inside for loops
+                            x.args[2].args[2].head == :(=) ?# || (x.args[2].head == :block && x.args[2].args[2].head == :call) ? #equations inside for loops
                                 replace_for_loop_indices(unblock(x.args[2]), 
                                                         Symbol(x.args[1].args[1]), 
-                                                        [i.value for i  in x.args[1].args[2].args], 
+                                                        eval(x.args[1].args[2]),
+                                                        # [i isa QuoteNode ? i.value : i for i in x.args[1].args[2].args], 
                                                         false) :
                             replace_for_loop_indices(unblock(x.args[2]), 
                                                     Symbol(x.args[1].args[1]), 
-                                                    [i.value for i  in x.args[1].args[2].args], 
+                                                    eval(x.args[1].args[2]),
+                                                    # [i isa QuoteNode ? i.value : i for i in x.args[1].args[2].args], 
                                                     true)  : # for loop part of equation
                         x :
                     x
@@ -221,7 +225,7 @@ function parse_for_loops(equations_block)
     return Expr(:block,eqs...)
 end
 
-
+:(1:4)|>eval
 replace_for_loop_indices(:(K[J-1]),:J,1:4,true)
 
 exxp = :(begin
@@ -233,23 +237,107 @@ exxp = :(begin
 
     for co ∈ [:EA,:US]
 
-        (1-delta{co})*K{co}[-1] + S{co}[0] - K{co}[0]
-
         Y{co}[0] = ((LAMBDA{co}*K{co}[-4]^theta{co}*N{co}[0]^(1-theta{co}))^(-nu{co}) + sigma{co}*Z{co}[-1]^(-nu{co}))^(-1/nu{co})
 
-        X{co}[0] = phi{co}*S{co}[0]
-        # for lag in (-J+1):0
-        #         + phi{co}*S{co}[({lag})]
-        # end
+        (1-delta{co})*K{co}[-1] + S{co}[0] - K{co}[0]
+
+        X{co}[0] = phi{co}*S{co}[0] + for lag in -4:0 phi{co} * S{co}[lag+0] end
     end
 end)
+
+
+
+exxp = :(begin
+    # g[0] = (1 - ρᵍ) * ḡ + ρᵍ * g[-1] + σᵍ * ϵᵍ[x]
+
+    # for s in [:T,:NT]
+    #     for c ∈ [:EA,:US] y{c}{s}[0] end = for c ∈ [:EA,:US] C{c}{s}[0] + I{c}{s}[0] + alpha{s} * G{c}{s}[0] end
+    # end
+
+    # for co ∈ [:EA,:US]
+
+        # Y{co}[0] = ((LAMBDA{co}*K{co}[-4]^theta{co}*N{co}[0]^(1-theta{co}))^(-nu{co}) + sigma{co}*Z{co}[-1]^(-nu{co}))^(-1/nu{co})
+
+        # (1-delta{co})*K{co}[-1] + S{co}[0] - K{co}[0]
+
+        X{co}[0] = phi{co}*S{co}[0] + for lag ∈ -4:0 phi{co} * S{co}[lag+0] end
+    # end
+end)
+
+
+
 
 :((1-delta{co})*K{co}[-1] + S{co}[0] - K{co}[0]) |> dump
 
 exxp |> dump
-exxp.args[6].args[2] |> dump
+exxp.args[2] |> dump
+exxp.args[2].args[2] |> dump
 
 parse_for_loops(exxp)
+
+
+
+
+function replace_for_loop_indices(exxpr,index_variable,indices,concatenate)
+    calls = []
+    for idx in indices
+        push!(calls, postwalk(x -> begin
+            x isa Expr ?
+                x.head == :ref ?
+                @capture(x, name_{index_}[time_]) ?
+                        index == index_variable ?
+                            :($(Expr(:ref, Symbol(string(name) * "◖" * string(idx) * "◗"),time))) :
+                        x :
+                    x :
+                @capture(x, name_{index_}) ?
+                    index == index_variable ?
+                        :($(Symbol(string(name) * "◖" * string(idx) * "◗"))) :
+                    x :
+                x :
+            x
+        end,
+        exxpr))
+    end
+
+    if concatenate
+        return :($(Expr(:call, :+, calls...)))
+    else
+        return calls
+    end
+end
+
+function parse_for_loops(equations_block)
+    eqs = Expr[]
+    for arg in equations_block.args
+        if isa(arg,Expr)
+            parsed_eqs = postwalk(x -> begin
+                    x isa Expr ? 
+                        x.head == :for ?
+                            x.args[2].args[2].head == :(=) ?
+                                replace_for_loop_indices(unblock(x.args[2]), 
+                                                        Symbol(x.args[1].args[1]), 
+                                                        [i.value for i  in x.args[1].args[2].args], 
+                                                        false) :
+                            replace_for_loop_indices(unblock(x.args[2]), 
+                                                    Symbol(x.args[1].args[1]), 
+                                                    [i.value for i  in x.args[1].args[2].args], 
+                                                    true)  :
+                        x :
+                    x
+                end,
+            arg)
+            if parsed_eqs isa Expr
+                push!(eqs,parsed_eqs)
+            # elseif parsed_eqs isa Array
+            #     [push!(eqs,b) for B in parsed_eqs for b in B.args if b isa Expr]
+            else
+                push!(eqs,parsed_eqs...)
+            end
+        end
+    end
+    return Expr(:block,eqs...)
+end
+
 
 
 
