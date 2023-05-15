@@ -1,6 +1,6 @@
 import sympy
 
-from sympy.stats import MultivariateNormal, density, marginal_distribution, E, Normal, std, skewness, kurtosis
+from sympy.stats import MultivariateNormal, density, marginal_distribution, E, Normal, std, skewness, kurtosis, variance
 from sympy import symbols, MatrixSymbol, sqrt, exp ,pi
 
 a = .9
@@ -54,18 +54,40 @@ E(a*x1 + b*x**2 + c * e)
 ahat**2*b*c**2 + a*ahat**2*b*c**2
 
 ahat**2*b*c**2 / (1-a)
-b*c**2 / ((1-a)*(1-a**2))
+b*c**2 / ((1-a)*(1-a**2))# this one for E
 
 
 
 
-std(a*x1 + b*x**2 + c * e)
+a, ahat, b, c = symbols('a ahat b c')
+x = Normal('x',0,c * ahat)
+# std(a*(a*x + b*x**2 + c * e))
+# std(a*(a*x + b*x**2 + c * e) + b*x**2 + c * e)
+std(a**2*x + (1+a)*b*x**2 + (1+a)*c * e)
+sqrt(a**4*ahat**2*c**2 + 2*a**2*ahat**4*b**2*c**4 + a**2*c**2 + 4*a*ahat**4*b**2*c**4 + 2*a*c**2 + 2*ahat**4*b**2*c**4 + c**2)
 
-sqrt(2)*(a**4*x**2 - 2*a**3*ahat**2*b*c**2*x + 2*a**3*b*x**3 + a**2*ahat**4*b**2*c**4 - 2*a**2*ahat**2*b**2*c**2*x**2 - 2*a**2*ahat**2*b*c**2*x + a**2*b**2*x**4 + 2*a**2*b*x**3 + a**2*c**2 + 2*a*ahat**4*b**2*c**4 - 4*a*ahat**2*b**2*c**2*x**2 + 2*a*b**2*x**4 + 2*a*c**2 + ahat**4*b**2*c**4 - 2*ahat**2*b**2*c**2*x**2 + b**2*x**4 + c**2)*exp(-x**2/(2*ahat**2*c**2))/(2*sqrt(pi)*ahat*c)
+sqrt(a**2*ahat**2*c**2 + 2*ahat**4*b**2*c**4 + c**2) / (1-a)
+
+
+variance(a**2*x + (1+a)*b*x**2 + (1+a)*c * e)
+a**4*ahat**2*c**2 + 2*a**2*ahat**4*b**2*c**4 + a**2*c**2 + 4*a*ahat**4*b**2*c**4 + 2*a*c**2 + 2*ahat**4*b**2*c**4 + c**2
 
 
 
-a = .9
+variance(a*x + b*x**2 + c * e)
+a**2*ahat**2*c**2 + 2*ahat**4*b**2*c**4 + c**2
+
+(a**2*ahat**2*c**2 + 2*ahat**4*b**2*c**4 + c**2) / (1-a**2)
+sqrt((2*ahat**4*b**2*c**4 + c**2)/(1 - a**2)) # this one for std
+
+
+
+
+
+
+# Sk_x * (σ_x / σ_z)^3 + Sk_y * (σ_y / σ_z)^3
+
+a = .5
 b = .5
 c = .01 
 ahat = 1 / sqrt(1 - a**2)

@@ -43,9 +43,9 @@ function simulate_moments(β)
         # x = β[1] * x + β[2] * x^2 + β[3] * x^3 + β[4] * x^4 + β[end] * randn()
         x̂[i] = x
     end
-    [mean(x̂), var(x̂), skewness(x̂), kurtosis(x̂)]
+    [mean(x̂), std(x̂), skewness(x̂), kurtosis(x̂)]
 end
-simulate_moments([.9,.5,.01])
+simulate_moments([.5,.5,.01])
 
 simulate_moments([.95,-.05,-0.195,.075])
 sum(abs2,simulate_moments([.95,-.05,-0.195,.075]) - [.01,.1,.1,3])
@@ -122,3 +122,78 @@ mean(b*xx.^2)
 std(b*xx.^2)
 skewness(b*xx.^2)
 kurtosis(b*xx.^2)
+
+
+
+# covariance of multivariate normal ^ 2
+using Distributions
+A = randn(2,2)
+X = MultivariateNormal([1 .4;.4 3])
+X = rand(X,1000000).^2;
+mean(X,dims=2)
+std(X,dims=2)
+var(X,dims=2)
+mean([1 0; .5 -1]*X,dims=2)
+std([1 0; .5 -1]*X,dims=2)
+cov(X')
+
+
+# mean of X^2 is var(X)
+# std  of X^2 is sqrt(2) * var(X)
+
+X = A X + C ϵ
+
+# mean of X is 0
+# var  of X is solve    A * covar * A' + C * C' - covar    for covar
+
+A = randn(2,2)
+C = randn(2,2)
+
+using LinearMaps, IterativeSolvers, LinearAlgebra
+CC = C * C'
+
+lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+
+covar = reshape(gmres(lm, vec(-CC)), size(CC))
+
+diag(covar)
+
+
+B = [0.5 0.75 ; 0.5 0]
+
+mean_X2 = diag(covar)
+mean_BX2 = B*diag(covar)
+std_X2 = sqrt(2) * diag(covar)
+var_X2 = 2 * diag(covar).^2
+var_BX2 = diag(B * diagm(2 * diag(covar).^2) * B')
+std_BX2 = sqrt.(diag(B * diagm(2 * diag(covar).^2) * B'))
+
+
+
+X = MultivariateNormal(diagm(diag(covar)))
+X = rand(X,1000000).^2;
+mean(X,dims=2)
+mean(B*X,dims=2)
+std(X,dims=2)
+var(X,dims=2)
+std(B*X,dims=2)
+var(B*X,dims=2)
+
+
+# B * X^2 + C * ϵ
+(I - A) \ B * diag(covar) # closed form mean 
+
+sim = 100000
+X = zeros(2)
+X̄ = zeros(2)
+X̂ = randn(sim,2)
+
+for i in 1:sim
+    ϵ = randn(2)
+    X̄ = A * X̄ + C * ϵ
+    X = A * X + B * X̄.^2 + C * ϵ
+    X̂[i,:] = X
+end
+
+mean(X̂, dims = 1)
+std(X̂, dims = 1)
