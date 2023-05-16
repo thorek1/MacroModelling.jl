@@ -1,7 +1,7 @@
 import sympy
 
 from sympy.stats import MultivariateNormal, density, marginal_distribution, E, Normal, std, skewness, kurtosis, variance
-from sympy import symbols, MatrixSymbol, sqrt, exp ,pi
+from sympy import symbols, MatrixSymbol, sqrt, exp ,pi, expand
 
 a = .9
 b = .5
@@ -72,7 +72,7 @@ sqrt(a**2*ahat**2*c**2 + 2*ahat**4*b**2*c**4 + c**2) / (1-a)
 variance(a**2*x + (1+a)*b*x**2 + (1+a)*c * e)
 a**4*ahat**2*c**2 + 2*a**2*ahat**4*b**2*c**4 + a**2*c**2 + 4*a*ahat**4*b**2*c**4 + 2*a*c**2 + 2*ahat**4*b**2*c**4 + c**2
 
-
+ 
 
 variance(a*x + b*x**2 + c * e)
 a**2*ahat**2*c**2 + 2*ahat**4*b**2*c**4 + c**2
@@ -100,3 +100,21 @@ density(X)(y, z)
 density(X)(1, 2)
 marginal_distribution(X, X[1])(y)
 marginal_distribution(X, X[0])(y)
+
+
+# figure out cov
+import sympy
+
+from sympy.stats import MultivariateNormal, density, marginal_distribution, E, Normal, std, skewness, kurtosis, variance
+from sympy import symbols, MatrixSymbol, sqrt, exp ,pi
+
+a = .9
+b = .5
+c = .01 
+ahat = 1 / sqrt(1 - a**2)
+a, ahat, b, c = symbols('a ahat b c')
+x = Normal('x',0,c * ahat)
+
+
+e = Normal('e',0,1)
+x_hat = a * x + c * e
