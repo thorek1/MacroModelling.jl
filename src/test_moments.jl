@@ -141,7 +141,7 @@ cov(X')
 # mean of X^2 is var(X)
 # std  of X^2 is sqrt(2) * var(X)
 
-X = A X + C ϵ
+# X = A X + C ϵ
 
 # mean of X is 0
 # var  of X is solve    A * covar * A' + C * C' - covar    for covar
@@ -181,9 +181,37 @@ var(B*X,dims=2)
 
 
 # B * X^2 + C * ϵ
-(I - A) \ B * diag(covar) # closed form mean 
+X = MultivariateNormal(diagm(diag(covar)))
+X = rand(X,1000000).^2;
 
-sim = 100000
+e = MultivariateNormal(diagm(ones(2)))
+e = rand(e,1000000).^2;
+x_up = B * X + C * e
+
+var(x_up, dims = 2)
+
+
+var_BX2 = diag(B * diagm(2 * diag(covar).^2) * B')
+
+var_BX2Ce = var_BX2 + diag(C * C')
+var_BX2CeX = var_BX2 + diag(C * C')
+
+
+
+for i in 1:1000
+var_BX2CeX = diag(A * diagm(var_BX2CeX) * A') + var_BX2Ce
+end
+
+diag(A * diagm(var_BX2Ce) * A') + var_BX2Ce
+(diag(B * diagm(2 * diag(covar).^2) * B') + diag(C * C'))
+diag((I - A) \ diagm(var_BX2Ce)) + 2*var_BX2Ce
+
+
+
+
+
+# full AR model
+sim = 1000000
 X = zeros(2)
 X̄ = zeros(2)
 X̂ = randn(sim,2)
@@ -196,4 +224,6 @@ for i in 1:sim
 end
 
 mean(X̂, dims = 1)
+(I - A) \ B * diag(covar) # closed form mean 
 std(X̂, dims = 1)
+var(X̂, dims = 1)
