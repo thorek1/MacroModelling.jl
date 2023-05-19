@@ -2,6 +2,46 @@
 using Distributions, OnlineStats, Statistics, StatsPlots
 # StatsPlots.plotlyjs()
 
+using MacroModelling
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+sol = get_solution(RBC, RBC.parameter_values, algorithm = :second_order)
+
+get_var(RBC)
+sol[1]
+sol[2]
+sol[3]
+
+T = RBC.timings;
+A = @views sol[2][:,1:T.nPast_not_future_and_mixed] * diagm(ones(RBC.timings.nVars))[RBC.timings.past_not_future_and_mixed_idx,:]
+C = @views sol[2][:,T.nPast_not_future_and_mixed+1:end]
+
+
+
+
+using LinearMaps, IterativeSolvers, LinearAlgebra
+CC = C * C'
+
+lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+
+covar = reshape(gmres(lm, vec(-CC)), size(CC))
+diag(covar)
+
+get_var(RBC)
+
+
 
 sim = 100000
 burnin = 1
@@ -256,7 +296,7 @@ var_BX2Ce = var_BX2 + diag(C * C')
 
 
 # full AR model
-sim = 1000000
+sim = 10000000
 X̂ = zeros(sim,2)
 X̄̂ = zeros(sim,2)
 ϵ̄ = randn(sim,2)
@@ -434,7 +474,8 @@ A * X̂ * A * X̄̂   +   C * C'
 A * X̂ * A * X̄̂   +   C * C'
 
 
-
+# here is   mean(X̂, dims = 1)
+(I - A) \ B * diag(covar)
 
 # lets start from scratch. i am looking for    var(X̂, dims = 1)
 # with  X̂[i,:] = A * X̂[i-1,:] + B * X̄̂[i-1,:].^2 + C * ϵ̄[i,:]
@@ -471,4 +512,46 @@ mean((A * X̂[1:end-1,:]') , dims = 2)
 
 diag((B * mean(X̄̂[1:end-1,:]'.^2 , dims = 2)) * (A * mean(X̂[1:end-1,:]' , dims = 2))')
 
-diag(B * diag(covar) * (A * mean(X̂[1:end-1,:]' , dims = 2))')
+diag(B * diag(covar) * (A * ((I - A) \ B * diag(covar)))')
+
+
+
+
+var(A * X̂[1:end-1,:]', dims = 2) + var(B * X̄̂[1:end-1,:]'.^2, dims = 2) + var(C * ϵ̄[2:end,:]', dims = 2) + 2 * (mean((A * X̂[1:end-1,:]') .* (B * X̄̂[1:end-1,:]'.^2) , dims = 2) - diag(B * diag(covar) * (A * ((I - A) \ B * diag(covar)))'))
+
+
+
+
+var(X̂, dims = 1)
+mean(X̂.^2, dims = 1) - mean(X̂, dims = 1).^2
+
+(var(A * X̂', dims = 2) + 
+2 * mean((A * X̂') .* (B * X̄̂'.^2) , dims = 2) +
+
+diag(B * (3 * (A * covar * A').^2 + 
+6 * (A * covar * A') .* (C * C') + 3 * (C * C').^2 - covar.^2) * B') + 
+diag(C * C') + 
+- 2 * diag(B * diag(covar) * (A * ((I - A) \ B * diag(covar)))'))
+
+
+
+var(A * X̂', dims = 2)
+mean((A * X̂').^2, dims = 2) - mean((A * X̂'), dims = 2).^2
+mean((A * X̂').^2, dims = 2) - (A * mean(X̂, dims = 1)').^2
+
+
+
+mean((A * X̂').^2, dims = 2) - (A * ((I - A) \ B * diag(covar))).^2
+
+
+
+
+var(X̂', dims = 2)
+(mean((A * X̂').^2, dims = 2) + 
+2 * mean((A * X̂') .* (B * X̄̂'.^2) , dims = 2) -
+
+(A * ((I - A) \ B * diag(covar))).^2 +
+diag(B * (3 * (A * covar * A').^2 + 
+6 * (A * covar * A') .* (C * C') + 3 * (C * C').^2 - covar.^2) * B') + 
+diag(C * C') + 
+- 2 * diag(B * diag(covar) * (A * ((I - A) \ B * diag(covar)))'))
