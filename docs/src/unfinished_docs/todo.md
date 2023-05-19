@@ -3,7 +3,9 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] pruning of 3rd order takes pruned 2nd order input
 - [ ] write docs for (non-linear) solution algorithms
+- [ ] have initial_state accept SS and SSS as arguments
 - [ ] for cond forecastind and kalman, get rid of observables input and use axis key of data input
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
 - [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
