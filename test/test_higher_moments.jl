@@ -1,4 +1,264 @@
 using MacroModelling
+import IterativeSolvers as ℐ
+
+
+
+translate_mod_file("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/AnSchorfheide_Gaussian.mod")
+
+include("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/AnSchorfheide_Gaussian.jl")
+m = AnSchorfheide_Gaussian
+
+
+varobs = [:YGR, :INFL, :INT]
+T = m.timings
+states = m.timings.past_not_future_and_mixed
+
+nx = T.nPast_not_future_and_mixed
+nu = T.nExo
+ny = T.nVars
+
+
+id1_xf       = 1:nx
+id2_xs       = id1_xf[end]    .+ (1:nx)
+id3_xf_xf    = id2_xs[end]    .+ (1:nx^2)
+id4_xrd      = id3_xf_xf[end] .+ (1:nx)
+id5_xf_xs    = id4_xrd[end]   .+ (1:nx^2)
+id6_xf_xf_xf = id5_xf_xs[end] .+ (1:nx^3)
+id1_u        = 1:nu
+id2_u_u      = id1_u[end]       .+ (1:nu^2)
+id3_xf_u     = id2_u_u[end]     .+ (1:nx*nu)
+id4_u_xf     = id3_xf_u[end]    .+ (1:nx*nu)
+id5_xs_u     = id4_u_xf[end]    .+ (1:nx*nu)   
+id6_u_xs     = id5_xs_u[end]    .+ (1:nx*nu)  
+id7_xf_xf_u  = id6_u_xs[end]    .+ (1:nx^2*nu)
+id8_xf_u_xf  = id7_xf_xf_u[end] .+ (1:nx^2*nu)
+id9_u_xf_xf  = id8_xf_u_xf[end] .+ (1:nx^2*nu)    
+id10_xf_u_u  = id9_u_xf_xf[end] .+ (1:nx*nu^2)
+id11_u_xf_u  = id10_xf_u_u[end] .+ (1:nx*nu^2)
+id12_u_u_xf  = id11_u_xf_u[end] .+ (1:nx*nu^2)
+id13_u_u_u   = id12_u_u_xf[end] .+ (1:nu^3)  
+
+
+model_order = [:YGR,:INFL,:INT,:y, :R,:g,:z,:c,:dy,:p,:e_z, :e_g, :e_r]
+
+
+declaration_order = [:c, :dy, :p, :y, :R, :g, :z, :YGR, :INFL, :INT]
+indexin(declaration_order,m.var)
+
+sol = get_solution(m,m.parameter_values, algorithm = :second_order)
+
+hx = sol[2][indexin(intersect(model_order,states),m.var),indexin(intersect(model_order,states),states)]
+hu = sol[2][indexin(intersect(model_order,states),m.var),((T.nPast_not_future_and_mixed + 1):end)[indexin(intersect(model_order,m.exo),m.exo)]] 
+gx = sol[2][indexin(intersect(model_order,m.var),m.var),indexin(intersect(model_order,states),states)]
+gu = sol[2][indexin(intersect(model_order,m.var),m.var),((T.nPast_not_future_and_mixed + 1):end)[indexin(intersect(model_order,m.exo),m.exo)]]
+
+second_order_helper = Matrix(undef,(T.nPast_not_future_and_mixed+1+T.nExo)^2,4)
+second_order_axis = vcat(T.past_not_future_and_mixed,:Volatility,T.exo)
+k = 1
+for i in second_order_axis
+    for j in second_order_axis
+        second_order_helper[k,:] = [j,i,k,string(i)*string(j)]
+        k += 1
+    end
+end
+
+
+
+second_order_helper_ordered = Matrix(undef,(T.nPast_not_future_and_mixed+1+T.nExo)^2,4)
+second_order_axis_ordered = vcat(intersect(model_order,T.past_not_future_and_mixed),:Volatility,intersect(model_order,T.exo))
+k = 1
+for i in second_order_axis_ordered
+    for j in second_order_axis_ordered
+        second_order_helper_ordered[k,:] = [i,j,k,string(i)*string(j)]
+        k += 1
+    end
+end
+
+
+
+Hxx = sol[3][indexin(intersect(model_order,states),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .∈ (states,) .&& second_order_helper_ordered[:,2] .∈ (states,),4],second_order_helper[:,4]),3]]
+Huu = sol[3][indexin(intersect(model_order,states),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .∈ (T.exo,) .&& second_order_helper_ordered[:,2] .∈ (T.exo,),4],second_order_helper[:,4]),3]]
+Hxu = sol[3][indexin(intersect(model_order,states),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .∈ (states,) .&& second_order_helper_ordered[:,2] .∈ (T.exo,),4],second_order_helper[:,4]),3]]
+hss = sol[3][indexin(intersect(model_order,states),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .== :Volatility .&& second_order_helper_ordered[:,2] .== :Volatility,4],second_order_helper[:,4]),3]]
+
+Gxx = sol[3][indexin(intersect(model_order,m.var),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .∈ (states,) .&& second_order_helper_ordered[:,2] .∈ (states,),4],second_order_helper[:,4]),3]]
+Guu = sol[3][indexin(intersect(model_order,m.var),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .∈ (T.exo,) .&& second_order_helper_ordered[:,2] .∈ (T.exo,),4],second_order_helper[:,4]),3]]
+Gxu = sol[3][indexin(intersect(model_order,m.var),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .∈ (states,) .&& second_order_helper_ordered[:,2] .∈ (T.exo,),4],second_order_helper[:,4]),3]]
+gss = sol[3][indexin(intersect(model_order,m.var),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .== :Volatility .&& second_order_helper_ordered[:,2] .== :Volatility,4],second_order_helper[:,4]),3]]
+
+
+M2u = vec(I(T.nExo))
+
+
+# first order
+A = hx
+B = hu
+C = gx
+D = gu
+
+c = zeros(T.nPast_not_future_and_mixed)
+d = zeros(T.nVars)
+
+ybar = sol[1][indexin(intersect(model_order,m.var),m.var)]
+
+Fxi = I(3)
+
+## First-order moments, ie expectation of variables
+IminA = I-A
+Ez   = IminA\c
+Ey   = ybar + C*Ez+d; # recall y = yss + C*z + d
+
+
+## Compute Zero-Lag Cumulants of innovations, states and controls
+nz = size(A,1);
+
+BFxi = B*Fxi;
+DFxi = D*Fxi
+
+CkronC = kron(C,C)
+BFxikronBFxi= kron(BFxi,BFxi)
+DFxikronDFxi= kron(DFxi,DFxi)
+
+CC = BFxi*Fxi*BFxi'
+
+
+lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+
+C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+
+C2y0 = C * C2z0 * C' + DFxi * Fxi * DFxi'
+
+# Second order solution
+
+
+nz = 2 * nx + nx^2
+nxi = nu + nu^2 + 2 * nx * nu
+nximin = nu + Int(nu * (nu + 1) / 2) + nu * nx
+hx_hx = kron(hx,hx)
+hx_hu = kron(hx,hu)
+hu_hx = kron(hu,hx)
+hu_hu = kron(hu,hu)
+
+
+# get Fxi
+nu2 = nu*Int((nu+1)/2);
+nxi = nu + nu^2 + 2*nx*nu;
+nximin = nu + nu2 + nu*nx;
+
+col1_u       = 1:nu;
+col2_u_u     = col1_u[end]   .+ (1:nu2);
+col3_xf_u    = col2_u_u[end] .+ (1:nu*nx);
+
+row1_u       = 1:nu;
+row2_u_u     = row1_u[end]    .+ (1:nu^2);    
+row3_xf_u    = row2_u_u[end]  .+ (1:nu*nx);
+row4_u_xf    = row3_xf_u[end] .+ (1:nx*nu);
+
+p = nu
+
+a = sparse(tril(ones(p,p)));
+j = 1
+for k in 1:p
+    for i in 1:p
+        if a[i,k]== 1
+            a[i,k] = j
+            j +=1
+        end
+    end
+end
+a = a + transpose(tril(a,-1));
+
+j = Int.(vec(a))
+
+m = Int(p*(p+1)/2)
+# if sparseflag
+#     DP = spalloc(p*p,m,p^2);
+# else
+    DP = zeros(p*p,m);
+# end
+for r in 1:size(DP,1)
+    DP[r, j[r]] = 1;
+end
+
+# if nargout > 1
+    DPinv = (DP'*DP)\DP';    
+# end
+
+DPu = DP
+K_u_x = reshape(kron(vec(I(nu)), I(nx)), nu*nx, nu*nx)
+
+
+Iu = I(nu); 
+Iux = I(nu*nx);
+Fxi = zeros(nxi,nximin)
+
+
+Fxi[row1_u,col1_u] = Iu; 
+Fxi[row2_u_u,col2_u_u] = DPu; 
+Fxi[row3_xf_u,col3_xf_u] = Iux; 
+Fxi[row4_u_xf,col3_xf_u] = K_u_x; 
+
+
+
+
+A = zeros(nz,nz);
+B = zeros(nz,nxi);
+C = zeros(ny,nz);
+D = zeros(ny,nxi);
+c = zeros(nz,1);
+d = zeros(ny,1);
+
+A[id1_xf,id1_xf] = hx
+A[id2_xs,id2_xs] = hx
+A[id2_xs,id3_xf_xf] = 0.5*Hxx
+A[id3_xf_xf,id3_xf_xf] = hx_hx
+    
+B[id1_xf,id1_u] = hu;
+B[id2_xs,id2_u_u] = 1/2*Huu;
+B[id2_xs,id3_xf_u] = Hxu;
+B[id3_xf_xf,id2_u_u] = hu_hu;
+B[id3_xf_xf,id3_xf_u] = hx_hu;
+B[id3_xf_xf,id4_u_xf] = hu_hx;
+
+C[1:ny,id1_xf] = gx;
+C[1:ny,id2_xs] = gx;
+C[1:ny,id3_xf_xf] = 1/2*Gxx;
+
+D[1:ny,id1_u] = gu;
+D[1:ny,id2_u_u] = 1/2*Guu;
+D[1:ny,id3_xf_u] = Gxu;
+
+c[id2_xs,1] = 1/2*hss + 1/2*Huu*M2u; 
+c[id3_xf_xf,1] =hu_hu*M2u;
+
+d[1:ny,1] = 1/2*gss + 1/2*Guu*M2u;
+
+## First-order moments, ie expectation of variables
+IminA = I-A;
+Ez   = IminA\c;
+Ey   = ybar + C*Ez+d; # recall y = yss + C*z + d
+    
+
+## Compute Zero-Lag Cumulants of innovations, states and controls
+nz = size(A,1);
+
+BFxi = B*Fxi;
+DFxi = D*Fxi
+
+CkronC = kron(C,C)
+BFxikronBFxi= kron(BFxi,BFxi)
+DFxikronDFxi= kron(DFxi,DFxi)
+
+CC = BFxi*  "fix this"  *BFxi'
+
+
+lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+
+C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+
+C2y0 = C * C2z0 * C' + DFxi * Fxi * DFxi'
+
+
 
 translate_mod_file("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/RBCmodel.mod")
 include("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/RBCmodel.jl")
