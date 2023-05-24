@@ -1,7 +1,39 @@
 using MacroModelling
 import IterativeSolvers as ℐ
+using LinearAlgebra, LinearMaps
 
 
+
+function duplication(p)
+    a = sparse(tril(ones(p,p)))
+
+    j = 1
+
+    for k in 1:p
+        for i in 1:p
+            if a[i,k]== 1
+                a[i,k] = j
+                j +=1
+            end
+        end
+    end
+
+    a = a + transpose(tril(a,-1))
+
+    j = Int.(vec(a))
+
+    m = Int(p*(p+1)/2)
+    
+    DP = zeros(p*p,m)
+
+    for r in 1:size(DP,1)
+        DP[r, j[r]] = 1
+    end
+
+    DPinv = (DP'*DP)\DP'
+
+    return DP, DPinv
+end
 
 translate_mod_file("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/AnSchorfheide_Gaussian.mod")
 
@@ -128,12 +160,55 @@ C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
 
 C2y0 = C * C2z0 * C' + DFxi * Fxi * DFxi'
 
-# Second order solution
+DP, DPinv = duplication(nx)
 
+E_XF2min = DPinv * vec(C2z0)
+E_XF1 = zeros(nx)
+# Second order solution
+DP, DPinv = duplication(nu)
+
+arg2 = vcat(DPinv * vec(I(nu)),E_XF1,E_XF2min)
 
 nz = 2 * nx + nx^2
 nxi = nu + nu^2 + 2 * nx * nu
 nximin = nu + Int(nu * (nu + 1) / 2) + nu * nx
+
+
+
+
+# Symbolic variables for shocks
+u = sym('u',[nu 1])  # Create symbolic variables for epsilon
+xf = sym('xf',[nx 1])  # Symbolic variables for first-order terms xf    
+E_uu   = sym('E_uu_',[nu2 1]) # unique elements for second-order product moments of epsi
+
+u = ones(nu)
+xf
+# Create minimal xi_t vector    
+u_u = kron(u,u)
+xf_u = kron(xf,u)
+ximin = [u; DPuinv*(u_u)-E_uu; xf_u]
+
+
+# Recursive function to generate all integer vectors of length n that sum up to L1
+function allVL1(n::Int, L1::Int)
+    # Base case: if n is 1, return L1
+    if n == 1
+        return [L1]
+    else
+        # Recursive case: generate all possible vectors for smaller values of n and L1
+        v = []
+        for i in 0:L1
+            for vec in allVL1(n-1, L1-i)
+                push!(v, [i; vec])
+            end
+        end
+        return v
+    end
+end
+vvv = reverse(allVL1(4,2))
+
+reverse
+
 hx_hx = kron(hx,hx)
 hx_hu = kron(hx,hu)
 hu_hx = kron(hu,hx)
@@ -154,35 +229,7 @@ row2_u_u     = row1_u[end]    .+ (1:nu^2);
 row3_xf_u    = row2_u_u[end]  .+ (1:nu*nx);
 row4_u_xf    = row3_xf_u[end] .+ (1:nx*nu);
 
-p = nu
 
-a = sparse(tril(ones(p,p)));
-j = 1
-for k in 1:p
-    for i in 1:p
-        if a[i,k]== 1
-            a[i,k] = j
-            j +=1
-        end
-    end
-end
-a = a + transpose(tril(a,-1));
-
-j = Int.(vec(a))
-
-m = Int(p*(p+1)/2)
-# if sparseflag
-#     DP = spalloc(p*p,m,p^2);
-# else
-    DP = zeros(p*p,m);
-# end
-for r in 1:size(DP,1)
-    DP[r, j[r]] = 1;
-end
-
-# if nargout > 1
-    DPinv = (DP'*DP)\DP';    
-# end
 
 DPu = DP
 K_u_x = reshape(kron(vec(I(nu)), I(nx)), nu*nx, nu*nx)
