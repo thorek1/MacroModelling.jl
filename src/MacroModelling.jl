@@ -2366,7 +2366,7 @@ end
 
 
 
-function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
+function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)#::Tuple{Matrix{Float64},Bool}
     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
     ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
@@ -2462,7 +2462,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
 end
 
 
-function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatrix{<: Real}, solved::Bool; T::timings, explosive::Bool = false) #::AbstractMatrix{Real},
+function riccati_conditions(∇₁, sol_d, solved::Bool; T::timings, explosive::Bool = false)#::AbstractMatrix{<: Real}
     expand = @ignore_derivatives @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
     A = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
@@ -2472,58 +2472,58 @@ function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatr
     sol_buf = sol_d * expand[2]
 
     err1 = A * sol_buf * sol_buf + B * sol_buf + C
-
+    
     return err1[:,T.past_not_future_and_mixed_idx]
 end
 
 
 
-function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explosive::Bool = false) where {Z,S,N}
-    # unpack: AoS -> SoA
-    ∇̂₁ = ℱ.value.(∇₁)
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, ∇₁)'
+# function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explosive::Bool = false) where {Z,S,N}
+#     # unpack: AoS -> SoA
+#     ∇̂₁ = ℱ.value.(∇₁)
+#     # you can play with the dimension here, sometimes it makes sense to transpose
+#     ps = mapreduce(ℱ.partials, hcat, ∇₁)'
 
-    # get f(vs)
-    val, solved = riccati_forward(∇̂₁; T = T, explosive = explosive)
-println(val)
-    if solved
-        # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)
-        A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x, solved; T = T), val)
-        # B = Zygote.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)[1]
-        # A = Zygote.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)[1]
+#     # get f(vs)
+#     val, solved = riccati_forward(∇̂₁; T = T, explosive = explosive)
+# println(val)
+#     if solved
+#         # get J(f, vs) * ps (cheating). Write your custom rule here
+#         B = ℱ.jacobian(x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)
+#         A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x, solved; T = T), val)
+#         # B = Zygote.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)[1]
+#         # A = Zygote.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)[1]
 
-        Â = RF.lu(A, check = false)
+#         Â = RF.lu(A, check = false)
 
-        if !ℒ.issuccess(Â)
-            Â = ℒ.svd(A)
-        end
+#         if !ℒ.issuccess(Â)
+#             Â = ℒ.svd(A)
+#         end
         
-        jvp = -(Â \ B) * ps
-    else
-        jvp = fill(0,length(val),length(∇̂₁)) * ps
-    end
+#         jvp = -(Â \ B) * ps
+#     else
+#         jvp = fill(0,length(val),length(∇̂₁)) * ps
+#     end
 
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val)), solved
-end
+#     # pack: SoA -> AoS
+#     return reshape(map(val, eachrow(jvp)) do v, p
+#         ℱ.Dual{Z}(v, p...) # Z is the tag
+#     end,size(val)), solved
+# end
 
 riccati_ = ImplicitFunction(riccati_forward, riccati_conditions)
 # riccati_AD = ImplicitFunction(riccati_forward, riccati_conditions)
 
 # riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive)[1], (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
 
-function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
-    println(typeof(∇₁))    
-    println(∇₁ isa Matrix{ℱ.Dual})
-    if ∇₁ isa Matrix{ℱ.Dual}
-        A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
-    else
+function calculate_first_order_solution(∇₁; T::timings, explosive::Bool = false)#::Tuple{Matrix{S},Bool} where S <: Real
+    # println(typeof(∇₁))    
+    # println(∇₁ isa Matrix{ℱ.Dual})
+    # if ∇₁ isa Matrix{ℱ.Dual}
+    #     A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
+    # else
         A, solved = riccati_(∇₁; T = T, explosive = explosive)
-    end
+    # end
 
     if !ℱ.value(solved)
         return hcat(A, zeros(size(A,1),T.nExo)), solved
@@ -3101,9 +3101,9 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    covar_raw = calculate_covariance_forward(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
+    covar_raw, _ = calculate_covariance_forward(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
 
-    return covar_raw, sol , ∇₁, SS_and_pars
+    return covar_raw, sol, ∇₁, SS_and_pars
 end
 
 function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Real}; T::timings, subset_indices::Vector{Int64})

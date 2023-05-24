@@ -33,6 +33,84 @@ end
 end
 
 
+get_std(RBC_CME)
+
+𝓂 = RBC_CME
+T = 𝓂.timings
+explosive = false
+verbose = false
+
+function solve_it(pars::Vector{S}) where S
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(pars, 𝓂, verbose)
+
+    ∇₁ = MacroModelling.calculate_jacobian(pars, SS_and_pars, 𝓂)
+
+    # println(size(∇₁))
+    A,_= MacroModelling.riccati_(∇₁; T = T, explosive = explosive)
+    # println(ForwardDiff.value.(A[2]))
+    # Jm = @view(ℒ.diagm(ones(S,T.nVars))[T.past_not_future_and_mixed_idx,:])
+
+    # ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(S,T.nVars))[T.future_not_past_and_mixed_idx,:]
+    # ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    # ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+
+
+    # B = -((∇₊ * A * Jm + ∇₀) \ ∇ₑ)
+
+    # return hcat(A, B)
+    return A
+end
+solve_it(𝓂.parameter_values)[1]
+
+
+SS_and_par, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
+par = 𝓂.parameter_values
+function solve_it_par(SS_and_par::Vector{S}) where S
+
+    ∇₁ = MacroModelling.calculate_jacobian(par, SS_and_par, 𝓂)
+
+    # println(size(∇₁))
+    riccati_pppl= riccati_pppp(∇₁; T = T, explosive = explosive)
+    A,_ = riccati_pppl(∇₁)
+    # println(A(∇₁))
+    # println(ForwardDiff.value.(A[2]))
+    Jm = @view(ℒ.diagm(ones(S,T.nVars))[T.past_not_future_and_mixed_idx,:])
+
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(S,T.nVars))[T.future_not_past_and_mixed_idx,:]
+    ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+
+
+    B = -((∇₊ * A * Jm + ∇₀) \ ∇ₑ)
+
+    return hcat(A, B)
+    # return A
+end
+
+
+riccati_pppp(x;T, explosive) = ImplicitFunction(x->MacroModelling.riccati_forward(x;T = T, explosive = explosive), (x,y,z)->MacroModelling.riccati_conditions(x,y,z;T = T, explosive = explosive))
+
+forw_jac = ForwardDiff.jacobian(solve_it, 𝓂.parameter_values)
+forw_jac2 = ForwardDiff.jacobian(solve_it_par, SS_and_par)
+zyg_jac2 = Zygote.jacobian(solve_it_par, SS_and_par)[1]
+
+zyg_jac = Zygote.jacobian(solve_it, 𝓂.parameter_values)[1]
+
+pars = 𝓂.parameter_values
+
+SS_and_pars, solution_error = 𝓂.SS_solve_func(pars, 𝓂, verbose)
+
+∇₁ = MacroModelling.calculate_jacobian(pars, SS_and_pars, 𝓂)
+
+A = MacroModelling.riccati_forward(∇₁; T = T, explosive = explosive)
+AA = MacroModelling.riccati_conditions(∇₁, A...; T = T, explosive = explosive)
+
+
+
+
+forw_jac = ForwardDiff.jacobian(x->MacroModelling.riccati_(x; T = T, explosive = explosive)[1],∇₁)
+zyg_jac = Zygote.jacobian(x->MacroModelling.riccati_(x; T = T, explosive = explosive)[1],∇₁)[1]
+
 
 data = simulate(RBC_CME)[:,:,1]
 observables = [:c,:k]
