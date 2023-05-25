@@ -32,8 +32,9 @@ end
     std_z_delta = .005
 end
 
-
 get_std(RBC_CME)
+
+get_SSS(RBC_CME)
 
 𝓂 = RBC_CME
 T = 𝓂.timings
@@ -46,7 +47,7 @@ function solve_it(pars::Vector{S}) where S
     ∇₁ = MacroModelling.calculate_jacobian(pars, SS_and_pars, 𝓂)
 
     # println(size(∇₁))
-    A,_= MacroModelling.riccati_(∇₁; T = T, explosive = explosive)
+    A,_= MacroModelling.riccati_AD(∇₁; T = T, explosive = explosive)
     # println(ForwardDiff.value.(A[2]))
     # Jm = @view(ℒ.diagm(ones(S,T.nVars))[T.past_not_future_and_mixed_idx,:])
 
@@ -108,8 +109,8 @@ AA = MacroModelling.riccati_conditions(∇₁, A...; T = T, explosive = explosiv
 
 
 
-forw_jac = ForwardDiff.jacobian(x->MacroModelling.riccati_(x; T = T, explosive = explosive)[1],∇₁)
-zyg_jac = Zygote.jacobian(x->MacroModelling.riccati_(x; T = T, explosive = explosive)[1],∇₁)[1]
+forw_jac = ForwardDiff.jacobian(x->MacroModelling.riccati_AD(x; T = T, explosive = explosive)[1],∇₁)
+zyg_jac = Zygote.jacobian(x->MacroModelling.riccati_AD(x; T = T, explosive = explosive)[1],∇₁)[1]
 
 
 data = simulate(RBC_CME)[:,:,1]
