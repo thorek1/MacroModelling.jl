@@ -4,6 +4,35 @@ using LinearAlgebra, LinearMaps
 
 
 
+function expand_mat(A::Matrix, nu::Int)
+    n = size(A, 1)
+    B = spzeros(Float64, n*nu, n*nu)
+    for i in 1:n
+        for j in 1:n
+            B[((i-1)*nu+1):i*nu, ((j-1)*nu+1):j*nu] = A[i, j] * I(nu)
+        end
+    end
+    return B
+end
+
+
+# Recursive function to generate all integer vectors of length n that sum up to L1
+function allVL1(n::Int, L1::Int)
+    # Base case: if n is 1, return L1
+    if n == 1
+        return [L1]
+    else
+        # Recursive case: generate all possible vectors for smaller values of n and L1
+        v = []
+        for i in 0:L1
+            for vec in allVL1(n-1, L1-i)
+                push!(v, [i; vec])
+            end
+        end
+        return v
+    end
+end
+
 function duplication(p)
     a = sparse(tril(ones(p,p)))
 
@@ -164,50 +193,38 @@ DP, DPinv = duplication(nx)
 
 E_XF2min = DPinv * vec(C2z0)
 E_XF1 = zeros(nx)
+
+
+
 # Second order solution
 DP, DPinv = duplication(nu)
 
-arg2 = vcat(DPinv * vec(I(nu)),E_XF1,E_XF2min)
+ximin = vcat(DPinv * vec(I(nu)), E_XF1, E_XF2min)
 
 nz = 2 * nx + nx^2
 nxi = nu + nu^2 + 2 * nx * nu
 nximin = nu + Int(nu * (nu + 1) / 2) + nu * nx
 
 
+nx2= nx*(nx+1)/2; nx3=nx2*(nx+2)/3; nx4=nx3*(nx+3)/4;     
+nu2 = nu*(nu+1)/2; 
+
+# # Symbolic variables for shocks
+# u = sym('u',[nu 1])  # Create symbolic variables for epsilon
+# xf = sym('xf',[nx 1])  # Symbolic variables for first-order terms xf    
+# E_uu   = sym('E_uu_',[nu2 1]) # unique elements for second-order product moments of epsi
+
+# u = ones(nu)
+# xf
+# # Create minimal xi_t vector    
+# u_u = kron(u,u)
+# xf_u = kron(xf,u)
 
 
-# Symbolic variables for shocks
-u = sym('u',[nu 1])  # Create symbolic variables for epsilon
-xf = sym('xf',[nx 1])  # Symbolic variables for first-order terms xf    
-E_uu   = sym('E_uu_',[nu2 1]) # unique elements for second-order product moments of epsi
-
-u = ones(nu)
-xf
-# Create minimal xi_t vector    
-u_u = kron(u,u)
-xf_u = kron(xf,u)
-ximin = [u; DPuinv*(u_u)-E_uu; xf_u]
 
 
-# Recursive function to generate all integer vectors of length n that sum up to L1
-function allVL1(n::Int, L1::Int)
-    # Base case: if n is 1, return L1
-    if n == 1
-        return [L1]
-    else
-        # Recursive case: generate all possible vectors for smaller values of n and L1
-        v = []
-        for i in 0:L1
-            for vec in allVL1(n-1, L1-i)
-                push!(v, [i; vec])
-            end
-        end
-        return v
-    end
-end
-vvv = reverse(allVL1(4,2))
-
-reverse
+vvv = reverse(allVL1(nximin,2))
+vvv[21]
 
 hx_hx = kron(hx,hx)
 hx_hu = kron(hx,hu)
@@ -287,23 +304,31 @@ Ey   = ybar + C*Ez+d; # recall y = yss + C*z + d
     
 
 ## Compute Zero-Lag Cumulants of innovations, states and controls
+GAMMA2XI = spzeros(nximin,nximin)
+GAMMA2XI[1:(nu + size(DP,2)),1:(nu + size(DP,2))] = I(nu + size(DP,2))
+GAMMA2XI[nu .+ (1:size(DP,2)),nu .+ (1:size(DP,2))] += diagm(DPinv * vec(I(nu)))
+GAMMA2XI[nu + size(DP,2) + 1 : end,nu + size(DP,2) + 1 : end] = expand_mat(C2z0,nu)
+
+
+
+
 nz = size(A,1);
 
-BFxi = B*Fxi;
+BFxi = B*Fxi
 DFxi = D*Fxi
 
 CkronC = kron(C,C)
 BFxikronBFxi= kron(BFxi,BFxi)
 DFxikronDFxi= kron(DFxi,DFxi)
 
-CC = BFxi*  "fix this"  *BFxi'
+CC = BFxi *  GAMMA2XI  * BFxi'
 
 
 lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
 
 C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
 
-C2y0 = C * C2z0 * C' + DFxi * Fxi * DFxi'
+C2y0 = C * C2z0 * C' + DFxi * GAMMA2XI * DFxi'
 
 
 
