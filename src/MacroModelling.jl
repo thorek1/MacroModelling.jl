@@ -1315,7 +1315,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
     
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    𝐒₁, success = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
@@ -1447,7 +1447,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
     
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    𝐒₁, success = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
@@ -1518,10 +1518,8 @@ function solve!(𝓂::ℳ;
             
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
             
-            sol_mat, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+            sol_mat, success = calculate_first_order_solution(∇₁; T = 𝓂.timings)
             
-            @assert solved "Could not find stable first order solution."
-
             state_update₁ = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
             𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update₁)
@@ -2365,7 +2363,7 @@ end
 
 
 
-function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
+function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)
     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
     ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
@@ -2409,12 +2407,9 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         Ẑ₁₁ = RF.lu(Z₁₁, check = false)
 
         if !ℒ.issuccess(Ẑ₁₁)
-            Ẑ₁₁ = ℒ.svd(Z₁₁, check = false)
+            return zeros(T.nVars,T.nPast_not_future_and_mixed), ℒ.issuccess(Ẑ₁₁)
         end
 
-        if !ℒ.issuccess(Ẑ₁₁)
-            return zeros(T.nVars,T.nPast_not_future_and_mixed), false
-        end
     else
         eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
 
@@ -2429,16 +2424,16 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         Ẑ₁₁ = RF.lu(Z₁₁, check = false)
 
         if !ℒ.issuccess(Ẑ₁₁)
-            return zeros(T.nVars,T.nPast_not_future_and_mixed), false
+            return zeros(T.nVars,T.nPast_not_future_and_mixed), ℒ.issuccess(Ẑ₁₁)
         end
     end
-    
+
     Ŝ₁₁ = RF.lu(S₁₁, check = false)
 
     if !ℒ.issuccess(Ŝ₁₁)
-        return zeros(T.nVars,T.nPast_not_future_and_mixed), false
+        return zeros(T.nVars,T.nPast_not_future_and_mixed), ℒ.issuccess(Ŝ₁₁)
     end
-    
+
     D      = Z₂₁ / Ẑ₁₁
     L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
 
@@ -2448,11 +2443,11 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
     Ã₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_but_not_only_idx]
     A₋ᵤ  = @view A₋[1:T.nPresent_only,:]
-
+    
     Ā̂₀ᵤ = RF.lu(Ā₀ᵤ, check = false)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
-        Ā̂₀ᵤ = ℒ.svd(collect(Ā₀ᵤ))
+        return zeros(T.nVars,T.nPast_not_future_and_mixed), ℒ.issuccess(Ā̂₀ᵤ)
     end
 
     A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
@@ -2460,7 +2455,8 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     return @view(A[T.reorder,:]), true
 end
 
-function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatrix{<: Real}; T::timings, explosive::Bool = false) 
+
+function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatrix{<: Real}; T::timings, explosive::Bool = false) #::AbstractMatrix{Real},
     expand = @ignore_derivatives @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
     A = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
@@ -2482,42 +2478,42 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explos
     # you can play with the dimension here, sometimes it makes sense to transpose
     ps = mapreduce(ℱ.partials, hcat, ∇₁)'
 
-    val, solved = riccati_forward(∇̂₁;T = T, explosive = explosive)
+    # get f(vs)
+    val, success = riccati_forward(∇̂₁;T = T, explosive = explosive)
 
-    if solved
+    if success
         # get J(f, vs) * ps (cheating). Write your custom rule here
         B = ℱ.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)
         A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)
-
+        # B = Zygote.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)[1]
+        # A = Zygote.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)[1]
+    
         Â = RF.lu(A, check = false)
-
+    
         if !ℒ.issuccess(Â)
             Â = ℒ.svd(A)
         end
         
         jvp = -(Â \ B) * ps
     else
-        jvp = fill(0,length(val),length(∇̂₁)) * ps
+        jvp = fill(0,length(val),length(∇₁)) * ps
     end
 
     # pack: SoA -> AoS
     return reshape(map(val, eachrow(jvp)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val)), solved
+    end,size(val)), success
 end
 
 riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive)[1], (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
 
-function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
+riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive), (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
+
+function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false) where S <: Real
     # A = riccati_AD(∇₁, T = T, explosive = explosive)
     riccati = riccati_(∇₁, T = T, explosive = explosive)
-    A = riccati(∇₁)
-
-    solved = @ignore_derivatives !(isapprox(sum(abs,A), 0, rtol = eps()))
-
-    if !solved
-        return hcat(A, zeros(size(A,1),T.nExo)), solved
-    end
+    A, success = riccati(∇₁)
+    # A = riccati_forward(∇₁, T = T, explosive = explosive)
 
     if !success
         return hcat(A, zeros(T.nVars,T.nExo)), success
@@ -2531,7 +2527,7 @@ function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive
 
     B = -((∇₊ * A * Jm + ∇₀) \ ∇ₑ)
 
-    return hcat(A, B), solved
+    return hcat(A, B), success
 end
 
 
@@ -3088,7 +3084,7 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
-    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    sol, success = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     covar_raw = calculate_covariance_forward(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
 
@@ -3187,7 +3183,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
-    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    sol, success = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     if !solved
         return -Inf
@@ -3263,7 +3259,7 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
-    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    sol, success = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
 
