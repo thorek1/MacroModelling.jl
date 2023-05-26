@@ -17,8 +17,6 @@ end
     δ = 0.02
     γ = 1.
 end
-solution = get_solution(RBC, RBC.parameter_values, algorithm = :second_order)
-
 
 # draw shocks
 periods = 10
@@ -29,13 +27,12 @@ shocks .-= Statistics.mean(shocks) # antithetic shocks
 # get simulation
 simulated_data = get_irf(RBC,shocks = shocks, periods = 0)[:,:,1] |>collect
 
-
-
-StatsPlots.plot(simulated_data')
+# plot simulation
+plot_irf(RBC,shocks = shocks, periods = 0)
 StatsPlots.plot(shocks')
 
 
-
+# define loglikelihood model
 Turing.@model function loglikelihood_scaling_function(m, data, observables,Ω)
     #σ     ~ MacroModelling.Beta(0.01, 0.02, μσ = true)
     # α     ~ MacroModelling.Beta(0.25, 0.15, 0.1, .4, μσ = true)
