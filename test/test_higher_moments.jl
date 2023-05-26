@@ -309,8 +309,8 @@ GAMMA2XI[1:(nu + size(DP,2)),1:(nu + size(DP,2))] = I(nu + size(DP,2))
 GAMMA2XI[nu .+ (1:size(DP,2)),nu .+ (1:size(DP,2))] += diagm(DPinv * vec(I(nu)))
 GAMMA2XI[nu + size(DP,2) + 1 : end,nu + size(DP,2) + 1 : end] = expand_mat(C2z0,nu)
 
-
-
+matt = GAMMA2XI[nu .+ (1:size(DP,2)),nu .+ (1:size(DP,2))]
+findnz(kron(matt,kron(matt,matt)))
 
 nz = size(A,1);
 
@@ -329,6 +329,8 @@ lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)),
 C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
 
 C2y0 = C * C2z0 * C' + DFxi * GAMMA2XI * DFxi'
+
+
 
 
 
