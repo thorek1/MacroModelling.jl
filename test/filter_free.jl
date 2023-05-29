@@ -32,9 +32,9 @@ plot_irf(RBC,shocks = shocks, periods = 0)
 StatsPlots.plot(shocks')
 
 
-function ϵ_loss(Δ; ϵ = .01, p = 2)
-    abs(Δ) > ϵ ? abs(Δ)^p : 0
-end
+# function ϵ_loss(Δ; ϵ = .01, p = 2)
+#     abs(Δ) > ϵ ? abs(Δ)^p : 0
+# end
 
 # define loglikelihood model
 Turing.@model function loglikelihood_scaling_function(m, data, observables, Ω)
@@ -47,84 +47,71 @@ Turing.@model function loglikelihood_scaling_function(m, data, observables, Ω)
     # σ     ~ MacroModelling.InverseGamma(0.01, 0.05, μσ = true)
 
     α ~ Turing.Uniform(0.15, 0.45)
-    # β ~ Turing.Uniform(0.92, 0.9999)
-    # δ ~ Turing.Uniform(0.0001, 0.05)
-    # σ ~ Turing.Uniform(0.0, 0.1)
-    # ρ ~ Turing.Uniform(0.0, 1.0)
-    # γ ~ Turing.Uniform(0.5, 1.5)
+    β ~ Turing.Uniform(0.92, 0.9999)
+    δ ~ Turing.Uniform(0.0001, 0.1)
+    σ ~ Turing.Uniform(0.0, 0.1)
+    ρ ~ Turing.Uniform(0.0, 1.0)
+    γ ~ Turing.Uniform(0.0, 1.5)
 
     # α = 0.25
-    σ = 0.01
-    β = 0.95
-    ρ = 0.2
-    δ = 0.02
-    γ = 1.
+    # β = 0.95
+    # σ = 0.01
+    # ρ = 0.2
+    # δ = 0.02
+    # γ = 1.
 
     algorithm = :first_order
     parameters = [σ, α, β, ρ, δ, γ]
     shock_distribution = Turing.Normal()
 
-    # Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters)
+    Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters)
 
-    solution = get_solution(m, parameters, algorithm = algorithm)
+    # solution = get_solution(m, parameters, algorithm = algorithm)
 
-    if solution[end] != true
-        return Turing.@addlogprob! Inf
-    end
-    # draw_shocks(m)
-    x0 ~ Turing.filldist(Turing.Normal(), m.timings.nPast_not_future_and_mixed) # Initial conditions 
+    # if solution[end] != true
+    #     return Turing.@addlogprob! Inf
+    # end
+    # # draw_shocks(m)
+    # x0 ~ Turing.filldist(Turing.Normal(), m.timings.nPast_not_future_and_mixed) # Initial conditions 
     
-    calculate_covariance_ = calculate_covariance_AD(solution[2], T = m.timings, subset_indices = collect(1:m.timings.nVars))
+    # calculate_covariance_ = calculate_covariance_AD(solution[2], T = m.timings, subset_indices = collect(1:m.timings.nVars))
 
-    long_run_covariance = calculate_covariance_(solution[2])
+    # long_run_covariance = calculate_covariance_(solution[2])
     
-    initial_conditions = long_run_covariance * x0
-    # initial_conditions = x0
+    # initial_conditions = long_run_covariance * x0
+    # # initial_conditions = x0
 
-    𝐒₁ = hcat(solution[2][:,1:m.timings.nPast_not_future_and_mixed], zeros(m.timings.nVars), solution[2][:,m.timings.nPast_not_future_and_mixed+1:end])
+    # 𝐒₁ = hcat(solution[2][:,1:m.timings.nPast_not_future_and_mixed], zeros(m.timings.nVars), solution[2][:,m.timings.nPast_not_future_and_mixed+1:end])
 
-    ϵ_draw ~ Turing.filldist(shock_distribution, m.timings.nExo * size(data, 2))
+    # ϵ_draw ~ Turing.filldist(shock_distribution, m.timings.nExo * size(data, 2))
 
-    ϵ = reshape(ϵ_draw, m.timings.nExo, size(data, 2))
+    # ϵ = reshape(ϵ_draw, m.timings.nExo, size(data, 2))
 
-    state = zeros(typeof(initial_conditions[1]), m.timings.nVars, size(data, 2))
+    # state = zeros(typeof(initial_conditions[1]), m.timings.nVars, size(data, 2))
 
-    aug_state = [initial_conditions
-                1 
-                ϵ[:,1]]
+    # aug_state = [initial_conditions
+    #             1 
+    #             ϵ[:,1]]
 
-    state[:,1] .=  𝐒₁ * aug_state# + solution[3] * ℒ.kron(aug_state, aug_state) / 2 
+    # state[:,1] .=  𝐒₁ * aug_state# + solution[3] * ℒ.kron(aug_state, aug_state) / 2 
 
-    for t in 2:size(data, 2)
-        aug_state = [state[m.timings.past_not_future_and_mixed_idx,t-1]
-                    1 
-                    ϵ[:,t]]
+    # for t in 2:size(data, 2)
+    #     aug_state = [state[m.timings.past_not_future_and_mixed_idx,t-1]
+    #                 1 
+    #                 ϵ[:,t]]
 
-        state[:,t] .=  𝐒₁ * aug_state# + solution[3] * ℒ.kron(aug_state, aug_state) / 2 
-    end
+    #     state[:,t] .=  𝐒₁ * aug_state# + solution[3] * ℒ.kron(aug_state, aug_state) / 2 
+    # end
 
-    observables_index = sort(indexin(observables, m.timings.var))
+    # observables_index = sort(indexin(observables, m.timings.var))
     
-    state_deviations = data - state[observables_index,:] .- solution[1][observables_index...]
+    # state_deviations = data - state[observables_index,:] .- solution[1][observables_index...]
 
-    for (i,o) in enumerate(observables_index)
-        if solution[1][o] != 0 && (all(state[o,:] .+ solution[1][o] .> 0) || all(state[o,:] .+ solution[1][o] .< 0))
-            state_deviations[i,:] /= solution[1][o]
-        end
-    end
-
-    # println(sum([Turing.logpdf(Turing.MvNormal(Ω * ℒ.I(size(data,1))), state_deviations[:,t]) for t in 1:size(data, 2)]))
-    # println(-sum(abs.(state_deviations).^5) / length(data) * 1e3)
-
-    Turing.@addlogprob! sum([Turing.logpdf(Turing.MvNormal(ℒ.I(size(data,1))), state_deviations[:,t] .* Ω) for t in 1:size(data, 2)])
-    # Turing.@addlogprob! sum([Turing.logpdf(Turing.MvNormal(ℒ.I(size(data,1))), state_deviations[:,t] .^ 3 .* Ω) for t in 1:size(data, 2)])
-
-    # Turing.@addlogprob! -sum(abs.(state_deviations .* 1e4).^4) / length(data)
-    # Turing.@addlogprob! -sum(ϵ_loss.(state_deviations)) / length(data) * 2e6
+    # Turing.@addlogprob! sum([Turing.logpdf(Turing.MvNormal(Ω * ℒ.I(size(data,1))), state_deviations[:,t]) for t in 1:size(data, 2)])
 end
 
-Ω = 1e4#eps()
-# loglikelihood_scaling = loglikelihood_scaling_function(RBC, simulated_data(:k,:,:Shock_matrix), [:k], Ω) # Kalman
+Ω = 1e-3#eps()
+loglikelihood_scaling = loglikelihood_scaling_function(RBC, simulated_data(:,:,:Shock_matrix), [:k], Ω) # Kalman
 loglikelihood_scaling = loglikelihood_scaling_function(RBC, collect(simulated_data(:k,:,:Shock_matrix))', [:k], Ω) # Filter free
 
 n_samples = 1000
