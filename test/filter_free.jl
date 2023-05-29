@@ -1,5 +1,5 @@
 using MacroModelling
-import Turing, StatsPlots, Random, Statistics
+import Turing, StatsPlots, Random, Statistics, DynamicHMC
 import LinearAlgebra as ℒ
 
 @model RBC begin
@@ -53,8 +53,8 @@ Turing.@model function loglikelihood_scaling_function(m, data, observables, Ω)
     # ρ ~ Turing.Uniform(0.0, 1.0)
     # γ ~ Turing.Uniform(0.5, 1.5)
 
-    σ = 0.01
     # α = 0.25
+    σ = 0.01
     β = 0.95
     ρ = 0.2
     δ = 0.02
@@ -106,15 +106,25 @@ Turing.@model function loglikelihood_scaling_function(m, data, observables, Ω)
     observables_index = sort(indexin(observables, m.timings.var))
     
     state_deviations = data - state[observables_index,:] .- solution[1][observables_index...]
+
+    # for (i,o) in enumerate(observables_index)
+    #     if solution[1][o] != 0
+    #         state_deviations[i,:] /= solution[1][o]
+    #     end
+    # end
+
     # println(sum([Turing.logpdf(Turing.MvNormal(Ω * ℒ.I(size(data,1))), state_deviations[:,t]) for t in 1:size(data, 2)]))
     # println(-sum(abs.(state_deviations).^5) / length(data) * 1e3)
-    # Turing.@addlogprob! sum([Turing.logpdf(Turing.MvNormal(Ω * ℒ.I(size(data,1))), state_deviations[:,t]) for t in 1:size(data, 2)])
+
+    # Turing.@addlogprob! sum([Turing.logpdf(Turing.MvNormal(ℒ.I(size(data,1))), state_deviations[:,t]) for t in 1:size(data, 2)])
+    Turing.@addlogprob! sum([Turing.logpdf(Turing.MvNormal(ℒ.I(size(data,1))), state_deviations[:,t] .^ 3 .* Ω) for t in 1:size(data, 2)])
+
     # Turing.@addlogprob! -sum(abs.(state_deviations .* 1e4).^4) / length(data)
-    Turing.@addlogprob! -sum(ϵ_loss.(state_deviations)) / length(data) * 2e6
+    # Turing.@addlogprob! -sum(ϵ_loss.(state_deviations)) / length(data) * 2e6
 end
 
-Ω = 1e-8#eps()
-loglikelihood_scaling = loglikelihood_scaling_function(RBC, simulated_data(:k,:,:Shock_matrix), [:k], Ω) # Kalman
+Ω = 1e5#eps()
+# loglikelihood_scaling = loglikelihood_scaling_function(RBC, simulated_data(:k,:,:Shock_matrix), [:k], Ω) # Kalman
 loglikelihood_scaling = loglikelihood_scaling_function(RBC, collect(simulated_data(:k,:,:Shock_matrix))', [:k], Ω) # Filter free
 
 n_samples = 1000
