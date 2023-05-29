@@ -1,5 +1,5 @@
 using MacroModelling
-import Turing, StatsPlots, Random, Statistics, DynamicHMC
+import Turing, StatsPlots, Random, Statistics
 import LinearAlgebra as ℒ
 
 @model RBC begin
@@ -110,7 +110,7 @@ Turing.@model function loglikelihood_scaling_function(m, data, observables, Ω)
     # Turing.@addlogprob! sum([Turing.logpdf(Turing.MvNormal(Ω * ℒ.I(size(data,1))), state_deviations[:,t]) for t in 1:size(data, 2)])
 end
 
-Ω = 1e-3#eps()
+Ω = 1e-2#eps()
 loglikelihood_scaling = loglikelihood_scaling_function(RBC, simulated_data(:,:,:Shock_matrix), [:k], Ω) # Kalman
 loglikelihood_scaling = loglikelihood_scaling_function(RBC, collect(simulated_data(:k,:,:Shock_matrix))', [:k], Ω) # Filter free
 
@@ -119,9 +119,31 @@ n_samples = 1000
 # solution = get_solution(RBC, RBC.parameter_values, algorithm = :first_order)[1]
 
 # simulated_data(:k,:,:Shock_matrix) .- solution[1][observables_index...]
+# using AdvancedHMC
+# D = 18
 
-samps = Turing.sample(loglikelihood_scaling, Turing.NUTS(), n_samples, progress = true)#, init_params = sol)
-samps = Turing.sample(loglikelihood_scaling, Turing.NUTS(1000, .65; init_ϵ = .01), n_samples, progress = true)#, init_params = sol)
+# n_samples, n_adapts = 1_000, 300
+# metric = DiagEuclideanMetric(D)
+# hamiltonian = Hamiltonian(metric, logprob,
+#     ForwardDiff)
+
+# integrator = Leapfrog(find_good_stepsize(hamiltonian,
+#     initial_theta))
+
+# proposal = NUTS{MultinomialTS, GeneralisedNoUTurn}(integrator)
+# adaptor = StanHMCAdaptor(MassMatrixAdaptor(metric),
+#     StepSizeAdaptor(0.8, integrator))
+
+# samples, stats = sample(hamiltonian, proposal, initial_theta, n_samples, adaptor, n_adapts; progress=true)
+
+samps = Turing.sample(loglikelihood_scaling, Turing.NUTS(), n_samples, progress = true)#, init_params = sol
+# samps = Turing.sample(loglikelihood_scaling, Turing.HMCDA(1000,.65,.75;init_ϵ = .05), n_samples, progress = true)#, init_params = sol)
+# samps = Turing.sample(loglikelihood_scaling, Turing.NUTS(1000, .65; init_ϵ = .01), n_samples, progress = true)#, init_params = sol)
+
+
+# filter free generates good parameter estimates but does not necessarily nail the latent states and shocks
+# std of MvNormal determines speed, convergence (too small no convergence), accuracy (smaller value will get more info on latent shocks and shock related parameters [shock size and persistence])
+# the logic behind it appears to be: ideally the data is perfectly matched so you want the MvNormal to have a very small std but then the sampler will focus on matching the data since thats where the gradients are very large. the gradients regarding parameter priors are too small to have any influence and the sampler gets stuck if parameters do change because the gradients to match the data dominate.
 
 interval = -.01:.0001:.01
 interval = -1:.01:1
