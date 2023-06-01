@@ -23,7 +23,7 @@ import SpeedMapping: speedmapping
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
 # using AxisKeys
-import ChainRulesCore: @ignore_derivatives, ignore_derivatives
+import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule
 import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
@@ -2552,6 +2552,16 @@ function solve_sylvester_equation_forward(ABCX::AbstractArray{Float64})
     return reshape(ℐ.gmres(lm, vec(-X)), size(X)), true
 end
 
+
+function rrule(::typeof(solve_sylvester_equation_forward), ABCX)
+    (; A, B, C, X) = ABCX
+    
+    solve_sylvester_equation_pullback(ΔS) = (NoTangent(), A - B * C)
+
+    return solve_sylvester_equation_forward(ABCX), solve_sylvester_equation_pullback
+end
+
+
 solve_sylvester_equation_AD = ImplicitFunction(solve_sylvester_equation_forward,solve_sylvester_equation_condition)
 
 # function solve_sylvester_equation(ABCX::AbstractArray{ℱ.Dual{Z,S,N}}) where {Z,S,N}
@@ -2649,7 +2659,10 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     droptol!(C,tol)
 
     A = spdiagm(ones(n))
-
+    println(A)
+    println(B)
+    println(C)
+    println(X)
     𝐒₂ = sparse(solve_sylvester_equation_AD(𝒞.ComponentArray(;A,B,C,X))[1])
     droptol!(𝐒₂,tol)
 
