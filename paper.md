@@ -47,7 +47,7 @@ end
 plot_irf(RBC)
 ```
 
-![Impulse response to a positive 1 standard deviation shock.\label{fig:irf__RBC__ϵ_z__1}](irf__RBC__ϵᶻ__1.png)
+![Impulse response to a positive 1 standard deviation shock.\label{fig:irf__RBC__eps_z__1}](irf__RBC__eps_z__1.png)
 The plot shows both the level, percent deviation from the non stochastic steady steady (NSSS) as well as the NSSS itself. Note that the code to generate the impulse response function (IRF) plot contains only the equations, parameter values, and the command to plot.
 
 # Statement of need
