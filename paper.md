@@ -1,59 +1,65 @@
 ---
-title: 'MacroModelling.jl: A Julia package for developing and solving dynamic stochastic general equilibrium models'
+title: 'MacroModelling: A Julia package for developing and solving dynamic stochastic general equilibrium models'
 tags:
-  - Julia
-  - Economics
-  - DSGE Models
-  - MacroModelling
+  - DSGE
+  - macroeconomics  
+  - perturbation 
+  - difference equations
+  - dynamical systems
 authors:
   - name: Thore Kockerols
-    orcid: TBD
-    equal-contrib: true
+    orcid: 0000-0002-0068-1809
     affiliation: "1" 
 affiliations:
- - name: Independent Researcher, Country
+ - name: Norges Bank, Norway
    index: 1
-date: 24 May 2023
+date: 1 June 2023
 bibliography: paper.bib
 ---
 
 # Summary
 
-The dynamic stochastic general equilibrium (DSGE) model is a method used in macroeconomics to explain economic phenomena such as economic growth and business cycles, and the effects of economic policy. In essence, DSGE models quantify the behavior of economic agents such as households, firms, and the government. The complexity and high dimensionality of these models necessitate efficient numerical tools for their creation, calibration, simulation, and estimation. This is where `MacroModelling.jl` comes in.
+`MacroModelling.jl` is a Julia [@Bezanson:2012] package for developing and solving dynamic stochastic general equilibrium (DSGE) models [@villemot2011solving,@levintal2017fifth]. Its goal is to reduce coding time and speed up model development by providing functions for creating, calibrating, simulating, and estimating discrete-time DSGE models. The package includes several pre-defined models from prominent economic papers, providing an immediate starting point for economic researchers and students.
+
+The package can parse a model written with user-friendly syntax, solve the model knowing only the model equations and parameter values, calculate first, second, and third-order perturbation solutions using symbolic and automatic differentiation. It can also calibrate parameters, match model moments, and estimate the model on data using the Kalman filter [@durbin2012time]. The package is designed to be user-friendly and efficient, enabling users to generate outputs or change parameters rapidly once the functions are compiled and the non-stochastic steady state has been found.
+
+The user can implement a simple real business cycle model with the following code:
+
+```julia
+using MacroModelling
+import StatsPlots
+
+@model RBC begin
+    1 / c[0] = (β / c[1]) * (α * z[1] * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = z[0] * k[-1]^α
+    z[0] = (1 - ρ) + ρ * z[-1] + σᶻ * ϵᶻ[x]
+end
+
+@parameters RBC begin
+    σᶻ= 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+plot_irf(RBC)
+```
+
+![Impulse response to a positive 1 standard deviation shock.\label{fig:irf__RBC__ϵᶻ__1}](irf__RBC__ϵᶻ__1.png)
+Figure \autoref{fig:irf__RBC__ϵᶻ__1} shocks both the level, percent deviation from the non stochastic steady steady (NSSS) as well as the NSSS itself. Note that the code to generate the impulse response function (IRF) contians only the equations, parameter values, and the command to plot.
 
 # Statement of need
 
-`MacroModelling.jl` is a Julia package for developing and solving dynamic stochastic general equilibrium (DSGE) models. Its goal is to reduce coding time and speed up model development by providing functions for creating, calibrating, simulating, and estimating discrete-time DSGE models. The package includes several pre-defined models from prominent economic papers, providing an immediate starting point for economic researchers and students. 
+Dynamic stochastic general equilibrium (DSGE) model are a type of models used in academia and policy institutions to explain economic phenomena such as business cycles, or the effects of economic policy. The forward looking expectations, nonlinearity, and high dimensionality of these models necessitate efficient numerical tools for their solution, calibration, simulation, and estimation. This is where `MacroModelling.jl` comes in.
 
-The package can parse a model written with user-friendly syntax, solve the model knowing only the model equations and parameter values, calculate first, second, and third-order perturbation solutions using automatic differentiation, and much more. It can also calibrate parameters, match model moments, and estimate the model on data using the Kalman filter. The package is designed to be user-friendly and efficient, enabling users to generate outputs or change parameters rapidly once the functions are compiled and the non-stochastic steady state has been found.
+This package supports the user especially in the model development phase. The intuitive syntax, automatic variable declaration, and effective steady state solver facilitate fast prototyping of models.
 
-Despite its strengths, `MacroModelling.jl` is not guaranteed to find the non-stochastic steady state as solving systems of nonlinear equations is an active area of research. However, the user can benefit from the object-oriented nature of the package and generate outputs or change parameters very fast once the functions are compiled and the non-stochastic steady state has been found.
+Once the model is solved the package provides user-friendly functions to generate output. The package stands out with it's ability to calculate sensitivities of model moments.
 
-`MacroModelling.jl` requires Julia version 1.8 or higher and an IDE is recommended. Once set up, users can install `MacroModelling.jl` by typing the following in the Julia REPL: `using Pkg; Pkg.add("MacroModelling")`.
+# Acknowledgements
 
-# Mathematics
+The author wants to thank everybody who opened issues, reported bugs, contributed ideas, and was supportive in driving `MacroModelling.jl` forward.
 
-Single dollars ($) are required for inline mathematics e.g. $f(x) = e^{\pi/x}$
-
-Double dollars make self-standing equations:
-
-$$\Theta(x) = \left\{\begin{array}{l}
-0\textrm{ if } x < 0\cr
-1\textrm{ else}
-\end{array}\right.$$
-
-You can also use plain \LaTeX for equations
-\begin{equation}\label{eq:fourier}
-\hat f(\omega) = \int_{-\infty}^{\infty} f(x) e^{i\omega x} dx
-\end{equation}
-and refer to \autoref{eq:fourier} from text.
-
-# Citations
-
-Citations to entries in paper.bib should be in
-[rMarkdown](http://rmarkdown.rstudio.com/authoring_bibliographies_and_citations.html)
-format.
-
-For a quick reference, the following citation commands can be used:
-- `@author# Let's find the citation for MacroModelling.jl
-search("MacroModelling.jl citation")
+# References
