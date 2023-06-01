@@ -56,7 +56,7 @@ DSGE models are a type of models used in academia and policy institutions to exp
 
 This package supports the user especially in the model development phase. The intuitive syntax, automatic variable declaration, and effective steady state solver facilitate fast prototyping of models.
 
-Once the model is solved the package provides user-friendly functions to generate output. The package stands out with it's ability to calculate sensitivities of model moments.
+Once the model is solved the package provides user-friendly functions to generate output. The package stands out for its ability to calculate sensitivities of model moments, its automatic variable declaration, and effective steady state solver.
 
 # Acknowledgements
 
