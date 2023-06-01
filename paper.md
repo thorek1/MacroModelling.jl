@@ -19,9 +19,9 @@ bibliography: paper.bib
 
 # Summary
 
-`MacroModelling.jl` is a Julia [@Bezanson:2012] package for developing and solving dynamic stochastic general equilibrium (DSGE) models [@villemot2011solving; @levintal2017fifth]. Its goal is to reduce coding time and speed up model development by providing functions for creating, calibrating, simulating, and estimating discrete-time DSGE models. The package includes several pre-defined models from prominent economic papers, providing an immediate starting point for economic researchers and students.
+`MacroModelling.jl` is a Julia [@Bezanson:2012] package for developing and solving dynamic stochastic general equilibrium (DSGE) models. Its goal is to reduce coding time and speed up model development by providing functions for creating, calibrating, simulating, and estimating discrete-time DSGE models. The package includes several pre-defined models from prominent economic papers, providing an immediate starting point for economic researchers and students.
 
-The package can parse a model written with user-friendly syntax, solve the model knowing only the model equations and parameter values, calculate first, second, and third-order perturbation solutions using symbolic and automatic differentiation. It can also calibrate parameters, match model moments, and estimate the model on data using the Kalman filter [@durbin2012time]. The package is designed to be user-friendly and efficient, enabling users to generate outputs or change parameters rapidly once the functions are compiled and the non-stochastic steady state has been found.
+The package can parse a model written with user-friendly syntax, solve the model knowing only the model equations and parameter values, calculate first, second, and third-order perturbation solutions  [@villemot2011solving; @levintal2017fifth] using symbolic and automatic differentiation. It can also calibrate parameters, match model moments, and estimate the model on data using the Kalman filter [@durbin2012time]. The package is designed to be user-friendly and efficient, enabling users to generate outputs or change parameters rapidly once the functions are compiled and the non-stochastic steady state has been found.
 
 The user can implement a simple real business cycle model with the following code:
 
@@ -52,7 +52,7 @@ The plot shows both the level, percent deviation from the non stochastic steady 
 
 # Statement of need
 
-Dynamic stochastic general equilibrium (DSGE) model are a type of models used in academia and policy institutions to explain economic phenomena such as business cycles, or the effects of economic policy. The forward looking expectations, nonlinearity, and high dimensionality of these models necessitate efficient numerical tools for their solution, calibration, simulation, and estimation. This is where `MacroModelling.jl` comes in.
+DSGE models are a type of models used in academia and policy institutions to explain economic phenomena such as business cycles, or the effects of economic policy. The forward looking expectations, nonlinearity, and high dimensionality of these models necessitate efficient numerical tools for their solution, calibration, simulation, and estimation. This is where `MacroModelling.jl` comes in.
 
 This package supports the user especially in the model development phase. The intuitive syntax, automatic variable declaration, and effective steady state solver facilitate fast prototyping of models.
 
