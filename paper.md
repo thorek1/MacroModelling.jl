@@ -1,5 +1,5 @@
 ---
-title: 'MacroModelling: A Julia package for developing and solving dynamic stochastic general equilibrium models'
+title: 'MacroModelling.jl: A Julia package for developing and solving dynamic stochastic general equilibrium models'
 tags:
   - DSGE
   - macroeconomics  
@@ -33,7 +33,7 @@ import StatsPlots
     1 / c[0] = (β / c[1]) * (α * z[1] * k[0]^(α - 1) + (1 - δ))
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = z[0] * k[-1]^α
-    z[0] = (1 - ρ) + ρ * z[-1] + σ_z * ϵ_z[x]
+    z[0] = (1 - ρ) + ρ * z[-1] + σ_z * eps_z[x]
 end
 
 @parameters RBC begin
@@ -48,7 +48,7 @@ plot_irf(RBC)
 ```
 
 ![Impulse response to a positive 1 standard deviation shock.\label{fig:irf__RBC__ϵ_z__1}](irf__RBC__ϵᶻ__1.png)
-Figure \autoref{fig:irf__RBC__ϵ_z__1} shocks both the level, percent deviation from the non stochastic steady steady (NSSS) as well as the NSSS itself. Note that the code to generate the impulse response function (IRF) contains only the equations, parameter values, and the command to plot.
+The plot shows both the level, percent deviation from the non stochastic steady steady (NSSS) as well as the NSSS itself. Note that the code to generate the impulse response function (IRF) plot contains only the equations, parameter values, and the command to plot.
 
 # Statement of need
 
