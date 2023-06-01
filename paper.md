@@ -52,9 +52,9 @@ The plot shows both the level, percent deviation from the non stochastic steady 
 
 # Statement of need
 
-DSGE models are a type of models used in academia and policy institutions to explain economic phenomena such as business cycles, or the effects of economic policy. The forward looking expectations, nonlinearity, and high dimensionality of these models necessitate efficient numerical tools for their solution, calibration, simulation, and estimation. This is where `MacroModelling.jl` comes in.
+DSGE models are used in academia and policy institutions to explain economic phenomena such as business cycles, or the effects of economic policy. The forward looking expectations, nonlinearity, and high dimensionality of these models necessitate efficient numerical tools for their solution, calibration, simulation, and estimation. This is where `MacroModelling.jl` comes in.
 
-This package supports the user especially in the model development phase. The intuitive syntax, automatic variable declaration, and effective steady state solver facilitate fast prototyping of models.
+The package supports the user especially in the model development phase. The intuitive syntax, automatic variable declaration, and effective steady state solver facilitate fast prototyping of models.
 
 Once the model is solved the package provides user-friendly functions to generate output. The package stands out for its ability to calculate sensitivities of model moments, its automatic variable declaration, and effective steady state solver.
 
