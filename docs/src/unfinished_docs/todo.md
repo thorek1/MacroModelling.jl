@@ -3,8 +3,24 @@
 ## High priority
 
 - [ ] add balanced growth path handling
+- [ ] add JOSS article (see Makie.jl)
+- [ ] write docs for (non-linear) solution algorithms
+- [ ] for cond forecastind and kalman, get rid of observables input and use axis key of data input
+- [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
+- [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
+- [ ] when doing calibration with optimiser have better return values when he doesnt find a solution (probably NaN)
+- [ ] sampler returned negative std. investigate and come up with solution ensuring sampler can continue
+- [ ] automatically adjust plots for different legend widhts and heights
+- [ ] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
+- [ ] write to mod file for unicode characters. have them take what you would type: \alpha\bar
+- [ ] have get_std take variables as an input
+- [ ] more informative errors when something goes wrong when writing a model
+- [ ] initial state accept keyed array
+- [ ] bring solution error into an object of the model so we dont have to pass it on as output
+- [ ] check that there is an error if he cant find SS
+- [ ] plot_model_estimates with unconditional forecast at the end
 - [ ] check if you can do analytic derivatives for higher order derivatives
-- [ ] kick out unsused parameters from m.parameters
+- [ ] kick out unused parameters from m.parameters
 - [ ] higher order solution derivs with Zygote
 - [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
 - [ ] use krylov instead of linearsolve and speed up sparse matrix calcs in implicit diff of higher order funcs
@@ -29,7 +45,10 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
-  
+
+- [x] fix ss of pruned solution in plotsolution. seems detached
+- [x] get solution higher order with multidimensional array (states, 1 and 2 partial derivatives variables names as dimensions in 2order case)
+- [x] add pruning
 - [x] add other outputs from estimation (smoothed, filter states and shocks)
 - [x] shorten plot_irf (take inspiration from model estimate)
 - [x] fix solution plot
@@ -96,7 +115,6 @@
 - [ ] rewrite first order with riccati equation MatrixEquations.jl
 - [ ] exploit variable incidence and compression for higher order derivatives
 - [ ] for estimation use CUDA with st order: linear time iteration starting from last 1st order solution and then LinearSolveCUDA solvers for higher orders. this should bring benefits for large models and HANK models
-- [ ] test on highly [nonlinear model](https://www.sciencedirect.com/science/article/pii/S0165188917300970)
 - [ ] pull request in StatsFuns to have norminv... accept type numbers and add translation from matlab: norminv to StatsFuns norminvcdf
 - [ ] more informative errors when declaring equations/ calibration
 - [ ] unit equation errors
@@ -106,6 +124,7 @@
 - [ ] print legend for algorithm in last subplot of plot only
 - [ ] select variables for moments
 
+- [x] test on highly [nonlinear model](https://www.sciencedirect.com/science/article/pii/S0165188917300970) # caldara et al is actually epstein zin wiht stochastic vol
 - [x] conditional forecasting
 - [x] find way to recover from failed SS solution which is written to init guess
 - [x] redo ugly solution for selecting parameters to differentiate for

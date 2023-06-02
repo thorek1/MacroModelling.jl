@@ -175,7 +175,7 @@ For simulations this is possible by calling [`simulate`](@ref):
 simulate(RBC)
 ```
 
-which returns the simulated data in a 3-dimensional `KeyedArray` of the same structure as for the IRFs.
+which returns the simulated data in levels in a 3-dimensional `KeyedArray` of the same structure as for the IRFs.
 
 ## Conditional forecasts
 
@@ -206,7 +206,7 @@ Note that for the first 4 periods the shock has no predetermined value and is de
 Finally we can get the conditional forecast:
 
 ```@repl tutorial_1
-get_conditional_forecast(RBC, conditions, shocks = shocks)
+get_conditional_forecast(RBC, conditions, shocks = shocks, conditions_in_levels = false)
 ```
 
 The function returns a `KeyedArray` with the values of the endogenous variables and shocks matching the conditions exactly.
@@ -214,9 +214,11 @@ The function returns a `KeyedArray` with the values of the endogenous variables 
 We can also plot the conditional forecast. Please note that you need to import the `StatsPlots` packages once before the first plot. In order to plot we can use:
 
 ```@repl tutorial_1
-plot_conditional_forecast(RBC, conditions, shocks = shocks)
+plot_conditional_forecast(RBC, conditions, shocks = shocks, conditions_in_levels = false)
 ```
 
 ![RBC conditional forecast](../assets/conditional_fcst__RBC__conditional_forecast__1.png)
+
+and we need to set `conditions_in_levels = false` since the conditions are defined in deviations.
 
 Note that the stars indicate the values the model is conditioned on.

@@ -67,7 +67,7 @@ get_irf(RBC_CME, algorithm = :third_order)
 
 T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :z_delta], [:A, :Pi, :c, :k, :z_delta], [:A], [:k, :z_delta], [:A], [:delta_eps, :eps_z], [:A, :Pi, :R, :c, :k, :y, :z_delta], Symbol[], Symbol[], 2, 1, 3, 3, 5, 7, 2, [3, 6], [1, 2, 4, 5, 7], [1, 2, 4], [2, 3], [1, 5, 7], [1], [1], [5, 7], [5, 6, 1, 7, 3, 2, 4], [3, 4, 5, 1, 2])
 
-first_order_solution = calculate_first_order_solution(∇₁; T = T, explosive = false)# |> Matrix{Float32}
+first_order_solution, solved = calculate_first_order_solution(∇₁; T = T, explosive = false)# |> Matrix{Float32}
 
 second_order_solution = calculate_second_order_solution(∇₁, 
 ∇₂, 
@@ -246,99 +246,93 @@ end
     end
 
 
-    iirrff = irf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
+    iirrff = irf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), false, T)
 
     @test isapprox(iirrff[4,1,:],[ -0.00036685520477089503
     0.0021720718769730014],rtol = eps(Float32))
-    ggiirrff = girf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
+    ggiirrff = girf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), false, T)
     @test isapprox(iirrff[4,1,:],ggiirrff[4,1,:],rtol = eps(Float32))
 
 
     SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.second_order.stochastic_steady_state
 
-    ggiirrff2 = girf(second_order_state_update, SSS_delta, zeros(T.nVars), T, draws = 1000,warmup_periods = 100)
+    ggiirrff2 = girf(second_order_state_update, SSS_delta, zeros(T.nVars), false, T, draws = 1000,warmup_periods = 100)
     @test isapprox(ggiirrff2[4,1,:],[-0.0003668849861768406
     0.0021711333455274096],rtol = 1e-3)
 
-    iirrff2 = irf(second_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
+    iirrff2 = irf(second_order_state_update, zeros(T.nVars), zeros(T.nVars), false, T)
     @test isapprox(iirrff2[4,1,:],[-0.0004547347878067665, 0.0020831426377533636],rtol = 1e-6)
 
 
     SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.third_order.stochastic_steady_state
 
-    ggiirrff3 = girf(third_order_state_update, SSS_delta, zeros(T.nVars), T,draws = 1000,warmup_periods = 100)
+    ggiirrff3 = girf(third_order_state_update, SSS_delta, zeros(T.nVars), false, T,draws = 1000,warmup_periods = 100)
     @test isapprox(ggiirrff3[4,1,:],[ -0.00036686142588429404
     0.002171120660323429],rtol = 1e-3)
 
-    iirrff3 = irf(third_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
+    iirrff3 = irf(third_order_state_update, zeros(T.nVars), zeros(T.nVars), false, T)
     @test isapprox(iirrff3[4,1,:],[-0.00045473149068020854, 0.002083198241302615], rtol = 1e-6)
 end
 
 
-
 @testset verbose = true "NSSS and std derivatives" begin
     # derivatives of paramteres wrt standard deviations
-    stdev_deriv = ForwardDiff.jacobian(x -> get_moments(RBC_CME, x)[2], Float64.(RBC_CME.parameter_values))
+    stdev_deriv = ForwardDiff.jacobian(x -> get_statistics(RBC_CME, x, parameters = RBC_CME.parameters, standard_deviation = RBC_CME.var)[1], RBC_CME.parameter_values)
+    stdev_deriv[9]
     @test isapprox(stdev_deriv[5,6],1.3135107627695757, rtol = 1e-6)
 
-
     # derivatives of paramteres wrt non stochastic steady state
-    nsss_deriv = ForwardDiff.jacobian(x -> get_moments(RBC_CME, x)[1], Float64.(RBC_CME.parameter_values))
+    nsss_deriv = ForwardDiff.jacobian(x -> get_statistics(RBC_CME, x, parameters = RBC_CME.parameters, non_stochastic_steady_state = RBC_CME.var)[1], RBC_CME.parameter_values)
     @test isapprox(nsss_deriv[4,1],3.296074644820076, rtol = 1e-6)
 end
 
 @testset verbose = true "Method of moments" begin
     # Method of moments: with varying steady states and derivatives of steady state numerical solved_vars
-    sol = Optim.optimize(x -> sum(abs2, get_moments(RBC_CME, vcat(x, RBC_CME.parameter_values[2:end]))[2][[5]] - [.21]),
+    sol = Optim.optimize(x -> sum(abs2, get_statistics(RBC_CME, x, parameters = [RBC_CME.parameters[1]], standard_deviation = [RBC_CME.var[5]])[1] - [.21]),
     [0], [1], [.16], 
     Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
-    @test isapprox(get_moments(RBC_CME, vcat(sol.minimizer,RBC_CME.parameter_values[2:end]))[2][5],.21,rtol = 1e-6)
-
-
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = [RBC_CME.parameters[1]], standard_deviation = [RBC_CME.var[5]])[1] ,[.21], atol = 1e-6)
 
     # multiple parameter inputs and targets
-    sol = Optim.optimize(x -> sum(abs2,get_moments(RBC_CME, vcat(x[1], RBC_CME.parameter_values[2:end-1],x[2]))[2][[2,5]] - [.0008,.21]),
+    sol = Optim.optimize(x -> sum(abs2,get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[1:2], standard_deviation = RBC_CME.var[[2,5]])[1] - [.0008,.21]),
     [0,0], [1,1], [.006,.16], 
     Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
-    @test isapprox(get_moments(RBC_CME, vcat(sol.minimizer[1],RBC_CME.parameter_values[2:end-1],sol.minimizer[2]))[2][[2,5]],[.0008,.21],rtol=1e-6)
-
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:2], standard_deviation = RBC_CME.var[[2,5]])[1], [.0008,.21], atol=1e-6)
 
     # function combining targets for SS and St.Dev.
-    function get_variances_optim(x,p)
-        out = get_moments(RBC_CME, vcat(x,p))
-        sum(abs2,[out[1][6] - 1.45, out[2][5] - .2])
+    function get_variances_optim(x)
+        out = get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[1:2], non_stochastic_steady_state = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]])
+        sum(abs2,[out[1][1] - 1.45, out[2][1] - .2])
     end
-    out = get_variances_optim([.157,.999],RBC_CME.parameter_values[3:end])
+    out = get_variances_optim([.157,.999])
 
-    out = get_moments(RBC_CME, vcat([.157,.999],RBC_CME.parameter_values[3:end]))
-    sum(abs2,[out[1][6] - 1.4, out[2][5] - .21])
+    out = get_statistics(RBC_CME, [.157,.999], parameters = RBC_CME.parameters[1:2], non_stochastic_steady_state = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]])
+    sum(abs2,[out[1][1] - 1.4, out[2][1] - .21])
 
-    sol = Optim.optimize(x -> get_variances_optim(x,RBC_CME.parameter_values[3:end]),
+    sol = Optim.optimize(x -> get_variances_optim(x),
     [0,0.95], [1,1], [.16, .999], 
     Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
-    @test isapprox([get_moments(RBC_CME, vcat(sol.minimizer,RBC_CME.parameter_values[3:end]))[1][6]
-    get_moments(RBC_CME, vcat(sol.minimizer,RBC_CME.parameter_values[3:end]))[2][5]],[1.45,.2],rtol = 1e-6)
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:2], non_stochastic_steady_state = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]]),[[1.45],[.2]],atol = 1e-6)
 
 
 
 
     # function combining targets for SS, St.Dev., and parameter
-    function get_variances_optim2(x,p)
-        out = get_moments(RBC_CME, vcat(x,p))
-        sum(abs2,[out[1][6] - 1.45, out[2][5] - .2, x[3] - .02])
+    function get_variances_optim2(x)
+        out = get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[1:3], non_stochastic_steady_state = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]])
+        sum(abs2,[out[1][1] - 1.45, out[2][1] - .2, x[3] - .02])
     end
-    out = get_variances_optim2([.157,.999,.022],RBC_CME.parameter_values[4:end])
+    out = get_variances_optim2([.157,.999,.022])
 
-    sol = Optim.optimize(x -> get_variances_optim2(x, RBC_CME.parameter_values[4:end]),
+    sol = Optim.optimize(x -> get_variances_optim2(x),
     [0,0.95,0], [1,1,1], [.16, .999,.022], 
     Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
-    @test isapprox([get_moments(RBC_CME, vcat(sol.minimizer, RBC_CME.parameter_values[4:end]))[1][6]
-    get_moments(RBC_CME, vcat(sol.minimizer, RBC_CME.parameter_values[4:end]))[2][5]
-    sol.minimizer[3]],[1.45,.2,.02],rtol = 1e-6)
+    @test isapprox([get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:3], non_stochastic_steady_state = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]])
+    sol.minimizer[3]],[[1.45],[.2],.02],atol = 1e-6)
 end
 
 RBC_CME = nothing
@@ -394,7 +388,7 @@ RBC_CME = nothing
 
 
 
-    data = simulate(RBC_CME, levels = true)[:,:,1]
+    data = simulate(RBC_CME)[:,:,1]
     observables = [:c,:k]
     @test isapprox(420.25039827148197,calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables),rtol = 1e-5)
 

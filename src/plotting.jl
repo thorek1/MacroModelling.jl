@@ -73,7 +73,7 @@ end
 
 simulation = simulate(RBC_CME)
 
-plot_model_estimates(RBC_CME, simulation([:k],:,:simulate), data_in_levels = false)
+plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 ```
 """
 function plot_model_estimates(𝓂::ℳ,
@@ -102,13 +102,15 @@ function plot_model_estimates(𝓂::ℳ,
                     tickfontsize = 8,
                     framestyle = :box)
 
-    write_parameters_input!(𝓂, parameters, verbose = verbose)
+    # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    solve!(𝓂, verbose = verbose, dynamics = true)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
-    obs_idx     = parse_variables_input_to_index(collect(axiskeys(data)[1]), 𝓂.timings)
+    data = data(sort(axiskeys(data,1)))
+    
+    obs_idx     = parse_variables_input_to_index(collect(axiskeys(data,1)), 𝓂.timings)
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) 
     shock_idx   = parse_shocks_input_to_index(shocks,𝓂.timings)
 
@@ -118,7 +120,7 @@ function plot_model_estimates(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, sort(axiskeys(data)[1]); verbose = verbose)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, collect(axiskeys(data,1)); verbose = verbose)
 
     variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
     shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
@@ -364,11 +366,11 @@ function plot_irf(𝓂::ℳ;
                     tickfontsize = 8,
                     framestyle = :box)
 
-    write_parameters_input!(𝓂,parameters, verbose = verbose)
+    # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
-    state_update = parse_algorithm_to_state_update(algorithm, 𝓂)
+    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
 
     NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
@@ -381,16 +383,24 @@ function plot_irf(𝓂::ℳ;
 
     if algorithm == :second_order
         SSS_delta = reference_steady_state - 𝓂.solution.perturbation.second_order.stochastic_steady_state
+    elseif algorithm == :pruned_second_order
+        SSS_delta = reference_steady_state - 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
     elseif algorithm == :third_order
         SSS_delta = reference_steady_state - 𝓂.solution.perturbation.third_order.stochastic_steady_state
+    elseif algorithm == :pruned_third_order
+        SSS_delta = reference_steady_state - 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
     else
         SSS_delta = zeros(length(reference_steady_state))
     end
 
     if algorithm == :second_order
         reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
+    elseif algorithm == :pruned_second_order
+        reference_steady_state = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
     elseif algorithm == :third_order
         reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+    elseif algorithm == :pruned_third_order
+        reference_steady_state = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
     end
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
@@ -410,9 +420,9 @@ function plot_irf(𝓂::ℳ;
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
     if generalised_irf
-        Y = girf(state_update, SSS_delta, zeros(𝓂.timings.nVars), 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
+        Y = girf(state_update, SSS_delta, zeros(𝓂.timings.nVars), pruning, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
     else
-        Y = irf(state_update, initial_state, zeros(𝓂.timings.nVars), 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        Y = irf(state_update, initial_state, zeros(𝓂.timings.nVars), pruning, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock) .+ SSS_delta[var_idx]
     end
 
     if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
@@ -455,13 +465,17 @@ function plot_irf(𝓂::ℳ;
                                                 title = string(𝓂.timings.var[var_idx[i]]),
                                                 ylabel = "Level",
                                                 label = "")
+
                                 if can_dual_axis
                                     StatsPlots.plot!(StatsPlots.twinx(), 
                                                         100*((Y[i,:,shock] .+ SS) ./ SS .- 1), 
                                                         ylabel = LaTeXStrings.L"\% \Delta", 
                                                         label = "") 
                                 end
-                                StatsPlots.hline!(gr_back ? [SS 0] : [SS], color = :black, label = "")                               
+
+                                StatsPlots.hline!(can_dual_axis ? [SS 0] : [SS], 
+                                                    color = :black, 
+                                                    label = "")                               
                 end)
 
                 if !(plot_count % plots_per_page == 0)
@@ -737,6 +751,8 @@ Plot the solution of the model (mapping of past states to present variables) aro
 
 The (non) stochastic steady state is plotted along with the mapping from the chosen past state to one present variable per plot. All other (non-chosen) states remain in the (non) stochastic steady state.
 
+In the case of pruned solutions the "pruned" state has as a baseline the non stochastic steady state and the "actual" state refers to the stochastic steady state. The plot then shows the mapping from `σ` standard deviations added to these two steady states and the present variables. Note that there is no unique mapping between the "pruned" and "actual" states. Furthermore, the mapping of the "actual" state is itself dependend on the "pruned" state so that the plots shown are just one realisation of inifite possible mappings.
+
 # Arguments
 - $MODEL
 - `state` [Type: `Symbol`]: state variable to be shown on x-axis.
@@ -804,37 +820,35 @@ function plot_solution(𝓂::ℳ,
 
     @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(𝓂.timings.past_not_future_and_mixed)
 
-    @assert length(setdiff(algorithm isa Symbol ? [algorithm] : algorithm, [:third_order, :second_order, :first_order])) == 0 "Invalid algorithm. Choose any combination of: :third_order, :second_order, :first_order"
+    @assert length(setdiff(algorithm isa Symbol ? [algorithm] : algorithm, [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order])) == 0 "Invalid algorithm. Choose any combination of: :third_order, :second_order, :first_order"
 
     if algorithm isa Symbol
-        max_algorithm = algorithm
-        min_algorithm = algorithm
+        solve!(𝓂, verbose = verbose, algorithm = algorithm, dynamics = true, parameters = parameters)
         algorithm = [algorithm]
     else
-        if :third_order ∈ algorithm 
-            max_algorithm = :third_order 
-        elseif :second_order ∈ algorithm 
-            max_algorithm = :second_order 
+        if :third_order ∈ algorithm && :pruned_third_order ∈ algorithm
+            solve!(𝓂, verbose = verbose, algorithm = :third_order, dynamics = true, parameters = parameters)
+            solve!(𝓂, verbose = verbose, algorithm = :pruned_third_order, dynamics = true, parameters = parameters)
+        elseif :third_order ∈ algorithm
+            solve!(𝓂, verbose = verbose, algorithm = :third_order, dynamics = true, parameters = parameters)
+        elseif :pruned_third_order ∈ algorithm
+            solve!(𝓂, verbose = verbose, algorithm = :pruned_third_order, dynamics = true, parameters = parameters)
+        elseif :second_order ∈ algorithm && :pruned_second_order ∈ algorithm
+            solve!(𝓂, verbose = verbose, algorithm = :second_order, dynamics = true, parameters = parameters)
+            solve!(𝓂, verbose = verbose, algorithm = :pruned_second_order, dynamics = true, parameters = parameters)
+        elseif :second_order ∈ algorithm
+            solve!(𝓂, verbose = verbose, algorithm = :second_order, dynamics = true, parameters = parameters)
+        elseif :pruned_second_order ∈ algorithm
+            solve!(𝓂, verbose = verbose, algorithm = :pruned_second_order, dynamics = true, parameters = parameters)
         else 
-            max_algorithm = :first_order 
-        end
-
-        if :first_order ∈ algorithm 
-            min_algorithm = :first_order 
-        elseif :second_order ∈ algorithm 
-            min_algorithm = :second_order 
-        else 
-            min_algorithm = :third_order 
+            solve!(𝓂, verbose = verbose, algorithm = :first_order, dynamics = true, parameters = parameters)
         end
     end
-
-    solve!(𝓂, verbose = verbose, algorithm = max_algorithm, dynamics = true, parameters = parameters)
 
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
                             parameters = parameters,
                             verbose = verbose)
-
 
     full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
@@ -856,6 +870,7 @@ function plot_solution(𝓂::ℳ,
 
     
     legend_plot = StatsPlots.plot(framestyle = :none) 
+
     if :first_order ∈ algorithm          
         StatsPlots.plot!(fill(0,1,1), 
         framestyle = :none, 
@@ -868,11 +883,23 @@ function plot_solution(𝓂::ℳ,
         legend = :inside, 
         label = "2nd order perturbation")
     end
+    if :pruned_second_order ∈ algorithm    
+        StatsPlots.plot!(fill(0,1,1), 
+        framestyle = :none, 
+        legend = :inside, 
+        label = "Pruned 2nd order perturbation")
+    end
     if :third_order ∈ algorithm    
         StatsPlots.plot!(fill(0,1,1), 
         framestyle = :none, 
         legend = :inside, 
         label = "3rd order perturbation")
+    end
+    if :pruned_third_order ∈ algorithm    
+        StatsPlots.plot!(fill(0,1,1), 
+        framestyle = :none, 
+        legend = :inside, 
+        label = "Pruned 3rd order perturbation")
     end
 
     if :first_order ∈ algorithm   
@@ -882,17 +909,38 @@ function plot_solution(𝓂::ℳ,
         label = "Non Stochastic Steady State")
     end
     if :second_order ∈ algorithm    
+        SSS2 = 𝓂.solution.perturbation.second_order.stochastic_steady_state
+
         StatsPlots.scatter!(fill(0,1,1), 
         framestyle = :none, 
         legend = :inside, 
         label = "Stochastic Steady State (2nd order)")
     end
+    if :pruned_second_order ∈ algorithm    
+        SSS2p = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
+
+        StatsPlots.scatter!(fill(0,1,1), 
+        framestyle = :none, 
+        legend = :inside, 
+        label = "Stochastic Steady State (Pruned 2nd order)")
+    end
     if :third_order ∈ algorithm    
+        SSS3 = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+
         StatsPlots.scatter!(fill(0,1,1), 
         framestyle = :none, 
         legend = :inside, 
         label = "Stochastic Steady State (3rd order)")
     end
+    if :pruned_third_order ∈ algorithm    
+        SSS3p = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
+
+        StatsPlots.scatter!(fill(0,1,1), 
+        framestyle = :none, 
+        legend = :inside, 
+        label = "Stochastic Steady State (Pruned 3rd order)")
+    end
+
     StatsPlots.scatter!(fill(0,1,1), 
     label = "", 
     marker = :rect,
@@ -904,12 +952,24 @@ function plot_solution(𝓂::ℳ,
     framestyle = :none, 
     legend = :inside)
 
+    variable_first_list = []
+    variable_second_list = []
+    variable_pruned_second_list = []
+    variable_third_list = []
+    variable_pruned_third_list = []
+    has_impact_list = []
 
     for k in vars_to_plot
-
         kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
 
         has_impact = false
+
+        variable_first = []
+        variable_second = []
+        variable_pruned_second = []
+        variable_third = []
+        variable_pruned_third = []
+
         if :first_order ∈ algorithm
             variable_first = [𝓂.solution.perturbation.first_order.state_update(state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
 
@@ -919,18 +979,22 @@ function plot_solution(𝓂::ℳ,
         end
 
         if :second_order ∈ algorithm
-            SSS2 = 𝓂.solution.perturbation.second_order.stochastic_steady_state
-
             variable_second = [𝓂.solution.perturbation.second_order.state_update(SSS2 - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
 
             variable_second = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_second]
 
             has_impact = has_impact || sum(abs2,variable_second .- sum(variable_second)/length(variable_second))/(length(variable_second)-1) > eps()
         end
+        
+        if :pruned_second_order ∈ algorithm
+            variable_pruned_second = [𝓂.solution.perturbation.pruned_second_order.state_update(SSS2p - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo), state_selector * x)[1][indexin([k],𝓂.timings.var)][1] for x in state_range]
+
+            variable_pruned_second = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_pruned_second]
+
+            has_impact = has_impact || sum(abs2,variable_pruned_second .- sum(variable_pruned_second)/length(variable_pruned_second))/(length(variable_pruned_second)-1) > eps()
+        end
 
         if :third_order ∈ algorithm
-            SSS3 = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-
             variable_third = [𝓂.solution.perturbation.third_order.state_update(SSS3 - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
 
             variable_third = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_third]
@@ -938,27 +1002,65 @@ function plot_solution(𝓂::ℳ,
             has_impact = has_impact || sum(abs2,variable_third .- sum(variable_third)/length(variable_third))/(length(variable_third)-1) > eps()
         end
 
-        if !has_impact continue end
+        if :pruned_third_order ∈ algorithm
+            variable_pruned_third = [𝓂.solution.perturbation.pruned_third_order.state_update(SSS3p - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo), state_selector * x)[1][indexin([k],𝓂.timings.var)][1] for x in state_range]
+
+            variable_pruned_third = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_pruned_third]
+
+            has_impact = has_impact || sum(abs2,variable_pruned_third .- sum(variable_pruned_third)/length(variable_pruned_third))/(length(variable_pruned_third)-1) > eps()
+        end
+
+        push!(variable_first_list,  variable_first)
+        push!(variable_second_list, variable_second)
+        push!(variable_pruned_second_list, variable_pruned_second)
+        push!(variable_third_list,  variable_third)
+        push!(variable_pruned_third_list,  variable_pruned_third)
+        push!(has_impact_list,      has_impact)
+
+        if !has_impact
+            n_subplots -= 1
+        end
+    end
+
+
+    for (i,k) in enumerate(vars_to_plot)
+        kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+
+        if !has_impact_list[i] continue end
 
         push!(pp,begin
                         Pl = StatsPlots.plot() 
                         if :first_order ∈ algorithm
                                 StatsPlots.plot!(state_range .+ SS_and_std[1](state), 
-                                variable_first, 
+                                variable_first_list[i], 
                                 ylabel = string(k)*"₍₀₎", 
                                 xlabel = string(state)*"₍₋₁₎", 
                                 label = "")
                         end
                         if :second_order ∈ algorithm
                                 StatsPlots.plot!(state_range .+ SSS2[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                variable_second, 
+                                variable_second_list[i], 
+                                ylabel = string(k)*"₍₀₎", 
+                                xlabel = string(state)*"₍₋₁₎", 
+                                label = "")
+                        end
+                        if :pruned_second_order ∈ algorithm
+                                StatsPlots.plot!(state_range .+ SSS2p[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
+                                variable_pruned_second_list[i], 
                                 ylabel = string(k)*"₍₀₎", 
                                 xlabel = string(state)*"₍₋₁₎", 
                                 label = "")
                         end
                         if :third_order ∈ algorithm
                                 StatsPlots.plot!(state_range .+ SSS3[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                variable_third, 
+                                variable_third_list[i], 
+                                ylabel = string(k)*"₍₀₎", 
+                                xlabel = string(state)*"₍₋₁₎", 
+                                label = "")
+                        end
+                        if :pruned_third_order ∈ algorithm
+                                StatsPlots.plot!(state_range .+ SSS3p[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
+                                variable_pruned_third_list[i], 
                                 ylabel = string(k)*"₍₀₎", 
                                 xlabel = string(state)*"₍₋₁₎", 
                                 label = "")
@@ -972,8 +1074,16 @@ function plot_solution(𝓂::ℳ,
                             StatsPlots.scatter!([SSS2[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], [SSS2[indexin([k],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], 
                             label = "")
                         end
+                        if :pruned_second_order ∈ algorithm
+                            StatsPlots.scatter!([SSS2p[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], [SSS2p[indexin([k],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], 
+                            label = "")
+                        end
                         if :third_order ∈ algorithm
                             StatsPlots.scatter!([SSS3[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], [SSS3[indexin([k],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], 
+                            label = "")
+                        end
+                        if :pruned_third_order ∈ algorithm
+                            StatsPlots.scatter!([SSS3p[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], [SSS3p[indexin([k],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], 
                             label = "")
                         end
 
@@ -989,7 +1099,7 @@ function plot_solution(𝓂::ℳ,
             
             p = StatsPlots.plot(ppp,
                             legend_plot, 
-                            layout = StatsPlots.grid(2, 1, heights=[0.8, 0.2]),
+                            layout = StatsPlots.grid(2, 1, heights = length(algorithm) > 3 ? [0.65, 0.35] : [0.8, 0.2]),
                             plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
             )
 
@@ -1013,7 +1123,7 @@ function plot_solution(𝓂::ℳ,
             
         p = StatsPlots.plot(ppp,
                         legend_plot, 
-                        layout = StatsPlots.grid(2, 1, heights=[0.8, 0.2]),
+                        layout = StatsPlots.grid(2, 1, heights = length(algorithm) > 3 ? [0.65, 0.35] : [0.8, 0.2]),
                         plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
         )
 
@@ -1047,7 +1157,7 @@ Limited to the first order perturbation solution of the model.
 - $SHOCK_CONDITIONS
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $VARIABLES
-`conditions_in_levels` [Default: `false`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
+`conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
 - $LEVELS
 - `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
 - `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
@@ -1091,7 +1201,7 @@ conditions[2,2] = .02
 shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
 shocks[1,1] = .05
 
-plot_conditional_forecast(RBC_CME, conditions, shocks = shocks)
+plot_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_levels = false)
 
 # The same can be achieved with the other input formats:
 # conditions = Matrix{Union{Nothing,Float64}}(undef,7,2)
@@ -1114,10 +1224,11 @@ plot_conditional_forecast(RBC_CME, conditions, shocks = shocks)
 function plot_conditional_forecast(𝓂::ℳ,
     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
+    initial_state::Vector{Float64} = [0.0],
     periods::Int = 40, 
     parameters = nothing,
     variables::Symbol_input = :all_including_auxilliary, 
-    conditions_in_levels::Bool = false,
+    conditions_in_levels::Bool = true,
     levels::Bool = false,
     show_plots::Bool = true,
     save_plots::Bool = false,
@@ -1139,6 +1250,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     Y = get_conditional_forecast(𝓂,
                                 conditions,
                                 shocks = shocks, 
+                                initial_state = initial_state,
                                 periods = periods, 
                                 parameters = parameters,
                                 variables = variables, 
@@ -1218,7 +1330,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     return_plots = []
 
     for i in 1:length(var_idx)
-        if all(isapprox.(Y[i,:], 0, atol = eps(Float32)))
+        if all(isapprox.(Y[i,:], 0, atol = eps(Float32))) && !(any(vcat(conditions,shocks)[var_idx[i],:] .!= nothing))
             n_subplots -= 1
         end
     end
@@ -1226,75 +1338,44 @@ function plot_conditional_forecast(𝓂::ℳ,
     for i in 1:length(var_idx)
         SS = reference_steady_state[i]
         if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)) > 0
+            
+            if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
+                cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
+                if length(cond_idx) > 0
+                push!(pp,begin
+                            StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
+                            if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                            StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")   
+                            StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
+                end)
+            else
+                push!(pp,begin
+                            StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
+                            if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                            StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")                              
+                end)
+            end
+            else
+                cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
+                if length(cond_idx) > 0
+                    push!(pp,begin
+                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                StatsPlots.hline!([SS], color = :black, label = "")
+                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)  
+                    end)
+                else 
+                    push!(pp,begin
+                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                StatsPlots.hline!([SS], color = :black, label = "")
+                    end)
+                end
+
+            end
+
             if !(plot_count % plots_per_page == 0)
                 plot_count += 1
-                if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
-                    cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
-                    if length(cond_idx) > 0
-                        push!(pp,begin
-                                    StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                    StatsPlots.hline!(gr_back ? [SS 0] : [SS], color = :black, label = "") 
-                                    StatsPlots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                             
-                        end)
-                    else
-                        push!(pp,begin
-                                    StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                    if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                    StatsPlots.hline!(gr_back ? [SS 0] : [SS], color = :black, label = "")                         
-                        end)
-                    end
-                else
-                    cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
-                    if length(cond_idx) > 0
-                        push!(pp,begin
-                                    StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                    StatsPlots.hline!([SS], color = :black, label = "")
-                                    StatsPlots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)   
-                        end)
-                    else
-                        push!(pp,begin
-                                    StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                    StatsPlots.hline!([SS], color = :black, label = "")
-                        end)
-                    end
-
-                end
             else
-
                 plot_count = 1
-                if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
-                    cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
-                    if length(cond_idx) > 0
-                    push!(pp,begin
-                                StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")   
-                                StatsPlots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
-                    end)
-                else
-                    push!(pp,begin
-                                StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                                if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")                              
-                    end)
-                end
-                else
-                    cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
-                    if length(cond_idx) > 0
-                        push!(pp,begin
-                                    StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                    StatsPlots.hline!([SS], color = :black, label = "")
-                                    StatsPlots.scatter!(cond_idx,vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)  
-                        end)
-                    else 
-                        push!(pp,begin
-                                    StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                    StatsPlots.hline!([SS], color = :black, label = "")
-                        end)
-                    end
-
-                end
 
                 shock_string = "Conditional forecast"
 

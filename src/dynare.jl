@@ -142,7 +142,7 @@ function write_mod_file(m::ℳ)
         [print(io,string(p) * " ") for p in m.parameters_in_equations]
 
 
-        println(io,";\n\n# Parameter definitions:")
+        println(io,";\n\n% Parameter definitions:")
         for (i,p) in enumerate(m.parameters)
             println(io, "\t" * string(p) * "\t=\t" * string(m.parameter_values[i]) * ";")
         end
@@ -197,3 +197,8 @@ write_to_dynare_file = write_mod_file
 See [`write_mod_file`](@ref)
 """
 write_to_dynare = write_mod_file
+
+"""
+See [`write_mod_file`](@ref)
+"""
+export_model = write_mod_file

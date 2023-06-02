@@ -24,8 +24,9 @@ include("functionality_tests.jl")
 @testset verbose = true "FS2000" begin
     include("models/FS2000.jl")
     functionality_test(m, plots = false)
-    functionality_test(m, algorithm = :second_order, plots = false)
-    functionality_test(m, algorithm = :third_order, plots = false)
+    for algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        functionality_test(m, algorithm = algorithm, plots = false)
+    end
 end
 m = nothing
 GC.gc()
@@ -83,8 +84,9 @@ GC.gc()
 @testset verbose = true "RBC_CME with calibration equations and parameter definitions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
     functionality_test(m, plots = false)
-    functionality_test(m, algorithm = :second_order)
-    functionality_test(m, algorithm = :third_order)
+    for algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        functionality_test(m, algorithm = algorithm, plots = false)
+    end
 end
 m = nothing
 GC.gc()
@@ -92,8 +94,9 @@ GC.gc()
 @testset verbose = true "RBC_CME with calibration equations" begin
     include("models/RBC_CME_calibration_equations.jl")
     functionality_test(m, plots = false)
-    functionality_test(m, algorithm = :second_order, plots = false)
-    functionality_test(m, algorithm = :third_order, plots = false)
+    for algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        functionality_test(m, algorithm = algorithm, plots = false)
+    end
 end
 m = nothing
 GC.gc()
@@ -101,8 +104,9 @@ GC.gc()
 @testset verbose = true "RBC_CME" begin
     include("models/RBC_CME.jl")
     functionality_test(m, plots = false)
-    functionality_test(m, algorithm = :second_order, plots = false)
-    functionality_test(m, algorithm = :third_order, plots = false)
+    for algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        functionality_test(m, algorithm = algorithm, plots = false)
+    end
 end
 m = nothing
 GC.gc()
