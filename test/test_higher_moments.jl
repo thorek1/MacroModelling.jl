@@ -64,9 +64,10 @@ function duplication(p)
     return DP, DPinv
 end
 
-translate_mod_file("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/AnSchorfheide_Gaussian.mod")
+# translate_mod_file("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/AnSchorfheide_Gaussian.mod")
+# include("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/AnSchorfheide_Gaussian.jl")
 
-include("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/AnSchorfheide_Gaussian.jl")
+include("AnSchorfheide_Gaussian.jl")
 m = AnSchorfheide_Gaussian
 
 
@@ -162,7 +163,7 @@ d = zeros(T.nVars)
 
 ybar = sol[1][indexin(intersect(model_order,m.var),m.var)]
 
-Fxi = I(3)
+Fxi = I(m.timings.nExo)
 
 ## First-order moments, ie expectation of variables
 IminA = I-A
@@ -181,7 +182,7 @@ BFxikronBFxi= kron(BFxi,BFxi)
 DFxikronDFxi= kron(DFxi,DFxi)
 
 CC = BFxi*Fxi*BFxi'
-
+# B * B'
 
 lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
 
@@ -233,7 +234,7 @@ hu_hu = kron(hu,hu)
 
 
 # get Fxi
-nu2 = nu*Int((nu+1)/2);
+nu2 = Int(nu * (nu+1) / 2);
 nxi = nu + nu^2 + 2*nx*nu;
 nximin = nu + nu2 + nu*nx;
 
@@ -323,7 +324,7 @@ DFxikronDFxi= kron(DFxi,DFxi)
 
 CC = BFxi *  GAMMA2XI  * BFxi'
 
-
+# B' * (pinv(Fxi)' * GAMMA2XI' * pinv(Fxi))' * B
 lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
 
 C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
@@ -331,8 +332,37 @@ C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
 C2y0 = C * C2z0 * C' + DFxi * GAMMA2XI * DFxi'
 
 
+diag(C2y0)
 
 
+GAMMAMax = sparse(pinv(B) * CC' * pinv(B'))
+droptol!(GAMMAMax,1e-6)
+CC = B *  GAMMA2XI  * B'
+
+# B' * (pinv(Fxi)' * GAMMA2XI' * pinv(Fxi))' * B
+lm = LinearMap{Float64}(x -> - B * reshape(x,size(B,2),size(B,2)) * B' , size(B,2)^2)
+
+C2z00 = sparse(reshape(ℐ.gmres(lm, vec(-CC)), (size(B,2),size(B,2))))
+droptol!(C2z00, eps())
+
+
+B * GAMMAMax * B'
+B * C2z00 * B'
+# B * (pinv(Fxi)' * GAMMA2XI * pinv(Fxi)) * B'
+idx = zeros(nu,nu)
+
+# go from ξ̃ to ξ using F 
+ξ = vcat(DP'*vec(I(nu)), zeros(nx) , DP'*vec(C2z0[1:nu,1:nu]))
+
+F = [I(nu*nx)]
+
+# M₂ = E[ξ ⨂ ξ]
+# ξ = [μ, μ ⨂ μ, μ ⨂ x, x ⨂ μ]
+
+M₂ = spzeros(nxi,nxi)
+M₂[1:nu,1:nu] = I(nu)
+M₂[nu.+(1:nu^2),nu.+(1:nu^2)] = diagm(vec(ones(nu,nu)+I(nu)))
+M₂[nu+nu^2 .+ (1:2*nu*nx),nu+nu^2 .+ (1:2*nu*nx)] = diagm(vcat(vec(C2z0[1:nu,1:nu]),vec(C2z0[1:nu,1:nu])))
 
 translate_mod_file("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/RBCmodel.mod")
 include("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/RBCmodel.jl")
