@@ -430,40 +430,43 @@ diag(C2y0)
 
 GAMMAMax = sparse(pinv(B) * CC' * pinv(B'))
 droptol!(GAMMAMax,1e-6)
-CC = B *  GAMMA2XI  * B'
+# CC = B *  GAMMA2XI  * B'
 
-# B' * (pinv(Fxi)' * GAMMA2XI' * pinv(Fxi))' * B
-lm = LinearMap{Float64}(x -> - B * reshape(x,size(B,2),size(B,2)) * B' , size(B,2)^2)
+# # B' * (pinv(Fxi)' * GAMMA2XI' * pinv(Fxi))' * B
+# lm = LinearMap{Float64}(x -> - B * reshape(x,size(B,2),size(B,2)) * B' , size(B,2)^2)
 
-C2z00 = sparse(reshape(ℐ.gmres(lm, vec(-CC)), (size(B,2),size(B,2))))
-droptol!(C2z00, eps())
+# C2z00 = sparse(reshape(ℐ.gmres(lm, vec(-CC)), (size(B,2),size(B,2))))
+# droptol!(C2z00, eps())
 
 
-B * GAMMAMax * B'
-B * C2z00 * B'
+# B * GAMMAMax * B'
+# B * C2z00 * B'
 # B * (pinv(Fxi)' * GAMMA2XI * pinv(Fxi)) * B'
-idx = zeros(nu,nu)
-
-# go from ξ̃ to ξ using F 
-ξ = vcat(DP'*vec(I(nu)), zeros(nx) , DP'*vec(C2z0[1:nu,1:nu]))
-
-F = [I(nu*nx)]
-
-# M₂ = E[ξ ⨂ ξ]
-# ξ = [μ, μ ⨂ μ, μ ⨂ x, x ⨂ μ]
-
-M₂ = spzeros(nxi,nxi)
-M₂[1:nu,1:nu] = I(nu)
-M₂[nu.+(1:nu^2),nu.+(1:nu^2)] = diagm(vec(ones(nu,nu)+I(nu)))
-M₂[nu+nu^2 .+ (1:2*nu*nx),nu+nu^2 .+ (1:2*nu*nx)] = diagm(vcat(vec(C2z0[1:nu,1:nu]),vec(C2z0[1:nu,1:nu])))
+# idx = zeros(nu,nu)
 
 
 
-nu = 3
+
+# # go from ξ̃ to ξ using F 
+# ξ = vcat(DP'*vec(I(nu)), zeros(nx) , DP'*vec(C2z0[1:nu,1:nu]))
+
+# F = [I(nu*nx)]
+
+# # M₂ = E[ξ ⨂ ξ]
+# # ξ = [μ, μ ⨂ μ, μ ⨂ x, x ⨂ μ]
+
+# M₂ = spzeros(nxi,nxi)
+# M₂[1:nu,1:nu] = I(nu)
+# M₂[nu.+(1:nu^2),nu.+(1:nu^2)] = diagm(vec(ones(nu,nu)+I(nu)))
+# M₂[nu+nu^2 .+ (1:2*nu*nx),nu+nu^2 .+ (1:2*nu*nx)] = diagm(vcat(vec(C2z0[1:nu,1:nu]),vec(C2z0[1:nu,1:nu])))
+
+
+####  Γ₂
+nu = 2
 nx = 2
-# write a loop to fill Γ
+# write a loop to fill Γ₂
 # size of input vector
-Γ = spzeros(Int(nu + nu*(nu+1)/2 + nx*nu), Int(nu + nu*(nu+1)/2 + nx*nu))
+Γ₂ = spzeros(Int(nu + nu*(nu+1)/2 + nx*nu), Int(nu + nu*(nu+1)/2 + nx*nu))
 
 Ε = fill(:ϵᵢₖ,nu,nu)
 Ε[diagind(Ε)] .= :ϵ²
@@ -476,15 +479,15 @@ for (i¹,s¹) in enumerate(inputs)
     for (i²,s²) in enumerate(inputs)
         if i¹ == i² #s¹ == s² && 
             if s² == :ϵ
-                Γ[i¹,i²] = 1 # Variance of ϵ
+                Γ₂[i¹,i²] = 1 # Variance of ϵ
             end
 
             if s² == :ϵ²
-                Γ[i¹,i²] = 2 # Variance of ϵ²
+                Γ₂[i¹,i²] = 2 # Variance of ϵ²
             end
 
             if s² == :ϵᵢₖ
-                Γ[i¹,i²] = 1
+                Γ₂[i¹,i²] = 1
             end
 
             if i¹ > n_shocks
@@ -493,12 +496,12 @@ for (i¹,s¹) in enumerate(inputs)
                 if positions isa Tuple{Int,Int}
                     pos = positions
                     for iᵉ in 1:nu
-                        Γ[n_shocks + (pos[1] - 1) * nu + iᵉ, n_shocks + (pos[2] - 1) * nu + iᵉ] = C2z0[pos...] # Covariance of x
+                        Γ₂[n_shocks + (pos[1] - 1) * nu + iᵉ, n_shocks + (pos[2] - 1) * nu + iᵉ] = C2z0[pos...] # Covariance of x
                     end
                 else
                     for pos in positions
                         for iᵉ in 1:nu
-                            Γ[n_shocks + (pos[1] - 1) * nu + iᵉ, n_shocks + (pos[2] - 1) * nu + iᵉ] = C2z0[pos...] # Covariance of x
+                            Γ₂[n_shocks + (pos[1] - 1) * nu + iᵉ, n_shocks + (pos[2] - 1) * nu + iᵉ] = C2z0[pos...] # Covariance of x
                         end
                     end
                 end
@@ -510,8 +513,157 @@ end
 
 
 
+####  Γ₃
+nu = 2
+nx = 2
+# write a loop to fill Γ₂
+# size of input vector
+Γ₃ = zeros(Int(nu + nu*(nu+1)/2 + nx*nu), Int(nu + nu*(nu+1)/2 + nx*nu), Int(nu + nu*(nu+1)/2 + nx*nu))
 
+Ε = reshape([(:ϵ, (i,k)) for k in 1:nu for i in 1:nu],nu,nu)
 
+K = reshape([(:x, (i,k)) for k in 1:nx for i in 1:nx],nx,nx)
+
+inputs = vcat([(:ϵ, i) for i in 1:nu], upper_triangle(Ε), upper_triangle(K))
+
+n_shocks = Int(nu + nu * (nu + 1) / 2)
+
+for (i¹,s¹) in enumerate(inputs)
+    for (i²,s²) in enumerate(inputs)
+        for (i³,s³) in enumerate(inputs)
+            if s¹[1] == s²[1] && s¹[1] == s³[1] && s¹[1] == :ϵ
+                if (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)
+                    indices = Set()
+
+                    n_ϵ = 0
+
+                    n_same_indices_within = 0
+
+                    if s¹[2] isa Tuple
+                        if s¹[2][1] == s¹[2][2]
+                            n_same_indices_within += 1
+                        end
+                        n_ϵ += 1
+                    end
+                    if s²[2] isa Tuple
+                        if s²[2][1] == s²[2][2]
+                            n_same_indices_within += 1
+                        end
+                        n_ϵ += 1
+                    end
+                    if s³[2] isa Tuple
+                        if s³[2][1] == s³[2][2]
+                            n_same_indices_within += 1
+                        end
+                        n_ϵ += 1
+                    end
+
+                    n_same_indices_acros = s¹[2] == s²[2] || s¹[2] == s³[2] || s³[2] == s²[2]
+
+                    for k in s¹[2]
+                        push!(indices,k)
+                    end
+                    for k in s²[2]
+                        push!(indices,k)
+                    end
+                    for k in s³[2]
+                        push!(indices,k)
+                    end
+
+                    if indices |> length == 1 && n_ϵ < 2#  || n_same_indices_acros == 2)
+                        Γ₃[i¹,i²,i³] = 2
+                    end
+                    if n_ϵ == 3 && n_same_indices_acros == true && n_same_indices_within == 1
+                        Γ₃[i¹,i²,i³] = 2
+                    end
+                    # [:ϵ,:ϵ,:ϵ²] == sort(vcat(s¹, s², s³))
+                    #     Γ₃[i¹,i²,i³] = 2
+                    # end
+                end
+
+                if i¹ == i² && i¹ == i³
+                    if s¹[2] isa Tuple
+                        if s¹[2][1] == s¹[2][2]
+                            Γ₃[i¹,i²,i³] = 8 # Variance of ϵ²
+                        end
+                    end
+                end
+
+        
+                indices = Set()
+
+                n_ϵ = 0
+
+                n_same_indices_within = 0
+
+                if s¹[2] isa Tuple
+                    if s¹[2][1] == s¹[2][2]
+                        n_same_indices_within += 1
+                    end
+                    n_ϵ += 1
+                end
+                if s²[2] isa Tuple
+                    if s²[2][1] == s²[2][2]
+                        n_same_indices_within += 1
+                    end
+                    n_ϵ += 1
+                end
+                if s³[2] isa Tuple
+                    if s³[2][1] == s³[2][2]
+                        n_same_indices_within += 1
+                    end
+                    n_ϵ += 1
+                end
+
+                n_same_indices_acros = s¹[2] == s²[2] || s¹[2] == s³[2] || s³[2] == s²[2]
+
+                for k in s¹[2]
+                    push!(indices,k)
+                end
+                for k in s²[2]
+                    push!(indices,k)
+                end
+                for k in s³[2]
+                    push!(indices,k)
+                end
+
+                if n_ϵ == 1 && n_same_indices_acros == false && n_same_indices_within == 0 && indices |> length == 2
+                    Γ₃[i¹,i²,i³] = 1
+                end
+
+            end
+                # if s² == :ϵ²
+                #     Γ₃[i¹,i²] = 2 # Variance of ϵ²
+                # end
+
+                # if s² == :ϵᵢₖ
+                #     Γ₃[i¹,i²] = 1
+                # end
+
+                # if i¹ > n_shocks
+                #     positions = position_in_symmetric_matrix(i² - n_shocks, Int(nx*(nx+1)/2))
+
+                #     if positions isa Tuple{Int,Int}
+                #         pos = positions
+                #         for iᵉ in 1:nu
+                #             Γ₃[n_shocks + (pos[1] - 1) * nu + iᵉ, n_shocks + (pos[2] - 1) * nu + iᵉ] = C2z0[pos...] # Covariance of x
+                #         end
+                #     else
+                #         for pos in positions
+                #             for iᵉ in 1:nu
+                #                 Γ₃[n_shocks + (pos[1] - 1) * nu + iᵉ, n_shocks + (pos[2] - 1) * nu + iᵉ] = C2z0[pos...] # Covariance of x
+                #             end
+                #         end
+                #     end
+                # end
+            # end
+        end
+    end
+end
+
+Γ₃
+
+inputs
 
 
 function upper_triangle_vector_index_to_matrix_index(idx::Int, len::Int)
