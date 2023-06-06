@@ -4,6 +4,99 @@ using LinearAlgebra, LinearMaps
 
 
 
+function position_in_symmetric_matrix(position::Int, length::Int)
+    # Check if the vector length is a triangular number
+    n = round(Int, (-1 + sqrt(1 + 8*length)) / 2)
+
+    @assert n*(n+1)/2 == length "The length of the input vector is not valid to form a square symmetric matrix."
+
+    @assert position >= 1 && position <= length "Invalid position in the vector."
+
+    # Initialize the matrix position variables
+    row = 1
+    col = 1
+
+    # Iterate until we reach the desired position
+    for i in 1:length
+        if i == position
+            break
+        end
+        if col == n
+            row += 1
+            col = row
+        else
+            col += 1
+        end
+    end
+
+    # If it's a diagonal element, return one position
+    if row == col
+        return (row, col)
+    # If it's an off-diagonal element, return two positions
+    else
+        return (row, col), (col, row)
+    end
+end
+
+
+
+function position_in_full_vector(position::Int, length::Int)
+    # Check if the vector length is a triangular number
+    n = round(Int, (-1 + sqrt(1 + 8*length)) / 2)
+
+    @assert n*(n+1)/2 == length "The length of the input vector is not valid to form a square symmetric matrix."
+
+    @assert position >= 1 && position <= length "Invalid position in the vector."
+
+    # Initialize the matrix position variables
+    row = 1
+    col = 1
+
+    # Iterate until we reach the desired position
+    for i in 1:length
+        if i == position
+            break
+        end
+        if col == n
+            row += 1
+            col = row
+        else
+            col += 1
+        end
+    end
+
+    # Calculate the corresponding position(s) in the vector
+    vector_position = Int(n * (row - 1) + col)
+
+    if row == col
+        return vector_position
+    else
+        return vector_position, Int(n * (col - 1) + row)
+    end
+end
+
+# position_in_full_vector(6,6)
+
+# position_in_symmetric_matrix(2,6)
+
+# AA = rand(4,4)
+# AA = Symmetric(AA)
+# vecAA = upper_triangle(AA)
+# vec(AA)
+# position_in_full_vector(1,6)
+
+function upper_triangle(mat::AbstractMatrix{T}) where T
+    @assert size(mat, 1) == size(mat, 2) "The input matrix must be square"
+
+    upper_elems = T[]
+    for i in 1:size(mat, 1)
+        for j in i:size(mat, 2)
+            push!(upper_elems, mat[i, j])
+        end
+    end
+    return upper_elems
+end
+
 function expand_mat(A::Matrix, nu::Int)
     n = size(A, 1)
     B = spzeros(Float64, n*nu, n*nu)
@@ -363,6 +456,177 @@ M₂ = spzeros(nxi,nxi)
 M₂[1:nu,1:nu] = I(nu)
 M₂[nu.+(1:nu^2),nu.+(1:nu^2)] = diagm(vec(ones(nu,nu)+I(nu)))
 M₂[nu+nu^2 .+ (1:2*nu*nx),nu+nu^2 .+ (1:2*nu*nx)] = diagm(vcat(vec(C2z0[1:nu,1:nu]),vec(C2z0[1:nu,1:nu])))
+
+
+
+nu = 3
+nx = 2
+# write a loop to fill Γ
+# size of input vector
+Γ = spzeros(Int(nu + nu*(nu+1)/2 + nx*nu), Int(nu + nu*(nu+1)/2 + nx*nu))
+
+Ε = fill(:ϵᵢₖ,nu,nu)
+Ε[diagind(Ε)] .= :ϵ²
+
+inputs = vcat(fill(:ϵ, nu), upper_triangle(Ε), fill(:ϵx, Int(nx * (nx + 1) / 2)))
+
+n_shocks = Int(nu + nu * (nu + 1) / 2)
+
+for (i¹,s¹) in enumerate(inputs)
+    for (i²,s²) in enumerate(inputs)
+        if i¹ == i² #s¹ == s² && 
+            if s² == :ϵ
+                Γ[i¹,i²] = 1 # Variance of ϵ
+            end
+
+            if s² == :ϵ²
+                Γ[i¹,i²] = 2 # Variance of ϵ²
+            end
+
+            if s² == :ϵᵢₖ
+                Γ[i¹,i²] = 1
+            end
+
+            if i¹ > n_shocks
+                positions = position_in_symmetric_matrix(i² - n_shocks, Int(nx*(nx+1)/2))
+
+                if positions isa Tuple{Int,Int}
+                    pos = positions
+                    for iᵉ in 1:nu
+                        Γ[n_shocks + (pos[1] - 1) * nu + iᵉ, n_shocks + (pos[2] - 1) * nu + iᵉ] = C2z0[pos...] # Covariance of x
+                    end
+                else
+                    for pos in positions
+                        for iᵉ in 1:nu
+                            Γ[n_shocks + (pos[1] - 1) * nu + iᵉ, n_shocks + (pos[2] - 1) * nu + iᵉ] = C2z0[pos...] # Covariance of x
+                        end
+                    end
+                end
+            end
+
+        end
+    end
+end
+
+
+
+
+
+
+
+function upper_triangle_vector_index_to_matrix_index(idx::Int, len::Int)
+    # Determine the size of the matrix
+    n = Int((-1 + sqrt(1 + 8*len)) / 2)
+    
+    # Calculate the row and column indices
+    row = Int(ceil((sqrt(8*idx + 1) - 1) / 2))
+    col = idx - (row*(row - 1)) ÷ 2
+
+    return (row, col)
+end
+
+function upper_triangle_vector_index_to_matrix_index(idx::Int, len::Int)
+    # Determine the size of the matrix
+    n = Int((-1 + sqrt(1 + 8*len)) / 2)
+
+    # Calculate the row and column indices
+    row = n - Int(ceil(sqrt(2*(n+1)*(n+1) - 8*(len - idx))))
+    col = idx + row*(row-1) ÷ 2 - ((n*(n+1)) ÷ 2 - len)
+
+    if row == col
+        # Diagonal element, only appears once
+        return [(row, col)]
+    else
+        # Off-diagonal element, appears twice
+        return [(row, col), (col, row)]
+    end
+end
+
+
+
+upper_triangle_vector_index_to_matrix_index(1,6)
+
+
+
+function vector_to_symmetric_matrix(vec::Array{Int, 1})
+    # Check if the vector length is a triangular number
+    n = round(Int, (-1 + sqrt(1 + 8*length(vec))) / 2)
+
+    @assert n*(n+1)/2 == length(vec) "The length of the input vector is not valid to form a square symmetric matrix."
+
+    # Initialize a square matrix with zeros
+    mat = zeros(Int, n, n)
+
+    # Fill the matrix's upper triangle and mirror it to the lower triangle
+    idx = 1
+    for i in 1:n
+        for j in i:n
+            mat[i, j] = vec[idx]
+            mat[j, i] = vec[idx]
+            idx += 1
+        end
+    end
+    return mat
+end
+
+vector_to_symmetric_matrix([1,2,3,4,5,6])
+
+
+function vec_to_mat_pos(pos::Int, vec_len::Int)
+    # Check if the vector length is a triangular number
+    n = round(Int, (-1 + sqrt(1 + 8*vec_len)) / 2)
+
+    @assert n*(n+1)/2 == vec_len "The length of the input vector is not valid to form a square symmetric matrix."
+
+    @assert pos >= 1 && pos <= vec_len "Invalid position in the vector."
+
+    # Find the corresponding position in the symmetric matrix
+    # i = 0
+    # while pos > (i*(i+1))/2
+    #     i += 1
+    # end
+    # j = pos - Int((i*(i-1))/2)
+    i = 1
+    while pos > i
+        pos -= i
+        i += 1
+    end
+    j = pos
+
+    if i == j
+        return (i, j)
+    else
+        return (i, j), (j, i)
+    end
+end
+
+vec_to_mat_pos(3,6)
+ones(3,3)
+GAMMA2XI
+
+position_in_symmetric_matrix(5,6)
+
+position_in_symmetric_matrix(10,10)
+
+
+
+nx
+x¹ = 1:nx
+x² = 1:nx
+ϵ¹ = 1:nu
+ϵ² = 1:nu
+
+
+filler = fill(0.0,nu*nx, nu*nx)
+for (ix1, x1) in enumerate(x¹)
+    for (ix2, x2) in enumerate(x²)
+        for (ie, e) in enumerate(ϵ¹)
+            filler[nx * (ix2 - 1) + ie, nx * (ix1 - 1) + ie] = C2z0[ix1,ix2]
+        end
+    end
+end
+
+
 
 translate_mod_file("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/RBCmodel.mod")
 include("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/RBCmodel.jl")
