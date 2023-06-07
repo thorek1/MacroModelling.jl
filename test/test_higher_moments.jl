@@ -593,7 +593,7 @@ for (i¹,s¹) in enumerate(inputs)
 
             n_same_indices_within = n_same_indices_within_ϵ + n_same_indices_within_x
 
-            n_same_indices_acros = s¹[2] == s²[2] || s¹[2] == s³[2] || s³[2] == s²[2]
+            n_same_indices_across = s¹[2] == s²[2] || s¹[2] == s³[2] || s³[2] == s²[2]
 
             for k in s¹[2]
                 push!(indices,k)
@@ -607,11 +607,11 @@ for (i¹,s¹) in enumerate(inputs)
 
             if s¹[1] == s²[1] && s¹[1] == s³[1] && s¹[1] == :ϵ
                 if (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)
-                    if indices |> length == 1 && n_ϵ2 < 2#  || n_same_indices_acros == 2)
+                    if indices |> length == 1 && n_ϵ2 < 2#  || n_same_indices_across == 2)
                         Γ₃[i¹,i²,i³] = 2
                     end
 
-                    if n_ϵ2 == 3 && n_same_indices_acros == true && n_same_indices_within == 1
+                    if n_ϵ2 == 3 && n_same_indices_across == true && n_same_indices_within == 1
                         Γ₃[i¹,i²,i³] = 2
                     end
                 end
@@ -624,49 +624,30 @@ for (i¹,s¹) in enumerate(inputs)
                     end
                 end
 
-                if n_ϵ2 == 1 && n_same_indices_acros == false && n_same_indices_within == 0 && indices |> length == 2
+                if n_ϵ2 == 1 && n_same_indices_across == false && n_same_indices_within == 0 && indices |> length == 2
                     Γ₃[i¹,i²,i³] = 1
                 end
             end
 
             if n_x == 2 && n_same_indices_within_ϵ == 1 && s¹[2][2] == s²[2][2] && s²[2][2] == s³[2][2] #exactly one is epsilon with matching indices, there is one more with matching indices, the last index is common across the two x and epsilon
-                # println(indices_x1)
-                # println([i¹,i²,i³])
                 idxs = collect(indices_x1)
-                # println(idxs)
 
                 if length(idxs) == 1
                     Γ₃[i¹,i²,i³] = 2 * C2z0[idxs[1],idxs[1]]
                 else
                     Γ₃[i¹,i²,i³] = 2 * C2z0[idxs[1],idxs[2]]
                 end
-                # Γ₃[i¹,i²,i³] = 1
             end
-                # if s² == :ϵ²
-                #     Γ₃[i¹,i²] = 2 # Variance of ϵ²
-                # end
 
-                # if s² == :ϵᵢₖ
-                #     Γ₃[i¹,i²] = 1
-                # end
+            if n_x == 2 && n_ϵ2 == 1 && n_same_indices_within_ϵ == 0 && length(collect(indices_x2)) == 2 #exactly one is epsilon with matching indices, there is one more with matching indices, the last index is common across the two x and epsilon
+                idxs = collect(indices_x1)
 
-                # if i¹ > n_shocks
-                #     positions = position_in_symmetric_matrix(i² - n_shocks, Int(nx*(nx+1)/2))
-
-                #     if positions isa Tuple{Int,Int}
-                #         pos = positions
-                #         for iᵉ in 1:nu
-                #             Γ₃[n_shocks + (pos[1] - 1) * nu + iᵉ, n_shocks + (pos[2] - 1) * nu + iᵉ] = C2z0[pos...] # Covariance of x
-                #         end
-                #     else
-                #         for pos in positions
-                #             for iᵉ in 1:nu
-                #                 Γ₃[n_shocks + (pos[1] - 1) * nu + iᵉ, n_shocks + (pos[2] - 1) * nu + iᵉ] = C2z0[pos...] # Covariance of x
-                #             end
-                #         end
-                #     end
-                # end
-            # end
+                if length(idxs) == 1
+                    Γ₃[i¹,i²,i³] = C2z0[idxs[1],idxs[1]]
+                else
+                    Γ₃[i¹,i²,i³] = C2z0[idxs[1],idxs[2]]
+                end
+            end
         end
     end
 end
