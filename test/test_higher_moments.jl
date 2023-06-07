@@ -522,63 +522,98 @@ nx = 2
 
 Ε = reshape([(:ϵ, (i,k)) for k in 1:nu for i in 1:nu],nu,nu)
 
-K = reshape([(:x, (i,k)) for k in 1:nx for i in 1:nx],nx,nx)
+K = reshape([(:x, (k,i)) for k in 1:nx for i in 1:nx],nx,nx)
 
-inputs = vcat([(:ϵ, i) for i in 1:nu], upper_triangle(Ε), upper_triangle(K))
+inputs = vcat([(:ϵ, i) for i in 1:nu], upper_triangle(Ε), vec(K))
 
 n_shocks = Int(nu + nu * (nu + 1) / 2)
 
 for (i¹,s¹) in enumerate(inputs)
     for (i²,s²) in enumerate(inputs)
         for (i³,s³) in enumerate(inputs)
+            indices = Set()
+            indices_x1 = Set()
+            indices_x2 = Set()
+
+            n_x = 0
+            n_ϵ2 = 0
+            n_same_indices_within_x = 0
+            n_same_indices_within_ϵ = 0
+
+            if s¹[1] == :x
+                push!(indices_x1,s¹[2][1])
+                push!(indices_x2,s¹[2][2])
+
+                if s¹[2][1] == s¹[2][2]
+                    n_same_indices_within_x += 1
+                end
+                n_x += 1
+            else
+                if s¹[2] isa Tuple
+                    if s¹[2][1] == s¹[2][2]
+                        n_same_indices_within_ϵ += 1
+                    end
+                    n_ϵ2 += 1
+                end
+            end
+
+            if s²[1] == :x
+                push!(indices_x1,s²[2][1])
+                push!(indices_x2,s²[2][2])
+
+                if s²[2][1] == s²[2][2]
+                    n_same_indices_within_x += 1
+                end
+                n_x += 1
+            else
+                if s²[2] isa Tuple
+                    if s²[2][1] == s²[2][2]
+                        n_same_indices_within_ϵ += 1
+                    end
+                    n_ϵ2 += 1
+                end
+            end
+
+            if s³[1] == :x
+                push!(indices_x1,s³[2][1])
+                push!(indices_x2,s³[2][2])
+
+                if s³[2][1] == s³[2][2]
+                    n_same_indices_within_x += 1
+                end
+                n_x += 1
+            else
+                if s³[2] isa Tuple
+                    if s³[2][1] == s³[2][2]
+                        n_same_indices_within_ϵ += 1
+                    end
+                    n_ϵ2 += 1
+                end
+            end
+
+            n_same_indices_within = n_same_indices_within_ϵ + n_same_indices_within_x
+
+            n_same_indices_acros = s¹[2] == s²[2] || s¹[2] == s³[2] || s³[2] == s²[2]
+
+            for k in s¹[2]
+                push!(indices,k)
+            end
+            for k in s²[2]
+                push!(indices,k)
+            end
+            for k in s³[2]
+                push!(indices,k)
+            end
+
             if s¹[1] == s²[1] && s¹[1] == s³[1] && s¹[1] == :ϵ
                 if (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)
-                    indices = Set()
-
-                    n_ϵ = 0
-
-                    n_same_indices_within = 0
-
-                    if s¹[2] isa Tuple
-                        if s¹[2][1] == s¹[2][2]
-                            n_same_indices_within += 1
-                        end
-                        n_ϵ += 1
-                    end
-                    if s²[2] isa Tuple
-                        if s²[2][1] == s²[2][2]
-                            n_same_indices_within += 1
-                        end
-                        n_ϵ += 1
-                    end
-                    if s³[2] isa Tuple
-                        if s³[2][1] == s³[2][2]
-                            n_same_indices_within += 1
-                        end
-                        n_ϵ += 1
-                    end
-
-                    n_same_indices_acros = s¹[2] == s²[2] || s¹[2] == s³[2] || s³[2] == s²[2]
-
-                    for k in s¹[2]
-                        push!(indices,k)
-                    end
-                    for k in s²[2]
-                        push!(indices,k)
-                    end
-                    for k in s³[2]
-                        push!(indices,k)
-                    end
-
-                    if indices |> length == 1 && n_ϵ < 2#  || n_same_indices_acros == 2)
+                    if indices |> length == 1 && n_ϵ2 < 2#  || n_same_indices_acros == 2)
                         Γ₃[i¹,i²,i³] = 2
                     end
-                    if n_ϵ == 3 && n_same_indices_acros == true && n_same_indices_within == 1
+
+                    if n_ϵ2 == 3 && n_same_indices_acros == true && n_same_indices_within == 1
                         Γ₃[i¹,i²,i³] = 2
                     end
-                    # [:ϵ,:ϵ,:ϵ²] == sort(vcat(s¹, s², s³))
-                    #     Γ₃[i¹,i²,i³] = 2
-                    # end
                 end
 
                 if i¹ == i² && i¹ == i³
@@ -589,48 +624,23 @@ for (i¹,s¹) in enumerate(inputs)
                     end
                 end
 
-        
-                indices = Set()
-
-                n_ϵ = 0
-
-                n_same_indices_within = 0
-
-                if s¹[2] isa Tuple
-                    if s¹[2][1] == s¹[2][2]
-                        n_same_indices_within += 1
-                    end
-                    n_ϵ += 1
-                end
-                if s²[2] isa Tuple
-                    if s²[2][1] == s²[2][2]
-                        n_same_indices_within += 1
-                    end
-                    n_ϵ += 1
-                end
-                if s³[2] isa Tuple
-                    if s³[2][1] == s³[2][2]
-                        n_same_indices_within += 1
-                    end
-                    n_ϵ += 1
-                end
-
-                n_same_indices_acros = s¹[2] == s²[2] || s¹[2] == s³[2] || s³[2] == s²[2]
-
-                for k in s¹[2]
-                    push!(indices,k)
-                end
-                for k in s²[2]
-                    push!(indices,k)
-                end
-                for k in s³[2]
-                    push!(indices,k)
-                end
-
-                if n_ϵ == 1 && n_same_indices_acros == false && n_same_indices_within == 0 && indices |> length == 2
+                if n_ϵ2 == 1 && n_same_indices_acros == false && n_same_indices_within == 0 && indices |> length == 2
                     Γ₃[i¹,i²,i³] = 1
                 end
+            end
 
+            if n_x == 2 && n_same_indices_within_ϵ == 1 && s¹[2][2] == s²[2][2] && s²[2][2] == s³[2][2] #exactly one is epsilon with matching indices, there is one more with matching indices, the last index is common across the two x and epsilon
+                # println(indices_x1)
+                # println([i¹,i²,i³])
+                idxs = collect(indices_x1)
+                # println(idxs)
+
+                if length(idxs) == 1
+                    Γ₃[i¹,i²,i³] = 2 * C2z0[idxs[1],idxs[1]]
+                else
+                    Γ₃[i¹,i²,i³] = 2 * C2z0[idxs[1],idxs[2]]
+                end
+                # Γ₃[i¹,i²,i³] = 1
             end
                 # if s² == :ϵ²
                 #     Γ₃[i¹,i²] = 2 # Variance of ϵ²
@@ -664,6 +674,8 @@ end
 Γ₃
 
 inputs
+
+2*C2z0[1,1]^1
 
 
 function upper_triangle_vector_index_to_matrix_index(idx::Int, len::Int)
