@@ -398,38 +398,38 @@ Ey   = ybar + C*Ez+d; # recall y = yss + C*z + d
     
 
 ## Compute Zero-Lag Cumulants of innovations, states and controls
-GAMMA2XI = spzeros(nximin,nximin)
-GAMMA2XI[1:(nu + size(DP,2)),1:(nu + size(DP,2))] = I(nu + size(DP,2))
-GAMMA2XI[nu .+ (1:size(DP,2)),nu .+ (1:size(DP,2))] += diagm(DPinv * vec(I(nu)))
-GAMMA2XI[nu + size(DP,2) + 1 : end,nu + size(DP,2) + 1 : end] = expand_mat(C2z0,nu)
+# GAMMA2XI = spzeros(nximin,nximin)
+# GAMMA2XI[1:(nu + size(DP,2)),1:(nu + size(DP,2))] = I(nu + size(DP,2))
+# GAMMA2XI[nu .+ (1:size(DP,2)),nu .+ (1:size(DP,2))] += diagm(DPinv * vec(I(nu)))
+# GAMMA2XI[nu + size(DP,2) + 1 : end,nu + size(DP,2) + 1 : end] = expand_mat(C2z0,nu)
 
-matt = GAMMA2XI[nu .+ (1:size(DP,2)),nu .+ (1:size(DP,2))]
-findnz(kron(matt,kron(matt,matt)))
+# matt = GAMMA2XI[nu .+ (1:size(DP,2)),nu .+ (1:size(DP,2))]
+# findnz(kron(matt,kron(matt,matt)))
 
-nz = size(A,1);
+# nz = size(A,1);
 
-BFxi = B*Fxi
-DFxi = D*Fxi
+# BFxi = B*Fxi
+# DFxi = D*Fxi
 
-CkronC = kron(C,C)
-BFxikronBFxi= kron(BFxi,BFxi)
-DFxikronDFxi= kron(DFxi,DFxi)
+# CkronC = kron(C,C)
+# BFxikronBFxi= kron(BFxi,BFxi)
+# DFxikronDFxi= kron(DFxi,DFxi)
 
-CC = BFxi *  GAMMA2XI  * BFxi'
+# CC = BFxi *  GAMMA2XI  * BFxi'
 
-# B' * (pinv(Fxi)' * GAMMA2XI' * pinv(Fxi))' * B
-lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+# # B' * (pinv(Fxi)' * GAMMA2XI' * pinv(Fxi))' * B
+# lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
 
-C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+# C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
 
-C2y0 = C * C2z0 * C' + DFxi * GAMMA2XI * DFxi'
-
-
-diag(C2y0)
+# C2y0 = C * C2z0 * C' + DFxi * GAMMA2XI * DFxi'
 
 
-GAMMAMax = sparse(pinv(B) * CC' * pinv(B'))
-droptol!(GAMMAMax,1e-6)
+# diag(C2y0)
+
+
+# GAMMAMax = sparse(pinv(B) * CC' * pinv(B'))
+# droptol!(GAMMAMax,1e-6)
 # CC = B *  GAMMA2XI  * B'
 
 # # B' * (pinv(Fxi)' * GAMMA2XI' * pinv(Fxi))' * B
@@ -462,8 +462,8 @@ droptol!(GAMMAMax,1e-6)
 
 
 ####  Γ₂
-nu = 2
-nx = 2
+# nu = 2
+# nx = 2
 # write a loop to fill Γ₂
 # size of input vector
 Γ₂ = spzeros(Int(nu + nu*(nu+1)/2 + nx*nu), Int(nu + nu*(nu+1)/2 + nx*nu))
@@ -513,12 +513,27 @@ end
 
 
 
+
+BFxi = B*Fxi
+DFxi = D*Fxi
+
+CC = BFxi *  Γ₂  * BFxi'
+
+lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+
+C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+
+C2y0 = C * C2z0 * C' + DFxi * GAMMA2XI * DFxi'
+
+
+
+
+
 ####  Γ₃
-nu = 2
-nx = 2
 # write a loop to fill Γ₂
 # size of input vector
-Γ₃ = zeros(Int(nu + nu*(nu+1)/2 + nx*nu), Int(nu + nu*(nu+1)/2 + nx*nu), Int(nu + nu*(nu+1)/2 + nx*nu))
+n_entries = Int(nu + nu*(nu+1)/2 + nx*nu)
+Γ₃ = zeros(n_entries, n_entries, n_entries)
 
 Ε = reshape([(:ϵ, (i,k)) for k in 1:nu for i in 1:nu],nu,nu)
 
@@ -654,9 +669,35 @@ end
 
 Γ₃
 
-inputs
+Γ₃xi = reshape(Γ₃,n_entries^2,n_entries)
 
-2*C2z0[1,1]^1
+
+
+BFxikronBFxi= kron(BFxi,BFxi)
+DFxikronDFxi= kron(DFxi,DFxi)
+
+
+BFxi = B*Fxi
+DFxi = D*Fxi
+
+CkronC = kron(C,C)
+BFxikronBFxi= kron(BFxi,BFxi)
+DFxikronDFxi= kron(DFxi,DFxi)
+
+CC = BFxikronBFxi *  Γ₃xi  * BFxi'
+AA = kron(A,A)
+lm = LinearMap{Float64}(x -> AA * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+
+C3z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+reshape(C3z0,8,8,8)
+
+C3y0 = CkronC * C3z0 * C' + DFxikronDFxi * Γ₃xi * DFxi'
+reshape(C3y0,5,5,5)
+
+
+
+
+
 
 
 function upper_triangle_vector_index_to_matrix_index(idx::Int, len::Int)
