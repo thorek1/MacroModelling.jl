@@ -523,7 +523,7 @@ lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)),
 
 C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
 
-C2y0 = C * C2z0 * C' + DFxi * GAMMA2XI * DFxi'
+C2y0 = C * C2z0 * C' + DFxi * Γ₂ * DFxi'
 
 
 
@@ -693,6 +693,192 @@ reshape(C3z0,8,8,8)
 
 C3y0 = CkronC * C3z0 * C' + DFxikronDFxi * Γ₃xi * DFxi'
 reshape(C3y0,5,5,5)
+
+
+# make the loop return a matrix with the shock related entries and two matrices you can use to multiply with C2z0 instead of sorting the entries one by one. akin to a permutation matrix
+# sparsify matrices
+# check if SpeedMapping helps with the sylvester equations
+
+
+####  Γ₄  
+# create inputs from C2z0
+
+U = spzeros(nx^3,nx^3)
+
+for i=1:nx^2
+    for k=1:nx
+        U[(i-1)*nx+k,(k-1)*nx^2+i] = 1       
+    end
+end
+
+P = kron(I(nx),U)
+
+# write a loop to fill Γ₄
+# size of input vector
+
+n_entries = Int(nu + nu*(nu+1)/2 + nx*nu)
+Γ₄ = zeros(n_entries, n_entries, n_entries)
+
+Ε = reshape([(:ϵ, (i,k)) for k in 1:nu for i in 1:nu],nu,nu)
+
+K = reshape([(:x, (k,i)) for k in 1:nx for i in 1:nx],nx,nx)
+
+inputs = vcat([(:ϵ, i) for i in 1:nu], upper_triangle(Ε), vec(K))
+
+n_shocks = Int(nu + nu * (nu + 1) / 2)
+
+for (i¹,s¹) in enumerate(inputs)
+    for (i²,s²) in enumerate(inputs)
+        for (i³,s³) in enumerate(inputs)
+            indices = Set()
+            indices_x1 = Set()
+            indices_x2 = Set()
+
+            n_x = 0
+            n_ϵ2 = 0
+            n_same_indices_within_x = 0
+            n_same_indices_within_ϵ = 0
+
+            if s¹[1] == :x
+                push!(indices_x1,s¹[2][1])
+                push!(indices_x2,s¹[2][2])
+
+                if s¹[2][1] == s¹[2][2]
+                    n_same_indices_within_x += 1
+                end
+                n_x += 1
+            else
+                if s¹[2] isa Tuple
+                    if s¹[2][1] == s¹[2][2]
+                        n_same_indices_within_ϵ += 1
+                    end
+                    n_ϵ2 += 1
+                end
+            end
+
+            if s²[1] == :x
+                push!(indices_x1,s²[2][1])
+                push!(indices_x2,s²[2][2])
+
+                if s²[2][1] == s²[2][2]
+                    n_same_indices_within_x += 1
+                end
+                n_x += 1
+            else
+                if s²[2] isa Tuple
+                    if s²[2][1] == s²[2][2]
+                        n_same_indices_within_ϵ += 1
+                    end
+                    n_ϵ2 += 1
+                end
+            end
+
+            if s³[1] == :x
+                push!(indices_x1,s³[2][1])
+                push!(indices_x2,s³[2][2])
+
+                if s³[2][1] == s³[2][2]
+                    n_same_indices_within_x += 1
+                end
+                n_x += 1
+            else
+                if s³[2] isa Tuple
+                    if s³[2][1] == s³[2][2]
+                        n_same_indices_within_ϵ += 1
+                    end
+                    n_ϵ2 += 1
+                end
+            end
+
+            n_same_indices_within = n_same_indices_within_ϵ + n_same_indices_within_x
+
+            n_same_indices_across = s¹[2] == s²[2] || s¹[2] == s³[2] || s³[2] == s²[2]
+
+            for k in s¹[2]
+                push!(indices,k)
+            end
+            for k in s²[2]
+                push!(indices,k)
+            end
+            for k in s³[2]
+                push!(indices,k)
+            end
+
+            if s¹[1] == s²[1] && s¹[1] == s³[1] && s¹[1] == :ϵ
+                if (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)
+                    if indices |> length == 1 && n_ϵ2 < 2#  || n_same_indices_across == 2)
+                        Γ₄[i¹,i²,i³] = 2
+                    end
+
+                    if n_ϵ2 == 3 && n_same_indices_across == true && n_same_indices_within == 1
+                        Γ₄[i¹,i²,i³] = 2
+                    end
+                end
+
+                if i¹ == i² && i¹ == i³
+                    if s¹[2] isa Tuple
+                        if s¹[2][1] == s¹[2][2]
+                            Γ₄[i¹,i²,i³] = 8 # Variance of ϵ²
+                        end
+                    end
+                end
+
+                if n_ϵ2 == 1 && n_same_indices_across == false && n_same_indices_within == 0 && indices |> length == 2
+                    Γ₄[i¹,i²,i³] = 1
+                end
+            end
+
+            if n_x == 2 && n_same_indices_within_ϵ == 1 && s¹[2][2] == s²[2][2] && s²[2][2] == s³[2][2] #exactly one is epsilon with matching indices, there is one more with matching indices, the last index is common across the two x and epsilon
+                idxs = collect(indices_x1)
+
+                if length(idxs) == 1
+                    Γ₄[i¹,i²,i³] = 2 * C2z0[idxs[1],idxs[1]]
+                else
+                    Γ₄[i¹,i²,i³] = 2 * C2z0[idxs[1],idxs[2]]
+                end
+            end
+
+            if n_x == 2 && n_ϵ2 == 1 && n_same_indices_within_ϵ == 0 && length(collect(indices_x2)) == 2 #exactly one is epsilon with matching indices, there is one more with matching indices, the last index is common across the two x and epsilon
+                idxs = collect(indices_x1)
+
+                if length(idxs) == 1
+                    Γ₄[i¹,i²,i³] = C2z0[idxs[1],idxs[1]]
+                else
+                    Γ₄[i¹,i²,i³] = C2z0[idxs[1],idxs[2]]
+                end
+            end
+        end
+    end
+end
+
+Γ₄
+
+Γ₄xi = reshape(Γ₄,n_entries^2,n_entries)
+
+
+
+BFxikronBFxi= kron(BFxi,BFxi)
+DFxikronDFxi= kron(DFxi,DFxi)
+
+
+BFxi = B*Fxi
+DFxi = D*Fxi
+
+CkronC = kron(C,C)
+BFxikronBFxi= kron(BFxi,BFxi)
+DFxikronDFxi= kron(DFxi,DFxi)
+
+CC = BFxikronBFxi *  Γ₄xi  * BFxi'
+AA = kron(A,A)
+lm = LinearMap{Float64}(x -> AA * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+
+C3z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+reshape(C3z0,8,8,8)
+
+C3y0 = CkronC * C3z0 * C' + DFxikronDFxi * Γ₄xi * DFxi'
+reshape(C3y0,5,5,5)
+
+
 
 
 
