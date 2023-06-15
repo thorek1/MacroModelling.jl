@@ -2,7 +2,26 @@ using MacroModelling
 import IterativeSolvers as ℐ
 using LinearAlgebra, LinearMaps
 
+function intersecting_elements(arr1::Union{Symbol,Vector}, arr2::Union{Symbol,Vector})
+    common = []
+    
+    if arr1 isa Symbol
+        arr1 = [arr1]
+    end
+    if arr2 isa Symbol
+        arr2 = [arr2]
+    else
+        arr2 = copy(arr2)
+    end
 
+    for i in arr1
+        if i in arr2
+            push!(common, i)
+            deleteat!(arr2, findfirst(==(i), arr2))  # remove the matched element from arr2
+        end
+    end
+    return common
+end
 
 function position_in_symmetric_matrix(position::Int, length::Int)
     # Check if the vector length is a triangular number
@@ -85,13 +104,46 @@ end
 # vec(AA)
 # position_in_full_vector(1,6)
 
-function upper_triangle(mat::AbstractMatrix{T}) where T
+function upper_triangle(mat::AbstractArray{T,2}) where T
     @assert size(mat, 1) == size(mat, 2) "The input matrix must be square"
 
     upper_elems = T[]
     for i in 1:size(mat, 1)
         for j in i:size(mat, 2)
             push!(upper_elems, mat[i, j])
+        end
+    end
+    return upper_elems
+end
+
+
+function upper_triangle(mat::AbstractArray{T,3}; alt::Bool = false, triple::Bool = false) where T
+    @assert size(mat, 1) == size(mat, 2) "The input matrix must be square"
+
+    upper_elems = T[]
+    if alt
+        for i in 1:size(mat, 1)
+            for j in 1:size(mat, 2)
+                for k in j:size(mat, 3)
+                    push!(upper_elems, mat[i, j, k])
+                end
+            end
+        end
+    elseif triple
+        for i in 1:size(mat, 1)
+            for j in i:size(mat, 2)
+                for k in j:size(mat, 3)
+                    push!(upper_elems, mat[i, j, k])
+                end
+            end
+        end
+    else
+        for j in 1:size(mat, 2)
+            for k in j:size(mat, 3)
+                for i in 1:size(mat, 1)
+                    push!(upper_elems, mat[i, j, k])
+                end
+            end
         end
     end
     return upper_elems
@@ -712,6 +764,577 @@ for i=1:nx^2
 end
 
 P = kron(I(nx),U)
+
+
+using Statistics, LinearAlgebra, StatsBase
+
+# check distributional properties by simulating
+shocks = randn(2,100000)
+sim = get_irf(m, shocks = shocks, periods = 0, levels = true, algorithm = :pruned_second_order, initial_state = collect(get_SS(m, derivatives=false)))
+
+[mean(i) for i in eachrow(sim[:,:,1])]
+[Statistics.var(i) for i in eachrow(sim[:,:,1])]
+[skewness(i) for i in eachrow(sim[:,:,1])]
+[kurtosis(i) for i in eachrow(sim[:,:,1])]
+
+(diag(C2y0))[[2,4,5,1,3]]
+
+([reshape(C3y0,m.timings.nVars,m.timings.nVars,m.timings.nVars)[i,i,i] for i in 1:m.timings.nVars] ./ diag(C2y0).^(3/2))[[2,4,5,1,3]]
+
+
+sim_lin = get_irf(m, shocks = shocks, periods = 0, levels = true, initial_state = collect(get_SS(m, derivatives=false)))
+
+[mean(i) for i in eachrow(sim_lin[:,:,1])]
+[Statistics.var(i) for i in eachrow(sim_lin[:,:,1])]
+[skewness(i) for i in eachrow(sim_lin[:,:,1])]
+[kurtosis(i) for i in eachrow(sim_lin[:,:,1])]
+
+[mean(i) for i in eachrow(sim_lin[:,:,1])]
+
+
+Statistics.var(sim, dims = 2)
+diag(C2y0)
+StatsBase.skewness(sim[1,:])
+diag(reshape(C3y0,5,5,5))
+
+
+[StatsBase.skewness(i) for i in eachrow(sim[:,:,1])]
+[reshape(C3y0,5,5,5)[i,i,i] for i in 1:5]
+[StatsBase.skewness(i) for i in eachrow(sim[:,:,1])]
+[kurtosis(i) for i in eachrow(sim[:,:,1])]
+
+
+
+
+
+# transition to third order pruned solution
+
+
+
+varobs = [:YGR, :INFL, :INT]
+T = m.timings
+states = m.timings.past_not_future_and_mixed
+
+nx = T.nPast_not_future_and_mixed
+nu = T.nExo
+ny = T.nVars
+
+
+id1_xf       = 1:nx
+id2_xs       = id1_xf[end]    .+ (1:nx)
+id3_xf_xf    = id2_xs[end]    .+ (1:nx^2)
+id4_xrd      = id3_xf_xf[end] .+ (1:nx)
+id5_xf_xs    = id4_xrd[end]   .+ (1:nx^2)
+id6_xf_xf_xf = id5_xf_xs[end] .+ (1:nx^3)
+id1_u        = 1:nu
+id2_u_u      = id1_u[end]       .+ (1:nu^2)
+id3_xf_u     = id2_u_u[end]     .+ (1:nx*nu)
+id4_u_xf     = id3_xf_u[end]    .+ (1:nx*nu)
+id5_xs_u     = id4_u_xf[end]    .+ (1:nx*nu)   
+id6_u_xs     = id5_xs_u[end]    .+ (1:nx*nu)  
+id7_xf_xf_u  = id6_u_xs[end]    .+ (1:nx^2*nu)
+id8_xf_u_xf  = id7_xf_xf_u[end] .+ (1:nx^2*nu)
+id9_u_xf_xf  = id8_xf_u_xf[end] .+ (1:nx^2*nu)    
+id10_xf_u_u  = id9_u_xf_xf[end] .+ (1:nx*nu^2)
+id11_u_xf_u  = id10_xf_u_u[end] .+ (1:nx*nu^2)
+id12_u_u_xf  = id11_u_xf_u[end] .+ (1:nx*nu^2)
+id13_u_u_u   = id12_u_u_xf[end] .+ (1:nu^3)  
+
+
+model_order = [:YGR,:INFL,:INT,:y, :R,:g,:z,:c,:dy,:p,:e_z, :e_g, :e_r]
+
+
+declaration_order = [:c, :dy, :p, :y, :R, :g, :z, :YGR, :INFL, :INT]
+indexin(declaration_order,m.var)
+
+sol = get_solution(m,m.parameter_values, algorithm = :third_order)
+
+hx = sol[2][indexin(intersect(model_order,states),m.var),indexin(intersect(model_order,states),states)]
+hu = sol[2][indexin(intersect(model_order,states),m.var),((T.nPast_not_future_and_mixed + 1):end)[indexin(intersect(model_order,m.exo),m.exo)]] 
+gx = sol[2][indexin(intersect(model_order,m.var),m.var),indexin(intersect(model_order,states),states)]
+gu = sol[2][indexin(intersect(model_order,m.var),m.var),((T.nPast_not_future_and_mixed + 1):end)[indexin(intersect(model_order,m.exo),m.exo)]]
+
+second_order_helper = Matrix(undef,(T.nPast_not_future_and_mixed+1+T.nExo)^2,4)
+second_order_axis = vcat(T.past_not_future_and_mixed,:Volatility,T.exo)
+k = 1
+for i in second_order_axis
+    for j in second_order_axis
+        second_order_helper[k,:] = [j,i,k,string(i)*string(j)]
+        k += 1
+    end
+end
+
+
+
+second_order_helper_ordered = Matrix(undef,(T.nPast_not_future_and_mixed+1+T.nExo)^2,4)
+second_order_axis_ordered = vcat(intersect(model_order,T.past_not_future_and_mixed),:Volatility,intersect(model_order,T.exo))
+k = 1
+for i in second_order_axis_ordered
+    for j in second_order_axis_ordered
+        second_order_helper_ordered[k,:] = [i,j,k,string(i)*string(j)]
+        k += 1
+    end
+end
+
+
+
+Hxx = sol[3][indexin(intersect(model_order,states),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .∈ (states,) .&& second_order_helper_ordered[:,2] .∈ (states,),4],second_order_helper[:,4]),3]]
+Huu = sol[3][indexin(intersect(model_order,states),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .∈ (T.exo,) .&& second_order_helper_ordered[:,2] .∈ (T.exo,),4],second_order_helper[:,4]),3]]
+Hxu = sol[3][indexin(intersect(model_order,states),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .∈ (states,) .&& second_order_helper_ordered[:,2] .∈ (T.exo,),4],second_order_helper[:,4]),3]]
+hss = sol[3][indexin(intersect(model_order,states),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .== :Volatility .&& second_order_helper_ordered[:,2] .== :Volatility,4],second_order_helper[:,4]),3]]
+
+Gxx = sol[3][indexin(intersect(model_order,m.var),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .∈ (states,) .&& second_order_helper_ordered[:,2] .∈ (states,),4],second_order_helper[:,4]),3]]
+Guu = sol[3][indexin(intersect(model_order,m.var),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .∈ (T.exo,) .&& second_order_helper_ordered[:,2] .∈ (T.exo,),4],second_order_helper[:,4]),3]]
+Gxu = sol[3][indexin(intersect(model_order,m.var),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .∈ (states,) .&& second_order_helper_ordered[:,2] .∈ (T.exo,),4],second_order_helper[:,4]),3]]
+gss = sol[3][indexin(intersect(model_order,m.var),m.var),second_order_helper[indexin(second_order_helper_ordered[second_order_helper_ordered[:,1] .== :Volatility .&& second_order_helper_ordered[:,2] .== :Volatility,4],second_order_helper[:,4]),3]]
+
+
+
+third_order_helper = Matrix(undef,(T.nPast_not_future_and_mixed+1+T.nExo)^3,5)
+third_order_axis = vcat(T.past_not_future_and_mixed,:Volatility,T.exo)
+k = 1
+for i in third_order_axis
+    for j in third_order_axis
+        for l in third_order_axis
+            third_order_helper[k,:] = [j,i,l,k,string(i)*string(j)*string(l)]
+            k += 1
+        end
+    end
+end
+
+
+third_order_helper_ordered = Matrix(undef,(T.nPast_not_future_and_mixed+1+T.nExo)^3,5)
+third_order_axis_ordered = vcat(intersect(model_order,T.past_not_future_and_mixed),:Volatility,intersect(model_order,T.exo))
+k = 1
+for i in third_order_axis_ordered
+    for j in third_order_axis_ordered
+        for l in third_order_axis_ordered
+            third_order_helper_ordered[k,:] = [i,j,l,k,string(i)*string(j)*string(l)]
+            k += 1
+        end
+    end
+end
+
+
+
+Hxxx = sol[4][indexin(intersect(model_order,states),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .∈ (states,) .&& third_order_helper_ordered[:,2] .∈ (states,) .&& third_order_helper_ordered[:,3] .∈ (states,),5],third_order_helper[:,5]),4]]
+Hxxu = sol[4][indexin(intersect(model_order,states),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .∈ (states,) .&& third_order_helper_ordered[:,2] .∈ (states,) .&& third_order_helper_ordered[:,3] .∈ (T.exo,),5],third_order_helper[:,5]),4]]
+Hxuu = sol[4][indexin(intersect(model_order,states),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .∈ (states,) .&& third_order_helper_ordered[:,2] .∈ (T.exo,) .&& third_order_helper_ordered[:,3] .∈ (T.exo,),5],third_order_helper[:,5]),4]]
+Huuu = sol[4][indexin(intersect(model_order,states),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .∈ (T.exo,) .&& third_order_helper_ordered[:,2] .∈ (T.exo,) .&& third_order_helper_ordered[:,3] .∈ (T.exo,),5],third_order_helper[:,5]),4]]
+Hxss = sol[4][indexin(intersect(model_order,states),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .∈ (states,) .&& third_order_helper_ordered[:,2] .== :Volatility .&& third_order_helper_ordered[:,3] .== :Volatility,5],third_order_helper[:,5]),4]]
+Huss = sol[4][indexin(intersect(model_order,states),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .∈ (T.exo,) .&& third_order_helper_ordered[:,2] .== :Volatility .&& third_order_helper_ordered[:,3] .== :Volatility,5],third_order_helper[:,5]),4]]
+Hsss = sol[4][indexin(intersect(model_order,states),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .== :Volatility .&& third_order_helper_ordered[:,2] .== :Volatility .&& third_order_helper_ordered[:,3] .== :Volatility,5],third_order_helper[:,5]),4]]
+
+
+Gxxx = sol[4][indexin(intersect(model_order,m.var),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .∈ (states,) .&& third_order_helper_ordered[:,2] .∈ (states,) .&& third_order_helper_ordered[:,3] .∈ (states,),5],third_order_helper[:,5]),4]]
+Gxxu = sol[4][indexin(intersect(model_order,m.var),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .∈ (states,) .&& third_order_helper_ordered[:,2] .∈ (states,) .&& third_order_helper_ordered[:,3] .∈ (T.exo,),5],third_order_helper[:,5]),4]]
+Gxuu = sol[4][indexin(intersect(model_order,m.var),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .∈ (states,) .&& third_order_helper_ordered[:,2] .∈ (T.exo,) .&& third_order_helper_ordered[:,3] .∈ (T.exo,),5],third_order_helper[:,5]),4]]
+Guuu = sol[4][indexin(intersect(model_order,m.var),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .∈ (T.exo,) .&& third_order_helper_ordered[:,2] .∈ (T.exo,) .&& third_order_helper_ordered[:,3] .∈ (T.exo,),5],third_order_helper[:,5]),4]]
+Gxss = sol[4][indexin(intersect(model_order,m.var),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .∈ (states,) .&& third_order_helper_ordered[:,2] .== :Volatility .&& third_order_helper_ordered[:,3] .== :Volatility,5],third_order_helper[:,5]),4]]
+Guss = sol[4][indexin(intersect(model_order,m.var),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .∈ (T.exo,) .&& third_order_helper_ordered[:,2] .== :Volatility .&& third_order_helper_ordered[:,3] .== :Volatility,5],third_order_helper[:,5]),4]]
+Gsss = sol[4][indexin(intersect(model_order,m.var),m.var),third_order_helper_ordered[indexin(third_order_helper_ordered[third_order_helper_ordered[:,1] .== :Volatility .&& third_order_helper_ordered[:,2] .== :Volatility .&& third_order_helper_ordered[:,3] .== :Volatility,5],third_order_helper[:,5]),4]]
+
+
+nz = 3*nx + 2*nx^2 +nx^3;
+nxi = nu+nu^2+2*nx*nu+2*nx*nu+3*nx^2*nu+3*nu^2*nx+nu^3;    
+nu2 = nu*(nu+1)/2; nx2 = nx*(nx+1)/2; nu3 = nu2*(nu+2)/3;
+nximin = nu + nu2 + 2*nu*nx + nu*nx2 + nu2*nx + nu3;
+
+M2u = vec(I(T.nExo))
+M3u = zeros(nu^3)
+
+hx_hx = kron(hx,hx); hu_hu = kron(hu,hu); hx_hu=kron(hx,hu); hu_hx = kron(hu,hx);
+A = spzeros(nz,nz);
+B = spzeros(nz,nxi);
+C = spzeros(ny,nz);
+D = spzeros(ny,nxi);
+c = spzeros(nz,1);
+d = spzeros(ny,1);
+
+A[id1_xf,id1_xf] = hx;
+A[id2_xs,id2_xs] = hx;
+A[id2_xs,id3_xf_xf] = 1/2*Hxx;
+A[id3_xf_xf,id3_xf_xf] = hx_hx;
+A[id4_xrd,id1_xf] = 3/6*Hxss;
+A[id4_xrd,id4_xrd] = hx;
+A[id4_xrd,id5_xf_xs] = Hxx;
+A[id4_xrd,id6_xf_xf_xf] = 1/6*Hxxx;
+A[id5_xf_xs,id1_xf] = kron(hx,1/2*hss);
+A[id5_xf_xs,id5_xf_xs] = hx_hx;
+A[id5_xf_xs,id6_xf_xf_xf] = kron(hx,1/2*Hxx);
+A[id6_xf_xf_xf,id6_xf_xf_xf] = kron(hx,hx_hx);
+
+B[id1_xf,id1_u] = hu;    
+B[id2_xs,id2_u_u] = 1/2*Huu;
+B[id2_xs,id3_xf_u] = Hxu;    
+B[id3_xf_xf,id2_u_u] = hu_hu;
+B[id3_xf_xf,id3_xf_u] = hx_hu;
+B[id3_xf_xf,id4_u_xf] = hu_hx;    
+B[id4_xrd,id1_u] = 3/6*Huss;
+B[id4_xrd,id5_xs_u] = Hxu;
+B[id4_xrd,id7_xf_xf_u] = 3/6*Hxxu;
+B[id4_xrd,id10_xf_u_u] = 3/6*Hxuu;
+B[id4_xrd,id13_u_u_u] =  1/6*Huuu;    
+B[id5_xf_xs,id1_u] = kron(hu,1/2*hss);
+B[id5_xf_xs,id6_u_xs] =  hu_hx;
+B[id5_xf_xs,id7_xf_xf_u] = kron(hx,Hxu);
+B[id5_xf_xs,id9_u_xf_xf] = kron(hu,1/2*Hxx);
+B[id5_xf_xs,id10_xf_u_u] = kron(hx,1/2*Huu);
+B[id5_xf_xs,id11_u_xf_u] = kron(hu,Hxu);
+B[id5_xf_xs,id13_u_u_u] = kron(hu,1/2*Huu);    
+B[id6_xf_xf_xf,id7_xf_xf_u] =  kron(hx_hx,hu);
+B[id6_xf_xf_xf,id8_xf_u_xf] = kron(hx,hu_hx);
+B[id6_xf_xf_xf,id9_u_xf_xf] = kron(hu,hx_hx);
+B[id6_xf_xf_xf,id10_xf_u_u] = kron(hx_hu,hu);
+B[id6_xf_xf_xf,id11_u_xf_u] = kron(hu,hx_hu);
+B[id6_xf_xf_xf,id12_u_u_xf] = kron(hu_hu,hx);
+B[id6_xf_xf_xf,id13_u_u_u]  = kron(hu,hu_hu);         
+
+C[1:ny,id1_xf] = gx+.5*Gxss;
+C[1:ny,id2_xs] = gx;
+C[1:ny,id3_xf_xf] = 0.5*Gxx;
+C[1:ny,id4_xrd] = gx;
+C[1:ny,id5_xf_xs] = Gxx;
+C[1:ny,id6_xf_xf_xf] = 1/6*Gxxx;
+
+D[1:ny,id1_u] = gu+.5*Guss;
+D[1:ny,id2_u_u] = 0.5*Guu;
+D[1:ny,id3_xf_u] = Gxu;
+D[1:ny,id5_xs_u] = Gxu;    
+D[1:ny,id7_xf_xf_u] = 1/2*Gxxu;
+D[1:ny,id10_xf_u_u] = 1/2*Gxuu;
+D[1:ny,id13_u_u_u] = 1/6*Guuu;
+
+c[id2_xs,1] = 1/2*hss + 1/2*Huu*M2u;
+c[id3_xf_xf,1] = hu_hu*M2u; 
+c[id4_xrd,1] = 1/6*Huuu*M3u + 1/6*Hsss; 
+c[id5_xf_xs,1] =  kron(hu,1/2*Huu)*M3u; 
+c[id6_xf_xf_xf,1] = kron(hu_hu,hu)*M3u;
+
+d[1:ny,1] = 0.5*gss + 0.5*Guu*M2u + 1/6*Guuu*M3u + 1/6*Gsss;
+
+
+## First-order moments, ie expectation of variables
+IminA = I-A;
+Ez   = collect(IminA)\c;
+Ey   = ybar + C*Ez+d; # recall y = yss + C*z + d
+
+
+
+## Second-order moments
+####  Γ₂
+# nu = 2
+# nx = 2
+# write a loop to fill Γ₂
+# size of input vector
+n_entries = Int(nu + nu*(nu+1)/2 + nx*nu)
+nz = 3*nx + 2*nx^2 +nx^3
+nxi = nu+nu^2+2*nx*nu+2*nx*nu+3*nx^2*nu+3*nu^2*nx+nu^3
+nu2 = nu*(nu+1)/2 |> Int
+nx2 = nx*(nx+1)/2 |> Int
+nu3 = nu2*(nu+2)/3 |> Int
+nximin = nu + nu2 + 2*nu*nx + nu*nx2 + nu2*nx + nu3
+Γ₂ = spzeros(nximin, nximin)
+
+
+# u_u = kron(u,u); 
+# xf_u = kron(xf,u);     
+# %   Test whether this is correct:
+# %     xi = [u; 
+# %          kron(u,u)-DPu*E_uu;          
+# %          kron(xf,u);
+# %          kron(u,xf)];
+
+# %   xi = [u; 
+# %         kron(u,u)-DPu*E_uu; 
+# %         kron(xf,u); 
+# %         kron(u,xf); 
+
+# %         kron(xs,u);
+# %         kron(u,xs);
+
+# %         kron(kron(xf,xf),u); 
+# %         kron(xf,kron(u,xf));
+# %         kron(u,kron(xf,xf));         
+
+# %         kron(xf,kron(u,u)); 
+# %         kron(u,kron(xf,u));
+# %         kron(u,kron(u,xf));
+
+# %         kron(u,kron(u,u))-TPu*E_uuu];    
+
+
+u_u = reshape([[i, k] for k in m.timings.exo for i in m.timings.exo],nu,nu)
+
+xf_u = reshape([[i, (k,1)] for k in m.timings.past_not_future_and_mixed for i in m.timings.exo],nx,nu)
+# u_xf = reshape([(i, (k,1)) for i in m.timings.exo for k in m.timings.past_not_future_and_mixed],nu,nx)
+
+xs_u = reshape([[i, (k,2)] for k in m.timings.past_not_future_and_mixed for i in m.timings.exo],nx,nu)
+# u_xs = reshape([(i, (k,2)) for i in m.timings.exo for k in m.timings.past_not_future_and_mixed],nu,nx)
+
+xf_xf_u = reshape([[i, (k,1), (j,1)] for j in m.timings.past_not_future_and_mixed for k in m.timings.past_not_future_and_mixed for i in m.timings.exo],nx, nx, nu)
+# xf_u_xf = reshape([(i, (k,1), (j,1)) for j in m.timings.past_not_future_and_mixed for i in m.timings.exo for k in m.timings.past_not_future_and_mixed],nx, nu, nx)
+# u_xf_xf = reshape([(i, (k,1), (j,1)) for i in m.timings.exo for j in m.timings.past_not_future_and_mixed for k in m.timings.past_not_future_and_mixed],nu, nx, nx)
+
+xf_u_u = reshape([[i, k, (j,1)] for k in m.timings.exo for i in m.timings.exo for j in m.timings.past_not_future_and_mixed],nx, nu, nu)
+# u_xf_u = reshape([(i, k, (j,1)) for k in m.timings.exo for j in m.timings.past_not_future_and_mixed for i in m.timings.exo],nx, nu, nu)
+# u_u_xf = reshape([(i, k, (j,1)) for k in m.timings.exo for i in m.timings.exo for j in m.timings.past_not_future_and_mixed],nx, nu, nu)
+
+u_u_u = reshape([[i, k, j] for k in m.timings.exo for i in m.timings.exo for j in m.timings.exo],nu, nu, nu)
+
+
+inputs = vcat(m.timings.exo, upper_triangle(u_u), vec(xf_u), vec(xs_u), upper_triangle(xf_xf_u), upper_triangle(xf_u_u, alt = true), upper_triangle(u_u_u, triple = true))
+
+
+# ximin = [u; upper_triangle(u_u);   xf_u;   xs_u;   kron(DPxinv,I_nu)*xf_xf_u;   kron(I_nx,DPuinv)*xf_u_u;   TPuinv*u_u_u-E_uuu]
+
+# K = reshape([(:ϵx, (k,i)) for k in 1:nx for i in 1:nx],nx,nx)
+
+# inputs = vcat([(:ϵ, i) for i in 1:nu], upper_triangle(u_u), vec(K))
+
+n_shocks = Int(nu + nu * (nu + 1) / 2)
+
+for (i¹,s¹) in enumerate(inputs)
+    for (i²,s²) in enumerate(inputs)
+        # for (i³,s³) in enumerate(inputs)
+            combo = [(s¹ isa Symbol ? [s¹] : s¹)... , (s² isa Symbol ? [s²] : s²)...]
+            combo_cnts = Dict([element => count(==(element),combo) for element in unique(combo)])
+
+            intrsct = intersecting_elements(s¹,s²)
+            intrsct_cnts = Dict([element => count(==(element),intrsct) for element in unique(intrsct)])
+
+            if any([k ∈ m.timings.exo && v == 1 for (k,v) in combo_cnts])
+                continue
+            elseif all([k ∈ m.timings.exo && v == 2 for (k,v) in combo_cnts]) && all([k ∈ m.timings.exo && v == 1 for (k,v) in intrsct_cnts]) && length(intrsct_cnts) > 0
+                Γ₂[i¹,i²] = 1
+            elseif all([k ∈ m.timings.exo && v == 4 for (k,v) in combo_cnts]) && all([k ∈ m.timings.exo && v == 2 for (k,v) in intrsct_cnts])
+                Γ₂[i¹,i²] = 2
+            elseif length(setdiff(keys(combo_cnts),m.timings.exo)) == 0 && length(intrsct_cnts) > 0 && all([intrsct_cnts[i] > 0 for i in collect(intersect(keys(combo_cnts),keys(intrsct_cnts)))]) && any([combo_cnts[i] == 4 for i in collect(intersect(keys(combo_cnts),keys(intrsct_cnts)))])
+                Γ₂[i¹,i²] = 3
+            elseif all([k ∈ m.timings.exo && v == 6 for (k,v) in combo_cnts]) && all([k ∈ m.timings.exo && v == 3 for (k,v) in intrsct_cnts])
+                Γ₂[i¹,i²] = 15
+            # elseif i¹ > n_shocks && i¹ <= n_shocks + nx * nu && i² > n_shocks && i² <= n_shocks + nx * nu && 
+            elseif length(filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)) > 0 && sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))) == 2 && all([i[2] == 1 for i in keys(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))]) && all([k ∈ m.timings.exo && v >= 1 for (k,v) in  filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)])
+                if all([v == 2 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
+                    indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
+    
+                    idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
+                    
+                    Γ₂[i¹,i²] = C2z0[idxs[1], idxs[2]]
+                elseif all([v == 4 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
+                    indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
+    
+                    idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
+                    
+                    Γ₂[i¹,i²] = 3 * C2z0[idxs[1], idxs[2]]
+                end
+            end
+
+            # for (k,v) in cnts
+            #     if k ∈ m.timings.exo && v == 2
+            #         Γ₂[i¹,i²] = 1
+            #     end
+            # end
+
+            # if s¹ isa Symbol
+            #     if s¹ ∈ m.timings.exo
+            #         push!(ϵ₁, s¹)
+            #     else
+
+            #     end
+            # indices = Set()
+            # indices_x1 = Set()
+            # indices_x2 = Set()
+
+            # n_x = 0
+            # n_ϵ2 = 0
+            # n_same_indices_within_x = 0
+            # n_same_indices_within_ϵ = 0
+
+            # if s¹[1] == :ϵx
+            #     push!(indices_x1, s¹[2][1])
+            #     push!(indices_x2, s¹[2][2])
+
+            #     if s¹[2][1] == s¹[2][2]
+            #         n_same_indices_within_x += 1
+            #     end
+            #     n_x += 1
+            # else
+            #     if s¹[2] isa Tuple
+            #         if s¹[2][1] == s¹[2][2]
+            #             n_same_indices_within_ϵ += 1
+            #         end
+            #         n_ϵ2 += 1
+            #     end
+            # end
+
+            # if s²[1] == :ϵx
+            #     push!(indices_x1,s²[2][1])
+            #     push!(indices_x2,s²[2][2])
+
+            #     if s²[2][1] == s²[2][2]
+            #         n_same_indices_within_x += 1
+            #     end
+            #     n_x += 1
+            # else
+            #     if s²[2] isa Tuple
+            #         if s²[2][1] == s²[2][2]
+            #             n_same_indices_within_ϵ += 1
+            #         end
+            #         n_ϵ2 += 1
+            #     end
+            # end
+
+            # if s³[1] == :ϵx
+            #     push!(indices_x1,s³[2][1])
+            #     push!(indices_x2,s³[2][2])
+
+            #     if s³[2][1] == s³[2][2]
+            #         n_same_indices_within_x += 1
+            #     end
+            #     n_x += 1
+            # else
+            #     if s³[2] isa Tuple
+            #         if s³[2][1] == s³[2][2]
+            #             n_same_indices_within_ϵ += 1
+            #         end
+            #         n_ϵ2 += 1
+            #     end
+            # end
+
+            # n_same_indices_within = n_same_indices_within_ϵ + n_same_indices_within_x
+
+            # n_same_indices_across = s¹[2] == s²[2] || s¹[2] == s³[2] || s³[2] == s²[2]
+
+            # for k in s¹[2]
+            #     push!(indices,k)
+            # end
+            # for k in s²[2]
+            #     push!(indices,k)
+            # end
+            # for k in s³[2]
+            #     push!(indices,k)
+            # end
+
+            # if s¹[1] == s²[1] && s¹[1] == s³[1] && s¹[1] == :ϵ
+            #     if (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)
+            #         if indices |> length == 1 && n_ϵ2 < 2#  || n_same_indices_across == 2)
+            #             Γ₂[i¹,i²,i³] = 2
+            #         end
+
+            #         if n_ϵ2 == 3 && n_same_indices_across == true && n_same_indices_within == 1
+            #             Γ₂[i¹,i²,i³] = 2
+            #         end
+            #     end
+
+            #     if i¹ == i² && i¹ == i³
+            #         if s¹[2] isa Tuple
+            #             if s¹[2][1] == s¹[2][2]
+            #                 Γ₂[i¹,i²,i³] = 8 # Variance of ϵ²
+            #             end
+            #         end
+            #     end
+
+            #     if n_ϵ2 == 1 && n_same_indices_across == false && n_same_indices_within == 0 && indices |> length == 2
+            #         Γ₂[i¹,i²,i³] = 1
+            #     end
+            # end
+
+            # if n_x == 2 && n_same_indices_within_ϵ == 1 && s¹[2][2] == s²[2][2] && s²[2][2] == s³[2][2] #exactly one is epsilon with matching indices, there is one more with matching indices, the last index is common across the two x and epsilon
+            #     idxs = collect(indices_x1)
+
+            #     if length(idxs) == 1
+            #         Γ₂[i¹,i²,i³] = 2 * C2z0[idxs[1],idxs[1]]
+            #     else
+            #         Γ₂[i¹,i²,i³] = 2 * C2z0[idxs[1],idxs[2]]
+            #     end
+            # end
+
+            # if n_x == 2 && n_ϵ2 == 1 && n_same_indices_within_ϵ == 0 && length(collect(indices_x2)) == 2 #exactly one is epsilon with matching indices, there is one more with matching indices, the last index is common across the two x and epsilon
+            #     idxs = collect(indices_x1)
+
+            #     if length(idxs) == 1
+            #         Γ₂[i¹,i²,i³] = C2z0[idxs[1],idxs[1]]
+            #     else
+            #         Γ₂[i¹,i²,i³] = C2z0[idxs[1],idxs[2]]
+            #     end
+            # end
+        # end
+    end
+end
+
+Γ₂
+Γ₂[1:10,1:10]
+Γ₂[1:2,20:end]
+Γ₂[20:end,1:2]
+Γ₂[26:end,26:end]
+findnz(Γ₂)
+Γ₂xi = reshape(Γ₂, n_entries^2, n_entries)
+intrsct = findall(in(inputs[3] isa  Symbol ? [inputs[3]] : inputs[3]),inputs[26])
+(inputs[3]...,inputs[5]...)
+findall(in(b),a)
+
+s¹ = inputs[15]
+s² = inputs[19]
+
+combo = [(s¹ isa Symbol ? [s¹] : s¹)... , (s² isa Symbol ? [s²] : s²)...]
+combo_cnts = Dict([element => count(==(element),combo) for element in unique(combo)])
+
+intrsct = intersecting_elements(s¹,s²)
+intrsct_cnts = Dict([element => count(==(element),intrsct) for element in unique(intrsct)])
+
+
+indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
+
+length(filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)) > 0 
+all([i[2] == 1 for i in keys(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))])
+sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))) == 2
+all([k ∈ m.timings.exo && v == 2 for (k,v) in  filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)])
+all([v == 2 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
+
+
+all([k ∈ m.timings.exo && v == 1 for (k,v) in  filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)]) && all([v == 2 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
+
+
+intrsct_cnts[only(intersect(keys(combo_cnts),keys(intrsct_cnts)))]
+
+intrsct_cnts|>length
+intersecting_elements(collect(inputs[5]),collect(inputs[29]))
+# define your arrays
+array1 = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
+array2 = [2, 2, 4, 4, 5, 5, 5, 5]
+
+# get common elements
+common = intersecting_elements(array1, array2)
+
+# print result
+println(common)
+
+
+
+
+
+
+
+
+BFxi = B*Fxi
+DFxi = D*Fxi
+
+CC = BFxi *  Γ₂  * BFxi'
+
+lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+
+C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+
+C2y0 = C * C2z0 * C' + DFxi * Γ₂ * DFxi'
+
+
+
+
+
+
+
+
 
 # write a loop to fill Γ₄
 # size of input vector
