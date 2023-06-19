@@ -1527,6 +1527,18 @@ s¹ = inputs[4]
 s² = inputs[27]
 s³ = inputs[28]
 
+# 15
+s¹ = inputs[4]
+s² = inputs[29]
+s³ = inputs[28]
+# no
+s¹ = inputs[3]
+s² = inputs[29]
+s³ = inputs[29]
+# 90
+s¹ = inputs[5]
+s² = inputs[29]
+s³ = inputs[29]
 
 combo = [(s¹ isa Symbol ? [s¹] : s¹)... , (s² isa Symbol ? [s²] : s²)..., (s³ isa Symbol ? [s³] : s³)...]
 combo_cnts = Dict([element => count(==(element),combo) for element in unique(combo)])
@@ -1635,6 +1647,14 @@ for (i¹,s¹) in enumerate(inputs)
                 elseif all(values(combo_cnts) .== 4) && (any(values(s) .== 3) || all(values(intrsct_cnts_type) .== 3))
 
                     Γ₃[i¹,i²,i³] = 9
+
+                elseif sort(collect(values(combo_cnts))) == [2,6] && length(s) > 3
+
+                    Γ₃[i¹,i²,i³] = 15
+
+                elseif all(values(combo_cnts) .== 8)
+
+                    Γ₃[i¹,i²,i³] = 90
 
                 end
 
