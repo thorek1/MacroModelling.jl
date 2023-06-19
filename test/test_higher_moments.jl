@@ -196,9 +196,9 @@ function duplication(p)
 
     j = Int.(vec(a))
 
-    m = Int(p*(p+1)/2)
+    mm = Int(p*(p+1)/2)
     
-    DP = zeros(p*p,m)
+    DP = zeros(p*p,mm)
 
     for r in 1:size(DP,1)
         DP[r, j[r]] = 1
@@ -208,6 +208,53 @@ function duplication(p)
 
     return DP, DPinv
 end
+
+
+function triplication(p)
+    TP = zeros(Int,p^3, Int(p*(p+1)*(p+2)/6))
+    # TPinv = zeros(Int(p*(p+1)*(p+2)/6), Int(p*(p+1)*(p+2)/6))
+
+    for k=1:p
+        for j=k:p
+            for i=j:p
+                idx = unique([[i, j, k],
+                            [i, k, j],
+                            [j, k, i],
+                            [j, i, k],
+                            [k, j, i],
+                            [k, i, j]])
+                for r in idx        
+                    ii = r[1]
+                    jj = r[2]
+                    kk = r[3]
+
+                    n = ii + (jj-1)*p + (kk-1)*p^2
+                    mm = Int(i+(j-1)*p + 1/2*(k-1)*p^2 - 1/2*j*(j-1) + 1/6*k*(k-1)*(k-2) - 1/2*(k-1)^2*p)
+                    
+                    TP[n,mm] = 1
+
+                    # if i==j && j==k
+                    #     TPinv[m,n] = 1
+                    # elseif i>j && j==k
+                    #     TPinv[m,n] = 1/3
+                    # elseif i==j && j>k
+                    #     TPinv[m,n] = 1/3
+                    # elseif i>j && j>k
+                    #     TPinv[m,n] = 1/6
+                    # end
+
+                end
+                n=n+1
+            end
+        end
+    end
+
+    return TP
+end
+# triplication(2)
+# end
+
+
 
 # translate_mod_file("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/AnSchorfheide_Gaussian.mod")
 # include("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/AnSchorfheide_Gaussian.jl")
@@ -809,8 +856,6 @@ diag(reshape(C3y0,5,5,5))
 
 # transition to third order pruned solution
 
-
-
 varobs = [:YGR, :INFL, :INT]
 T = m.timings
 states = m.timings.past_not_future_and_mixed
@@ -1029,39 +1074,79 @@ Ey   = ybar + C*Ez+d; # recall y = yss + C*z + d
 # size of input vector
 n_entries = Int(nu + nu*(nu+1)/2 + nx*nu)
 nz = 3*nx + 2*nx^2 +nx^3
-nxi = nu+nu^2+2*nx*nu+2*nx*nu+3*nx^2*nu+3*nu^2*nx+nu^3
+nxi = nu + nu^2 + 2*nx*nu + 2*nx*nu + 3*nx^2*nu + 3*nu^2*nx + nu^3
 nu2 = nu*(nu+1)/2 |> Int
 nx2 = nx*(nx+1)/2 |> Int
 nu3 = nu2*(nu+2)/3 |> Int
 nximin = nu + nu2 + 2*nu*nx + nu*nx2 + nu2*nx + nu3
+# nxi = nu + nu^2 + 3*nx*nu + 3*nu*nx^2 + 3*nu^2*nx + nu^3
+
+col1_u       = 1:nu
+col2_u_u     = col1_u[end]       .+ (1:nu2)
+col3_xf_u    = col2_u_u[end]     .+ (1:nu*nx)
+col4_xs_u    = col3_xf_u[end]    .+ (1:nu*nx)
+col5_xf_xf_u = col4_xs_u[end]    .+ (1:nu*nx2)
+col6_xf_u_u  = col5_xf_xf_u[end] .+ (1:nu2*nx)
+col7_u_u_u   = col6_xf_u_u[end]  .+ (1:nu3)
+
+row1_u       = 1:nu
+row2_u_u     = row1_u[end]       .+ (1:nu^2)
+row3_xf_u    = row2_u_u[end]     .+ (1:nx*nu)
+row4_u_xf    = row3_xf_u[end]    .+ (1:nx*nu)
+row5_xs_u    = row4_u_xf[end]    .+ (1:nx*nu)
+row6_u_xs    = row5_xs_u[end]    .+ (1:nx*nu)
+row7_xf_xf_u = row6_u_xs[end]    .+ (1:nu*nx^2)
+row8_xf_u_xf = row7_xf_xf_u[end] .+ (1:nu*nx^2)
+row9_u_xf_xf = row8_xf_u_xf[end] .+ (1:nu*nx^2)
+row10_xf_u_u = row9_u_xf_xf[end] .+ (1:nx*nu^2)
+row11_u_xf_u = row10_xf_u_u[end] .+ (1:nx*nu^2)
+row12_u_u_xf = row11_u_xf_u[end] .+ (1:nx*nu^2)
+row13_u_u_u  = row12_u_u_xf[end] .+ (1:nu^3)
+
+DPx, DPxinv = duplication(nx)
+DPu, DPuinv = duplication(nu)
+TPu = triplication(nu)
+
+K_u_x  = reshape(kron(vec(I(nu)), I(nx)), nu*nx, nu*nx)
+K_u_xx = reshape(kron(vec(I(nu)), I(nx^2)), nu*nx^2, nu*nx^2)
+K_u_xu = reshape(kron(vec(I(nu)), I(nu*nx)), nu^2*nx, nu^2*nx)
+K_ux_x = reshape(kron(vec(I(nu*nx)), I(nx)), nu*nx^2, nu*nx^2)
+K_uu_x = reshape(kron(vec(I(nu^2)), I(nx)), nu^2*nx, nu^2*nx)
+
+
+
+# if sparseflag
+#     Ix = speye(nx);
+#     Iu = speye(nu); 
+#     Iux = speye(nu*nx);
+#     Fxi = spalloc(nxi,nximin,nu+nu^2+4*nu*nx+3*nx^2*nu+3*nx*nu^2+nu^3);
+# else
+Ix = I(nx)
+Iu = I(nu)
+Iux = I(nu*nx)
+Fxi = spzeros(Bool,nxi,nximin)
+# end
+DPx_Iu = kron(DPx,Iu)
+Ix_DPu = kron(Ix,DPu)
+
+Fxi[row1_u,col1_u] = Iu
+Fxi[row2_u_u,col2_u_u] = DPu
+Fxi[row3_xf_u,col3_xf_u] = Iux
+Fxi[row4_u_xf,col3_xf_u] = K_u_x
+Fxi[row5_xs_u,col4_xs_u] = Iux
+Fxi[row6_u_xs,col4_xs_u] = K_u_x
+Fxi[row7_xf_xf_u,col5_xf_xf_u] = DPx_Iu
+Fxi[row8_xf_u_xf,col5_xf_xf_u] = K_ux_x*DPx_Iu
+Fxi[row9_u_xf_xf,col5_xf_xf_u] = K_u_xx*DPx_Iu
+Fxi[row10_xf_u_u,col6_xf_u_u] = Ix_DPu
+Fxi[row11_u_xf_u,col6_xf_u_u] = K_u_xu*Ix_DPu
+Fxi[row12_u_u_xf,col6_xf_u_u] = K_uu_x*Ix_DPu
+Fxi[row13_u_u_u,col7_u_u_u] = TPu
+
+
+
+
 Γ₂ = spzeros(nximin, nximin)
-
-
-# u_u = kron(u,u); 
-# xf_u = kron(xf,u);     
-# %   Test whether this is correct:
-# %     xi = [u; 
-# %          kron(u,u)-DPu*E_uu;          
-# %          kron(xf,u);
-# %          kron(u,xf)];
-
-# %   xi = [u; 
-# %         kron(u,u)-DPu*E_uu; 
-# %         kron(xf,u); 
-# %         kron(u,xf); 
-
-# %         kron(xs,u);
-# %         kron(u,xs);
-
-# %         kron(kron(xf,xf),u); 
-# %         kron(xf,kron(u,xf));
-# %         kron(u,kron(xf,xf));         
-
-# %         kron(xf,kron(u,u)); 
-# %         kron(u,kron(xf,u));
-# %         kron(u,kron(u,xf));
-
-# %         kron(u,kron(u,u))-TPu*E_uuu];    
 
 
 u_u = reshape([[i, k] for k in m.timings.exo for i in m.timings.exo],nu,nu)
@@ -1212,19 +1297,403 @@ for (i¹,s¹) in enumerate(inputs)
                     Γ₂[i¹,i²] = Ey[indices]
                 end
             end
+    end
+end
 
-            # for (k,v) in cnts
-            #     if k ∈ m.timings.exo && v == 2
-            #         Γ₂[i¹,i²] = 1
+Γ₂
+
+
+BFxi = B*Fxi
+DFxi = D*Fxi
+
+CC = BFxi *  Γ₂  * BFxi'
+
+lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+
+C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+
+C2y0 = C * C2z0 * C' + DFxi * Γ₂ * DFxi'
+
+
+
+
+# Γ₂[1:10,1:10]
+# Γ₂[1:2,20:end]
+# Γ₂[20:end,1:2]
+# Γ₂[26:end,26:end]
+# findnz(Γ₂)
+# Γ₂xi = reshape(Γ₂, n_entries^2, n_entries)
+# intrsct = findall(in(inputs[3] isa  Symbol ? [inputs[3]] : inputs[3]),inputs[26])
+# (inputs[10]...,inputs[10]...)
+# findall(in(b),a)
+
+# s¹ = inputs[10]
+# s² = inputs[1]
+# # C2z0[2,2]
+# combo = [(s¹ isa Symbol ? [s¹] : s¹)... , (s² isa Symbol ? [s²] : s²)...]
+# combo_cnts = Dict([element => count(==(element),combo) for element in unique(combo)])
+
+# intrsct = intersecting_elements(s¹,s²)
+# intrsct_cnts = Dict([element => count(==(element),intrsct) for element in unique(intrsct)])
+
+# C2z0[3:4,3:4] + Ey[2:3]*Ey[2:3]'
+
+# vars1 = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in filter(j -> !(j ∈ m.timings.exo), s¹)]
+# vars2 = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in filter(j -> !(j ∈ m.timings.exo), s²)]
+
+# C2z0[vars1[1], vars2[1]]^2 + C2z0[vars1[1], vars2[2]]^2 + C2z0[vars1[2], vars2[2]]^2
+
+# C2z0[vars1[1], vars1[2]] * C2z0[vars2[1], vars2[2]] + C2z0[vars1[1], vars2[2]] * C2z0[vars2[1], vars1[2]] + C2z0[vars2[1], vars1[2]] * C2z0[vars1[1], vars2[2]]
+
+
+# C2z0[vars1[1], vars1[1]] * C2z0[vars2[2], vars2[2]] 
+# C2z0[vars1[1], vars2[2]] * C2z0[vars1[2], vars2[1]]
+# C2z0[vars1[1], vars2[2]] * C2z0[vars1[2], vars2[1]]
+
+
+# var_combos = vcat.(vars[1:end-1], vars[2:end])
+
+# sum([C2z0[i[1],i[2]]^2 for i in var_combos])
+
+# kron(C2z0[1:2,1:2],C2z0[1:2,1:2])
+
+# kron(C2z0[1:2,1:2],C2z0[1:2,1:2])[[2,3,5]]|>sum
+
+# vcat(s¹,s²)
+
+# kron(C2z0[1:2,1:2],C2z0[1:2,1:2])[[4,6,7]]|>sum
+
+
+# vars
+
+# C2z0[1,1] * C2z0[2,2] + C2z0[1,2] * C2z0[1,2] + C2z0[1,2] * C2z0[2,1]
+
+
+# indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
+
+# length(filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)) > 0 
+# all([i[2] == 2 for i in keys(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))])
+# sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))) == 2
+# all([k ∈ m.timings.exo && v == 1 for (k,v) in  filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)])
+# all([v == 2 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
+
+
+# all([k ∈ m.timings.exo && v == 1 for (k,v) in  filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)]) && all([v == 2 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
+
+
+# intrsct_cnts[only(intersect(keys(combo_cnts),keys(intrsct_cnts)))]
+
+# intrsct_cnts|>length
+# intersecting_elements(collect(inputs[5]),collect(inputs[29]))
+# # define your arrays
+# array1 = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
+# array2 = [2, 2, 4, 4, 5, 5, 5, 5]
+
+# # get common elements
+# common = intersecting_elements(array1, array2)
+
+# # print result
+# println(common)
+
+
+
+
+
+
+
+
+# BFxi = B*Fxi
+# DFxi = D*Fxi
+
+# CC = BFxi *  Γ₂  * BFxi'
+
+# lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+
+# C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+
+# C2y0 = C * C2z0 * C' + DFxi * Γ₂ * DFxi'
+
+
+
+
+## Third-order moments
+####  Γ₃
+
+Γ₃ = zeros(nximin, nximin, nximin);
+
+#no
+s¹ = inputs[26]
+s² = inputs[5]
+s³ = inputs[1]
+
+s¹ = inputs[4]
+s² = inputs[2]
+s³ = inputs[1]
+
+s¹ = inputs[6]
+s² = inputs[3]
+s³ = inputs[1]
+
+s¹ = inputs[26]
+s² = inputs[3]
+s³ = inputs[1]
+
+s¹ = inputs[29]
+s² = inputs[4]
+s³ = inputs[1]
+
+s¹ = inputs[27]
+s² = inputs[4]
+s³ = inputs[1]
+
+
+s¹ = inputs[1]
+s² = inputs[1]
+s³ = inputs[1]
+
+s¹ = inputs[3]
+s² = inputs[3]
+s³ = inputs[1]
+
+s¹ = inputs[3]
+s² = inputs[5]
+s³ = inputs[5]
+
+#yes
+s¹ = inputs[28]
+s² = inputs[5]
+s³ = inputs[1]
+
+s¹ = inputs[28]
+s² = inputs[3]
+s³ = inputs[1]
+
+s¹ = inputs[3]
+s² = inputs[1]
+s³ = inputs[1]
+
+s¹ = inputs[3]
+s² = inputs[4]
+s³ = inputs[4]
+
+# no
+s¹ = inputs[28]
+s² = inputs[28]
+s³ = inputs[3]
+
+
+combo = [(s¹ isa Symbol ? [s¹] : s¹)... , (s² isa Symbol ? [s²] : s²)..., (s³ isa Symbol ? [s³] : s³)...]
+combo_cnts = Dict([element => count(==(element),combo) for element in unique(combo)])
+
+intrsct = []
+push!(intrsct, intersecting_elements(s¹,s²))
+push!(intrsct, intersecting_elements(s¹,s³))
+push!(intrsct, intersecting_elements(s²,s³))
+
+intrsct_unique_cnts = Dict([(element,v) => count(==(element),i) for (v,i) in enumerate(intrsct) for element in unique(i)])
+intrsct_cnts_raw = [element => count(==(element),i) for (v,i) in enumerate(intrsct) for element in unique(i)]
+intrsct_cnts = Dict(intrsct_cnts_raw)
+intrsct_cnts_type = Dict([(element[1],element[2]) => count(==(element),intrsct_cnts_raw) for element in unique(intrsct_cnts_raw)])
+
+S = []
+push!(S, s¹ isa Symbol ? [s¹] : s¹)
+push!(S, s² isa Symbol ? [s²] : s²)
+push!(S, s³ isa Symbol ? [s³] : s³)
+
+s = Dict([(element,v) => count(==(element),i) for (v,i) in enumerate(S) for element in unique(i)])
+
+(length(filter(((j,u),) -> u == 2, s)) == 2  || length(filter(((j,u),) -> (u == 3 && j[2] == 1) || (u == 2 && j[2] >= 1) || (u == 1 && j[2] >= 2), intrsct_cnts_type)) > 0) && 
+(length(s) <= 4 || sum(values(s)) % 2 == 0) && 
+!all(values(s) .== 2) &&
+length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combo_cnts)) > 0 &&
+sum([i[2] for i in s]) % 2 == 0
+
+# length(setdiff(Set([i[1] for i in keys(intrsct_cnts)]), keys(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combo_cnts)))) == 0 &&
+# length([i[1] for i in keys(intrsct_cnts)]) > 1
+# keys(combo_cnts)
+
+length(filter(((j,u),) -> u ∉ [1,2], s)) == 0 &&
+(length(filter(((j,u),) -> u == 2, s)) == 2 || length(filter(((j,u),) -> (u == 3 && j[2] == 1) || (u == 2 && j[2] >= 1) || (u == 1 && j[2] >= 2), intrsct_cnts_type)) > 0) && 
+length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combo_cnts)) > 0
+
+
+
+max(length(filter(((j,u),) -> u == 2, s)), length(intrsct_cnts_type))
+
+
+shock_indices = [1:nu + nu2..., nximin - nu3 + 1:nximin...]
+
+for (i¹,s¹) in enumerate(inputs)
+    for (i²,s²) in enumerate(inputs)
+        for (i³,s³) in enumerate(inputs)
+
+            combo = [(s¹ isa Symbol ? [s¹] : s¹)... , (s² isa Symbol ? [s²] : s²)..., (s³ isa Symbol ? [s³] : s³)...]
+            combo_cnts = Dict([element => count(==(element),combo) for element in unique(combo)])
+            
+            intrsct = []
+            push!(intrsct, intersecting_elements(s¹,s²))
+            push!(intrsct, intersecting_elements(s¹,s³))
+            push!(intrsct, intersecting_elements(s²,s³))
+
+            intrsct_unique_cnts = Dict([(element,v) => count(==(element),i) for (v,i) in enumerate(intrsct) for element in unique(i)])
+            intrsct_cnts_raw = [element => count(==(element),i) for (v,i) in enumerate(intrsct) for element in unique(i)]
+            intrsct_cnts = Dict(intrsct_cnts_raw)
+            intrsct_cnts_type = Dict([(element[1],element[2]) => count(==(element),intrsct_cnts_raw) for element in unique(intrsct_cnts_raw)])
+
+            S = []
+            push!(S, s¹ isa Symbol ? [s¹] : s¹)
+            push!(S, s² isa Symbol ? [s²] : s²)
+            push!(S, s³ isa Symbol ? [s³] : s³)
+
+            s = Dict([(element,v) => count(==(element),i) for (v,i) in enumerate(S) for element in unique(i)])
+            
+
+            if any([k ∈ m.timings.exo && v == 1 for (k,v) in combo_cnts])
+                continue
+            # elseif all([k ∈ m.timings.exo && v == 2 for (k,v) in combo_cnts]) && 
+            #     all([ii[1] ∈ m.timings.exo && v >= 1 for for ii in intrsct_cnts]) && 
+            #     keys(combo_cnts) == keys(intrsct_cnts)
+
+            #     Γ₃[i¹,i²,i³] = 1
+
+            # elseif all([k ∈ m.timings.exo && v == 4 for (k,v) in combo_cnts]) && 
+            #     all([k ∈ m.timings.exo && v >= 1 for (k,v) in intrsct_cnts])
+            # elseif any([combo_cnts[i] == 4 for i in intersect(keys(combo_cnts), keys(intrsct_cnts))]) &&
+            #     any([intrsct_cnts[i] == 1 for i in intersect(keys(combo_cnts), keys(intrsct_cnts))]) && 
+            #     length(setdiff(keys(combo_cnts), m.timings.exo)) == 0
+
+            # elseif length(filter(i -> combo_cnts[i] == 4 && all([k[1] >= 1 for k in intrsct_cnts if ]), intersect(keys(combo_cnts), [ii[1] for ii in intrsct_cnts]))) >= 1 &&
+            #     length(setdiff(keys(combo_cnts), m.timings.exo)) == 0 &&
+            #     all([ii[1] ∈ m.timings.exo && v >= 1 for ii in intrsct_cnts])
+            elseif i¹ ∈ shock_indices && i² ∈ shock_indices && i³ ∈ shock_indices
+                if (length(filter(((j,u),) -> u == 2, s)) == 2  || length(filter(((j,u),) -> (u == 3 && j[2] == 1) || (u == 2 && j[2] >= 1) || (u == 1 && j[2] >= 2), intrsct_cnts_type)) > 0) && 
+                    (length(s) <= 4 || (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)) && 
+                    !all(values(s) .== 2) &&
+                    sum(values(combo_cnts)) <= 6 &&
+                    length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combo_cnts)) > 0 &&
+                    sum([i[2] for i in s]) % 2 == 0
+
+                    Γ₃[i¹,i²,i³] = 2
+                end
+
+
+
+
+            # if s¹[1] == s²[1] && s¹[1] == s³[1] && s¹[1] == :ϵ
+            #     if (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)
+            #         if indices |> length == 1 && n_ϵ2 < 2#  || n_same_indices_across == 2)
+            #             Γ₃[i¹,i²,i³] = 2
+            #         end
+
+            #         if n_ϵ2 == 3 && n_same_indices_across == true && n_same_indices_within == 1
+            #             Γ₃[i¹,i²,i³] = 2
+            #         end
             #     end
-            # end
 
-            # if s¹ isa Symbol
-            #     if s¹ ∈ m.timings.exo
-            #         push!(ϵ₁, s¹)
+
+
+
+
+
+
+            # elseif length(setdiff(keys(combo_cnts),m.timings.exo)) == 0 && 
+            #     length(intrsct_cnts) > 0 && 
+            #     all([intrsct_cnts[i] > 0 for i in collect(intersect(keys(combo_cnts), [ii[1] for ii in intrsct_cnts]))]) && 
+            #     any([combo_cnts[i] == 4 for i in collect(intersect(keys(combo_cnts), [ii[1] for ii in intrsct_cnts]))])
+
+            #     Γ₃[i¹,i²,i³] = 3
+
+            # elseif all([k ∈ m.timings.exo && v == 6 for (k,v) in combo_cnts]) && 
+            #     all([ii[1] ∈ m.timings.exo && v == 3 for ii in intrsct_cnts])
+
+            #     Γ₃[i¹,i²,i³] = 15
+                
+            # elseif length(filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)) > 0 && 
+            #     sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))) == 2 && 
+            #     all([i[2] == 1 for i in keys(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))]) && 
+            #     all([k ∈ m.timings.exo && v >= 1 for (k,v) in  filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)])
+
+            #     if all([v == 2 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
+            #         indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
+    
+            #         idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
+                    
+            #         Γ₃[i¹,i²,i³] = C2z0[idxs[1], idxs[2]]
+            #     elseif all([v == 4 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
+            #         indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
+    
+            #         idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
+                    
+            #         Γ₃[i¹,i²,i³] = 3 * C2z0[idxs[1], idxs[2]]
+            #     end
+
+            # elseif length(filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)) > 0 && # at least one shock 
+            #     sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))) == 2 && # non shocks have max two entries
+            #     all([i[2] == 2 for i in keys(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))]) && # non shocks are all double entries
+            #     all([k ∈ m.timings.exo && v >= 1 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)]) # all shocks appear in both entries
+
+            #     vars = setdiff(keys(combo_cnts), m.timings.exo)
+            #     indices_mat = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in vars] .+ m.timings.nPast_not_future_and_mixed
+
+            #     idxs = length(indices_mat) == 1 ? [indices_mat[1],indices_mat[1]] : indices_mat
+                    
+            #     indices = [indexin([i[1]], intersect(model_order,m.var))[1] for i in vars]
+
+            #     idxs2 = length(indices) == 1 ? [indices[1],indices[1]] : indices
+            
+            #     Γ₃[i¹,i²,i³] = C2z0[idxs[1], idxs[2]] + Ey[idxs2[1]] * Ey[idxs2[2]]
+
+            # elseif length(filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)) > 0 && # at least one shock 
+            #     length(filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 2, combo_cnts)) == 1 &&
+            #     sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))) > 2 && # non shocks have more than two entries
+            #     all([k ∈ m.timings.exo && v >= 1 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)]) # all shocks appear in both entries
+
+            #     indices_second_mean = [indexin([i[1][1]], intersect(model_order,m.var))[1] for i in filter(((j,u),) -> !(j ∈ m.timings.exo) && u == 1 && j[2] == 2, combo_cnts)][1]
+
+            #     indices_first_variance = [indexin([i[1][1]], m.timings.past_not_future_and_mixed)[1] for i in filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 1, combo_cnts)]
+                
+            #     indices_first_variance = length(indices_first_variance) == 1 ? [indices_first_variance[1], indices_first_variance[1]] : indices_first_variance
+
+            #     indices_first = (indices_first_variance[1] - 1) * m.timings.nPast_not_future_and_mixed + indices_first_variance[2] + 2 * m.timings.nPast_not_future_and_mixed
+
+            #     indices_second = [indexin([i[1][1]], m.timings.past_not_future_and_mixed)[1] for i in filter(((j,u),) -> !(j ∈ m.timings.exo) && u == 1 && j[2] == 2, combo_cnts)][1] + m.timings.nPast_not_future_and_mixed
+
+            #     Γ₃[i¹,i²,i³] = C2z0[indices_second, indices_first] + C2z0[indices_first_variance[1], indices_first_variance[2]] * Ey[indices_second_mean]
+
+            # elseif length(filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)) > 0 && # at least one shock 
+            #     sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))) == 4 && # non shocks have four entries
+            #     all([k ∈ m.timings.exo && v >= 1 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)]) # all shocks appear in both entries
+
+            #     vars1 = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in filter(j -> !(j ∈ m.timings.exo), s¹)]
+            #     vars2 = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in filter(j -> !(j ∈ m.timings.exo), s²)]
+                
+            #     if vars1 == vars2
+            #         Γ₃[i¹,i²,i³] = 
+            #         C2z0[vars1[1], vars1[1]] * C2z0[vars2[2], vars2[2]] + 
+            #         C2z0[vars1[1], vars2[2]] * C2z0[vars1[2], vars2[1]] + 
+            #         C2z0[vars1[1], vars2[2]] * C2z0[vars1[2], vars2[1]]
             #     else
-
+            #         Γ₃[i¹,i²,i³] = 
+            #         C2z0[vars1[1], vars1[2]] * C2z0[vars2[1], vars2[2]] + 
+            #         C2z0[vars1[1], vars2[2]] * C2z0[vars2[1], vars1[2]] + 
+            #         C2z0[vars2[1], vars1[2]] * C2z0[vars1[1], vars2[2]]
             #     end
+
+            # elseif length(filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)) > 0 && 
+            #     sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 2, combo_cnts))) == 1 &&  
+            #     sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 1, combo_cnts))) == 0 &&  
+            #     all([k ∈ m.timings.exo && v >= 1 for (k,v) in  filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)])
+
+            #     indices = [indexin([i[1]], intersect(model_order,m.var))[1] for i in setdiff(keys(combo_cnts), m.timings.exo)][1]
+                
+            #     if all([v == 4 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
+            #         Γ₃[i¹,i²,i³] = 3 * Ey[indices]
+            #     elseif all([v == 2 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
+            #         Γ₃[i¹,i²,i³] = Ey[indices]
+            #     end
+            end
+
+
             # indices = Set()
             # indices_x1 = Set()
             # indices_x2 = Set()
@@ -1234,9 +1703,9 @@ for (i¹,s¹) in enumerate(inputs)
             # n_same_indices_within_x = 0
             # n_same_indices_within_ϵ = 0
 
-            # if s¹[1] == :ϵx
-            #     push!(indices_x1, s¹[2][1])
-            #     push!(indices_x2, s¹[2][2])
+            # if s¹[1] == :x
+            #     push!(indices_x1,s¹[2][1])
+            #     push!(indices_x2,s¹[2][2])
 
             #     if s¹[2][1] == s¹[2][2]
             #         n_same_indices_within_x += 1
@@ -1251,7 +1720,7 @@ for (i¹,s¹) in enumerate(inputs)
             #     end
             # end
 
-            # if s²[1] == :ϵx
+            # if s²[1] == :x
             #     push!(indices_x1,s²[2][1])
             #     push!(indices_x2,s²[2][2])
 
@@ -1268,7 +1737,7 @@ for (i¹,s¹) in enumerate(inputs)
             #     end
             # end
 
-            # if s³[1] == :ϵx
+            # if s³[1] == :x
             #     push!(indices_x1,s³[2][1])
             #     push!(indices_x2,s³[2][2])
 
@@ -1302,24 +1771,24 @@ for (i¹,s¹) in enumerate(inputs)
             # if s¹[1] == s²[1] && s¹[1] == s³[1] && s¹[1] == :ϵ
             #     if (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)
             #         if indices |> length == 1 && n_ϵ2 < 2#  || n_same_indices_across == 2)
-            #             Γ₂[i¹,i²,i³] = 2
+            #             Γ₃[i¹,i²,i³] = 2
             #         end
 
             #         if n_ϵ2 == 3 && n_same_indices_across == true && n_same_indices_within == 1
-            #             Γ₂[i¹,i²,i³] = 2
+            #             Γ₃[i¹,i²,i³] = 2
             #         end
             #     end
 
             #     if i¹ == i² && i¹ == i³
             #         if s¹[2] isa Tuple
             #             if s¹[2][1] == s¹[2][2]
-            #                 Γ₂[i¹,i²,i³] = 8 # Variance of ϵ²
+            #                 Γ₃[i¹,i²,i³] = 8 # Variance of ϵ²
             #             end
             #         end
             #     end
 
             #     if n_ϵ2 == 1 && n_same_indices_across == false && n_same_indices_within == 0 && indices |> length == 2
-            #         Γ₂[i¹,i²,i³] = 1
+            #         Γ₃[i¹,i²,i³] = 1
             #     end
             # end
 
@@ -1327,9 +1796,9 @@ for (i¹,s¹) in enumerate(inputs)
             #     idxs = collect(indices_x1)
 
             #     if length(idxs) == 1
-            #         Γ₂[i¹,i²,i³] = 2 * C2z0[idxs[1],idxs[1]]
+            #         Γ₃[i¹,i²,i³] = 2 * C2z0[idxs[1],idxs[1]]
             #     else
-            #         Γ₂[i¹,i²,i³] = 2 * C2z0[idxs[1],idxs[2]]
+            #         Γ₃[i¹,i²,i³] = 2 * C2z0[idxs[1],idxs[2]]
             #     end
             # end
 
@@ -1337,112 +1806,44 @@ for (i¹,s¹) in enumerate(inputs)
             #     idxs = collect(indices_x1)
 
             #     if length(idxs) == 1
-            #         Γ₂[i¹,i²,i³] = C2z0[idxs[1],idxs[1]]
+            #         Γ₃[i¹,i²,i³] = C2z0[idxs[1],idxs[1]]
             #     else
-            #         Γ₂[i¹,i²,i³] = C2z0[idxs[1],idxs[2]]
+            #         Γ₃[i¹,i²,i³] = C2z0[idxs[1],idxs[2]]
             #     end
             # end
-        # end
+        end
     end
 end
 
-Γ₂
-Γ₂[1:10,1:10]
-Γ₂[1:2,20:end]
-Γ₂[20:end,1:2]
-Γ₂[26:end,26:end]
-findnz(Γ₂)
-Γ₂xi = reshape(Γ₂, n_entries^2, n_entries)
-intrsct = findall(in(inputs[3] isa  Symbol ? [inputs[3]] : inputs[3]),inputs[26])
-(inputs[10]...,inputs[10]...)
-findall(in(b),a)
+Γ₃
 
-s¹ = inputs[10]
-s² = inputs[1]
-# C2z0[2,2]
-combo = [(s¹ isa Symbol ? [s¹] : s¹)... , (s² isa Symbol ? [s²] : s²)...]
-combo_cnts = Dict([element => count(==(element),combo) for element in unique(combo)])
+Γ₃[:,:,29]
+gamma3xi[:,:,29]
 
-intrsct = intersecting_elements(s¹,s²)
-intrsct_cnts = Dict([element => count(==(element),intrsct) for element in unique(intrsct)])
-
-C2z0[3:4,3:4] + Ey[2:3]*Ey[2:3]'
-
-vars1 = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in filter(j -> !(j ∈ m.timings.exo), s¹)]
-vars2 = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in filter(j -> !(j ∈ m.timings.exo), s²)]
-
-C2z0[vars1[1], vars2[1]]^2 + C2z0[vars1[1], vars2[2]]^2 + C2z0[vars1[2], vars2[2]]^2
-
-C2z0[vars1[1], vars1[2]] * C2z0[vars2[1], vars2[2]] + C2z0[vars1[1], vars2[2]] * C2z0[vars2[1], vars1[2]] + C2z0[vars2[1], vars1[2]] * C2z0[vars1[1], vars2[2]]
-
-
-C2z0[vars1[1], vars1[1]] * C2z0[vars2[2], vars2[2]] 
-C2z0[vars1[1], vars2[2]] * C2z0[vars1[2], vars2[1]]
-C2z0[vars1[1], vars2[2]] * C2z0[vars1[2], vars2[1]]
-
-
-var_combos = vcat.(vars[1:end-1], vars[2:end])
-
-sum([C2z0[i[1],i[2]]^2 for i in var_combos])
-
-kron(C2z0[1:2,1:2],C2z0[1:2,1:2])
-
-kron(C2z0[1:2,1:2],C2z0[1:2,1:2])[[2,3,5]]|>sum
-
-vcat(s¹,s²)
-
-kron(C2z0[1:2,1:2],C2z0[1:2,1:2])[[4,6,7]]|>sum
-
-
-vars
-
-C2z0[1,1] * C2z0[2,2] + C2z0[1,2] * C2z0[1,2] + C2z0[1,2] * C2z0[2,1]
-
-
-indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
-
-length(filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)) > 0 
-all([i[2] == 2 for i in keys(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))])
-sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))) == 2
-all([k ∈ m.timings.exo && v == 1 for (k,v) in  filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)])
-all([v == 2 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
-
-
-all([k ∈ m.timings.exo && v == 1 for (k,v) in  filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)]) && all([v == 2 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
-
-
-intrsct_cnts[only(intersect(keys(combo_cnts),keys(intrsct_cnts)))]
-
-intrsct_cnts|>length
-intersecting_elements(collect(inputs[5]),collect(inputs[29]))
-# define your arrays
-array1 = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
-array2 = [2, 2, 4, 4, 5, 5, 5, 5]
-
-# get common elements
-common = intersecting_elements(array1, array2)
-
-# print result
-println(common)
+Γ₃xi = reshape(Γ₃,n_entries^2,n_entries)
 
 
 
-
-
-
+BFxikronBFxi= kron(BFxi,BFxi)
+DFxikronDFxi= kron(DFxi,DFxi)
 
 
 BFxi = B*Fxi
 DFxi = D*Fxi
 
-CC = BFxi *  Γ₂  * BFxi'
+CkronC = kron(C,C)
+BFxikronBFxi= kron(BFxi,BFxi)
+DFxikronDFxi= kron(DFxi,DFxi)
 
-lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+CC = BFxikronBFxi *  Γ₃xi  * BFxi'
+AA = kron(A,A)
+lm = LinearMap{Float64}(x -> AA * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
 
-C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+C3z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+reshape(C3z0,8,8,8)
 
-C2y0 = C * C2z0 * C' + DFxi * Γ₂ * DFxi'
-
+C3y0 = CkronC * C3z0 * C' + DFxikronDFxi * Γ₃xi * DFxi'
+reshape(C3y0,5,5,5)
 
 
 
