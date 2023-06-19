@@ -1476,10 +1476,56 @@ s¹ = inputs[3]
 s² = inputs[4]
 s³ = inputs[4]
 
-# no
-s¹ = inputs[28]
-s² = inputs[28]
+# 1
+s¹ = inputs[4]
+s² = inputs[2]
+s³ = inputs[1]
+# 8
+s¹ = inputs[3]
+s² = inputs[3]
 s³ = inputs[3]
+# 3
+s¹ = inputs[1]
+s² = inputs[4]
+s³ = inputs[27]
+# 12
+s¹ = inputs[5]
+s² = inputs[2]
+s³ = inputs[29]
+
+s¹ = inputs[5]
+s² = inputs[27]
+s³ = inputs[29]
+# no
+s¹ = inputs[5]
+s² = inputs[26]
+s³ = inputs[26]
+
+s¹ = inputs[27]
+s² = inputs[27]
+s³ = inputs[27]
+
+# 6
+s¹ = inputs[3]
+s² = inputs[28]
+s³ = inputs[28]
+
+s¹ = inputs[5]
+s² = inputs[26]
+s³ = inputs[28]
+
+s¹ = inputs[3]
+s² = inputs[28]
+s³ = inputs[28]
+
+# 9
+s¹ = inputs[4]
+s² = inputs[26]
+s³ = inputs[29]
+
+s¹ = inputs[4]
+s² = inputs[27]
+s³ = inputs[28]
 
 
 combo = [(s¹ isa Symbol ? [s¹] : s¹)... , (s² isa Symbol ? [s²] : s²)..., (s³ isa Symbol ? [s³] : s³)...]
@@ -1502,23 +1548,13 @@ push!(S, s³ isa Symbol ? [s³] : s³)
 
 s = Dict([(element,v) => count(==(element),i) for (v,i) in enumerate(S) for element in unique(i)])
 
-(length(filter(((j,u),) -> u == 2, s)) == 2  || length(filter(((j,u),) -> (u == 3 && j[2] == 1) || (u == 2 && j[2] >= 1) || (u == 1 && j[2] >= 2), intrsct_cnts_type)) > 0) && 
-(length(s) <= 4 || sum(values(s)) % 2 == 0) && 
-!all(values(s) .== 2) &&
-length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combo_cnts)) > 0 &&
-sum([i[2] for i in s]) % 2 == 0
 
-# length(setdiff(Set([i[1] for i in keys(intrsct_cnts)]), keys(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combo_cnts)))) == 0 &&
-# length([i[1] for i in keys(intrsct_cnts)]) > 1
-# keys(combo_cnts)
-
-length(filter(((j,u),) -> u ∉ [1,2], s)) == 0 &&
-(length(filter(((j,u),) -> u == 2, s)) == 2 || length(filter(((j,u),) -> (u == 3 && j[2] == 1) || (u == 2 && j[2] >= 1) || (u == 1 && j[2] >= 2), intrsct_cnts_type)) > 0) && 
-length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combo_cnts)) > 0
-
-
-
-max(length(filter(((j,u),) -> u == 2, s)), length(intrsct_cnts_type))
+(length(filter(((j,u),) -> u == 2, s)) == 2  || length(filter(((j,u),) -> (u == 3 && j[2] == 1) || (u == 2 && j[2] >= 1) || (u == 1 && j[2] >= 2), intrsct_cnts_type)) > 0 || length(filter(((j,u),) -> (u == 1 && j[2] == 1), intrsct_cnts_type)) >= 2) && 
+                    # (length(s) <= 4 || (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)) && 
+                    (any(values(s) .== 3) || any(values(intrsct_cnts_type) .== 3)) &&
+                    sum(values(combo_cnts)) <= 6 &&
+                    length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combo_cnts)) > 0 &&
+                    sum([i[2] for i in s]) % 2 == 0
 
 
 shock_indices = [1:nu + nu2..., nximin - nu3 + 1:nximin...]
@@ -1550,11 +1586,6 @@ for (i¹,s¹) in enumerate(inputs)
 
             if any([k ∈ m.timings.exo && v == 1 for (k,v) in combo_cnts])
                 continue
-            # elseif all([k ∈ m.timings.exo && v == 2 for (k,v) in combo_cnts]) && 
-            #     all([ii[1] ∈ m.timings.exo && v >= 1 for for ii in intrsct_cnts]) && 
-            #     keys(combo_cnts) == keys(intrsct_cnts)
-
-            #     Γ₃[i¹,i²,i³] = 1
 
             # elseif all([k ∈ m.timings.exo && v == 4 for (k,v) in combo_cnts]) && 
             #     all([k ∈ m.timings.exo && v >= 1 for (k,v) in intrsct_cnts])
@@ -1574,21 +1605,39 @@ for (i¹,s¹) in enumerate(inputs)
                     sum([i[2] for i in s]) % 2 == 0
 
                     Γ₃[i¹,i²,i³] = 2
+
+                elseif all([k ∈ m.timings.exo && v == 2 for (k,v) in combo_cnts]) &&
+                length(intrsct_cnts_type) == 2
+
+                    Γ₃[i¹,i²,i³] = 1
+
+                elseif i¹ == i² && i¹ == i³ && sum(values(combo_cnts)) == 6
+
+                    Γ₃[i¹,i²,i³] = 8 # Variance of ϵ²
+
+                elseif (length(filter(((j,u),) -> u == 2, s)) == 2  || length(filter(((j,u),) -> (u == 3 && j[2] == 1) || (u == 2 && j[2] >= 1) || (u == 1 && j[2] >= 2), intrsct_cnts_type)) > 0 || length(filter(((j,u),) -> (u == 1 && j[2] == 1), intrsct_cnts_type)) >= 2) && 
+                    # (length(s) <= 4 || (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)) && 
+                    (any(values(s) .== 3) || any(values(intrsct_cnts_type) .== 3)) &&
+                    sum(values(combo_cnts)) <= 6 &&
+                    length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combo_cnts)) > 0 &&
+                    sum([i[2] for i in s]) % 2 == 0
+
+                    Γ₃[i¹,i²,i³] = 3
+
+                elseif any(values(combo_cnts) .== 6) && length(intrsct_cnts_type) == 2 && !(i¹ == i² && i¹ == i³)
+
+                    Γ₃[i¹,i²,i³] = 12 # Variance of ϵ²
+
+                elseif all(values(combo_cnts) .== 4) && any(values(s) .== 2) && !(all(values(intrsct_cnts_type) .== 3))
+
+                    Γ₃[i¹,i²,i³] = 6
+
+                elseif all(values(combo_cnts) .== 4) && (any(values(s) .== 3) || all(values(intrsct_cnts_type) .== 3))
+
+                    Γ₃[i¹,i²,i³] = 9
+
                 end
 
-
-
-
-            # if s¹[1] == s²[1] && s¹[1] == s³[1] && s¹[1] == :ϵ
-            #     if (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)
-            #         if indices |> length == 1 && n_ϵ2 < 2#  || n_same_indices_across == 2)
-            #             Γ₃[i¹,i²,i³] = 2
-            #         end
-
-            #         if n_ϵ2 == 3 && n_same_indices_across == true && n_same_indices_within == 1
-            #             Γ₃[i¹,i²,i³] = 2
-            #         end
-            #     end
 
 
 
@@ -1819,8 +1868,8 @@ end
 
 Γ₃[:,:,29]
 gamma3xi[:,:,29]
-
-Γ₃xi = reshape(Γ₃,n_entries^2,n_entries)
+GAMMA3Xi = gamma3["GAMMA3XI"]
+Γ₃xi = reshape(Γ₃[shock_indices,shock_indices,shock_indices],length(inputs)^2,length(inputs))
 
 
 
