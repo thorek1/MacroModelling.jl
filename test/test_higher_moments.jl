@@ -1421,124 +1421,84 @@ C2y0 = C * C2z0 * C' + DFxi * Γ₂ * DFxi'
 
 Γ₃ = zeros(nximin, nximin, nximin);
 
-#no
-s¹ = inputs[26]
+# covars
+s¹ = inputs[1]
+s² = inputs[3]
+s³ = inputs[10]
+
+s¹ = inputs[2]
 s² = inputs[5]
-s³ = inputs[1]
+s³ = inputs[11]
 
-s¹ = inputs[4]
-s² = inputs[2]
-s³ = inputs[1]
-
-s¹ = inputs[6]
-s² = inputs[3]
-s³ = inputs[1]
-
-s¹ = inputs[26]
-s² = inputs[3]
-s³ = inputs[1]
-
-s¹ = inputs[29]
-s² = inputs[4]
-s³ = inputs[1]
+s¹ = inputs[28]
+s² = inputs[5]
+s³ = inputs[10]
 
 s¹ = inputs[27]
-s² = inputs[4]
-s³ = inputs[1]
-
+s² = inputs[5]
+s³ = inputs[11]
 
 s¹ = inputs[1]
-s² = inputs[1]
-s³ = inputs[1]
-
-s¹ = inputs[3]
-s² = inputs[3]
-s³ = inputs[1]
-
-s¹ = inputs[3]
-s² = inputs[5]
-s³ = inputs[5]
-
-#yes
-s¹ = inputs[28]
-s² = inputs[5]
-s³ = inputs[1]
-
-s¹ = inputs[28]
-s² = inputs[3]
-s³ = inputs[1]
-
-s¹ = inputs[3]
-s² = inputs[1]
-s³ = inputs[1]
-
-s¹ = inputs[3]
 s² = inputs[4]
+s³ = inputs[11]
+
+s¹ = inputs[1]
+s² = inputs[14]
+s³ = inputs[3]
+
+s¹ = inputs[1]
+s² = inputs[16]
+s³ = inputs[3]
+
+s¹ = inputs[1]
+s² = inputs[15]
 s³ = inputs[4]
 
-# 1
-s¹ = inputs[4]
-s² = inputs[2]
-s³ = inputs[1]
-# 8
-s¹ = inputs[3]
-s² = inputs[3]
-s³ = inputs[3]
-# 3
 s¹ = inputs[1]
-s² = inputs[4]
-s³ = inputs[27]
-# 12
-s¹ = inputs[5]
-s² = inputs[2]
-s³ = inputs[29]
+s² = inputs[17]
+s³ = inputs[4]
 
-s¹ = inputs[5]
-s² = inputs[27]
-s³ = inputs[29]
+s¹ = inputs[1]
+s² = inputs[25]
+s³ = inputs[6]
 # no
-s¹ = inputs[5]
-s² = inputs[26]
-s³ = inputs[26]
+s¹ = inputs[1]
+s² = inputs[11]
+s³ = inputs[4]
 
-s¹ = inputs[27]
-s² = inputs[27]
-s³ = inputs[27]
+s¹ = inputs[1]
+s² = inputs[5]
+s³ = inputs[10]
 
-# 6
-s¹ = inputs[3]
-s² = inputs[28]
-s³ = inputs[28]
 
-s¹ = inputs[5]
-s² = inputs[26]
-s³ = inputs[28]
+s¹ = inputs[26]
+s² = inputs[5]
+s³ = inputs[10]
 
-s¹ = inputs[3]
-s² = inputs[28]
-s³ = inputs[28]
+s¹ = inputs[1]
+s² = inputs[16]
+s³ = inputs[1]
 
-# 9
-s¹ = inputs[4]
-s² = inputs[26]
-s³ = inputs[29]
+s¹ = inputs[1]
+s² = inputs[14]
+s³ = inputs[5]
 
-s¹ = inputs[4]
-s² = inputs[27]
-s³ = inputs[28]
 
-# 15
-s¹ = inputs[4]
-s² = inputs[29]
-s³ = inputs[28]
-# no
-s¹ = inputs[3]
-s² = inputs[29]
-s³ = inputs[29]
-# 90
-s¹ = inputs[5]
-s² = inputs[29]
-s³ = inputs[29]
+# s¹ = inputs[1]
+# s² = inputs[14]
+# s³ = inputs[3]
+
+s¹ = inputs[1]
+s² = inputs[17]
+s³ = inputs[4]
+
+s¹ = inputs[1]
+s² = inputs[6]
+s³ = inputs[25]
+
+s¹ = inputs[1]
+s² = inputs[5]
+s³ = inputs[16]
 
 combo = [(s¹ isa Symbol ? [s¹] : s¹)... , (s² isa Symbol ? [s²] : s²)..., (s³ isa Symbol ? [s³] : s³)...]
 combo_cnts = Dict([element => count(==(element),combo) for element in unique(combo)])
@@ -1560,13 +1520,11 @@ push!(S, s³ isa Symbol ? [s³] : s³)
 
 s = Dict([(element,v) => count(==(element),i) for (v,i) in enumerate(S) for element in unique(i)])
 
+any([i ∈ keys(intrsct_cnts_type) for i in keys(filter(((j,u),) -> j[1] ∈ m.timings.exo && j[2] == 2 && u == 2, s))])
+any([i ∈ keys(filter(((j,u),) -> j[1] ∈ m.timings.exo && sum(u) == 2 && u == 2, s)) for i in keys(filter(((j,u),) -> j[1] ∈ m.timings.exo, intrsct_cnts_type))])
 
-(length(filter(((j,u),) -> u == 2, s)) == 2  || length(filter(((j,u),) -> (u == 3 && j[2] == 1) || (u == 2 && j[2] >= 1) || (u == 1 && j[2] >= 2), intrsct_cnts_type)) > 0 || length(filter(((j,u),) -> (u == 1 && j[2] == 1), intrsct_cnts_type)) >= 2) && 
-                    # (length(s) <= 4 || (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)) && 
-                    (any(values(s) .== 3) || any(values(intrsct_cnts_type) .== 3)) &&
-                    sum(values(combo_cnts)) <= 6 &&
-                    length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combo_cnts)) > 0 &&
-                    sum([i[2] for i in s]) % 2 == 0
+# filter(i -> length(i) == 2 && all([ii ∈ m.timings.exo for ii in i]), S)[1] |> unique
+length(S[collect(keys(filter(((j,u),) -> j[1] ∈ m.timings.exo && sum(u) == 2 && u == 2, s)))[1][2]]) > 2
 
 
 shock_indices = [1:nu + nu2..., nximin - nu3 + 1:nximin...]
@@ -1594,20 +1552,9 @@ for (i¹,s¹) in enumerate(inputs)
             push!(S, s³ isa Symbol ? [s³] : s³)
 
             s = Dict([(element,v) => count(==(element),i) for (v,i) in enumerate(S) for element in unique(i)])
-            
 
             if any([k ∈ m.timings.exo && v == 1 for (k,v) in combo_cnts])
                 continue
-
-            # elseif all([k ∈ m.timings.exo && v == 4 for (k,v) in combo_cnts]) && 
-            #     all([k ∈ m.timings.exo && v >= 1 for (k,v) in intrsct_cnts])
-            # elseif any([combo_cnts[i] == 4 for i in intersect(keys(combo_cnts), keys(intrsct_cnts))]) &&
-            #     any([intrsct_cnts[i] == 1 for i in intersect(keys(combo_cnts), keys(intrsct_cnts))]) && 
-            #     length(setdiff(keys(combo_cnts), m.timings.exo)) == 0
-
-            # elseif length(filter(i -> combo_cnts[i] == 4 && all([k[1] >= 1 for k in intrsct_cnts if ]), intersect(keys(combo_cnts), [ii[1] for ii in intrsct_cnts]))) >= 1 &&
-            #     length(setdiff(keys(combo_cnts), m.timings.exo)) == 0 &&
-            #     all([ii[1] ∈ m.timings.exo && v >= 1 for ii in intrsct_cnts])
             elseif i¹ ∈ shock_indices && i² ∈ shock_indices && i³ ∈ shock_indices
                 if (length(filter(((j,u),) -> u == 2, s)) == 2  || length(filter(((j,u),) -> (u == 3 && j[2] == 1) || (u == 2 && j[2] >= 1) || (u == 1 && j[2] >= 2), intrsct_cnts_type)) > 0) && 
                     (length(s) <= 4 || (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)) && 
@@ -1649,7 +1596,8 @@ for (i¹,s¹) in enumerate(inputs)
                     Γ₃[i¹,i²,i³] = 9
 
                 elseif sort(collect(values(combo_cnts))) == [2,6] && length(s) > 3
-
+                # elseif all([k ∈ m.timings.exo && v == 6 for (k,v) in combo_cnts]) && 
+                #     all([ii[1] ∈ m.timings.exo && v == 3 for ii in intrsct_cnts])
                     Γ₃[i¹,i²,i³] = 15
 
                 elseif all(values(combo_cnts) .== 8)
@@ -1659,42 +1607,88 @@ for (i¹,s¹) in enumerate(inputs)
                 end
 
 
+            elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, combo_cnts)) == 2 && 
+                length(filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 2 && u == 1, combo_cnts)) == 1 &&
+                length(combo_cnts) == 3 &&
+                length(intrsct_cnts_type) == 2
 
+                indices = [indexin([i[1]], intersect(model_order,m.var))[1] for i in setdiff(keys(combo_cnts), m.timings.exo)][1]
 
+                Γ₃[i¹,i²,i³] = Ey[indices]
 
+            elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u ∈ [2,4], combo_cnts)) == 2 && 
+                length(filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 2 && u == 1, combo_cnts)) == 1 &&
+                length(combo_cnts) == 3 &&
+                sum(values(intrsct_unique_cnts)) == 3
 
+                indices = [indexin([i[1]], intersect(model_order,m.var))[1] for i in setdiff(keys(combo_cnts), m.timings.exo)][1]
 
+                Γ₃[i¹,i²,i³] = 2 * Ey[indices]#C2z0[idxs[1], idxs[2]]
 
-            # elseif length(setdiff(keys(combo_cnts),m.timings.exo)) == 0 && 
-            #     length(intrsct_cnts) > 0 && 
-            #     all([intrsct_cnts[i] > 0 for i in collect(intersect(keys(combo_cnts), [ii[1] for ii in intrsct_cnts]))]) && 
-            #     any([combo_cnts[i] == 4 for i in collect(intersect(keys(combo_cnts), [ii[1] for ii in intrsct_cnts]))])
+            elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combo_cnts)) == 1 && 
+                length(filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 2 && u == 1, combo_cnts)) == 1 &&
+                length(combo_cnts) == 2
+                # sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))) == 2 && 
+                # all([i[2] == 1 for i in keys(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))]) && 
+                # all([k ∈ m.timings.exo && v >= 1 for (k,v) in  filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)])
 
-            #     Γ₃[i¹,i²,i³] = 3
-
-            # elseif all([k ∈ m.timings.exo && v == 6 for (k,v) in combo_cnts]) && 
-            #     all([ii[1] ∈ m.timings.exo && v == 3 for ii in intrsct_cnts])
-
-            #     Γ₃[i¹,i²,i³] = 15
-                
-            # elseif length(filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)) > 0 && 
-            #     sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))) == 2 && 
-            #     all([i[2] == 1 for i in keys(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))]) && 
-            #     all([k ∈ m.timings.exo && v >= 1 for (k,v) in  filter(((j,u),) -> j ∈ m.timings.exo, intrsct_cnts)])
-
-            #     if all([v == 2 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
-            #         indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
+                # if all([v == 2 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
+                    # indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
     
-            #         idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
+                    # idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
                     
-            #         Γ₃[i¹,i²,i³] = C2z0[idxs[1], idxs[2]]
+                    indices = [indexin([i[1]], intersect(model_order,m.var))[1] for i in setdiff(keys(combo_cnts), m.timings.exo)][1]
+
+                    Γ₃[i¹,i²,i³] = 2 * Ey[indices]#C2z0[idxs[1], idxs[2]]
+
+            elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u ∈ [2,4], combo_cnts)) == 2 && 
+                ((length(filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 1 && u == 2, combo_cnts)) == 1 &&
+                length(combo_cnts) == 3) || 
+                (length(filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 1 && u == 1, combo_cnts)) == 2 &&
+                length(combo_cnts) == 4)) &&
+                sum(values(intrsct_unique_cnts)) == 3
+
+                indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
+    
+                idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
+                
+                Γ₃[i¹,i²,i³] = 2 * C2z0[idxs[1], idxs[2]]
+
+            elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combo_cnts)) == 1 && 
+                ((length(filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 1 && u == 2, combo_cnts)) == 1 &&
+                length(combo_cnts) == 2) || 
+                (length(filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 1 && u == 1, combo_cnts)) == 2 &&
+                    length(combo_cnts) == 3))
+
+                indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
+    
+                idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
+                
+                Γ₃[i¹,i²,i³] = 2 * C2z0[idxs[1], idxs[2]]
+
+            elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, combo_cnts)) == 2 && 
+                ((length(filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 1 && u == 2, combo_cnts)) == 1 &&
+                length(combo_cnts) == 3 && length(intrsct_cnts_type) == 2 && length(s) == 5)  || 
+                (length(filter(((j,u),) -> !(j ∈ m.timings.exo) && j[2] == 1 && u == 1, combo_cnts)) == 2 &&
+                length(combo_cnts) == 4 && ((length(intrsct_cnts_type) == 1 && length(s) == 4) || (length(intrsct_cnts_type) == 2 && length(s) == 6))))# &&
+                # ((length(intrsct_cnts_type) == 2 && length(s) == 6) ||
+                # (length(intrsct_cnts_type) == 1 && length(s) == 5))# && 
+                # filter(((j,u),) -> j[1] ∈ m.timings.exo && sum(u) == 2 && u == 2, s) == 0))
+                # length(S[collect(keys(filter(((j,u),) -> j[1] ∈ m.timings.exo && sum(u) == 2 && u == 2, s)))[1][2]]) != 2))# && !(i¹ ∈ nu.+(1:nu2) || i² ∈ nu.+(1:nu2) || i³ ∈ nu.+(1:nu2)))
+
+                indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
+    
+                idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
+                
+                Γ₃[i¹,i²,i³] = C2z0[idxs[1], idxs[2]]
+
             #     elseif all([v == 4 for (k,v) in filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)])
             #         indices = [indexin([i[1]], m.timings.past_not_future_and_mixed)[1] for i in setdiff(keys(combo_cnts), m.timings.exo)]
     
             #         idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
                     
             #         Γ₃[i¹,i²,i³] = 3 * C2z0[idxs[1], idxs[2]]
-            #     end
+                # end
 
             # elseif length(filter(((j,u),) -> j ∈ m.timings.exo, combo_cnts)) > 0 && # at least one shock 
             #     sum(values(filter(((j,u),) -> !(j ∈ m.timings.exo), combo_cnts))) == 2 && # non shocks have max two entries
@@ -1837,30 +1831,6 @@ for (i¹,s¹) in enumerate(inputs)
             #     push!(indices,k)
             # end
 
-            # if s¹[1] == s²[1] && s¹[1] == s³[1] && s¹[1] == :ϵ
-            #     if (i¹ == i² || i¹ == i³ || i² == i³) && !(i¹ == i² && i¹ == i³)
-            #         if indices |> length == 1 && n_ϵ2 < 2#  || n_same_indices_across == 2)
-            #             Γ₃[i¹,i²,i³] = 2
-            #         end
-
-            #         if n_ϵ2 == 3 && n_same_indices_across == true && n_same_indices_within == 1
-            #             Γ₃[i¹,i²,i³] = 2
-            #         end
-            #     end
-
-            #     if i¹ == i² && i¹ == i³
-            #         if s¹[2] isa Tuple
-            #             if s¹[2][1] == s¹[2][2]
-            #                 Γ₃[i¹,i²,i³] = 8 # Variance of ϵ²
-            #             end
-            #         end
-            #     end
-
-            #     if n_ϵ2 == 1 && n_same_indices_across == false && n_same_indices_within == 0 && indices |> length == 2
-            #         Γ₃[i¹,i²,i³] = 1
-            #     end
-            # end
-
             # if n_x == 2 && n_same_indices_within_ϵ == 1 && s¹[2][2] == s²[2][2] && s²[2][2] == s³[2][2] #exactly one is epsilon with matching indices, there is one more with matching indices, the last index is common across the two x and epsilon
             #     idxs = collect(indices_x1)
 
@@ -1886,10 +1856,10 @@ end
 
 Γ₃
 
-Γ₃[:,:,29]
-gamma3xi[:,:,29]
+Γ₃[:,:,1]#[16,5]
+gamma3xi[:,:,1]#[17,4]
 GAMMA3Xi = gamma3["GAMMA3XI"]
-Γ₃xi = reshape(Γ₃[shock_indices,shock_indices,shock_indices],length(inputs)^2,length(inputs))
+Γ₃xi = reshape(Γ₃,length(inputs)^2,length(inputs))
 
 
 
