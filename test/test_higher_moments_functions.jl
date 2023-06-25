@@ -147,7 +147,7 @@ end
 # translate_mod_file("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/AnSchorfheide_Gaussian.mod")
 # include("/Users/thorekockerols/Downloads/ReplicationDSGEHOS-main/AnSchorfheide_Gaussian.jl")
 
-include("AnSchorfheide_Gaussian.jl")
+include("AnSchorfheide_Gaussian3.jl")
 m = AnSchorfheide_Gaussian
 
 
@@ -209,7 +209,7 @@ ybar = sol[1][indexin(intersect(model_order,m.var),m.var)]
 ## First-order moments, ie expectation of variables
 IminA = I - A
 Ez   = IminA \ c
-Ey   = ybar + C * Ez + d; # recall y = yss + C*z + d
+Ey   = ybar + C * Ez + d # recall y = yss + C*z + d
 
 
 ## Compute Zero-Lag Cumulants of innovations, states and controls
@@ -605,7 +605,8 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
         shock_indices = [1:nu + nu2..., nximin - nu3 + 1:nximin...]
     end
     
-    Γ₃ = zeros(nximin, nximin, nximin);
+    # Γ₃ = zeros(nximin, nximin, nximin);
+    Γ₃ = spzeros(nximin^2, nximin);
 
     for (i¹,s¹) in enumerate(inputs)
         for (i²,s²) in enumerate(inputs)
@@ -645,46 +646,46 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
                         length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, ϵ²_combo_cnts)) == 1 &&
                         length(intersect_ϵ²_cnts) > 0
 
-                        Γ₃[i¹,i²,i³] = 2
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 2
 
                     elseif all([k ∈ m.timings.exo && v == 2 for (k,v) in combined_combo_cnts]) &&
                         length(ϵ²_combo_cnts) == 0
 
-                        Γ₃[i¹,i²,i³] = 1
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 1
 
                     elseif i¹ == i² && i¹ == i³ && all(values(combined_combo_cnts) .== 6)
 
-                        Γ₃[i¹,i²,i³] = 8
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 8
 
                     elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combined_combo_cnts)) == 1 &&
                         length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, combined_combo_cnts)) == 1  &&
                         length(ϵ²_combo_cnts) == 0
 
-                        Γ₃[i¹,i²,i³] = 3
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 3
 
                     elseif any(values(combined_combo_cnts) .== 6) && 
                         length(intersect_ϵ²_cnts) > 0 && 
                         !(i¹ == i² && i¹ == i³)
 
-                        Γ₃[i¹,i²,i³] = 12 # Variance of ϵ²
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 12 # Variance of ϵ²
 
                     elseif all(values(combined_combo_cnts) .== 4) && any(values(combo_cnts) .== 2) && !(all(values(intersect_ϵ²_cnts) .== 3))
 
-                        Γ₃[i¹,i²,i³] = 6
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 6
 
                     elseif all(values(combined_combo_cnts) .== 4)
 
-                        Γ₃[i¹,i²,i³] = 9
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 9
 
                     elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u == 6, combined_combo_cnts)) == 1 &&
                         length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, combined_combo_cnts)) == 1  &&
                         length(ϵ²_combo_cnts) == 0
                         
-                        Γ₃[i¹,i²,i³] = 15
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 15
 
                     elseif all(values(combined_combo_cnts) .== 8)
 
-                        Γ₃[i¹,i²,i³] = 90
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 90
 
                     end
 
@@ -695,7 +696,7 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
 
                     indices = [indexin([i[1]], intersect(model_order,m.var))[1] for i in setdiff(keys(combo_cnts), m.timings.exo)][1]
 
-                    Γ₃[i¹,i²,i³] = Ey[indices]
+                    Γ₃[(i¹-1)*nximin+i²,i³] = Ey[indices]
 
                 elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u ∈ [2,4], combined_combo_cnts)) == 2 &&
                     length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, ϵ²_combo_cnts)) == 0 &&
@@ -707,7 +708,7 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
 
                     indices = [indexin([i[1]], intersect(model_order,m.var))[1] for i in setdiff(keys(combo_cnts), m.timings.exo)][1]
 
-                    Γ₃[i¹,i²,i³] = 3 * Ey[indices]
+                    Γ₃[(i¹-1)*nximin+i²,i³] = 3 * Ey[indices]
 
                 elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u ∈ [4,6], combined_combo_cnts)) == 1 &&
                     length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, ϵ²_combo_cnts)) == 1 &&
@@ -721,11 +722,11 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
 
                     if length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combined_combo_cnts)) == 1
         
-                        Γ₃[i¹,i²,i³] = 2 * Ey[indices]
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 2 * Ey[indices]
 
                     elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u == 6, combined_combo_cnts)) == 1
 
-                        Γ₃[i¹,i²,i³] = 12 * Ey[indices]
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 12 * Ey[indices]
                     end
 
                 elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, ϵ²_combo_cnts)) == 1 &&
@@ -745,7 +746,7 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
 
                     idxs2 = length(indices) == 1 ? [indices[1],indices[1]] : indices
                 
-                    Γ₃[i¹,i²,i³] = 2 * (C2z0[idxs[1], idxs[2]] + Ey[idxs2[1]] * Ey[idxs2[2]])
+                    Γ₃[(i¹-1)*nximin+i²,i³] = 2 * (C2z0[idxs[1], idxs[2]] + Ey[idxs2[1]] * Ey[idxs2[2]])
 
                 elseif length(ϵ²_combo_cnts) == 0 &&
                     length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, combined_combo_cnts)) == 2 && 
@@ -763,7 +764,7 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
 
                     idxs2 = length(indices) == 1 ? [indices[1],indices[1]] : indices
                 
-                    Γ₃[i¹,i²,i³] = C2z0[idxs[1], idxs[2]] + Ey[idxs2[1]] * Ey[idxs2[2]]
+                    Γ₃[(i¹-1)*nximin+i²,i³] = C2z0[idxs[1], idxs[2]] + Ey[idxs2[1]] * Ey[idxs2[2]]
 
                 elseif (sum(values(combined_combo_cnts)) == 6 ||
                     (sum(values(combined_combo_cnts)) == 8 && 
@@ -779,11 +780,11 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
                         length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, ϵ²_combo_cnts)) == 1 &&
                         length(intersect_ϵ²_cnts) > 0
                     
-                        Γ₃[i¹,i²,i³] = 2 * C2z0[idxs[1], idxs[2]]
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 2 * C2z0[idxs[1], idxs[2]]
 
                     elseif length(ϵ²_combo_cnts) == 0
 
-                        Γ₃[i¹,i²,i³] = 3 * C2z0[idxs[1], idxs[2]]
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 3 * C2z0[idxs[1], idxs[2]]
 
                     end
 
@@ -796,7 +797,7 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
         
                     idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
                     
-                    Γ₃[i¹,i²,i³] = C2z0[idxs[1], idxs[2]]
+                    Γ₃[(i¹-1)*nximin+i²,i³] = C2z0[idxs[1], idxs[2]]
 
                 elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combined_combo_cnts)) == 1 && 
                     length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, ϵ²_combo_cnts)) == 1 &&
@@ -816,7 +817,7 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
 
                     indices_second = [indexin([i[1][1]], m.timings.past_not_future_and_mixed)[1] for i in filter(((j,u),) -> !(j ∈ m.timings.exo) && u == 1 && j[2] == 2, combo_cnts)][1] + m.timings.nPast_not_future_and_mixed
 
-                    Γ₃[i¹,i²,i³] = 2 * (C2z0[indices_second, indices_first] + C2z0[indices_first_variance[1], indices_first_variance[2]] * Ey[indices_second_mean])
+                    Γ₃[(i¹-1)*nximin+i²,i³] = 2 * (C2z0[indices_second, indices_first] + C2z0[indices_first_variance[1], indices_first_variance[2]] * Ey[indices_second_mean])
 
                 elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, combined_combo_cnts)) == 2 && 
                     length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, ϵ²_combo_cnts)) == 0 &&
@@ -836,7 +837,7 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
 
                     indices_second = [indexin([i[1][1]], m.timings.past_not_future_and_mixed)[1] for i in filter(((j,u),) -> !(j ∈ m.timings.exo) && u == 1 && j[2] == 2, combo_cnts)][1] + m.timings.nPast_not_future_and_mixed
 
-                    Γ₃[i¹,i²,i³] = C2z0[indices_second, indices_first] + C2z0[indices_first_variance[1], indices_first_variance[2]] * Ey[indices_second_mean]
+                    Γ₃[(i¹-1)*nximin+i²,i³] = C2z0[indices_second, indices_first] + C2z0[indices_first_variance[1], indices_first_variance[2]] * Ey[indices_second_mean]
 
                 elseif length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combined_combo_cnts)) == 1 && 
                     length(filter(((j,u),) -> j ∈ m.timings.exo && u == 2, ϵ²_combo_cnts)) == 0 &&
@@ -856,7 +857,7 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
 
                     indices_second = [indexin([i[1][1]], m.timings.past_not_future_and_mixed)[1] for i in filter(((j,u),) -> !(j ∈ m.timings.exo) && u == 1 && j[2] == 2, combo_cnts)][1] + m.timings.nPast_not_future_and_mixed
 
-                    Γ₃[i¹,i²,i³] = 3 * (C2z0[indices_second, indices_first] + C2z0[indices_first_variance[1], indices_first_variance[2]] * Ey[indices_second_mean])
+                    Γ₃[(i¹-1)*nximin+i²,i³] = 3 * (C2z0[indices_second, indices_first] + C2z0[indices_first_variance[1], indices_first_variance[2]] * Ey[indices_second_mean])
 
                 elseif length(ϵ²_combo_cnts) == 1  &&
                     sum(values(combined_combo_cnts)) == 8 &&
@@ -867,7 +868,7 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
         
                     idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
 
-                    Γ₃[i¹,i²,i³] = 12 * C2z0[idxs[1], idxs[2]]
+                    Γ₃[(i¹-1)*nximin+i²,i³] = 12 * C2z0[idxs[1], idxs[2]]
 
                 elseif length(ϵ²_combo_cnts) == 0  &&
                     sum(values(combined_combo_cnts)) == 8 &&
@@ -878,7 +879,7 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
         
                     idxs = length(indices) == 1 ? [indices[1],indices[1]] : indices
 
-                    Γ₃[i¹,i²,i³] = 15 * C2z0[idxs[1], idxs[2]]
+                    Γ₃[(i¹-1)*nximin+i²,i³] = 15 * C2z0[idxs[1], idxs[2]]
 
                 elseif length(intersect_ϵ²_cnts) == 1 && # at least one shock 
                     length(filter(((j,u),) -> j ∈ m.timings.exo && u == 4, combined_combo_cnts)) == 1 && 
@@ -913,12 +914,12 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
                     sort!(vars2)
 
                     if vars1 == vars2
-                        Γ₃[i¹,i²,i³] = 2 * (
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 2 * (
                             C2z0[vars1[1], vars1[1]] * C2z0[vars2[2], vars2[2]] + 
                             C2z0[vars1[1], vars2[2]] * C2z0[vars1[2], vars2[1]] + 
                             C2z0[vars1[1], vars2[2]] * C2z0[vars1[2], vars2[1]])
                     else
-                        Γ₃[i¹,i²,i³] = 2 * (
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 2 * (
                             C2z0[vars1[1], vars1[2]] * C2z0[vars2[1], vars2[2]] + 
                             C2z0[vars1[1], vars2[2]] * C2z0[vars2[1], vars1[2]] + 
                             C2z0[vars2[1], vars1[2]] * C2z0[vars1[1], vars2[2]])
@@ -957,12 +958,12 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
                     sort!(vars2)
 
                     if vars1 == vars2
-                        Γ₃[i¹,i²,i³] = 
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 
                             C2z0[vars1[1], vars1[1]] * C2z0[vars2[2], vars2[2]] + 
                             C2z0[vars1[1], vars2[2]] * C2z0[vars1[2], vars2[1]] + 
                             C2z0[vars1[1], vars2[2]] * C2z0[vars1[2], vars2[1]]
                     else
-                        Γ₃[i¹,i²,i³] = 
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 
                             C2z0[vars1[1], vars1[2]] * C2z0[vars2[1], vars2[2]] + 
                             C2z0[vars1[1], vars2[2]] * C2z0[vars2[1], vars1[2]] + 
                             C2z0[vars2[1], vars1[2]] * C2z0[vars1[1], vars2[2]]
@@ -1001,12 +1002,12 @@ function build_Γ₃(m, C2z0::AbstractMatrix, Ey::Vector)
                     sort!(vars2)
 
                     if vars1 == vars2
-                        Γ₃[i¹,i²,i³] = 3 * (
+                        Γ₃[(i¹-1)*nximin+i²,i³] = 3 * (
                             C2z0[vars1[1], vars1[1]] * C2z0[vars2[2], vars2[2]] + 
                             C2z0[vars1[1], vars2[2]] * C2z0[vars1[2], vars2[1]] + 
                             C2z0[vars1[1], vars2[2]] * C2z0[vars1[2], vars2[1]])
                     else
-                        Γ₃[i¹,i²,i³] =  3 * (
+                        Γ₃[(i¹-1)*nximin+i²,i³] =  3 * (
                             C2z0[vars1[1], vars1[2]] * C2z0[vars2[1], vars2[2]] + 
                             C2z0[vars1[1], vars2[2]] * C2z0[vars2[1], vars1[2]] + 
                             C2z0[vars2[1], vars1[2]] * C2z0[vars1[1], vars2[2]])
@@ -1023,11 +1024,11 @@ end
 
 Γ₃ = build_Γ₃(m,C2z0,vec(Ey))
 
-Γ₃xi = reshape(Γ₃, size(Γ₃,1)^2, size(Γ₃,1))
+# Γ₃xi = reshape(Γ₃, size(Γ₃,1)^2, size(Γ₃,1))
 
 
 
-CC = kron(B * Fxi, B * Fxi) *  Γ₃xi  * (B * Fxi)'
+CC = kron(B * Fxi, B * Fxi) *  Γ₃  * (B * Fxi)'
 AA = kron(A,A)
 
 lm = LinearMap{Float64}(x -> AA * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
@@ -1035,10 +1036,13 @@ lm = LinearMap{Float64}(x -> AA * reshape(x,size(CC)) * A' - reshape(x,size(CC))
 C3z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
 reshape(C3z0, nz, nz, nz)
 
-C3y0 = kron(C,C) * C3z0 * C' + kron(D * Fxi, D * Fxi) * Γ₃xi * (D * Fxi)'
+C3y0 = kron(C,C) * C3z0 * C' + kron(D * Fxi, D * Fxi) * Γ₃ * (D * Fxi)'
 reshape(C3y0, m.timings.nVars, m.timings.nVars, m.timings.nVars)
 
-collect(C3y0) ./ repeat(C2y0.^(3/2), size(C3y0,2))
+[C3y0[(i-1) * size(C3y0,2) + i,i] for i in 1:size(C3y0,2)]
+
+
+collect(C3y0) ./ repeat(abs.(C2y0).^(3/2), size(C3y0,2))
 [C3y0[(i-1) * size(C3y0,2) + i,i] / C2y0[i,i]^(3/2) for i in 1:size(C3y0,2)]
 
 # make the loop return a matrix with the shock related entries and two matrices you can use to multiply with C2z0 instead of sorting the entries one by one. akin to a permutation matrix
@@ -1390,7 +1394,7 @@ C2z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
 
 C2y0 = C * C2z0 * C' + D * Fxi * Γ₂ * (D * Fxi)'
 
-
+diag(C2y0)
 
 
 
@@ -1398,25 +1402,26 @@ C2y0 = C * C2z0 * C' + D * Fxi * Γ₂ * (D * Fxi)'
 ####  Γ₃
 Γ₃ = build_Γ₃(m, C2z0, vec(Ey))
 
-Γ₃xi = sparse(reshape(Γ₃, size(Γ₃,1)^2, size(Γ₃,1)))
+# Γ₃xi = sparse(reshape(Γ₃, size(Γ₃,1)^2, size(Γ₃,1)))
 
-using BenchmarkTools
-@benchmark build_Γ₃(m, C2z0, vec(Ey))
+# using BenchmarkTools
+# @benchmark build_Γ₃(m, C2z0, vec(Ey))
 
 
 
-CC = kron(B * Fxi, B * Fxi) * Γ₃xi * (B * Fxi)'
+CC = kron(B * Fxi, B * Fxi) * Γ₃ * (B * Fxi)'
 AA = kron(A,A)
 lm = LinearMap{Float64}(x -> AA * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
 
 C3z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
 reshape(C3z0,size(C3z0,2),size(C3z0,2),size(C3z0,2))
 
-C3y0 = kron(C,C) * C3z0 * C' + kron(D * Fxi, D * Fxi) * Γ₃xi * (D * Fxi)'
+C3y0 = kron(C,C) * C3z0 * C' + kron(D * Fxi, D * Fxi) * Γ₃ * (D * Fxi)'
 reshape(C3y0,size(C3y0,2),size(C3y0,2),size(C3y0,2))
 
+[C3y0[(i-1) * size(C3y0,2) + i,i] for i in 1:size(C3y0,2)]
 
-collect(C3y0) ./ repeat(C2y0.^(3/2), size(C3y0,2))
+collect(C3y0) ./ repeat(abs.(C2y0).^(3/2), size(C3y0,2))
 [C3y0[(i-1) * size(C3y0,2) + i,i] / C2y0[i,i]^(3/2) for i in 1:size(C3y0,2)]
 
 
