@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         version:
-          - '1.8'
+#           - '1.8'
           - '1.9' #^1-0 and ^1.9-0 are not recognised
           # - 'nightly' # fails for zygote
         os:
@@ -26,10 +26,9 @@ jobs:
         include:
           - os: ubuntu-latest
             prefix: xvfb-run
-          # - version: 'nightly'
-          #   os: ubuntu-latest
-          #   arch: x64
-          #   allow_failure: true
+          - version: '1.8'
+            os: ubuntu-latest
+            arch: x64
     steps:
       - uses: actions/checkout@v3
       - uses: julia-actions/setup-julia@latest
