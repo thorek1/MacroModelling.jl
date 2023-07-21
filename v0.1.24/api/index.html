@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>API · MacroModelling.jl</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.045/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.24/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">MacroModelling.jl</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../tutorials/install/">Installation</a></li><li><a class="tocitem" href="../tutorials/rbc/">RBC</a></li><li><a class="tocitem" href="../tutorials/sw03/">Smets and Wouters (2003)</a></li><li><a class="tocitem" href="../tutorials/estimation/">Estimation</a></li></ul></li><li class="is-active"><a class="tocitem" href>API</a></li><li><a class="tocitem" href="../call_index/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>API</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>API</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/thorek1/MacroModelling.jl/blob/main/docs/src/api.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.Beta-Union{Tuple{T}, NTuple{4, T}} where T&lt;:Real" href="#MacroModelling.Beta-Union{Tuple{T}, NTuple{4, T}} where T&lt;:Real"><code>MacroModelling.Beta</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">Beta(μ, σ, lower_bound, upper_bound; μσ)
+</code></pre><p>Convenience wrapper for the truncated Beta distribution.</p><p>If <code>μσ = true</code> then <code>μ</code> and <code>σ</code> are translated to the parameters of the distribution. Otherwise <code>μ</code> and <code>σ</code> represent the parameters of the distribution.</p><p><strong>Arguments</strong></p><ul><li><code>μ</code> [Type: <code>Real</code>]: mean or first parameter of the distribution, </li><li><code>σ</code> [Type: <code>Real</code>]: standard deviation or first parameter of the distribution</li><li><code>lower_bound</code> [Type: <code>Real</code>]: truncation lower bound of the distribution</li><li><code>upper_bound</code> [Type: <code>Real</code>]: truncation upper bound of the distribution</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>μσ</code> [Type: <code>Bool</code>]: switch whether μ and σ represent the moments of the distribution or their parameters</li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/priors.jl#L1">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.Beta-Union{Tuple{T}, Tuple{T, T}} where T&lt;:Real" href="#MacroModelling.Beta-Union{Tuple{T}, Tuple{T, T}} where T&lt;:Real"><code>MacroModelling.Beta</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">Beta(μ, σ; μσ)
+</code></pre><p>Convenience wrapper for the Beta distribution.</p><p>If <code>μσ = true</code> then <code>μ</code> and <code>σ</code> are translated to the parameters of the distribution. Otherwise <code>μ</code> and <code>σ</code> represent the parameters of the distribution.</p><p><strong>Arguments</strong></p><ul><li><code>μ</code> [Type: <code>Real</code>]: mean or first parameter of the distribution, </li><li><code>σ</code> [Type: <code>Real</code>]: standard deviation or first parameter of the distribution</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>μσ</code> [Type: <code>Bool</code>]: switch whether μ and σ represent the moments of the distribution or their parameters</li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/priors.jl#L20">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.Gamma-Union{Tuple{T}, NTuple{4, T}} where T&lt;:Real" href="#MacroModelling.Gamma-Union{Tuple{T}, NTuple{4, T}} where T&lt;:Real"><code>MacroModelling.Gamma</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">Gamma(μ, σ, lower_bound, upper_bound; μσ)
+</code></pre><p>Convenience wrapper for the truncated Inverse Gamma distribution.</p><p>If <code>μσ = true</code> then <code>μ</code> and <code>σ</code> are translated to the parameters of the distribution. Otherwise <code>μ</code> and <code>σ</code> represent the parameters of the distribution.</p><p><strong>Arguments</strong></p><ul><li><code>μ</code> [Type: <code>Real</code>]: mean or first parameter of the distribution, </li><li><code>σ</code> [Type: <code>Real</code>]: standard deviation or first parameter of the distribution</li><li><code>lower_bound</code> [Type: <code>Real</code>]: truncation lower bound of the distribution</li><li><code>upper_bound</code> [Type: <code>Real</code>]: truncation upper bound of the distribution</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>μσ</code> [Type: <code>Bool</code>]: switch whether μ and σ represent the moments of the distribution or their parameters</li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/priors.jl#L75">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.Gamma-Union{Tuple{T}, Tuple{T, T}} where T&lt;:Real" href="#MacroModelling.Gamma-Union{Tuple{T}, Tuple{T, T}} where T&lt;:Real"><code>MacroModelling.Gamma</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">Gamma(μ, σ; μσ)
+</code></pre><p>Convenience wrapper for the Gamma distribution.</p><p>If <code>μσ = true</code> then <code>μ</code> and <code>σ</code> are translated to the parameters of the distribution. Otherwise <code>μ</code> and <code>σ</code> represent the parameters of the distribution.</p><p><strong>Arguments</strong></p><ul><li><code>μ</code> [Type: <code>Real</code>]: mean or first parameter of the distribution, </li><li><code>σ</code> [Type: <code>Real</code>]: standard deviation or first parameter of the distribution</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>μσ</code> [Type: <code>Bool</code>]: switch whether μ and σ represent the moments of the distribution or their parameters</li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/priors.jl#L94">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.InverseGamma-Union{Tuple{T}, NTuple{4, T}} where T&lt;:Real" href="#MacroModelling.InverseGamma-Union{Tuple{T}, NTuple{4, T}} where T&lt;:Real"><code>MacroModelling.InverseGamma</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">InverseGamma(μ, σ, lower_bound, upper_bound; μσ)
+</code></pre><p>Convenience wrapper for the truncated Inverse Gamma distribution.</p><p>If <code>μσ = true</code> then <code>μ</code> and <code>σ</code> are translated to the parameters of the distribution. Otherwise <code>μ</code> and <code>σ</code> represent the parameters of the distribution.</p><p><strong>Arguments</strong></p><ul><li><code>μ</code> [Type: <code>Real</code>]: mean or first parameter of the distribution, </li><li><code>σ</code> [Type: <code>Real</code>]: standard deviation or first parameter of the distribution</li><li><code>lower_bound</code> [Type: <code>Real</code>]: truncation lower bound of the distribution</li><li><code>upper_bound</code> [Type: <code>Real</code>]: truncation upper bound of the distribution</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>μσ</code> [Type: <code>Bool</code>]: switch whether μ and σ represent the moments of the distribution or their parameters</li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/priors.jl#L38">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.InverseGamma-Union{Tuple{T}, Tuple{T, T}} where T&lt;:Real" href="#MacroModelling.InverseGamma-Union{Tuple{T}, Tuple{T, T}} where T&lt;:Real"><code>MacroModelling.InverseGamma</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">InverseGamma(μ, σ; μσ)
+</code></pre><p>Convenience wrapper for the Inverse Gamma distribution.</p><p>If <code>μσ = true</code> then <code>μ</code> and <code>σ</code> are translated to the parameters of the distribution. Otherwise <code>μ</code> and <code>σ</code> represent the parameters of the distribution.</p><p><strong>Arguments</strong></p><ul><li><code>μ</code> [Type: <code>Real</code>]: mean or first parameter of the distribution, </li><li><code>σ</code> [Type: <code>Real</code>]: standard deviation or first parameter of the distribution</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>μσ</code> [Type: <code>Bool</code>]: switch whether μ and σ represent the moments of the distribution or their parameters</li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/priors.jl#L57">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.Normal-Union{Tuple{T}, NTuple{4, T}} where T&lt;:Real" href="#MacroModelling.Normal-Union{Tuple{T}, NTuple{4, T}} where T&lt;:Real"><code>MacroModelling.Normal</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">Normal(μ, σ, lower_bound, upper_bound)
+</code></pre><p>Convenience wrapper for the truncated Normal distribution.</p><p><strong>Arguments</strong></p><ul><li><code>μ</code> [Type: <code>Real</code>]: mean of the distribution, </li><li><code>σ</code> [Type: <code>Real</code>]: standard deviation of the distribution</li><li><code>lower_bound</code> [Type: <code>Real</code>]: truncation lower bound of the distribution</li><li><code>upper_bound</code> [Type: <code>Real</code>]: truncation upper bound of the distribution</li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/priors.jl#L114">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.SS" href="#MacroModelling.SS"><code>MacroModelling.SS</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_steady_state-Tuple{MacroModelling.ℳ}"><code>get_steady_state</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1060-L1062">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.SSS-Tuple" href="#MacroModelling.SSS-Tuple"><code>MacroModelling.SSS</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_steady_state-Tuple{MacroModelling.ℳ}"><code>get_steady_state</code></a> with <code>stochastic = true</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1053-L1055">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.autocorr" href="#MacroModelling.autocorr"><code>MacroModelling.autocorr</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_autocorrelation-Tuple{MacroModelling.ℳ}"><code>get_autocorrelation</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1641-L1643">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.corr" href="#MacroModelling.corr"><code>MacroModelling.corr</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_correlation-Tuple{MacroModelling.ℳ}"><code>get_correlation</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1568-L1570">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.cov" href="#MacroModelling.cov"><code>MacroModelling.cov</code></a> — <span class="docstring-category">Function</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_moments-Tuple{MacroModelling.ℳ}"><code>get_moments</code></a> with <code>covariance = true</code> and <code>non_stochastic_steady_state = false, variance = false, standard_deviation = false</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1999-L2001">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.export_dynare" href="#MacroModelling.export_dynare"><code>MacroModelling.export_dynare</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.write_mod_file-Tuple{MacroModelling.ℳ}"><code>write_mod_file</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/dynare.jl#L171-L173">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.export_mod_file" href="#MacroModelling.export_mod_file"><code>MacroModelling.export_mod_file</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.write_mod_file-Tuple{MacroModelling.ℳ}"><code>write_mod_file</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/dynare.jl#L181-L183">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.export_model" href="#MacroModelling.export_model"><code>MacroModelling.export_model</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.write_mod_file-Tuple{MacroModelling.ℳ}"><code>write_mod_file</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/dynare.jl#L201-L203">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.export_to_dynare" href="#MacroModelling.export_to_dynare"><code>MacroModelling.export_to_dynare</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.write_mod_file-Tuple{MacroModelling.ℳ}"><code>write_mod_file</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/dynare.jl#L176-L178">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.fevd" href="#MacroModelling.fevd"><code>MacroModelling.fevd</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>get_conditional_variance_decomposition</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1410-L1412">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_IRF" href="#MacroModelling.get_IRF"><code>MacroModelling.get_IRF</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_irf-Tuple{MacroModelling.ℳ, Vector}"><code>get_irf</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L832-L834">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_SS" href="#MacroModelling.get_SS"><code>MacroModelling.get_SS</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_steady_state-Tuple{MacroModelling.ℳ}"><code>get_steady_state</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1070-L1072">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_SSS-Tuple" href="#MacroModelling.get_SSS-Tuple"><code>MacroModelling.get_SSS</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_steady_state-Tuple{MacroModelling.ℳ}"><code>get_steady_state</code></a> with <code>stochastic = true</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1047-L1049">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_autocorr" href="#MacroModelling.get_autocorr"><code>MacroModelling.get_autocorr</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_autocorrelation-Tuple{MacroModelling.ℳ}"><code>get_autocorrelation</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1635-L1637">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_autocorrelation-Tuple{MacroModelling.ℳ}" href="#MacroModelling.get_autocorrelation-Tuple{MacroModelling.ℳ}"><code>MacroModelling.get_autocorrelation</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_autocorrelation(𝓂; parameters, verbose)
+</code></pre><p>Return the autocorrelations of endogenous variables using the linearised solution. </p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+get_autocorrelation(RBC)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   Autocorrelation_orders ∈ 5-element UnitRange{Int64}
+And data, 4×5 Matrix{Float64}:
+        (1)         (2)         (3)         (4)         (5)
+  (:c)    0.966974    0.927263    0.887643    0.849409    0.812761
+  (:k)    0.971015    0.931937    0.892277    0.853876    0.817041
+  (:q)    0.32237     0.181562    0.148347    0.136867    0.129944
+  (:z)    0.2         0.04        0.008       0.0016      0.00032</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1576">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_conditional_forecast-Tuple{MacroModelling.ℳ, Union{KeyedArray{Union{Nothing, Float64}}, KeyedArray{Float64}, SparseArrays.SparseMatrixCSC{Float64}, Matrix{Union{Nothing, Float64}}}}" href="#MacroModelling.get_conditional_forecast-Tuple{MacroModelling.ℳ, Union{KeyedArray{Union{Nothing, Float64}}, KeyedArray{Float64}, SparseArrays.SparseMatrixCSC{Float64}, Matrix{Union{Nothing, Float64}}}}"><code>MacroModelling.get_conditional_forecast</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_conditional_forecast(
+    𝓂,
+    conditions;
+    shocks,
+    initial_state,
+    periods,
+    parameters,
+    variables,
+    conditions_in_levels,
+    levels,
+    verbose
+)
+</code></pre><p>Return the conditional forecast given restrictions on endogenous variables and shocks (optional) in a 2-dimensional array. The algorithm finds the combinations of shocks with the smallest magnitude to match the conditions.</p><p>Limited to the first order perturbation solution of the model.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li><li><code>conditions</code> [Type: <code>Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}}</code>]: conditions for which to find the corresponding shocks. The input can have multiple formats, but for all types of entries the first dimension corresponds to the number of variables and the second dimension to the number of periods. The conditions can be specified using a matrix of type <code>Matrix{Union{Nothing,Float64}}</code>. In this case the conditions are matrix elements of type <code>Float64</code> and all remaining (free) entries are <code>nothing</code>. You can also use a <code>SparseMatrixCSC{Float64}</code> as input. In this case only non-zero elements are taken as conditions. Note that you cannot condition variables to be zero using a <code>SparseMatrixCSC{Float64}</code> as input (use other input formats to do so). Another possibility to input conditions is by using a <code>KeyedArray</code>. You can use a <code>KeyedArray{Union{Nothing,Float64}}</code> where, similar to <code>Matrix{Union{Nothing,Float64}}</code>, all entries of type <code>Float64</code> are recognised as conditions and all other entries have to be <code>nothing</code>. Furthermore, you can specify in the primary axis a subset of variables (of type <code>Symbol</code>) for which you specify conditions and all other variables are considered free. The same goes for the case when you use <code>KeyedArray{Float64}}</code> as input, whereas in this case the conditions for the specified variables bind for all periods specified in the <code>KeyedArray</code>, because there are no <code>nothing</code> entries permitted with this type.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>shocks</code> [Default: <code>nothing</code>, Type: <code>Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing</code>]: known values of shocks. This entry allows the user to include certain shock values. By entering restrictions on the shock sin this way the problem to match the conditions on endogenous variables is restricted to the remaining free shocks in the repective period. The input can have multiple formats, but for all types of entries the first dimension corresponds to the number of shocks and the second dimension to the number of periods. The shocks can be specified using a matrix of type <code>Matrix{Union{Nothing,Float64}}</code>. In this case the shocks are matrix elements of type <code>Float64</code> and all remaining (free) entries are <code>nothing</code>. You can also use a <code>SparseMatrixCSC{Float64}</code> as input. In this case only non-zero elements are taken as certain shock values. Note that you cannot condition shocks to be zero using a <code>SparseMatrixCSC{Float64}</code> as input (use other input formats to do so). Another possibility to input known shocks is by using a <code>KeyedArray</code>. You can use a <code>KeyedArray{Union{Nothing,Float64}}</code> where, similar to <code>Matrix{Union{Nothing,Float64}}</code>, all entries of type <code>Float64</code> are recognised as known shocks and all other entries have to be <code>nothing</code>. Furthermore, you can specify in the primary axis a subset of shocks (of type <code>Symbol</code>) for which you specify values and all other shocks are considered free. The same goes for the case when you use <code>KeyedArray{Float64}}</code> as input, whereas in this case the values for the specified shocks bind for all periods specified in the <code>KeyedArray</code>, because there are no <code>nothing</code> entries permitted with this type.</li><li><code>periods</code> [Default: <code>40</code>, Type: <code>Int</code>]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.</li><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>variables</code> [Default: <code>:all</code>]: variables for which to show the results. Inputs can be either a <code>Symbol</code> (e.g. <code>:y</code> or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code> or <code>Vector{Symbol}</code>. Any variables not part of the model will trigger a warning. <code>:all</code> will contain all variables but not the auxilliary ones. <code>all_including_auxilliary</code> also includes the auxilliary variables in the output.</li><li><code>conditions_in_levels</code> [Default: <code>true</code>, Type: <code>Bool</code>]: indicator whether the conditions are provided in levels. If <code>true</code> the input to the conditions argument will have the non stochastic steady state substracted.</li><li><code>levels</code> [Default: <code>false</code>, Type: <code>Bool</code>]: return levels or absolute deviations from steady state.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+using SparseArrays, AxisKeys
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+# c is conditioned to deviate by 0.01 in period 1 and y is conditioned to deviate by 0.02 in period 3
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = [:c,:y], Periods = 1:2)
+conditions[1,1] = .01
+conditions[2,2] = .02
+
+# in period 2 second shock (eps_z) is conditioned to take a value of 0.05
+shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
+shocks[1,1] = .05
+
+get_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_levels = false)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables_and_shocks ∈ 9-element Vector{Symbol}
+→   Periods ∈ 42-element UnitRange{Int64}
+And data, 9×42 Matrix{Float64}:
+                (1)            (2)           …  (41)            (42)
+  (:A)            0.0313639      0.0134792         0.000221372     0.000199235
+  (:Pi)           0.000780257    0.00020929       -0.000146071    -0.000140137
+  (:R)            0.00117156     0.00031425       -0.000219325    -0.000210417
+  (:c)            0.01           0.00600605        0.00213278      0.00203751
+  (:k)            0.034584       0.0477482   …     0.0397631       0.0380482
+  (:y)            0.0446375      0.02              0.00129544      0.001222
+  (:z_delta)      0.00025        0.000225          3.69522e-6      3.3257e-6
+  (:delta_eps)    0.05           0.0               0.0             0.0
+  (:eps_z)        4.61234       -2.16887           0.0             0.0
+
+# The same can be achieved with the other input formats:
+# conditions = Matrix{Union{Nothing,Float64}}(undef,7,2)
+# conditions[4,1] = .01
+# conditions[6,2] = .02
+
+# using SparseArrays
+# conditions = spzeros(7,2)
+# conditions[4,1] = .01
+# conditions[6,2] = .02
+
+# shocks = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:delta_eps], Periods = [1])
+# shocks[1,1] = .05
+
+# using SparseArrays
+# shocks = spzeros(2,1)
+# shocks[1,1] = .05</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L339">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}" href="#MacroModelling.get_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>MacroModelling.get_conditional_variance_decomposition</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_conditional_variance_decomposition(
+    𝓂;
+    periods,
+    parameters,
+    verbose
+)
+</code></pre><p>Return the conditional variance decomposition of endogenous variables with regards to the shocks using the linearised solution. </p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>periods</code> [Default: <code>[1:20...,Inf]</code>, Type: <code>Union{Vector{Int},Vector{Float64},UnitRange{Int64}}</code>]: vector of periods for which to calculate the conditional variance decomposition. If the vector conatins <code>Inf</code>, also the unconditional variance decomposition is calculated (same output as <a href="#MacroModelling.get_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>get_variance_decomposition</code></a>).</li><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+get_conditional_variance_decomposition(RBC_CME)
+# output
+3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 7-element Vector{Symbol}
+→   Shocks ∈ 2-element Vector{Symbol}
+◪   Periods ∈ 21-element Vector{Float64}
+And data, 7×2×21 Array{Float64, 3}:
+[showing 3 of 21 slices]
+[:, :, 1] ~ (:, :, 1.0):
+              (:delta_eps)  (:eps_z)
+  (:A)         0.0           1.0
+  (:Pi)        0.00158668    0.998413
+  (:R)         0.00158668    0.998413
+  (:c)         0.0277348     0.972265
+  (:k)         0.00869568    0.991304
+  (:y)         0.0           1.0
+  (:z_delta)   1.0           0.0
+
+[:, :, 11] ~ (:, :, 11.0):
+              (:delta_eps)  (:eps_z)
+  (:A)         1.29651e-31   1.0
+  (:Pi)        0.0245641     0.975436
+  (:R)         0.0245641     0.975436
+  (:c)         0.0175249     0.982475
+  (:k)         0.00869568    0.991304
+  (:y)         7.63511e-5    0.999924
+  (:z_delta)   1.0           0.0
+
+[:, :, 21] ~ (:, :, Inf):
+              (:delta_eps)  (:eps_z)
+  (:A)         2.47454e-30   1.0
+  (:Pi)        0.0156771     0.984323
+  (:R)         0.0156771     0.984323
+  (:c)         0.0134672     0.986533
+  (:k)         0.00869568    0.991304
+  (:y)         0.000313462   0.999687
+  (:z_delta)   1.0           0.0</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1274">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_corr" href="#MacroModelling.get_corr"><code>MacroModelling.get_corr</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_correlation-Tuple{MacroModelling.ℳ}"><code>get_correlation</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1562-L1564">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_correlation-Tuple{MacroModelling.ℳ}" href="#MacroModelling.get_correlation-Tuple{MacroModelling.ℳ}"><code>MacroModelling.get_correlation</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_correlation(𝓂; parameters, verbose)
+</code></pre><p>Return the correlations of endogenous variables using the linearised solution. </p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+get_correlation(RBC)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 ∈ 4-element Vector{Symbol}
+And data, 4×4 Matrix{Float64}:
+        (:c)       (:k)       (:q)       (:z)
+  (:c)   1.0        0.999812   0.550168   0.314562
+  (:k)   0.999812   1.0        0.533879   0.296104
+  (:q)   0.550168   0.533879   1.0        0.965726
+  (:z)   0.314562   0.296104   0.965726   1.0</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1503">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_cov" href="#MacroModelling.get_cov"><code>MacroModelling.get_cov</code></a> — <span class="docstring-category">Function</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_moments-Tuple{MacroModelling.ℳ}"><code>get_moments</code></a> with <code>covariance = true</code> and <code>non_stochastic_steady_state = false, variance = false, standard_deviation = false</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1993-L1995">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_covariance-Tuple" href="#MacroModelling.get_covariance-Tuple"><code>MacroModelling.get_covariance</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_moments-Tuple{MacroModelling.ℳ}"><code>get_moments</code></a> with <code>covariance = true</code> and <code>non_stochastic_steady_state = false, variance = false, standard_deviation = false</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1987-L1989">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_estimated_shocks-Tuple{MacroModelling.ℳ, KeyedArray{Float64}}" href="#MacroModelling.get_estimated_shocks-Tuple{MacroModelling.ℳ, KeyedArray{Float64}}"><code>MacroModelling.get_estimated_shocks</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_estimated_shocks(
+    𝓂,
+    data;
+    parameters,
+    data_in_levels,
+    smooth,
+    verbose
+)
+</code></pre><p>Return the estimated shocks based on the Kalman smoother or filter (depending on the <code>smooth</code> keyword argument) using the provided data and first order solution of the model. Data is by default assumed to be in levels unless <code>data_in_levels</code> is set to <code>false</code>.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li><li><code>data</code> [Type: <code>KeyedArray</code>]: data matrix with variables in rows and time in columns</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>data_in_levels</code> [Default: <code>true</code>, Type: <code>Bool</code>]: indicator whether the data is provided in levels. If <code>true</code> the input to the data argument will have the non stochastic steady state substracted.</li><li><code>smooth</code> [Default: <code>true</code>, Type: <code>Bool</code>]: whether to return smoothed (<code>true</code>) or filtered (<code>false</code>) shocks.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+simulation = simulate(RBC);
+
+get_estimated_shocks(RBC,simulation([:c],:,:simulate))
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Shocks ∈ 1-element Vector{Symbol}
+→   Periods ∈ 40-element UnitRange{Int64}
+And data, 1×40 Matrix{Float64}:
+               (1)          (2)         (3)         (4)         …  (37)         (38)        (39)         (40)
+  (:eps_z₍ₓ₎)    0.0603617    0.614652   -0.519048    0.711454       -0.873774     1.27918    -0.929701    -0.2255</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L100">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_estimated_variable_standard_deviations-Tuple{MacroModelling.ℳ, KeyedArray{Float64}}" href="#MacroModelling.get_estimated_variable_standard_deviations-Tuple{MacroModelling.ℳ, KeyedArray{Float64}}"><code>MacroModelling.get_estimated_variable_standard_deviations</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_estimated_variable_standard_deviations(
+    𝓂,
+    data;
+    parameters,
+    data_in_levels,
+    smooth,
+    verbose
+)
+</code></pre><p>Return the standard deviations of the Kalman smoother or filter (depending on the <code>smooth</code> keyword argument) estimates of the model variables based on the provided data and first order solution of the model. Data is by default assumed to be in levels unless <code>data_in_levels</code> is set to <code>false</code>.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li><li><code>data</code> [Type: <code>KeyedArray</code>]: data matrix with variables in rows and time in columns</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>data_in_levels</code> [Default: <code>true</code>, Type: <code>Bool</code>]: indicator whether the data is provided in levels. If <code>true</code> the input to the data argument will have the non stochastic steady state substracted.</li><li><code>smooth</code> [Default: <code>true</code>, Type: <code>Bool</code>]: whether to return smoothed (<code>true</code>) or filtered (<code>false</code>) shocks.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+simulation = simulate(RBC);
+
+get_estimated_variable_standard_deviations(RBC,simulation([:c],:,:simulate))
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Standard_deviations ∈ 4-element Vector{Symbol}
+→   Periods ∈ 40-element UnitRange{Int64}
+And data, 4×40 Matrix{Float64}:
+        (1)           (2)            (3)            (4)            …  (38)            (39)            (40)
+  (:c)    1.23202e-9    1.84069e-10    8.23181e-11    8.23181e-11        8.23181e-11     8.23181e-11     0.0
+  (:k)    0.00509299    0.000382934    2.87922e-5     2.16484e-6         1.6131e-9       9.31323e-10     1.47255e-9
+  (:q)    0.0612887     0.0046082      0.000346483    2.60515e-5         1.31709e-9      1.31709e-9      9.31323e-10
+  (:z)    0.00961766    0.000723136    5.43714e-5     4.0881e-6          3.08006e-10     3.29272e-10     2.32831e-10</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L259">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_estimated_variables-Tuple{MacroModelling.ℳ, KeyedArray{Float64}}" href="#MacroModelling.get_estimated_variables-Tuple{MacroModelling.ℳ, KeyedArray{Float64}}"><code>MacroModelling.get_estimated_variables</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_estimated_variables(
+    𝓂,
+    data;
+    parameters,
+    data_in_levels,
+    levels,
+    smooth,
+    verbose
+)
+</code></pre><p>Return the estimated variables based on the Kalman smoother or filter (depending on the <code>smooth</code> keyword argument) using the provided data and first order solution of the model. Data is by default assumed to be in levels unless <code>data_in_levels</code> is set to <code>false</code>.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li><li><code>data</code> [Type: <code>KeyedArray</code>]: data matrix with variables in rows and time in columns</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>data_in_levels</code> [Default: <code>true</code>, Type: <code>Bool</code>]: indicator whether the data is provided in levels. If <code>true</code> the input to the data argument will have the non stochastic steady state substracted.</li><li><code>levels</code> [Default: <code>false</code>, Type: <code>Bool</code>]: return levels or absolute deviations from steady state.</li><li><code>smooth</code> [Default: <code>true</code>, Type: <code>Bool</code>]: whether to return smoothed (<code>true</code>) or filtered (<code>false</code>) shocks.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+simulation = simulate(RBC);
+
+get_estimated_variables(RBC,simulation([:c],:,:simulate))
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   Periods ∈ 40-element UnitRange{Int64}
+And data, 4×40 Matrix{Float64}:
+        (1)            (2)           (3)            (4)           …  (37)           (38)          (39)           (40)
+  (:c)   -0.000640535    0.00358475    0.000455785    0.00490466        0.0496719      0.055509      0.0477877      0.0436101
+  (:k)   -0.00671639     0.0324867     0.00663736     0.0456383         0.500217       0.548478      0.481045       0.437527
+  (:q)    0.00334817     0.0426535    -0.0247438      0.0440383        -0.0114766      0.113775     -0.00867574     0.00971302
+  (:z)    0.000601617    0.00626684   -0.00393712     0.00632712       -0.00771079     0.0112496    -0.00704709    -0.00366442</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L177">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_fevd" href="#MacroModelling.get_fevd"><code>MacroModelling.get_fevd</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>get_conditional_variance_decomposition</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1398-L1400">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_first_order_solution" href="#MacroModelling.get_first_order_solution"><code>MacroModelling.get_first_order_solution</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_solution-Tuple{MacroModelling.ℳ}"><code>get_solution</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1195-L1197">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_forecast_error_variance_decomposition" href="#MacroModelling.get_forecast_error_variance_decomposition"><code>MacroModelling.get_forecast_error_variance_decomposition</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>get_conditional_variance_decomposition</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1404-L1406">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_girf-Tuple" href="#MacroModelling.get_girf-Tuple"><code>MacroModelling.get_girf</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_irf-Tuple{MacroModelling.ℳ, Vector}"><code>get_irf</code></a> with <code>shocks = :simulate</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L847-L849">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_irf-Tuple{MacroModelling.ℳ, Vector}" href="#MacroModelling.get_irf-Tuple{MacroModelling.ℳ, Vector}"><code>MacroModelling.get_irf</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_irf(
+    𝓂,
+    parameters;
+    periods,
+    variables,
+    shocks,
+    negative_shock,
+    initial_state,
+    levels,
+    verbose
+)
+</code></pre><p>Return impulse response functions (IRFs) of the model in a 3-dimensional array. Function to use when differentiating IRFs with repect to parameters.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li><li><code>parameters</code> [Type: <code>Vector</code>]: Parameter values in alphabetical order (sorted by parameter name).</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>periods</code> [Default: <code>40</code>, Type: <code>Int</code>]: number of periods for which to calculate the IRFs. In case a matrix of shocks was provided, periods defines how many periods after the series of shocks the simulation continues.</li><li><code>variables</code> [Default: <code>:all</code>]: variables for which to show the results. Inputs can be either a <code>Symbol</code> (e.g. <code>:y</code> or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code> or <code>Vector{Symbol}</code>. Any variables not part of the model will trigger a warning. <code>:all</code> will contain all variables but not the auxilliary ones. <code>all_including_auxilliary</code> also includes the auxilliary variables in the output.</li><li><code>shocks</code> [Default: <code>:all</code>]: shocks for which to calculate the IRFs. Inputs can be either a <code>Symbol</code> (e.g. <code>:y</code>, <code>:simulate</code>, :none, or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code>, <code>Vector{Symbol}</code>, <code>Matrix{Float64}</code>, or <code>KeyedArray{Float64}</code>. <code>:simulate</code> triggers random draws of all shocks. A series of shocks can be passed on using either a <code>Matrix{Float64}</code>, or a <code>KeyedArray{Float64}</code> as input with shocks in rows and periods in columns. The period of the simulation will correspond to the length of the input in the period dimension + the number of periods defined in <code>periods</code>. If the series of shocks is input as a <code>KeyedArray{Float64}</code> make sure to name the rows with valid shock names of type <code>Symbol</code>. Any shocks not part of the model will trigger a warning. <code>:none</code> in combination with an <code>initial_state</code> can be used for deterministic simulations.</li><li><code>negative_shock</code> [Default: <code>false</code>, Type: <code>Bool</code>]: calculate a negative shock. Relevant for generalised IRFs.</li><li><code>generalised_irf</code> [Default: <code>false</code>, Type: <code>Bool</code>]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.</li><li><code>initial_state</code> [Default: <code>[0.0]</code>, Type: <code>Vector{Float64}</code>]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs. The state includes all variables as well as exogenous variables in leads or lags if present.</li><li><code>levels</code> [Default: <code>false</code>, Type: <code>Bool</code>]: return levels or absolute deviations from steady state.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+get_irf(RBC, RBC.parameter_values)
+# output
+4×40×1 Array{Float64, 3}:
+[:, :, 1] =
+ 0.00674687  0.00729773  0.00715114  0.00687615  …  0.00146962   0.00140619
+ 0.0620937   0.0718322   0.0712153   0.0686381      0.0146789    0.0140453
+ 0.0688406   0.0182781   0.00797091  0.0057232      0.00111425   0.00106615
+ 0.01        0.002       0.0004      8.0e-5         2.74878e-29  5.49756e-30</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L564">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_irf-Tuple{MacroModelling.ℳ}" href="#MacroModelling.get_irf-Tuple{MacroModelling.ℳ}"><code>MacroModelling.get_irf</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_irf(
+    𝓂;
+    periods,
+    algorithm,
+    parameters,
+    variables,
+    shocks,
+    negative_shock,
+    generalised_irf,
+    initial_state,
+    levels,
+    verbose
+)
+</code></pre><p>Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedArray. Values are returned in absolute deviations from the (non) stochastic steady state by default.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>periods</code> [Default: <code>40</code>, Type: <code>Int</code>]: number of periods for which to calculate the IRFs. In case a matrix of shocks was provided, periods defines how many periods after the series of shocks the simulation continues.</li><li><code>algorithm</code> [Default: <code>:first_order</code>, Type: <code>Symbol</code>]: algorithm to solve for the dynamics of the model.</li><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>variables</code> [Default: <code>:all</code>]: variables for which to show the results. Inputs can be either a <code>Symbol</code> (e.g. <code>:y</code> or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code> or <code>Vector{Symbol}</code>. Any variables not part of the model will trigger a warning. <code>:all</code> will contain all variables but not the auxilliary ones. <code>all_including_auxilliary</code> also includes the auxilliary variables in the output.</li><li><code>shocks</code> [Default: <code>:all</code>]: shocks for which to calculate the IRFs. Inputs can be either a <code>Symbol</code> (e.g. <code>:y</code>, <code>:simulate</code>, :none, or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code>, <code>Vector{Symbol}</code>, <code>Matrix{Float64}</code>, or <code>KeyedArray{Float64}</code>. <code>:simulate</code> triggers random draws of all shocks. A series of shocks can be passed on using either a <code>Matrix{Float64}</code>, or a <code>KeyedArray{Float64}</code> as input with shocks in rows and periods in columns. The period of the simulation will correspond to the length of the input in the period dimension + the number of periods defined in <code>periods</code>. If the series of shocks is input as a <code>KeyedArray{Float64}</code> make sure to name the rows with valid shock names of type <code>Symbol</code>. Any shocks not part of the model will trigger a warning. <code>:none</code> in combination with an <code>initial_state</code> can be used for deterministic simulations.</li><li><code>negative_shock</code> [Default: <code>false</code>, Type: <code>Bool</code>]: calculate a negative shock. Relevant for generalised IRFs.</li><li><code>generalised_irf</code> [Default: <code>false</code>, Type: <code>Bool</code>]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.</li><li><code>initial_state</code> [Default: <code>[0.0]</code>, Type: <code>Vector{Float64}</code>]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs. The state includes all variables as well as exogenous variables in leads or lags if present.</li><li><code>levels</code> [Default: <code>false</code>, Type: <code>Bool</code>]: return levels or absolute deviations from steady state.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+get_irf(RBC)
+# output
+3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   Periods ∈ 40-element UnitRange{Int64}
+◪   Shocks ∈ 1-element Vector{Symbol}
+And data, 4×40×1 Array{Float64, 3}:
+[:, :, 1] ~ (:, :, :eps_z):
+        (1)           (2)           …  (39)            (40)
+  (:c)    0.00674687    0.00729773        0.00146962      0.00140619
+  (:k)    0.0620937     0.0718322         0.0146789       0.0140453
+  (:q)    0.0688406     0.0182781         0.00111425      0.00106615
+  (:z)    0.01          0.002             2.74878e-29     5.49756e-30</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L700">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_irfs" href="#MacroModelling.get_irfs"><code>MacroModelling.get_irfs</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_irf-Tuple{MacroModelling.ℳ, Vector}"><code>get_irf</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L827-L829">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_moments-Tuple{MacroModelling.ℳ}" href="#MacroModelling.get_moments-Tuple{MacroModelling.ℳ}"><code>MacroModelling.get_moments</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_moments(
+    𝓂;
+    parameters,
+    non_stochastic_steady_state,
+    standard_deviation,
+    variance,
+    covariance,
+    derivatives,
+    parameter_derivatives,
+    verbose
+)
+</code></pre><p>Return the first and second moments of endogenous variables using the linearised solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>non_stochastic_steady_state</code> [Default: <code>true</code>, Type: <code>Bool</code>]: switch to return SS of endogenous variables</li><li><code>standard_deviation</code> [Default: <code>true</code>, Type: <code>Bool</code>]: switch to return standard deviation of endogenous variables</li><li><code>variance</code> [Default: <code>false</code>, Type: <code>Bool</code>]: switch to return variance of endogenous variables</li><li><code>covariance</code> [Default: <code>false</code>, Type: <code>Bool</code>]: switch to return covariance matrix of endogenous variables</li><li><code>derivatives</code> [Default: <code>true</code>, Type: <code>Bool</code>]: calculate derivatives with respect to the parameters.</li><li><code>parameter_derivatives</code> [Default: :all]: parameters for which to calculate partial derivatives. Inputs can be either a <code>Symbol</code> (e.g. <code>:alpha</code>, or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code> or <code>Vector{Symbol}</code>.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+moments = get_moments(RBC);
+
+moments[1]
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   Steady_state_and_∂steady_state∂parameter ∈ 6-element Vector{Symbol}
+And data, 4×6 Matrix{Float64}:
+        (:Steady_state)  (:std_z)  (:ρ)     (:δ)      (:α)       (:β)
+  (:c)   5.93625          0.0       0.0   -116.072    55.786     76.1014
+  (:k)  47.3903           0.0       0.0  -1304.95    555.264   1445.93
+  (:q)   6.88406          0.0       0.0    -94.7805   66.8912   105.02
+  (:z)   0.0              0.0       0.0      0.0       0.0        0.0</code></pre><pre><code class="language-julia hljs">moments[2]
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   Standard_deviation_and_∂standard_deviation∂parameter ∈ 6-element Vector{Symbol}
+And data, 4×6 Matrix{Float64}:
+        (:Standard_deviation)  (:std_z)  …  (:δ)       (:α)       (:β)
+  (:c)   0.0266642              2.66642     -0.384359   0.2626     0.144789
+  (:k)   0.264677              26.4677      -5.74194    2.99332    6.30323
+  (:q)   0.0739325              7.39325     -0.974722   0.726551   1.08
+  (:z)   0.0102062              1.02062      0.0        0.0        0.0</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1649">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_non_stochastic_steady_state-Tuple" href="#MacroModelling.get_non_stochastic_steady_state-Tuple"><code>MacroModelling.get_non_stochastic_steady_state</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_steady_state-Tuple{MacroModelling.ℳ}"><code>get_steady_state</code></a> with <code>stochastic = false</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1035-L1037">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_perturbation_solution" href="#MacroModelling.get_perturbation_solution"><code>MacroModelling.get_perturbation_solution</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_solution-Tuple{MacroModelling.ℳ}"><code>get_solution</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1200-L1202">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_shock_decomposition-Tuple{MacroModelling.ℳ, KeyedArray{Float64}}" href="#MacroModelling.get_shock_decomposition-Tuple{MacroModelling.ℳ, KeyedArray{Float64}}"><code>MacroModelling.get_shock_decomposition</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_shock_decomposition(
+    𝓂,
+    data;
+    parameters,
+    data_in_levels,
+    smooth,
+    verbose
+)
+</code></pre><p>Return the shock decomposition in absolute deviations from the non stochastic steady state based on the Kalman smoother or filter (depending on the <code>smooth</code> keyword argument) using the provided data and first order solution of the model. Data is by default assumed to be in levels unless <code>data_in_levels</code> is set to <code>false</code>.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li><li><code>data</code> [Type: <code>KeyedArray</code>]: data matrix with variables in rows and time in columns</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>data_in_levels</code> [Default: <code>true</code>, Type: <code>Bool</code>]: indicator whether the data is provided in levels. If <code>true</code> the input to the data argument will have the non stochastic steady state substracted.</li><li><code>smooth</code> [Default: <code>true</code>, Type: <code>Bool</code>]: whether to return smoothed (<code>true</code>) or filtered (<code>false</code>) shocks.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+simulation = simulate(RBC);
+
+get_shock_decomposition(RBC,simulation([:c],:,:simulate))
+# output
+3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   Shocks ∈ 2-element Vector{Symbol}
+◪   Periods ∈ 40-element UnitRange{Int64}
+And data, 4×2×40 Array{Float64, 3}:
+[showing 3 of 40 slices]
+[:, :, 1] ~ (:, :, 1):
+        (:eps_z₍ₓ₎)   (:Initial_values)
+  (:c)   0.000407252  -0.00104779
+  (:k)   0.00374808   -0.0104645
+  (:q)   0.00415533   -0.000807161
+  (:z)   0.000603617  -1.99957e-6
+
+[:, :, 21] ~ (:, :, 21):
+        (:eps_z₍ₓ₎)  (:Initial_values)
+  (:c)   0.026511    -0.000433619
+  (:k)   0.25684     -0.00433108
+  (:q)   0.115858    -0.000328764
+  (:z)   0.0150266    0.0
+
+[:, :, 40] ~ (:, :, 40):
+        (:eps_z₍ₓ₎)  (:Initial_values)
+  (:c)   0.0437976   -0.000187505
+  (:k)   0.4394      -0.00187284
+  (:q)   0.00985518  -0.000142164
+  (:z)  -0.00366442   8.67362e-19</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_simulation-Tuple" href="#MacroModelling.get_simulation-Tuple"><code>MacroModelling.get_simulation</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_irf-Tuple{MacroModelling.ℳ, Vector}"><code>get_irf</code></a> with <code>shocks = :simulate</code>. Function returns values in levels by default.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L842-L844">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_solution-Tuple{MacroModelling.ℳ}" href="#MacroModelling.get_solution-Tuple{MacroModelling.ℳ}"><code>MacroModelling.get_solution</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_solution(𝓂; parameters, algorithm, verbose)
+</code></pre><p>Return the solution of the model. In the linear case it returns the linearised solution and the non stochastic steady state (SS) of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables and shocks as the other dimensions.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>algorithm</code> [Default: <code>:first_order</code>, Type: <code>Symbol</code>]: algorithm to solve for the dynamics of the model. Only linear algorithms allowed.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p>The returned <code>KeyedArray</code> shows as columns the endogenous variables inlcuding the auxilliary endogenous and exogenous variables (due to leads and lags &gt; 1). The rows and other dimensions (depending on the chosen perturbation order) include the SS for the linear case only, followed by the states, and exogenous shocks.  Subscripts following variable names indicate the timing (e.g. <code>variable₍₋₁₎</code>  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. <code>variableᴸ⁽²⁾</code> indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.</p><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+get_solution(RBC)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Steady_state__States__Shocks ∈ 4-element Vector{Symbol}
+→   Variables ∈ 4-element Vector{Symbol}
+And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
+                   (:c)         (:k)        (:q)        (:z)
+  (:Steady_state)   5.93625     47.3903      6.88406     0.0
+  (:k₍₋₁₎)          0.0957964    0.956835    0.0726316  -0.0
+  (:z₍₋₁₎)          0.134937     1.24187     1.37681     0.2
+  (:eps_z₍ₓ₎)       0.00674687   0.0620937   0.0688406   0.01</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1083">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_ss" href="#MacroModelling.get_ss"><code>MacroModelling.get_ss</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_steady_state-Tuple{MacroModelling.ℳ}"><code>get_steady_state</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1075-L1077">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_standard_deviation-Tuple" href="#MacroModelling.get_standard_deviation-Tuple"><code>MacroModelling.get_standard_deviation</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_moments-Tuple{MacroModelling.ℳ}"><code>get_moments</code></a> with <code>standard_deviation = true</code> and <code>non_stochastic_steady_state = false, variance = false, covariance = false</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1971-L1973">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_statistics-Union{Tuple{T}, Tuple{U}, Tuple{Any, Vector{T}}} where {U, T}" href="#MacroModelling.get_statistics-Union{Tuple{T}, Tuple{U}, Tuple{Any, Vector{T}}} where {U, T}"><code>MacroModelling.get_statistics</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_statistics(
+    𝓂,
+    parameter_values;
+    parameters,
+    non_stochastic_steady_state,
+    standard_deviation,
+    variance,
+    covariance,
+    autocorrelation,
+    autocorrelation_periods,
+    verbose
+)
+</code></pre><p>Return the first and second moments of endogenous variables using the linearised solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix. Function to use when differentiating model moments with repect to parameters.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li><li><code>parameters</code> [Type: <code>Vector</code>]: Parameter values in alphabetical order (sorted by parameter name).</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>non_stochastic_steady_state</code> [Default: <code>Symbol[]</code>, Type: <code>Vector{Symbol}</code>]: switch to return SS of endogenous variables</li><li><code>standard_deviation</code> [Default: <code>Symbol[]</code>, Type: <code>Vector{Symbol}</code>]: if values are provided the function returns the standard deviation of the mentioned variables</li><li><code>variance</code> [Default: <code>Symbol[]</code>, Type: <code>Vector{Symbol}</code>]: if values are provided the function returns the variance of the mentioned variables</li><li><code>covariance</code> [Default: <code>Symbol[]</code>, Type: <code>Vector{Symbol}</code>]: if values are provided the function returns the covariance of the mentioned variables</li><li><code>autocorrelation</code> [Default: <code>Symbol[]</code>, Type: <code>Vector{Symbol}</code>]: if values are provided the function returns the autocorrelation of the mentioned variables</li><li><code>autocorrelation_periods</code> [Default: <code>1:5</code>]: periods for which to return the autocorrelation of the mentioned variables</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_deviation = RBC.var)
+# output
+1-element Vector{Any}:
+ [0.02666420378525503, 0.26467737291221793, 0.07393254045396483, 0.010206207261596574]</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1837">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_std" href="#MacroModelling.get_std"><code>MacroModelling.get_std</code></a> — <span class="docstring-category">Function</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_moments-Tuple{MacroModelling.ℳ}"><code>get_moments</code></a> with <code>standard_deviation = true</code> and <code>non_stochastic_steady_state = false, variance = false, covariance = false</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1977-L1979">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_steady_state-Tuple{MacroModelling.ℳ}" href="#MacroModelling.get_steady_state-Tuple{MacroModelling.ℳ}"><code>MacroModelling.get_steady_state</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_steady_state(
+    𝓂;
+    parameters,
+    derivatives,
+    stochastic,
+    algorithm,
+    parameter_derivatives,
+    verbose,
+    silent
+)
+</code></pre><p>Return the (non stochastic) steady state and derivatives with respect to model parameters.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>derivatives</code> [Default: <code>true</code>, Type: <code>Bool</code>]: calculate derivatives with respect to the parameters.</li><li><code>stochastic</code> [Default: <code>false</code>, Type: <code>Bool</code>]: return stochastic steady state using second order perturbation. No derivatives are calculated.</li><li><code>algorithm</code> [Default: <code>:first_order</code>, Type: <code>Symbol</code>]: algorithm to solve for the dynamics of the model.</li><li><code>parameter_derivatives</code> [Default: :all]: parameters for which to calculate partial derivatives. Inputs can be either a <code>Symbol</code> (e.g. <code>:alpha</code>, or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code> or <code>Vector{Symbol}</code>.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p>The columns show the SS and parameters for which derivatives are taken. The rows show the variables.</p><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+get_steady_state(RBC)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables_and_calibrated_parameters ∈ 4-element Vector{Symbol}
+→   Steady_state_and_∂steady_state∂parameter ∈ 6-element Vector{Symbol}
+And data, 4×6 Matrix{Float64}:
+        (:Steady_state)  (:std_z)  (:ρ)     (:δ)      (:α)       (:β)
+  (:c)   5.93625          0.0       0.0   -116.072    55.786     76.1014
+  (:k)  47.3903           0.0       0.0  -1304.95    555.264   1445.93
+  (:q)   6.88406          0.0       0.0    -94.7805   66.8912   105.02
+  (:z)   0.0              0.0       0.0      0.0       0.0        0.0</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L860">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_stochastic_steady_state-Tuple" href="#MacroModelling.get_stochastic_steady_state-Tuple"><code>MacroModelling.get_stochastic_steady_state</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_steady_state-Tuple{MacroModelling.ℳ}"><code>get_steady_state</code></a> with <code>stochastic = true</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1041-L1043">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_var" href="#MacroModelling.get_var"><code>MacroModelling.get_var</code></a> — <span class="docstring-category">Function</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_moments-Tuple{MacroModelling.ℳ}"><code>get_moments</code></a> with <code>variance = true</code> and <code>non_stochastic_steady_state = false, standard_deviation = false, covariance = false</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1959-L1961">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_var_decomp" href="#MacroModelling.get_var_decomp"><code>MacroModelling.get_var_decomp</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>get_variance_decomposition</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1495-L1497">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_variance-Tuple" href="#MacroModelling.get_variance-Tuple"><code>MacroModelling.get_variance</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_moments-Tuple{MacroModelling.ℳ}"><code>get_moments</code></a> with <code>variance = true</code> and <code>non_stochastic_steady_state = false, standard_deviation = false, covariance = false</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1953-L1955">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.get_variance_decomposition-Tuple{MacroModelling.ℳ}" href="#MacroModelling.get_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>MacroModelling.get_variance_decomposition</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">get_variance_decomposition(𝓂; parameters, verbose)
+</code></pre><p>Return the variance decomposition of endogenous variables with regards to the shocks using the linearised solution. </p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+get_variance_decomposition(RBC_CME)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 7-element Vector{Symbol}
+→   Shocks ∈ 2-element Vector{Symbol}
+And data, 7×2 Matrix{Float64}:
+              (:delta_eps)  (:eps_z)
+  (:A)         1.69478e-29   1.0
+  (:Pi)        0.0156771     0.984323
+  (:R)         0.0156771     0.984323
+  (:c)         0.0134672     0.986533
+  (:k)         0.00869568    0.991304
+  (:y)         0.000313462   0.999687
+  (:z_delta)   1.0           0.0</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1419">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.gr_backend" href="#MacroModelling.gr_backend"><code>MacroModelling.gr_backend</code></a> — <span class="docstring-category">Function</span></header><section><div><pre><code class="language-julia hljs">gr_backend()</code></pre><p>Renaming and reexport of Plot.jl function <code>gr()</code> to define GR.jl as backend</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L3-L8">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.import_dynare" href="#MacroModelling.import_dynare"><code>MacroModelling.import_dynare</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.translate_mod_file-Tuple{AbstractString}"><code>translate_mod_file</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/dynare.jl#L116-L118">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.import_model" href="#MacroModelling.import_model"><code>MacroModelling.import_model</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.translate_mod_file-Tuple{AbstractString}"><code>translate_mod_file</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/dynare.jl#L111-L113">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plot_IRF" href="#MacroModelling.plot_IRF"><code>MacroModelling.plot_IRF</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.plot_irf-Tuple{MacroModelling.ℳ}"><code>plot_irf</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L554-L556">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plot_conditional_forecast-Tuple{MacroModelling.ℳ, Union{KeyedArray{Union{Nothing, Float64}}, KeyedArray{Float64}, SparseArrays.SparseMatrixCSC{Float64}, Matrix{Union{Nothing, Float64}}}}" href="#MacroModelling.plot_conditional_forecast-Tuple{MacroModelling.ℳ, Union{KeyedArray{Union{Nothing, Float64}}, KeyedArray{Float64}, SparseArrays.SparseMatrixCSC{Float64}, Matrix{Union{Nothing, Float64}}}}"><code>MacroModelling.plot_conditional_forecast</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">plot_conditional_forecast(
+    𝓂,
+    conditions;
+    shocks,
+    initial_state,
+    periods,
+    parameters,
+    variables,
+    conditions_in_levels,
+    levels,
+    show_plots,
+    save_plots,
+    save_plots_format,
+    save_plots_path,
+    plots_per_page,
+    verbose
+)
+</code></pre><p>Plot conditional forecast given restrictions on endogenous variables and shocks (optional) of the model. The algorithm finds the combinations of shocks with the smallest magnitude to match the conditions and plots both the endogenous variables and shocks.</p><p>The left axis shows the level, and the right axis the deviation from the non stochastic steady state. Variable names are above the subplots, conditioned values are marked, and the title provides information about the model, and number of pages.</p><p>Limited to the first order perturbation solution of the model.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li><li><code>conditions</code> [Type: <code>Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}}</code>]: conditions for which to find the corresponding shocks. The input can have multiple formats, but for all types of entries the first dimension corresponds to the number of variables and the second dimension to the number of periods. The conditions can be specified using a matrix of type <code>Matrix{Union{Nothing,Float64}}</code>. In this case the conditions are matrix elements of type <code>Float64</code> and all remaining (free) entries are <code>nothing</code>. You can also use a <code>SparseMatrixCSC{Float64}</code> as input. In this case only non-zero elements are taken as conditions. Note that you cannot condition variables to be zero using a <code>SparseMatrixCSC{Float64}</code> as input (use other input formats to do so). Another possibility to input conditions is by using a <code>KeyedArray</code>. You can use a <code>KeyedArray{Union{Nothing,Float64}}</code> where, similar to <code>Matrix{Union{Nothing,Float64}}</code>, all entries of type <code>Float64</code> are recognised as conditions and all other entries have to be <code>nothing</code>. Furthermore, you can specify in the primary axis a subset of variables (of type <code>Symbol</code>) for which you specify conditions and all other variables are considered free. The same goes for the case when you use <code>KeyedArray{Float64}}</code> as input, whereas in this case the conditions for the specified variables bind for all periods specified in the <code>KeyedArray</code>, because there are no <code>nothing</code> entries permitted with this type.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>shocks</code> [Default: <code>nothing</code>, Type: <code>Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing</code>]: known values of shocks. This entry allows the user to include certain shock values. By entering restrictions on the shock sin this way the problem to match the conditions on endogenous variables is restricted to the remaining free shocks in the repective period. The input can have multiple formats, but for all types of entries the first dimension corresponds to the number of shocks and the second dimension to the number of periods. The shocks can be specified using a matrix of type <code>Matrix{Union{Nothing,Float64}}</code>. In this case the shocks are matrix elements of type <code>Float64</code> and all remaining (free) entries are <code>nothing</code>. You can also use a <code>SparseMatrixCSC{Float64}</code> as input. In this case only non-zero elements are taken as certain shock values. Note that you cannot condition shocks to be zero using a <code>SparseMatrixCSC{Float64}</code> as input (use other input formats to do so). Another possibility to input known shocks is by using a <code>KeyedArray</code>. You can use a <code>KeyedArray{Union{Nothing,Float64}}</code> where, similar to <code>Matrix{Union{Nothing,Float64}}</code>, all entries of type <code>Float64</code> are recognised as known shocks and all other entries have to be <code>nothing</code>. Furthermore, you can specify in the primary axis a subset of shocks (of type <code>Symbol</code>) for which you specify values and all other shocks are considered free. The same goes for the case when you use <code>KeyedArray{Float64}}</code> as input, whereas in this case the values for the specified shocks bind for all periods specified in the <code>KeyedArray</code>, because there are no <code>nothing</code> entries permitted with this type.</li><li><code>periods</code> [Default: <code>40</code>, Type: <code>Int</code>]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.</li><li><code>variables</code> [Default: <code>:all</code>]: variables for which to show the results. Inputs can be either a <code>Symbol</code> (e.g. <code>:y</code> or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code> or <code>Vector{Symbol}</code>. Any variables not part of the model will trigger a warning. <code>:all</code> will contain all variables but not the auxilliary ones. <code>all_including_auxilliary</code> also includes the auxilliary variables in the output.</li></ul><p><code>conditions_in_levels</code> [Default: <code>true</code>, Type: <code>Bool</code>]: indicator whether the conditions are provided in levels. If <code>true</code> the input to the conditions argument will have the non stochastic steady state substracted.</p><ul><li><code>levels</code> [Default: <code>false</code>, Type: <code>Bool</code>]: return levels or absolute deviations from steady state.</li><li><code>show_plots</code> [Default: <code>true</code>, Type: <code>Bool</code>]: show plots. Separate plots per shocks and varibles depending on number of variables and <code>plots_per_page</code>.</li><li><code>save_plots</code> [Default: <code>false</code>, Type: <code>Bool</code>]: switch to save plots using path and extension from <code>save_plots_path</code> and <code>save_plots_format</code>. Separate files per shocks and variables depending on number of variables and <code>plots_per_page</code></li><li><code>save_plots_path</code> [Default: <code>pwd()</code>, Type: <code>String</code>]: path where to save plots</li><li><code>save_plots_format</code> [Default: <code>:pdf</code>, Type: <code>Symbol</code>]: output format of saved plots. See <a href="https://docs.juliaplots.org/latest/output/#Supported-output-file-formats">input formats compatible with GR</a> for valid formats.</li><li><code>plots_per_page</code> [Default: <code>9</code>, Type: <code>Int</code>]: how many plots to show per page</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling, StatsPlots
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+# c is conditioned to deviate by 0.01 in period 1 and y is conditioned to deviate by 0.02 in period 3
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = [:c,:y], Periods = 1:2)
+conditions[1,1] = .01
+conditions[2,2] = .02
+
+# in period 2 second shock (eps_z) is conditioned to take a value of 0.05
+shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
+shocks[1,1] = .05
+
+plot_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_levels = false)
+
+# The same can be achieved with the other input formats:
+# conditions = Matrix{Union{Nothing,Float64}}(undef,7,2)
+# conditions[4,1] = .01
+# conditions[6,2] = .02
+
+# using SparseArrays
+# conditions = spzeros(7,2)
+# conditions[4,1] = .01
+# conditions[6,2] = .02
+
+# shocks = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:delta_eps], Periods = [1])
+# shocks[1,1] = .05
+
+# using SparseArrays
+# shocks = spzeros(2,1)
+# shocks[1,1] = .05</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L1145">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plot_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}" href="#MacroModelling.plot_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>MacroModelling.plot_conditional_variance_decomposition</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">plot_conditional_variance_decomposition(
+    𝓂;
+    periods,
+    variables,
+    parameters,
+    show_plots,
+    save_plots,
+    save_plots_format,
+    save_plots_path,
+    plots_per_page,
+    verbose
+)
+</code></pre><p>Plot conditional variance decomposition of the model.</p><p>The vertical axis shows the share of the shocks variance contribution, and horizontal axis the period of the variance decomposition. The stacked bars represent each shocks variance contribution at a specific time horizon.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>periods</code> [Default: <code>40</code>, Type: <code>Int</code>]: number of periods for which to calculate the IRFs. In case a matrix of shocks was provided, periods defines how many periods after the series of shocks the simulation continues.</li><li><code>variables</code> [Default: <code>:all</code>]: variables for which to show the results. Inputs can be either a <code>Symbol</code> (e.g. <code>:y</code> or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code> or <code>Vector{Symbol}</code>. Any variables not part of the model will trigger a warning. <code>:all</code> will contain all variables but not the auxilliary ones. <code>all_including_auxilliary</code> also includes the auxilliary variables in the output.</li><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>show_plots</code> [Default: <code>true</code>, Type: <code>Bool</code>]: show plots. Separate plots per shocks and varibles depending on number of variables and <code>plots_per_page</code>.</li><li><code>save_plots</code> [Default: <code>false</code>, Type: <code>Bool</code>]: switch to save plots using path and extension from <code>save_plots_path</code> and <code>save_plots_format</code>. Separate files per shocks and variables depending on number of variables and <code>plots_per_page</code></li><li><code>save_plots_path</code> [Default: <code>pwd()</code>, Type: <code>String</code>]: path where to save plots</li><li><code>save_plots_format</code> [Default: <code>:pdf</code>, Type: <code>Symbol</code>]: output format of saved plots. See <a href="https://docs.juliaplots.org/latest/output/#Supported-output-file-formats">input formats compatible with GR</a> for valid formats.</li><li><code>plots_per_page</code> [Default: <code>9</code>, Type: <code>Int</code>]: how many plots to show per page</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling, StatsPlots
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+plot_conditional_variance_decomposition(RBC_CME)</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L581">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plot_fevd" href="#MacroModelling.plot_fevd"><code>MacroModelling.plot_fevd</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.plot_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>plot_conditional_variance_decomposition</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L734-L736">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plot_forecast_error_variance_decomposition" href="#MacroModelling.plot_forecast_error_variance_decomposition"><code>MacroModelling.plot_forecast_error_variance_decomposition</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.plot_conditional_variance_decomposition-Tuple{MacroModelling.ℳ}"><code>plot_conditional_variance_decomposition</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L739-L741">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plot_girf-Tuple" href="#MacroModelling.plot_girf-Tuple"><code>MacroModelling.plot_girf</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.plot_irf-Tuple{MacroModelling.ℳ}"><code>plot_irf</code></a> with <code>generalised_irf = true</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L572-L574">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plot_irf-Tuple{MacroModelling.ℳ}" href="#MacroModelling.plot_irf-Tuple{MacroModelling.ℳ}"><code>MacroModelling.plot_irf</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">plot_irf(
+    𝓂;
+    periods,
+    shocks,
+    variables,
+    parameters,
+    show_plots,
+    save_plots,
+    save_plots_format,
+    save_plots_path,
+    plots_per_page,
+    algorithm,
+    negative_shock,
+    generalised_irf,
+    initial_state,
+    verbose
+)
+</code></pre><p>Plot impulse response functions (IRFs) of the model.</p><p>The left axis shows the level, and the right the deviation from the reference steady state. Linear solutions have the non stochastic steady state as reference other solution the stochastic steady state. The horizontal black line indicates the reference steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>plots_per_page</code> [Default: <code>9</code>, Type: <code>Int</code>]: how many plots to show per page</li><li><code>save_plots</code> [Default: <code>false</code>, Type: <code>Bool</code>]: switch to save plots using path and extension from <code>save_plots_path</code> and <code>save_plots_format</code>. Separate files per shocks and variables depending on number of variables and <code>plots_per_page</code></li><li><code>save_plots_path</code> [Default: <code>pwd()</code>, Type: <code>String</code>]: path where to save plots</li><li><code>save_plots_format</code> [Default: <code>:pdf</code>, Type: <code>Symbol</code>]: output format of saved plots. See <a href="https://docs.juliaplots.org/latest/output/#Supported-output-file-formats">input formats compatible with GR</a> for valid formats.</li><li><code>show_plots</code> [Default: <code>true</code>, Type: <code>Bool</code>]: show plots. Separate plots per shocks and varibles depending on number of variables and <code>plots_per_page</code>.</li><li><code>periods</code> [Default: <code>40</code>, Type: <code>Int</code>]: number of periods for which to calculate the IRFs. In case a matrix of shocks was provided, periods defines how many periods after the series of shocks the simulation continues.</li><li><code>algorithm</code> [Default: <code>:first_order</code>, Type: <code>Symbol</code>]: algorithm to solve for the dynamics of the model.</li><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>variables</code> [Default: <code>:all</code>]: variables for which to show the results. Inputs can be either a <code>Symbol</code> (e.g. <code>:y</code> or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code> or <code>Vector{Symbol}</code>. Any variables not part of the model will trigger a warning. <code>:all</code> will contain all variables but not the auxilliary ones. <code>all_including_auxilliary</code> also includes the auxilliary variables in the output.</li><li><code>shocks</code> [Default: <code>:all</code>]: shocks for which to calculate the IRFs. Inputs can be either a <code>Symbol</code> (e.g. <code>:y</code>, <code>:simulate</code>, :none, or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code>, <code>Vector{Symbol}</code>, <code>Matrix{Float64}</code>, or <code>KeyedArray{Float64}</code>. <code>:simulate</code> triggers random draws of all shocks. A series of shocks can be passed on using either a <code>Matrix{Float64}</code>, or a <code>KeyedArray{Float64}</code> as input with shocks in rows and periods in columns. The period of the simulation will correspond to the length of the input in the period dimension + the number of periods defined in <code>periods</code>. If the series of shocks is input as a <code>KeyedArray{Float64}</code> make sure to name the rows with valid shock names of type <code>Symbol</code>. Any shocks not part of the model will trigger a warning. <code>:none</code> in combination with an <code>initial_state</code> can be used for deterministic simulations.</li><li><code>negative_shock</code> [Default: <code>false</code>, Type: <code>Bool</code>]: calculate a negative shock. Relevant for generalised IRFs.</li><li><code>generalised_irf</code> [Default: <code>false</code>, Type: <code>Bool</code>]: calculate generalised IRFs. Relevant for nonlinear solutions. Reference steady state for deviations is the stochastic steady state.</li><li><code>initial_state</code> [Default: <code>[0.0]</code>, Type: <code>Vector{Float64}</code>]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs. The state includes all variables as well as exogenous variables in leads or lags if present.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling, StatsPlots
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+plot_irf(RBC)</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L297">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plot_irfs" href="#MacroModelling.plot_irfs"><code>MacroModelling.plot_irfs</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.plot_irf-Tuple{MacroModelling.ℳ}"><code>plot_irf</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L560-L562">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plot_model_estimates-Tuple{MacroModelling.ℳ, AbstractArray{Float64}}" href="#MacroModelling.plot_model_estimates-Tuple{MacroModelling.ℳ, AbstractArray{Float64}}"><code>MacroModelling.plot_model_estimates</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">plot_model_estimates(
+    𝓂,
+    data;
+    parameters,
+    variables,
+    shocks,
+    data_in_levels,
+    shock_decomposition,
+    smooth,
+    show_plots,
+    save_plots,
+    save_plots_format,
+    save_plots_path,
+    plots_per_page,
+    transparency,
+    verbose
+)
+</code></pre><p>Plot model estimates of the variables given the data. The default plot shows the estimated variables, shocks, and the data to estimate the former. The left axis shows the level, and the right the deviation from the reference steady state. The horizontal black line indicates the non stochastic steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.</p><p>In case <code>shock_decomposition = true</code>, then the plot shows the variables, shocks, and data in absolute deviations from the non stochastic steady state plus the contribution of the shocks as a stacked bar chart per period.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li><li><code>data</code> [Type: <code>KeyedArray</code>]: data matrix with variables in rows and time in columns</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>variables</code> [Default: <code>:all</code>]: variables for which to show the results. Inputs can be either a <code>Symbol</code> (e.g. <code>:y</code> or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code> or <code>Vector{Symbol}</code>. Any variables not part of the model will trigger a warning. <code>:all</code> will contain all variables but not the auxilliary ones. <code>all_including_auxilliary</code> also includes the auxilliary variables in the output.</li><li><code>shocks</code> [Default: <code>:all</code>]: shocks for which to plot the estimates. Inputs can be either a <code>Symbol</code> (e.g. <code>:y</code>, or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code>, or <code>Vector{Symbol}</code>.</li><li><code>data_in_levels</code> [Default: <code>true</code>, Type: <code>Bool</code>]: indicator whether the data is provided in levels. If <code>true</code> the input to the data argument will have the non stochastic steady state substracted.</li><li><code>shock_decomposition</code> [Default: <code>false</code>, Type: <code>Bool</code>]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If <code>false</code>, the plot shows the values of the selected variables, data, and shocks</li><li><code>smooth</code> [Default: <code>true</code>, Type: <code>Bool</code>]: whether to return smoothed (<code>true</code>) or filtered (<code>false</code>) values for the variables, shocks, and decomposition.</li><li><code>plots_per_page</code> [Default: <code>9</code>, Type: <code>Int</code>]: how many plots to show per page</li><li><code>save_plots</code> [Default: <code>false</code>, Type: <code>Bool</code>]: switch to save plots using path and extension from <code>save_plots_path</code> and <code>save_plots_format</code>. Separate files per shocks and variables depending on number of variables and <code>plots_per_page</code></li><li><code>save_plots_path</code> [Default: <code>pwd()</code>, Type: <code>String</code>]: path where to save plots</li><li><code>save_plots_format</code> [Default: <code>:pdf</code>, Type: <code>Symbol</code>]: output format of saved plots. See <a href="https://docs.juliaplots.org/latest/output/#Supported-output-file-formats">input formats compatible with GR</a> for valid formats.</li><li><code>show_plots</code> [Default: <code>true</code>, Type: <code>Bool</code>]: show plots. Separate plots per shocks and varibles depending on number of variables and <code>plots_per_page</code>.</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling, StatsPlots
+
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+simulation = simulate(RBC_CME)
+
+plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L23">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plot_shock_decomposition-Tuple" href="#MacroModelling.plot_shock_decomposition-Tuple"><code>MacroModelling.plot_shock_decomposition</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.plot_model_estimates-Tuple{MacroModelling.ℳ, AbstractArray{Float64}}"><code>plot_model_estimates</code></a> with <code>shock_decomposition = true</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L288-L290">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plot_simulations-Tuple" href="#MacroModelling.plot_simulations-Tuple"><code>MacroModelling.plot_simulations</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.plot_irf-Tuple{MacroModelling.ℳ}"><code>plot_irf</code></a> with <code>shocks = :simulate</code> and <code>periods = 100</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L566-L568">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plot_solution-Tuple{MacroModelling.ℳ, Symbol}" href="#MacroModelling.plot_solution-Tuple{MacroModelling.ℳ, Symbol}"><code>MacroModelling.plot_solution</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">plot_solution(
+    𝓂,
+    state;
+    variables,
+    algorithm,
+    σ,
+    parameters,
+    show_plots,
+    save_plots,
+    save_plots_format,
+    save_plots_path,
+    plots_per_page,
+    verbose
+)
+</code></pre><p>Plot the solution of the model (mapping of past states to present variables) around the (non) stochastic steady state (depending on chosen solution algorithm). Each plot shows the relationship between the chosen state (defined in <code>state</code>) and one of the chosen variables (defined in <code>variables</code>). </p><p>The (non) stochastic steady state is plotted along with the mapping from the chosen past state to one present variable per plot. All other (non-chosen) states remain in the (non) stochastic steady state.</p><p>In the case of pruned solutions the &quot;pruned&quot; state has as a baseline the non stochastic steady state and the &quot;actual&quot; state refers to the stochastic steady state. The plot then shows the mapping from <code>σ</code> standard deviations added to these two steady states and the present variables. Note that there is no unique mapping between the &quot;pruned&quot; and &quot;actual&quot; states. Furthermore, the mapping of the &quot;actual&quot; state is itself dependend on the &quot;pruned&quot; state so that the plots shown are just one realisation of inifite possible mappings.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li><li><code>state</code> [Type: <code>Symbol</code>]: state variable to be shown on x-axis.</li></ul><p><strong>Keyword Arguments</strong></p><ul><li><code>variables</code> [Default: <code>:all</code>]: variables for which to show the results. Inputs can be either a <code>Symbol</code> (e.g. <code>:y</code> or <code>:all</code>), <code>Tuple{Symbol, Vararg{Symbol}}</code>, <code>Matrix{Symbol}</code> or <code>Vector{Symbol}</code>. Any variables not part of the model will trigger a warning. <code>:all</code> will contain all variables but not the auxilliary ones. <code>all_including_auxilliary</code> also includes the auxilliary variables in the output.</li><li><code>algorithm</code> [Default: <code>:first_order</code>, Type: Union{Symbol,Vector{Symbol}}]: solution algorithm for which to show the IRFs. Can be more than one: <code>[:second_order,:third_order]</code>&quot;</li><li><code>σ</code> [Default: <code>2</code>, Type: <code>Union{Int64,Float64}</code>]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.</li><li><code>parameters</code> [Default: <code>nothing</code>]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter symbol and value. If the new parameter values differ from the previously defined the solution will be recalculated.</li><li><code>show_plots</code> [Default: <code>true</code>, Type: <code>Bool</code>]: show plots. Separate plots per shocks and varibles depending on number of variables and <code>plots_per_page</code>.</li><li><code>save_plots</code> [Default: <code>false</code>, Type: <code>Bool</code>]: switch to save plots using path and extension from <code>save_plots_path</code> and <code>save_plots_format</code>. Separate files per shocks and variables depending on number of variables and <code>plots_per_page</code></li><li><code>save_plots_path</code> [Default: <code>pwd()</code>, Type: <code>String</code>]: path where to save plots</li><li><code>save_plots_format</code> [Default: <code>:pdf</code>, Type: <code>Symbol</code>]: output format of saved plots. See <a href="https://docs.juliaplots.org/latest/output/#Supported-output-file-formats">input formats compatible with GR</a> for valid formats.</li><li><code>plots_per_page</code> [Default: <code>4</code>, Type: <code>Int</code>]: how many plots to show per page</li><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling, StatsPlots
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+plot_solution(RBC_CME, :k)</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L748">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.plotlyjs_backend" href="#MacroModelling.plotlyjs_backend"><code>MacroModelling.plotlyjs_backend</code></a> — <span class="docstring-category">Function</span></header><section><div><pre><code class="language-julia hljs">plotlyjs_backend()</code></pre><p>Renaming and reexport of Plot.jl function <code>plotlyjs()</code> to define PlotlyJS.jl as backend</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/plotting.jl#L13-L18">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.simulate-Tuple" href="#MacroModelling.simulate-Tuple"><code>MacroModelling.simulate</code></a> — <span class="docstring-category">Method</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_irf-Tuple{MacroModelling.ℳ, Vector}"><code>get_irf</code></a> with <code>shocks = :simulate</code>. Function returns values in levels by default.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L837-L839">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.std" href="#MacroModelling.std"><code>MacroModelling.std</code></a> — <span class="docstring-category">Function</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_moments-Tuple{MacroModelling.ℳ}"><code>get_moments</code></a> with <code>standard_deviation = true</code> and <code>non_stochastic_steady_state = false, variance = false, covariance = false</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1982-L1984">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.steady_state" href="#MacroModelling.steady_state"><code>MacroModelling.steady_state</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.get_steady_state-Tuple{MacroModelling.ℳ}"><code>get_steady_state</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1065-L1067">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.translate_dynare_file" href="#MacroModelling.translate_dynare_file"><code>MacroModelling.translate_dynare_file</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.translate_mod_file-Tuple{AbstractString}"><code>translate_mod_file</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/dynare.jl#L106-L108">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.translate_mod_file-Tuple{AbstractString}" href="#MacroModelling.translate_mod_file-Tuple{AbstractString}"><code>MacroModelling.translate_mod_file</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">translate_mod_file(path_to_mod_file)
+</code></pre><p>Reads in a <code>dynare</code> .mod-file, adapts the syntax, tries to capture parameter definitions, and writes a julia file in the same folder containing the model equations and parameters in <code>MacroModelling.jl</code> syntax. This function is not guaranteed to produce working code. It&#39;s purpose is to make it easier to port a model from <code>dynare</code> to <code>MacroModelling.jl</code>. </p><p>The recommended workflow is to use this function to translate a .mod-file, and then adapt the output so that it runs and corresponds to the input.</p><p><strong>Arguments</strong></p><ul><li><code>path_to_mod_file</code> [Type: <code>AbstractString</code>]: path including filename of the .mod-file to be translated</li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/dynare.jl#L5">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.var" href="#MacroModelling.var"><code>MacroModelling.var</code></a> — <span class="docstring-category">Function</span></header><section><div><p>Wrapper for <a href="#MacroModelling.get_moments-Tuple{MacroModelling.ℳ}"><code>get_moments</code></a> with <code>variance = true</code> and <code>non_stochastic_steady_state = false, standard_deviation = false, covariance = false</code>.</p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/get_functions.jl#L1965-L1967">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.write_dynare_file" href="#MacroModelling.write_dynare_file"><code>MacroModelling.write_dynare_file</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.write_mod_file-Tuple{MacroModelling.ℳ}"><code>write_mod_file</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/dynare.jl#L186-L188">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.write_mod_file-Tuple{MacroModelling.ℳ}" href="#MacroModelling.write_mod_file-Tuple{MacroModelling.ℳ}"><code>MacroModelling.write_mod_file</code></a> — <span class="docstring-category">Method</span></header><section><div><pre><code class="language-julia hljs">write_mod_file(m)
+</code></pre><p>Writes a <code>dynare</code> .mod-file in the current working directory. This function is not guaranteed to produce working code. It&#39;s purpose is to make it easier to port a model from <code>MacroModelling.jl</code> to <code>dynare</code>. </p><p>The recommended workflow is to use this function to write a .mod-file, and then adapt the output so that it runs and corresponds to the input.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: the object created by <a href="#MacroModelling.@model-Tuple{Any, Any}"><code>@model</code></a> and <a href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>@parameters</code></a> for which to get the solution.</li></ul></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/dynare.jl#L122">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.write_to_dynare" href="#MacroModelling.write_to_dynare"><code>MacroModelling.write_to_dynare</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.write_mod_file-Tuple{MacroModelling.ℳ}"><code>write_mod_file</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/dynare.jl#L196-L198">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.write_to_dynare_file" href="#MacroModelling.write_to_dynare_file"><code>MacroModelling.write_to_dynare_file</code></a> — <span class="docstring-category">Function</span></header><section><div><p>See <a href="#MacroModelling.write_mod_file-Tuple{MacroModelling.ℳ}"><code>write_mod_file</code></a></p></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/dynare.jl#L191-L193">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.@model-Tuple{Any, Any}" href="#MacroModelling.@model-Tuple{Any, Any}"><code>MacroModelling.@model</code></a> — <span class="docstring-category">Macro</span></header><section><div><p>Parses the model equations and assigns them to an object.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: name of the object to be created containing the model information.</li><li><code>ex</code>: equations</li></ul><p>Variables must be defined with their time subscript in squared brackets. Endogenous variables can have the following:</p><ul><li>present: <code>c[0]</code></li><li>non-stcohastic steady state: <code>c[ss]</code> instead of <code>ss</code> any of the following is also a valid flag for the non-stochastic steady state: <code>ss</code>, <code>stst</code>, <code>steady</code>, <code>steadystate</code>, <code>steady_state</code>, and the parser is case-insensitive (<code>SS</code> or <code>sTst</code> will work as well).</li><li>past: <code>c[-1]</code> or any negative Integer: e.g. <code>c[-12]</code></li><li>future: <code>c[1]</code> or any positive Integer: e.g. <code>c[16]</code> or <code>c[+16]</code></li></ul><p>Signed integers are recognised and parsed as such.</p><p>Exogenous variables (shocks) can have the following:</p><ul><li>present: <code>c[x]</code> instead of <code>x</code> any of the following is also a valid flag for exogenous variables: <code>ex</code>, <code>exo</code>, <code>exogenous</code>, and the parser is case-insensitive (<code>Ex</code> or <code>exoGenous</code> will work as well).</li><li>past: <code>c[x-1]</code></li><li>future: <code>c[x+1]</code></li></ul><p>Parameters enter the equations without squared brackets.</p><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/macros.jl#L7">source</a></section></article><article class="docstring"><header><a class="docstring-binding" id="MacroModelling.@parameters-Tuple{Any, Vararg{Any}}" href="#MacroModelling.@parameters-Tuple{Any, Vararg{Any}}"><code>MacroModelling.@parameters</code></a> — <span class="docstring-category">Macro</span></header><section><div><p>Adds parameter values and calibration equations to the previously defined model.</p><p><strong>Arguments</strong></p><ul><li><code>𝓂</code>: name of the object previously created containing the model information.</li><li><code>ex</code>: parameter, parameters values, and calibration equations</li></ul><p>Parameters can be defined in either of the following ways:</p><ul><li>plain number: <code>δ = 0.02</code></li><li>expression containing numbers: <code>δ = 1/50</code></li><li>expression containing other parameters: <code>δ = 2 * std_z</code> in this case it is irrelevant if <code>std_z</code> is defined before or after. The definitons including other parameters are treated as a system of equaitons and solved accordingly.</li><li>expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: <code>k[ss] / (4 * q[ss]) = 1.5 | δ</code> or <code>α | 4 * q[ss] = δ * k[ss]</code> in this case the target parameter will be solved simultaneaously with the non-stochastic steady state using the equation defined with it.</li></ul><p><strong>Optional arguments to be placed between <code>𝓂</code> and <code>ex</code></strong></p><ul><li><code>verbose</code> [Default: <code>false</code>, Type: <code>Bool</code>]: print more information about how the non stochastic steady state is solved</li><li><code>silent</code> [Default: <code>false</code>, Type: <code>Bool</code>]: do not print any information</li><li><code>symbolic</code> [Default: <code>false</code>, Type: <code>Bool</code>]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible</li><li><code>perturbation_order</code> [Default: <code>1</code>, Type: <code>Int</code>]: take derivatives only up to the specified order at this stage. In case you want to work with higher order perturbation later on, respective derivatives will be taken at that stage.</li></ul><p><strong>Examples</strong></p><pre><code class="language-julia hljs">using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC verbose = true begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end</code></pre></div><a class="docs-sourcelink" target="_blank" href="https://github.com/thorek1/MacroModelling.jl/blob/d05e1b8ff2d451941ff692fab65ca7a5d9be3a38/src/macros.jl#L811">source</a></section></article></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../tutorials/estimation/">« Estimation</a><a class="docs-footer-nextpage" href="../call_index/">Index »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.25 on <span class="colophon-date" title="Friday 21 July 2023 21:11">Friday 21 July 2023</span>. Using Julia version 1.9.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
