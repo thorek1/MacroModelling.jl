@@ -5,8 +5,9 @@ import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDF
 # import StatsFuns: normcdf
 using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
-import SymPy: @vars, solve, subs, free_symbols
-import SymPy
+import PythonCall
+import SymPyCall: symbols, solve, subs, free_symbols
+import SymPyCall
 import Symbolics
 import ForwardDiff as ℱ 
 # import Zygote
@@ -142,7 +143,9 @@ end
 function simplify(ex::Expr)
     ex_ss = convert_to_ss_equation(ex)
 
-	eval(:(@vars $(get_symbols(ex_ss)...) real = true finite = true ))
+    for x in get_symbols(ex_ss)
+	    eval(:($x = symbols($(string(x)), real = true, finite = true)))
+    end
 
 	parsed = ex_ss |> eval |> string |> Meta.parse
 
@@ -423,13 +426,22 @@ function create_symbols_eqs!(𝓂::ℳ)
         end
     end
 
-    expr =  quote
-                @vars $(symbols_pos...)  real = true finite = true positive = true
-                @vars $(symbols_neg...)  real = true finite = true negative = true 
-                @vars $(symbols_none...) real = true finite = true 
-            end
+    for pos in symbols_pos
+        eval(:($pos = symbols($(string(pos)), real = true, finite = true, positive = true)))
+    end
+    for neg in symbols_neg
+        eval(:($neg = symbols($(string(neg)), real = true, finite = true, negative = true)))
+    end
+    for none in symbols_none
+        eval(:($none = symbols($(string(none)), real = true, finite = true)))
+    end
+    # expr =  quote
+    #             @vars $(symbols_pos...)  real = true finite = true positive = true
+    #             @vars $(symbols_neg...)  real = true finite = true negative = true 
+    #             @vars $(symbols_none...) real = true finite = true 
+    #         end
 
-    eval(expr)
+    # eval(expr)
 
     symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
                 map(x->eval(:($x)),𝓂.dyn_equations),
@@ -514,9 +526,9 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
                 continue
             end
             
-            if length(soll) == 0 || soll == SymPy.Sym[0] # take out variable if it is redundant from that euation only
+            if length(soll) == 0 || soll == SymPyCall.Sym[0] # take out variable if it is redundant from that euation only
                 push!(Symbolics.var_redundant_list[i],var_to_solve)
-                ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(SymPy.Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
+                ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(SymPyCall.Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
             end
 
         end
@@ -563,7 +575,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     
     n = n_blocks
 
-    ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations) .|> SymPy.Sym
+    ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations) .|> SymPyCall.Sym
     # println(ss_equations)
 
     SS_solve_func = []
@@ -582,14 +594,13 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             soll = try solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
             catch
             end
-            # println(soll)
 
             if isnothing(soll)
                 # println("Could not solve single variables case symbolically.")
                 println("Failed finding solution symbolically for: ",var_to_solve," in: ",ss_equations[eqs[:,eqs[2,:] .== n][1]])
                 # solve numerically
                 continue
-            elseif soll[1].is_number
+            elseif PythonCall.pyconvert(Bool,soll[1].is_number)
                 # ss_equations = ss_equations.subs(var_to_solve,soll[1])
                 ss_equations = [eq.subs(var_to_solve,soll[1]) for eq in ss_equations]
                 
@@ -632,8 +643,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             numerical_sol = false
             
             if symbolic_SS
-                soll = try solve(SymPy.Sym(eqs_to_solve),vars_to_solve)
-                # soll = try solve(SymPy.Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
+                soll = try solve(SymPyCall.Sym(eqs_to_solve),vars_to_solve)
+                # soll = try solve(SymPyCall.Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
                 catch
                 end
 
@@ -689,7 +700,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 push!(𝓂.solved_vars,Symbol.(vars_to_solve))
                 push!(𝓂.solved_vals,Meta.parse.(string.(eqs_to_solve)))
 
-                syms_in_eqs = Set(Symbol.(SymPy.Sym(eqs_to_solve).atoms()))
+                syms_in_eqs = Set()
+
+                for i in eqs_to_solve
+                    push!(syms_in_eqs, Symbol.(PythonCall.pystr.(i.atoms()))...)
+                end
+
                 # println(syms_in_eqs)
                 push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
 
@@ -1768,7 +1784,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
                 deriv_first = Symbolics.derivative(eq,var1)
                 # if deriv_first != 0 
-                #     deriv_expr = Meta.parse(string(deriv_first.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                #     deriv_expr = Meta.parse(string(deriv_first.subs(SymPyCall.PI,SymPyCall.N(SymPyCall.PI))))
                 #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                     push!(first_order, Symbolics.toexpr(deriv_first))
                     push!(row1,r)
@@ -1779,7 +1795,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                             if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
                                 deriv_second = Symbolics.derivative(deriv_first,var2)
                                 # if deriv_second != 0 
-                                #     deriv_expr = Meta.parse(string(deriv_second.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                                #     deriv_expr = Meta.parse(string(deriv_second.subs(SymPyCall.PI,SymPyCall.N(SymPyCall.PI))))
                                 #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                                     push!(second_order,Symbolics.toexpr(deriv_second))
                                     push!(row2,r)
@@ -1790,7 +1806,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                                             if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
                                                 deriv_third = Symbolics.derivative(deriv_second,var3)
                                                 # if deriv_third != 0 
-                                                #     deriv_expr = Meta.parse(string(deriv_third.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                                                #     deriv_expr = Meta.parse(string(deriv_third.subs(SymPyCall.PI,SymPyCall.N(SymPyCall.PI))))
                                                 #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                                                     push!(third_order,Symbolics.toexpr(deriv_third))
                                                     push!(row3,r)
