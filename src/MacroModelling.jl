@@ -5,8 +5,21 @@ import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDF
 # import StatsFuns: normcdf
 using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
-import SymPy: @vars, solve, subs, free_symbols
-import SymPy
+
+import CondaPkg
+import PythonCall
+SymPy = PythonCall.pyimport("sympy")
+
+import Base: log, exp
+log(x::PythonCall.Py) = SymPy.log(x)
+exp(x::PythonCall.Py) = SymPy.exp(x)
+
+function translate_exponentiation_from_python_to_julia(x)
+    replace(x,"**" => "^")
+end
+# import SymPy: SymPy.@vars, solve, subs, free_symbols
+# import SymPy
+
 import Symbolics
 import ForwardDiff as ℱ 
 # import Zygote
@@ -141,10 +154,13 @@ end
 
 function simplify(ex::Expr)
     ex_ss = convert_to_ss_equation(ex)
+    # println(ex_ss)
+    for exx in get_symbols(ex_ss)
+        # println(:($exx = SymPy.Symbol($(string(exx)), real = true, finite = true)))
+	    eval(:($exx = SymPy.Symbol($(string(exx)), real = true, finite = true)))
+    end
 
-	eval(:(@vars $(get_symbols(ex_ss)...) real = true finite = true ))
-
-	parsed = ex_ss |> eval |> string |> Meta.parse
+	parsed = ex_ss |> eval |> string |> translate_exponentiation_from_python_to_julia |> Meta.parse
 
     postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, parsed)
 end
@@ -423,13 +439,24 @@ function create_symbols_eqs!(𝓂::ℳ)
         end
     end
 
-    expr =  quote
-                @vars $(symbols_pos...)  real = true finite = true positive = true
-                @vars $(symbols_neg...)  real = true finite = true negative = true 
-                @vars $(symbols_none...) real = true finite = true 
-            end
+    # expr =  quote
+    for pos in symbols_pos
+        eval(:($pos = SymPy.Symbol($(string(pos)), real = true, finite = true, positive = true)))
+    end
+    
+    for neg in symbols_neg
+        eval(:($neg = SymPy.Symbol($(string(neg)), real = true, finite = true, negative = true)))
+    end
 
-    eval(expr)
+    for none in symbols_none
+        eval(:($none = SymPy.Symbol($(string(none)), real = true, finite = true)))
+    end
+            #     SymPy.symbols($(string(symbols_pos...),  real = true, finite = true, positive = true)
+            #     SymPy.symbols($(string(symbols_neg...)  ,real = true, finite = true, negative = true)
+            #     SymPy.symbols($(string(symbols_none...)) ,real = true, finite = true)
+            # end
+
+    # eval(expr)
 
     symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
                 map(x->eval(:($x)),𝓂.dyn_equations),
@@ -506,17 +533,19 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
 
     for i in redundant_idx
         for var_to_solve in redundant_vars[i]
-            soll = try solve(ss_equations[i],var_to_solve)
+            # println(ss_equations[i])
+            # println(var_to_solve)
+            soll = try SymPy.solve(ss_equations[i],var_to_solve)
             catch
             end
             
             if isnothing(soll)
                 continue
             end
-            
-            if length(soll) == 0 || soll == SymPy.Sym[0] # take out variable if it is redundant from that euation only
+            # println(soll)
+            if length(soll) == 0 || (typeof(PythonCall.pyconvert(Array,soll)) == Vector{Int} && PythonCall.pyconvert(Array,soll) == [0]) # take out variable if it is redundant from that euation only
                 push!(Symbolics.var_redundant_list[i],var_to_solve)
-                ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(SymPy.Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
+                ss_equations[i] = ss_equations[i].subs(var_to_solve,1)#.replace(SymPy.Symbol("ℯ"),exp(1)) # replace euler constant as it is not translated to julia properly
             end
 
         end
@@ -563,7 +592,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     
     n = n_blocks
 
-    ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations) .|> SymPy.Sym
+    ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations)# .|> SymPy.Sym
     # println(ss_equations)
 
     SS_solve_func = []
@@ -579,7 +608,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
         if length(eqs[:,eqs[2,:] .== n]) == 2
             var_to_solve = collect(unknowns)[vars[:,vars[2,:] .== n][1]]
 
-            soll = try solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
+            soll = try SymPy.solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
             catch
             end
             # println(soll)
@@ -589,12 +618,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 println("Failed finding solution symbolically for: ",var_to_solve," in: ",ss_equations[eqs[:,eqs[2,:] .== n][1]])
                 # solve numerically
                 continue
-            elseif soll[1].is_number
+            elseif PythonCall.pyconvert(Bool, soll[0].is_number)
                 # ss_equations = ss_equations.subs(var_to_solve,soll[1])
-                ss_equations = [eq.subs(var_to_solve,soll[1]) for eq in ss_equations]
+                ss_equations = [eq.subs(var_to_solve,soll[0]) for eq in ss_equations]
                 
                 push!(𝓂.solved_vars,Symbol(var_to_solve))
-                push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
+                push!(𝓂.solved_vals,Meta.parse(translate_exponentiation_from_python_to_julia(string(soll[0]))))
 
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = max(eps(),$(𝓂.solved_vals[end]))))
@@ -606,11 +635,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             else
 
                 push!(𝓂.solved_vars,Symbol(var_to_solve))
-                push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
+                push!(𝓂.solved_vals,Meta.parse(translate_exponentiation_from_python_to_julia(string(soll[0]))))
                 
                 # atoms = reduce(union,soll[1].atoms())
-                [push!(atoms_in_equations, a) for a in soll[1].atoms()]
-                push!(atoms_in_equations_list, Set(Symbol.(soll[1].atoms())))
+                [push!(atoms_in_equations, a) for a in soll[0].atoms()]
+                push!(atoms_in_equations_list, Set(Symbol.(soll[0].atoms())))
                 # println(atoms_in_equations)
                 # push!(atoms_in_equations, soll[1].atoms())
 
@@ -632,7 +661,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             numerical_sol = false
             
             if symbolic_SS
-                soll = try solve(SymPy.Sym(eqs_to_solve),vars_to_solve)
+                soll = try SymPy.solve(eqs_to_solve,vars_to_solve)
                 # soll = try solve(SymPy.Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
                 catch
                 end
@@ -650,7 +679,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     end
                     numerical_sol = true
                     # continue
-                elseif length(intersect(vars_to_solve,reduce(union,map(x->x.atoms(),collect(soll[1]))))) > 0
+                elseif length(intersect(vars_to_solve,reduce(union,map(x->x.atoms(),collect(soll[0]))))) > 0
                     if verbose
                         println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
                     end
@@ -664,15 +693,15 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     end
                     # relevant_pars = reduce(union,vcat(𝓂.par_list,𝓂.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
                     # relevant_pars = reduce(union,map(x->x.atoms(),collect(soll[1])))
-                    atoms = reduce(union,map(x->x.atoms(),collect(soll[1])))
+                    atoms = reduce(union,map(x->x.atoms(),collect(soll[0])))
                     # println(atoms)
                     [push!(atoms_in_equations, a) for a in atoms]
                     
                     for (k, vars) in enumerate(vars_to_solve)
                         push!(𝓂.solved_vars,Symbol(vars))
-                        push!(𝓂.solved_vals,Meta.parse(string(soll[1][k]))) #using convert(Expr,x) leads to ugly expressions
+                        push!(𝓂.solved_vals,Meta.parse(translate_exponentiation_from_python_to_julia(string(soll[0][k])))) #using convert(Expr,x) leads to ugly expressions
 
-                        push!(atoms_in_equations_list, Set(Symbol.(soll[1][k].atoms())))
+                        push!(atoms_in_equations_list, Set(Symbol.(soll[0][k].atoms())))
                         push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
                     end
                 end
@@ -687,9 +716,14 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 end
                 
                 push!(𝓂.solved_vars,Symbol.(vars_to_solve))
-                push!(𝓂.solved_vals,Meta.parse.(string.(eqs_to_solve)))
+                push!(𝓂.solved_vals,Meta.parse.(translate_exponentiation_from_python_to_julia.(string.(eqs_to_solve))))
 
-                syms_in_eqs = Set(Symbol.(SymPy.Sym(eqs_to_solve).atoms()))
+                syms_in_eqs = Set()
+
+                for i in eqs_to_solve
+                    push!(syms_in_eqs, Symbol.(PythonCall.pystr.(i.atoms()))...)
+                end
+
                 # println(syms_in_eqs)
                 push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
 
@@ -3344,74 +3378,74 @@ end
 
 
 
-@setup_workload begin
-    # Putting some things in `setup` can reduce the size of the
-    # precompile file and potentially make loading faster.
-    @model FS2000 begin
-        dA[0] = exp(gam + z_e_a  *  e_a[x])
-        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-        W[0] = l[0] / n[0]
-        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-        P[0] * c[0] = m[0]
-        m[0] - 1 + d[0] = l[0]
-        e[0] = exp(z_e_a  *  e_a[x])
-        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-        gy_obs[0] = dA[0] * y[0] / y[-1]
-        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-        log_gy_obs[0] = log(gy_obs[0])
-        log_gp_obs[0] = log(gp_obs[0])
-    end
+# @setup_workload begin
+#     # Putting some things in `setup` can reduce the size of the
+#     # precompile file and potentially make loading faster.
+#     @model FS2000 begin
+#         dA[0] = exp(gam + z_e_a  *  e_a[x])
+#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#         W[0] = l[0] / n[0]
+#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#         P[0] * c[0] = m[0]
+#         m[0] - 1 + d[0] = l[0]
+#         e[0] = exp(z_e_a  *  e_a[x])
+#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#         gy_obs[0] = dA[0] * y[0] / y[-1]
+#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#         log_gy_obs[0] = log(gy_obs[0])
+#         log_gp_obs[0] = log(gp_obs[0])
+#     end
 
-    @parameters FS2000 silent = true begin  
-        alp     = 0.356
-        bet     = 0.993
-        gam     = 0.0085
-        mst     = 1.0002
-        rho     = 0.129
-        psi     = 0.65
-        del     = 0.01
-        z_e_a   = 0.035449
-        z_e_m   = 0.008862
-    end
+#     @parameters FS2000 silent = true begin  
+#         alp     = 0.356
+#         bet     = 0.993
+#         gam     = 0.0085
+#         mst     = 1.0002
+#         rho     = 0.129
+#         psi     = 0.65
+#         del     = 0.01
+#         z_e_a   = 0.035449
+#         z_e_m   = 0.008862
+#     end
     
-    ENV["GKSwstype"] = "nul"
+#     ENV["GKSwstype"] = "nul"
 
-    @compile_workload begin
-        # all calls in this block will be precompiled, regardless of whether
-        # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
+#     @compile_workload begin
+#         # all calls in this block will be precompiled, regardless of whether
+#         # they belong to your package or not (on Julia 1.8 and higher)
+        # @model RBC begin
+        #     1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+        #     c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+        #     z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+        # end
 
-        @parameters RBC silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
+#         @parameters RBC silent = true precompile = true begin
+#             δ = 0.02
+#             α = 0.5
+#         end
 
-        get_SS(FS2000)
-        get_SS(FS2000, parameters = :alp => 0.36)
-        get_solution(FS2000)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)
-        # get_SSS(FS2000, silent = true)
-        # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#         get_SS(FS2000)
+#         get_SS(FS2000, parameters = :alp => 0.36)
+#         get_solution(FS2000)
+#         get_solution(FS2000, parameters = :alp => 0.35)
+#         get_standard_deviation(FS2000)
+#         get_correlation(FS2000)
+#         get_autocorrelation(FS2000)
+#         get_variance_decomposition(FS2000)
+#         get_conditional_variance_decomposition(FS2000)
+#         get_irf(FS2000)
+#         # get_SSS(FS2000, silent = true)
+#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-        # import Plots, StatsPlots
-        # plot_irf(FS2000)
-        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        # plot_conditional_variance_decomposition(FS2000)
-    end
-end
+#         # import Plots, StatsPlots
+#         # plot_irf(FS2000)
+#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#         # plot_conditional_variance_decomposition(FS2000)
+#     end
+# end
 
 end

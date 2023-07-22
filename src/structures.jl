@@ -94,58 +94,58 @@ struct timings
 end
 
 struct symbolics
-    ss_equations::Vector{SymPy.Sym}
-    dyn_equations::Vector{SymPy.Sym}
-    # dyn_equations_future::Vector{SymPy.Sym}
+    ss_equations::Vector{PythonCall.Py}
+    dyn_equations::Vector{PythonCall.Py}
+    # dyn_equations_future::Vector{PythonCall.Py}
     
-    # dyn_shift_var_present_list::Vector{Set{SymPy.Sym}}
-    # dyn_shift_var_past_list::Vector{Set{SymPy.Sym}}
-    # dyn_shift_var_future_list::Vector{Set{SymPy.Sym}}
+    # dyn_shift_var_present_list::Vector{Set{PythonCall.Py}}
+    # dyn_shift_var_past_list::Vector{Set{PythonCall.Py}}
+    # dyn_shift_var_future_list::Vector{Set{PythonCall.Py}}
 
-    # dyn_shift2_var_past_list::Vector{Set{SymPy.Sym}}
+    # dyn_shift2_var_past_list::Vector{Set{PythonCall.Py}}
 
-    dyn_var_present_list::Vector{Set{SymPy.Sym}}
-    dyn_var_past_list::Vector{Set{SymPy.Sym}}
-    dyn_var_future_list::Vector{Set{SymPy.Sym}}
-    # dyn_ss_list::Vector{Set{SymPy.Sym}}
-    dyn_exo_list::Vector{Set{SymPy.Sym}}
+    dyn_var_present_list::Vector{Set{PythonCall.Py}}
+    dyn_var_past_list::Vector{Set{PythonCall.Py}}
+    dyn_var_future_list::Vector{Set{PythonCall.Py}}
+    # dyn_ss_list::Vector{Set{PythonCall.Py}}
+    dyn_exo_list::Vector{Set{PythonCall.Py}}
 
-    # dyn_exo_future_list::Vector{Set{SymPy.Sym}}
-    # dyn_exo_present_list::Vector{Set{SymPy.Sym}}
-    # dyn_exo_past_list::Vector{Set{SymPy.Sym}} 
+    # dyn_exo_future_list::Vector{Set{PythonCall.Py}}
+    # dyn_exo_present_list::Vector{Set{PythonCall.Py}}
+    # dyn_exo_past_list::Vector{Set{PythonCall.Py}} 
 
-    dyn_future_list::Vector{Set{SymPy.Sym}}
-    dyn_present_list::Vector{Set{SymPy.Sym}}
-    dyn_past_list::Vector{Set{SymPy.Sym}} 
+    dyn_future_list::Vector{Set{PythonCall.Py}}
+    dyn_present_list::Vector{Set{PythonCall.Py}}
+    dyn_past_list::Vector{Set{PythonCall.Py}} 
 
-    var_present_list::Vector{Set{SymPy.Sym}}
-    var_past_list::Vector{Set{SymPy.Sym}}
-    var_future_list::Vector{Set{SymPy.Sym}}
-    ss_list::Vector{Set{SymPy.Sym}}
-    var_list::Vector{Set{SymPy.Sym}}
-    # dynamic_variables_list::Vector{Set{SymPy.Sym}}
-    # dynamic_variables_future_list::Vector{Set{SymPy.Sym}}
+    var_present_list::Vector{Set{PythonCall.Py}}
+    var_past_list::Vector{Set{PythonCall.Py}}
+    var_future_list::Vector{Set{PythonCall.Py}}
+    ss_list::Vector{Set{PythonCall.Py}}
+    var_list::Vector{Set{PythonCall.Py}}
+    # dynamic_variables_list::Vector{Set{PythonCall.Py}}
+    # dynamic_variables_future_list::Vector{Set{PythonCall.Py}}
 
-    par_list::Vector{Set{SymPy.Sym}}
+    par_list::Vector{Set{PythonCall.Py}}
 
-    calibration_equations::Vector{SymPy.Sym}
-    calibration_equations_parameters::Vector{SymPy.Sym}
-    # parameters::Vector{SymPy.Sym}
+    calibration_equations::Vector{PythonCall.Py}
+    calibration_equations_parameters::Vector{PythonCall.Py}
+    # parameters::Vector{PythonCall.Py}
 
-    # var_present::Set{SymPy.Sym}
-    # var_past::Set{SymPy.Sym}
-    # var_future::Set{SymPy.Sym}
-    vars_in_ss_equations::Set{SymPy.Sym}
-    var::Set{SymPy.Sym}
-    ➕_vars::Set{SymPy.Sym}
+    # var_present::Set{PythonCall.Py}
+    # var_past::Set{PythonCall.Py}
+    # var_future::Set{PythonCall.Py}
+    vars_in_ss_equations::Set{PythonCall.Py}
+    var::Set{PythonCall.Py}
+    ➕_vars::Set{PythonCall.Py}
 
-    ss_calib_list::Vector{Set{SymPy.Sym}}
-    par_calib_list::Vector{Set{SymPy.Sym}}
+    ss_calib_list::Vector{Set{PythonCall.Py}}
+    par_calib_list::Vector{Set{PythonCall.Py}}
 
-    var_redundant_list::Vector{Set{SymPy.Sym}}
-    # var_redundant_calib_list::Vector{Set{SymPy.Sym}}
-    # var_solved_list::Vector{Set{SymPy.Sym}}
-    # var_solved_calib_list::Vector{Set{SymPy.Sym}}
+    var_redundant_list::Vector{Set{PythonCall.Py}}
+    # var_redundant_calib_list::Vector{Set{PythonCall.Py}}
+    # var_solved_list::Vector{Set{PythonCall.Py}}
+    # var_solved_calib_list::Vector{Set{PythonCall.Py}}
 end
 
 
