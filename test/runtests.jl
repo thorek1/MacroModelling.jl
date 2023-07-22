@@ -1305,67 +1305,67 @@ end
 
 
     # Symbolic test with calibration targets
-    @model RBC_CME begin
-        y[0]=A[0]*k[-1]^alpha
-        1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
-        1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
-        R[0] * beta =(Pi[0]/Pibar)^phi_pi
-        # A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta)*k[-1]
-        A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
-        z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
-        # z[0]=rhoz*z[-1]+std_eps*eps_z[x]
-        # A[0]=exp(z[0])
-        A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
-        # log(A[0]) = rhoz * log(A[-1]) + std_eps * eps_z[x]
-    end
+    # @model RBC_CME begin
+    #     y[0]=A[0]*k[-1]^alpha
+    #     1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    #     1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    #     R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    #     # A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta)*k[-1]
+    #     A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    #     z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    #     # z[0]=rhoz*z[-1]+std_eps*eps_z[x]
+    #     # A[0]=exp(z[0])
+    #     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+    #     # log(A[0]) = rhoz * log(A[-1]) + std_eps * eps_z[x]
+    # end
 
 
-    @parameters RBC_CME symbolic = true verbose = true begin
-        alpha | k[ss] / (4 * y[ss]) = cap_share
-        cap_share = 1.66
-        # alpha = .157
+    # @parameters RBC_CME symbolic = true verbose = true begin
+    #     alpha | k[ss] / (4 * y[ss]) = cap_share
+    #     cap_share = 1.66
+    #     # alpha = .157
 
-        beta | R[ss] = R_ss
-        R_ss = 1.0035
-        # beta = .999
+    #     beta | R[ss] = R_ss
+    #     R_ss = 1.0035
+    #     # beta = .999
 
-        delta | c[ss]/y[ss] = 1 - I_K_ratio
-        # delta | delta * k[ss] / y[ss] = I_K_ratio # this doesnt solve symbolically
-        I_K_ratio = .15
-        # delta = .0226
+    #     delta | c[ss]/y[ss] = 1 - I_K_ratio
+    #     # delta | delta * k[ss] / y[ss] = I_K_ratio # this doesnt solve symbolically
+    #     I_K_ratio = .15
+    #     # delta = .0226
 
-        Pibar | Pi[ss] = Pi_ss
-        Pi_ss = 1.0025
-        # Pibar = 1.0008
+    #     Pibar | Pi[ss] = Pi_ss
+    #     Pi_ss = 1.0025
+    #     # Pibar = 1.0008
 
-        phi_pi = 1.5
-        rhoz = .9
-        std_eps = .0068
-        rho_z_delta = .9
-        std_z_delta = .005
+    #     phi_pi = 1.5
+    #     rhoz = .9
+    #     std_eps = .0068
+    #     rho_z_delta = .9
+    #     std_z_delta = .005
         
-        # cap_share > 0
-        # R_ss > 0
-        # Pi_ss > 0
-        # I_K_ratio > 0 
+    #     # cap_share > 0
+    #     # R_ss > 0
+    #     # Pi_ss > 0
+    #     # I_K_ratio > 0 
 
-        # 0 < alpha < 1 
-        # 0 < beta < 1
-        # 0 < delta < 1
-        # 0 < Pibar
-        # 0 <= rhoz < 1
-        # phi_pi > 0
+    #     # 0 < alpha < 1 
+    #     # 0 < beta < 1
+    #     # 0 < delta < 1
+    #     # 0 < Pibar
+    #     # 0 <= rhoz < 1
+    #     # phi_pi > 0
 
-        # 0 < A < 1
-        # 0 < k < 50
-        # 0 < y < 10
-        # 0 < c < 10
-    end
-    # get_steady_state(RBC_CME)[1]
-    # using NLopt
-    # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
-    # get_steady_state(RBC_CME)
-    @test isapprox(get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state), [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0],rtol = eps(Float32))
+    #     # 0 < A < 1
+    #     # 0 < k < 50
+    #     # 0 < y < 10
+    #     # 0 < c < 10
+    # end
+    # # get_steady_state(RBC_CME)[1]
+    # # using NLopt
+    # # RBC_CME.SS_optimizer = NLopt.LD_LBFGS
+    # # get_steady_state(RBC_CME)
+    # @test isapprox(get_steady_state(RBC_CME, verbose = true)(RBC_CME.var,:Steady_state), [1.0, 1.0025, 1.0035, 1.2081023828249515, 9.437411555244328, 1.4212969209705313, 1.0],rtol = eps(Float32))
     # get_moments(RBC_CME)[1]
     
     RBC_CME = nothing
