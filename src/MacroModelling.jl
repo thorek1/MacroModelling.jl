@@ -6,8 +6,6 @@ import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDF
 using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import PythonCall
-import SymPyCall: symbols, solve, subs, free_symbols
-import SymPyCall
 import Symbolics
 import ForwardDiff as ℱ 
 # import Zygote
@@ -36,6 +34,9 @@ import Reexport
 Reexport.@reexport using AxisKeys
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
+include("SymPyCall/SymPyCall.jl")
+import .SymPyCall as SymPyCall
+import .SymPyCall: symbols, solve
 # Type definitions
 Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
 
@@ -142,11 +143,6 @@ end
 
 function simplify(ex::Expr)
     ex_ss = convert_to_ss_equation(ex)
-    # println(ex_ss)
-    for exx in get_symbols(ex_ss)
-        # println(:($exx = SymPy.Symbol($(string(exx)), real = true, finite = true)))
-	    eval(:($exx = SymPy.Symbol($(string(exx)), real = true, finite = true)))
-    end
 
     for x in get_symbols(ex_ss)
 	    eval(:($x = symbols($(string(x)), real = true, finite = true)))
@@ -440,13 +436,6 @@ function create_symbols_eqs!(𝓂::ℳ)
     for none in symbols_none
         eval(:($none = symbols($(string(none)), real = true, finite = true)))
     end
-    # expr =  quote
-    #             @vars $(symbols_pos...)  real = true finite = true positive = true
-    #             @vars $(symbols_neg...)  real = true finite = true negative = true 
-    #             @vars $(symbols_none...) real = true finite = true 
-    #         end
-
-    # eval(expr)
 
     symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
                 map(x->eval(:($x)),𝓂.dyn_equations),
@@ -523,9 +512,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
 
     for i in redundant_idx
         for var_to_solve in redundant_vars[i]
-            # println(ss_equations[i])
-            # println(var_to_solve)
-            soll = try SymPy.solve(ss_equations[i],var_to_solve)
+            soll = try solve(ss_equations[i],var_to_solve)
             catch
             end
             
@@ -598,7 +585,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
         if length(eqs[:,eqs[2,:] .== n]) == 2
             var_to_solve = collect(unknowns)[vars[:,vars[2,:] .== n][1]]
 
-            soll = try SymPy.solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
+            soll = try SymPyCall.solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
             catch
             end
 
@@ -609,10 +596,10 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 continue
             elseif PythonCall.pyconvert(Bool,soll[1].is_number)
                 # ss_equations = ss_equations.subs(var_to_solve,soll[1])
-                ss_equations = [eq.subs(var_to_solve,soll[0]) for eq in ss_equations]
+                ss_equations = [eq.subs(var_to_solve,soll[1]) for eq in ss_equations]
                 
                 push!(𝓂.solved_vars,Symbol(var_to_solve))
-                push!(𝓂.solved_vals,Meta.parse(translate_exponentiation_from_python_to_julia(string(soll[0]))))
+                push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
 
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = max(eps(),$(𝓂.solved_vals[end]))))
@@ -624,11 +611,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             else
 
                 push!(𝓂.solved_vars,Symbol(var_to_solve))
-                push!(𝓂.solved_vals,Meta.parse(translate_exponentiation_from_python_to_julia(string(soll[0]))))
+                push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
                 
                 # atoms = reduce(union,soll[1].atoms())
-                [push!(atoms_in_equations, a) for a in soll[0].atoms()]
-                push!(atoms_in_equations_list, Set(Symbol.(soll[0].atoms())))
+                [push!(atoms_in_equations, a) for a in soll[1].atoms()]
+                push!(atoms_in_equations_list, Set(Symbol.(soll[1].atoms())))
                 # println(atoms_in_equations)
                 # push!(atoms_in_equations, soll[1].atoms())
 
@@ -668,7 +655,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     end
                     numerical_sol = true
                     # continue
-                elseif length(intersect(vars_to_solve,reduce(union,map(x->x.atoms(),collect(soll[0]))))) > 0
+                elseif length(intersect(vars_to_solve,reduce(union,map(x->x.atoms(),collect(soll[1]))))) > 0
                     if verbose
                         println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
                     end
@@ -682,15 +669,15 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     end
                     # relevant_pars = reduce(union,vcat(𝓂.par_list,𝓂.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
                     # relevant_pars = reduce(union,map(x->x.atoms(),collect(soll[1])))
-                    atoms = reduce(union,map(x->x.atoms(),collect(soll[0])))
+                    atoms = reduce(union,map(x->x.atoms(),collect(soll[1])))
                     # println(atoms)
                     [push!(atoms_in_equations, a) for a in atoms]
                     
                     for (k, vars) in enumerate(vars_to_solve)
                         push!(𝓂.solved_vars,Symbol(vars))
-                        push!(𝓂.solved_vals,Meta.parse(translate_exponentiation_from_python_to_julia(string(soll[0][k])))) #using convert(Expr,x) leads to ugly expressions
+                        push!(𝓂.solved_vals,Meta.parse(string(soll[1][k]))) #using convert(Expr,x) leads to ugly expressions
 
-                        push!(atoms_in_equations_list, Set(Symbol.(soll[0][k].atoms())))
+                        push!(atoms_in_equations_list, Set(Symbol.(soll[1][k].atoms())))
                         push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
                     end
                 end
@@ -705,7 +692,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 end
                 
                 push!(𝓂.solved_vars,Symbol.(vars_to_solve))
-                push!(𝓂.solved_vals,Meta.parse.(translate_exponentiation_from_python_to_julia.(string.(eqs_to_solve))))
+                push!(𝓂.solved_vals,Meta.parse.(string.(eqs_to_solve)))
 
                 syms_in_eqs = Set()
 
@@ -1766,7 +1753,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             dyn_past_list[indexin(sort(past),past)]...,
             dyn_exo_list[indexin(sort(exo),exo)]...]
 
-    # overwrite SymPy names
+    # overwrite SymPyCall names
     eval(:(Symbolics.@variables $(reduce(union,get_symbols.(𝓂.dyn_equations))...)))
 
     vars = eval(:(Symbolics.@variables $(vars_raw...)))
