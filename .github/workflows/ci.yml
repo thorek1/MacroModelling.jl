@@ -13,12 +13,12 @@ jobs:
       fail-fast: false
       matrix:
         version:
-          - '1.8'
+#           - '1.8'
           - '1.9' #^1-0 and ^1.9-0 are not recognised
           # - 'nightly' # fails for zygote
         os:
           - ubuntu-latest
-          # - macOS-latest #slow
+          - macOS-latest #slow
           - windows-latest #slow
         arch:
           - x64
@@ -26,10 +26,12 @@ jobs:
         include:
           - os: ubuntu-latest
             prefix: xvfb-run
-          # - version: 'nightly'
-          #   os: ubuntu-latest
-          #   arch: x64
-          #   allow_failure: true
+          - version: '1.8'
+            os: ubuntu-latest
+            arch: x64
+          - version: '^1.10.0-0'
+            os: ubuntu-latest
+            arch: x64
     steps:
       - uses: actions/checkout@v3
       - uses: julia-actions/setup-julia@latest
@@ -46,7 +48,7 @@ jobs:
             ${{ runner.os }}-test-${{ env.cache-name }}-
             ${{ runner.os }}-test-
             ${{ runner.os }}-
-      - run: pip3 install sympy
+      # - run: pip3 install sympy
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
         with:
