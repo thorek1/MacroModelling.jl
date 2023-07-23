@@ -24,15 +24,15 @@ include("decl.jl")
 include("constructors.jl")
 include("generic.jl")
 include("arithmetic.jl")
-include("equations.jl")
+# include("equations.jl")
 include("gen_methods.jl")
 include("conveniences.jl")
-include("logical.jl")
-include("matrix.jl")
-include("assumptions.jl")
-include("patternmatch.jl")
+# include("logical.jl")
+# include("matrix.jl")
+# include("assumptions.jl")
+# include("patternmatch.jl")
 include("introspection.jl")
-include("lambdify.jl")
+# include("lambdify.jl")
 # include("plot_recipes.jl")
 # include("latexify_recipe.jl")
 # export
@@ -40,7 +40,8 @@ export sympy,
     Sym,
     @syms, symbols,
     N,
-    solve, Eq, Lt, Le, Ne, Ge, Gt,
+    solve, 
+    Eq, Lt, Le, Ne, Ge, Gt,
     PI, E, oo, zoo, IM, TRUE, FALSE,
     𝑄, ask, refine,
     rewrite,

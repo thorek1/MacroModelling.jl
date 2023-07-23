@@ -37,7 +37,7 @@ export limit, subs,
     lhs, rhs, doit
 
 export free_symbols
-export elements
+# export elements
 
 
 function limit(ex::Sym, xc::Pair; kwargs...)

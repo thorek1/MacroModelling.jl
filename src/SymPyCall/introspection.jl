@@ -5,7 +5,7 @@ module Introspection
 import ..SymPyCall: Sym, asSymbolic
 using PythonCall
 import PythonCall: Py
-export args, func, funcname, class, classname, getmembers
+export args, func, funcname, class, classname#, getmembers
 
 
 # utilities
