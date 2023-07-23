@@ -43,7 +43,7 @@ export sympy,
     solve, 
     Eq, Lt, Le, Ne, Ge, Gt,
     PI, E, oo, zoo, IM, TRUE, FALSE,
-    𝑄, ask, refine,
+    𝑄,# ask, refine,
     rewrite,
     Differential
 
