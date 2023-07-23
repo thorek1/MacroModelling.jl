@@ -36,7 +36,6 @@ Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, sp
 
 include("SymPyCall/SymPyCall.jl")
 import .SymPyCall as SymPyCall
-import .SymPyCall: symbols, solve
 # Type definitions
 Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
 
@@ -145,7 +144,7 @@ function simplify(ex::Expr)
     ex_ss = convert_to_ss_equation(ex)
 
     for x in get_symbols(ex_ss)
-	    eval(:($x = symbols($(string(x)), real = true, finite = true)))
+	    eval(:($x = SymPyCall.symbols($(string(x)), real = true, finite = true)))
     end
 
 	parsed = ex_ss |> eval |> string |> Meta.parse
@@ -428,13 +427,13 @@ function create_symbols_eqs!(𝓂::ℳ)
     end
 
     for pos in symbols_pos
-        eval(:($pos = symbols($(string(pos)), real = true, finite = true, positive = true)))
+        eval(:($pos = SymPyCall.symbols($(string(pos)), real = true, finite = true, positive = true)))
     end
     for neg in symbols_neg
-        eval(:($neg = symbols($(string(neg)), real = true, finite = true, negative = true)))
+        eval(:($neg = SymPyCall.symbols($(string(neg)), real = true, finite = true, negative = true)))
     end
     for none in symbols_none
-        eval(:($none = symbols($(string(none)), real = true, finite = true)))
+        eval(:($none = SymPyCall.symbols($(string(none)), real = true, finite = true)))
     end
 
     symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
@@ -512,7 +511,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
 
     for i in redundant_idx
         for var_to_solve in redundant_vars[i]
-            soll = try solve(ss_equations[i],var_to_solve)
+            soll = try SymPyCall.solve(ss_equations[i],var_to_solve)
             catch
             end
             
@@ -637,7 +636,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             numerical_sol = false
             
             if symbolic_SS
-                soll = try solve(eqs_to_solve,vars_to_solve)
+                soll = try SymPyCall.solve(eqs_to_solve,vars_to_solve)
                 # soll = try solve(SymPyCall.Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
                 catch
                 end
