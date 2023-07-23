@@ -60,6 +60,14 @@ The package supports the user especially in the model development phase. The int
 
 Once the model is solved the package provides user-friendly functions to generate output. The package stands out for its ability to calculate sensitivities of model moments, its automatic variable declaration, and effective steady state solver.
 
+# Comparison with other packages
+
+`MacroModelling.jl` differentiates itself among macroeconomic modelling packages by offering a unique blend of capabilities and conveniences, such as automatic declaration of variables and parameters, automatic differentiation with respect to parameters, and support for perturbation solution orders up to 3. While it operates within the Julia environment, it presents an alternative to the MATLAB-dominated field, which includes [dynare](https://www.dynare.org), [RISE](https://github.com/jmaih/RISE_toolbox), [Taylor Projection](https://sites.google.com/site/orenlevintal/taylor-projection),[NBTOOLBOX](https://github.com/Coksp1/NBTOOLBOX/tree/main/Documentation), and [IRIS](https://iris.igpmn.org), the latter two being capable of providing only 1st order perturbation solutions.
+
+Other Julia-based packages such as [DSGE.jl](https://github.com/FRBNY-DSGE/DSGE.jl), [StateSpaceEcon.jl](https://bankofcanada.github.io/DocsEcon.jl/dev/), [SolveDSGE.jl](https://github.com/RJDennis/SolveDSGE.jl), and [DifferentiableStateSpaceModels.jl](https://github.com/HighDimensionalEconLab/DifferentiableStateSpaceModels.jl) have similar functionalities to `MacroModelling.jl`, but they are not as general and convenience focused as the MATLAB packages and `MacroModelling.jl`. Furthermore, they do not possess the unique feature set of `MacroModelling.jl` regarding variable declaration and automatic differentiation. Notably, the Python-based [dolo.py](https://www.econforge.org/dolo.py/) offers global solutions, but does not include estimation and balanced growth path features which are available in `MacroModelling.jl`.
+
+`MacroModelling.jl` stands out as one of the few packages that can solve non-stochastic steady states symbolically, a feature shared only with [gEcon](http://gecon.r-forge.r-project.org), an R-based package. Furthermore, unlike many of its competitors, the domain specific model language of `MacroModelling.jl` is integrated into the Julia language, which makes for covenient reading and coding, with the help of Julia macros.
+
 # Acknowledgements
 
 The author wants to thank everybody who opened issues, reported bugs, contributed ideas, and was supportive in driving `MacroModelling.jl` forward.
