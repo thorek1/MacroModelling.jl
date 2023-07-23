@@ -5,8 +5,7 @@ import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDF
 # import StatsFuns: normcdf
 using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
-import SymPy: @vars, solve, subs, free_symbols
-import SymPy
+import PythonCall
 import Symbolics
 import ForwardDiff as ℱ 
 # import Zygote
@@ -35,6 +34,8 @@ import Reexport
 Reexport.@reexport using AxisKeys
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
+include("SymPyCall/SymPyCall.jl")
+import .SymPyCall as SymPyCall
 # Type definitions
 Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
 
@@ -142,7 +143,9 @@ end
 function simplify(ex::Expr)
     ex_ss = convert_to_ss_equation(ex)
 
-	eval(:(@vars $(get_symbols(ex_ss)...) real = true finite = true ))
+    for x in get_symbols(ex_ss)
+	    eval(:($x = SymPyCall.symbols($(string(x)), real = true, finite = true)))
+    end
 
 	parsed = ex_ss |> eval |> string |> Meta.parse
 
@@ -423,13 +426,15 @@ function create_symbols_eqs!(𝓂::ℳ)
         end
     end
 
-    expr =  quote
-                @vars $(symbols_pos...)  real = true finite = true positive = true
-                @vars $(symbols_neg...)  real = true finite = true negative = true 
-                @vars $(symbols_none...) real = true finite = true 
-            end
-
-    eval(expr)
+    for pos in symbols_pos
+        eval(:($pos = SymPyCall.symbols($(string(pos)), real = true, finite = true, positive = true)))
+    end
+    for neg in symbols_neg
+        eval(:($neg = SymPyCall.symbols($(string(neg)), real = true, finite = true, negative = true)))
+    end
+    for none in symbols_none
+        eval(:($none = SymPyCall.symbols($(string(none)), real = true, finite = true)))
+    end
 
     symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
                 map(x->eval(:($x)),𝓂.dyn_equations),
@@ -506,7 +511,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
 
     for i in redundant_idx
         for var_to_solve in redundant_vars[i]
-            soll = try solve(ss_equations[i],var_to_solve)
+            soll = try SymPyCall.solve(ss_equations[i],var_to_solve)
             catch
             end
             
@@ -514,9 +519,9 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
                 continue
             end
             
-            if length(soll) == 0 || soll == SymPy.Sym[0] # take out variable if it is redundant from that euation only
+            if length(soll) == 0 || soll == SymPyCall.Sym[0] # take out variable if it is redundant from that euation only
                 push!(Symbolics.var_redundant_list[i],var_to_solve)
-                ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(SymPy.Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
+                ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(SymPyCall.Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
             end
 
         end
@@ -563,7 +568,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     
     n = n_blocks
 
-    ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations) .|> SymPy.Sym
+    ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations)# .|> SymPyCall.Sym
     # println(ss_equations)
 
     SS_solve_func = []
@@ -579,17 +584,16 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
         if length(eqs[:,eqs[2,:] .== n]) == 2
             var_to_solve = collect(unknowns)[vars[:,vars[2,:] .== n][1]]
 
-            soll = try solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
+            soll = try SymPyCall.solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
             catch
             end
-            # println(soll)
 
             if isnothing(soll)
                 # println("Could not solve single variables case symbolically.")
                 println("Failed finding solution symbolically for: ",var_to_solve," in: ",ss_equations[eqs[:,eqs[2,:] .== n][1]])
                 # solve numerically
                 continue
-            elseif soll[1].is_number
+            elseif PythonCall.pyconvert(Bool,soll[1].is_number)
                 # ss_equations = ss_equations.subs(var_to_solve,soll[1])
                 ss_equations = [eq.subs(var_to_solve,soll[1]) for eq in ss_equations]
                 
@@ -632,12 +636,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             numerical_sol = false
             
             if symbolic_SS
-                soll = try solve(SymPy.Sym(eqs_to_solve),vars_to_solve)
-                # soll = try solve(SymPy.Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
+                soll = try SymPyCall.solve(eqs_to_solve,vars_to_solve)
+                # soll = try solve(SymPyCall.Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
                 catch
                 end
 
-                # println(soll)
                 if isnothing(soll)
                     if verbose
                         println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
@@ -689,7 +692,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 push!(𝓂.solved_vars,Symbol.(vars_to_solve))
                 push!(𝓂.solved_vals,Meta.parse.(string.(eqs_to_solve)))
 
-                syms_in_eqs = Set(Symbol.(SymPy.Sym(eqs_to_solve).atoms()))
+                syms_in_eqs = Set()
+
+                for i in eqs_to_solve
+                    push!(syms_in_eqs, Symbol.(PythonCall.pystr.(i.atoms()))...)
+                end
+
                 # println(syms_in_eqs)
                 push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
 
@@ -879,6 +887,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 # push!(SS_solve_func,:(closest_solution = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]))
                 # push!(SS_solve_func,:(inits = [transformer(max.(lbs,min.(ubs, closest_solution[$(n_block)] ))),closest_solution[end]]))
                 push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, closest_solution[$(n_block)]))))
+
+                # push!(SS_solve_func,:(println([$(calib_pars_input...),$(other_vars_input...)])))
+
                 push!(SS_solve_func,:(block_solver_RD = block_solver_AD([$(calib_pars_input...),$(other_vars_input...)],
                                                                         $(n_block), 
                                                                         𝓂.ss_solve_blocks[$(n_block)], 
@@ -999,9 +1010,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     end
 
 
-    solve_exp = :(function solve_SS(parameters::Vector{Real}, 𝓂::ℳ, 
-    # fail_fast_solvers_only::Bool, 
-    verbose::Bool)
+    solve_exp = :(function solve_SS(parameters::Vector{Real}, 
+                                    𝓂::ℳ, 
+                                    # fail_fast_solvers_only::Bool, 
+                                    verbose::Bool)
+
                     params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                     current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
                     closest_solution_init = 𝓂.NSSS_solver_cache[end]
@@ -1048,6 +1061,352 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     return nothing
 end
+
+
+
+
+function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
+    unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+
+    @assert length(unknowns) <= length(𝓂.ss_aux_equations) + length(𝓂.calibration_equations) "Unable to solve steady state. More unknowns than equations."
+
+    incidence_matrix = fill(0,length(unknowns),length(unknowns))
+
+    eq_list = vcat(union.(union.(𝓂.var_list_aux_SS,
+                                        𝓂.ss_list_aux_SS),
+                            𝓂.par_list_aux_SS),
+                    union.(𝓂.ss_calib_list,
+                            𝓂.par_calib_list))
+
+    for i in 1:length(unknowns)
+        for k in 1:length(unknowns)
+            incidence_matrix[i,k] = collect(unknowns)[i] ∈ collect(eq_list)[k]
+        end
+    end
+
+    Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(incidence_matrix))
+    R̂ = []
+    for i in 1:n_blocks
+        [push!(R̂, n_blocks - i + 1) for ii in R[i]:R[i+1] - 1]
+    end
+    push!(R̂,1)
+
+    vars = hcat(P, R̂)'
+    eqs = hcat(Q, R̂)'
+
+    # @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(𝓂.ss_equations,𝓂.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
+    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant euqations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄). Nonstationary variables are not supported as of now." # repr([vcat(𝓂.ss_equations,𝓂.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
+    
+    n = n_blocks
+
+    ss_equations = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)
+
+    SS_solve_func = []
+
+    atoms_in_equations = Set()
+    atoms_in_equations_list = []
+    relevant_pars_across = []
+    NSSS_solver_cache_init_tmp = []
+
+    n_block = 1
+
+    while n > 0
+        vars_to_solve = collect(unknowns)[vars[:,vars[2,:] .== n][1,:]]
+
+        eqs_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1,:]]
+
+        # try symbolically and use numerical if it does not work
+        if verbose
+            println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " numerically.")
+        end
+        
+        push!(𝓂.solved_vars,Symbol.(vars_to_solve))
+        push!(𝓂.solved_vals,Meta.parse.(string.(eqs_to_solve)))
+
+        syms_in_eqs = Set()
+
+        for i in eqs_to_solve
+            push!(syms_in_eqs, get_symbols(i)...)
+        end
+
+        # println(syms_in_eqs)
+        push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
+
+        calib_pars = []
+        calib_pars_input = []
+        relevant_pars = reduce(union,vcat(𝓂.par_list_aux_SS,𝓂.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
+        relevant_pars_across = union(relevant_pars_across,relevant_pars)
+        
+        iii = 1
+        for parss in union(𝓂.parameters,𝓂.parameters_as_function_of_parameters)
+            # valss   = 𝓂.parameter_values[i]
+            if :($parss) ∈ relevant_pars
+                push!(calib_pars,:($parss = parameters_and_solved_vars[$iii]))
+                push!(calib_pars_input,:($parss))
+                iii += 1
+            end
+        end
+
+
+        guess = []
+        result = []
+        sorted_vars = sort(𝓂.solved_vars[end])
+        # sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.➕_vars))
+        for (i, parss) in enumerate(sorted_vars) 
+            push!(guess,:($parss = guess[$i]))
+            # push!(guess,:($parss = undo_transformer(guess[$i])))
+            push!(result,:($parss = sol[$i]))
+        end
+
+        
+        # separate out auxilliary variables (nonnegativity)
+        nnaux = []
+        nnaux_linear = []
+        nnaux_error = []
+        push!(nnaux_error, :(aux_error = 0))
+        solved_vals = []
+        
+        eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
+
+
+        other_vrs_eliminated_by_sympy = Set()
+
+        for (i,val) in enumerate(𝓂.solved_vals[end])
+            if typeof(val) ∈ [Symbol,Float64,Int]
+                push!(solved_vals,val)
+            else
+                if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
+                    val = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
+                    push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
+                    push!(other_vrs_eliminated_by_sympy, val.args[2])
+                    push!(nnaux_linear,:($val))
+                    push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
+                else
+                    push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+                end
+            end
+        end
+
+        # println(other_vrs_eliminated_by_sympy)
+        # sort nnaux vars so that they enter in right order. avoid using a variable before it is declared
+        # println(nnaux)
+        if length(nnaux) > 1
+            all_symbols = map(x->x.args[1],nnaux) #relevant symbols come first in respective equations
+
+            nn_symbols = map(x->intersect(all_symbols,x), get_symbols.(nnaux))
+            
+            inc_matrix = fill(0,length(all_symbols),length(all_symbols))
+
+            for i in 1:length(all_symbols)
+                for k in 1:length(nn_symbols)
+                    inc_matrix[i,k] = collect(all_symbols)[i] ∈ collect(nn_symbols)[k]
+                end
+            end
+
+            QQ, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(inc_matrix))
+
+            nnaux = nnaux[QQ]
+            nnaux_linear = nnaux_linear[QQ]
+        end
+
+
+        other_vars = []
+        other_vars_input = []
+        # other_vars_inverse = []
+        other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
+                                            sort(𝓂.solved_vars[end]) ),
+                                union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
+                  
+        for var in other_vrs
+            # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
+            push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
+            push!(other_vars_input,:($(var)))
+            iii += 1
+            # push!(other_vars_inverse,:(𝓂.SS_init_guess[$var_idx] = $(var)))
+        end
+
+        funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)
+                # if guess isa Tuple guess = guess[1] end
+                # guess = undo_transformer(guess,lbs,ubs, option = transformer_option) 
+                # println(guess)
+                $(guess...) 
+                $(calib_pars...) # add those variables which were previously solved and are used in the equations
+                $(other_vars...) # take only those that appear in equations - DONE
+
+                # $(aug_lag...)
+                # $(nnaux...)
+                # $(nnaux_linear...)
+                return [$(solved_vals...),$(nnaux_linear...)]
+            end)
+
+        push!(NSSS_solver_cache_init_tmp,fill(0.897,length(sorted_vars)))
+
+        # WARNING: infinite bounds are transformed to 1e12
+        lbs = []
+        ubs = []
+        
+        limit_boundaries = 1e12
+
+        for i in sorted_vars
+            if i ∈ 𝓂.bounded_vars
+                push!(lbs,𝓂.lower_bounds[i .== 𝓂.bounded_vars][1] == -Inf ? -limit_boundaries+rand() : 𝓂.lower_bounds[i .== 𝓂.bounded_vars][1])
+                push!(ubs,𝓂.upper_bounds[i .== 𝓂.bounded_vars][1] ==  Inf ?  limit_boundaries-rand() : 𝓂.upper_bounds[i .== 𝓂.bounded_vars][1])
+            else
+                push!(lbs,-limit_boundaries+rand())
+                push!(ubs,limit_boundaries+rand())
+            end
+        end
+        push!(SS_solve_func,:(lbs = [$(lbs...)]))
+        push!(SS_solve_func,:(ubs = [$(ubs...)]))
+        
+        push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, closest_solution[$(n_block)]))))
+
+        push!(SS_solve_func,:(block_solver_RD = block_solver_AD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],
+                                                                $(n_block), 
+                                                                𝓂.ss_solve_blocks[$(n_block)], 
+                                                                # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
+                                                                # f, 
+                                                                inits,
+                                                                lbs, 
+                                                                ubs,
+                                                                # fail_fast_solvers_only = fail_fast_solvers_only,
+                                                                verbose = verbose)))
+        
+        push!(SS_solve_func,:(solution = block_solver_RD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)])))#, 
+        
+        push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)](length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],solution))))
+        
+        push!(SS_solve_func,:(sol = solution))
+
+        push!(SS_solve_func,:($(result...)))   
+        
+        push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
+
+        push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
+        
+        n_block += 1
+        
+        n -= 1
+    end
+
+    push!(NSSS_solver_cache_init_tmp,fill(Inf,length(𝓂.parameters)))
+    push!(𝓂.NSSS_solver_cache,NSSS_solver_cache_init_tmp)
+
+    unknwns = Symbol.(collect(unknowns))
+
+    parameters_only_in_par_defs = Set()
+    # add parameters from parameter definitions
+    if length(𝓂.calibration_equations_no_var) > 0
+		atoms = reduce(union,get_symbols.(𝓂.calibration_equations_no_var))
+	    [push!(atoms_in_equations, a) for a in atoms]
+	    [push!(parameters_only_in_par_defs, a) for a in atoms]
+	end
+    
+    # 𝓂.par = union(𝓂.par,setdiff(parameters_only_in_par_defs,𝓂.parameters_as_function_of_parameters))
+    
+    parameters_in_equations = []
+
+    for (i, parss) in enumerate(𝓂.parameters) 
+        if parss ∈ union(Symbol.(atoms_in_equations),relevant_pars_across)
+            push!(parameters_in_equations,:($parss = params[$i]))
+        end
+    end
+    
+    dependencies = []
+    for (i, a) in enumerate(atoms_in_equations_list)
+        push!(dependencies,𝓂.solved_vars[i] => intersect(a, union(𝓂.var,𝓂.parameters)))
+    end
+
+    push!(dependencies,:SS_relevant_calibration_parameters => intersect(reduce(union,atoms_in_equations_list),𝓂.parameters))
+
+    𝓂.SS_dependencies = dependencies
+
+    
+    dyn_exos = []
+    for dex in union(𝓂.exo_past,𝓂.exo_future)
+        push!(dyn_exos,:($dex = 0))
+    end
+
+    push!(SS_solve_func,:($(dyn_exos...)))
+    
+    # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
+    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [params_scaled_flt] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp...,params_scaled_flt] end))
+    
+    push!(SS_solve_func,:(current_best = sqrt(sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt))))# / max(sum(abs2,𝓂.NSSS_solver_cache[end][end]), sum(abs2,params_flt))))
+
+    push!(SS_solve_func,:(for pars in 𝓂.NSSS_solver_cache
+                                latest = sqrt(sum(abs2,pars[end] - params_flt))# / max(sum(abs2,pars[end]), sum(abs,params_flt))
+                                if latest <= current_best
+                                    current_best = latest
+                                end
+                            end))
+
+    push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < eps(Float64))
+                                reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
+                                solved_scale = scale
+                            end))
+
+    # fix parameter bounds
+    par_bounds = []
+    
+    for varpar in intersect(𝓂.bounded_vars, intersect(𝓂.parameters,union(Symbol.(atoms_in_equations),relevant_pars_across)))
+        i = indexin([varpar],𝓂.bounded_vars)
+        push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.lower_bounds[i...])),$(𝓂.upper_bounds[i...]))))
+    end
+
+
+    solve_exp = :(function solve_SS(parameters::Vector{Real}, 
+                                    𝓂::ℳ, 
+                                    # fail_fast_solvers_only::Bool, 
+                                    verbose::Bool)
+
+                    params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
+                    current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
+                    closest_solution_init = 𝓂.NSSS_solver_cache[end]
+                    for pars in 𝓂.NSSS_solver_cache
+                        latest = sum(abs2,pars[end] - params_flt)
+                        if latest <= current_best
+                            current_best = latest
+                            closest_solution_init = pars
+                        end
+                    end
+                    solved_scale = 0
+                    range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
+                    for r in range_length
+                        rangee = ignore_derivatives(range(0,1,r+1))
+                        for scale in rangee[2:end]
+                            if scale <= solved_scale continue end
+                            current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
+                            closest_solution = 𝓂.NSSS_solver_cache[end]
+                            for pars in 𝓂.NSSS_solver_cache
+                                latest = sum(abs2,pars[end] - params_flt)
+                                if latest <= current_best
+                                    current_best = latest
+                                    closest_solution = pars
+                                end
+                            end
+                            params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
+                            params_scaled_flt = typeof(params) == Vector{Float64} ? params : ℱ.value.(params)
+                            $(parameters_in_equations...)
+                            $(par_bounds...)
+                            $(𝓂.calibration_equations_no_var...)
+                            NSSS_solver_cache_tmp = []
+                            solution_error = 0.0
+                            $(SS_solve_func...)
+                            if scale == 1
+                                # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
+                                return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)] , solution_error
+                            end
+                        end
+                    end
+                end)
+
+    𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
+    # 𝓂.SS_solve_func = eval(solve_exp)
+
+    return nothing
+end
+
 
 
 function reverse_diff_friendly_push!(x,y)
@@ -1743,7 +2102,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             dyn_past_list[indexin(sort(past),past)]...,
             dyn_exo_list[indexin(sort(exo),exo)]...]
 
-    # overwrite SymPy names
+    # overwrite SymPyCall names
     eval(:(Symbolics.@variables $(reduce(union,get_symbols.(𝓂.dyn_equations))...)))
 
     vars = eval(:(Symbolics.@variables $(vars_raw...)))
@@ -1768,7 +2127,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
                 deriv_first = Symbolics.derivative(eq,var1)
                 # if deriv_first != 0 
-                #     deriv_expr = Meta.parse(string(deriv_first.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                #     deriv_expr = Meta.parse(string(deriv_first.subs(SymPyCall.PI,SymPyCall.N(SymPyCall.PI))))
                 #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                     push!(first_order, Symbolics.toexpr(deriv_first))
                     push!(row1,r)
@@ -1779,7 +2138,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                             if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
                                 deriv_second = Symbolics.derivative(deriv_first,var2)
                                 # if deriv_second != 0 
-                                #     deriv_expr = Meta.parse(string(deriv_second.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                                #     deriv_expr = Meta.parse(string(deriv_second.subs(SymPyCall.PI,SymPyCall.N(SymPyCall.PI))))
                                 #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                                     push!(second_order,Symbolics.toexpr(deriv_second))
                                     push!(row2,r)
@@ -1790,7 +2149,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                                             if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
                                                 deriv_third = Symbolics.derivative(deriv_second,var3)
                                                 # if deriv_third != 0 
-                                                #     deriv_expr = Meta.parse(string(deriv_third.subs(SymPy.PI,SymPy.N(SymPy.PI))))
+                                                #     deriv_expr = Meta.parse(string(deriv_third.subs(SymPyCall.PI,SymPyCall.N(SymPyCall.PI))))
                                                 #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                                                     push!(third_order,Symbolics.toexpr(deriv_third))
                                                     push!(row3,r)
@@ -3347,7 +3706,7 @@ end
 @setup_workload begin
     # Putting some things in `setup` can reduce the size of the
     # precompile file and potentially make loading faster.
-    @model FS2000 begin
+    @model FS2000 precompile = true begin
         dA[0] = exp(gam + z_e_a  *  e_a[x])
         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
@@ -3366,7 +3725,7 @@ end
         log_gp_obs[0] = log(gp_obs[0])
     end
 
-    @parameters FS2000 silent = true begin  
+    @parameters FS2000 silent = true precompile = true begin  
         alp     = 0.356
         bet     = 0.993
         gam     = 0.0085
@@ -3383,7 +3742,7 @@ end
     @compile_workload begin
         # all calls in this block will be precompiled, regardless of whether
         # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC begin
+        @model RBC precompile = true begin
             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]

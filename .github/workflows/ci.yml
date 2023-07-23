@@ -18,7 +18,7 @@ jobs:
           # - 'nightly' # fails for zygote
         os:
           - ubuntu-latest
-          # - macOS-latest #slow
+          - macOS-latest #slow
           - windows-latest #slow
         arch:
           - x64
@@ -27,6 +27,9 @@ jobs:
           - os: ubuntu-latest
             prefix: xvfb-run
           - version: '1.8'
+            os: ubuntu-latest
+            arch: x64
+          - version: '^1.10.0-0'
             os: ubuntu-latest
             arch: x64
     steps:
@@ -45,7 +48,7 @@ jobs:
             ${{ runner.os }}-test-${{ env.cache-name }}-
             ${{ runner.os }}-test-
             ${{ runner.os }}-
-      - run: pip3 install sympy
+      # - run: pip3 install sympy
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
         with:
