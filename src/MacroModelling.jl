@@ -569,7 +569,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     
     n = n_blocks
 
-    ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations) .|> SymPyCall.Sym
+    ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations)# .|> SymPyCall.Sym
     # println(ss_equations)
 
     SS_solve_func = []
@@ -637,12 +637,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             numerical_sol = false
             
             if symbolic_SS
-                soll = try solve(SymPyCall.Sym(eqs_to_solve),vars_to_solve)
+                soll = try solve(eqs_to_solve,vars_to_solve)
                 # soll = try solve(SymPyCall.Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
                 catch
                 end
 
-                # println(soll)
                 if isnothing(soll)
                     if verbose
                         println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
@@ -3744,16 +3743,16 @@ end
     @compile_workload begin
         # all calls in this block will be precompiled, regardless of whether
         # they belong to your package or not (on Julia 1.8 and higher)
-        # @model RBC begin
-        #     1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-        #     c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-        #     z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        # end
+        @model RBC precompile = true begin
+            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+        end
 
-        # @parameters RBC silent = true precompile = true begin
-        #     δ = 0.02
-        #     α = 0.5
-        # end
+        @parameters RBC silent = true precompile = true begin
+            δ = 0.02
+            α = 0.5
+        end
 
         get_SS(FS2000)
         get_SS(FS2000, parameters = :alp => 0.36)
