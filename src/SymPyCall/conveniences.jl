@@ -14,9 +14,9 @@ end
 function linsolve(eqns::AbstractArray{T}, args...; kwargs...) where {T <: SymbolicObject}
     ↑((Py(sympy).linsolve)(↓(eqns), ↓(args)...; kwargs...))
 end
-function linsolve(eqns::NTuple{N, T}, args...; kwargs...) where {N, T <: SymbolicObject}
-    ↑((Py(sympy).linsolve)(↓(eqns), ↓(args)...; kwargs...))
-end
+# function linsolve(eqns::NTuple{N, T}, args...; kwargs...) where {N <: Int, T <: SymbolicObject}
+#     ↑((Py(sympy).linsolve)(↓(eqns), ↓(args)...; kwargs...))
+# end
 
 function nonlinsolve(eqns::Vector{T}, args...; kwargs...) where {T <: SymbolicObject}
     ↑((Py(sympy).nonlinsolve)(↓(eqns), ↓(args)...; kwargs...))

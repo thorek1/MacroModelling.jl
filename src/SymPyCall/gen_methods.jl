@@ -45,7 +45,7 @@ unSymkwargs(kw) = (k=>unSym(v) for (k,v) ∈ kw)
 ↓(args...; kwargs...) = unSym(args...; kwargs...)
 
 #PythonCall.Py(x::Sym) = ↓(x)
-PythonCall.Py(x::NTuple{N,T}) where {N, T <: SymbolicObject} = ↓(x)
+# PythonCall.Py(x::NTuple{N,T}) where {N <: Int, T <: SymbolicObject} = ↓(x)
 PythonCall.Py(x::Vector{T}) where {T <: SymbolicObject} = unSym.(x)
 PythonCall.Py(x::Matrix{T}) where {T <: SymbolicObject} = unSym.(x)
 PythonCall.Py(x::Set{T}) where {T <: SymbolicObject} = unSym(x)
