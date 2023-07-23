@@ -42,3 +42,29 @@ The package contains the following models in the `models` folder:
 - [Schorfheide (2000)](https://onlinelibrary.wiley.com/doi/abs/10.1002/jae.582) `FS2000.jl`
 - [Smets and Wouters (2003)](https://onlinelibrary.wiley.com/doi/10.1162/154247603770383415) `SW03.jl`
 - [Smets and Wouters (2007)](https://www.aeaweb.org/articles?id=10.1257/aer.97.3.586) `SW07.jl`
+
+
+## Comparison with other packages
+
+||MacroModelling.jl|[dynare](https://www.dynare.org)|[RISE](https://github.com/jmaih/RISE_toolbox)|[NBTOOLBOX](https://github.com/Coksp1/NBTOOLBOX/tree/main/Documentation)|[IRIS](https://iris.igpmn.org)|[DSGE.jl](https://github.com/FRBNY-DSGE/DSGE.jl)|[StateSpaceEcon.jl](https://bankofcanada.github.io/DocsEcon.jl/dev/)|[SolveDSGE.jl](https://github.com/RJDennis/SolveDSGE.jl)|[dolo.py](https://www.econforge.org/dolo.py/)|[DifferentiableStateSpaceModels.jl](https://github.com/HighDimensionalEconLab/DifferentiableStateSpaceModels.jl)|[gEcon](http://gecon.r-forge.r-project.org)|[GDSGE](https://www.gdsge.com)|[Taylor Projection](https://sites.google.com/site/orenlevintal/taylor-projection)
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+**Host language**|julia|MATLAB|MATLAB|MATLAB|MATLAB|julia|julia|julia|Python|julia|R|MATLAB|MATLAB|
+**Non stochastic steady state solver**|*symbolic* or numerical solver of independent blocks; symbolic removal of variables redundant in steady state; inclusion of calibration equations in problem|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|user-supplied steady state file or numerical solver|numerical solver of independent blocks or user-supplied values/functions||numerical solver of independent blocks or user-supplied values/functions|numerical solver|numerical solver or user supplied values/equations|numerical solver or user supplied values/equations|numerical solver; inclusion of calibration equations in problem|||
+**Automatic declaration of variables and parameters**|yes|||||||||||||
+**Derivatives (Automatic Differentiation) wrt parameters**|yes|||||||||yes - for all 1st, 2nd order perturbation solution related output *if user supplied steady state equations*|||
+**Perturbation solution order**|1, 2, 3|k|1 to 5|1|1|1|1|1, 2, 3|1, 2, 3|1, 2|1||1 to 5|
+**Automatic derivation of first order conditions**|||||||||||yes||
+**Handles occasionally binding constraints**||yes|yes|||yes||yes|yes|||yes||
+**Global solution**||||||||yes|yes|||yes||
+**Estimation**|yes|yes|yes|yes|yes|yes|||||yes|||
+**Balanced growth path**||yes|yes|yes|yes|yes|yes|||||||
+**Model input**|macro (julia)|text file|text file|text file|text file|text file|module (julia)|text file|text file|macro (julia)|text file|text file|text file|
+**Timing convention**|end-of-period|end-of-period|end-of-period|end-of-period|end-of-period||end-of-period|start-of-period|end-of-period|start-of-period|end-of-period|start-of-period|start-of-period|
+
+## Bibliography
+
+Durbin, J, and Koopman, S. J. (2012), "Time Series Analysis by State Space Methods, 2nd edn", Oxford University Press.
+
+Levintal, O., (2017), "Fifth-Order Perturbation Solution to DSGE models", Journal of Economic Dynamics and Control, 80, pp. 1---16.
+
+Villemot, S., (2011), "Solving rational expectations models at first order: what Dynare does", Dynare Working Papers 2, CEPREMAP.
