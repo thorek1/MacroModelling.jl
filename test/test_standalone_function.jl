@@ -71,14 +71,17 @@ first_order_solution, solved = calculate_first_order_solution(∇₁; T = T, exp
 
 second_order_solution = calculate_second_order_solution(∇₁, 
 ∇₂, 
-first_order_solution; 
+first_order_solution, 
+RBC_CME.solution.perturbation.second_order_auxilliary_matrices; 
 T = T)
 
 third_order_solution = calculate_third_order_solution(∇₁, 
 ∇₂, 
 ∇₃,
 first_order_solution, 
-second_order_solution; 
+second_order_solution, 
+RBC_CME.solution.perturbation.second_order_auxilliary_matrices, 
+RBC_CME.solution.perturbation.third_order_auxilliary_matrices; 
 T = T)
 
 @testset verbose = true "SS, derivatives of model at SS and solutions" begin
