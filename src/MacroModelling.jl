@@ -2990,7 +2990,7 @@ function solve_sylvester_equation_condition(BCX, S)
 end
 
 
-function solve_sylvester_equation(BCX::AbstractArray{Float64})
+function solve_sylvester_equation(BCX::AbstractArray{Float64}; tol::AbstractFloat = 1e-10)
     (; B, C, X) = BCX
 
     sylvester = LinearOperators.LinearOperator(Float64, length(X), length(X), false, false, 
@@ -3013,7 +3013,7 @@ function solve_sylvester_equation(BCX::AbstractArray{Float64})
 end
 
 
-function solve_sylvester_equation(BCX::AbstractArray{ℱ.Dual{Z,S,N}}) where {Z,S,N}
+function solve_sylvester_equation(BCX::AbstractArray{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = 1e-10) where {Z,S,N}
     # unpack: AoS -> SoA
     bcx = ℱ.value.(BCX)
 
@@ -3021,7 +3021,7 @@ function solve_sylvester_equation(BCX::AbstractArray{ℱ.Dual{Z,S,N}}) where {Z,
     ps = mapreduce(ℱ.partials, hcat, BCX)'
 
     # get f(vs)
-    val = solve_sylvester_equation(bcx)
+    val = solve_sylvester_equation(bcx, tol = tol)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
     B = ℱ.jacobian(x -> solve_sylvester_equation_condition(x, val), bcx)
@@ -3096,8 +3096,6 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
 
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
-
-    # A = spdiagm(ones(n)) # can be kicked out
 
     if ∇₁ isa AbstractMatrix{Float64}
         function sylvester!(sol,𝐱)
