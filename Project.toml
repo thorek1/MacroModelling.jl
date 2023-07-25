@@ -65,10 +65,8 @@ Requires = "^1"
 RuntimeGeneratedFunctions = "^0.5"
 SpecialFunctions = "^2"
 SpeedMapping = "^0.3"
-StatsPlots = "^0.15"
 Subscripts = "^0.1"
 Symbolics = "^5"
-Turing = "^0.25,0.26"
 julia = "1.8"
 
 [extras]
