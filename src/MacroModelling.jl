@@ -218,7 +218,7 @@ function levenberg_marquardt(f::Function,
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
     xtol::T = eps(), 
-    ftol::T = 1e-10, 
+    ftol::T = eps(), 
     iterations::S = 250, 
     ϕ̄::T    =       8.0,
     ϕ̂::T    =       0.904,
@@ -1571,7 +1571,7 @@ end
 
 
 function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{Float64}, 𝓂::ℳ, pruning::Bool;
-    tol::AbstractFloat = 1e-10)
+    tol::AbstractFloat = eps())
     (; 𝐒₁, 𝐒₂) = 𝐒₁𝐒₂
 
     state = zeros(𝓂.timings.nVars)
@@ -1702,7 +1702,7 @@ end
 
 
 function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::AbstractArray{Float64}, 𝓂::ℳ, pruning::Bool;
-    tol::AbstractFloat = 1e-10)
+    tol::AbstractFloat = eps())
     (; 𝐒₁, 𝐒₂, 𝐒₃) = 𝐒₁𝐒₂𝐒₃
 
     state = zeros(𝓂.timings.nVars)
@@ -2787,7 +2787,7 @@ end
 
 
 
-function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = 1e-10)
+function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = eps())
     # see Binder and Pesaran (1997) for more details on this approach
     expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
             ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
@@ -2990,7 +2990,7 @@ function solve_sylvester_equation_condition(BCX, S)
 end
 
 
-function solve_sylvester_equation(BCX::AbstractArray{Float64}; tol::AbstractFloat = 1e-10)
+function solve_sylvester_equation(BCX::AbstractArray{Float64}; tol::AbstractFloat = eps())
     (; B, C, X) = BCX
 
     sylvester = LinearOperators.LinearOperator(Float64, length(X), length(X), false, false, 
@@ -3013,7 +3013,7 @@ function solve_sylvester_equation(BCX::AbstractArray{Float64}; tol::AbstractFloa
 end
 
 
-function solve_sylvester_equation(BCX::AbstractArray{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = 1e-10) where {Z,S,N}
+function solve_sylvester_equation(BCX::AbstractArray{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = eps()) where {Z,S,N}
     # unpack: AoS -> SoA
     bcx = ℱ.value.(BCX)
 
@@ -3134,7 +3134,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxilliary_matrices;  # aux matrices third order
                                             T::timings,
-                                            tol::AbstractFloat = 1e-10)
+                                            tol::AbstractFloat = eps())
     # inspired by Levintal
 
     # Indices and number of variables
