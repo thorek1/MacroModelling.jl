@@ -9,7 +9,7 @@ import PythonCall
 import Symbolics
 import ForwardDiff as ℱ 
 # import Zygote
-import SparseArrays: SparseMatrixCSC#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
+import SparseArrays: SparseMatrixCSC, SparseVector#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import ComponentArrays as 𝒞
 import BlockTriangularForm
@@ -2983,57 +2983,76 @@ end
 
 
 
-function solve_sylvester_equation_condition(BCX, S)
-    (; B, C, X) = BCX
 
-    X + S - B * S * C
-end
+function solve_sylvester_equation(concat_sparse_vec::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps())
+    lenA = dims[1][1] * dims[1][2]
+    lenB = dims[2][1] * dims[2][2]
+    lenX = dims[3][1] * dims[3][2]
 
+    A = sparse(reshape(concat_sparse_vec[1 : lenA],dims[1]))
+    B = sparse(reshape(concat_sparse_vec[lenA .+ (1 : lenB)],dims[2]))
 
-function solve_sylvester_equation(BCX::AbstractArray{Float64}; tol::AbstractFloat = 1e-10)
-    (; B, C, X) = BCX
-
-    sylvester = LinearOperators.LinearOperator(Float64, length(X), length(X), false, false, 
-    (sol,𝐱) -> begin 
-        𝐗 = sparse(reshape(𝐱, size(X)))
-        sol .= vec(𝐗 - B * 𝐗 * C)
+    sylvester = LinearOperators.LinearOperator(Float64, lenX, lenX, false, false, 
+        (sol,𝐱) -> begin 
+        𝐗 = reshape(𝐱, dims[3])
+        sol .= vec(𝐗 - A * 𝐗 * B)
         return sol
     end)
 
-    S2, info = Krylov.bicgstab(sylvester, vec(-X))
+    X, info = Krylov.bicgstab(sylvester, concat_sparse_vec[lenA + lenB + 1 : end])
 
     if !info.solved
-        S2, info = Krylov.gmres(sylvester, vec(-X))
+        X, info = Krylov.gmres(sylvester, concat_sparse_vec[lenA + lenB + 1 : end])
     end
 
-    𝐒₂ = sparse(reshape(S2,size(X)))
-    droptol!(𝐒₂,tol)
+    X̂ = sparse(reshape(X,dims[3]))
+    droptol!(X̂, tol)
 
-    return 𝐒₂
+    return X̂
 end
 
 
-function solve_sylvester_equation(BCX::AbstractArray{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = 1e-10) where {Z,S,N}
+function solve_sylvester_equation_conditions(concat_sparse_vec::SparseVector, x::SparseMatrixCSC; dims::Vector{Tuple{Int,Int}})
+    lenA = dims[1][1] * dims[1][2]
+    lenB = dims[2][1] * dims[2][2]
+
+    A = sparse(reshape(concat_sparse_vec[1 : lenA],dims[1]))
+    B = sparse(reshape(concat_sparse_vec[lenA .+ (1 : lenB)],dims[2]))
+    X = sparse(reshape(concat_sparse_vec[lenA + lenB + 1 : end],dims[3]))
+
+    collect(X + x - A * x * B)
+end
+
+
+function solve_sylvester_equation(concat_sparse_vec::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = 1e-10) where {Z,S,N}
     # unpack: AoS -> SoA
-    bcx = ℱ.value.(BCX)
+    concat_sparse_vec_values = ℱ.value.(concat_sparse_vec)
+
+    lenA = dims[1][1] * dims[1][2]
+    lenB = dims[2][1] * dims[2][2]
+
+    A = (reshape(concat_sparse_vec_values[1 : lenA],dims[1]))
+    B = (reshape(concat_sparse_vec_values[lenA .+ (1 : lenB)],dims[2]))
 
     # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, BCX)'
+    ps = mapreduce(ℱ.partials, hcat, concat_sparse_vec)'
 
     # get f(vs)
-    val = solve_sylvester_equation(bcx, tol = tol)
+    val = solve_sylvester_equation(concat_sparse_vec_values, dims = dims)
 
-    # get J(f, vs) * ps (cheating). Write your custom rule here
-    B = ℱ.jacobian(x -> solve_sylvester_equation_condition(x, val), bcx)
-    A = ℱ.jacobian(x -> solve_sylvester_equation_condition(bcx, x), val)
-    
-    Â = RF.lu(A, check = false)
+    # get J(f, vs) * ps (cheating). Write your custom rule here. This used to be the conditions but here they are analytically derived.
+    b = ℱ.jacobian(x -> solve_sylvester_equation_conditions(x, val, dims = dims), concat_sparse_vec_values)
+    a = ℱ.jacobian(x -> solve_sylvester_equation_conditions(concat_sparse_vec_values, x, dims = dims), val)
+    # b = hcat(ℒ.kron(-val * B, ℒ.I(size(A,1)))', ℒ.kron(ℒ.I(size(B,1)), A * val), ℒ.I(length(val)))
+    # a = reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
+
+    Â = RF.lu(a, check = false)
 
     if !ℒ.issuccess(Â)
-        Â = ℒ.svd(A)
+        Â = ℒ.svd(a)
     end
     
-    jvp = -(Â \ B) * ps
+    jvp = -(Â \ b) * ps
 
     # lm = LinearMap{Float64}(x -> A * reshape(x, size(B)), length(B))
 
@@ -3097,27 +3116,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
 
-    if ∇₁ isa AbstractMatrix{Float64}
-        function sylvester!(sol,𝐱)
-            𝐗 = sparse(reshape(𝐱, size(X)))
-            sol .= vec(𝐗 - B * 𝐗 * C)
-            return sol
-        end
-
-        sylvester = LinearOperators.LinearOperator(Float64, length(X), length(X), false, false, sylvester!)
-
-        S2, info = Krylov.bicgstab(sylvester, sparsevec(collect(-X)), atol = tol)
-
-        if !info.solved
-            S2, info = Krylov.gmres(sylvester, sparsevec(collect(-X)), atol = tol)
-        end
-
-        𝐒₂ = sparse(reshape(S2,size(X)))
-        droptol!(𝐒₂,tol)
-    else
-        𝐒₂ = sparse(solve_sylvester_equation(𝒞.ComponentArray(;B,C,X)))
-        droptol!(𝐒₂,tol)
-    end
+    𝐒₂ = solve_sylvester_equation([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
 
     𝐒₂ *= M₂.𝐔₂
 
@@ -3209,27 +3208,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     
     # A = spdiagm(ones(n))
 
-    if ∇₁ isa AbstractMatrix{Float64}
-        function sylvester!(sol,𝐱)
-            𝐗 = sparse(reshape(𝐱, size(X)))
-            sol .= vec(𝐗 - B * 𝐗 * C)
-            return sol
-        end
-
-        sylvester = LinearOperators.LinearOperator(Float64, length(X), length(X), false, false, sylvester!)
-
-        S3, info = Krylov.bicgstab(sylvester, sparsevec(collect(-X)))
-
-        if !info.solved
-            S3, info = Krylov.gmres(sylvester, sparsevec(collect(-X)))
-        end
-
-        𝐒₃ = sparse(reshape(S3,size(X)))
-        droptol!(𝐒₃,tol)
-    else
-        𝐒₃ = sparse(solve_sylvester_equation(𝒞.ComponentArray(;B,C,X)))
-        droptol!(𝐒₃,tol)
-    end
+    𝐒₃ = solve_sylvester_equation([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
     
     𝐒₃ *= M₃.𝐔₃
 
