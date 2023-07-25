@@ -148,13 +148,46 @@ struct symbolics
     # var_solved_calib_list::Vector{Set{SymPy.Sym}}
 end
 
+struct second_order_auxilliary_matrices
+    𝛔::SparseMatrixCSC{Int}
+    𝐂₂::SparseMatrixCSC{Int}
+    𝐔₂::SparseMatrixCSC{Int}
+end
+
+struct third_order_auxilliary_matrices
+    𝐂₃::SparseMatrixCSC{Int}
+    𝐔₃::SparseMatrixCSC{Int}
+
+    𝐏::SparseMatrixCSC{Int}
+
+    𝐏₁ₗ::SparseMatrixCSC{Int}
+    𝐏₁ᵣ::SparseMatrixCSC{Int}
+
+    𝐏₁ₗ̂::SparseMatrixCSC{Int}
+    𝐏₂ₗ̂::SparseMatrixCSC{Int}
+
+    𝐏₁ₗ̄::SparseMatrixCSC{Int}
+    𝐏₂ₗ̄::SparseMatrixCSC{Int}
+
+    𝐏₁ᵣ̃::SparseMatrixCSC{Int}
+    𝐏₂ᵣ̃::SparseMatrixCSC{Int}
+    
+    𝐒𝐏::SparseMatrixCSC{Int}
+end
+
 
 struct perturbation_solution
     solution_matrix::Matrix{Float64}
     state_update::Function
 end 
 
-struct higher_order_perturbation_solution
+struct second_order_perturbation_solution
+    solution_matrix::SparseMatrixCSC{Float64}
+    stochastic_steady_state::Vector{Float64}
+    state_update::Function
+end
+
+struct third_order_perturbation_solution
     solution_matrix::SparseMatrixCSC{Float64}
     stochastic_steady_state::Vector{Float64}
     state_update::Function
@@ -164,10 +197,12 @@ mutable struct perturbation
     first_order::perturbation_solution
     linear_time_iteration::perturbation_solution
     quadratic_iteration::perturbation_solution
-    second_order::higher_order_perturbation_solution
-    pruned_second_order::higher_order_perturbation_solution
-    third_order::higher_order_perturbation_solution
-    pruned_third_order::higher_order_perturbation_solution
+    second_order::second_order_perturbation_solution
+    pruned_second_order::second_order_perturbation_solution
+    third_order::third_order_perturbation_solution
+    pruned_third_order::third_order_perturbation_solution
+    second_order_auxilliary_matrices::second_order_auxilliary_matrices
+    third_order_auxilliary_matrices::third_order_auxilliary_matrices
 end
 
 

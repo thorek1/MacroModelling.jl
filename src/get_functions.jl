@@ -1251,17 +1251,20 @@ function get_solution(𝓂::ℳ, parameters::Vector{<: Real}; algorithm::Symbol 
     if algorithm == :second_order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
-        𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁; T = 𝓂.timings)
+        𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm == :third_order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
-        𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁; T = 𝓂.timings)
+        𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
+        𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
     
         ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
                 
-        𝐒₃ = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂; T = 𝓂.timings)
+        𝐒₃ = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
+        𝓂.solution.perturbation.second_order_auxilliary_matrices, 
+        𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
     else
@@ -1382,10 +1385,20 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
             end
         end
         if Inf in periods
-            lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
+            sylvester = LinearOperators.LinearOperator(Float64, length(CC), length(CC), false, false, 
+            (sol,𝐱) -> begin 
+                𝐗 = sparse(reshape(𝐱, size(CC)))
+                sol .= vec(A * 𝐗 * A' - 𝐗)
+                return sol
+            end)
+        
+            𝐂, info = Krylov.bicgstab(sylvester, sparsevec(collect(-CC)))
+        
+            if !info.solved
+                𝐂, info = Krylov.gmres(sylvester, sparsevec(collect(-CC)))
+            end
 
-            # var_container[:,i,indexin(Inf,periods)] = ℒ.diag(reshape(ℐ.bicgstabl(lm, vec(-CC)), size(CC))) # faster
-            var_container[:,i,indexin(Inf,periods)] = ℒ.diag(reshape(ℐ.gmres(lm, vec(-CC)), size(CC))) # numerically more stable
+            var_container[:,i,indexin(Inf,periods)] = ℒ.diag(reshape(𝐂, size(CC))) # numerically more stable
         end
     end
 
