@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         version:
-#           - '1.8'
+          # - '1.8'
           - '1.9' #^1-0 and ^1.9-0 are not recognised
           # - 'nightly' # fails for zygote
         os:
@@ -22,7 +22,7 @@ jobs:
           - windows-latest #slow
         arch:
           - x64
-          # - aarch64 #fails (wrong naming?)
+          # - aarch64 #not implemented in Github CI
         include:
           - os: ubuntu-latest
             prefix: xvfb-run

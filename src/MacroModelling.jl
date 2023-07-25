@@ -3117,7 +3117,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
         𝐒₂ = sparse(reshape(S2,size(X)))
         droptol!(𝐒₂,tol)
     else
-        𝐒₂ = sparse(solve_sylvester_equation(𝒞.ComponentArray(;A,B,C,X)))
+        𝐒₂ = sparse(solve_sylvester_equation(𝒞.ComponentArray(;B,C,X)))
         droptol!(𝐒₂,tol)
     end
 
@@ -3229,7 +3229,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
         𝐒₃ = sparse(reshape(S3,size(X)))
         droptol!(𝐒₃,tol)
     else
-        𝐒₃ = sparse(solve_sylvester_equation(𝒞.ComponentArray(;A,B,C,X)))
+        𝐒₃ = sparse(solve_sylvester_equation(𝒞.ComponentArray(;B,C,X)))
         droptol!(𝐒₃,tol)
     end
     
