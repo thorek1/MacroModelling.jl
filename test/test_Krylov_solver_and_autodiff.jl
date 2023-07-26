@@ -1,4 +1,3 @@
-using MacroModelling
 using SparseArrays
 import LinearAlgebra as ℒ
 import LinearOperators
@@ -6,16 +5,20 @@ import Krylov
 import ForwardDiff as ℱ
 import RecursiveFactorization as RF
 
+using MacroModelling
 include("models/FS2000.jl")
+
+
+SSS(m)
 
 using FiniteDifferences
 SSS(m,derivatives = false)[1]
 pars = copy(m.parameter_values)
-fin_grad = FiniteDifferences.grad(central_fdm(5,1),x->SSS(m,derivatives = false, parameters = x)[1],pars)[1]
-SSS(m)[1,2:end]
+fin_grad = FiniteDifferences.grad(central_fdm(4,1),x->SSS(m,derivatives = false, parameters = x)[10],pars)[1]
+SSS(m, parameters = pars)[10,2:end]
 
-SSS(m)
-
+SSS(m, parameters = pars)
+get_solution(m)
 
 include("models/RBC_CME.jl")
 
@@ -128,6 +131,11 @@ x = sylvester_equation_solver(concat_sparse,dims = dims_sparse)
 # collect(x)
 # collect(X)
 
+B_1 = findnz(B)[1] |> unique
+B_2 = findnz(B)[2] |> unique
+
+union(B_1,B_2)
+
 function sylvester_equation_solver_conditions(concat_sparse_vec, x; dims::Vector{Tuple{Int,Int}})
     lenA = dims[1][1] * dims[1][2]
     lenB = dims[2][1] * dims[2][2]
@@ -161,12 +169,12 @@ function sylvester_equation_solver(concat_sparse_vec::AbstractArray{ℱ.Dual{Z,S
     val = sylvester_equation_solver(concat_sparse_vec_values, dims = dims)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
-    # b = ℱ.jacobian(x -> sylvester_equation_solver_conditions(x, val, dims = dims), concat_sparse_vec_values)
-    # a = ℱ.jacobian(x -> sylvester_equation_solver_conditions(concat_sparse_vec_values, x, dims = dims), val)
+    b = ℱ.jacobian(x -> sylvester_equation_solver_conditions(x, val, dims = dims), concat_sparse_vec_values)
+    a = ℱ.jacobian(x -> sylvester_equation_solver_conditions(concat_sparse_vec_values, x, dims = dims), val)
     # println(A)
     # println(size(A))
-    b = hcat(kron(-x * B, I(size(A,1)))', kron(I(size(B,1)), A * x), ℒ.I(length(X)))
-    a = reshape(permutedims(reshape(ℒ.I - kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
+    # b = hcat(ℒ.kron(-x * B, ℒ.I(size(A,1)))', ℒ.kron(ℒ.I(size(B,1)), A * x), ℒ.I(length(X)))
+    # a = reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
 
     Â = RF.lu(a, check = false)
 
@@ -224,10 +232,24 @@ jacoZ_BB = Zygote.jacobian(y->sylvester_equation_solver_conditions([y; vec(colle
 jacoZ_CC = Zygote.jacobian(y->sylvester_equation_solver_conditions([vec(collect(B)); y;vec(collect(X))], collect(x), dims = dims_sparse), collect(vec(C)))[1]
 jacoZ_XX = Zygote.jacobian(y->sylvester_equation_solver_conditions([vec(collect(B));vec(collect(C));y], collect(x), dims = dims_sparse), collect(vec(X)))[1]
 
-collect(kron(-x*C,I(size(B,1)))')
-jacoZ_BB
 
 
+sparse(ℒ.kron(-x*C, II)')
+tot = sparse(ℒ.kron(-spdiagm(B2) * x*C ,ℒ.I(size(B,1)))')
+
+tot * spdiagm(kron(B2,B1))
+
+
+jacoZ_BB |> sparse
+
+II  = spzeros(size(B))
+
+[II[i,i] = 1 for i in B_2]
+B_1 = findnz(B)[1] |> unique
+B_2 = findnz(B)[2] |> unique
+B1 = sparsevec(B_1,1,size(B,1))
+B2 = sparsevec(B_2,1,size(B,1))
+kron(B1,B2)
 kron(I(size(C,1)), B*x)|>collect
 
 

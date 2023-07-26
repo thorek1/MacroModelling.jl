@@ -218,7 +218,7 @@ function levenberg_marquardt(f::Function,
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
     xtol::T = eps(), 
-    ftol::T = 1e-10, 
+    ftol::T = eps(), 
     iterations::S = 250, 
     ϕ̄::T    =       8.0,
     ϕ̂::T    =       0.904,
@@ -2984,13 +2984,25 @@ end
 
 
 
-function solve_sylvester_equation(concat_sparse_vec::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps())
+function solve_sylvester_equation_conditions(concat_sparse_vec::AbstractVector, x::AbstractArray; dims::Vector{Tuple{Int,Int}})
+    lenA = dims[1][1] * dims[1][2]
+    lenB = dims[2][1] * dims[2][2]
+
+    A = (reshape(concat_sparse_vec[1 : lenA],dims[1]))
+    B = (reshape(concat_sparse_vec[lenA .+ (1 : lenB)],dims[2]))
+    X = (reshape(concat_sparse_vec[lenA + lenB + 1 : end],dims[3]))
+
+    collect(X + x - A * x * B)
+end
+
+
+function solve_sylvester_equation(concat_sparse_vec::AbstractVector{Float64}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps())
     lenA = dims[1][1] * dims[1][2]
     lenB = dims[2][1] * dims[2][2]
     lenX = dims[3][1] * dims[3][2]
 
-    A = sparse(reshape(concat_sparse_vec[1 : lenA],dims[1]))
-    B = sparse(reshape(concat_sparse_vec[lenA .+ (1 : lenB)],dims[2]))
+    A = (reshape(concat_sparse_vec[1 : lenA],dims[1]))
+    B = (reshape(concat_sparse_vec[lenA .+ (1 : lenB)],dims[2]))
 
     sylvester = LinearOperators.LinearOperator(Float64, lenX, lenX, false, false, 
         (sol,𝐱) -> begin 
@@ -2999,32 +3011,20 @@ function solve_sylvester_equation(concat_sparse_vec::SparseVector{Float64}; dims
         return sol
     end)
 
-    X, info = Krylov.bicgstab(sylvester, concat_sparse_vec[lenA + lenB + 1 : end])
+    X, info = Krylov.gmres(sylvester, -concat_sparse_vec[lenA + lenB + 1 : end])#, atol = tol)
 
     if !info.solved
-        X, info = Krylov.gmres(sylvester, concat_sparse_vec[lenA + lenB + 1 : end])
+        X, info = Krylov.bicgstab(sylvester, -concat_sparse_vec[lenA + lenB + 1 : end])#, atol = tol)
     end
 
-    X̂ = sparse(reshape(X,dims[3]))
-    droptol!(X̂, tol)
+    X̂ = (reshape(X,dims[3]))
+    # droptol!(X̂, tol)
 
     return X̂
 end
 
 
-function solve_sylvester_equation_conditions(concat_sparse_vec::SparseVector, x::SparseMatrixCSC; dims::Vector{Tuple{Int,Int}})
-    lenA = dims[1][1] * dims[1][2]
-    lenB = dims[2][1] * dims[2][2]
-
-    A = sparse(reshape(concat_sparse_vec[1 : lenA],dims[1]))
-    B = sparse(reshape(concat_sparse_vec[lenA .+ (1 : lenB)],dims[2]))
-    X = sparse(reshape(concat_sparse_vec[lenA + lenB + 1 : end],dims[3]))
-
-    collect(X + x - A * x * B)
-end
-
-
-function solve_sylvester_equation(concat_sparse_vec::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = 1e-10) where {Z,S,N}
+function solve_sylvester_equation(concat_sparse_vec::AbstractVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps()) where {Z,S,N}
     # unpack: AoS -> SoA
     concat_sparse_vec_values = ℱ.value.(concat_sparse_vec)
 
@@ -3038,7 +3038,7 @@ function solve_sylvester_equation(concat_sparse_vec::SparseVector{ℱ.Dual{Z,S,N
     ps = mapreduce(ℱ.partials, hcat, concat_sparse_vec)'
 
     # get f(vs)
-    val = solve_sylvester_equation(concat_sparse_vec_values, dims = dims)
+    val = solve_sylvester_equation(concat_sparse_vec_values, dims = dims, tol = tol)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here. This used to be the conditions but here they are analytically derived.
     b = ℱ.jacobian(x -> solve_sylvester_equation_conditions(x, val, dims = dims), concat_sparse_vec_values)
@@ -3046,10 +3046,10 @@ function solve_sylvester_equation(concat_sparse_vec::SparseVector{ℱ.Dual{Z,S,N
     # b = hcat(ℒ.kron(-val * B, ℒ.I(size(A,1)))', ℒ.kron(ℒ.I(size(B,1)), A * val), ℒ.I(length(val)))
     # a = reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
 
-    Â = RF.lu(a, check = false)
+    Â = RF.lu(collect(a), check = false)
 
     if !ℒ.issuccess(Â)
-        Â = ℒ.svd(a)
+        Â = ℒ.svd(collect(a))
     end
     
     jvp = -(Â \ b) * ps
@@ -3116,7 +3116,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
 
-    𝐒₂ = solve_sylvester_equation([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
+    𝐒₂ = solve_sylvester_equation(collect([vec(B) ;vec(C) ;vec(X)]), dims = [size(B) ;size(C) ;size(X)], tol = tol)
 
     𝐒₂ *= M₂.𝐔₂
 
@@ -3133,7 +3133,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxilliary_matrices;  # aux matrices third order
                                             T::timings,
-                                            tol::AbstractFloat = 1e-10)
+                                            tol::AbstractFloat = eps())
     # inspired by Levintal
 
     # Indices and number of variables
