@@ -2983,20 +2983,7 @@ end
 
 
 
-
-function solve_sylvester_equation_conditions(concat_sparse_vec::AbstractVector, x::AbstractArray; dims::Vector{Tuple{Int,Int}})
-    lenA = dims[1][1] * dims[1][2]
-    lenB = dims[2][1] * dims[2][2]
-
-    A = (reshape(concat_sparse_vec[1 : lenA],dims[1]))
-    B = (reshape(concat_sparse_vec[lenA .+ (1 : lenB)],dims[2]))
-    X = (reshape(concat_sparse_vec[lenA + lenB + 1 : end],dims[3]))
-
-    collect(X + x - A * x * B)
-end
-
-
-function solve_sylvester_equation(concat_sparse_vec::AbstractVector{Float64}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps())
+function solve_sylvester_equation(concat_sparse_vec::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps())
     lenA = dims[1][1] * dims[1][2]
     lenB = dims[2][1] * dims[2][2]
     lenX = dims[3][1] * dims[3][2]
@@ -3023,26 +3010,47 @@ function solve_sylvester_equation(concat_sparse_vec::AbstractVector{Float64}; di
     return X̂
 end
 
+function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = eps()) where {Z,S,N}
+    nrows = length(V)
+    ncols = length(V.nzval[1].partials)
 
-function solve_sylvester_equation(concat_sparse_vec::AbstractVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps()) where {Z,S,N}
+    rows = Int[]
+    cols = Int[]
+
+    prtls = Float64[]
+
+    for (i,v) in enumerate(V.nzind)
+        for (k,w) in enumerate(V.nzval[i].partials)
+            if abs(w) > tol
+                push!(rows,v)
+                push!(cols,k)
+                push!(prtls,w)
+            end
+        end
+    end
+
+    vvals = sparsevec(V.nzind,[i.value for i in V.nzval],nrows)
+    ps = sparse(rows,cols,prtls,nrows,ncols)
+
+    return vvals, ps
+end
+
+function solve_sylvester_equation(concat_sparse_vec::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps()) where {Z,S,N}
     # unpack: AoS -> SoA
-    concat_sparse_vec_values = ℱ.value.(concat_sparse_vec)
+    values, partials = separate_values_and_partials_from_sparsevec_dual(concat_sparse_vec)
 
     lenA = dims[1][1] * dims[1][2]
     lenB = dims[2][1] * dims[2][2]
 
-    A = sparse(reshape(concat_sparse_vec_values[1 : lenA],dims[1]))
-    B = sparse(reshape(concat_sparse_vec_values[lenA .+ (1 : lenB)],dims[2]))
-
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, concat_sparse_vec)'
+    A = sparse(reshape(values[1 : lenA],dims[1]))
+    B = sparse(reshape(values[lenA .+ (1 : lenB)],dims[2]))
 
     # get f(vs)
-    val = solve_sylvester_equation(concat_sparse_vec_values, dims = dims, tol = tol)
+    val = solve_sylvester_equation(values, dims = dims, tol = tol)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here. This used to be the conditions but here they are analytically derived.
-    A¹ = sparse(size(A,1) * (findnz(A)[2].-1) .+ findnz(A)[1],size(A,1) * (findnz(A)[2].-1) .+ findnz(A)[1],1,length(A),length(A))
-    B¹ = sparse(size(B,1) * (findnz(B)[2].-1) .+ findnz(B)[1],size(B,1) * (findnz(B)[2].-1) .+ findnz(B)[1],1,length(B),length(B))
+    A¹ = sparse((values[1 : lenA]).nzind, (values[1 : lenA]).nzind, 1, lenA, lenA)
+    B¹ = sparse((values[lenA .+ (1 : lenB)]).nzind, (values[lenA .+ (1 : lenB)]).nzind, 1, lenB, lenB)
 
     jacobian_A = A¹ * ℒ.kron(-val * B, ℒ.I(size(A,1)))
     jacobian_B = ℒ.kron(ℒ.I(size(B,1)), -A * val) * B¹
@@ -3050,13 +3058,24 @@ function solve_sylvester_equation(concat_sparse_vec::AbstractVector{ℱ.Dual{Z,S
     b = hcat(jacobian_A', jacobian_B, ℒ.I(length(val)))
     a = reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
 
-    Â = RF.lu(a, check = false)
+    reshape_matmul = LinearOperators.LinearOperator(Float64, size(b,1) * size(partials,2), size(b,1) * size(partials,2), false, false, 
+        (sol,𝐱) -> begin 
+        𝐗 = reshape(𝐱, (size(b,1),size(partials,2)))
+        sol .= vec(reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1)) * 𝐗)
+        return sol
+    end)
 
-    if !ℒ.issuccess(Â)
-        Â = ℒ.svd(a)
-    end
+    X, info = Krylov.gmres(reshape_matmul, -vec(b * partials))#, atol = tol)
+
+    jvp = reshape(X, (size(b,1),size(partials,2)))
+
+    # Â = RF.lu(a, check = false)
+
+    # if !ℒ.issuccess(Â)
+    #     Â = ℒ.svd(a)
+    # end
     
-    jvp = -(Â \ b) * ps
+    # jvp = -(Â \ b) * partials
 
     # pack: SoA -> AoS
     return reshape(map(val, eachrow(jvp)) do v, p
@@ -3115,7 +3134,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
 
-    𝐒₂ = solve_sylvester_equation(collect([vec(B) ;vec(C) ;vec(X)]), dims = [size(B) ;size(C) ;size(X)], tol = tol)
+    𝐒₂ = solve_sylvester_equation([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
 
     𝐒₂ *= M₂.𝐔₂
 
@@ -3204,8 +3223,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ))
     C *= M₃.𝐂₃
     droptol!(C,tol)
-    
-    # A = spdiagm(ones(n))
 
     𝐒₃ = solve_sylvester_equation([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
     
