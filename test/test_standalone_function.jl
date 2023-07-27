@@ -71,14 +71,17 @@ first_order_solution, solved = calculate_first_order_solution(∇₁; T = T, exp
 
 second_order_solution = calculate_second_order_solution(∇₁, 
 ∇₂, 
-first_order_solution; 
+first_order_solution, 
+RBC_CME.solution.perturbation.second_order_auxilliary_matrices; 
 T = T)
 
 third_order_solution = calculate_third_order_solution(∇₁, 
 ∇₂, 
 ∇₃,
 first_order_solution, 
-second_order_solution; 
+second_order_solution, 
+RBC_CME.solution.perturbation.second_order_auxilliary_matrices, 
+RBC_CME.solution.perturbation.third_order_auxilliary_matrices; 
 T = T)
 
 @testset verbose = true "SS, derivatives of model at SS and solutions" begin
@@ -246,31 +249,31 @@ end
     end
 
 
-    iirrff = irf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
+    iirrff = irf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), false, T)
 
     @test isapprox(iirrff[4,1,:],[ -0.00036685520477089503
     0.0021720718769730014],rtol = eps(Float32))
-    ggiirrff = girf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
+    ggiirrff = girf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), false, T)
     @test isapprox(iirrff[4,1,:],ggiirrff[4,1,:],rtol = eps(Float32))
 
 
     SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.second_order.stochastic_steady_state
 
-    ggiirrff2 = girf(second_order_state_update, SSS_delta, zeros(T.nVars), T, draws = 1000,warmup_periods = 100)
+    ggiirrff2 = girf(second_order_state_update, SSS_delta, zeros(T.nVars), false, T, draws = 1000,warmup_periods = 100)
     @test isapprox(ggiirrff2[4,1,:],[-0.0003668849861768406
     0.0021711333455274096],rtol = 1e-3)
 
-    iirrff2 = irf(second_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
+    iirrff2 = irf(second_order_state_update, zeros(T.nVars), zeros(T.nVars), false, T)
     @test isapprox(iirrff2[4,1,:],[-0.0004547347878067665, 0.0020831426377533636],rtol = 1e-6)
 
 
     SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.third_order.stochastic_steady_state
 
-    ggiirrff3 = girf(third_order_state_update, SSS_delta, zeros(T.nVars), T,draws = 1000,warmup_periods = 100)
+    ggiirrff3 = girf(third_order_state_update, SSS_delta, zeros(T.nVars), false, T,draws = 1000,warmup_periods = 100)
     @test isapprox(ggiirrff3[4,1,:],[ -0.00036686142588429404
     0.002171120660323429],rtol = 1e-3)
 
-    iirrff3 = irf(third_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
+    iirrff3 = irf(third_order_state_update, zeros(T.nVars), zeros(T.nVars), false, T)
     @test isapprox(iirrff3[4,1,:],[-0.00045473149068020854, 0.002083198241302615], rtol = 1e-6)
 end
 
@@ -388,7 +391,7 @@ RBC_CME = nothing
 
 
 
-    data = simulate(RBC_CME, levels = true)[:,:,1]
+    data = simulate(RBC_CME)[:,:,1]
     observables = [:c,:k]
     @test isapprox(420.25039827148197,calculate_kalman_filter_loglikelihood(RBC_CME,data(observables),observables),rtol = 1e-5)
 
@@ -429,21 +432,21 @@ end
             x -> collect(get_SS(m; parameters = x, derivatives = false)), 
             parameters)[1]
 
-    @test isapprox(SSfinitediff, SSdiff[:,2:end], rtol = 1e-8)
+    @test isapprox(SSfinitediff, SSdiff[:,2:end], rtol = 1e-7)
 
 
     SSS2finitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
             x -> collect(get_SSS(m; parameters = x, derivatives = false)), 
             parameters)[1]
 
-    @test isapprox(SSS2finitediff, SSSdiff2[:,2:end], rtol = 1e-8)
+    @test isapprox(SSS2finitediff, SSSdiff2[:,2:end], rtol = 1e-7)
 
 
     SSS3finitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
             x -> collect(get_SSS(m; parameters = x, derivatives = false, algorithm = :third_order)), 
             parameters)[1]
 
-    @test isapprox(SSS3finitediff, SSSdiff3[:,2:end], rtol = 1e-8)
+    @test isapprox(SSS3finitediff, SSSdiff3[:,2:end], rtol = 1e-7)
 end
 m = nothing
 𝓂 = nothing

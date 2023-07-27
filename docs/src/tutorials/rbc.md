@@ -175,7 +175,7 @@ For simulations this is possible by calling [`simulate`](@ref):
 simulate(RBC)
 ```
 
-which returns the simulated data in a 3-dimensional `KeyedArray` of the same structure as for the IRFs.
+which returns the simulated data in levels in a 3-dimensional `KeyedArray` of the same structure as for the IRFs.
 
 ## Conditional forecasts
 
