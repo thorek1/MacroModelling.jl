@@ -911,10 +911,10 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                         # ubs,
                         # fail_fast_solvers_only = fail_fast_solvers_only,
                         # verbose = verbose)))
-                # push!(SS_solve_func,:(solution_error += solution[2])) 
-                # push!(SS_solve_func,:(sol = solution[1]))
-                push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)]([$(calib_pars_input...),$(other_vars_input...)],solution))))
-                push!(SS_solve_func,:(sol = solution))
+                push!(SS_solve_func,:(solution_error += solution[2])) 
+                push!(SS_solve_func,:(sol = solution[1]))
+                # push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)]([$(calib_pars_input...),$(other_vars_input...)],solution))))
+                # push!(SS_solve_func,:(sol = solution))
 
                 # push!(SS_solve_func,:(println(sol))) 
 
@@ -1274,9 +1274,11 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         
         push!(SS_solve_func,:(solution = block_solver_RD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)])))#, 
         
-        push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)](length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],solution))))
+        # push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)](length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],solution))))
         
-        push!(SS_solve_func,:(sol = solution))
+        push!(SS_solve_func,:(solution_error = solution[2]))
+        
+        push!(SS_solve_func,:(sol = solution[1]))
 
         push!(SS_solve_func,:($(result...)))   
         
@@ -1440,8 +1442,8 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Real},
                                                             # timeout = timeout,
                                                             starting_points = starting_points,
                                                             # fail_fast_solvers_only = fail_fast_solvers_only,
-                                                            verbose = verbose)[1],  
-                                        (x,y) -> ss_solve_blocks(x,y))
+                                                            verbose = verbose),  
+                                        (x,y,z) -> ss_solve_blocks(x,y), true)
 
 function block_solver(parameters_and_solved_vars::Vector{Float64}, 
                         n_block::Int, 
@@ -2957,14 +2959,14 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explos
     end,size(val)), solved
 end
 
-riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive)[1], (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
+riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive), (x,y,z)->riccati_conditions(x,y,T=T,explosive=explosive), true)
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
     # A = riccati_AD(∇₁, T = T, explosive = explosive)
     riccati = riccati_(∇₁, T = T, explosive = explosive)
-    A = riccati(∇₁)
+    A, solved = riccati(∇₁)
 
-    solved = @ignore_derivatives !(isapprox(sum(abs,A), 0, rtol = eps()))
+    # solved = @ignore_derivatives !(isapprox(sum(abs,A), 0, rtol = eps()))
 
     if !solved
         return hcat(A, zeros(size(A,1),T.nExo)), solved
