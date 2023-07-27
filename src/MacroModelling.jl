@@ -1443,7 +1443,7 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Real},
                                                             starting_points = starting_points,
                                                             # fail_fast_solvers_only = fail_fast_solvers_only,
                                                             verbose = verbose),  
-                                        (x,y,z) -> ss_solve_blocks(x,y), true)
+                                        (x,y,z) -> ss_solve_blocks(x,y), Val(true))
 
 function block_solver(parameters_and_solved_vars::Vector{Float64}, 
                         n_block::Int, 
@@ -2959,7 +2959,7 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explos
     end,size(val)), solved
 end
 
-riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive), (x,y,z)->riccati_conditions(x,y,T=T,explosive=explosive), true)
+riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive), (x,y,z)->riccati_conditions(x,y,T=T,explosive=explosive), Val(true))
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
     # A = riccati_AD(∇₁, T = T, explosive = explosive)
