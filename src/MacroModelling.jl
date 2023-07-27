@@ -3001,8 +3001,8 @@ function solve_sylvester_equation(concat_sparse_vec::AbstractVector{Float64}; di
     lenB = dims[2][1] * dims[2][2]
     lenX = dims[3][1] * dims[3][2]
 
-    A = (reshape(concat_sparse_vec[1 : lenA],dims[1]))
-    B = (reshape(concat_sparse_vec[lenA .+ (1 : lenB)],dims[2]))
+    A = sparse(reshape(concat_sparse_vec[1 : lenA],dims[1]))
+    B = sparse(reshape(concat_sparse_vec[lenA .+ (1 : lenB)],dims[2]))
 
     sylvester = LinearOperators.LinearOperator(Float64, lenX, lenX, false, false, 
         (sol,𝐱) -> begin 
@@ -3017,8 +3017,8 @@ function solve_sylvester_equation(concat_sparse_vec::AbstractVector{Float64}; di
         X, info = Krylov.bicgstab(sylvester, -concat_sparse_vec[lenA + lenB + 1 : end])#, atol = tol)
     end
 
-    X̂ = (reshape(X,dims[3]))
-    # droptol!(X̂, tol)
+    X̂ = sparse(reshape(X,dims[3]))
+    droptol!(X̂, tol)
 
     return X̂
 end
