@@ -3871,6 +3871,10 @@ end
         get_variance_decomposition(FS2000)
         get_conditional_variance_decomposition(FS2000)
         get_irf(FS2000)
+
+        data = simulate(FS2000)[:,:,1]
+        observables = [:c,:k]
+        calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
         # get_SSS(FS2000, silent = true)
         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
