@@ -3544,7 +3544,7 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    covar_raw = calculate_covariance_forward(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
+    covar_raw = calculate_covariance_forward(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))[1]
 
     return covar_raw, sol , ∇₁, SS_and_pars
 end
@@ -3568,7 +3568,7 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Real}; T::timin
         𝐂, info = Krylov.gmres(sylvester, sparsevec(collect(-CC)))
     end
 
-    reshape(𝐂,size(CC)) # return info on convergence
+    return reshape(𝐂,size(CC)), info.solved # return info on convergence
 end
 
 
@@ -3579,7 +3579,7 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; 
     ps = mapreduce(ℱ.partials, hcat, 𝑺₁)'
 
     # get f(vs)
-    val = calculate_covariance_forward(𝑺₁̂, T = T, subset_indices = subset_indices)
+    val, solved = calculate_covariance_forward(𝑺₁̂, T = T, subset_indices = subset_indices)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
     B = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, T = T, subset_indices = subset_indices), 𝑺₁̂)
@@ -3596,7 +3596,7 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; 
     # pack: SoA -> AoS
     return reshape(map(val, eachrow(jvp)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val))
+    end,size(val)), solved
 end
 
 
@@ -3608,7 +3608,7 @@ function calculate_covariance_conditions(𝑺₁::AbstractMatrix{<: Real}, covar
 end
 
 
-calculate_covariance_AD(sol; T, subset_indices) = ImplicitFunction(sol->calculate_covariance_forward(sol, T=T, subset_indices = subset_indices), (x,y)->calculate_covariance_conditions(x,y,T=T, subset_indices = subset_indices))
+calculate_covariance_AD(sol; T, subset_indices) = ImplicitFunction(sol->calculate_covariance_forward(sol, T=T, subset_indices = subset_indices), (x,y,z)->calculate_covariance_conditions(x,y,T=T, subset_indices = subset_indices))
 # calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
 
 function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose::Bool = false, tol::AbstractFloat = eps())
