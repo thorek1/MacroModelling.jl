@@ -1515,65 +1515,65 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 end
 
 
-function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}}, 
-    n_block::Int, 
-    ss_solve_blocks::Function, 
-    # SS_optimizer, 
-    # f::OptimizationFunction, 
-    guess::Vector{Float64}, 
-    lbs::Vector{Float64}, 
-    ubs::Vector{Float64};
-    tol::AbstractFloat = eps(),
-    # timeout = 120,
-    starting_points::Vector{Float64} = [0.897, 1.2, .9, .75, 1.5, -.5, 2, .25],
-    # fail_fast_solvers_only = true,
-    verbose::Bool = false) where {Z,S,N}
+# function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}}, 
+#     n_block::Int, 
+#     ss_solve_blocks::Function, 
+#     # SS_optimizer, 
+#     # f::OptimizationFunction, 
+#     guess::Vector{Float64}, 
+#     lbs::Vector{Float64}, 
+#     ubs::Vector{Float64};
+#     tol::AbstractFloat = eps(),
+#     # timeout = 120,
+#     starting_points::Vector{Float64} = [0.897, 1.2, .9, .75, 1.5, -.5, 2, .25],
+#     # fail_fast_solvers_only = true,
+#     verbose::Bool = false) where {Z,S,N}
 
-    # unpack: AoS -> SoA
-    inp = ℱ.value.(parameters_and_solved_vars)
+#     # unpack: AoS -> SoA
+#     inp = ℱ.value.(parameters_and_solved_vars)
 
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, parameters_and_solved_vars)'
+#     # you can play with the dimension here, sometimes it makes sense to transpose
+#     ps = mapreduce(ℱ.partials, hcat, parameters_and_solved_vars)'
 
-    if verbose println("Solution for derivatives.") end
-    # get f(vs)
-    val, min = block_solver(inp, 
-                        n_block, 
-                        ss_solve_blocks, 
-                        # SS_optimizer, 
-                        # f, 
-                        guess, 
-                        lbs, 
-                        ubs;
-                        tol = tol,
-                        # timeout = timeout,
-                        starting_points = starting_points,
-                        # fail_fast_solvers_only = fail_fast_solvers_only,
-                        verbose = verbose)
+#     if verbose println("Solution for derivatives.") end
+#     # get f(vs)
+#     val, min = block_solver(inp, 
+#                         n_block, 
+#                         ss_solve_blocks, 
+#                         # SS_optimizer, 
+#                         # f, 
+#                         guess, 
+#                         lbs, 
+#                         ubs;
+#                         tol = tol,
+#                         # timeout = timeout,
+#                         starting_points = starting_points,
+#                         # fail_fast_solvers_only = fail_fast_solvers_only,
+#                         verbose = verbose)
 
-    if min > tol
-        jvp = fill(0,length(val),length(inp)) * ps
-    else
-        # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> ss_solve_blocks(x,val), inp)
-        A = ℱ.jacobian(x -> ss_solve_blocks(inp,x), val)
-        # B = Zygote.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)[1]
-        # A = Zygote.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)[1]
+#     if min > tol
+#         jvp = fill(0,length(val),length(inp)) * ps
+#     else
+#         # get J(f, vs) * ps (cheating). Write your custom rule here
+#         B = ℱ.jacobian(x -> ss_solve_blocks(x,val), inp)
+#         A = ℱ.jacobian(x -> ss_solve_blocks(inp,x), val)
+#         # B = Zygote.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)[1]
+#         # A = Zygote.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)[1]
 
-        Â = RF.lu(A, check = false)
+#         Â = RF.lu(A, check = false)
 
-        if !ℒ.issuccess(Â)
-            Â = ℒ.svd(A)
-        end
+#         if !ℒ.issuccess(Â)
+#             Â = ℒ.svd(A)
+#         end
         
-        jvp = -(Â \ B) * ps
-    end
+#         jvp = -(Â \ B) * ps
+#     end
 
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(val)), min
-end
+#     # pack: SoA -> AoS
+#     return reshape(map(val, eachrow(jvp)) do v, p
+#         ℱ.Dual{Z}(v, p...) # Z is the tag
+#     end, size(val)), min
+# end
 
 
 
@@ -2934,41 +2934,46 @@ end
 
 
 
-function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explosive::Bool = false) where {Z,S,N}
-    # unpack: AoS -> SoA
-    ∇̂₁ = ℱ.value.(∇₁)
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, ∇₁)'
+# function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explosive::Bool = false) where {Z,S,N}
+#     # unpack: AoS -> SoA
+#     ∇̂₁ = ℱ.value.(∇₁)
+#     # you can play with the dimension here, sometimes it makes sense to transpose
+#     ps = mapreduce(ℱ.partials, hcat, ∇₁)'
 
-    val, solved = riccati_forward(∇̂₁;T = T, explosive = explosive)
+#     val, solved = riccati_forward(∇̂₁;T = T, explosive = explosive)
 
-    if solved
-        # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)
-        A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)
+#     if solved
+#         # get J(f, vs) * ps (cheating). Write your custom rule here
+#         B = ℱ.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)
+#         A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)
 
-        Â = RF.lu(A, check = false)
+#         Â = RF.lu(A, check = false)
 
-        if !ℒ.issuccess(Â)
-            Â = ℒ.svd(A)
-        end
+#         if !ℒ.issuccess(Â)
+#             Â = ℒ.svd(A)
+#         end
         
-        jvp = -(Â \ B) * ps
-    else
-        jvp = fill(0,length(val),length(∇̂₁)) * ps
-    end
+#         jvp = -(Â \ B) * ps
+#     else
+#         jvp = fill(0,length(val),length(∇̂₁)) * ps
+#     end
 
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val)), solved
-end
+#     # pack: SoA -> AoS
+#     return reshape(map(val, eachrow(jvp)) do v, p
+#         ℱ.Dual{Z}(v, p...) # Z is the tag
+#     end,size(val)), solved
+# end
 
-riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive), (x,y,z)->riccati_conditions(x,y,T=T,explosive=explosive))
+riccati_AD(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive), (x,y,z)-> begin
+                                                                                                                if !z
+                                                                                                                    return y * 0
+                                                                                                                end
+                                                                                                                return riccati_conditions(x,y,T=T,explosive=explosive)
+                                                                                                            end)
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
     # A = riccati_AD(∇₁, T = T, explosive = explosive)
-    riccati = riccati_(∇₁, T = T, explosive = explosive)
+    riccati = riccati_AD(∇₁, T = T, explosive = explosive)
     A, solved = riccati(∇₁)
 
     # solved = @ignore_derivatives !(isapprox(sum(abs,A), 0, rtol = eps()))
@@ -3542,17 +3547,6 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ)
 end
 
 
-function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false)
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
-    
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
-
-    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
-
-    covar_raw = calculate_covariance_forward(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))[1]
-
-    return covar_raw, sol , ∇₁, SS_and_pars
-end
 
 function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Real}; T::timings, subset_indices::Vector{Int64})
     A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[indexin(T.past_not_future_and_mixed_idx,subset_indices),:]
@@ -3577,32 +3571,32 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Real}; T::timin
 end
 
 
-function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T, subset_indices::Vector{Int64} = subset_indices) where {Z,S,N}
-    # unpack: AoS -> SoA
-    𝑺₁̂ = ℱ.value.(𝑺₁)
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, 𝑺₁)'
+# function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T, subset_indices::Vector{Int64} = subset_indices) where {Z,S,N}
+#     # unpack: AoS -> SoA
+#     𝑺₁̂ = ℱ.value.(𝑺₁)
+#     # you can play with the dimension here, sometimes it makes sense to transpose
+#     ps = mapreduce(ℱ.partials, hcat, 𝑺₁)'
 
-    # get f(vs)
-    val, solved = calculate_covariance_forward(𝑺₁̂, T = T, subset_indices = subset_indices)
+#     # get f(vs)
+#     val, solved = calculate_covariance_forward(𝑺₁̂, T = T, subset_indices = subset_indices)
 
-    # get J(f, vs) * ps (cheating). Write your custom rule here
-    B = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, T = T, subset_indices = subset_indices), 𝑺₁̂)
-    A = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, T = T, subset_indices = subset_indices), val)
+#     # get J(f, vs) * ps (cheating). Write your custom rule here
+#     B = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, T = T, subset_indices = subset_indices), 𝑺₁̂)
+#     A = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, T = T, subset_indices = subset_indices), val)
 
-    Â = RF.lu(A, check = false)
+#     Â = RF.lu(A, check = false)
 
-    if !ℒ.issuccess(Â)
-        Â = ℒ.svd(A)
-    end
+#     if !ℒ.issuccess(Â)
+#         Â = ℒ.svd(A)
+#     end
     
-    jvp = -(Â \ B) * ps
+#     jvp = -(Â \ B) * ps
 
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val)), solved
-end
+#     # pack: SoA -> AoS
+#     return reshape(map(val, eachrow(jvp)) do v, p
+#         ℱ.Dual{Z}(v, p...) # Z is the tag
+#     end,size(val)), solved
+# end
 
 
 function calculate_covariance_conditions(𝑺₁::AbstractMatrix{<: Real}, covar::AbstractMatrix{<: Real}; T::timings, subset_indices::Vector{Int64})
@@ -3615,6 +3609,23 @@ end
 
 calculate_covariance_AD(sol; T, subset_indices) = ImplicitFunction(sol->calculate_covariance_forward(sol, T=T, subset_indices = subset_indices), (x,y,z)->calculate_covariance_conditions(x,y,T=T, subset_indices = subset_indices))
 # calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+
+
+
+function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+
+    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+    calculate_covariance = calculate_covariance_AD(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
+
+    covar_raw, solved_cov = calculate_covariance(sol)
+
+    return covar_raw, sol , ∇₁, SS_and_pars
+end
+
 
 function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose::Bool = false, tol::AbstractFloat = eps())
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
