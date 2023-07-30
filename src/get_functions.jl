@@ -1496,7 +1496,7 @@ function get_variance_decomposition(𝓂::ℳ;
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    calculate_covariance = calculate_covariance_AD(sol[:,[1:𝓂.timings.nPast_not_future_and_mixed..., 𝓂.timings.nPast_not_future_and_mixed+i]], T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
+    calculate_covariance = calculate_covariance_AD(sol[:,[1:𝓂.timings.nPast_not_future_and_mixed..., 𝓂.timings.nPast_not_future_and_mixed+1]], T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
 
     variances_by_shock = reduce(hcat,[ℒ.diag(calculate_covariance(sol[:,[1:𝓂.timings.nPast_not_future_and_mixed..., 𝓂.timings.nPast_not_future_and_mixed+i]])[1]) for i in 1:𝓂.timings.nExo])
 
