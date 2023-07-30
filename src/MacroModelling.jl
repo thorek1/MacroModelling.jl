@@ -1443,7 +1443,12 @@ block_solver_AD(parameters_and_solved_vars::Vector{<: Real},
                                                             starting_points = starting_points,
                                                             # fail_fast_solvers_only = fail_fast_solvers_only,
                                                             verbose = verbose),  
-                                        (x,y,z) -> ss_solve_blocks(x,y))
+                                        (x,y,z) -> begin 
+                                                        if z > tol
+                                                            return y * 0
+                                                        end
+                                                        return ss_solve_blocks(x,y)
+                                                    end)
 
 function block_solver(parameters_and_solved_vars::Vector{Float64}, 
                         n_block::Int, 
