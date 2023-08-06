@@ -95,10 +95,10 @@ macro model(𝓂,ex...)
     ss_eq_aux_ind = Int[]
     dyn_eq_aux_ind = Int[]
 
-    ex = parse_for_loops(ex)
+    model_ex = parse_for_loops(ex[end])
 
     # write down dynamic equations and add auxilliary variables for leads and lags > 1
-    for (i,arg) in enumerate(ex[end].args)
+    for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
             # write down dynamic equations
             t_ex = postwalk(x -> 
@@ -255,7 +255,7 @@ macro model(𝓂,ex...)
                         x.args[1] : 
                     unblock(x) : 
                 x,
-            ex[end].args[i])
+            model_ex.args[i])
 
             push!(dyn_equations,unblock(t_ex))
             
@@ -507,7 +507,7 @@ macro model(𝓂,ex...)
                         x :
                     x :
                 x,
-            ex[end].args[i])
+            model_ex.args[i])
             push!(ss_and_aux_equations,unblock(eqs))
         end
     end
@@ -720,13 +720,13 @@ macro model(𝓂,ex...)
 
     # println(ss_aux_equations)
     # write down original equations as written down in model block
-    for (i,arg) in enumerate(ex[end].args)
+    for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
             prs_exx = postwalk(x -> 
                 x isa Expr ? 
                     unblock(x) : 
                 x,
-            ex[end].args[i])
+            model_ex.args[i])
             push!(original_equations,unblock(prs_exx))
         end
     end
