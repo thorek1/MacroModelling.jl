@@ -2,7 +2,12 @@
 
 ## High priority
 
+- [ ] implement for loops in model macro (e.g. to setup multi country models)
+- [ ] implement occasionally binding constraints with shocks
+- [ ] implement moment matching for pruned models
+- [ ] speed benchmarking
 - [ ] add balanced growth path handling
+- [ ] add JOSS article (see Makie.jl)
 - [ ] write docs for (non-linear) solution algorithms
 - [ ] for cond forecastind and kalman, get rid of observables input and use axis key of data input
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then

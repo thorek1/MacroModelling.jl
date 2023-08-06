@@ -38,7 +38,28 @@ using MacroModelling
 end
 ```
 """
-macro model(𝓂,ex)
+macro model(𝓂,ex...)
+    # parse options
+    verbose = false
+    precompile = false
+
+    for exp in ex[1:end-1]
+        postwalk(x -> 
+            x isa Expr ?
+                x.head == :(=) ?  
+                    x.args[1] == :verbose && x.args[2] isa Bool ?
+                        verbose = x.args[2] :
+                    x.args[1] == :precompile && x.args[2] isa Bool ?
+                        precompile = x.args[2] :
+                    begin
+                        @warn "Invalid options." 
+                        x
+                    end :
+                x :
+            x,
+        exp)
+    end
+
     # create data containers
     parameters = []
     parameter_values = Vector{Float64}(undef,0)
@@ -77,7 +98,7 @@ macro model(𝓂,ex)
     ex = parse_for_loops(ex)
 
     # write down dynamic equations and add auxilliary variables for leads and lags > 1
-    for (i,arg) in enumerate(ex.args)
+    for (i,arg) in enumerate(ex[end].args)
         if isa(arg,Expr)
             # write down dynamic equations
             t_ex = postwalk(x -> 
@@ -234,7 +255,7 @@ macro model(𝓂,ex)
                         x.args[1] : 
                     unblock(x) : 
                 x,
-            ex.args[i])
+            ex[end].args[i])
 
             push!(dyn_equations,unblock(t_ex))
             
@@ -274,7 +295,11 @@ macro model(𝓂,ex)
                                     x :
                                 x.args[2].head == :call ? # nonnegative expressions
                                     begin
-                                        replacement = simplify(x.args[2])
+                                        if precompile
+                                            replacement = x.args[2]
+                                        else
+                                            replacement = simplify(x.args[2])
+                                        end
 
                                         if !(replacement isa Int) # check if the nonnegative term is just a constant
                                             if x.args[2] ∈ unique_➕_vars
@@ -318,8 +343,12 @@ macro model(𝓂,ex)
                                 x :
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
-                                    replacement = simplify(x.args[2])
-                                    
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
                                         if x.args[2] ∈ unique_➕_vars
                                             ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
@@ -358,8 +387,12 @@ macro model(𝓂,ex)
                                 x :
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
-                                    replacement = simplify(x.args[2])
-                                    
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
                                         if x.args[2] ∈ unique_➕_vars
                                             ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
@@ -399,7 +432,12 @@ macro model(𝓂,ex)
                                 x :
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
-                                    replacement = simplify(x.args[2])
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
                                     # println(replacement)
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
                                         if x.args[2] ∈ unique_➕_vars
@@ -440,7 +478,12 @@ macro model(𝓂,ex)
                                 x :
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
-                                    replacement = simplify(x.args[2])
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
                                     # println(replacement)
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
                                         if x.args[2] ∈ unique_➕_vars
@@ -464,7 +507,7 @@ macro model(𝓂,ex)
                         x :
                     x :
                 x,
-            ex.args[i])
+            ex[end].args[i])
             push!(ss_and_aux_equations,unblock(eqs))
         end
     end
@@ -548,9 +591,17 @@ macro model(𝓂,ex)
         prs_ex = convert_to_ss_equation(eq)
         
         if idx ∈ ss_eq_aux_ind
-            ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],simplify(unblock(prs_ex).args[3])) # simplify RHS if nonnegative auxilliary variable
+            if precompile
+                ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],unblock(prs_ex).args[3]) 
+            else
+                ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],simplify(unblock(prs_ex).args[3])) # simplify RHS if nonnegative auxilliary variable
+            end
         else
-            ss_aux_equation = simplify(unblock(prs_ex))
+            if precompile
+                ss_aux_equation = unblock(prs_ex)
+            else
+                ss_aux_equation = simplify(unblock(prs_ex))
+            end
         end
         ss_aux_equation_expr = if ss_aux_equation isa Symbol Expr(:call,:-,ss_aux_equation,0) else ss_aux_equation end
 
@@ -669,13 +720,13 @@ macro model(𝓂,ex)
 
     # println(ss_aux_equations)
     # write down original equations as written down in model block
-    for (i,arg) in enumerate(ex.args)
+    for (i,arg) in enumerate(ex[end].args)
         if isa(arg,Expr)
             prs_exx = postwalk(x -> 
                 x isa Expr ? 
                     unblock(x) : 
                 x,
-            ex.args[i])
+            ex[end].args[i])
             push!(original_equations,unblock(prs_exx))
         end
     end
@@ -790,10 +841,12 @@ macro model(𝓂,ex)
                             perturbation(   perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
                                             perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
                                             perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
-                                            higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x),
-                                            higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x),
-                                            higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x),
-                                            higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x)
+                                            second_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [],x->x),
+                                            second_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [],x->x),
+                                            third_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [],x->x),
+                                            third_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [],x->x),
+                                            second_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
+                                            third_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
                             ),
                             Float64[], 
                             Set([:first_order]),
@@ -1295,21 +1348,34 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.calibration_equations_parameters = $calib_eq_parameters
         # mod.$𝓂.solution.outdated_NSSS = true
 
-        start_time = time()
         # time_symbolics = @elapsed 
-        symbolics = create_symbols_eqs!(mod.$𝓂)
         # time_rm_red_SS_vars = @elapsed 
-        remove_redundant_SS_vars!(mod.$𝓂, symbolics)
-        if !$silent println("Remove redundant variables in non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
-        start_time = time()
+        if !$precompile 
+            start_time = time()
 
-        # time_SS_solve = @elapsed 
-        solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 1nd argument is SS_symbolic
-        if !$silent println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
-        start_time = time()
+            symbolics = create_symbols_eqs!(mod.$𝓂)
+            remove_redundant_SS_vars!(mod.$𝓂, symbolics) 
 
+            if !$silent println("Remove redundant variables in non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
+
+
+            start_time = time()
+    
+            solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 2nd argument is SS_symbolic
+
+            if !$silent println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
+        else
+            start_time = time()
+        
+            solve_steady_state!(mod.$𝓂, verbose = $verbose)
+
+            if !$silent println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
+        end
+
+        start_time = time()
         # time_dynamic_derivs = @elapsed 
         write_functions_mapping!(mod.$𝓂, $perturbation_order)
+
         mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
         
         if !$silent

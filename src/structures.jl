@@ -94,58 +94,85 @@ struct timings
 end
 
 struct symbolics
-    ss_equations::Vector{SymPy.Sym}
-    dyn_equations::Vector{SymPy.Sym}
-    # dyn_equations_future::Vector{SymPy.Sym}
+    ss_equations::Vector{SymPyCall.Sym}
+    dyn_equations::Vector{SymPyCall.Sym}
+    # dyn_equations_future::Vector{SymPyCall.Sym}
     
-    # dyn_shift_var_present_list::Vector{Set{SymPy.Sym}}
-    # dyn_shift_var_past_list::Vector{Set{SymPy.Sym}}
-    # dyn_shift_var_future_list::Vector{Set{SymPy.Sym}}
+    # dyn_shift_var_present_list::Vector{Set{SymPyCall.Sym}}
+    # dyn_shift_var_past_list::Vector{Set{SymPyCall.Sym}}
+    # dyn_shift_var_future_list::Vector{Set{SymPyCall.Sym}}
 
-    # dyn_shift2_var_past_list::Vector{Set{SymPy.Sym}}
+    # dyn_shift2_var_past_list::Vector{Set{SymPyCall.Sym}}
 
-    dyn_var_present_list::Vector{Set{SymPy.Sym}}
-    dyn_var_past_list::Vector{Set{SymPy.Sym}}
-    dyn_var_future_list::Vector{Set{SymPy.Sym}}
-    # dyn_ss_list::Vector{Set{SymPy.Sym}}
-    dyn_exo_list::Vector{Set{SymPy.Sym}}
+    dyn_var_present_list::Vector{Set{SymPyCall.Sym}}
+    dyn_var_past_list::Vector{Set{SymPyCall.Sym}}
+    dyn_var_future_list::Vector{Set{SymPyCall.Sym}}
+    # dyn_ss_list::Vector{Set{SymPyCall.Sym}}
+    dyn_exo_list::Vector{Set{SymPyCall.Sym}}
 
-    # dyn_exo_future_list::Vector{Set{SymPy.Sym}}
-    # dyn_exo_present_list::Vector{Set{SymPy.Sym}}
-    # dyn_exo_past_list::Vector{Set{SymPy.Sym}} 
+    # dyn_exo_future_list::Vector{Set{SymPyCall.Sym}}
+    # dyn_exo_present_list::Vector{Set{SymPyCall.Sym}}
+    # dyn_exo_past_list::Vector{Set{SymPyCall.Sym}} 
 
-    dyn_future_list::Vector{Set{SymPy.Sym}}
-    dyn_present_list::Vector{Set{SymPy.Sym}}
-    dyn_past_list::Vector{Set{SymPy.Sym}} 
+    dyn_future_list::Vector{Set{SymPyCall.Sym}}
+    dyn_present_list::Vector{Set{SymPyCall.Sym}}
+    dyn_past_list::Vector{Set{SymPyCall.Sym}} 
 
-    var_present_list::Vector{Set{SymPy.Sym}}
-    var_past_list::Vector{Set{SymPy.Sym}}
-    var_future_list::Vector{Set{SymPy.Sym}}
-    ss_list::Vector{Set{SymPy.Sym}}
-    var_list::Vector{Set{SymPy.Sym}}
-    # dynamic_variables_list::Vector{Set{SymPy.Sym}}
-    # dynamic_variables_future_list::Vector{Set{SymPy.Sym}}
+    var_present_list::Vector{Set{SymPyCall.Sym}}
+    var_past_list::Vector{Set{SymPyCall.Sym}}
+    var_future_list::Vector{Set{SymPyCall.Sym}}
+    ss_list::Vector{Set{SymPyCall.Sym}}
+    var_list::Vector{Set{SymPyCall.Sym}}
+    # dynamic_variables_list::Vector{Set{SymPyCall.Sym}}
+    # dynamic_variables_future_list::Vector{Set{SymPyCall.Sym}}
 
-    par_list::Vector{Set{SymPy.Sym}}
+    par_list::Vector{Set{SymPyCall.Sym}}
 
-    calibration_equations::Vector{SymPy.Sym}
-    calibration_equations_parameters::Vector{SymPy.Sym}
-    # parameters::Vector{SymPy.Sym}
+    calibration_equations::Vector{SymPyCall.Sym}
+    calibration_equations_parameters::Vector{SymPyCall.Sym}
+    # parameters::Vector{SymPyCall.Sym}
 
-    # var_present::Set{SymPy.Sym}
-    # var_past::Set{SymPy.Sym}
-    # var_future::Set{SymPy.Sym}
-    vars_in_ss_equations::Set{SymPy.Sym}
-    var::Set{SymPy.Sym}
-    ➕_vars::Set{SymPy.Sym}
+    # var_present::Set{SymPyCall.Sym}
+    # var_past::Set{SymPyCall.Sym}
+    # var_future::Set{SymPyCall.Sym}
+    vars_in_ss_equations::Set{SymPyCall.Sym}
+    var::Set{SymPyCall.Sym}
+    ➕_vars::Set{SymPyCall.Sym}
 
-    ss_calib_list::Vector{Set{SymPy.Sym}}
-    par_calib_list::Vector{Set{SymPy.Sym}}
+    ss_calib_list::Vector{Set{SymPyCall.Sym}}
+    par_calib_list::Vector{Set{SymPyCall.Sym}}
 
-    var_redundant_list::Vector{Set{SymPy.Sym}}
-    # var_redundant_calib_list::Vector{Set{SymPy.Sym}}
-    # var_solved_list::Vector{Set{SymPy.Sym}}
-    # var_solved_calib_list::Vector{Set{SymPy.Sym}}
+    var_redundant_list::Vector{Set{SymPyCall.Sym}}
+    # var_redundant_calib_list::Vector{Set{SymPyCall.Sym}}
+    # var_solved_list::Vector{Set{SymPyCall.Sym}}
+    # var_solved_calib_list::Vector{Set{SymPyCall.Sym}}
+end
+
+struct second_order_auxilliary_matrices
+    𝛔::SparseMatrixCSC{Int}
+    𝐂₂::SparseMatrixCSC{Int}
+    𝐔₂::SparseMatrixCSC{Int}
+end
+
+struct third_order_auxilliary_matrices
+    𝐂₃::SparseMatrixCSC{Int}
+    𝐔₃::SparseMatrixCSC{Int}
+
+    𝐏::SparseMatrixCSC{Int}
+
+    𝐏₁ₗ::SparseMatrixCSC{Int}
+    𝐏₁ᵣ::SparseMatrixCSC{Int}
+
+    𝐏₁ₗ̂::SparseMatrixCSC{Int}
+    𝐏₂ₗ̂::SparseMatrixCSC{Int}
+
+    𝐏₁ₗ̄::SparseMatrixCSC{Int}
+    𝐏₂ₗ̄::SparseMatrixCSC{Int}
+
+    𝐏₁ᵣ̃::SparseMatrixCSC{Int}
+    𝐏₂ᵣ̃::SparseMatrixCSC{Int}
+    
+    𝐒𝐏::SparseMatrixCSC{Int}
 end
 
 
@@ -154,7 +181,13 @@ struct perturbation_solution
     state_update::Function
 end 
 
-struct higher_order_perturbation_solution
+struct second_order_perturbation_solution
+    solution_matrix::SparseMatrixCSC{Float64}
+    stochastic_steady_state::Vector{Float64}
+    state_update::Function
+end
+
+struct third_order_perturbation_solution
     solution_matrix::SparseMatrixCSC{Float64}
     stochastic_steady_state::Vector{Float64}
     state_update::Function
@@ -164,10 +197,12 @@ mutable struct perturbation
     first_order::perturbation_solution
     linear_time_iteration::perturbation_solution
     quadratic_iteration::perturbation_solution
-    second_order::higher_order_perturbation_solution
-    pruned_second_order::higher_order_perturbation_solution
-    third_order::higher_order_perturbation_solution
-    pruned_third_order::higher_order_perturbation_solution
+    second_order::second_order_perturbation_solution
+    pruned_second_order::second_order_perturbation_solution
+    third_order::third_order_perturbation_solution
+    pruned_third_order::third_order_perturbation_solution
+    second_order_auxilliary_matrices::second_order_auxilliary_matrices
+    third_order_auxilliary_matrices::third_order_auxilliary_matrices
 end
 
 
