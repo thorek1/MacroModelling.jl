@@ -29,9 +29,9 @@ jobs:
           - version: '1.8'
             os: ubuntu-latest
             arch: x64
-          #- version: '1.9'
-          #  os: ubuntu-latest
-          #  arch: aarch64
+          - version: '1.9'
+            os: ubuntu-latest
+            arch: aarch64
           - version: '^1.10.0-0'
             os: ubuntu-latest
             arch: x64
@@ -43,6 +43,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       #- uses: uraimo/run-on-arch-action@v2.5.0
+      - name: Set up QEMU
+        if: matrix.arch == 'aarch64'
+        uses: docker/setup-qemu-action@v1
       - uses: julia-actions/setup-julia@latest
         with:
           version: ${{ matrix.version }}
