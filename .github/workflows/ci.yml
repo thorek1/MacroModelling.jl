@@ -42,11 +42,11 @@ jobs:
             allow_failure: true
     steps:
       - uses: actions/checkout@v3
-      - uses: uraimo/run-on-arch-action@v2.5.0
+      #- uses: uraimo/run-on-arch-action@v2.5.0
+      - uses: julia-actions/setup-julia@latest
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
-      - uses: julia-actions/setup-julia@latest
       - uses: actions/cache@v3
         env:
           cache-name: cache-artifacts
