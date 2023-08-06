@@ -45,7 +45,9 @@ jobs:
       #- uses: uraimo/run-on-arch-action@v2.5.0
       - name: Set up QEMU
         if: matrix.arch == 'aarch64'
-        uses: docker/setup-qemu-action@v1
+        uses: docker/setup-qemu-action@latest
+        uses: docker/setup-buildx-action@latest
+        uses: docker/build-push-action@latest
       - uses: julia-actions/setup-julia@latest
         with:
           version: ${{ matrix.version }}
