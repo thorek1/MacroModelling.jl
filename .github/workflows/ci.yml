@@ -29,6 +29,9 @@ jobs:
           - version: '1.8'
             os: ubuntu-latest
             arch: x64
+          - version: '1.9'
+            os: ubuntu-latest
+            arch: aarch64
           - version: '^1.10.0-0'
             os: ubuntu-latest
             arch: x64
@@ -39,6 +42,7 @@ jobs:
             allow_failure: true
     steps:
       - uses: actions/checkout@v3
+      - uses: uraimo/run-on-arch-action@v2.5.0
       - uses: julia-actions/setup-julia@latest
         with:
           version: ${{ matrix.version }}
