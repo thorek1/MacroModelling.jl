@@ -112,7 +112,7 @@ exxp = :(begin
 
 	# y[0] = c[0] + i[0] + g[0]
     for s in [:T,:NT]
-    for c ∈ [:EA,:US] y{c}{s}[0] end = for c ∈ [:EA,:US] C{c}{s}[0] + I{c}{s}[0] + alpha{s} * G{c}{s}[0] end
+    for c ∈ [:EA,:US] y{c}{s}[0] = C{c}{s}[0] + I{c}{s}[0] + alpha{s} * G{c}{s}[0] end
     end
 	y[0] = z[0] * k[-1] ^ α * l[0] ^ (1 - α)
 
@@ -183,10 +183,11 @@ replace_for_loop_indices(:(K{k}[J-1]),:J,4:-1:1,true)
 function parse_for_loops(equations_block)
     eqs = Expr[]
     for arg in equations_block.args
-        println(arg)
+        # println(arg)
         if isa(arg,Expr)
+            println(arg)
             parsed_eqs = postwalk(x -> begin
-                    x isa Expr ? 
+                    x isa Expr ?
                         x.head == :for ?
                             x.args[2].args[2].head == :(=) ?# || (x.args[2].head == :block && x.args[2].args[2].head == :call) ? #equations inside for loops
                                 replace_for_loop_indices(unblock(x.args[2]), 
@@ -272,6 +273,38 @@ end)
 exxp |> dump
 exxp.args[2] |> dump
 exxp.args[2].args[2] |> dump
+
+
+
+
+exxp = :(@model RBC_baseline begin
+	c[0] ^ (-σ) = β * c[1] ^ (-σ) * (α * z[1] * (k[0] / l[1]) ^ (α - 1) + 1 - δ)
+
+	ψ * c[0] ^ σ / (1 - l[0]) = w[0]
+
+	k[0] = (1 - δ) * k[-1] + i[0]
+
+	# y[0] = c[0] + i[0] + g[0]
+    for s in [:T,:NT]
+    for c ∈ [:EA,:US] y{c}{s}[0] = C{c}{s}[0] + I{c}{s}[0] + alpha{s} * G{c}{s}[0] end
+    end
+	y[0] = z[0] * k[-1] ^ α * l[0] ^ (1 - α)
+
+	w[0] = y[0] * (1 - α) / l[0]
+
+	r[0] = y[0] * α * 4 / k[-1]
+
+	z[0] = (1 - ρᶻ) + ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
+
+	g[0] = (1 - ρᵍ) * ḡ + ρᵍ * g[-1] + σᵍ * ϵᵍ[x]
+
+end)
+
+
+:(for s in [:T,:NT]
+for c ∈ [:EA,:US] y{c}{s}[0] = C{c}{s}[0] + I{c}{s}[0] + alpha{s} * G{c}{s}[0] end
+end) |>dump
+exxp |> dump
 
 parse_for_loops(exxp)
 

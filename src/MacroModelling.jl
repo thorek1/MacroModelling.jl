@@ -113,7 +113,10 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 )
 
 
-function get_symbols(ex)
+
+get_symbols(ex::Symbol) = [ex]
+
+function get_symbols(ex::Expr)
     par = Set()
     postwalk(x ->   
     x isa Expr ? 
