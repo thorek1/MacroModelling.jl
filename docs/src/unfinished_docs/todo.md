@@ -51,6 +51,7 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] fix ss of pruned solution in plotsolution. seems detached
+- [x] try solve first order with JuMP - doesnt work because JuMP cannot handle matrix constraints/objectives 
 - [x] get solution higher order with multidimensional array (states, 1 and 2 partial derivatives variables names as dimensions in 2order case)
 - [x] add pruning
 - [x] add other outputs from estimation (smoothed, filter states and shocks)

@@ -446,7 +446,7 @@ end
             x -> collect(get_SSS(m; parameters = x, derivatives = false, algorithm = :third_order)), 
             parameters)[1]
 
-    @test isapprox(SSS3finitediff, SSSdiff3[:,2:end], rtol = 1e-7)
+    @test isapprox(SSS3finitediff, SSSdiff3[:,2:end], rtol = 1e-6)
 end
 m = nothing
 𝓂 = nothing

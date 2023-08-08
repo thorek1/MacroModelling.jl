@@ -94,58 +94,58 @@ struct timings
 end
 
 struct symbolics
-    ss_equations::Vector{SymPyCall.Sym}
-    dyn_equations::Vector{SymPyCall.Sym}
-    # dyn_equations_future::Vector{SymPyCall.Sym}
+    ss_equations::Vector{SPyPyC.Sym}
+    dyn_equations::Vector{SPyPyC.Sym}
+    # dyn_equations_future::Vector{SPyPyC.Sym}
     
-    # dyn_shift_var_present_list::Vector{Set{SymPyCall.Sym}}
-    # dyn_shift_var_past_list::Vector{Set{SymPyCall.Sym}}
-    # dyn_shift_var_future_list::Vector{Set{SymPyCall.Sym}}
+    # dyn_shift_var_present_list::Vector{Set{SPyPyC.Sym}}
+    # dyn_shift_var_past_list::Vector{Set{SPyPyC.Sym}}
+    # dyn_shift_var_future_list::Vector{Set{SPyPyC.Sym}}
 
-    # dyn_shift2_var_past_list::Vector{Set{SymPyCall.Sym}}
+    # dyn_shift2_var_past_list::Vector{Set{SPyPyC.Sym}}
 
-    dyn_var_present_list::Vector{Set{SymPyCall.Sym}}
-    dyn_var_past_list::Vector{Set{SymPyCall.Sym}}
-    dyn_var_future_list::Vector{Set{SymPyCall.Sym}}
-    # dyn_ss_list::Vector{Set{SymPyCall.Sym}}
-    dyn_exo_list::Vector{Set{SymPyCall.Sym}}
+    dyn_var_present_list::Vector{Set{SPyPyC.Sym}}
+    dyn_var_past_list::Vector{Set{SPyPyC.Sym}}
+    dyn_var_future_list::Vector{Set{SPyPyC.Sym}}
+    # dyn_ss_list::Vector{Set{SPyPyC.Sym}}
+    dyn_exo_list::Vector{Set{SPyPyC.Sym}}
 
-    # dyn_exo_future_list::Vector{Set{SymPyCall.Sym}}
-    # dyn_exo_present_list::Vector{Set{SymPyCall.Sym}}
-    # dyn_exo_past_list::Vector{Set{SymPyCall.Sym}} 
+    # dyn_exo_future_list::Vector{Set{SPyPyC.Sym}}
+    # dyn_exo_present_list::Vector{Set{SPyPyC.Sym}}
+    # dyn_exo_past_list::Vector{Set{SPyPyC.Sym}} 
 
-    dyn_future_list::Vector{Set{SymPyCall.Sym}}
-    dyn_present_list::Vector{Set{SymPyCall.Sym}}
-    dyn_past_list::Vector{Set{SymPyCall.Sym}} 
+    dyn_future_list::Vector{Set{SPyPyC.Sym}}
+    dyn_present_list::Vector{Set{SPyPyC.Sym}}
+    dyn_past_list::Vector{Set{SPyPyC.Sym}} 
 
-    var_present_list::Vector{Set{SymPyCall.Sym}}
-    var_past_list::Vector{Set{SymPyCall.Sym}}
-    var_future_list::Vector{Set{SymPyCall.Sym}}
-    ss_list::Vector{Set{SymPyCall.Sym}}
-    var_list::Vector{Set{SymPyCall.Sym}}
-    # dynamic_variables_list::Vector{Set{SymPyCall.Sym}}
-    # dynamic_variables_future_list::Vector{Set{SymPyCall.Sym}}
+    var_present_list::Vector{Set{SPyPyC.Sym}}
+    var_past_list::Vector{Set{SPyPyC.Sym}}
+    var_future_list::Vector{Set{SPyPyC.Sym}}
+    ss_list::Vector{Set{SPyPyC.Sym}}
+    var_list::Vector{Set{SPyPyC.Sym}}
+    # dynamic_variables_list::Vector{Set{SPyPyC.Sym}}
+    # dynamic_variables_future_list::Vector{Set{SPyPyC.Sym}}
 
-    par_list::Vector{Set{SymPyCall.Sym}}
+    par_list::Vector{Set{SPyPyC.Sym}}
 
-    calibration_equations::Vector{SymPyCall.Sym}
-    calibration_equations_parameters::Vector{SymPyCall.Sym}
-    # parameters::Vector{SymPyCall.Sym}
+    calibration_equations::Vector{SPyPyC.Sym}
+    calibration_equations_parameters::Vector{SPyPyC.Sym}
+    # parameters::Vector{SPyPyC.Sym}
 
-    # var_present::Set{SymPyCall.Sym}
-    # var_past::Set{SymPyCall.Sym}
-    # var_future::Set{SymPyCall.Sym}
-    vars_in_ss_equations::Set{SymPyCall.Sym}
-    var::Set{SymPyCall.Sym}
-    ➕_vars::Set{SymPyCall.Sym}
+    # var_present::Set{SPyPyC.Sym}
+    # var_past::Set{SPyPyC.Sym}
+    # var_future::Set{SPyPyC.Sym}
+    vars_in_ss_equations::Set{SPyPyC.Sym}
+    var::Set{SPyPyC.Sym}
+    ➕_vars::Set{SPyPyC.Sym}
 
-    ss_calib_list::Vector{Set{SymPyCall.Sym}}
-    par_calib_list::Vector{Set{SymPyCall.Sym}}
+    ss_calib_list::Vector{Set{SPyPyC.Sym}}
+    par_calib_list::Vector{Set{SPyPyC.Sym}}
 
-    var_redundant_list::Vector{Set{SymPyCall.Sym}}
-    # var_redundant_calib_list::Vector{Set{SymPyCall.Sym}}
-    # var_solved_list::Vector{Set{SymPyCall.Sym}}
-    # var_solved_calib_list::Vector{Set{SymPyCall.Sym}}
+    var_redundant_list::Vector{Set{SPyPyC.Sym}}
+    # var_redundant_calib_list::Vector{Set{SPyPyC.Sym}}
+    # var_solved_list::Vector{Set{SPyPyC.Sym}}
+    # var_solved_calib_list::Vector{Set{SPyPyC.Sym}}
 end
 
 struct second_order_auxilliary_matrices
