@@ -8,12 +8,6 @@ import MacroTools: postwalk, @capture, unblock
 
 function replace_for_loop_indices(exxpr,index_variable,indices,concatenate)
     calls = []
-    # println(exxpr)
-    # println(typeof(exxpr))
-    # println(index_variable)
-    # println(typeof(index_variable))
-    # println(indices)
-    # println(concatenate)
     for idx in indices
         push!(calls, postwalk(x -> begin
             x isa Expr ?
@@ -42,7 +36,6 @@ function replace_for_loop_indices(exxpr,index_variable,indices,concatenate)
         end,
         exxpr))
     end
-    # println(calls)
     if concatenate
         return :($(Expr(:call, :+, calls...)))
     else
@@ -56,6 +49,9 @@ replace_for_loop_indices(:(phi{co} * S{co}[lag-1]),:lag,-4:0,true)
 MM.get_symbols(:(lag))
 
 
+replace_for_loop_indices(:(y{s}[0] = C{s}[0] + I{s}[0] + alpha{s} * G{s}[0]),:s,[:T,:NT],false)
+
+
 function core_for_loop_removal_loop(arg)
     postwalk(x -> begin
                     x = unblock(x)
@@ -64,29 +60,7 @@ function core_for_loop_removal_loop(arg)
                             x.args[2] isa Array ?
                                 length(x.args[2]) >= 1 ?
                                     [replace_for_loop_indices(X, Symbol(x.args[1].args[1]), eval(x.args[1].args[2]), false) for X in x.args[2]] :
-                                #     begin 
-                                #         xx = for X in x.args[2] 
-                                #             yy = replace_for_loop_indices(X, 
-                                #                 Symbol(x.args[1].args[1]), 
-                                #                 eval(x.args[1].args[2]),
-                                #                 false)
-                                #             return yy
-                                #         end
-                                #         # println(xx)
-                                #         xx
-                                #         # println(Expr(x.args[1],x.args[2]...))
-                                # #     for X in x.args[2]
-                                # #         replace_for_loop_indices(unblock(X), 
-                                # #                             Symbol(x.args[1].args[1]), 
-                                # #                             eval(x.args[1].args[2]),
-                                # #                             false)
-                                # #     end
-                                #     end :
                                 x :
-                            # begin
-                            #     println(dump(x.args[2]))
-                            #     x.args[2].head == :(=) || (x.args[2].head == :block && all([i isa Expr && i.head == :(=) for i in x.args[2].args]))
-                            # end ?# || (x.args[2].head == :block && x.args[2].args[2].head == :call) ? #equations inside for loops
                             x.args[2].head ∉ [:(=), :block] ?
                                 replace_for_loop_indices(unblock(x.args[2]), 
                                                     Symbol(x.args[1].args[1]), 
@@ -106,18 +80,10 @@ end
 function parse_for_loops(equations_block)
     eqs = Expr[]
     for arg in equations_block.args
-        # println(arg)
         if isa(arg,Expr)
             parsed_eqs = core_for_loop_removal_loop(arg)
-
-            # println(parsed_eqs)
             if parsed_eqs isa Expr
-                # if parsed_eqs.head == :for
-                #     parsed_eqss = core_for_loop_removal_loop(parsed_eqs)
-                #     println(parsed_eqss)
-                # else
-                    push!(eqs,unblock(parsed_eqs))
-                # end
+                push!(eqs,unblock(parsed_eqs))
             elseif parsed_eqs isa Array
                 for B in parsed_eqs
                     if B isa Array
@@ -125,14 +91,14 @@ function parse_for_loops(equations_block)
                             push!(eqs,unblock(b))
                         end
                     elseif B isa Expr
-                        # println(B)
                         if B.head == :block
-                            println(B)
                             for b in B.args
                                 if b isa Expr
                                     push!(eqs,b)
                                 end
                             end
+                        else
+                            push!(eqs,unblock(B))
                         end
                     else
                         push!(eqs,unblock(B))
@@ -152,21 +118,38 @@ end
 exxp = :(begin
 
     # for s in [:T,:NT]
-    # g[0] = (1 - ρᵍ) * ḡ + ρᵍ * g[-1] + σᵍ * ϵᵍ[x]
+    g[0] = (1 - ρᵍ) * ḡ + ρᵍ * g[-1] + σᵍ * ϵᵍ[x]
 
     # g[0] = (1 - ρᵍ) * ḡ + ρᵍ * g[-1] + σᵍ * ϵᵍ[x]
+
+    for s in [:T,:NT]
+        # for c ∈ [:EA,:US] y{c}{s}[0] end = for c ∈ [:EA,:US] C{c}{s}[0] + I{c}{s}[0] + alpha{s} * G{c}{s}[0] end
+        # y{s}[0] = for c ∈ [:EA,:US] C{c}{s}[0] + I{c}{s}[0] + alpha{s} * G{c}{s}[0] end
+        y{s}[0] = C{s}[0] + I{s}[0] + alpha{s} * G{s}[0]
+    end
 
     for s in [:T,:NT]
         for c ∈ [:EA,:US] y{c}{s}[0] end = for c ∈ [:EA,:US] C{c}{s}[0] + I{c}{s}[0] + alpha{s} * G{c}{s}[0] end
+        # y{s}[0] = for c ∈ [:EA,:US] C{c}{s}[0] + I{c}{s}[0] + alpha{s} * G{c}{s}[0] end
+        # y{s}[0] = C{s}[0] + I{s}[0] + alpha{s} * G{s}[0]
     end
+
 
     for s in [:T,:NT]
         for c ∈ [:EA,:US]
-            # y{c}{s}[0] = C{c}{s}[0] + I{c}{s}[0] + alpha{s} * G{c}{s}[0] 
-            y{c}{s}[0] = C{c}{s}[0] + I{c}{s}[0]
+            y{c}{s}[0] = C{c}{s}[0] + I{c}{s}[0] + alpha{s} * G{c}{s}[0] 
+            # y{c}[0] = C{c}[0] + I{c}[0]
             # y{s}[0] = C{s}[0] + I{s}[0]
         end
     end
+
+    # for s in [:T,:NT]
+    #     for c ∈ [:EA,:US]
+    #         # y{c}{s}[0] = C{c}{s}[0] + I{c}{s}[0] + alpha{s} * G{c}{s}[0] 
+    #         y{c}{s}[0] = C{c}{s}[0] + I{c}{s}[0]
+    #         # y{s}[0] = C{s}[0] + I{s}[0]
+    #     end
+    # end
 
     for co ∈ [:EA,:US]
 
@@ -179,7 +162,7 @@ exxp = :(begin
 end)
 
 
-out = parse_for_loops(exxp);
+out = parse_for_loops(exxp)
 
 
 exxxp = :(for s = [:T, :NT]
