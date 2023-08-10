@@ -79,8 +79,8 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 function plot_model_estimates(𝓂::ℳ,
     data::AbstractArray{Float64};
     parameters = nothing,
-    variables::Symbol_input = :all_including_auxilliary, 
-    shocks::Symbol_input = :all, 
+    variables::Union{Symbol_input,String_input} = :all_including_auxilliary, 
+    shocks::Union{Symbol_input,String_input} = :all, 
     data_in_levels::Bool = true,
     shock_decomposition::Bool = false,
     smooth::Bool = true,
@@ -342,8 +342,8 @@ plot_irf(RBC)
 """
 function plot_irf(𝓂::ℳ;
     periods::Int = 40, 
-    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
-    variables::Symbol_input = :all,
+    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+    variables::Union{Symbol_input,String_input} = :all,
     parameters = nothing,
     show_plots::Bool = true,
     save_plots::Bool = false,
@@ -437,7 +437,7 @@ function plot_irf(𝓂::ℳ;
     if shocks == :simulate
         shock_dir = "Shocks"
     end
-    if !(shocks isa Symbol_input)
+    if !(shocks isa Union{Symbol_input,String_input})
         shock_dir = ""
     end
 
@@ -489,7 +489,7 @@ function plot_irf(𝓂::ℳ;
                     elseif shocks == :none
                         shock_string = ""
                         shock_name = "no_shock"
-                    elseif shocks isa Symbol_input
+                    elseif shocks isa Union{Symbol_input,String_input}
                         shock_string = ": " * string(𝓂.timings.exo[shock_idx[shock]])
                         shock_name = string(𝓂.timings.exo[shock_idx[shock]])
                     else
@@ -523,7 +523,7 @@ function plot_irf(𝓂::ℳ;
             elseif shocks == :none
                 shock_string = ""
                 shock_name = "no_shock"
-            elseif shocks isa Symbol_input
+            elseif shocks isa Union{Symbol_input,String_input}
                 shock_string = ": " * string(𝓂.timings.exo[shock_idx[shock]])
                 shock_name = string(𝓂.timings.exo[shock_idx[shock]])
             else
@@ -628,7 +628,7 @@ plot_conditional_variance_decomposition(RBC_CME)
 """
 function plot_conditional_variance_decomposition(𝓂::ℳ;
     periods::Int = 40, 
-    variables::Symbol_input = :all,
+    variables::Union{Symbol_input,String_input} = :all,
     parameters = nothing,
     show_plots::Bool = true,
     save_plots::Bool = false,
@@ -799,7 +799,7 @@ plot_solution(RBC_CME, :k)
 """
 function plot_solution(𝓂::ℳ,
     state::Symbol;
-    variables::Symbol_input = :all,
+    variables::Union{Symbol_input,String_input} = :all,
     algorithm::Union{Symbol,Vector{Symbol}} = :first_order,
     σ::Union{Int64,Float64} = 2,
     parameters = nothing,
@@ -1227,7 +1227,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     initial_state::Vector{Float64} = [0.0],
     periods::Int = 40, 
     parameters = nothing,
-    variables::Symbol_input = :all_including_auxilliary, 
+    variables::Union{Symbol_input,String_input} = :all_including_auxilliary, 
     conditions_in_levels::Bool = true,
     levels::Bool = false,
     show_plots::Bool = true,

@@ -37,6 +37,7 @@ Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, sp
 
 # Type definitions
 Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
+String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}}}
 
 # Imports
 include("common_docstrings.jl")
@@ -3498,9 +3499,11 @@ function irf(state_update::Function,
     pruning::Bool, 
     T::timings; 
     periods::Int = 40, 
-    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
-    variables::Symbol_input = :all, 
+    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+    variables::Union{Symbol_input,String_input} = :all, 
     negative_shock::Bool = false)
+
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
@@ -3574,7 +3577,7 @@ function irf(state_update::Function,
         Y = zeros(T.nVars,periods,length(shock_idx))
 
         for (i,ii) in enumerate(shock_idx)
-            if shocks != :simulate && shocks isa Symbol_input
+            if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
                 shock_history = zeros(T.nExo,periods)
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
@@ -3594,7 +3597,7 @@ function irf(state_update::Function,
             end
         end
 
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix])
     end
 end
 
@@ -3606,11 +3609,13 @@ function girf(state_update::Function,
     pruning::Bool, 
     T::timings; 
     periods::Int = 40, 
-    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
-    variables::Symbol_input = :all, 
+    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+    variables::Union{Symbol_input,String_input} = :all, 
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
     draws::Int = 50)
+
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
@@ -3659,7 +3664,7 @@ function girf(state_update::Function,
 
             baseline_noise = randn(T.nExo)
 
-            if shocks != :simulate && shocks isa Symbol_input
+            if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
                 shock_history = zeros(T.nExo,periods)
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
@@ -3689,11 +3694,14 @@ function girf(state_update::Function,
         Y[:,:,i] /= draws
     end
     
-    return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
+    return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix])
 end
 
 
-function parse_variables_input_to_index(variables::Symbol_input, T::timings)
+function parse_variables_input_to_index(variables::Union{Symbol_input,String_input}, T::timings)
+    
+    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+
     if variables == :all
         return indexin(setdiff(T.var,T.aux),sort(union(T.var,T.aux,T.exo_present)))
         # return indexin(setdiff(setdiff(T.var,T.exo_present),T.aux),sort(union(T.var,T.aux,T.exo_present)))
@@ -3725,7 +3733,9 @@ function parse_variables_input_to_index(variables::Symbol_input, T::timings)
 end
 
 
-function parse_shocks_input_to_index(shocks::Symbol_input, T::timings)
+function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T::timings)
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+
     if shocks == :all
         shock_idx = 1:T.nExo
     elseif shocks == :none

@@ -65,8 +65,6 @@ And data, 4×2×40 Array{Float64, 3}:
 function get_shock_decomposition(𝓂::ℳ,
     data::KeyedArray{Float64};
     parameters = nothing,
-    # variables::Symbol_input = :all_including_auxilliary, 
-    # shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     data_in_levels::Bool = true,
     smooth::Bool = true,
     verbose::Bool = false)
@@ -225,7 +223,6 @@ And data, 4×40 Matrix{Float64}:
 function get_estimated_variables(𝓂::ℳ,
     data::KeyedArray{Float64};
     parameters = nothing,
-    # variables::Symbol_input = :all_including_auxilliary, 
     data_in_levels::Bool = true,
     levels::Bool = true,
     smooth::Bool = true,
@@ -306,7 +303,6 @@ And data, 4×40 Matrix{Float64}:
 function get_estimated_variable_standard_deviations(𝓂::ℳ,
     data::KeyedArray{Float64};
     parameters = nothing,
-    # variables::Symbol_input = :all_including_auxilliary, 
     data_in_levels::Bool = true,
     smooth::Bool = true,
     verbose::Bool = false)
@@ -432,7 +428,7 @@ function get_conditional_forecast(𝓂::ℳ,
     initial_state::Vector{Float64} = [0.0],
     periods::Int = 40, 
     parameters = nothing,
-    variables::Symbol_input = :all_including_auxilliary, 
+    variables::Union{Symbol_input,String_input} = :all_including_auxilliary, 
     conditions_in_levels::Bool = true,
     levels::Bool = false,
     verbose::Bool = false)
@@ -611,8 +607,8 @@ get_irf(RBC, RBC.parameter_values)
 function get_irf(𝓂::ℳ,
                     parameters::Vector; 
                     periods::Int = 40, 
-                    variables::Symbol_input = :all_including_auxilliary, 
-                    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+                    variables::Union{Symbol_input,String_input} = :all_including_auxilliary, 
+                    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
                     negative_shock::Bool = false, 
                     initial_state::Vector{Float64} = [0.0],
                     levels::Bool = false,
@@ -623,6 +619,8 @@ function get_irf(𝓂::ℳ,
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
     @assert shocks != :simulate "Use parameters as a known argument to simulate the model."
+
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
@@ -667,7 +665,7 @@ function get_irf(𝓂::ℳ,
     for ii in shock_idx
         Y = []
 
-        if shocks != :simulate && shocks isa Symbol_input
+        if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
             shock_history = zeros(𝓂.timings.nExo,periods)
             shock_history[ii,1] = negative_shock ? -1 : 1
         end
@@ -753,8 +751,8 @@ function get_irf(𝓂::ℳ;
     periods::Int = 40, 
     algorithm::Symbol = :first_order, 
     parameters = nothing,
-    variables::Symbol_input = :all_including_auxilliary, 
-    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+    variables::Union{Symbol_input,String_input} = :all_including_auxilliary, 
+    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     negative_shock::Bool = false, 
     generalised_irf::Bool = false,
     initial_state::Vector{Float64} = [0.0],
@@ -763,6 +761,8 @@ function get_irf(𝓂::ℳ;
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
     
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
     @assert !(shocks == :none && generalised_irf) "Cannot compute generalised IRFs for model without shocks."
@@ -909,7 +909,7 @@ function get_steady_state(𝓂::ℳ;
     derivatives::Bool = true, 
     stochastic::Bool = false,
     algorithm::Symbol = :first_order,
-    parameter_derivatives::Symbol_input = :all,
+    parameter_derivatives::Union{Symbol_input,String_input} = :all,
     verbose::Bool = false,
     silent::Bool = true)
 
@@ -919,6 +919,8 @@ function get_steady_state(𝓂::ℳ;
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
     
+    parameter_derivatives = parameter_derivatives isa String_input ? parameter_derivatives .|> Meta.parse .|> replace_indices : parameter_derivatives
+
     if parameter_derivatives == :all
         length_par = length(𝓂.parameters)
         param_idx = 1:length_par
@@ -1731,12 +1733,14 @@ function get_moments(𝓂::ℳ;
     variance::Bool = false, 
     covariance::Bool = false, 
     derivatives::Bool = true,
-    parameter_derivatives::Symbol_input = :all,
+    parameter_derivatives::Union{Symbol_input,String_input} = :all,
     verbose::Bool = false)#limit output by selecting pars and vars like for plots and irfs!?
     
     solve!(𝓂, parameters = parameters, verbose = verbose)
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    parameter_derivatives = parameter_derivatives isa String_input ? parameter_derivatives .|> Meta.parse .|> replace_indices : parameter_derivatives
 
     if parameter_derivatives == :all
         length_par = length(𝓂.parameters)
