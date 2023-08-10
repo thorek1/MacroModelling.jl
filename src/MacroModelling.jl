@@ -112,7 +112,10 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 )
 
 
-function get_symbols(ex)
+
+get_symbols(ex::Symbol) = [ex]
+
+function get_symbols(ex::Expr)
     par = Set()
     postwalk(x ->   
     x isa Expr ? 
@@ -135,7 +138,7 @@ end
 
 
 function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
-    return filter(r -> match(pattern, string(r)) != nothing, strings)
+    return filter(r -> match(pattern, string(r)) !== nothing, strings)
 end
 
 
@@ -172,6 +175,239 @@ function convert_to_ss_equation(eq::Expr)
     eq)
 end
 
+
+function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate)
+    calls = []
+    for idx in indices
+        push!(calls, postwalk(x -> begin
+            x isa Expr ?
+                x.head == :ref ?
+                    @capture(x, name_{index_}[time_]) ?
+                        index == index_variable ?
+                            :($(Expr(:ref, Symbol(string(name) * "◖" * string(idx) * "◗"),time))) :
+                        time isa Expr || time isa Symbol ?
+                            index_variable ∈ MM.get_symbols(time) ?
+                                :($(Expr(:ref, Expr(:curly,name,index), Meta.parse(replace(string(time), string(index_variable) => idx))))) :
+                            x :
+                        x :
+                    @capture(x, name_[time_]) ?
+                        time isa Expr || time isa Symbol ?
+                            index_variable ∈ MM.get_symbols(time) ?
+                                :($(Expr(:ref, name, Meta.parse(replace(string(time), string(index_variable) => idx))))) :
+                            x :
+                        x :
+                    x :
+                @capture(x, name_{index_}) ?
+                    index == index_variable ?
+                        :($(Symbol(string(name) * "◖" * string(idx) * "◗"))) :
+                    x :
+                x :
+            @capture(x, name_) ?
+                name == index_variable && idx isa Int ?
+                    :($idx) :
+                x :
+            x
+        end,
+        exxpr))
+    end
+
+    if concatenate
+        return :($(Expr(:call, :+, calls...)))
+    else
+        return calls
+    end
+end
+
+
+function replace_indices(exxpr::Expr)
+    postwalk(x -> begin
+        @capture(x, name_{index_}) ?
+            :($(Symbol(string(name) * "◖" * string(eval(index)) * "◗"))) :
+        x
+        end,
+    exxpr)
+end
+
+
+function write_out_for_loops(arg::Expr)
+    postwalk(x -> begin
+                    x = unblock(x)
+                    x isa Expr ?
+                        x.head == :for ?
+                            x.args[2] isa Array ?
+                                length(x.args[2]) >= 1 ?
+                                    [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), eval(x.args[1].args[2]), false) for X in x.args[2]] :
+                                x :
+                            x.args[2].head ∉ [:(=), :block] ?
+                                replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                    Symbol(x.args[1].args[1]), 
+                                                    eval(x.args[1].args[2]),
+                                                    true) : # for loop part of equation
+                            replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                Symbol(x.args[1].args[1]), 
+                                                eval(x.args[1].args[2]),
+                                                false) : # for loop part across equations
+                        x :
+                    x
+                end,
+    arg)
+end
+
+
+function parse_for_loops(equations_block)
+    eqs = Expr[]
+    for arg in equations_block.args
+        if isa(arg,Expr)
+            parsed_eqs = write_out_for_loops(arg)
+            if parsed_eqs isa Expr
+                push!(eqs,unblock(replace_indices(parsed_eqs)))
+            elseif parsed_eqs isa Array
+                for B in parsed_eqs
+                    if B isa Array
+                        for b in B
+                            push!(eqs,unblock(replace_indices(b)))
+                        end
+                    elseif B isa Expr
+                        if B.head == :block
+                            for b in B.args
+                                if b isa Expr
+                                    push!(eqs,replace_indices(b))
+                                end
+                            end
+                        else
+                            push!(eqs,unblock(replace_indices(B)))
+                        end
+                    else
+                        push!(eqs,unblock(replace_indices(B)))
+                    end
+                end
+            end
+
+        end
+    end
+    return Expr(:block,eqs...)
+end
+
+
+
+function decompose_name(name::Symbol)
+    name = string(name)
+    matches = eachmatch(r"◖([\p{L}\p{N}]+)◗|([\p{L}\p{N}]+[^◖◗]*)", name)
+
+    result = []
+    nested = []
+
+    for m in matches
+        if m.captures[1] !== nothing
+            push!(nested, m.captures[1])
+        else
+            if !isempty(nested)
+                push!(result, Symbol.(nested))
+                nested = []
+            end
+            push!(result, Symbol(m.captures[2]))
+        end
+    end
+
+    if !isempty(nested)
+        push!(result, (nested))
+    end
+
+    return result
+end
+
+
+
+function get_possible_indices_for_name(name::Symbol, all_names::Vector{Symbol})
+    indices = filter(x -> length(x) < 3 && x[1] == name, decompose_name.(all_names))
+
+    indexset = []
+
+    for i in indices
+        if length(i) > 1
+            push!(indexset, Symbol.(i[2])...)
+        end
+    end
+
+    return indexset
+end
+
+
+
+function expand_calibration_equations(calibration_equation_parameters::Vector{Symbol}, calibration_equations::Vector{Expr}, ss_calib_list::Vector, par_calib_list::Vector, all_names::Vector{Symbol})
+    expanded_parameters = Symbol[]
+    expanded_equations = Expr[]
+    expanded_ss_var_list = []
+    expanded_par_var_list = []
+
+    for (u,par) in enumerate(calibration_equation_parameters)
+        indices_in_calibration_equation = Set()
+        indexed_names = []
+        for i in get_symbols(calibration_equations[u])
+            indices = get_possible_indices_for_name(i, all_names)
+            if indices != Any[]
+                push!(indices_in_calibration_equation, indices)
+                push!(indexed_names,i)
+            end
+        end
+
+        par_indices = get_possible_indices_for_name(par, all_names)
+        
+        if length(par_indices) > 0
+            push!(indices_in_calibration_equation, par_indices)
+        end
+        
+        @assert length(indices_in_calibration_equation) <= 1 "Calibration equations cannot have more than one index in the equations or for the parameter."
+        
+        if length(indices_in_calibration_equation) == 0
+            push!(expanded_parameters,par)
+            push!(expanded_equations,calibration_equations[u])
+            push!(expanded_ss_var_list,ss_calib_list[u])
+            push!(expanded_par_var_list,par_calib_list[u])
+        else
+            for i in collect(indices_in_calibration_equation)[1]
+                expanded_ss_var = Set()
+                expanded_par_var = Set()
+                push!(expanded_parameters, Symbol(string(par) * "◖" * string(i) * "◗"))
+                push!(expanded_equations, postwalk(x -> x ∈ indexed_names ? Symbol(string(x) * "◖" * string(i) * "◗") : x, calibration_equations[u]))
+                for ss in ss_calib_list[u]
+                    if ss ∈ indexed_names
+                        push!(expanded_ss_var,Symbol(string(ss) * "◖" * string(i) * "◗"))
+                    else
+                        push!(expanded_ss_var,ss)
+                        push!(expanded_par_var,par_calib_list[u])
+                    end
+                end
+                push!(expanded_ss_var_list, expanded_ss_var)
+                push!(expanded_par_var_list, expanded_par_var)
+            end
+        end
+    end
+
+    return expanded_parameters, expanded_equations, expanded_ss_var_list, expanded_par_var_list
+end
+
+
+
+function expand_indices(compressed_inputs::Vector{Symbol}, compressed_values::Vector{T}, expanded_list::Vector{Symbol}) where T
+    expanded_inputs = Symbol[]
+    expanded_values = T[]
+
+    for (i,par) in enumerate(compressed_inputs)
+        par_idx = findall(x -> string(par) == x, first.(split.(string.(expanded_list ), "◖")))
+
+        if length(par_idx) > 1
+            for idx in par_idx
+                push!(expanded_inputs, expanded_list[idx])
+                push!(expanded_values, compressed_values[i])
+            end
+        else#if par ∈ expanded_list ## breaks parameters defind in parameter block
+            push!(expanded_inputs, par)
+            push!(expanded_values, compressed_values[i])
+        end
+    end
+    return expanded_inputs, expanded_values
+end
 
 
 function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})

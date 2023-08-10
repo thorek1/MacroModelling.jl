@@ -1,5 +1,5 @@
 
-import MacroTools: postwalk, unblock
+import MacroTools: unblock, postwalk, @capture
 
 const all_available_algorithms = [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
@@ -95,8 +95,10 @@ macro model(𝓂,ex...)
     ss_eq_aux_ind = Int[]
     dyn_eq_aux_ind = Int[]
 
+    model_ex = parse_for_loops(ex[end])
+
     # write down dynamic equations and add auxilliary variables for leads and lags > 1
-    for (i,arg) in enumerate(ex[end].args)
+    for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
             # write down dynamic equations
             t_ex = postwalk(x -> 
@@ -253,7 +255,7 @@ macro model(𝓂,ex...)
                         x.args[1] : 
                     unblock(x) : 
                 x,
-            ex[end].args[i])
+            model_ex.args[i])
 
             push!(dyn_equations,unblock(t_ex))
             
@@ -505,7 +507,7 @@ macro model(𝓂,ex...)
                         x :
                     x :
                 x,
-            ex[end].args[i])
+            model_ex.args[i])
             push!(ss_and_aux_equations,unblock(eqs))
         end
     end
@@ -718,13 +720,13 @@ macro model(𝓂,ex...)
 
     # println(ss_aux_equations)
     # write down original equations as written down in model block
-    for (i,arg) in enumerate(ex[end].args)
+    for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
             prs_exx = postwalk(x -> 
                 x isa Expr ? 
                     unblock(x) : 
                 x,
-            ex[end].args[i])
+            model_ex.args[i])
             push!(original_equations,unblock(prs_exx))
         end
     end
@@ -908,10 +910,10 @@ macro parameters(𝓂,ex...)
     calib_equations_no_var = []
     calib_values_no_var = []
     
-    calib_parameters_no_var = []
+    calib_parameters_no_var = Symbol[]
     
-    calib_eq_parameters = []
-    calib_equations_list = []
+    calib_eq_parameters = Symbol[]
+    calib_equations_list = Expr[]
     
     ss_calib_list = []
     par_calib_list = []
@@ -922,8 +924,8 @@ macro parameters(𝓂,ex...)
     ss_no_var_calib_list = []
     par_no_var_calib_list = []
     
-    calib_parameters = []
-    calib_values = []
+    calib_parameters = Symbol[]
+    calib_values = Float64[]
 
     par_defined_more_than_once = Set()
     
@@ -958,6 +960,8 @@ macro parameters(𝓂,ex...)
             x,
         exp)
     end
+
+    parameter_definitions = replace_indices(ex[end])
 
     # parse parameter inputs
     # label all variables parameters and exogenous vairables and timings across all equations
@@ -999,7 +1003,7 @@ macro parameters(𝓂,ex...)
                 x :
             x :
         x,
-    ex[end])
+    parameter_definitions)
 
 
 
@@ -1042,7 +1046,7 @@ macro parameters(𝓂,ex...)
                 x :
             x :
         x,
-    ex[end])
+    parameter_definitions)
     
     @assert length(par_defined_more_than_once) == 0 "Parameters can only be defined once. This is not the case for: " * repr([par_defined_more_than_once...])
     
@@ -1060,7 +1064,7 @@ macro parameters(𝓂,ex...)
     calib_parameters_no_var = setdiff(calib_parameters_no_var,calib_parameters)
     
     for (i, cal_eq) in enumerate(calib_equations)
-        ss_tmp = Set()
+        ss_tmp = Set{Symbol}()
         par_tmp = Set()
     
         # parse SS variables
@@ -1320,7 +1324,12 @@ macro parameters(𝓂,ex...)
     # println($m)
     return quote
         mod = @__MODULE__
-        @assert length(setdiff(setdiff(setdiff(union(reduce(union,$par_calib_list,init = []),mod.$𝓂.parameters_in_equations),$calib_parameters),$calib_parameters_no_var),$calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,$par_calib_list,init = []),mod.$𝓂.parameters_in_equations),$calib_parameters),$calib_parameters_no_var),$calib_eq_parameters)...])
+
+        calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
+        calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
+        calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
+
+        @assert length(setdiff(setdiff(setdiff(union(reduce(union, par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)...])
         
         $lower_bounds[indexin(intersect(mod.$𝓂.bounded_vars,$bounded_vars),$bounded_vars)] = max.(mod.$𝓂.lower_bounds[indexin(intersect(mod.$𝓂.bounded_vars,$bounded_vars),mod.$𝓂.bounded_vars)],$lower_bounds[indexin(intersect(mod.$𝓂.bounded_vars,$bounded_vars),$bounded_vars)])
 
@@ -1330,20 +1339,23 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.upper_bounds = vcat($upper_bounds, mod.$𝓂.upper_bounds[indexin(setdiff(mod.$𝓂.bounded_vars,$bounded_vars),mod.$𝓂.bounded_vars)])
         mod.$𝓂.bounded_vars = vcat($bounded_vars,setdiff(mod.$𝓂.bounded_vars,$bounded_vars))
 
+        # _, mod.$𝓂.upper_bounds = expand_indices(mod.$𝓂.bounded_vars, mod.$𝓂.upper_bounds, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
+        # mod.$𝓂.bounded_vars, mod.$𝓂.lower_bounds = expand_indices(mod.$𝓂.bounded_vars, mod.$𝓂.lower_bounds, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
+    
         @assert all(mod.$𝓂.lower_bounds .< mod.$𝓂.upper_bounds) "Invalid bounds: " * repr([mod.$𝓂.bounded_vars[findall(mod.$𝓂.lower_bounds .>= mod.$𝓂.upper_bounds)]...])
-
-        mod.$𝓂.ss_calib_list = $ss_calib_list
-        mod.$𝓂.par_calib_list = $par_calib_list
-
+    
+        mod.$𝓂.ss_calib_list = ss_calib_list
+        mod.$𝓂.par_calib_list = par_calib_list
+    
         mod.$𝓂.ss_no_var_calib_list = $ss_no_var_calib_list
         mod.$𝓂.par_no_var_calib_list = $par_no_var_calib_list
-
-        mod.$𝓂.parameters = $calib_parameters
-        mod.$𝓂.parameter_values = $calib_values
-        mod.$𝓂.calibration_equations = $calib_equations_list
-        mod.$𝓂.parameters_as_function_of_parameters = $calib_parameters_no_var
-        mod.$𝓂.calibration_equations_no_var = $calib_equations_no_var_list
-        mod.$𝓂.calibration_equations_parameters = $calib_eq_parameters
+    
+        mod.$𝓂.parameters = calib_parameters
+        mod.$𝓂.parameter_values = calib_values
+        mod.$𝓂.calibration_equations = calib_equations_list
+        mod.$𝓂.parameters_as_function_of_parameters = calib_parameters_no_var
+        mod.$𝓂.calibration_equations_no_var = calib_equations_no_var_list
+        mod.$𝓂.calibration_equations_parameters = calib_eq_parameters
         # mod.$𝓂.solution.outdated_NSSS = true
 
         # time_symbolics = @elapsed 
