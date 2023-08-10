@@ -1207,7 +1207,11 @@ get_perturbation_solution = get_solution
 
 
 
-function get_solution(𝓂::ℳ, parameters::Vector{<: Real}; algorithm::Symbol = :first_order, verbose::Bool = false, tol::AbstractFloat = eps())
+function get_solution(𝓂::ℳ, 
+                        parameters::Vector{<: Real}; 
+                        algorithm::Symbol = :first_order, 
+                        verbose::Bool = false, 
+                        tol::AbstractFloat = eps())
     @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
 
     ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters))

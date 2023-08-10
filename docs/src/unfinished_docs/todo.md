@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
+- [ ] have a look again at get_statistics function
 - [ ] have all functions accept strings ad write tests for it
 - [ ] document for loops as a separate thing
 - [ ] implement occasionally binding constraints with shocks

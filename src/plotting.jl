@@ -405,6 +405,8 @@ function plot_irf(𝓂::ℳ;
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
     
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+    
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
     if shocks isa Matrix{Float64}
