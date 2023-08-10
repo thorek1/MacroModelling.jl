@@ -30,9 +30,10 @@ jobs:
           - version: '1.8'
             os: ubuntu-latest
             arch: x64
-          # - version: '1.9'
-          #   os: ubuntu-latest
-          #   arch: aarch64
+          - version: '1.9'
+            os: ubuntu-latest
+            env:
+              JULIA_NUM_THREADS: 2
           - version: '^1.10.0-0'
             os: ubuntu-latest
             arch: x64
