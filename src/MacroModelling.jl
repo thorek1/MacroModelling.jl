@@ -324,7 +324,9 @@ function get_possible_indices_for_name(name::Symbol, all_names::Vector{Symbol})
     indexset = []
 
     for i in indices
-        push!(indexset, Symbol.(i[2])...)
+        if length(i) > 1
+            push!(indexset, Symbol.(i[2])...)
+        end
     end
 
     return indexset
