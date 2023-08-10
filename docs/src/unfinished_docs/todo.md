@@ -2,7 +2,9 @@
 
 ## High priority
 
-- [ ] implement for loops in model macro (e.g. to setup multi country models)
+- [ ] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
+- [ ] have all functions accept strings ad write tests for it
+- [ ] document for loops as a separate thing
 - [ ] implement occasionally binding constraints with shocks
 - [ ] implement moment matching for pruned models
 - [ ] speed benchmarking
@@ -50,6 +52,7 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
+- [x] implement for loops in model macro (e.g. to setup multi country models)
 - [x] fix ss of pruned solution in plotsolution. seems detached
 - [x] try solve first order with JuMP - doesnt work because JuMP cannot handle matrix constraints/objectives 
 - [x] get solution higher order with multidimensional array (states, 1 and 2 partial derivatives variables names as dimensions in 2order case)
