@@ -181,6 +181,8 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = randn(m.timings.nExo,10))
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10))
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10))
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10))
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = KeyedArray(randn(1,10),Shocks = string.([m.timings.exo[1]]), Periods = 1:10))
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = :none, initial_state = collect(lvl_irfs[:,5,1]))
         new_sub_lvl_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = :none, initial_state = collect(lvl_irfs[:,5,1]), levels = true)
         # new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = string.(:none), initial_state = collect(lvl_irfs[:,5,1]))
@@ -237,6 +239,12 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
             cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, shocks = shocks)
         end
 
+        conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs[1:2]]), Periods = 1:2)
+        conditions[var_idxs[1],1] = .01
+        conditions[var_idxs[2],2] = .02
+
+        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false)
+
         conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[1:2]], Periods = 1:2)
         conditions[var_idxs[1],1] = .01
         conditions[var_idxs[2],2] = .02
@@ -245,6 +253,12 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
         if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
             shocks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
+            shocks[1,1] = .1
+            cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, shocks = shocks)
+        end
+
+        if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
+            shocks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
             shocks[1,1] = .1
             cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, shocks = shocks)
         end
@@ -276,6 +290,12 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         reference_steady_state = [s ∈ m.exo_present ? 0 : NSSS(s) for s in full_SS]
 
         conditions_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[1:2]], Periods = 1:2)
+        conditions_lvl[var_idxs[1],1] = .01 + reference_steady_state[var_idxs[1]]
+        conditions_lvl[var_idxs[2],2] = .02 + reference_steady_state[var_idxs[2]]
+
+        cond_fcst = get_conditional_forecast(m, conditions_lvl, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
+
+        conditions_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs[1:2]]), Periods = 1:2)
         conditions_lvl[var_idxs[1],1] = .01 + reference_steady_state[var_idxs[1]]
         conditions_lvl[var_idxs[2],2] = .02 + reference_steady_state[var_idxs[2]]
 
@@ -404,7 +424,10 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = randn(m.timings.nExo,10))
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10))
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10))
+    new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10))
+    new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = KeyedArray(randn(1,10),Shocks = string.([m.timings.exo[1]]), Periods = 1:10))
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, generalised_irf = true, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10))
+    new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, generalised_irf = true, shocks = KeyedArray(randn(1,10),Shocks = string.([m.timings.exo[1]]), Periods = 1:10))
 
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :simulate)
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
@@ -472,6 +495,8 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = randn(m.timings.nExo,10))
         plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10))
         plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10))
+        plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10))
+        plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = KeyedArray(randn(1,10),Shocks = string.([m.timings.exo[1]]), Periods = 1:10))
 
         plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = :simulate)
         plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
