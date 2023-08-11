@@ -4,7 +4,7 @@ using Random
 using AxisKeys, SparseArrays
 import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
-# using JuliaFormatter
+using JET
 
 println("Threads used: ", Threads.nthreads())
 
@@ -19,8 +19,15 @@ include("functionality_tests.jl")
     @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
     @testset "Piracy" Aqua.test_piracy(MacroModelling)
     @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
+    @testset "Compat" Aqua.test_deps_compat(MacroModelling)
 end
 GC.gc()
+
+@testset verbose = true "Static checking (JET.jl)" begin
+    if VERSION >= v"1.9"
+        JET.test_package(MacroModelling; target_defined_modules=true, toplevel_logger=nothing)
+    end
+end
 
 @testset verbose = true "FS2000" begin
     include("models/FS2000.jl")
