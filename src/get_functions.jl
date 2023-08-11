@@ -633,8 +633,8 @@ function get_irf(𝓂::ℳ,
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
     @assert shocks != :simulate "Use parameters as a known argument to simulate the model."
-    
-    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : x : x
+
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
@@ -781,7 +781,7 @@ function get_irf(𝓂::ℳ;
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
     
-    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : x : x
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 

@@ -407,7 +407,7 @@ function plot_irf(𝓂::ℳ;
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
     
-    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : x : x
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
     
@@ -1253,9 +1253,9 @@ function plot_conditional_forecast(𝓂::ℳ,
                     tickfontsize = 8,
                     framestyle = :box)
 
-    conditions = conditions isa KeyedArray ? axiskeys(conditions,1) isa Vector{String} ? rekey(conditions, 1 => axiskeys(conditions,1) .|> Meta.parse .|> replace_indices) : x : x
+    conditions = conditions isa KeyedArray ? axiskeys(conditions,1) isa Vector{String} ? rekey(conditions, 1 => axiskeys(conditions,1) .|> Meta.parse .|> replace_indices) : conditions : conditions
 
-    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : x : x
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
     Y = get_conditional_forecast(𝓂,
                                 conditions,
