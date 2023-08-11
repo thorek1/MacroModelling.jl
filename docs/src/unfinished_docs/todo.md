@@ -3,7 +3,8 @@
 ## High priority
 
 - [ ] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
-- [ ] handle KeyedArrays with strings as dimension names
+- [ ] write test for keyedarray with strings as primary axis
+- [ ] have keyedarray with strings as axis type if necessary
 - [ ] have a look again at get_statistics function
 - [ ] write documentation for string inputs
 - [ ] document for loops as a separate thing
@@ -53,6 +54,7 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
+- [x] handle KeyedArrays with strings as dimension names as inout
 - [x] test string input
 - [x] have all functions accept strings and write tests for it
 - [x] parser model into per equation functions instead of single big functions
