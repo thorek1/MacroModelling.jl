@@ -29,7 +29,7 @@ In case `shock_decomposition = true`, then the plot shows the variables, shocks,
 
 # Arguments
 - $MODEL
-- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
+- `data` [Type: `KeyedArray`]: data matrix with variables (`Symbol` or `String`) in rows and time in columns
 # Keyword Arguments
 - $PARAMETERS
 - $VARIABLES

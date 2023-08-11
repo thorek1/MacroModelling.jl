@@ -4,7 +4,7 @@ Return the shock decomposition in absolute deviations from the non stochastic st
 
 # Arguments
 - $MODEL
-- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
+- `data` [Type: `KeyedArray`]: data matrix with variables (`String` or `Symbol`) in rows and time in columns
 # Keyword Arguments
 - $PARAMETERS
 - `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
@@ -101,7 +101,7 @@ Return the estimated shocks based on the Kalman smoother or filter (depending on
 
 # Arguments
 - $MODEL
-- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
+- `data` [Type: `KeyedArray`]: data matrix with variables (`String` or `Symbol`) in rows and time in columns
 # Keyword Arguments
 - $PARAMETERS
 - `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
@@ -178,7 +178,7 @@ Return the estimated variables based on the Kalman smoother or filter (depending
 
 # Arguments
 - $MODEL
-- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
+- `data` [Type: `KeyedArray`]: data matrix with variables (`String` or `Symbol`) in rows and time in columns
 # Keyword Arguments
 - $PARAMETERS
 - `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
