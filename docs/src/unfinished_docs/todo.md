@@ -4,7 +4,7 @@
 
 - [ ] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
 - [ ] have a look again at get_statistics function
-- [ ] have all functions accept strings ad write tests for it
+- [ ] write documentation for string inputs
 - [ ] document for loops as a separate thing
 - [ ] implement occasionally binding constraints with shocks
 - [ ] implement moment matching for pruned models
@@ -53,6 +53,7 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] test string input
+- [x] have all functions accept strings and write tests for it
 - [x] parser model into per equation functions instead of single big functions
 - [x] use krylov instead of linearsolve
 - [x] implement for loops in model macro (e.g. to setup multi country models)
