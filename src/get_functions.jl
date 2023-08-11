@@ -868,7 +868,7 @@ Return the (non stochastic) steady state and derivatives with respect to model p
 - $DERIVATIVES
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation. No derivatives are calculated.
 - $ALGORITHM
-- `parameter_derivatives` [Default: :all]: parameters for which to calculate partial derivatives. Inputs can be either a `Symbol` (e.g. `:alpha`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`.
+- $PARAMETER_DERIVATIVES
 - $VERBOSE
 
 The columns show the SS and parameters for which derivatives are taken. The rows show the variables.
@@ -1678,7 +1678,7 @@ Return the first and second moments of endogenous variables using the linearised
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
 - $DERIVATIVES
-- `parameter_derivatives` [Default: :all]: parameters for which to calculate partial derivatives. Inputs can be either a `Symbol` (e.g. `:alpha`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}` or `Vector{Symbol}`.
+- $PARAMETER_DERIVATIVES
 - $VERBOSE
 
 # Examples

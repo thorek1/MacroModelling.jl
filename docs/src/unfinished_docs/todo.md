@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
+- [ ] handle KeyedArrays with strings as dimension names
 - [ ] have a look again at get_statistics function
 - [ ] write documentation for string inputs
 - [ ] document for loops as a separate thing
