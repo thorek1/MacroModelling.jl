@@ -4,7 +4,7 @@ Return the shock decomposition in absolute deviations from the non stochastic st
 
 # Arguments
 - $MODEL
-- `data` [Type: `KeyedArray`]: data matrix with variables (`String` or `Symbol`) in rows and time in columns
+- $DATA
 # Keyword Arguments
 - $PARAMETERS
 - `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
@@ -69,15 +69,17 @@ function get_shock_decomposition(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    # write_parameters_input!(𝓂, parameters, verbose = verbose)
-
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
     data = data(sort(axiskeys(data,1)))
-    
-    obs_idx = parse_variables_input_to_index(collect(axiskeys(data,1)), 𝓂.timings)
+
+    obs_axis = collect(axiskeys(data,1))
+
+    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
 
     if data_in_levels
         data_in_deviations = data .- reference_steady_state[obs_idx]
@@ -85,9 +87,7 @@ function get_shock_decomposition(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, collect(axiskeys(data,1)); verbose = verbose)
-
-    # var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
 
     return KeyedArray(filtered_and_smoothed[smooth ? 4 : 8][:,1:end-1,:];  Variables = 𝓂.timings.var, Shocks = vcat(map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), :Initial_values), Periods = 1:size(data,2))
 end
@@ -101,7 +101,7 @@ Return the estimated shocks based on the Kalman smoother or filter (depending on
 
 # Arguments
 - $MODEL
-- `data` [Type: `KeyedArray`]: data matrix with variables (`String` or `Symbol`) in rows and time in columns
+- $DATA
 # Keyword Arguments
 - $PARAMETERS
 - `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
@@ -146,15 +146,17 @@ function get_estimated_shocks(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    # write_parameters_input!(𝓂, parameters, verbose = verbose)
-
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
     data = data(sort(axiskeys(data,1)))
     
-    obs_idx = parse_variables_input_to_index(collect(axiskeys(data,1)), 𝓂.timings)
+    obs_axis = collect(axiskeys(data,1))
+
+    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
 
     if data_in_levels
         data_in_deviations = data .- reference_steady_state[obs_idx]
@@ -162,7 +164,7 @@ function get_estimated_shocks(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, collect(axiskeys(data,1)); verbose = verbose)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
 
     return KeyedArray(filtered_and_smoothed[smooth ? 3 : 7];  Shocks = map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo), Periods = 1:size(data,2))
 end
@@ -178,7 +180,7 @@ Return the estimated variables based on the Kalman smoother or filter (depending
 
 # Arguments
 - $MODEL
-- `data` [Type: `KeyedArray`]: data matrix with variables (`String` or `Symbol`) in rows and time in columns
+- $DATA
 # Keyword Arguments
 - $PARAMETERS
 - `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
@@ -228,15 +230,17 @@ function get_estimated_variables(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    # write_parameters_input!(𝓂, parameters, verbose = verbose)
-
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
     data = data(sort(axiskeys(data,1)))
 
-    obs_idx = parse_variables_input_to_index(collect(axiskeys(data,1)), 𝓂.timings)
+    obs_axis = collect(axiskeys(data,1))
+
+    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
 
     if data_in_levels
         data_in_deviations = data .- reference_steady_state[obs_idx]
@@ -244,7 +248,7 @@ function get_estimated_variables(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, collect(axiskeys(data,1)); verbose = verbose)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
 
     return KeyedArray(levels ? filtered_and_smoothed[smooth ? 1 : 5] .+ reference_steady_state[1:length(𝓂.var)] : filtered_and_smoothed[smooth ? 1 : 5];  Variables = 𝓂.timings.var, Periods = 1:size(data,2))
 end
@@ -259,7 +263,7 @@ Return the standard deviations of the Kalman smoother or filter (depending on th
 
 # Arguments
 - $MODEL
-- `data` [Type: `KeyedArray`]: data matrix with variables in rows and time in columns
+- $DATA
 # Keyword Arguments
 - $PARAMETERS
 - `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
@@ -307,15 +311,17 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    # write_parameters_input!(𝓂, parameters, verbose = verbose)
-
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
     reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
     data = data(sort(axiskeys(data,1)))
     
-    obs_idx = parse_variables_input_to_index(collect(axiskeys(data,1)), 𝓂.timings)
+    obs_axis = collect(axiskeys(data,1))
+
+    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
 
     if data_in_levels
         data_in_deviations = data .- reference_steady_state[obs_idx]
@@ -323,7 +329,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, collect(axiskeys(data,1)); verbose = verbose)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
 
     return KeyedArray(filtered_and_smoothed[smooth ? 2 : 6];  Standard_deviations = 𝓂.timings.var, Periods = 1:size(data,2))
 end
@@ -451,10 +457,14 @@ function get_conditional_forecast(𝓂::ℳ,
         cond_tmp[:,axes(conditions,2)] = conditions
         conditions = cond_tmp
     elseif conditions isa KeyedArray{Union{Nothing,Float64}} || conditions isa KeyedArray{Float64}
-        @assert length(setdiff(axiskeys(conditions,1),𝓂.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(axiskeys(conditions,1),𝓂.var))
+        conditions_axis = collect(axiskeys(conditions,1))
+
+        conditions_symbols = conditions_axis isa String_input ? conditions_axis .|> Meta.parse .|> replace_indices : conditions_axis
+
+        @assert length(setdiff(conditions_symbols, 𝓂.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(conditions_symbols,𝓂.var))
         
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.var),periods)
-        cond_tmp[indexin(sort(axiskeys(conditions,1)),𝓂.var),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
+        cond_tmp[indexin(sort(conditions_symbols),𝓂.var),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
         conditions = cond_tmp
     end
     
@@ -474,10 +484,14 @@ function get_conditional_forecast(𝓂::ℳ,
         shocks_tmp[:,axes(shocks,2)] = shocks
         shocks = shocks_tmp
     elseif shocks isa KeyedArray{Union{Nothing,Float64}} || shocks isa KeyedArray{Float64}
-        @assert length(setdiff(axiskeys(shocks,1),𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.exo))
+        shocks_axis = collect(axiskeys(shocks,1))
+
+        shocks_symbols = shocks_axis isa String_input ? shocks_axis .|> Meta.parse .|> replace_indices : shocks_axis
+
+        @assert length(setdiff(shocks_symbols,𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(shocks_symbols, 𝓂.exo))
         
         shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
-        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
+        shocks_tmp[indexin(sort(shocks_symbols), 𝓂.exo), axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
         shocks = shocks_tmp
     elseif isnothing(shocks)
         shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
@@ -619,6 +633,8 @@ function get_irf(𝓂::ℳ,
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
     @assert shocks != :simulate "Use parameters as a known argument to simulate the model."
+    
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : x : x
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
@@ -633,7 +649,11 @@ function get_irf(𝓂::ℳ,
 
         shock_idx = 1
     elseif shocks isa KeyedArray{Float64}
-        shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
+        shocks_axis = collect(axiskeys(shocks,1))
+
+        shocks_symbols = shocks_axis isa String_input ? shocks_axis .|> Meta.parse .|> replace_indices : shocks_axis
+
+        shock_input = map(x->Symbol(replace(string(x), "₍ₓ₎" => "")), shocks_symbols)
 
         periods += size(shocks)[2]
 
@@ -761,6 +781,8 @@ function get_irf(𝓂::ℳ;
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
     
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : x : x
+
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks

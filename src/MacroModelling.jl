@@ -3503,6 +3503,8 @@ function irf(state_update::Function,
     variables::Union{Symbol_input,String_input} = :all, 
     negative_shock::Bool = false)
 
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : x : x
+
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks isa Matrix{Float64}
@@ -3614,6 +3616,8 @@ function girf(state_update::Function,
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
     draws::Int = 50)
+
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : x : x
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 

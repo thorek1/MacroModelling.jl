@@ -29,7 +29,7 @@ In case `shock_decomposition = true`, then the plot shows the variables, shocks,
 
 # Arguments
 - $MODEL
-- `data` [Type: `KeyedArray`]: data matrix with variables (`Symbol` or `String`) in rows and time in columns
+- $DATA
 # Keyword Arguments
 - $PARAMETERS
 - $VARIABLES
@@ -77,7 +77,7 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 ```
 """
 function plot_model_estimates(𝓂::ℳ,
-    data::AbstractArray{Float64};
+    data::KeyedArray{Float64};
     parameters = nothing,
     variables::Union{Symbol_input,String_input} = :all_including_auxilliary, 
     shocks::Union{Symbol_input,String_input} = :all, 
@@ -110,7 +110,11 @@ function plot_model_estimates(𝓂::ℳ,
 
     data = data(sort(axiskeys(data,1)))
     
-    obs_idx     = parse_variables_input_to_index(collect(axiskeys(data,1)), 𝓂.timings)
+    obs_axis = collect(axiskeys(data,1))
+
+    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+
+    obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) 
     shock_idx   = parse_shocks_input_to_index(shocks,𝓂.timings)
 
@@ -120,7 +124,7 @@ function plot_model_estimates(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, collect(axiskeys(data,1)); verbose = verbose)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
 
     variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
     shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
@@ -366,8 +370,6 @@ function plot_irf(𝓂::ℳ;
                     tickfontsize = 8,
                     framestyle = :box)
 
-    # write_parameters_input!(𝓂,parameters, verbose = verbose)
-
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
     state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
@@ -405,6 +407,8 @@ function plot_irf(𝓂::ℳ;
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
     
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : x : x
+
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
@@ -1248,6 +1252,10 @@ function plot_conditional_forecast(𝓂::ℳ,
                     legendfontsize = 8, 
                     tickfontsize = 8,
                     framestyle = :box)
+
+    conditions = conditions isa KeyedArray ? axiskeys(conditions,1) isa Vector{String} ? rekey(conditions, 1 => axiskeys(conditions,1) .|> Meta.parse .|> replace_indices) : x : x
+
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : x : x
 
     Y = get_conditional_forecast(𝓂,
                                 conditions,
