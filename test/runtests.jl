@@ -6,6 +6,8 @@ import StatsPlots, Turing # has to come before Aqua, otherwise exports are not r
 using Aqua
 # using JuliaFormatter
 
+println("Threads used: ", Threads.nthreads())
+
 include("functionality_tests.jl")
 
 @testset verbose = true "Code quality (Aqua.jl)" begin
