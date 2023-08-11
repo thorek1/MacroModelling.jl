@@ -433,7 +433,7 @@ function get_conditional_forecast(𝓂::ℳ,
     levels::Bool = false,
     verbose::Bool = false)
 
-    periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
+    periods += max(size(conditions,2), shocks isa Nothing ? 1 : size(shocks,2))
 
     if conditions isa SparseMatrixCSC{Float64}
         @assert length(𝓂.var) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(𝓂.var)) * " variables (including auxilliary variables): " * repr(𝓂.var)
@@ -1232,11 +1232,11 @@ function get_solution(𝓂::ℳ,
     
     if solution_error > tol || isnan(solution_error)
         if algorithm == :second_order
-            return SS_and_pars[1:length(𝓂.var)], zeros(𝓂.var,2), spzeros(𝓂.var,2), false
+            return SS_and_pars[1:length(𝓂.var)], zeros(length(𝓂.var),2), spzeros(length(𝓂.var),2), false
         elseif algorithm == :third_order
-            return SS_and_pars[1:length(𝓂.var)], zeros(𝓂.var,2), spzeros(𝓂.var,2), spzeros(𝓂.var,2), false
+            return SS_and_pars[1:length(𝓂.var)], zeros(length(𝓂.var),2), spzeros(length(𝓂.var),2), spzeros(length(𝓂.var),2), false
         else
-            return SS_and_pars[1:length(𝓂.var)], zeros(𝓂.var,2), false
+            return SS_and_pars[1:length(𝓂.var)], zeros(length(𝓂.var),2), false
         end
     end
 
@@ -1246,9 +1246,9 @@ function get_solution(𝓂::ℳ,
 
     if !solved
         if algorithm == :second_order
-            return SS_and_pars[1:length(𝓂.var)], 𝐒₁, spzeros(𝓂.var,2), false
+            return SS_and_pars[1:length(𝓂.var)], 𝐒₁, spzeros(length(𝓂.var),2), false
         elseif algorithm == :third_order
-            return SS_and_pars[1:length(𝓂.var)], 𝐒₁, spzeros(𝓂.var,2), spzeros(𝓂.var,2), false
+            return SS_and_pars[1:length(𝓂.var)], 𝐒₁, spzeros(length(𝓂.var),2), spzeros(length(𝓂.var),2), false
         else
             return SS_and_pars[1:length(𝓂.var)], 𝐒₁, false
         end

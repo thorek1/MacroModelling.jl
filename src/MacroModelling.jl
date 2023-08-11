@@ -187,13 +187,13 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                         index == index_variable ?
                             :($(Expr(:ref, Symbol(string(name) * "◖" * string(idx) * "◗"),time))) :
                         time isa Expr || time isa Symbol ?
-                            index_variable ∈ MM.get_symbols(time) ?
+                            index_variable ∈ get_symbols(time) ?
                                 :($(Expr(:ref, Expr(:curly,name,index), Meta.parse(replace(string(time), string(index_variable) => idx))))) :
                             x :
                         x :
                     @capture(x, name_[time_]) ?
                         time isa Expr || time isa Symbol ?
-                            index_variable ∈ MM.get_symbols(time) ?
+                            index_variable ∈ get_symbols(time) ?
                                 :($(Expr(:ref, name, Meta.parse(replace(string(time), string(index_variable) => idx))))) :
                             x :
                         x :
@@ -3180,7 +3180,7 @@ end
 
 
 
-function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explosive::Bool = false) where {Z,S,N}
+function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
     ∇̂₁ = ℱ.value.(∇₁)
     # you can play with the dimension here, sometimes it makes sense to transpose
@@ -3708,23 +3708,23 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
     elseif variables == :all_including_auxilliary
         return 1:length(union(T.var,T.aux,T.exo_present))
     elseif variables isa Matrix{Symbol}
-        if !issubset(variables,T.var)
-            return @warn "Following variables are not part of the model: " * string.(setdiff(variables,T.var))
+        if length(setdiff(variables,T.var)) > 0
+            return @warn "Following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ")
         end
         return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(variables .== T.var,dims= 2))))
     elseif variables isa Vector{Symbol}
-        if !issubset(variables,T.var)
-            return @warn "Following variables are not part of the model: " * string.(setdiff(variables,T.var))
+        if length(setdiff(variables,T.var)) > 0
+            return @warn "Following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ")
         end
         return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(reshape(variables,1,length(variables)) .== T.var,dims= 2))))
     elseif variables isa Tuple{Symbol,Vararg{Symbol}}
-        if !issubset(variables,T.var)
-            return @warn "Following variables are not part of the model: " * string.(setdiff(variables,T.var))
+        if length(setdiff(variables,T.var)) > 0
+            return @warn "Following variables are not part of the model: " * join(string.(setdiff(Symbol.(collect(variables)),T.var)), ", ")
         end
         return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(reshape(collect(variables),1,length(variables)) .== T.var,dims= 2))))
     elseif variables isa Symbol
-        if !issubset([variables],T.var)
-            return @warn "Following variable is not part of the model: " * string(setdiff([variables],T.var)[1])
+        if length(setdiff([variables],T.var)) > 0
+            return @warn "Following variable is not part of the model: " * join(string(setdiff([variables],T.var)[1]),", ")
         end
         return getindex(1:length(T.var),variables .== T.var)
     else
@@ -3743,23 +3743,23 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
     elseif shocks == :simulate
         shock_idx = 1
     elseif shocks isa Matrix{Symbol}
-        if !issubset(shocks,T.exo)
-            return @warn "Following shocks are not part of the model: " * string.(setdiff(shocks,T.exo))
+        if length(setdiff(shocks,T.exo)) > 0
+            return @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
         end
         shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(shocks .== T.exo,dims= 2))))
     elseif shocks isa Vector{Symbol}
-        if !issubset(shocks,T.exo)
-            return @warn "Following shocks are not part of the model: " * string.(setdiff(shocks,T.exo))
+        if length(setdiff(shocks,T.exo)) > 0
+            return @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
         end
         shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(shocks,1,length(shocks)) .== T.exo, dims= 2))))
     elseif shocks isa Tuple{Symbol, Vararg{Symbol}}
-        if !issubset(shocks,T.exo)
-            return @warn "Following shocks are not part of the model: " * string.(setdiff(shocks,T.exo))
+        if length(setdiff(shocks,T.exo)) > 0
+            return @warn "Following shocks are not part of the model: " * join(string.(setdiff(Symbol.(collect(shocks)),T.exo)),", ")
         end
         shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(collect(shocks),1,length(shocks)) .== T.exo,dims= 2))))
     elseif shocks isa Symbol
-        if !issubset([shocks],T.exo)
-            return @warn "Following shock is not part of the model: " * string(setdiff([shocks],T.exo)[1])
+        if length(setdiff([shocks],T.exo)) > 0
+            return @warn "Following shock is not part of the model: " * join(string(setdiff([shocks],T.exo)[1]),", ")
         end
         shock_idx = getindex(1:T.nExo,shocks .== T.exo)
     else
@@ -3832,7 +3832,7 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Real}; T::timin
 end
 
 
-function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T, subset_indices::Vector{Int64} = subset_indices) where {Z,S,N}
+function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings, subset_indices::Vector{Int64}) where {Z,S,N}
     # unpack: AoS -> SoA
     𝑺₁̂ = ℱ.value.(𝑺₁)
     # you can play with the dimension here, sometimes it makes sense to transpose
