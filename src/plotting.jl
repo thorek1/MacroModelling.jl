@@ -146,7 +146,7 @@ function plot_model_estimates(𝓂::ℳ,
             push!(pp,begin
                     StatsPlots.plot()
                     StatsPlots.plot!(shocks_to_plot[shock_idx[i - length(var_idx)],:],
-                        title = string(𝓂.timings.exo[shock_idx[i - length(var_idx)]]) * "₍ₓ₎", 
+                        title = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[i - length(var_idx)]]) * "₍ₓ₎", 
                         ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
                         color = shock_decomposition ? estimate_color : :auto)
                     StatsPlots.hline!([0],
@@ -159,7 +159,7 @@ function plot_model_estimates(𝓂::ℳ,
             if shock_decomposition SS = zero(SS) end
 
             can_dual_axis = gr_back &&  all((variables_to_plot[var_idx[i],:] .+ SS) .> eps(Float32)) && (SS > eps(Float32)) && !shock_decomposition
-            
+
             push!(pp,begin
                     StatsPlots.plot()
                     if shock_decomposition
@@ -170,12 +170,12 @@ function plot_model_estimates(𝓂::ℳ,
                             alpha = transparency)
                     end
                     StatsPlots.plot!(variables_to_plot[var_idx[i],:] .+ SS,
-                        title = string(𝓂.timings.var[var_idx[i]]), 
+                        title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
                         ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
                         color = shock_decomposition ? estimate_color : :auto)
                     if var_idx[i] ∈ obs_idx 
                         StatsPlots.plot!(data_in_deviations[indexin([var_idx[i]],obs_idx),:]' .+ SS,
-                            title = string(𝓂.timings.var[var_idx[i]]),
+                            title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
                             ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
                             label = "", 
                             color = shock_decomposition ? data_color : :auto) 
@@ -468,7 +468,7 @@ function plot_irf(𝓂::ℳ;
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
                 push!(pp,begin
                                 StatsPlots.plot(Y[i,:,shock] .+ SS,
-                                                title = string(𝓂.timings.var[var_idx[i]]),
+                                                title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
                                                 ylabel = "Level",
                                                 label = "")
 
@@ -496,8 +496,8 @@ function plot_irf(𝓂::ℳ;
                         shock_string = ""
                         shock_name = "no_shock"
                     elseif shocks isa Union{Symbol_input,String_input}
-                        shock_string = ": " * string(𝓂.timings.exo[shock_idx[shock]])
-                        shock_name = string(𝓂.timings.exo[shock_idx[shock]])
+                        shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                        shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
                     else
                         shock_string = "Series of shocks"
                         shock_name = "shock_matrix"
@@ -530,14 +530,14 @@ function plot_irf(𝓂::ℳ;
                 shock_string = ""
                 shock_name = "no_shock"
             elseif shocks isa Union{Symbol_input,String_input}
-                shock_string = ": " * string(𝓂.timings.exo[shock_idx[shock]])
-                shock_name = string(𝓂.timings.exo[shock_idx[shock]])
+                shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
             else
                 shock_string = "Series of shocks"
                 shock_name = "shock_matrix"
             end
 
-            p = StatsPlots.plot(pp...,plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+            p = StatsPlots.plot(pp...,plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")")
 
             push!(return_plots,p)
 
@@ -671,11 +671,10 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     return_plots = []
 
     for k in vars_to_plot
-
         if gr_back
-            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, legend = :none))
+            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = replace_indices_in_symbol(k), bar_position = :stack, legend = :none))
         else
-            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = string(k), bar_position = :stack, label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot))))
+            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = replace_indices_in_symbol(k), bar_position = :stack, label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot))))
         end
 
         if !(plot_count % plots_per_page == 0)
@@ -1276,6 +1275,8 @@ function plot_conditional_forecast(𝓂::ℳ,
     
     var_names = axiskeys(Y,1)   
 
+    var_names = var_names isa Vector{String} ? var_names .|> replace_indices : var_names
+
     var_idx = indexin(var_names,full_SS)
 
     NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
@@ -1348,34 +1349,35 @@ function plot_conditional_forecast(𝓂::ℳ,
     for i in 1:length(var_idx)
         SS = reference_steady_state[i]
         if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)) > 0
-            
+          
             if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
                 cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
+
                 if length(cond_idx) > 0
-                push!(pp,begin
-                            StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                            if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                            StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")   
-                            StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
-                end)
-            else
-                push!(pp,begin
-                            StatsPlots.plot(1:periods, Y[i,:] .+ SS,title = string(full_SS[var_idx[i]]),ylabel = "Level",label = "")
-                            if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                            StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")                              
-                end)
-            end
+                    push!(pp,begin
+                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = replace_indices_in_symbol(full_SS[var_idx[i]]), ylabel = "Level", label = "")
+                                if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")   
+                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
+                    end)
+                else
+                    push!(pp,begin
+                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = replace_indices_in_symbol(full_SS[var_idx[i]]), ylabel = "Level", label = "")
+                                if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
+                                StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")                              
+                    end)
+                end
             else
                 cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
                 if length(cond_idx) > 0
                     push!(pp,begin
-                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = replace_indices_in_symbol(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
                                 StatsPlots.hline!([SS], color = :black, label = "")
                                 StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)  
                     end)
                 else 
                     push!(pp,begin
-                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = string(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
+                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = replace_indices_in_symbol(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
                                 StatsPlots.hline!([SS], color = :black, label = "")
                     end)
                 end
@@ -1413,7 +1415,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                             legend = :inside)
                                         end, 
                                             layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                                            plot_title = "Model: "*𝓂.model_name*"        " * shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                            plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  ("*string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")")
                 
                 push!(return_plots,p)
 
@@ -1458,7 +1460,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 legend = :inside)
                                 end, 
                                     layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")")
         
         push!(return_plots,p)
 

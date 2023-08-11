@@ -222,6 +222,10 @@ end
 
 replace_indices(x::Symbol) = x
 
+replace_indices(x::String) = Symbol(replace(x, "{:" => "◖", "}" => "◗"))
+
+replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{:", "◗" => "}")
+
 function replace_indices(exxpr::Expr)
     postwalk(x -> begin
         @capture(x, name_{index_}) ?
@@ -3535,6 +3539,13 @@ function irf(state_update::Function,
 
     var_idx = parse_variables_input_to_index(variables, T)
 
+    axis1 = T.var[var_idx]
+        
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{:" * join(a[2],"}{:") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
+
     if shocks == :simulate
         shock_history = randn(T.nExo,periods)
 
@@ -3554,7 +3565,7 @@ function irf(state_update::Function,
             end
         end
 
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:simulate])
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:simulate])
     elseif shocks == :none
         Y = zeros(T.nVars,periods,1)
 
@@ -3574,7 +3585,7 @@ function irf(state_update::Function,
             end
         end
 
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:none])
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
     else
         Y = zeros(T.nVars,periods,length(shock_idx))
 
@@ -3599,7 +3610,14 @@ function irf(state_update::Function,
             end
         end
 
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix])
+        axis2 = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix]
+        
+        if any(x -> contains(string(x), "◖"), axis2)
+            axis2_decomposed = decompose_name.(axis2)
+            axis2 = [length(a) > 1 ? string(a[1]) * "{:" * join(a[2],"}{:") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+        end
+    
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
     end
 end
 
@@ -3698,7 +3716,21 @@ function girf(state_update::Function,
         Y[:,:,i] /= draws
     end
     
-    return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix])
+    axis1 = T.var[var_idx]
+        
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{:" * join(a[2],"}{:") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
+
+    axis2 = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix]
+        
+    if any(x -> contains(string(x), "◖"), axis2)
+        axis2_decomposed = decompose_name.(axis2)
+        axis2 = [length(a) > 1 ? string(a[1]) * "{:" * join(a[2],"}{:") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+    end
+
+    return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
 end
 
 
