@@ -30,10 +30,6 @@ jobs:
           - version: '1.8'
             os: ubuntu-latest
             arch: x64
-          - version: '1.9'
-            os: ubuntu-latest
-            env:
-              JULIA_NUM_THREADS: 2
           - version: '^1.10.0-0'
             os: ubuntu-latest
             arch: x64
@@ -73,7 +69,9 @@ jobs:
       - uses: julia-actions/julia-runtest@latest
         with:
           prefix: ${{ matrix.prefix }}  # for `xvfb-run`
-          
+        if: matrix.os == 'ubuntu-latest' && matrix.version == '1.9'
+        env: 
+          JULIA_NUM_THREADS: 2
       - uses: julia-actions/julia-processcoverage@latest
       - uses: codecov/codecov-action@v3
         with:
