@@ -1046,7 +1046,7 @@ function plot_solution(𝓂::ℳ,
     for (i,k) in enumerate(vars_to_plot)
         kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
 
-        kk = replace_indices_in_symbol(kk)
+        # kk = replace_indices_in_symbol(kk)
 
         if !has_impact_list[i] continue end
 
