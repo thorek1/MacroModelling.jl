@@ -208,7 +208,7 @@ function plot_model_estimates(𝓂::ℳ,
             plot_count = 1
 
             ppp = StatsPlots.plot(pp...)
-            
+
             # Legend
             p = StatsPlots.plot(ppp,begin
                                         StatsPlots.plot(framestyle = :none)
@@ -981,7 +981,6 @@ function plot_solution(𝓂::ℳ,
 
     for k in vars_to_plot
         kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-        kk = replace_indices_in_symbol(kk)
 
         has_impact = false
 
