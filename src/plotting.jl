@@ -208,13 +208,13 @@ function plot_model_estimates(𝓂::ℳ,
             plot_count = 1
 
             ppp = StatsPlots.plot(pp...)
-
+            kk = replace_indices_in_symbol(kk)
             # Legend
             p = StatsPlots.plot(ppp,begin
                                         StatsPlots.plot(framestyle = :none)
                                         if shock_decomposition
                                             StatsPlots.bar!(fill(0,1,length(shock_idx)+1), 
-                                                                    label = reshape(vcat("Initial value",string.(𝓂.exo[shock_idx])),1,length(shock_idx)+1), 
+                                                                    label = reshape(vcat("Initial value",string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))),1,length(shock_idx)+1), 
                                                                     linewidth = 0,
                                                                     alpha = transparency,
                                                                     lw = 0,
@@ -255,7 +255,7 @@ function plot_model_estimates(𝓂::ℳ,
                                     StatsPlots.plot(framestyle = :none)
                                     if shock_decomposition
                                         StatsPlots.bar!(fill(0,1,length(shock_idx)+1), 
-                                                                label = reshape(vcat("Initial value",string.(𝓂.exo[shock_idx])),1,length(shock_idx)+1), 
+                                                                label = reshape(vcat("Initial value",string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))),1,length(shock_idx)+1), 
                                                                 linewidth = 0,
                                                                 alpha = transparency,
                                                                 lw = 0,
@@ -682,7 +682,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         if gr_back
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = replace_indices_in_symbol(k), bar_position = :stack, legend = :none))
         else
-            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = replace_indices_in_symbol(k), bar_position = :stack, label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot))))
+            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = replace_indices_in_symbol(k), bar_position = :stack, label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot))))
         end
 
         if !(plot_count % plots_per_page == 0)
@@ -693,7 +693,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             ppp = StatsPlots.plot(pp...)
 
             p = StatsPlots.plot(ppp,StatsPlots.bar(fill(0,1,length(shocks_to_plot)), 
-                                        label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot)), 
+                                        label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
                                         linewidth = 0 , 
                                         framestyle = :none, 
                                         legend = :inside, 
@@ -720,7 +720,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         ppp = StatsPlots.plot(pp...)
 
         p = StatsPlots.plot(ppp,StatsPlots.bar(fill(0,1,length(shocks_to_plot)), 
-                                    label = reshape(string.(shocks_to_plot),1,length(shocks_to_plot)), 
+                                    label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
                                     linewidth = 0 , 
                                     framestyle = :none, 
                                     legend = :inside, 
@@ -981,6 +981,7 @@ function plot_solution(𝓂::ℳ,
 
     for k in vars_to_plot
         kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+        kk = replace_indices_in_symbol(kk)
 
         has_impact = false
 
@@ -1045,6 +1046,8 @@ function plot_solution(𝓂::ℳ,
 
     for (i,k) in enumerate(vars_to_plot)
         kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+
+        kk = replace_indices_in_symbol(kk)
 
         if !has_impact_list[i] continue end
 
@@ -1364,7 +1367,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     for i in 1:length(var_idx)
         SS = reference_steady_state[i]
         if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)) > 0
-          
+        
             if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
                 cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
 
