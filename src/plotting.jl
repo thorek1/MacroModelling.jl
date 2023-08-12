@@ -114,6 +114,10 @@ function plot_model_estimates(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
+    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+
     obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) 
     shock_idx   = parse_shocks_input_to_index(shocks,𝓂.timings)
@@ -423,6 +427,8 @@ function plot_irf(𝓂::ℳ;
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
     end
 
+    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
     if generalised_irf
@@ -658,6 +664,8 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                     parameters = parameters,
                                                     verbose = verbose)
 
+    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
     vars_to_plot = intersect(axiskeys(fevds)[1],𝓂.timings.var[var_idx])
@@ -855,9 +863,16 @@ function plot_solution(𝓂::ℳ,
                             parameters = parameters,
                             verbose = verbose)
 
+    SS_and_std[1] = SS_and_std[1] isa KeyedArray ? axiskeys(SS_and_std[1],1) isa Vector{String} ? rekey(SS_and_std[1], 1 => axiskeys(SS_and_std[1],1).|> x->Symbol.(replace.(x, "{:" => "◖", "}" => "◗"))) : SS_and_std[1] : SS_and_std[1]
+    
+    SS_and_std[2] = SS_and_std[2] isa KeyedArray ? axiskeys(SS_and_std[2],1) isa Vector{String} ? rekey(SS_and_std[2], 1 => axiskeys(SS_and_std[2],1).|> x->Symbol.(replace.(x, "{:" => "◖", "}" => "◗"))) : SS_and_std[2] : SS_and_std[2]
+
     full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
     full_SS = [s ∈ 𝓂.exo_present ? 0 : SS_and_std[1](s) for s in full_NSSS]
+
+    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 

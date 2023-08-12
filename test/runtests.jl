@@ -29,6 +29,14 @@ GC.gc()
     end
 end
 
+@testset verbose = true "Backus_Kehoe_Kydland_1992" begin
+    include("models/Backus_Kehoe_Kydland_1992.jl")
+    functionality_test(Backus_Kehoe_Kydland_1992, plots = true)
+end
+Backus_Kehoe_Kydland_1992 = nothing
+GC.gc()
+
+
 @testset verbose = true "FS2000" begin
     include("models/FS2000.jl")
     functionality_test(m, plots = false)

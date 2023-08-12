@@ -287,7 +287,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         NSSS = get_SS(m,derivatives = false)
         full_SS = sort(union(m.var,m.aux,m.exo_present))
         full_SS[indexin(m.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  m.aux)
-        reference_steady_state = [s ∈ m.exo_present ? 0 : NSSS(s) for s in full_SS]
+        reference_steady_state = [s ∈ m.exo_present ? 0 : NSSS(axiskeys(NSSS,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol(s) : s) for s in full_SS]
 
         conditions_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[1:2]], Periods = 1:2)
         conditions_lvl[var_idxs[1],1] = .01 + reference_steady_state[var_idxs[1]]
@@ -314,7 +314,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         
         simulation = simulate(m)
 
-        data_in_levels = simulation(m.var[var_idxs],:,:simulate)
+        data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
         data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
 
         estim_vars1 = get_estimated_variables(m, data, data_in_levels = false, verbose = true)
@@ -404,6 +404,8 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     new_irfs4 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
     lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true)
 
+    lvl_irfs = axiskeys(lvl_irfs,3) isa Vector{String} ? rekey(lvl_irfs,3 => axiskeys(lvl_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : lvl_irfs
+
     lvlv_init_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
     lvlv_init_neg_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true)
     lvlv_init_neg_gen_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true)
@@ -433,6 +435,8 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
     new_sub_lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])), levels = true)
 
+    new_sub_lvl_irfs = axiskeys(new_sub_lvl_irfs,3) isa Vector{String} ? rekey(new_sub_lvl_irfs,3 => axiskeys(new_sub_lvl_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : new_sub_lvl_irfs
+    new_sub_irfs = axiskeys(new_sub_lvl_irfs,3) isa Vector{String} ? rekey(new_sub_irfs,3 => axiskeys(new_sub_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : new_sub_irfs
     # new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = string.(:simulate))
     # new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = string.(:none), initial_state = collect(lvl_irfs(:,5,m.exo[1])))
     # new_sub_lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = string.(:none), initial_state = collect(lvl_irfs(:,5,m.exo[1])), levels = true)
@@ -560,7 +564,8 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
             
             simulation = simulate(m)
 
-            data_in_levels = simulation(m.var[var_idxs],:,:simulate)
+            data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
+            # data_in_levels = simulation(m.var[var_idxs],:,:simulate)
             data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
     
             plot_model_estimates(m, data, data_in_levels = false)
