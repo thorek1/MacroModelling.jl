@@ -1042,12 +1042,8 @@ function plot_solution(𝓂::ℳ,
         end
     end
 
-    state = replace_indices_in_symbol(state)
-
     for (i,k) in enumerate(vars_to_plot)
         kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-
-        k = replace_indices_in_symbol(k)
 
         if !has_impact_list[i] continue end
 
@@ -1056,36 +1052,36 @@ function plot_solution(𝓂::ℳ,
                         if :first_order ∈ algorithm
                                 StatsPlots.plot!(state_range .+ SS_and_std[1](state), 
                                 variable_first_list[i], 
-                                ylabel = string(k)*"₍₀₎", 
-                                xlabel = string(state)*"₍₋₁₎", 
+                                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
+                                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
                                 label = "")
                         end
                         if :second_order ∈ algorithm
                                 StatsPlots.plot!(state_range .+ SSS2[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
                                 variable_second_list[i], 
-                                ylabel = string(k)*"₍₀₎", 
-                                xlabel = string(state)*"₍₋₁₎", 
+                                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
+                                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
                                 label = "")
                         end
                         if :pruned_second_order ∈ algorithm
                                 StatsPlots.plot!(state_range .+ SSS2p[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
                                 variable_pruned_second_list[i], 
-                                ylabel = string(k)*"₍₀₎", 
-                                xlabel = string(state)*"₍₋₁₎", 
+                                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
+                                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
                                 label = "")
                         end
                         if :third_order ∈ algorithm
                                 StatsPlots.plot!(state_range .+ SSS3[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
                                 variable_third_list[i], 
-                                ylabel = string(k)*"₍₀₎", 
-                                xlabel = string(state)*"₍₋₁₎", 
+                                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
+                                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
                                 label = "")
                         end
                         if :pruned_third_order ∈ algorithm
                                 StatsPlots.plot!(state_range .+ SSS3p[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
                                 variable_pruned_third_list[i], 
-                                ylabel = string(k)*"₍₀₎", 
-                                xlabel = string(state)*"₍₋₁₎", 
+                                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
+                                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
                                 label = "")
                         end
 
