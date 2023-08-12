@@ -208,7 +208,7 @@ function plot_model_estimates(𝓂::ℳ,
             plot_count = 1
 
             ppp = StatsPlots.plot(pp...)
-            kk = replace_indices_in_symbol(kk)
+            
             # Legend
             p = StatsPlots.plot(ppp,begin
                                         StatsPlots.plot(framestyle = :none)
