@@ -1,7 +1,7 @@
 include("models/Backus_Kehoe_Kydland_1992.jl")
 SS = get_SS(Backus_Kehoe_Kydland_1992)
 
-@test isapprox(SS(["A:{F}","K{:H}","L{:F}","LGM"]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
+@test isapprox(SS(["A{:F}","K{:H}","L{:F}","LGM"]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
 
 var_dec = get_var_decomp(Backus_Kehoe_Kydland_1992)
 
