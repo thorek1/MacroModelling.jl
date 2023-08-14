@@ -668,6 +668,10 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
+    fevds = fevds isa KeyedArray ? axiskeys(fevds,1) isa Vector{String} ? rekey(fevds, 1 => axiskeys(fevds,1) .|> Meta.parse .|> replace_indices) : fevds : fevds
+
+    fevds = fevds isa KeyedArray ? axiskeys(fevds,2) isa Vector{String} ? rekey(fevds, 2 => axiskeys(fevds,2) .|> Meta.parse .|> replace_indices) : fevds : fevds
+
     vars_to_plot = intersect(axiskeys(fevds)[1],𝓂.timings.var[var_idx])
     
     shocks_to_plot = axiskeys(fevds)[2]
