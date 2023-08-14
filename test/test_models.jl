@@ -1,12 +1,12 @@
 include("models/Backus_Kehoe_Kydland_1992.jl")
 SS = get_SS(Backus_Kehoe_Kydland_1992)
 
-@test isapprox(SS([:A{:F},:K{:H},:L{:F},:LGM]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
+@test isapprox(SS([:A◖F◗,:K◖H◗,:L◖F◗,:LGM]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
 
 var_dec = get_var_decomp(Backus_Kehoe_Kydland_1992)
 
-@test isapprox(var_dec([:K{:F},:Y{:H},:Z{:F}],:E{:F}) * 100, [51.34, 42.44, 52.59],rtol = 1e-3)
-@test isapprox(var_dec([:K{:F},:Y{:H},:Z{:F}],:E{:H}) * 100, [48.66, 57.56, 47.41],rtol = 1e-3)
+@test isapprox(var_dec([:K◖F◗,:Y◖H◗,:Z◖F◗],:E◖F◗) * 100, [51.34, 42.44, 52.59],rtol = 1e-3)
+@test isapprox(var_dec([:K◖F◗,:Y◖H◗,:Z◖F◗],:E◖H◗) * 100, [48.66, 57.56, 47.41],rtol = 1e-3)
 
 Backus_Kehoe_Kydland_1992 = nothing
 
