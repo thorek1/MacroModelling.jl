@@ -12,11 +12,14 @@ makedocs(
         "Introduction" => "index.md",
         "Tutorials" => [
             "Installation" => "tutorials/install.md",
-            "RBC" => "tutorials/rbc.md",
-            "Smets and Wouters (2003)" => "tutorials/sw03.md",
-            "Estimation" => "tutorials/estimation.md",
+            "Write your first simple model - RBC" => "tutorials/rbc.md",
+            "Work with a more complex model - Smets and Wouters (2003)" => "tutorials/sw03.md",
+            "Estimate a model using gradient based samplers - Schorfheide (2000)" => "tutorials/estimation.md",
         ],
-        # "How-to guides" => "how_to.md",
+        "How-to guides" => [
+            "Programmatic model writing using for-loops" => "how-to/loops.md",
+            # "how_to.md"
+            ],
         # "Model syntax" => "dsl.md",
         "API" => "api.md",
         "Index" => "call_index.md",

@@ -3,9 +3,10 @@
 ## High priority
 
 - [ ] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
+- [ ] use strings instead of symbols internally
+- [ ] have for loop where the items are multiplied or divided or whatever, defined by operator
 - [ ] have a look again at get_statistics function
 - [ ] write documentation for string inputs
-- [ ] document for loops as a separate thing
 - [ ] implement occasionally binding constraints with shocks
 - [ ] implement moment matching for pruned models
 - [ ] speed benchmarking
@@ -53,6 +54,7 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] handle KeyedArrays with strings as dimension names as input
+- [x] write documentation for programmatic model writing
 - [x] input indices not as symbol
 - [x] make sure plots and printed output also uses strings instead of symbols if adequate
 - [x] have keyedarray with strings as axis type if necessary as output
