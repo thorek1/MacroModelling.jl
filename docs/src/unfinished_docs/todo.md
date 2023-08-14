@@ -3,7 +3,6 @@
 ## High priority
 
 - [ ] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
-- [ ] input indices not as symbol
 - [ ] have a look again at get_statistics function
 - [ ] write documentation for string inputs
 - [ ] document for loops as a separate thing
@@ -54,6 +53,7 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] handle KeyedArrays with strings as dimension names as input
+- [x] input indices not as symbol
 - [x] make sure plots and printed output also uses strings instead of symbols if adequate
 - [x] have keyedarray with strings as axis type if necessary as output
 - [x] write test for keyedarray with strings as primary axis

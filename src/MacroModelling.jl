@@ -179,6 +179,7 @@ end
 
 function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate)
     calls = []
+    indices = indices.args[1] == :(:) ? eval(indices) : [indices.args...]
     for idx in indices
         push!(calls, postwalk(x -> begin
             x isa Expr ?
@@ -222,14 +223,14 @@ end
 
 replace_indices(x::Symbol) = x
 
-replace_indices(x::String) = Symbol(replace(x, "{:" => "◖", "}" => "◗"))
+replace_indices(x::String) = Symbol(replace(x, "{" => "◖", "}" => "◗"))
 
-replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{:", "◗" => "}")
+replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{", "◗" => "}")
 
 function replace_indices(exxpr::Expr)
     postwalk(x -> begin
         @capture(x, name_{index_}) ?
-            :($(Symbol(string(name) * "◖" * string(eval(index)) * "◗"))) :
+            :($(Symbol(string(name) * "◖" * string((index)) * "◗"))) :
         x
         end,
     exxpr)
@@ -243,16 +244,16 @@ function write_out_for_loops(arg::Expr)
                         x.head == :for ?
                             x.args[2] isa Array ?
                                 length(x.args[2]) >= 1 ?
-                                    [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), eval(x.args[1].args[2]), false) for X in x.args[2]] :
+                                    [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), (x.args[1].args[2]), false) for X in x.args[2]] :
                                 x :
                             x.args[2].head ∉ [:(=), :block] ?
                                 replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                     Symbol(x.args[1].args[1]), 
-                                                    eval(x.args[1].args[2]),
+                                                    (x.args[1].args[2]),
                                                     true) : # for loop part of equation
                             replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                 Symbol(x.args[1].args[1]), 
-                                                eval(x.args[1].args[2]),
+                                                (x.args[1].args[2]),
                                                 false) : # for loop part across equations
                         x :
                     x
@@ -3543,7 +3544,7 @@ function irf(state_update::Function,
         
     if any(x -> contains(string(x), "◖"), axis1)
         axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{:" * join(a[2],"}{:") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
     if shocks == :simulate
@@ -3614,7 +3615,7 @@ function irf(state_update::Function,
         
         if any(x -> contains(string(x), "◖"), axis2)
             axis2_decomposed = decompose_name.(axis2)
-            axis2 = [length(a) > 1 ? string(a[1]) * "{:" * join(a[2],"}{:") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+            axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
         end
     
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
@@ -3720,14 +3721,14 @@ function girf(state_update::Function,
         
     if any(x -> contains(string(x), "◖"), axis1)
         axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{:" * join(a[2],"}{:") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
     axis2 = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix]
         
     if any(x -> contains(string(x), "◖"), axis2)
         axis2_decomposed = decompose_name.(axis2)
-        axis2 = [length(a) > 1 ? string(a[1]) * "{:" * join(a[2],"}{:") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+        axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
     end
 
     return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)

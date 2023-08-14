@@ -867,9 +867,9 @@ function plot_solution(𝓂::ℳ,
                             parameters = parameters,
                             verbose = verbose)
 
-    SS_and_std[1] = SS_and_std[1] isa KeyedArray ? axiskeys(SS_and_std[1],1) isa Vector{String} ? rekey(SS_and_std[1], 1 => axiskeys(SS_and_std[1],1).|> x->Symbol.(replace.(x, "{:" => "◖", "}" => "◗"))) : SS_and_std[1] : SS_and_std[1]
+    SS_and_std[1] = SS_and_std[1] isa KeyedArray ? axiskeys(SS_and_std[1],1) isa Vector{String} ? rekey(SS_and_std[1], 1 => axiskeys(SS_and_std[1],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[1] : SS_and_std[1]
     
-    SS_and_std[2] = SS_and_std[2] isa KeyedArray ? axiskeys(SS_and_std[2],1) isa Vector{String} ? rekey(SS_and_std[2], 1 => axiskeys(SS_and_std[2],1).|> x->Symbol.(replace.(x, "{:" => "◖", "}" => "◗"))) : SS_and_std[2] : SS_and_std[2]
+    SS_and_std[2] = SS_and_std[2] isa KeyedArray ? axiskeys(SS_and_std[2],1) isa Vector{String} ? rekey(SS_and_std[2], 1 => axiskeys(SS_and_std[2],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[2] : SS_and_std[2]
 
     full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
