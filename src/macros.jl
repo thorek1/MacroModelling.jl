@@ -21,11 +21,12 @@ Endogenous variables can have the following:
 Signed integers are recognised and parsed as such.
 
 Exogenous variables (shocks) can have the following:
-- present: `c[x]` instead of `x` any of the following is also a valid flag for exogenous variables: `ex`, `exo`, `exogenous`, and the parser is case-insensitive (`Ex` or `exoGenous` will work as well).
-- past: `c[x-1]`
-- future: `c[x+1]`
+- present: `eps_z[x]` instead of `x` any of the following is also a valid flag for exogenous variables: `ex`, `exo`, `exogenous`, and the parser is case-insensitive (`Ex` or `exoGenous` will work as well).
+- past: `eps_z[x-1]`
+- future: `eps_z[x+1]`
 
 Parameters enter the equations without squared brackets.
+
 # Examples
 ```julia
 using MacroModelling
@@ -37,6 +38,15 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 ```
+
+# Programmatic model writing
+
+Parameters and variables can be indexed using curly braces: e.g. `c{H}[0]`, `eps_z{F}[x]`, or `α{H}`.
+
+`for` loops can be used to write models programmatically. They can either be used to generate expressions where you iterate over the time index or the index in curly braces:
+- generate equation with different indices in curly braces: `for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end`
+- generate multiple equations with different indices in curly braces: `for co in [H, F] K{co}[0] = (1-delta{co}) * K{co}[-1] + S{co}[0] end`
+- generate equation with different time indices: `Y_annual[0] = for lag in -3:0 Y[lag] end` or `R_annual[0] = for operator = :*, lag in -3:0 R[lag] end`
 """
 macro model(𝓂,ex...)
     # parse options
@@ -904,6 +914,10 @@ end
     β = 0.95
 end
 ```
+
+# Programmatic model writing
+
+Variables and parameters indexed with curly braces can be either referenced specifically (e.g. `c{H}[ss]`) or generally (e.g. `alpha`). If they are referenced generaly the parse assumes all instances (indices) are meant. For example, in a model where `alpha` has two indices `H` and `F`, the expression `alpha = 0.3` is interpreted as two expressions: `alpha{H} = 0.3` and `alpha{F} = 0.3`. The same goes for calibration equations.
 """
 macro parameters(𝓂,ex...)
     calib_equations = []
