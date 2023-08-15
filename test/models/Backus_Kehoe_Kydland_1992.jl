@@ -34,9 +34,9 @@
 
     for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end
 
-    R[0] = LGM[1] / LGM[0]
+    dLGM[0] = LGM[1] / LGM[0]
 
-    R_ann[0] = for operator = :*, lag in -3:0 R[lag] end
+    dLGM_ann[0] = for operator = :*, lag in -3:0 dLGM[lag] end
 end
 
 @parameters Backus_Kehoe_Kydland_1992 verbose = true begin
