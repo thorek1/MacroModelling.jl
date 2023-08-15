@@ -33,17 +33,21 @@
     (LAMBDA{F}[0]-1) = rho{F}{F}*(LAMBDA{F}[-1]-1) + rho{F}{H}*(LAMBDA{H}[-1]-1) + Z_E{F} * E{F}[x]
 
     for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end
+
+    R[0] = LGM[1] / LGM[0]
+
+    R_ann[0] = for operator = :*, lag in -3:0 R[lag] end
 end
 
 @parameters Backus_Kehoe_Kydland_1992 verbose = true begin
-    # K_ss = 10
+    K_ss = 11.0148
     # K[ss] = K_ss | beta
     # K[ss] = 10 | beta
-    # F_H_ratio = .9
-    # K{F}[ss] / K{H}[ss] = F_H_ratio | beta{F}
-    # K{H}[ss] = 11 | beta{H}
+    F_H_ratio = 1
+    K{F}[ss] / K{H}[ss] = F_H_ratio | beta{F}
+    K{H}[ss] = K_ss | beta{H}
 
-    beta    =    0.99
+    # beta    =    0.99
     mu      =    0.34
     gamma   =    -1.0
     alpha   =    1
