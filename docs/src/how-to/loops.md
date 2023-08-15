@@ -20,6 +20,12 @@ Y_annual[0] = for lag in -3:0 Y[lag] end
 
 In the background the package expands the `for` loop and adds up the elements for the different values of `lag`.
 
+In case you don't want the elements to be added up but multiply the items you can do so:
+
+```julia
+R_annual[0] = for operator = :*, lag in -3:0 R[lag] end
+```
+
 ### for loops for variables / parameter specific indices
 
 Another use-case are models with repetitive equations such as multi-sector or multi-country models.

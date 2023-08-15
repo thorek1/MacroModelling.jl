@@ -177,7 +177,8 @@ function convert_to_ss_equation(eq::Expr)
 end
 
 
-function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate)
+function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
+    @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
     calls = []
     indices = indices.args[1] == :(:) ? eval(indices) : [indices.args...]
     for idx in indices
@@ -214,7 +215,7 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
     end
 
     if concatenate
-        return :($(Expr(:call, :+, calls...)))
+        return :($(Expr(:call, operator, calls...)))
     else
         return calls
     end
@@ -244,17 +245,33 @@ function write_out_for_loops(arg::Expr)
                         x.head == :for ?
                             x.args[2] isa Array ?
                                 length(x.args[2]) >= 1 ?
-                                    [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), (x.args[1].args[2]), false) for X in x.args[2]] :
+                                    x.args[1].head == :block ?
+                                        [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[2].args[1]), (x.args[1].args[2].args[2]), false, x.args[1].args[1].args[2].value) for X in x.args[2]] :
+                                    [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), (x.args[1].args[2]), false, :+) for X in x.args[2]] :
                                 x :
                             x.args[2].head ∉ [:(=), :block] ?
+                                x.args[1].head == :block ?
+                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                        Symbol(x.args[1].args[2].args[1]), 
+                                                        (x.args[1].args[2].args[2]),
+                                                        true,
+                                                        x.args[1].args[1].args[2].value) : # for loop part of equation
                                 replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                     Symbol(x.args[1].args[1]), 
                                                     (x.args[1].args[2]),
-                                                    true) : # for loop part of equation
+                                                    true,
+                                                    :+) : # for loop part of equation
+                            x.args[1].head == :block ?
+                                replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                    Symbol(x.args[1].args[2].args[1]), 
+                                                    (x.args[1].args[2].args[2]),
+                                                    false,
+                                                    x.args[1].args[1].args[2].value) : # for loop part of equation
                             replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                 Symbol(x.args[1].args[1]), 
                                                 (x.args[1].args[2]),
-                                                false) : # for loop part across equations
+                                                false,
+                                                :+) :
                         x :
                     x
                 end,
