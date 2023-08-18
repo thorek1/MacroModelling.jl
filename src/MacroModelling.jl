@@ -96,16 +96,16 @@ dnorm(p::Number) = normpdf(p)
 
 
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
-                "Model:      ", 𝓂.model_name, 
+                "Model:       ", 𝓂.model_name, 
                 "\nVariables", 
-                "\n Total:     ", 𝓂.timings.nVars,
-                "\n  Auxiliary:     ", length(𝓂.exo_present) + length(𝓂.aux),
-                "\n States:    ", 𝓂.timings.nPast_not_future_and_mixed,
+                "\n Total:      ", 𝓂.timings.nVars,
+                "\n  Auxiliary: ", length(𝓂.exo_present) + length(𝓂.aux),
+                "\n States:     ", 𝓂.timings.nPast_not_future_and_mixed,
                 "\n  Auxiliary: ",  length(intersect(𝓂.timings.past_not_future_and_mixed, 𝓂.aux_present)),
-                "\n Jumpers:   ", 𝓂.timings.nFuture_not_past_and_mixed, # 𝓂.timings.mixed, 
+                "\n Jumpers:    ", 𝓂.timings.nFuture_not_past_and_mixed, # 𝓂.timings.mixed, 
                 "\n  Auxiliary: ", length(intersect(𝓂.timings.future_not_past_and_mixed, union(𝓂.aux_present, 𝓂.aux_future))),
-                "\nShocks:     ", 𝓂.timings.nExo,
-                "\nParameters: ", length(𝓂.parameters_in_equations),
+                "\nShocks:      ", 𝓂.timings.nExo,
+                "\nParameters:  ", length(𝓂.parameters_in_equations),
                 if 𝓂.calibration_equations == Expr[]
                     ""
                 else
