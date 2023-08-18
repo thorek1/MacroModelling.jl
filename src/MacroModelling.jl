@@ -3720,18 +3720,6 @@ end
 
 
 
-function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false)
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
-    
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
-
-    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
-
-    covar_raw = calculate_covariance_AD(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
-
-    return covar_raw, sol , ∇₁, SS_and_pars
-end
-
 
 function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Real}; T::timings, subset_indices::Vector{Int64})
     A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[indexin(T.past_not_future_and_mixed_idx,subset_indices),:]
@@ -3774,9 +3762,7 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    calculate_covariance = calculate_covariance_AD(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
-
-    covar_raw, solved_cov = calculate_covariance(sol)
+    covar_raw, solved_cov = calculate_covariance_AD(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
 
     return covar_raw, sol , ∇₁, SS_and_pars
 end
