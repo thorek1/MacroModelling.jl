@@ -22,7 +22,7 @@ import SpeedMapping: speedmapping
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
 # using AxisKeys
-import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule
+import ChainRulesCore: @ignore_derivatives, ignore_derivatives
 import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
@@ -77,8 +77,8 @@ export get_equations, get_steady_state_equations, get_dynamic_equations, get_cal
 export irf, girf
 
 # Remove comment for debugging
-export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, SSS_third_order_parameter_derivatives, SSS_second_order_parameter_derivatives, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
-export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, calculate_quadratic_iteration_solution, calculate_linear_time_iteration_solution, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
+# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, SSS_third_order_parameter_derivatives, SSS_second_order_parameter_derivatives, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
+# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, calculate_quadratic_iteration_solution, calculate_linear_time_iteration_solution, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
 
 # levenberg_marquardt
 
@@ -1516,9 +1516,8 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         
         push!(SS_solve_func,:(solution = block_solver_RD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)])))#, 
         
-        push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)](length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],solution))))
-        
-        push!(SS_solve_func,:(sol = solution))
+        push!(SS_solve_func,:(solution_error += solution[2])) 
+        push!(SS_solve_func,:(sol = solution[1]))
 
         push!(SS_solve_func,:($(result...)))   
         
@@ -1873,44 +1872,6 @@ end
 
 
 second_order_stochastic_steady_state_iterative_solution_AD = ImplicitFunction(second_order_stochastic_steady_state_iterative_solution_forward,second_order_stochastic_steady_state_iterative_solution_condition)
-
-# function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{ℱ.Dual{Z,S,N}}, 𝓂::ℳ, pruning::Bool) where {Z,S,N}
-
-#     # unpack: AoS -> SoA
-#     S₁S₂ = ℱ.value.(𝐒₁𝐒₂)
-
-#     # you can play with the dimension here, sometimes it makes sense to transpose
-#     ps = mapreduce(ℱ.partials, hcat, 𝐒₁𝐒₂)'
-
-#     # get f(vs)
-#     val, converged = second_order_stochastic_steady_state_iterative_solution(S₁S₂, 𝓂, pruning)
-
-#     if converged
-#         # get J(f, vs) * ps (cheating). Write your custom rule here
-#         B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_condition(x, val, 𝓂, pruning), S₁S₂)
-#         A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_condition(S₁S₂, x, 𝓂, pruning), val)
-
-#         Â = RF.lu(A, check = false)
-
-#         if !ℒ.issuccess(Â)
-#             Â = ℒ.svd(A)
-#         end
-        
-#         jvp = -(Â \ B) * ps
-#     else
-#         jvp = fill(0,length(val),length(𝐒₁𝐒₂)) * ps
-#     end
-
-#     # lm = LinearMap{Float64}(x -> A * reshape(x, size(B)), length(B))
-
-#     # jvp = - sparse(reshape(ℐ.gmres(lm, sparsevec(B)), size(B))) * ps
-#     # jvp *= -ps
-
-#     # pack: SoA -> AoS
-#     return reshape(map(val, eachrow(jvp)) do v, p
-#         ℱ.Dual{Z}(v, p...) # Z is the tag
-#     end,size(val)), converged
-# end
 
 
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false) where M
@@ -3203,7 +3164,7 @@ function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive
     ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(S,T.nVars))[T.future_not_past_and_mixed_idx,:]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
-    
+
     B = -((∇₊ * A * Jm + ∇₀) \ ∇ₑ)
 
     return hcat(A, B), solved
@@ -3211,15 +3172,15 @@ end
 
 
 
-function solve_sylvester_equation_condition(ABCX, S, solved)
-    (; A, B, C, X) = ABCX
+function solve_sylvester_equation_condition(BCX, S)
+    (; B, C, X) = BCX
 
     X + S - B * S * C
 end
 
 
-function solve_sylvester_equation_forward(ABCX::AbstractArray{Float64})
-    (; A, B, C, X) = ABCX
+function solve_sylvester_equation(BCX::AbstractArray{Float64}; tol::AbstractFloat = eps())
+    (; B, C, X) = BCX
 
     sylvester = LinearOperators.LinearOperator(Float64, length(X), length(X), false, false, 
     (sol,𝐱) -> begin 
@@ -3228,17 +3189,18 @@ function solve_sylvester_equation_forward(ABCX::AbstractArray{Float64})
         return sol
     end)
 
-    return reshape(ℐ.gmres(lm, vec(-X)), size(X)), true
+    S2, info = Krylov.bicgstab(sylvester, vec(-X))
+
+    if !info.solved
+        S2, info = Krylov.gmres(sylvester, vec(-X))
+    end
+
+    𝐒₂ = sparse(reshape(S2,size(X)))
+    droptol!(𝐒₂,tol)
+
+    return 𝐒₂
 end
 
-
-function rrule(::typeof(solve_sylvester_equation_forward), ABCX)
-    (; A, B, C, X) = ABCX
-    
-    solve_sylvester_equation_pullback(ΔS) = (NoTangent(), A - B * C)
-
-    return solve_sylvester_equation_forward(ABCX), solve_sylvester_equation_pullback
-end
 
 
 solve_sylvester_equation_AD = ImplicitFunction(solve_sylvester_equation_forward,solve_sylvester_equation_condition)
@@ -3294,9 +3256,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
 
-    A = spdiagm(ones(n))
 
-    𝐒₂ = sparse(solve_sylvester_equation_AD(𝒞.ComponentArray(;A,B,C,X))[1])
+    𝐒₂ = sparse(solve_sylvester_equation_AD(𝒞.ComponentArray(;B,C,X))[1])
     droptol!(𝐒₂,tol)
 
     𝐒₂ *= M₂.𝐔₂
@@ -3387,9 +3348,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     C *= M₃.𝐂₃
     droptol!(C,tol)
     
-    A = spdiagm(ones(n))
 
-    𝐒₃ = sparse(solve_sylvester_equation_AD(𝒞.ComponentArray(;A,B,C,X))[1])
+    𝐒₃ = sparse(solve_sylvester_equation_AD(𝒞.ComponentArray(;B,C,X))[1])
     droptol!(𝐒₃,tol)
 
     𝐒₃ *= M₃.𝐔₃
@@ -3755,12 +3715,21 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Real}; T::timin
     
     CC = C * C'
 
-    lm = LinearMap{Float64}(x -> A * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
-    
-    # reshape(ℐ.bicgstabl(lm, vec(-CC)), size(CC))
-    return reshape(ℐ.gmres(lm, vec(-CC)), size(CC)), true
-end
+    sylvester = LinearOperators.LinearOperator(Float64, length(CC), length(CC), false, false, 
+    (sol,𝐱) -> begin 
+        𝐗 = sparse(reshape(𝐱, size(CC)))
+        sol .= vec(A * 𝐗 * A' - 𝐗)
+        return sol
+    end)
 
+    𝐂, info = Krylov.bicgstab(sylvester, sparsevec(collect(-CC)))
+
+    if !info.solved
+        𝐂, info = Krylov.gmres(sylvester, sparsevec(collect(-CC)))
+    end
+
+    reshape(𝐂,size(CC)) # return info on convergence
+end
 
 
 
