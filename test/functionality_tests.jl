@@ -462,6 +462,25 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
     sims = simulate(m, algorithm = algorithm)
 
+    # Inspect Model
+    get_equations(m) 
+    get_steady_state_equations(m) 
+    get_dynamic_equations(m) 
+    get_calibration_equations(m) 
+    get_parameters(m) 
+    get_calibrated_parameters(m) 
+    get_parameters_in_equations(m) 
+    get_parameters_defined_by_parameters(m) 
+    get_parameters_defining_parameters(m) 
+    get_calibration_equation_parameters(m) 
+    get_variables(m) 
+    get_nonnegativity_auxilliary_variables(m) 
+    get_dynamic_auxilliary_variables(m) 
+    get_shocks(m) 
+    get_state_variables(m) 
+    get_jump_variables(m)
+
+
     if plots
         # plots
         plot_irf(m, algorithm = algorithm, show_plots = true)

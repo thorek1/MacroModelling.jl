@@ -45,6 +45,7 @@ include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")
 include("dynare.jl")
+include("inspect.jl")
 
 function __init__()
     @require StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd" include("plotting.jl")
@@ -71,6 +72,7 @@ export Beta, InverseGamma, Gamma, Normal
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
 export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare, export_dynare, export_to_dynare, export_mod_file, export_model
 
+export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxilliary_variables, get_dynamic_auxilliary_variables, get_shocks, get_state_variables, get_jump_variables
 # Internal
 export irf, girf
 
@@ -98,8 +100,9 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 "\nVariables", 
                 "\n Total:     ", 𝓂.timings.nVars - length(𝓂.exo_present) - length(𝓂.aux),
                 "\n States:    ", length(setdiff(𝓂.timings.past_not_future_and_mixed, 𝓂.aux_present)),
-                "\n Jumpers:   ", length(setdiff(𝓂.timings.future_not_past_and_mixed, 𝓂.aux_present, 𝓂.timings.mixed, 𝓂.aux_future)),
-                "\n Auxiliary: ",length(𝓂.exo_present) + length(𝓂.aux),
+                "\n Jumpers:   ", length(setdiff(𝓂.timings.future_not_past_and_mixed, 𝓂.aux_present, 𝓂.aux_future)), # 𝓂.timings.mixed, 
+                "\n Auxiliary states: ",  length(intersect(𝓂.timings.past_not_future_and_mixed, 𝓂.aux_present)),
+                "\n Auxiliary jumpers: ", length(intersect(𝓂.timings.future_not_past_and_mixed, union(𝓂.aux_present, 𝓂.aux_future))),
                 "\nShocks:     ", 𝓂.timings.nExo,
                 "\nParameters: ", length(𝓂.parameters_in_equations),
                 if 𝓂.calibration_equations == Expr[]
@@ -113,29 +116,6 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 )
 
 
-
-get_symbols(ex::Symbol) = [ex]
-
-function get_symbols(ex::Expr)
-    par = Set()
-    postwalk(x ->   
-    x isa Expr ? 
-        x.head == :(=) ?
-            for i in x.args
-                i isa Symbol ? 
-                    push!(par,i) :
-                x
-            end :
-        x.head == :call ? 
-            for i in 2:length(x.args)
-                x.args[i] isa Symbol ? 
-                    push!(par,x.args[i]) : 
-                x
-            end : 
-        x : 
-    x, ex)
-    return par
-end
 
 
 function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
