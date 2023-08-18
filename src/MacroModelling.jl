@@ -5,7 +5,7 @@ import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDF
 # import StatsFuns: normcdf
 using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
-import PythonCall
+import SymPyPythonCall as SPyPyC
 import Symbolics
 import ForwardDiff as ℱ 
 # import Zygote
@@ -34,10 +34,10 @@ import Reexport
 Reexport.@reexport using AxisKeys
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
-include("SymPyCall/SymPyCall.jl")
-import .SymPyCall as SymPyCall
+
 # Type definitions
 Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
+String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}}}
 
 # Imports
 include("common_docstrings.jl")
@@ -45,6 +45,7 @@ include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")
 include("dynare.jl")
+include("inspect.jl")
 
 function __init__()
     @require StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd" include("plotting.jl")
@@ -71,6 +72,7 @@ export Beta, InverseGamma, Gamma, Normal
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
 export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare, export_dynare, export_to_dynare, export_mod_file, export_model
 
+export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxilliary_variables, get_dynamic_auxilliary_variables, get_shocks, get_state_variables, get_jump_variables
 # Internal
 export irf, girf
 
@@ -98,8 +100,9 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 "\nVariables", 
                 "\n Total:     ", 𝓂.timings.nVars - length(𝓂.exo_present) - length(𝓂.aux),
                 "\n States:    ", length(setdiff(𝓂.timings.past_not_future_and_mixed, 𝓂.aux_present)),
-                "\n Jumpers:   ", length(setdiff(𝓂.timings.future_not_past_and_mixed, 𝓂.aux_present, 𝓂.timings.mixed, 𝓂.aux_future)),
-                "\n Auxiliary: ",length(𝓂.exo_present) + length(𝓂.aux),
+                "\n Jumpers:   ", length(setdiff(𝓂.timings.future_not_past_and_mixed, 𝓂.aux_present, 𝓂.aux_future)), # 𝓂.timings.mixed, 
+                "\n Auxiliary states: ",  length(intersect(𝓂.timings.past_not_future_and_mixed, 𝓂.aux_present)),
+                "\n Auxiliary jumpers: ", length(intersect(𝓂.timings.future_not_past_and_mixed, union(𝓂.aux_present, 𝓂.aux_future))),
                 "\nShocks:     ", 𝓂.timings.nExo,
                 "\nParameters: ", length(𝓂.parameters_in_equations),
                 if 𝓂.calibration_equations == Expr[]
@@ -113,30 +116,10 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 )
 
 
-function get_symbols(ex)
-    par = Set()
-    postwalk(x ->   
-    x isa Expr ? 
-        x.head == :(=) ?
-            for i in x.args
-                i isa Symbol ? 
-                    push!(par,i) :
-                x
-            end :
-        x.head == :call ? 
-            for i in 2:length(x.args)
-                x.args[i] isa Symbol ? 
-                    push!(par,x.args[i]) : 
-                x
-            end : 
-        x : 
-    x, ex)
-    return par
-end
 
 
 function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
-    return filter(r -> match(pattern, string(r)) != nothing, strings)
+    return filter(r -> match(pattern, string(r)) !== nothing, strings)
 end
 
 
@@ -144,7 +127,7 @@ function simplify(ex::Expr)
     ex_ss = convert_to_ss_equation(ex)
 
     for x in get_symbols(ex_ss)
-	    eval(:($x = SymPyCall.symbols($(string(x)), real = true, finite = true)))
+	    eval(:($x = SPyPyC.symbols($(string(x)), real = true, finite = true)))
     end
 
 	parsed = ex_ss |> eval |> string |> Meta.parse
@@ -173,6 +156,263 @@ function convert_to_ss_equation(eq::Expr)
     eq)
 end
 
+
+function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
+    @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
+    calls = []
+    indices = indices.args[1] == :(:) ? eval(indices) : [indices.args...]
+    for idx in indices
+        push!(calls, postwalk(x -> begin
+            x isa Expr ?
+                x.head == :ref ?
+                    @capture(x, name_{index_}[time_]) ?
+                        index == index_variable ?
+                            :($(Expr(:ref, Symbol(string(name) * "◖" * string(idx) * "◗"),time))) :
+                        time isa Expr || time isa Symbol ?
+                            index_variable ∈ get_symbols(time) ?
+                                :($(Expr(:ref, Expr(:curly,name,index), Meta.parse(replace(string(time), string(index_variable) => idx))))) :
+                            x :
+                        x :
+                    @capture(x, name_[time_]) ?
+                        time isa Expr || time isa Symbol ?
+                            index_variable ∈ get_symbols(time) ?
+                                :($(Expr(:ref, name, Meta.parse(replace(string(time), string(index_variable) => idx))))) :
+                            x :
+                        x :
+                    x :
+                @capture(x, name_{index_}) ?
+                    index == index_variable ?
+                        :($(Symbol(string(name) * "◖" * string(idx) * "◗"))) :
+                    x :
+                x :
+            @capture(x, name_) ?
+                name == index_variable && idx isa Int ?
+                    :($idx) :
+                x :
+            x
+        end,
+        exxpr))
+    end
+
+    if concatenate
+        return :($(Expr(:call, operator, calls...)))
+    else
+        return calls
+    end
+end
+
+
+replace_indices(x::Symbol) = x
+
+replace_indices(x::String) = Symbol(replace(x, "{" => "◖", "}" => "◗"))
+
+replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{", "◗" => "}")
+
+function replace_indices(exxpr::Expr)
+    postwalk(x -> begin
+        @capture(x, name_{index_}) ?
+            :($(Symbol(string(name) * "◖" * string((index)) * "◗"))) :
+        x
+        end,
+    exxpr)
+end
+
+
+function write_out_for_loops(arg::Expr)
+    postwalk(x -> begin
+                    x = unblock(x)
+                    x isa Expr ?
+                        x.head == :for ?
+                            x.args[2] isa Array ?
+                                length(x.args[2]) >= 1 ?
+                                    x.args[1].head == :block ?
+                                        [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[2].args[1]), (x.args[1].args[2].args[2]), false, x.args[1].args[1].args[2].value) for X in x.args[2]] :
+                                    [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), (x.args[1].args[2]), false, :+) for X in x.args[2]] :
+                                x :
+                            x.args[2].head ∉ [:(=), :block] ?
+                                x.args[1].head == :block ?
+                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                        Symbol(x.args[1].args[2].args[1]), 
+                                                        (x.args[1].args[2].args[2]),
+                                                        true,
+                                                        x.args[1].args[1].args[2].value) : # for loop part of equation
+                                replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                    Symbol(x.args[1].args[1]), 
+                                                    (x.args[1].args[2]),
+                                                    true,
+                                                    :+) : # for loop part of equation
+                            x.args[1].head == :block ?
+                                replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                    Symbol(x.args[1].args[2].args[1]), 
+                                                    (x.args[1].args[2].args[2]),
+                                                    false,
+                                                    x.args[1].args[1].args[2].value) : # for loop part of equation
+                            replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                Symbol(x.args[1].args[1]), 
+                                                (x.args[1].args[2]),
+                                                false,
+                                                :+) :
+                        x :
+                    x
+                end,
+    arg)
+end
+
+
+function parse_for_loops(equations_block)
+    eqs = Expr[]
+    for arg in equations_block.args
+        if isa(arg,Expr)
+            parsed_eqs = write_out_for_loops(arg)
+            if parsed_eqs isa Expr
+                push!(eqs,unblock(replace_indices(parsed_eqs)))
+            elseif parsed_eqs isa Array
+                for B in parsed_eqs
+                    if B isa Array
+                        for b in B
+                            push!(eqs,unblock(replace_indices(b)))
+                        end
+                    elseif B isa Expr
+                        if B.head == :block
+                            for b in B.args
+                                if b isa Expr
+                                    push!(eqs,replace_indices(b))
+                                end
+                            end
+                        else
+                            push!(eqs,unblock(replace_indices(B)))
+                        end
+                    else
+                        push!(eqs,unblock(replace_indices(B)))
+                    end
+                end
+            end
+
+        end
+    end
+    return Expr(:block,eqs...)
+end
+
+
+
+function decompose_name(name::Symbol)
+    name = string(name)
+    matches = eachmatch(r"◖([\p{L}\p{N}]+)◗|([\p{L}\p{N}]+[^◖◗]*)", name)
+
+    result = []
+    nested = []
+
+    for m in matches
+        if m.captures[1] !== nothing
+            push!(nested, m.captures[1])
+        else
+            if !isempty(nested)
+                push!(result, Symbol.(nested))
+                nested = []
+            end
+            push!(result, Symbol(m.captures[2]))
+        end
+    end
+
+    if !isempty(nested)
+        push!(result, (nested))
+    end
+
+    return result
+end
+
+
+
+function get_possible_indices_for_name(name::Symbol, all_names::Vector{Symbol})
+    indices = filter(x -> length(x) < 3 && x[1] == name, decompose_name.(all_names))
+
+    indexset = []
+
+    for i in indices
+        if length(i) > 1
+            push!(indexset, Symbol.(i[2])...)
+        end
+    end
+
+    return indexset
+end
+
+
+
+function expand_calibration_equations(calibration_equation_parameters::Vector{Symbol}, calibration_equations::Vector{Expr}, ss_calib_list::Vector, par_calib_list::Vector, all_names::Vector{Symbol})
+    expanded_parameters = Symbol[]
+    expanded_equations = Expr[]
+    expanded_ss_var_list = []
+    expanded_par_var_list = []
+
+    for (u,par) in enumerate(calibration_equation_parameters)
+        indices_in_calibration_equation = Set()
+        indexed_names = []
+        for i in get_symbols(calibration_equations[u])
+            indices = get_possible_indices_for_name(i, all_names)
+            if indices != Any[]
+                push!(indices_in_calibration_equation, indices)
+                push!(indexed_names,i)
+            end
+        end
+
+        par_indices = get_possible_indices_for_name(par, all_names)
+        
+        if length(par_indices) > 0
+            push!(indices_in_calibration_equation, par_indices)
+        end
+        
+        @assert length(indices_in_calibration_equation) <= 1 "Calibration equations cannot have more than one index in the equations or for the parameter."
+        
+        if length(indices_in_calibration_equation) == 0
+            push!(expanded_parameters,par)
+            push!(expanded_equations,calibration_equations[u])
+            push!(expanded_ss_var_list,ss_calib_list[u])
+            push!(expanded_par_var_list,par_calib_list[u])
+        else
+            for i in collect(indices_in_calibration_equation)[1]
+                expanded_ss_var = Set()
+                expanded_par_var = Set()
+                push!(expanded_parameters, Symbol(string(par) * "◖" * string(i) * "◗"))
+                push!(expanded_equations, postwalk(x -> x ∈ indexed_names ? Symbol(string(x) * "◖" * string(i) * "◗") : x, calibration_equations[u]))
+                for ss in ss_calib_list[u]
+                    if ss ∈ indexed_names
+                        push!(expanded_ss_var,Symbol(string(ss) * "◖" * string(i) * "◗"))
+                    else
+                        push!(expanded_ss_var,ss)
+                        push!(expanded_par_var,par_calib_list[u])
+                    end
+                end
+                push!(expanded_ss_var_list, expanded_ss_var)
+                push!(expanded_par_var_list, expanded_par_var)
+            end
+        end
+    end
+
+    return expanded_parameters, expanded_equations, expanded_ss_var_list, expanded_par_var_list
+end
+
+
+
+function expand_indices(compressed_inputs::Vector{Symbol}, compressed_values::Vector{T}, expanded_list::Vector{Symbol}) where T
+    expanded_inputs = Symbol[]
+    expanded_values = T[]
+
+    for (i,par) in enumerate(compressed_inputs)
+        par_idx = findall(x -> string(par) == x, first.(split.(string.(expanded_list ), "◖")))
+
+        if length(par_idx) > 1
+            for idx in par_idx
+                push!(expanded_inputs, expanded_list[idx])
+                push!(expanded_values, compressed_values[i])
+            end
+        else#if par ∈ expanded_list ## breaks parameters defind in parameter block
+            push!(expanded_inputs, par)
+            push!(expanded_values, compressed_values[i])
+        end
+    end
+    return expanded_inputs, expanded_values
+end
 
 
 function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})
@@ -427,13 +667,13 @@ function create_symbols_eqs!(𝓂::ℳ)
     end
 
     for pos in symbols_pos
-        eval(:($pos = SymPyCall.symbols($(string(pos)), real = true, finite = true, positive = true)))
+        eval(:($pos = SPyPyC.symbols($(string(pos)), real = true, finite = true, positive = true)))
     end
     for neg in symbols_neg
-        eval(:($neg = SymPyCall.symbols($(string(neg)), real = true, finite = true, negative = true)))
+        eval(:($neg = SPyPyC.symbols($(string(neg)), real = true, finite = true, negative = true)))
     end
     for none in symbols_none
-        eval(:($none = SymPyCall.symbols($(string(none)), real = true, finite = true)))
+        eval(:($none = SPyPyC.symbols($(string(none)), real = true, finite = true)))
     end
 
     symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
@@ -511,7 +751,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
 
     for i in redundant_idx
         for var_to_solve in redundant_vars[i]
-            soll = try SymPyCall.solve(ss_equations[i],var_to_solve)
+            soll = try SPyPyC.solve(ss_equations[i],var_to_solve)
             catch
             end
             
@@ -519,9 +759,9 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
                 continue
             end
             
-            if length(soll) == 0 || soll == SymPyCall.Sym[0] # take out variable if it is redundant from that euation only
+            if length(soll) == 0 || soll == SPyPyC.Sym[0] # take out variable if it is redundant from that euation only
                 push!(Symbolics.var_redundant_list[i],var_to_solve)
-                ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(SymPyCall.Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
+                ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(SPyPyC.Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
             end
 
         end
@@ -568,7 +808,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     
     n = n_blocks
 
-    ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations)# .|> SymPyCall.Sym
+    ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations)# .|> SPyPyC.Sym
     # println(ss_equations)
 
     SS_solve_func = []
@@ -584,7 +824,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
         if length(eqs[:,eqs[2,:] .== n]) == 2
             var_to_solve = collect(unknowns)[vars[:,vars[2,:] .== n][1]]
 
-            soll = try SymPyCall.solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
+            soll = try SPyPyC.solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
             catch
             end
 
@@ -593,7 +833,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 println("Failed finding solution symbolically for: ",var_to_solve," in: ",ss_equations[eqs[:,eqs[2,:] .== n][1]])
                 # solve numerically
                 continue
-            elseif PythonCall.pyconvert(Bool,soll[1].is_number)
+            # elseif PythonCall.pyconvert(Bool,soll[1].is_number)
+            elseif soll[1].is_number == SPyPyC.TRUE
                 # ss_equations = ss_equations.subs(var_to_solve,soll[1])
                 ss_equations = [eq.subs(var_to_solve,soll[1]) for eq in ss_equations]
                 
@@ -636,8 +877,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             numerical_sol = false
             
             if symbolic_SS
-                soll = try SymPyCall.solve(eqs_to_solve,vars_to_solve)
-                # soll = try solve(SymPyCall.Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
+                soll = try SPyPyC.solve(eqs_to_solve,vars_to_solve)
+                # soll = try solve(SPyPyC.Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
                 catch
                 end
 
@@ -695,7 +936,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 syms_in_eqs = Set()
 
                 for i in eqs_to_solve
-                    push!(syms_in_eqs, Symbol.(PythonCall.pystr.(i.atoms()))...)
+                    # push!(syms_in_eqs, Symbol.(PythonCall.pystr.(i.atoms()))...)
+                    push!(syms_in_eqs, Symbol.(SPyPyC.free_symbols(i))...)
                 end
 
                 # println(syms_in_eqs)
@@ -2219,7 +2461,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
                 deriv_first = Symbolics.derivative(eq,var1)
                 # if deriv_first != 0 
-                #     deriv_expr = Meta.parse(string(deriv_first.subs(SymPyCall.PI,SymPyCall.N(SymPyCall.PI))))
+                #     deriv_expr = Meta.parse(string(deriv_first.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
                 #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                     push!(first_order, Symbolics.toexpr(deriv_first))
                     push!(row1,r)
@@ -2230,7 +2472,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                             if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
                                 deriv_second = Symbolics.derivative(deriv_first,var2)
                                 # if deriv_second != 0 
-                                #     deriv_expr = Meta.parse(string(deriv_second.subs(SymPyCall.PI,SymPyCall.N(SymPyCall.PI))))
+                                #     deriv_expr = Meta.parse(string(deriv_second.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
                                 #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                                     push!(second_order,Symbolics.toexpr(deriv_second))
                                     push!(row2,r)
@@ -2241,7 +2483,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                                             if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
                                                 deriv_third = Symbolics.derivative(deriv_second,var3)
                                                 # if deriv_third != 0 
-                                                #     deriv_expr = Meta.parse(string(deriv_third.subs(SymPyCall.PI,SymPyCall.N(SymPyCall.PI))))
+                                                #     deriv_expr = Meta.parse(string(deriv_third.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
                                                 #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                                                     push!(third_order,Symbolics.toexpr(deriv_third))
                                                     push!(row3,r)
@@ -2394,18 +2636,31 @@ end
 
 write_parameters_input!(𝓂::ℳ, parameters::Nothing; verbose::Bool = true) = return parameters
 write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{String,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters[1] |> Meta.parse |> replace_indices => parameters[2]), verbose = verbose)
+
+
+
 write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Float64},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{String,Float64},Vararg{Pair{String,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters])
+, verbose = verbose)
 write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{String, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
 
 
 write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Int}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{String,Int}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose)
 write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{Symbol,Int}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{String,Int},Vararg{Pair{String,Int}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
 write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Int}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{String, Int}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
 
 
 write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{String,Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose)
 write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Real},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{String,Real},Vararg{Pair{String,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
 write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{String, Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
 
 
 
@@ -2933,8 +3188,9 @@ function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatr
 end
 
 
-# needed for Julia 1.8 compatibility
-function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings = T, explosive::Bool = false) where {Z,S,N}
+
+
+function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
     ∇̂₁ = ℱ.value.(∇₁)
     # you can play with the dimension here, sometimes it makes sense to transpose
@@ -3258,9 +3514,13 @@ function irf(state_update::Function,
     pruning::Bool, 
     T::timings; 
     periods::Int = 40, 
-    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
-    variables::Symbol_input = :all, 
+    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+    variables::Union{Symbol_input,String_input} = :all, 
     negative_shock::Bool = false)
+
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
+
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
@@ -3290,6 +3550,13 @@ function irf(state_update::Function,
 
     var_idx = parse_variables_input_to_index(variables, T)
 
+    axis1 = T.var[var_idx]
+        
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
+
     if shocks == :simulate
         shock_history = randn(T.nExo,periods)
 
@@ -3309,7 +3576,7 @@ function irf(state_update::Function,
             end
         end
 
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:simulate])
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:simulate])
     elseif shocks == :none
         Y = zeros(T.nVars,periods,1)
 
@@ -3329,12 +3596,12 @@ function irf(state_update::Function,
             end
         end
 
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = [:none])
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
     else
         Y = zeros(T.nVars,periods,length(shock_idx))
 
         for (i,ii) in enumerate(shock_idx)
-            if shocks != :simulate && shocks isa Symbol_input
+            if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
                 shock_history = zeros(T.nExo,periods)
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
@@ -3354,7 +3621,14 @@ function irf(state_update::Function,
             end
         end
 
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
+        axis2 = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix]
+        
+        if any(x -> contains(string(x), "◖"), axis2)
+            axis2_decomposed = decompose_name.(axis2)
+            axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+        end
+    
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
     end
 end
 
@@ -3366,11 +3640,15 @@ function girf(state_update::Function,
     pruning::Bool, 
     T::timings; 
     periods::Int = 40, 
-    shocks::Union{Symbol_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
-    variables::Symbol_input = :all, 
+    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+    variables::Union{Symbol_input,String_input} = :all, 
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
     draws::Int = 50)
+
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
+
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
@@ -3419,7 +3697,7 @@ function girf(state_update::Function,
 
             baseline_noise = randn(T.nExo)
 
-            if shocks != :simulate && shocks isa Symbol_input
+            if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
                 shock_history = zeros(T.nExo,periods)
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
@@ -3449,34 +3727,51 @@ function girf(state_update::Function,
         Y[:,:,i] /= draws
     end
     
-    return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = T.var[var_idx], Periods = 1:periods, Shocks = shocks isa Symbol_input ? [T.exo[shock_idx]...] : [:Shock_matrix])
+    axis1 = T.var[var_idx]
+        
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
+
+    axis2 = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix]
+        
+    if any(x -> contains(string(x), "◖"), axis2)
+        axis2_decomposed = decompose_name.(axis2)
+        axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+    end
+
+    return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
 end
 
 
-function parse_variables_input_to_index(variables::Symbol_input, T::timings)
+function parse_variables_input_to_index(variables::Union{Symbol_input,String_input}, T::timings)
+    
+    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+
     if variables == :all
         return indexin(setdiff(T.var,T.aux),sort(union(T.var,T.aux,T.exo_present)))
         # return indexin(setdiff(setdiff(T.var,T.exo_present),T.aux),sort(union(T.var,T.aux,T.exo_present)))
     elseif variables == :all_including_auxilliary
         return 1:length(union(T.var,T.aux,T.exo_present))
     elseif variables isa Matrix{Symbol}
-        if !issubset(variables,T.var)
-            return @warn "Following variables are not part of the model: " * string.(setdiff(variables,T.var))
+        if length(setdiff(variables,T.var)) > 0
+            return @warn "Following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ")
         end
         return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(variables .== T.var,dims= 2))))
     elseif variables isa Vector{Symbol}
-        if !issubset(variables,T.var)
-            return @warn "Following variables are not part of the model: " * string.(setdiff(variables,T.var))
+        if length(setdiff(variables,T.var)) > 0
+            return @warn "Following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ")
         end
         return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(reshape(variables,1,length(variables)) .== T.var,dims= 2))))
     elseif variables isa Tuple{Symbol,Vararg{Symbol}}
-        if !issubset(variables,T.var)
-            return @warn "Following variables are not part of the model: " * string.(setdiff(variables,T.var))
+        if length(setdiff(variables,T.var)) > 0
+            return @warn "Following variables are not part of the model: " * join(string.(setdiff(Symbol.(collect(variables)),T.var)), ", ")
         end
         return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(reshape(collect(variables),1,length(variables)) .== T.var,dims= 2))))
     elseif variables isa Symbol
-        if !issubset([variables],T.var)
-            return @warn "Following variable is not part of the model: " * string(setdiff([variables],T.var)[1])
+        if length(setdiff([variables],T.var)) > 0
+            return @warn "Following variable is not part of the model: " * join(string(setdiff([variables],T.var)[1]),", ")
         end
         return getindex(1:length(T.var),variables .== T.var)
     else
@@ -3485,7 +3780,9 @@ function parse_variables_input_to_index(variables::Symbol_input, T::timings)
 end
 
 
-function parse_shocks_input_to_index(shocks::Symbol_input, T::timings)
+function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T::timings)
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+
     if shocks == :all
         shock_idx = 1:T.nExo
     elseif shocks == :none
@@ -3493,23 +3790,23 @@ function parse_shocks_input_to_index(shocks::Symbol_input, T::timings)
     elseif shocks == :simulate
         shock_idx = 1
     elseif shocks isa Matrix{Symbol}
-        if !issubset(shocks,T.exo)
-            return @warn "Following shocks are not part of the model: " * string.(setdiff(shocks,T.exo))
+        if length(setdiff(shocks,T.exo)) > 0
+            return @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
         end
         shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(shocks .== T.exo,dims= 2))))
     elseif shocks isa Vector{Symbol}
-        if !issubset(shocks,T.exo)
-            return @warn "Following shocks are not part of the model: " * string.(setdiff(shocks,T.exo))
+        if length(setdiff(shocks,T.exo)) > 0
+            return @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
         end
         shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(shocks,1,length(shocks)) .== T.exo, dims= 2))))
     elseif shocks isa Tuple{Symbol, Vararg{Symbol}}
-        if !issubset(shocks,T.exo)
-            return @warn "Following shocks are not part of the model: " * string.(setdiff(shocks,T.exo))
+        if length(setdiff(shocks,T.exo)) > 0
+            return @warn "Following shocks are not part of the model: " * join(string.(setdiff(Symbol.(collect(shocks)),T.exo)),", ")
         end
         shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(collect(shocks),1,length(shocks)) .== T.exo,dims= 2))))
     elseif shocks isa Symbol
-        if !issubset([shocks],T.exo)
-            return @warn "Following shock is not part of the model: " * string(setdiff([shocks],T.exo)[1])
+        if length(setdiff([shocks],T.exo)) > 0
+            return @warn "Following shock is not part of the model: " * join(string(setdiff([shocks],T.exo)[1]),", ")
         end
         shock_idx = getindex(1:T.nExo,shocks .== T.exo)
     else
@@ -3570,8 +3867,9 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Real}; T::timin
     return reshape(𝐂,size(CC)), info.solved # return info on convergence
 end
 
-# needed for Julia 1.8 compatibility
-function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings = T, subset_indices::Vector{Int64} = subset_indices) where {Z,S,N}
+
+
+function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings, subset_indices::Vector{Int64}) where {Z,S,N}
     # unpack: AoS -> SoA
     𝑺₁̂ = ℱ.value.(𝑺₁)
     # you can play with the dimension here, sometimes it makes sense to transpose

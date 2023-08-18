@@ -1,5 +1,5 @@
 using Documenter
-using MacroModelling 
+using MacroModelling
 import Turing, StatsPlots
 
 makedocs(
@@ -8,20 +8,25 @@ makedocs(
     doctest = true,
     format = Documenter.HTML(),
     modules = [MacroModelling],
-    pages = ["Introduction" => "index.md",
-    "Tutorials" => ["Installation" => "tutorials/install.md",
-                    "RBC" => "tutorials/rbc.md",
-                    "Smets and Wouters (2003)" => "tutorials/sw03.md",
-                    "Estimation" => "tutorials/estimation.md"],
-    # "How-to guides" => "how_to.md",
-    # "Model syntax" => "dsl.md",
-    "API" => "api.md",
-    "Index" => "call_index.md"]
+    pages = [
+        "Introduction" => "index.md",
+        "Tutorials" => [
+            "Installation" => "tutorials/install.md",
+            "Write your first simple model - RBC" => "tutorials/rbc.md",
+            "Work with a more complex model - Smets and Wouters (2003)" => "tutorials/sw03.md",
+            "Estimate a model using gradient based samplers - Schorfheide (2000)" => "tutorials/estimation.md",
+        ],
+        "How-to guides" => [
+            "Programmatic model writing using for-loops" => "how-to/loops.md",
+            # "how_to.md"
+            ],
+        # "Model syntax" => "dsl.md",
+        "API" => "api.md",
+        "Index" => "call_index.md",
+    ],
 )
 
 # Documenter can also automatically deploy documentation to gh-pages.
 # See "Hosting Documentation" and deploydocs() in the Documenter manual
 # for more information.
-deploydocs(
-    repo = "github.com/thorek1/MacroModelling.jl.git"
-)
+deploydocs(repo = "github.com/thorek1/MacroModelling.jl.git")

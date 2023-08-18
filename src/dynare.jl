@@ -14,7 +14,7 @@ The recommended workflow is to use this function to translate a .mod-file, and t
 function translate_mod_file(path_to_mod_file::AbstractString)
     directory = dirname(path_to_mod_file)
 
-    directory_2 = replace(basename(path_to_mod_file),r"\.mod$"=>"")
+    directory_2 = replace(basename(path_to_mod_file), r"\.mod$" => "")
 
     tmp = tempdir()
 
@@ -23,12 +23,12 @@ function translate_mod_file(path_to_mod_file::AbstractString)
     cp(path_to_mod_file, tmp * "/" * basename(path_to_mod_file), force = true)
 
     args = [tmp * "/" * basename(path_to_mod_file), "language=julia", "json=compute"]
-    
+
     if length(directory) > 0
         current_directory = pwd()
         cd(directory)
     end
-    
+
     dynare_preprocessor_path = dynare_preprocessor()
 
     function parse_model()
@@ -37,12 +37,12 @@ function translate_mod_file(path_to_mod_file::AbstractString)
 
     cd(parse_model, tmp)
 
-    son = JSON.parsefile(tmp * "/" * directory_2 * "/model/json/modfile.json");
+    son = JSON.parsefile(tmp * "/" * directory_2 * "/model/json/modfile.json")
 
-    vars = [i["name"] for i in son["endogenous"]];
-    shocks = [i["name"] for i in son["exogenous"]];
-    eqs_orig = [i["lhs"] * " = " * i["rhs"] for i in son["model"]];
-    
+    vars = [i["name"] for i in son["endogenous"]]
+    shocks = [i["name"] for i in son["exogenous"]]
+    eqs_orig = [i["lhs"] * " = " * i["rhs"] for i in son["model"]]
+
     eqs = []
     for eq in eqs_orig
         eq = replace(eq, r"(\w+)\((-?\d+)\)" => s"\1[\2]")
@@ -53,43 +53,46 @@ function translate_mod_file(path_to_mod_file::AbstractString)
         for x in shocks
             eq = replace(eq, Regex("\\b$(x)\\b") => x * "[x]")
         end
-        eq = replace(eq, r"\[0\]\[1\]" => "[1]", 
-                            r"\[0\]\[-1\]" => "[-1]", 
-                            r"\*" => " * ", 
-                            r"\+" => " + ", 
-                            r"(?<!\[|\^\()\-" => " - ", 
-                            r"\/" => " / ", 
-                            r"\^" => " ^ ")
-        push!(eqs,eq)
+        eq = replace(
+            eq,
+            r"\[0\]\[1\]" => "[1]",
+            r"\[0\]\[-1\]" => "[-1]",
+            r"\*" => " * ",
+            r"\+" => " + ",
+            r"(?<!\[|\^\()\-" => " - ",
+            r"\/" => " / ",
+            r"\^" => " ^ ",
+        )
+        push!(eqs, eq)
     end
-    
+
     pars = []
     for s in son["statements"]
-        if s["statementName"] == "native" 
+        if s["statementName"] == "native"
             if contains(s["string"], "=")
                 if contains(s["string"], "options_")
                     break
                 else
-                    push!(pars, replace(s["string"],";"=>""))
+                    push!(pars, replace(s["string"], ";" => ""))
                 end
             elseif contains(s["string"], r"^\#")
                 continue
             end
         elseif s["statementName"] == "param_init"
             push!(pars, s["name"] * " = " * s["value"])
-        else 
+        else
             break
         end
     end
-    
+
     open(directory_2 * ".jl", "w") do io
-        println(io,"using MacroModelling\n")
-        println(io,"@model "*directory_2*" begin")
-        [println(io,"\t"*eq*"\n") for eq in eqs]
-        println(io,"end\n\n")
-        println(io,"@parameters "*directory_2*" begin")
-        [println(io,"\t"*par*"\n") for par in pars]
-        println(io,"end\n")
+        println(io, "using MacroModelling\n")
+        println(io, "@model " * directory_2 * " begin")
+        [println(io, "\t" * eq * "\n") for eq in eqs]
+        println(io, "end\n\n")
+        println(io, "@parameters " * directory_2 * " begin")
+        [println(io, "\t" * par * "\n") for par in pars]
+        println(io, "end\n")
     end
 
     # rm(directory_2, recursive = true)
@@ -106,17 +109,17 @@ end
 """
 See [`translate_mod_file`](@ref)
 """
-translate_dynare_file   =   translate_mod_file
+translate_dynare_file = translate_mod_file
 
 """
 See [`translate_mod_file`](@ref)
 """
-import_model            =   translate_mod_file
+import_model = translate_mod_file
 
 """
 See [`translate_mod_file`](@ref)
 """
-import_dynare           =   translate_mod_file
+import_dynare = translate_mod_file
 
 
 """
@@ -132,35 +135,53 @@ function write_mod_file(m::ℳ)
     NSSS = get_SS(m, derivatives = false)
 
     open(m.model_name * ".mod", "w") do io
-        println(io,"var ")
-        [print(io,string(v) * " ") for v in setdiff(m.vars_in_ss_equations, m.➕_vars)]
+        println(io, "var ")
+        [print(io, string(v) * " ") for v in setdiff(m.vars_in_ss_equations, m.➕_vars)]
 
-        println(io,";\n\nvarexo ")
-        [print(io,string(e) * " ") for e in m.exo]
+        println(io, ";\n\nvarexo ")
+        [print(io, string(e) * " ") for e in m.exo]
 
-        println(io,";\n\nparameters ")
-        [print(io,string(p) * " ") for p in m.parameters_in_equations]
+        println(io, ";\n\nparameters ")
+        [print(io, string(p) * " ") for p in m.parameters_in_equations]
 
 
-        println(io,";\n\n% Parameter definitions:")
-        for (i,p) in enumerate(m.parameters)
+        println(io, ";\n\n% Parameter definitions:")
+        for (i, p) in enumerate(m.parameters)
             println(io, "\t" * string(p) * "\t=\t" * string(m.parameter_values[i]) * ";")
         end
-        [println(io, "\t" * string(p) * "\t=\t" * string(NSSS(p)) * ";") for p in m.calibration_equations_parameters]
+        [
+            println(io, "\t" * string(p) * "\t=\t" * string(NSSS(p)) * ";") for
+            p in m.calibration_equations_parameters
+        ]
 
-        println(io,"\nmodel;")
-        [println(io,"\t" * replace(string(e),r"\[(-?\d+)\]" => s"(\1)",
-        r"(\w+)\[(ss|stst|steady|steadystate|steady_state){1}\]" => s"STEADY_STATE(\1)",
-        r"(\w+)\[(x|ex|exo|exogenous){1}\]" => s"\1",
-        r"(\w+)\[(x|ex|exo|exogenous){1}(\s*(\-|\+)\s*(\d{1}))\]" => s"\1(\4\5)") * ";\n") for e in m.original_equations]
+        println(io, "\nmodel;")
+        [
+            println(
+                io,
+                "\t" *
+                replace(
+                    string(e),
+                    r"\[(-?\d+)\]" => s"(\1)",
+                    r"(\w+)\[(ss|stst|steady|steadystate|steady_state){1}\]" =>
+                        s"STEADY_STATE(\1)",
+                    r"(\w+)\[(x|ex|exo|exogenous){1}\]" => s"\1",
+                    r"(\w+)\[(x|ex|exo|exogenous){1}(\s*(\-|\+)\s*(\d{1}))\]" =>
+                        s"\1(\4\5)",
+                ) *
+                ";\n",
+            ) for e in m.original_equations
+        ]
 
-        println(io,"end;\n\nshocks;")
-        [println(io,"var\t" * string(e) * "\t=\t1;") for e in m.exo]
+        println(io, "end;\n\nshocks;")
+        [println(io, "var\t" * string(e) * "\t=\t1;") for e in m.exo]
 
-        println(io,"end;\n\ninitval;")
-        [print(io,"\t" * string(v) * "\t=\t" * string(NSSS(v)) * ";\n") for v in setdiff(m.vars_in_ss_equations, m.➕_vars)]
+        println(io, "end;\n\ninitval;")
+        [
+            print(io, "\t" * string(v) * "\t=\t" * string(NSSS(v)) * ";\n") for
+            v in setdiff(m.vars_in_ss_equations, m.➕_vars)
+        ]
 
-        println(io,"end;\n\nstoch_simul(irf=40);")
+        println(io, "end;\n\nstoch_simul(irf=40);")
     end
 
     @info "Created " * m.model_name * ".mod"

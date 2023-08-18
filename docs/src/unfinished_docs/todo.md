@@ -2,14 +2,14 @@
 
 ## High priority
 
-- [ ] implement for loops in model macro (e.g. to setup multi country models)
 - [ ] implement occasionally binding constraints with shocks
+- [ ] add for loop parser in @parameters
 - [ ] implement moment matching for pruned models
 - [ ] speed benchmarking
 - [ ] add balanced growth path handling
 - [ ] add JOSS article (see Makie.jl)
 - [ ] write docs for (non-linear) solution algorithms
-- [ ] for cond forecastind and kalman, get rid of observables input and use axis key of data input
+- [ ] for cond forecasting and kalman, get rid of observables input and use axis key of data input
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
 - [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
 - [ ] when doing calibration with optimiser have better return values when he doesnt find a solution (probably NaN)
@@ -27,12 +27,11 @@
 - [ ] kick out unused parameters from m.parameters
 - [ ] higher order solution derivs with Zygote
 - [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
-- [ ] use krylov instead of linearsolve and speed up sparse matrix calcs in implicit diff of higher order funcs
+- [ ] speed up sparse matrix calcs in implicit diff of higher order funcs
 - [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
 - [ ] streamline estimation part (dont do string matching... but rely on precomputed indices...)
 - [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
 - [ ] write functions to debug (fix_SS.jl...)
-- [ ] parser model into per equation functions instead of single big functions
 - [ ] model compression (speed up 2nd moment calc (derivatives) for large models; gradient loglikelihood is very slow due to large matmuls) -> model setup as maximisation problem (gEcon) -> HANK models
 - [ ] implement global solution methods
 - [ ] add more models
@@ -41,6 +40,9 @@
 
 - [ ] use @assert for errors and @test_throws
 - [ ] print SS dependencies (get parameters (in function of parameters) into the dependencies), show SS solver
+- [ ] use strings instead of symbols internally
+- [ ] write how-to for calibration equations
+- [ ] have a look again at get_statistics function
 - [ ] make the nonnegativity trick optional or use nanmath?
 - [ ] use packages for kalman filter
 - [ ] clean up different parameter types
@@ -50,7 +52,21 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
+- [x] handle KeyedArrays with strings as dimension names as input- [x] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
+- [x] have for loop where the items are multiplied or divided or whatever, defined by operator | + or * only
+- [x] write documentation for string inputs
+- [x] write documentation for programmatic model writing
+- [x] input indices not as symbol
+- [x] make sure plots and printed output also uses strings instead of symbols if adequate
+- [x] have keyedarray with strings as axis type if necessary as output
+- [x] write test for keyedarray with strings as primary axis
+- [x] test string input
+- [x] have all functions accept strings and write tests for it
+- [x] parser model into per equation functions instead of single big functions
+- [x] use krylov instead of linearsolve
+- [x] implement for loops in model macro (e.g. to setup multi country models)
 - [x] fix ss of pruned solution in plotsolution. seems detached
+- [x] try solve first order with JuMP - doesnt work because JuMP cannot handle matrix constraints/objectives 
 - [x] get solution higher order with multidimensional array (states, 1 and 2 partial derivatives variables names as dimensions in 2order case)
 - [x] add pruning
 - [x] add other outputs from estimation (smoothed, filter states and shocks)
