@@ -1132,7 +1132,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 # push!(SS_solve_func,:(println([$(calib_pars_input...),$(other_vars_input...)])))
 
-                push!(SS_solve_func,:(block_solver_RD = block_solver_AD([$(calib_pars_input...),$(other_vars_input...)],
+                push!(SS_solve_func,:(block_solver_AD = ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)])))
+
+                push!(SS_solve_func,:(solution = block_solver_AD([$(calib_pars_input...),$(other_vars_input...)],
                                                                         $(n_block), 
                                                                         𝓂.ss_solve_blocks[$(n_block)], 
                                                                         # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
@@ -1141,9 +1143,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                                                         lbs, 
                                                                         ubs,
                                                                         # fail_fast_solvers_only = fail_fast_solvers_only,
-                                                                        verbose = verbose)))
+                                                                        verbose)))
                 
-                push!(SS_solve_func,:(solution = block_solver_RD([$(calib_pars_input...),$(other_vars_input...)])))#, 
+                # push!(SS_solve_func,:(solution = block_solver_RD([$(calib_pars_input...),$(other_vars_input...)])))#, 
                         # $(n_block), 
                         # 𝓂.ss_solve_blocks[$(n_block)], 
                         # # 𝓂.SS_optimizer, 
@@ -1153,10 +1155,10 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                         # ubs,
                         # fail_fast_solvers_only = fail_fast_solvers_only,
                         # verbose = verbose)))
-                # push!(SS_solve_func,:(solution_error += solution[2])) 
-                # push!(SS_solve_func,:(sol = solution[1]))
-                push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)]([$(calib_pars_input...),$(other_vars_input...)],solution))))
-                push!(SS_solve_func,:(sol = solution))
+                push!(SS_solve_func,:(solution_error += solution[2])) 
+                push!(SS_solve_func,:(sol = solution[1]))
+                # push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)]([$(calib_pars_input...),$(other_vars_input...)],solution))))
+                # push!(SS_solve_func,:(sol = solution))
 
                 # push!(SS_solve_func,:(println(sol))) 
 
@@ -1503,7 +1505,9 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         
         push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, closest_solution[$(n_block)]))))
 
-        push!(SS_solve_func,:(block_solver_RD = block_solver_AD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],
+        push!(SS_solve_func,:(block_solver_AD = ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)])))
+
+        push!(SS_solve_func,:(solution = block_solver_AD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],
                                                                 $(n_block), 
                                                                 𝓂.ss_solve_blocks[$(n_block)], 
                                                                 # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
@@ -1512,13 +1516,18 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                                                                 lbs, 
                                                                 ubs,
                                                                 # fail_fast_solvers_only = fail_fast_solvers_only,
-                                                                verbose = verbose)))
+                                                                verbose)))
         
-        push!(SS_solve_func,:(solution = block_solver_RD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)])))#, 
+        # push!(SS_solve_func,:(solution = block_solver_RD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)])))#, 
         
-        push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)](length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],solution))))
+        push!(SS_solve_func,:(solution_error += solution[2])) 
+        push!(SS_solve_func,:(sol = solution[1]))
+
+        # push!(SS_solve_func,:(solution = block_solver_RD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)])))#, 
         
-        push!(SS_solve_func,:(sol = solution))
+        # push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)](length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],solution))))
+        
+        # push!(SS_solve_func,:(sol = solution))
 
         push!(SS_solve_func,:($(result...)))   
         
@@ -1650,40 +1659,10 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
 end
 
 
-
 function reverse_diff_friendly_push!(x,y)
     @ignore_derivatives push!(x,y)
 end
 
-# function SS_solve_block_wrapper(guess, transformer_parameters_and_solved_vars)
-#     sum(abs2, transformer_parameters_and_solved_vars[3](transformer_parameters_and_solved_vars[1], guess, transformer_parameters_and_solved_vars[2],transformer_parameters_and_solved_vars[4],transformer_parameters_and_solved_vars[5]))
-# end
-
-block_solver_AD(parameters_and_solved_vars::Vector{<: Real}, 
-    n_block::Int, 
-    ss_solve_blocks::Function, 
-    # ss_solve_blocks_no_transform::Function, 
-    # f::OptimizationFunction, 
-    guess::Vector{Float64}, 
-    lbs::Vector{Float64}, 
-    ubs::Vector{Float64};
-    tol::AbstractFloat = eps(Float64),
-    # timeout = 120,
-    starting_points::Vector{Float64} = [0.897, 1.2, .9, .75, 1.5, -.5, 2.0, .25],
-    # fail_fast_solvers_only = true,
-    verbose::Bool = false) = ImplicitFunction(x -> block_solver(x,
-                                                            n_block, 
-                                                            ss_solve_blocks,
-                                                            # f,
-                                                            guess,
-                                                            lbs,
-                                                            ubs;
-                                                            tol = tol,
-                                                            # timeout = timeout,
-                                                            starting_points = starting_points,
-                                                            # fail_fast_solvers_only = fail_fast_solvers_only,
-                                                            verbose = verbose)[1],  
-                                        (x,y) -> ss_solve_blocks(x,y))
 
 function block_solver(parameters_and_solved_vars::Vector{Float64}, 
                         n_block::Int, 
@@ -1692,12 +1671,14 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         # f::OptimizationFunction, 
                         guess::Vector{Float64}, 
                         lbs::Vector{Float64}, 
-                        ubs::Vector{Float64};
+                        ubs::Vector{Float64},
+                        verbose::Bool;
                         tol::AbstractFloat = eps(),
                         # timeout = 120,
-                        starting_points::Vector{Float64} = [0.897, 1.2, .9, .75, 1.5, -.5, 2, .25],
+                        starting_points::Vector{Float64} = [0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
                         # fail_fast_solvers_only = true,
-                        verbose::Bool = false)
+                        # verbose::Bool = false
+                        )
     
     sol_values = guess
     sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,sol_values))
@@ -1748,68 +1729,6 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     return sol_values, sol_minimum
 end
-
-
-function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}}, 
-    n_block::Int, 
-    ss_solve_blocks::Function, 
-    # SS_optimizer, 
-    # f::OptimizationFunction, 
-    guess::Vector{Float64}, 
-    lbs::Vector{Float64}, 
-    ubs::Vector{Float64};
-    tol::AbstractFloat = eps(),
-    # timeout = 120,
-    starting_points::Vector{Float64} = [0.897, 1.2, .9, .75, 1.5, -.5, 2, .25],
-    # fail_fast_solvers_only = true,
-    verbose::Bool = false) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    inp = ℱ.value.(parameters_and_solved_vars)
-
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, parameters_and_solved_vars)'
-
-    if verbose println("Solution for derivatives.") end
-    # get f(vs)
-    val, min = block_solver(inp, 
-                        n_block, 
-                        ss_solve_blocks, 
-                        # SS_optimizer, 
-                        # f, 
-                        guess, 
-                        lbs, 
-                        ubs;
-                        tol = tol,
-                        # timeout = timeout,
-                        starting_points = starting_points,
-                        # fail_fast_solvers_only = fail_fast_solvers_only,
-                        verbose = verbose)
-
-    if min > tol
-        jvp = fill(0,length(val),length(inp)) * ps
-    else
-        # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> ss_solve_blocks(x,val), inp)
-        A = ℱ.jacobian(x -> ss_solve_blocks(inp,x), val)
-        # B = Zygote.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)[1]
-        # A = Zygote.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)[1]
-
-        Â = RF.lu(A, check = false)
-
-        if !ℒ.issuccess(Â)
-            Â = ℒ.svd(A)
-        end
-        
-        jvp = -(Â \ B) * ps
-    end
-
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(val)), min
-end
-
 
 
 function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{Float64}, 𝓂::ℳ, pruning::Bool;
@@ -3166,7 +3085,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     return @view(A[T.reorder,:]), true
 end
 
-function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatrix{<: Real}; T::timings, explosive::Bool = false) 
+function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatrix{<: Real}, solved::Bool; T::timings, explosive::Bool = false) 
     expand = @ignore_derivatives @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
     A = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
@@ -3181,45 +3100,14 @@ function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatr
 end
 
 
-
-function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive::Bool = false) where {Z,S,N}
-    # unpack: AoS -> SoA
-    ∇̂₁ = ℱ.value.(∇₁)
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, ∇₁)'
-
-    val, solved = riccati_forward(∇̂₁;T = T, explosive = explosive)
-
-    if solved
-        # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> riccati_conditions(x, val; T = T), ∇̂₁)
-        A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x; T = T), val)
-
-        Â = RF.lu(A, check = false)
-
-        if !ℒ.issuccess(Â)
-            Â = ℒ.svd(A)
-        end
-        
-        jvp = -(Â \ B) * ps
-    else
-        jvp = fill(0,length(val),length(∇̂₁)) * ps
-    end
-
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val)), solved
-end
-
-riccati_(∇₁;T, explosive) = ImplicitFunction(∇₁ -> riccati_forward(∇₁, T=T, explosive=explosive)[1], (x,y)->riccati_conditions(x,y,T=T,explosive=explosive))
+riccati_AD = ImplicitFunction(riccati_forward, riccati_conditions)
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
     # A = riccati_AD(∇₁, T = T, explosive = explosive)
-    riccati = riccati_(∇₁, T = T, explosive = explosive)
-    A = riccati(∇₁)
+    A, solved = riccati_AD(∇₁; T = T, explosive = explosive)
+    # A, solved = riccati(∇₁)
 
-    solved = @ignore_derivatives !(isapprox(sum(abs,A), 0, rtol = eps()))
+    # solved = @ignore_derivatives !(isapprox(sum(abs,A), 0, rtol = eps()))
 
     if !solved
         return hcat(A, zeros(size(A,1),T.nExo)), solved
@@ -3838,7 +3726,7 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    covar_raw = calculate_covariance_forward(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
+    covar_raw = calculate_covariance_AD(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
 
     return covar_raw, sol , ∇₁, SS_and_pars
 end
@@ -3866,34 +3754,6 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{<: Real}; T::timin
 end
 
 
-function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings, subset_indices::Vector{Int64}) where {Z,S,N}
-    # unpack: AoS -> SoA
-    𝑺₁̂ = ℱ.value.(𝑺₁)
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, 𝑺₁)'
-
-    # get f(vs)
-    val = calculate_covariance_forward(𝑺₁̂, T = T, subset_indices = subset_indices)
-
-    # get J(f, vs) * ps (cheating). Write your custom rule here
-    B = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, T = T, subset_indices = subset_indices), 𝑺₁̂)
-    A = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, T = T, subset_indices = subset_indices), val)
-
-    Â = RF.lu(A, check = false)
-
-    if !ℒ.issuccess(Â)
-        Â = ℒ.svd(A)
-    end
-    
-    jvp = -(Â \ B) * ps
-
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val))
-end
-
-
 function calculate_covariance_conditions(𝑺₁::AbstractMatrix{<: Real}, covar::AbstractMatrix{<: Real}; T::timings, subset_indices::Vector{Int64})
     A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,subset_indices)),:]
     C = @views 𝑺₁[subset_indices,T.nPast_not_future_and_mixed+1:end]
@@ -3901,9 +3761,7 @@ function calculate_covariance_conditions(𝑺₁::AbstractMatrix{<: Real}, covar
     A * covar * A' + C * C' - covar
 end
 
-
-calculate_covariance_AD(sol; T, subset_indices) = ImplicitFunction(sol->calculate_covariance_forward(sol, T=T, subset_indices = subset_indices), (x,y)->calculate_covariance_conditions(x,y,T=T, subset_indices = subset_indices))
-# calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+calculate_covariance_AD = ImplicitFunction(calculate_covariance_forward, calculate_covariance_conditions)
 
 function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose::Bool = false, tol::AbstractFloat = eps())
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
@@ -3962,9 +3820,9 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     # Gaussian Prior
 
-    calculate_covariance_ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
+    P = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
 
-    P = calculate_covariance_(sol)
+    # P = calculate_covariance_(sol)
     # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
     u = zeros(length(observables_and_states))
     # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
