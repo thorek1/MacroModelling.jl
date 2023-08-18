@@ -2,10 +2,8 @@
 
 ## High priority
 
-- [ ] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
-- [ ] use strings instead of symbols internally
-- [ ] have a look again at get_statistics function
 - [ ] implement occasionally binding constraints with shocks
+- [ ] add for loop parser in @parameters
 - [ ] implement moment matching for pruned models
 - [ ] speed benchmarking
 - [ ] add balanced growth path handling
@@ -42,6 +40,9 @@
 
 - [ ] use @assert for errors and @test_throws
 - [ ] print SS dependencies (get parameters (in function of parameters) into the dependencies), show SS solver
+- [ ] use strings instead of symbols internally
+- [ ] write how-to for calibration equations
+- [ ] have a look again at get_statistics function
 - [ ] make the nonnegativity trick optional or use nanmath?
 - [ ] use packages for kalman filter
 - [ ] clean up different parameter types
@@ -51,7 +52,7 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
-- [x] handle KeyedArrays with strings as dimension names as input
+- [x] handle KeyedArrays with strings as dimension names as input- [x] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
 - [x] have for loop where the items are multiplied or divided or whatever, defined by operator | + or * only
 - [x] write documentation for string inputs
 - [x] write documentation for programmatic model writing
