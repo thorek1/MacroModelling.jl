@@ -5,6 +5,7 @@
 - [ ] implement occasionally binding constraints with shocks
 - [ ] use other quadratic iteration for diffable first order solve
 - [ ] add for loop parser in @parameters
+- [ ] implement more multi country models
 - [ ] implement moment matching for pruned models
 - [ ] speed benchmarking
 - [ ] add balanced growth path handling
