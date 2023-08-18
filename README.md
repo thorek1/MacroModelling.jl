@@ -5,10 +5,11 @@
 [![codecov](https://codecov.io/gh/thorek1/MacroModelling.jl/branch/main/graph/badge.svg?token=QOANGF5MSX)](https://codecov.io/gh/thorek1/MacroModelling.jl)
 [![CI](https://github.com/thorek1/MacroModelling.jl/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/thorek1/MacroModelling.jl/actions/workflows/ci.yml)
 <!-- [![](https://img.shields.io/badge/docs-dev-blue.svg)](https://thorek1.github.io/MacroModelling.jl/dev) -->
+[![Downloads](https://shields.io/endpoint?url=https://pkgs.genieframework.com/api/v1/badge/MacroModelling)](https://pkgs.genieframework.com?packages=MacroModelling)
 
 **Author: Thore Kockerols (@thorek1)**
 
-`MacroModelling.jl` is a package for developing and solving dynamic stochastic general equilibrium (DSGE) models. The package provides functions for creating, calibrating, simulating and estimating discrete-time DSGE models.
+`MacroModelling.jl` is a package for developing and solving dynamic stochastic general equilibrium (DSGE) models. The package provides functions for creating, calibrating, simulating and estimating discrete-time DSGE models. These kind of models are typicaly used to decsribe the behaviour of a macroeconomy and are particularly suited for counterfactual analysis (economic policy evaluation) and exploring/quantifying specific mechanisms (academic research). These models are difficult to work with because they consist of a nonlinear system of equations describing a stochastic control problem.
 
 The goal of `MacroModelling.jl` is to reduce coding time and speed up model development.
 
@@ -74,6 +75,8 @@ The package contains the following models in the `models` folder:
 
 - [Aguiar and Gopinath (2007)](https://www.journals.uchicago.edu/doi/10.1086/511283) `Aguiar_Gopinath_2007.jl`
 - [Ascari and Sbordone (2014)](https://www.aeaweb.org/articles?id=10.1257/jel.52.3.679) `Ascari_sbordone_2014.jl`
+- [Backus, Kehoe, and Kydland (1992)](https://www.jstor.org/stable/2138686) `Backus_Kehoe_Kydland_1992`
+- [Baxter and King (1993)](https://www.jstor.org/stable/2117521) `Baxter_and_King_1993.jl`
 - [Caldara et al. (2012)](https://www.sciencedirect.com/science/article/abs/pii/S1094202511000433) `Caldara_et_al_2012.jl`
 - [Gali (2015)](https://press.princeton.edu/books/hardcover/9780691164786/monetary-policy-inflation-and-the-business-cycle) - Chapter 3 `Gali_2015_chapter_3_nonlinear.jl`
 - [Gali and Monacelli (2005)](https://crei.cat/wp-content/uploads/users/pages/roes8739.pdf) - CPI inflation-based Taylor rule `Gali_Monacelli_2005_CITR.jl`

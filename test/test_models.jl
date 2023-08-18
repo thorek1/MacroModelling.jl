@@ -1,3 +1,18 @@
+include("models/Backus_Kehoe_Kydland_1992.jl")
+SS = get_SS(Backus_Kehoe_Kydland_1992)
+
+@test isapprox(SS(["A{F}","K{H}","L{F}","LGM"]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
+
+var_dec = get_var_decomp(Backus_Kehoe_Kydland_1992)
+
+@test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{F}") * 100, [51.34, 42.44, 52.59],rtol = 1e-3)
+@test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{H}") * 100, [48.66, 57.56, 47.41],rtol = 1e-3)
+
+Backus_Kehoe_Kydland_1992 = nothing
+
+
+
+
 include("models/NAWM_EAUS_2008.jl")
 SS = get_SS(NAWM_EAUS_2008)
 
@@ -23,6 +38,19 @@ corrr = get_correlation(SGU_2003_debt_premium)
 @test isapprox(corrr(:i,:k),0.4645,rtol = 1e-3)
 
 SGU_2003_debt_premium = nothing
+
+
+include("models/Baxter_and_King_1993.jl")
+moments = get_moments(Baxter_and_King_1993, derivatives = false)
+
+@test isapprox(moments[1][end-1:end],[0.334599,5.29504],rtol = 1e-3)
+
+corrr = get_correlation(Baxter_and_King_1993)
+
+@test isapprox(corrr(:k,:l),0.8553,rtol = 1e-3)
+@test isapprox(corrr(:r,:w),-0.9898,rtol = 1e-3)
+
+Baxter_and_King_1993 = nothing
 
 
 
