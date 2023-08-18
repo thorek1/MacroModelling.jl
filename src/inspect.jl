@@ -458,7 +458,7 @@ get_parameters_defining_parameters(RBC)
 ```
 """
 function get_parameters_defining_parameters(𝓂::ℳ)
-    replace.(string.(setdiff(𝓂.parameters, 𝓂.calibration_equations_parameters, 𝓂.parameters_in_equations, 𝓂.calibration_equations_parameters, 𝓂.parameters_as_function_of_parameters, reduce(union, 𝓂.par_calib_list))), "◖" => "{", "◗" => "}")# |> sort
+    replace.(string.(setdiff(𝓂.parameters, 𝓂.calibration_equations_parameters, 𝓂.parameters_in_equations, 𝓂.calibration_equations_parameters, 𝓂.parameters_as_function_of_parameters, reduce(union, 𝓂.par_calib_list, init = []))), "◖" => "{", "◗" => "}")# |> sort
 end
 
 
@@ -501,7 +501,7 @@ get_calibration_equation_parameters(RBC)
 ```
 """
 function get_calibration_equation_parameters(𝓂::ℳ)
-    reduce(union, 𝓂.par_calib_list) |> collect |> sort  .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    reduce(union, 𝓂.par_calib_list, init = []) |> collect |> sort  .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
@@ -552,7 +552,7 @@ get_variables(RBC)
 ```
 """
 function get_variables(𝓂::ℳ)
-    setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars)) |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
+    setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations), init = []), union(𝓂.parameters_in_equations,𝓂.➕_vars)) |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
