@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
+- [ ] use other quadratic iteration for diffable first order solve
 - [ ] add for loop parser in @parameters
 - [ ] implement moment matching for pruned models
 - [ ] speed benchmarking
