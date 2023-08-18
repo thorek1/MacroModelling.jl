@@ -30,10 +30,6 @@ jobs:
           - version: '1.8'
             os: ubuntu-latest
             arch: x64
-          - version: '1.9'
-            os: ubuntu-latest
-            env:
-              JULIA_NUM_THREADS: 2
           - version: '^1.10.0-0'
             os: ubuntu-latest
             arch: x64
@@ -58,6 +54,9 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
+      - name: Set JULIA_NUM_THREADS for Julia 1.9 on Ubuntu
+        if: matrix.version == '1.9' && matrix.os == 'ubuntu-latest'
+        run: echo "JULIA_NUM_THREADS=2" >> $GITHUB_ENV
       - uses: actions/cache@v3
         env:
           cache-name: cache-artifacts
@@ -73,7 +72,6 @@ jobs:
       - uses: julia-actions/julia-runtest@latest
         with:
           prefix: ${{ matrix.prefix }}  # for `xvfb-run`
-          
       - uses: julia-actions/julia-processcoverage@latest
       - uses: codecov/codecov-action@v3
         with:

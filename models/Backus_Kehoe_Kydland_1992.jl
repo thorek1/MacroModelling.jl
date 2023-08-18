@@ -1,5 +1,5 @@
 @model Backus_Kehoe_Kydland_1992 begin
-    for co in [:H, :F]
+    for co in [H, F]
         Y{co}[0] = ((LAMBDA{co}[0] * K{co}[-4]^theta{co} * N{co}[0]^(1-theta{co}))^(-nu{co}) + sigma{co} * Z{co}[-1]^(-nu{co}))^(-1/nu{co})
 
         K{co}[0] = (1-delta{co})*K{co}[-1] + S{co}[0]
@@ -28,11 +28,11 @@
         NX{co}[0] = (Y{co}[0] - (C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1]))/Y{co}[0]
     end
 
-    (LAMBDA{:H}[0]-1) = rho{:H}{:H}*(LAMBDA{:H}[-1]-1) + rho{:H}{:F}*(LAMBDA{:F}[-1]-1) + Z_E{:H} * E{:H}[x]
+    (LAMBDA{H}[0]-1) = rho{H}{H}*(LAMBDA{H}[-1]-1) + rho{H}{F}*(LAMBDA{F}[-1]-1) + Z_E{H} * E{H}[x]
 
-    (LAMBDA{:F}[0]-1) = rho{:F}{:F}*(LAMBDA{:F}[-1]-1) + rho{:F}{:H}*(LAMBDA{:H}[-1]-1) + Z_E{:F} * E{:F}[x]
+    (LAMBDA{F}[0]-1) = rho{F}{F}*(LAMBDA{F}[-1]-1) + rho{F}{H}*(LAMBDA{H}[-1]-1) + Z_E{F} * E{F}[x]
 
-    for co in [:H,:F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [:H,:F] Y{co}[0] end
+    for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end
 end
 
 @parameters Backus_Kehoe_Kydland_1992 begin
@@ -52,8 +52,8 @@ end
 
     Z_E = 0.00852
     
-    rho{:H}{:H} = 0.906
-    rho{:F}{:F} = rho{:H}{:H}
-    rho{:H}{:F} = 0.088
-    rho{:F}{:H} = rho{:H}{:F}
+    rho{H}{H} = 0.906
+    rho{F}{F} = rho{H}{H}
+    rho{H}{F} = 0.088
+    rho{F}{H} = rho{H}{F}
 end

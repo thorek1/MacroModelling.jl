@@ -97,7 +97,7 @@ struct symbolics
     ss_equations::Vector{SPyPyC.Sym}
     dyn_equations::Vector{SPyPyC.Sym}
     # dyn_equations_future::Vector{SPyPyC.Sym}
-    
+
     # dyn_shift_var_present_list::Vector{Set{SPyPyC.Sym}}
     # dyn_shift_var_past_list::Vector{Set{SPyPyC.Sym}}
     # dyn_shift_var_future_list::Vector{Set{SPyPyC.Sym}}
@@ -116,7 +116,7 @@ struct symbolics
 
     dyn_future_list::Vector{Set{SPyPyC.Sym}}
     dyn_present_list::Vector{Set{SPyPyC.Sym}}
-    dyn_past_list::Vector{Set{SPyPyC.Sym}} 
+    dyn_past_list::Vector{Set{SPyPyC.Sym}}
 
     var_present_list::Vector{Set{SPyPyC.Sym}}
     var_past_list::Vector{Set{SPyPyC.Sym}}
@@ -171,7 +171,7 @@ struct third_order_auxilliary_matrices
 
     𝐏₁ᵣ̃::SparseMatrixCSC{Int}
     𝐏₂ᵣ̃::SparseMatrixCSC{Int}
-    
+
     𝐒𝐏::SparseMatrixCSC{Int}
 end
 
@@ -179,7 +179,7 @@ end
 struct perturbation_solution
     solution_matrix::Matrix{Float64}
     state_update::Function
-end 
+end
 
 struct second_order_perturbation_solution
     solution_matrix::SparseMatrixCSC{Float64}
@@ -218,7 +218,7 @@ end
 
 
 mutable struct ℳ
-    model_name
+    model_name::Any
     # SS_optimizer
     exo::Vector{Symbol}
     parameters_in_equations::Vector{Symbol}
@@ -295,7 +295,7 @@ mutable struct ℳ
 
     dyn_future_list::Vector{Set{Symbol}}
     dyn_present_list::Vector{Set{Symbol}}
-    dyn_past_list::Vector{Set{Symbol}} 
+    dyn_past_list::Vector{Set{Symbol}}
 
     solved_vars::Vector#{Union{Symbol,Vector{Symbol}}}
     solved_vals::Vector#{Union{Float64,Expr,Int,Vector{Union{Float64,Expr,Int}}}}
@@ -310,7 +310,7 @@ mutable struct ℳ
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func::Function
     # nonlinear_solution_helper
-    SS_dependencies
+    SS_dependencies::Any
 
     ➕_vars::Vector{Symbol}
     # ss_equations::Vector{Expr}
@@ -339,6 +339,5 @@ mutable struct ℳ
     timings::timings
     solution::solution
     # symbolics::symbolics
-    
-end
 
+end

@@ -20,7 +20,9 @@ jobs:
       - uses: julia-actions/setup-julia@latest
         with:
           version: '1'
-      - run: pip3 install sympy
+      # - run: pip3 install sympy
+      - name: Set JULIA_NUM_THREADS
+        run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
       - name: Install dependencies
         run: julia --project=docs/ -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
       - name: Build and deploy
