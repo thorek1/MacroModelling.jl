@@ -1624,17 +1624,9 @@ function get_variance_decomposition(𝓂::ℳ;
     
     solve!(𝓂, parameters = parameters, verbose = verbose)
 
-    # write_parameters_input!(𝓂,parameters, verbose = verbose)
+    covar_raw, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
-    
-	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
-
-    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
-
-    calculate_covariance = calculate_covariance_AD(sol[:,[1:𝓂.timings.nPast_not_future_and_mixed..., 𝓂.timings.nPast_not_future_and_mixed+1]], T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
-
-    variances_by_shock = reduce(hcat,[ℒ.diag(calculate_covariance(sol[:,[1:𝓂.timings.nPast_not_future_and_mixed..., 𝓂.timings.nPast_not_future_and_mixed+i]])[1]) for i in 1:𝓂.timings.nExo])
+    variances_by_shock = reduce(hcat,[ℒ.diag(covar_raw) for i in 1:𝓂.timings.nExo])
 
     var_decomp = variances_by_shock ./ sum(variances_by_shock,dims=2)
 
@@ -1990,7 +1982,7 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
+            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
 
             vari = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
 
@@ -2023,7 +2015,7 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
+            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
 
             standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
 
@@ -2051,7 +2043,7 @@ function get_moments(𝓂::ℳ;
         end
 
         if variance
-            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
+            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
             varr = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
             varrs = KeyedArray(varr;  Variables = axis1)
             if standard_deviation
@@ -2060,12 +2052,12 @@ function get_moments(𝓂::ℳ;
         end
 
         if standard_deviation
-            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
+            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
             st_dev = KeyedArray(sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))));  Variables = axis1)
         end
 
         if covariance
-            covar_dcmp = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
+            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
         end
     end
 
