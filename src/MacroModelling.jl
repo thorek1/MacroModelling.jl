@@ -1802,8 +1802,7 @@ end
 
 
 
-function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{Float64}, 𝓂::ℳ, pruning::Bool;
-    tol::AbstractFloat = eps())
+function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::AbstractArray{Float64}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
     (; 𝐒₁, 𝐒₂) = 𝐒₁𝐒₂
 
     state = zeros(𝓂.timings.nVars)
@@ -1841,7 +1840,7 @@ function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂:
 end
 
 
-function second_order_stochastic_steady_state_iterative_solution_condition(𝐒₁𝐒₂, SSS, 𝓂::ℳ, pruning::Bool)
+function second_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂, SSS, converged::Bool; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
     (; 𝐒₁, 𝐒₂) = 𝐒₁𝐒₂
 
     shock = zeros(𝓂.timings.nExo)
@@ -1862,7 +1861,7 @@ function second_order_stochastic_steady_state_iterative_solution_condition(𝐒�
 end
 
 
-function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::AbstractArray{ℱ.Dual{Z,S,N}}, 𝓂::ℳ, pruning::Bool) where {Z,S,N}
+function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::AbstractArray{ℱ.Dual{Z,S,N}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps()) where {Z,S,N}
 
     # unpack: AoS -> SoA
     S₁S₂ = ℱ.value.(𝐒₁𝐒₂)
@@ -1871,12 +1870,12 @@ function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂:
     ps = mapreduce(ℱ.partials, hcat, 𝐒₁𝐒₂)'
 
     # get f(vs)
-    val, converged = second_order_stochastic_steady_state_iterative_solution(S₁S₂, 𝓂, pruning)
+    val, converged = second_order_stochastic_steady_state_iterative_solution_forward(S₁S₂; 𝓂 = 𝓂, pruning = pruning, tol = tol)
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_condition(x, val, 𝓂, pruning), S₁S₂)
-        A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_condition(S₁S₂, x, 𝓂, pruning), val)
+        B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; 𝓂 = 𝓂, pruning = pruning, tol = tol), S₁S₂)
+        A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂, x, converged; 𝓂 = 𝓂, pruning = pruning, tol = tol), val)
 
         Â = RF.lu(A, check = false)
 
@@ -1901,6 +1900,11 @@ function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂:
 end
 
 
+second_order_stochastic_steady_state_iterative_solution = ID.ImplicitFunction(second_order_stochastic_steady_state_iterative_solution_forward,
+                                                                                    second_order_stochastic_steady_state_iterative_solution_conditions; 
+                                                                                    linear_solver = ID.DirectLinearSolver())
+
+
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false) where M
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
@@ -1914,7 +1918,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
-    state, converged = second_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂), 𝓂, pruning)
+    state, converged = second_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂); 𝓂 = 𝓂, pruning = pruning)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -1933,8 +1937,7 @@ end
 
 
 
-function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::AbstractArray{Float64}, 𝓂::ℳ, pruning::Bool;
-    tol::AbstractFloat = eps())
+function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::AbstractArray{Float64}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
     (; 𝐒₁, 𝐒₂, 𝐒₃) = 𝐒₁𝐒₂𝐒₃
 
     state = zeros(𝓂.timings.nVars)
@@ -1973,7 +1976,7 @@ function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂�
 end
 
 
-function third_order_stochastic_steady_state_iterative_solution_condition(𝐒₁𝐒₂𝐒₃, SSS, 𝓂::ℳ, pruning::Bool)
+function third_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂𝐒₃, SSS, converged; 𝓂::ℳ, pruning::Bool)
     (; 𝐒₁, 𝐒₂, 𝐒₃) = 𝐒₁𝐒₂𝐒₃
 
     shock = zeros(𝓂.timings.nExo)
@@ -1994,7 +1997,12 @@ function third_order_stochastic_steady_state_iterative_solution_condition(𝐒�
 end
 
 
-function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::AbstractArray{ℱ.Dual{Z,S,N}}, 𝓂::ℳ, pruning::Bool) where {Z,S,N}
+third_order_stochastic_steady_state_iterative_solution = ID.ImplicitFunction(third_order_stochastic_steady_state_iterative_solution_forward,
+                                                                                third_order_stochastic_steady_state_iterative_solution_conditions; 
+                                                                                linear_solver = ID.DirectLinearSolver())
+
+
+function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::AbstractArray{ℱ.Dual{Z,S,N}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps()) where {Z,S,N}
 
     # unpack: AoS -> SoA
     S₁S₂S₃ = ℱ.value.(𝐒₁𝐒₂𝐒₃)
@@ -2003,12 +2011,12 @@ function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂�
     ps = mapreduce(ℱ.partials, hcat, 𝐒₁𝐒₂𝐒₃)'
 
     # get f(vs)
-    val, converged = third_order_stochastic_steady_state_iterative_solution(S₁S₂S₃, 𝓂, pruning)
+    val, converged = third_order_stochastic_steady_state_iterative_solution_forward(S₁S₂S₃; 𝓂 = 𝓂, pruning = pruning, tol = tol)
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_condition(x, val, 𝓂, pruning), S₁S₂S₃)
-        A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_condition(S₁S₂S₃, x, 𝓂, pruning), val)
+        B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; 𝓂 = 𝓂, pruning = pruning), S₁S₂S₃)
+        A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, converged; 𝓂 = 𝓂, pruning = pruning), val)
         
         Â = RF.lu(A, check = false)
     
@@ -2050,7 +2058,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
-    state, converged = third_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂, 𝐒₃), 𝓂, pruning)
+    state, converged = third_order_stochastic_steady_state_iterative_solution(𝒞.ComponentArray(; 𝐒₁, 𝐒₂, 𝐒₃); 𝓂 = 𝓂, pruning = pruning)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -2777,7 +2785,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
 end
 
 
-
+# helper for get functions
 function SSS_third_order_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -2790,6 +2798,7 @@ function SSS_third_order_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N
 end
 
 
+# helper for get functions
 function SSS_third_order_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -2802,6 +2811,7 @@ function SSS_third_order_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, para
 end
 
 
+# helper for get functions
 function SSS_second_order_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -2814,6 +2824,7 @@ function SSS_second_order_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,
 end
 
 
+# helper for get functions
 function SSS_second_order_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -2826,6 +2837,7 @@ function SSS_second_order_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, par
 end
 
 
+# helper for get functions
 function SS_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -2834,6 +2846,7 @@ function SS_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameter
 end
 
 
+# helper for get functions
 function SS_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -2842,6 +2855,7 @@ function SS_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::I
 end
 
 
+# helper for get functions
 function covariance_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -2850,6 +2864,7 @@ function covariance_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, p
 end
 
 
+# helper for get functions
 function covariance_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -3202,14 +3217,12 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
 end
 
 
-riccati_AD = ID.ImplicitFunction(riccati_forward, riccati_conditions)
+riccati_AD = ID.ImplicitFunction(riccati_forward, 
+                                    riccati_conditions; 
+                                    linear_solver = ID.DirectLinearSolver())
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
-    # A = riccati_AD(∇₁, T = T, explosive = explosive)
     A, solved = riccati_AD(∇₁; T = T, explosive = explosive)
-    # A, solved = riccati(∇₁)
-
-    # solved = @ignore_derivatives !(isapprox(sum(abs,A), 0, rtol = eps()))
 
     if !solved
         return hcat(A, zeros(size(A,1),T.nExo)), solved
@@ -3228,14 +3241,14 @@ end
 
 
 
-function solve_sylvester_equation_condition(BCX, S)
+function solve_sylvester_equation_conditions(BCX, S, solved)
     (; B, C, X) = BCX
 
     X + S - B * S * C
 end
 
 
-function solve_sylvester_equation(BCX::AbstractArray{Float64}; tol::AbstractFloat = eps())
+function solve_sylvester_equation_forward(BCX::AbstractArray{Float64}; tol::AbstractFloat = eps())
     (; B, C, X) = BCX
 
     sylvester = LinearOperators.LinearOperator(Float64, length(X), length(X), false, false, 
@@ -3254,11 +3267,11 @@ function solve_sylvester_equation(BCX::AbstractArray{Float64}; tol::AbstractFloa
     𝐒₂ = sparse(reshape(S2,size(X)))
     droptol!(𝐒₂,tol)
 
-    return 𝐒₂
+    return 𝐒₂, info.solved
 end
 
 
-function solve_sylvester_equation(BCX::AbstractArray{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = eps()) where {Z,S,N}
+function solve_sylvester_equation_forward(BCX::AbstractArray{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = eps()) where {Z,S,N}
     # unpack: AoS -> SoA
     bcx = ℱ.value.(BCX)
 
@@ -3266,11 +3279,11 @@ function solve_sylvester_equation(BCX::AbstractArray{ℱ.Dual{Z,S,N}}; tol::Abst
     ps = mapreduce(ℱ.partials, hcat, BCX)'
 
     # get f(vs)
-    val = solve_sylvester_equation(bcx, tol = tol)
+    val, sovled = solve_sylvester_equation_forward(bcx, tol = tol)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
-    B = ℱ.jacobian(x -> solve_sylvester_equation_condition(x, val), bcx)
-    A = ℱ.jacobian(x -> solve_sylvester_equation_condition(bcx, x), val)
+    B = ℱ.jacobian(x -> solve_sylvester_equation_conditions(x, val, sovled), bcx)
+    A = ℱ.jacobian(x -> solve_sylvester_equation_conditions(bcx, x, sovled), val)
     
     Â = RF.lu(A, check = false)
 
@@ -3288,9 +3301,10 @@ function solve_sylvester_equation(BCX::AbstractArray{ℱ.Dual{Z,S,N}}; tol::Abst
     # pack: SoA -> AoS
     return reshape(map(val, eachrow(jvp)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val))
+    end,size(val)), sovled
 end
 
+solve_sylvester_equation = ID.ImplicitFunction(solve_sylvester_equation_forward, solve_sylvester_equation_conditions)
 
 function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
@@ -3360,7 +3374,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
         𝐒₂ = sparse(reshape(S2,size(X)))
         droptol!(𝐒₂,tol)
     else
-        𝐒₂ = sparse(solve_sylvester_equation(𝒞.ComponentArray(;B,C,X)))
+        S2, solved = solve_sylvester_equation(𝒞.ComponentArray(;B,C,X))
+        𝐒₂ = sparse(S2)
         droptol!(𝐒₂,tol)
     end
 
@@ -3472,7 +3487,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
         𝐒₃ = sparse(reshape(S3,size(X)))
         droptol!(𝐒₃,tol)
     else
-        𝐒₃ = sparse(solve_sylvester_equation(𝒞.ComponentArray(;B,C,X)))
+        S3, solved = solve_sylvester_equation(𝒞.ComponentArray(;B,C,X))
+        𝐒₃ = sparse(S3)
         droptol!(𝐒₃,tol)
     end
     
@@ -3882,7 +3898,9 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; 
     end,size(val)), solved
 end
 
-calculate_covariance_AD = ID.ImplicitFunction(calculate_covariance_forward, calculate_covariance_conditions)
+calculate_covariance_AD = ID.ImplicitFunction(calculate_covariance_forward, 
+                                                calculate_covariance_conditions; 
+                                                linear_solver = ID.DirectLinearSolver())
 
 function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false)
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)

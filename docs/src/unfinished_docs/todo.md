@@ -8,7 +8,7 @@
 - [ ] add for loop parser in @parameters
 - [ ] implement more multi country models
 - [ ] implement moment matching for pruned models
-- [ ] speed benchmarking
+- [ ] speed benchmarking (focus on ImplicitDiff part)
 - [ ] add balanced growth path handling
 - [ ] add JOSS article (see Makie.jl)
 - [ ] write docs for (non-linear) solution algorithms
