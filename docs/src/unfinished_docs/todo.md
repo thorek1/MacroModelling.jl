@@ -3,9 +3,12 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
+- [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
+- [ ] use more implicit diff for the other functions as well
 - [ ] add for loop parser in @parameters
+- [ ] implement more multi country models
 - [ ] implement moment matching for pruned models
-- [ ] speed benchmarking
+- [ ] speed benchmarking (focus on ImplicitDiff part)
 - [ ] add balanced growth path handling
 - [ ] add JOSS article (see Makie.jl)
 - [ ] write docs for (non-linear) solution algorithms
