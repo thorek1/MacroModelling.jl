@@ -1806,6 +1806,7 @@ function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁
     tol::AbstractFloat = 1e-10)    
     len𝐒₁ = dims[1][1] * dims[1][2]
 
+
     𝐒₁ = reshape(𝐒₁𝐒₂[1 : len𝐒₁],dims[1])
     𝐒₂ = sparse(reshape(𝐒₁𝐒₂[len𝐒₁ + 1 : end],dims[2]))
         
