@@ -3410,7 +3410,7 @@ function solve_sylvester_equation(concat_sparse_vec::SparseVector{ℱ.Dual{Z,S,N
     # pack: SoA -> AoS
     return sparse(reshape(map(val, eachrow(jvp)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-        end,size(val)), solved
+        end,size(val))), solved
 end
 
 solve_sylvester_equation = ID.ImplicitFunction(solve_sylvester_equation_forward, solve_sylvester_equation_conditions)
