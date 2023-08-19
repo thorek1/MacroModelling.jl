@@ -17,7 +17,8 @@ import Subscripts: super, sub
 import Krylov
 import LinearOperators
 import DataStructures: CircularBuffer
-using ImplicitDifferentiation
+import ImplicitDifferentiation as ID
+import AbstractDifferentiation as AD
 import SpeedMapping: speedmapping
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
@@ -96,20 +97,20 @@ dnorm(p::Number) = normpdf(p)
 
 
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
-                "Model:       ", 𝓂.model_name, 
+                "Model:        ", 𝓂.model_name, 
                 "\nVariables", 
-                "\n Total:      ", 𝓂.timings.nVars,
-                "\n  Auxiliary: ", length(𝓂.exo_present) + length(𝓂.aux),
-                "\n States:     ", 𝓂.timings.nPast_not_future_and_mixed,
-                "\n  Auxiliary: ",  length(intersect(𝓂.timings.past_not_future_and_mixed, 𝓂.aux_present)),
-                "\n Jumpers:    ", 𝓂.timings.nFuture_not_past_and_mixed, # 𝓂.timings.mixed, 
-                "\n  Auxiliary: ", length(intersect(𝓂.timings.future_not_past_and_mixed, union(𝓂.aux_present, 𝓂.aux_future))),
-                "\nShocks:      ", 𝓂.timings.nExo,
-                "\nParameters:  ", length(𝓂.parameters_in_equations),
+                "\n Total:       ", 𝓂.timings.nVars,
+                "\n  Auxiliary:  ", length(𝓂.exo_present) + length(𝓂.aux),
+                "\n States:      ", 𝓂.timings.nPast_not_future_and_mixed,
+                "\n  Auxiliary:  ",  length(intersect(𝓂.timings.past_not_future_and_mixed, 𝓂.aux_present)),
+                "\n Jumpers:     ", 𝓂.timings.nFuture_not_past_and_mixed, # 𝓂.timings.mixed, 
+                "\n  Auxiliary:  ", length(intersect(𝓂.timings.future_not_past_and_mixed, union(𝓂.aux_present, 𝓂.aux_future))),
+                "\nShocks:       ", 𝓂.timings.nExo,
+                "\nParameters:   ", length(𝓂.parameters_in_equations),
                 if 𝓂.calibration_equations == Expr[]
                     ""
                 else
-                    "\nCalibration equations: " * repr(length(𝓂.calibration_equations))
+                    "\nCalibration\nequations:    " * repr(length(𝓂.calibration_equations))
                 end,
                 # "\n¹: including auxilliary variables"
                 # "\nVariable bounds (upper,lower,any): ",sum(𝓂.upper_bounds .< Inf),", ",sum(𝓂.lower_bounds .> -Inf),", ",length(𝓂.bounds),
@@ -1133,7 +1134,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 # push!(SS_solve_func,:(println([$(calib_pars_input...),$(other_vars_input...)])))
 
-                push!(SS_solve_func,:(block_solver_AD = ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)])))
+                push!(SS_solve_func,:(block_solver_AD = ID.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ID.DirectLinearSolver(), conditions_backend = AD.ForwardDiffBackend())))
 
                 push!(SS_solve_func,:(solution = block_solver_AD([$(calib_pars_input...),$(other_vars_input...)],
                                                                         $(n_block), 
@@ -1506,7 +1507,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         
         push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, closest_solution[$(n_block)]))))
 
-        push!(SS_solve_func,:(block_solver_AD = ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)])))
+        push!(SS_solve_func,:(block_solver_AD = ID.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ID.DirectLinearSolver(), conditions_backend = AD.ForwardDiffBackend())))
 
         push!(SS_solve_func,:(solution = block_solver_AD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],
                                                                 $(n_block), 
@@ -3193,7 +3194,7 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
 end
 
 
-riccati_AD = ImplicitFunction(riccati_forward, riccati_conditions)
+riccati_AD = ID.ImplicitFunction(riccati_forward, riccati_conditions)
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
     # A = riccati_AD(∇₁, T = T, explosive = explosive)
@@ -3873,7 +3874,7 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; 
     end,size(val)), solved
 end
 
-calculate_covariance_AD = ImplicitFunction(calculate_covariance_forward, calculate_covariance_conditions)
+calculate_covariance_AD = ID.ImplicitFunction(calculate_covariance_forward, calculate_covariance_conditions)
 
 function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false)
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
