@@ -175,33 +175,6 @@ struct third_order_auxilliary_matrices
     𝐒𝐏::SparseMatrixCSC{Int}
 end
 
-struct second_order_auxilliary_matrices
-    𝛔::SparseMatrixCSC{Int}
-    𝐂₂::SparseMatrixCSC{Int}
-    𝐔₂::SparseMatrixCSC{Int}
-end
-
-struct third_order_auxilliary_matrices
-    𝐂₃::SparseMatrixCSC{Int}
-    𝐔₃::SparseMatrixCSC{Int}
-
-    𝐏::SparseMatrixCSC{Int}
-
-    𝐏₁ₗ::SparseMatrixCSC{Int}
-    𝐏₁ᵣ::SparseMatrixCSC{Int}
-
-    𝐏₁ₗ̂::SparseMatrixCSC{Int}
-    𝐏₂ₗ̂::SparseMatrixCSC{Int}
-
-    𝐏₁ₗ̄::SparseMatrixCSC{Int}
-    𝐏₂ₗ̄::SparseMatrixCSC{Int}
-
-    𝐏₁ᵣ̃::SparseMatrixCSC{Int}
-    𝐏₂ᵣ̃::SparseMatrixCSC{Int}
-    
-    𝐒𝐏::SparseMatrixCSC{Int}
-end
-
 
 struct perturbation_solution
     solution_matrix::Matrix{Float64}
