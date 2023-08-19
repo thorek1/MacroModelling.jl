@@ -3883,7 +3883,7 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    covar_raw, solved_cov = calculate_covariance_AD(sol,T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
+    covar_raw, solved_cov = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
 
     return covar_raw, sol , ∇₁, SS_and_pars
 end

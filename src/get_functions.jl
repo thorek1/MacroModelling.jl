@@ -1624,9 +1624,13 @@ function get_variance_decomposition(𝓂::ℳ;
     
     solve!(𝓂, parameters = parameters, verbose = verbose)
 
-    covar_raw, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
+    
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
 
-    variances_by_shock = reduce(hcat,[ℒ.diag(covar_raw) for i in 1:𝓂.timings.nExo])
+    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+    variances_by_shock = reduce(hcat,[ℒ.diag(calculate_covariance_AD(sol[:,[1:𝓂.timings.nPast_not_future_and_mixed..., 𝓂.timings.nPast_not_future_and_mixed + i]], T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))[1]) for i in 1:𝓂.timings.nExo])
 
     var_decomp = variances_by_shock ./ sum(variances_by_shock,dims=2)
 
