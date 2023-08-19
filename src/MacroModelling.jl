@@ -1908,7 +1908,7 @@ function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁
 end
 
 
-function second_order_stochastic_steady_state_iterative_solution_condition(𝐒₁𝐒₂::SparseVector, SSS, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
+function second_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂::SparseVector, SSS, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
     len𝐒₁ = dims[1][1] * dims[1][2]
 
     𝐒₁ = reshape(𝐒₁𝐒₂[1 : len𝐒₁],dims[1])
