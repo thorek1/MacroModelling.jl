@@ -3,7 +3,8 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
-- [ ] use other quadratic iteration for diffable first order solve
+- [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
+- [ ] use more implicit diff for the other functions as well
 - [ ] add for loop parser in @parameters
 - [ ] implement more multi country models
 - [ ] implement moment matching for pruned models
