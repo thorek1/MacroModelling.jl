@@ -23,6 +23,7 @@ import SpeedMapping: speedmapping
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
 # using AxisKeys
+
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
 import RecursiveFactorization as RF
 
@@ -81,7 +82,6 @@ export irf, girf
 # export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, SSS_third_order_parameter_derivatives, SSS_second_order_parameter_derivatives, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
 # export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, calculate_quadratic_iteration_solution, calculate_linear_time_iteration_solution, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
 
-# levenberg_marquardt
 
 # StatsFuns
 norminvcdf(p) = -erfcinv(2*p) * 1.4142135623730951
@@ -3141,6 +3141,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
         T₁₁    = @view schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
+
         Ẑ₁₁ = RF.lu(Z₁₁, check = false)
 
         if !ℒ.issuccess(Ẑ₁₁)
@@ -3202,6 +3203,7 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
         # get J(f, vs) * ps (cheating). Write your custom rule here
         B = ℱ.jacobian(x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)
         A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x, solved; T = T), val)
+
 
         Â = RF.lu(A, check = false)
 
@@ -3892,7 +3894,6 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; 
     # get J(f, vs) * ps (cheating). Write your custom rule here
     BB = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, solved, T = T, subset_indices = subset_indices), 𝑺₁̂)
     AA = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, solved, T = T, subset_indices = subset_indices), val)
-
 
     Â = RF.lu(AA, check = false)
 
