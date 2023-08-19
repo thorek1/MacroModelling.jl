@@ -1770,70 +1770,6 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
                         # f, 
                         guess, 
                         lbs, 
-                        ubs;
-                        tol = tol,
-                        # timeout = timeout,
-                        starting_points = starting_points,
-                        # fail_fast_solvers_only = fail_fast_solvers_only,
-                        verbose = verbose)
-
-    if min > tol
-        jvp = fill(0,length(val),length(inp)) * ps
-    else
-        # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> ss_solve_blocks(x,val), inp)
-        A = ℱ.jacobian(x -> ss_solve_blocks(inp,x), val)
-        # B = Zygote.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)[1]
-        # A = Zygote.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)[1]
-
-        Â = RF.lu(A, check = false)
-
-        if !ℒ.issuccess(Â)
-            Â = ℒ.svd(A)
-        end
-        
-        jvp = -(Â \ B) * ps
-    end
-
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(val)), min
-end
-
-
-
-
-function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}}, 
-    n_block::Int, 
-    ss_solve_blocks::Function, 
-    # SS_optimizer, 
-    # f::OptimizationFunction, 
-    guess::Vector{Float64}, 
-    lbs::Vector{Float64}, 
-    ubs::Vector{Float64},
-    verbose::Bool;
-    tol::AbstractFloat = eps(),
-    # timeout = 120,
-    starting_points::Vector{Float64} = [0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
-    # fail_fast_solvers_only = true,
-    ) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    inp = ℱ.value.(parameters_and_solved_vars)
-
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, parameters_and_solved_vars)'
-
-    if verbose println("Solution for derivatives.") end
-    # get f(vs)
-    val, min = block_solver(inp, 
-                        n_block, 
-                        ss_solve_blocks, 
-                        # SS_optimizer, 
-                        # f, 
-                        guess, 
-                        lbs, 
                         ubs,
                         verbose;
                         tol = tol,
@@ -2002,7 +1938,7 @@ end
 
 
 
-function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::SparseVector{Float64}, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
+function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{Float64}, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
     len𝐒₁ = dims[1][1] * dims[1][2]
     len𝐒₂ = dims[2][1] * dims[2][2]
 
@@ -2075,16 +2011,16 @@ third_order_stochastic_steady_state_iterative_solution = ID.ImplicitFunction(thi
                                                                                 third_order_stochastic_steady_state_iterative_solution_conditions; 
                                                                                 linear_solver = ID.DirectLinearSolver())
 
-function third_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂𝐒₃::SparseVector{ℱ.Dual{Z,S,N}}, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps()) where {Z,S,N}
+function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{ℱ.Dual{Z,S,N}}, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps()) where {Z,S,N}
     S₁S₂S₃, ps = separate_values_and_partials_from_sparsevec_dual(𝐒₁𝐒₂𝐒₃)
 
     # get f(vs)
-    val, converged = third_order_stochastic_steady_state_iterative_solution(S₁S₂S₃, dims, 𝓂, pruning)
+    val, converged = third_order_stochastic_steady_state_iterative_solution_forward(S₁S₂S₃, dims, 𝓂 = 𝓂, pruning = pruning, tol = tol)
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, dims, 𝓂, pruning), S₁S₂S₃)
-        A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, dims, 𝓂, pruning), val)
+        B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, dims, 𝓂 = 𝓂, pruning = pruning), S₁S₂S₃)
+        A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, dims, 𝓂 = 𝓂, pruning = pruning), val)
         
         Â = RF.lu(A, check = false)
     
@@ -3365,7 +3301,7 @@ function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Du
     return vvals, ps
 end
 
-function solve_sylvester_equation(concat_sparse_vec::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}; tol::AbstractFloat = eps()) where {Z,S,N}
+function solve_sylvester_equation_forward(concat_sparse_vec::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps()) where {Z,S,N}
     # unpack: AoS -> SoA
     values, partials = separate_values_and_partials_from_sparsevec_dual(concat_sparse_vec)
 
@@ -3943,11 +3879,11 @@ function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; 
     # you can play with the dimension here, sometimes it makes sense to transpose
     partials = mapreduce(ℱ.partials, hcat, 𝑺₁)'
 
-    val = calculate_covariance_forward(𝑺₁̂, T = T, subset_indices = subset_indices)
+    val, solved = calculate_covariance_forward(𝑺₁̂, T = T, subset_indices = subset_indices)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
-    BB = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, T = T, subset_indices = subset_indices), 𝑺₁̂)
-    AA = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, T = T, subset_indices = subset_indices), val)
+    BB = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, solved, T = T, subset_indices = subset_indices), 𝑺₁̂)
+    AA = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, solved, T = T, subset_indices = subset_indices), val)
 
 
     Â = RF.lu(AA, check = false)
