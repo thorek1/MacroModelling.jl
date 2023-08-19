@@ -9,33 +9,54 @@ jobs:
       GKSwstype: "nul"
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.version == 'nightly' || matrix.version == '^1.10.0-0' }}
     strategy:
       fail-fast: false
       matrix:
         version:
-          - '1.8'
+          # - '1.8'
           - '1.9' #^1-0 and ^1.9-0 are not recognised
           # - 'nightly' # fails for zygote
         os:
           - ubuntu-latest
-          # - macOS-latest #slow
+          - macOS-latest #slow
           - windows-latest #slow
         arch:
           - x64
-          # - aarch64 #fails (wrong naming?)
+          # - aarch64 #not implemented in Github CI
         include:
           - os: ubuntu-latest
             prefix: xvfb-run
-          # - version: 'nightly'
-          #   os: ubuntu-latest
-          #   arch: x64
-          #   allow_failure: true
+          - version: '1.8'
+            os: ubuntu-latest
+            arch: x64
+          - version: '^1.10.0-0'
+            os: ubuntu-latest
+            arch: x64
+            allow_failure: true
+          - version: 'nightly'
+            os: ubuntu-latest
+            arch: x64
+            allow_failure: true
     steps:
       - uses: actions/checkout@v3
+      #- uses: uraimo/run-on-arch-action@v2.5.0
+      # - name: Set up QEMU
+      #   if: matrix.arch == 'aarch64'
+      #   uses: docker/setup-qemu-action@v2
+      # - name: Set up Docker Buildx
+      #   if: matrix.arch == 'aarch64'
+      #   uses: docker/setup-buildx-action@v2
+      # - name: Build and push
+      #   if: matrix.arch == 'aarch64'
+      #   uses: docker/build-push-action@v3
       - uses: julia-actions/setup-julia@latest
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
+      - name: Set JULIA_NUM_THREADS for Julia 1.9 on Ubuntu
+        if: matrix.version == '1.9' && matrix.os == 'ubuntu-latest'
+        run: echo "JULIA_NUM_THREADS=2" >> $GITHUB_ENV
       - uses: actions/cache@v3
         env:
           cache-name: cache-artifacts
@@ -46,12 +67,11 @@ jobs:
             ${{ runner.os }}-test-${{ env.cache-name }}-
             ${{ runner.os }}-test-
             ${{ runner.os }}-
-      - run: pip3 install sympy
+      # - run: pip3 install sympy
       - uses: julia-actions/julia-buildpkg@latest
       - uses: julia-actions/julia-runtest@latest
         with:
           prefix: ${{ matrix.prefix }}  # for `xvfb-run`
-          
       - uses: julia-actions/julia-processcoverage@latest
       - uses: codecov/codecov-action@v3
         with:

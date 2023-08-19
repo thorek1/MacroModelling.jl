@@ -416,8 +416,10 @@ nu2 = nu*(nu+1)/2;
 
 
 
-vvv = reverse(allVL1(nximin,2))
-vvv[21]
+
+# vvv = reverse(allVL1(nximin,2))
+# vvv[21]
+
 
 hx_hx = kron(hx,hx)
 hx_hu = kron(hx,hu)
@@ -2094,7 +2096,9 @@ end
 gamma3xi[26,23,6]#[17,4]
 Γ₃[26,23,6]#[16,5]
 GAMMA3Xi = gamma3["GAMMA3XI"]   
-Γ₃xi = reshape(Γ₃,length(inputs)^2,length(inputs))
+
+Γ₃xi = sparse(reshape(Γ₃,length(inputs)^2,length(inputs)))
+
 
 ii = 1:2;
 maximum(abs,gamma3xi[:,:,ii] - Γ₃[:,:,ii])#[16,5]
@@ -2102,6 +2106,7 @@ maximum(abs,gamma3xi - Γ₃)#[16,5]
 
 BFxikronBFxi= kron(BFxi,BFxi)
 DFxikronDFxi= kron(DFxi,DFxi)
+
 
 
 BFxi = B*Fxi
@@ -2116,7 +2121,9 @@ AA = kron(A,A)
 lm = LinearMap{Float64}(x -> AA * reshape(x,size(CC)) * A' - reshape(x,size(CC)), length(CC))
 
 C3z0 = reshape(ℐ.gmres(lm, vec(-CC)), size(CC))
+
 reshape(C3z0,8,8,8)
+
 
 C3y0 = CkronC * C3z0 * C' + DFxikronDFxi * Γ₃xi * DFxi'
 reshape(C3y0,5,5,5)

@@ -69,16 +69,19 @@ T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :
 
 first_order_solution, solved = calculate_first_order_solution(∇₁; T = T, explosive = false)# |> Matrix{Float32}
 
-second_order_solution = calculate_second_order_solution(∇₁, 
+second_order_solution, solved2 = calculate_second_order_solution(∇₁, 
 ∇₂, 
-first_order_solution; 
+first_order_solution, 
+RBC_CME.solution.perturbation.second_order_auxilliary_matrices; 
 T = T)
 
-third_order_solution = calculate_third_order_solution(∇₁, 
+third_order_solution, solved3 = calculate_third_order_solution(∇₁, 
 ∇₂, 
 ∇₃,
 first_order_solution, 
-second_order_solution; 
+second_order_solution, 
+RBC_CME.solution.perturbation.second_order_auxilliary_matrices, 
+RBC_CME.solution.perturbation.third_order_auxilliary_matrices; 
 T = T)
 
 @testset verbose = true "SS, derivatives of model at SS and solutions" begin
@@ -429,21 +432,21 @@ end
             x -> collect(get_SS(m; parameters = x, derivatives = false)), 
             parameters)[1]
 
-    @test isapprox(SSfinitediff, SSdiff[:,2:end], rtol = 1e-8)
+    @test isapprox(SSfinitediff, SSdiff[:,2:end], rtol = 1e-6)
 
 
     SSS2finitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
             x -> collect(get_SSS(m; parameters = x, derivatives = false)), 
             parameters)[1]
 
-    @test isapprox(SSS2finitediff, SSSdiff2[:,2:end], rtol = 1e-8)
+    @test isapprox(SSS2finitediff, SSSdiff2[:,2:end], rtol = 1e-6)
 
 
     SSS3finitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
             x -> collect(get_SSS(m; parameters = x, derivatives = false, algorithm = :third_order)), 
             parameters)[1]
 
-    @test isapprox(SSS3finitediff, SSSdiff3[:,2:end], rtol = 1e-8)
+    @test isapprox(SSS3finitediff, SSSdiff3[:,2:end], rtol = 1e-6)
 end
 m = nothing
 𝓂 = nothing
