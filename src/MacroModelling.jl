@@ -1866,7 +1866,7 @@ end
 
 
 
-function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::SparseVector{Float64}, dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool;
+function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{Float64}, dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool;
     tol::AbstractFloat = 1e-10)    
     len𝐒₁ = dims[1][1] * dims[1][2]
 
@@ -1932,7 +1932,7 @@ function second_order_stochastic_steady_state_iterative_solution_condition(𝐒�
 end
 
 
-function second_order_stochastic_steady_state_iterative_solution(𝐒₁𝐒₂::SparseVector{ℱ.Dual{Z,S,N}}, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps()) where {Z,S,N}
+function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{ℱ.Dual{Z,S,N}}, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps()) where {Z,S,N}
     S₁S₂, ps = separate_values_and_partials_from_sparsevec_dual(𝐒₁𝐒₂)
 
     # get f(vs)
