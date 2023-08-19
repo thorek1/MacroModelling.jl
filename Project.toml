@@ -4,6 +4,7 @@ authors = ["Thore Kockerols <mail@thorekockerols.com>"]
 version = "0.1.26"
 
 [deps]
+AbstractDifferentiation = "c29ec348-61ec-40c8-8164-b8c60e9d9f3d"
 AxisKeys = "94b1ba4f-4ee9-5380-92f1-94cde586c3c5"
 BlockTriangularForm = "adeb47b7-70bf-415a-bb24-c358563e873a"
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
@@ -37,6 +38,7 @@ StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [compat]
+AbstractDifferentiation = "^0.5"
 AxisKeys = "^0.2"
 BlockTriangularForm = "^0.1"
 ChainRulesCore = "^1"
