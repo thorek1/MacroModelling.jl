@@ -2180,7 +2180,7 @@ function get_statistics(𝓂, parameter_values::Vector{T};
         autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp)) for i in autocorrelation_periods])
     else
         if !(standard_deviation == Symbol[])
-            st_dev = sqrt.(convert(Vector{Real},ℒ.diag(covar_dcmp)))
+            st_dev = sqrt.(abs.(convert(Vector{Real},ℒ.diag(covar_dcmp))))
         end
     end
 

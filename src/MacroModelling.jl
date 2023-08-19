@@ -3409,7 +3409,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
 
-    𝐒₂, solved = solve_sylvester_equation([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
+    𝐒₂, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
 
     𝐒₂ *= M₂.𝐔₂
 
@@ -3499,7 +3499,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     C *= M₃.𝐂₃
     droptol!(C,tol)
 
-    𝐒₃, solved = solve_sylvester_equation([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
+    𝐒₃, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
     
     𝐒₃ *= M₃.𝐔₃
 
