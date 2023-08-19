@@ -1738,6 +1738,69 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     return sol_values, sol_minimum
 end
 
+# needed for Julia 1.8
+function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}}, 
+    n_block::Int, 
+    ss_solve_blocks::Function, 
+    # SS_optimizer, 
+    # f::OptimizationFunction, 
+    guess::Vector{Float64}, 
+    lbs::Vector{Float64}, 
+    ubs::Vector{Float64},
+    verbose::Bool ;
+    tol::AbstractFloat = eps(),
+    # timeout = 120,
+    starting_points::Vector{Float64} = [0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
+    # fail_fast_solvers_only = true,
+    # verbose::Bool = false
+    ) where {Z,S,N}
+
+    # unpack: AoS -> SoA
+    inp = ℱ.value.(parameters_and_solved_vars)
+
+    # you can play with the dimension here, sometimes it makes sense to transpose
+    ps = mapreduce(ℱ.partials, hcat, parameters_and_solved_vars)'
+
+    if verbose println("Solution for derivatives.") end
+    # get f(vs)
+    val, min = block_solver(inp, 
+                        n_block, 
+                        ss_solve_blocks, 
+                        # SS_optimizer, 
+                        # f, 
+                        guess, 
+                        lbs, 
+                        ubs;
+                        tol = tol,
+                        # timeout = timeout,
+                        starting_points = starting_points,
+                        # fail_fast_solvers_only = fail_fast_solvers_only,
+                        verbose = verbose)
+
+    if min > tol
+        jvp = fill(0,length(val),length(inp)) * ps
+    else
+        # get J(f, vs) * ps (cheating). Write your custom rule here
+        B = ℱ.jacobian(x -> ss_solve_blocks(x,val), inp)
+        A = ℱ.jacobian(x -> ss_solve_blocks(inp,x), val)
+        # B = Zygote.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)[1]
+        # A = Zygote.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)[1]
+
+        Â = RF.lu(A, check = false)
+
+        if !ℒ.issuccess(Â)
+            Â = ℒ.svd(A)
+        end
+        
+        jvp = -(Â \ B) * ps
+    end
+
+    # pack: SoA -> AoS
+    return reshape(map(val, eachrow(jvp)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end, size(val)), min
+end
+
 
 
 function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}}, 
