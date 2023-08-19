@@ -1380,13 +1380,11 @@ function get_solution(𝓂::ℳ,
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-
         𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
     
         ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
                 
         𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
-
         𝓂.solution.perturbation.second_order_auxilliary_matrices, 
         𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
 

@@ -1802,7 +1802,6 @@ end
 
 
 
-
 function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool,
     tol::AbstractFloat = 1e-10)    
     len𝐒₁ = dims[1][1] * dims[1][2]
@@ -3286,7 +3285,6 @@ function solve_sylvester_equation_forward(concat_sparse_vec::SparseVector{Float6
     return 𝐒₂, info.solved
 end
 
-                                          
 function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = eps()) where {Z,S,N}
     nrows = length(V)
     ncols = length(V.nzval[1].partials)
@@ -3363,7 +3361,6 @@ end
 solve_sylvester_equation = ID.ImplicitFunction(solve_sylvester_equation_forward, solve_sylvester_equation_conditions)
 
 
-
 function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
                                             𝑺₁::AbstractMatrix{<: Real},#first order solution
@@ -3413,7 +3410,6 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
 
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
-
 
     𝐒₂, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
 
