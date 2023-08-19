@@ -3,9 +3,11 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
+- [ ] make higher order suable with zygote (currently only analytical pushforward, no implicitdiff)
 - [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
 - [ ] use more implicit diff for the other functions as well
 - [ ] add for loop parser in @parameters
+- [ ] compressed higher order derivatives and sparsity of jacobian
 - [ ] implement more multi country models
 - [ ] implement moment matching for pruned models
 - [ ] speed benchmarking (focus on ImplicitDiff part)

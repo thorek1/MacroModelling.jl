@@ -14,12 +14,12 @@ include("functionality_tests.jl")
     # Aqua.test_all(MacroModelling)
     @testset "Compare Project.toml and test/Project.toml" Aqua.test_project_extras(MacroModelling)
     @testset "Project.toml formatting" Aqua.test_project_toml_formatting(MacroModelling)
-    @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling)#;ignore = [:Aqua])# fix this to handle CondaPkg not being loaded/considered stale
+    @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling)#; ignore = [:Aqua, :JET])
     @testset "Unbound type parameters" Aqua.test_unbound_args(MacroModelling)
     @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
     @testset "Piracy" Aqua.test_piracy(MacroModelling)
     @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
-    @testset "Compat" Aqua.test_deps_compat(MacroModelling)
+    @testset "Compat" Aqua.test_deps_compat(MacroModelling)#; ignore = [:Aqua, :JET])
 end
 GC.gc()
 
@@ -35,6 +35,7 @@ end
 end
 Backus_Kehoe_Kydland_1992 = nothing
 GC.gc()
+
 
 
 @testset verbose = true "FS2000" begin

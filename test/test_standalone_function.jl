@@ -69,13 +69,13 @@ T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :
 
 first_order_solution, solved = calculate_first_order_solution(∇₁; T = T, explosive = false)# |> Matrix{Float32}
 
-second_order_solution = calculate_second_order_solution(∇₁, 
+second_order_solution, solved2 = calculate_second_order_solution(∇₁, 
 ∇₂, 
 first_order_solution, 
 RBC_CME.solution.perturbation.second_order_auxilliary_matrices; 
 T = T)
 
-third_order_solution = calculate_third_order_solution(∇₁, 
+third_order_solution, solved3 = calculate_third_order_solution(∇₁, 
 ∇₂, 
 ∇₃,
 first_order_solution, 
