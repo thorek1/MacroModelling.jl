@@ -1802,10 +1802,9 @@ end
 
 
 
-function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{Float64}, dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool;
+function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool,
     tol::AbstractFloat = 1e-10)    
     len𝐒₁ = dims[1][1] * dims[1][2]
-
 
     𝐒₁ = reshape(𝐒₁𝐒₂[1 : len𝐒₁],dims[1])
     𝐒₂ = sparse(reshape(𝐒₁𝐒₂[len𝐒₁ + 1 : end],dims[2]))
@@ -1845,7 +1844,7 @@ function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁
 end
 
 
-function second_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂::SparseVector, SSS, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
+function second_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂::SparseVector, SSS, converged::Bool; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
     len𝐒₁ = dims[1][1] * dims[1][2]
 
     𝐒₁ = reshape(𝐒₁𝐒₂[1 : len𝐒₁],dims[1])
@@ -1869,16 +1868,16 @@ function second_order_stochastic_steady_state_iterative_solution_conditions(𝐒
 end
 
 
-function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{ℱ.Dual{Z,S,N}}, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps()) where {Z,S,N}
+function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps()) where {Z,S,N}
     S₁S₂, ps = separate_values_and_partials_from_sparsevec_dual(𝐒₁𝐒₂)
 
     # get f(vs)
-    val, converged = second_order_stochastic_steady_state_iterative_solution_forward(S₁S₂, dims, 𝓂, pruning)
+    val, converged = second_order_stochastic_steady_state_iterative_solution_forward(S₁S₂; dims = dims, 𝓂 = 𝓂, pruning = pruning, tol = tol)
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(x, val, dims; 𝓂 = 𝓂, pruning = pruning, tol = tol), S₁S₂)
-        A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂, x, dims; 𝓂 = 𝓂, pruning = pruning, tol = tol), val)
+        B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, pruning = pruning, tol = tol), S₁S₂)
+        A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂, x, converged; dims = dims, 𝓂 = 𝓂, pruning = pruning, tol = tol), val)
 
         Â = RF.lu(A, check = false)
 
@@ -1917,11 +1916,11 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
     
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings)
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
-    state, converged = second_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂)], [size(𝐒₁); size(𝐒₂)]; 𝓂 = 𝓂, pruning = pruning)
+    state, converged = second_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂)]; dims = [size(𝐒₁); size(𝐒₂)], 𝓂 = 𝓂, pruning = pruning)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -1939,7 +1938,7 @@ end
 
 
 
-function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{Float64}, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
+function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
     len𝐒₁ = dims[1][1] * dims[1][2]
     len𝐒₂ = dims[2][1] * dims[2][2]
 
@@ -1983,7 +1982,7 @@ function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁�
 end
 
 
-function third_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂𝐒₃::SparseVector, SSS, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool)
+function third_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂𝐒₃::SparseVector, SSS, converged::Bool; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
     len𝐒₁ = dims[1][1] * dims[1][2]
     len𝐒₂ = dims[2][1] * dims[2][2]
 
@@ -2012,16 +2011,16 @@ third_order_stochastic_steady_state_iterative_solution = ID.ImplicitFunction(thi
                                                                                 third_order_stochastic_steady_state_iterative_solution_conditions; 
                                                                                 linear_solver = ID.DirectLinearSolver())
 
-function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{ℱ.Dual{Z,S,N}}, dims::Vector{Tuple{Int,Int}}; 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps()) where {Z,S,N}
+function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps()) where {Z,S,N}
     S₁S₂S₃, ps = separate_values_and_partials_from_sparsevec_dual(𝐒₁𝐒₂𝐒₃)
 
     # get f(vs)
-    val, converged = third_order_stochastic_steady_state_iterative_solution_forward(S₁S₂S₃, dims, 𝓂 = 𝓂, pruning = pruning, tol = tol)
+    val, converged = third_order_stochastic_steady_state_iterative_solution_forward(S₁S₂S₃; dims = dims, 𝓂 = 𝓂, pruning = pruning, tol = tol)
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, dims, 𝓂 = 𝓂, pruning = pruning), S₁S₂S₃)
-        A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, dims, 𝓂 = 𝓂, pruning = pruning), val)
+        B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, pruning = pruning, tol = tol), S₁S₂S₃)
+        A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, converged; dims = dims, 𝓂 = 𝓂, pruning = pruning, tol = tol), val)
         
         Â = RF.lu(A, check = false)
     
@@ -2055,15 +2054,15 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
     
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₂ = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
             
-    𝐒₃ = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
-    state, converged = third_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂); vec(𝐒₃)], [size(𝐒₁); size(𝐒₂); size(𝐒₃)]; 𝓂 = 𝓂, pruning = pruning)
+    state, converged = third_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂); vec(𝐒₃)]; dims = [size(𝐒₁); size(𝐒₂); size(𝐒₃)], 𝓂 = 𝓂, pruning = pruning)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -3226,6 +3225,7 @@ riccati_AD = ID.ImplicitFunction(riccati_forward,
                                     riccati_conditions; 
                                     linear_solver = ID.DirectLinearSolver())
 
+
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
     A, solved = riccati_AD(∇₁; T = T, explosive = explosive)
 
@@ -3244,10 +3244,16 @@ function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive
     return hcat(A, B), solved
 end
 
-function solve_sylvester_equation_conditions(BCX, S, solved)
-    (; B, C, X) = BCX
 
-    X + S - B * S * C
+function solve_sylvester_equation_conditions(concat_sparse_vec::SparseVector, S, solved; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps())
+    lenA = dims[1][1] * dims[1][2]
+    lenB = dims[2][1] * dims[2][2]
+
+    A = sparse(reshape(concat_sparse_vec[1 : lenA], dims[1]))
+    B = sparse(reshape(concat_sparse_vec[lenA .+ (1 : lenB)], dims[2]))
+    X = sparse(reshape(concat_sparse_vec[lenA + lenB + 1 : end], dims[3]))
+
+    X + S - A * S * B
 end
 
 function solve_sylvester_equation_forward(concat_sparse_vec::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps())
@@ -3352,6 +3358,7 @@ end
 
 solve_sylvester_equation = ID.ImplicitFunction(solve_sylvester_equation_forward, solve_sylvester_equation_conditions)
 
+
 function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
                                             𝑺₁::AbstractMatrix{<: Real},#first order solution
@@ -3402,11 +3409,11 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
 
-    𝐒₂ = solve_sylvester_equation([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
+    𝐒₂, solved = solve_sylvester_equation([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
 
     𝐒₂ *= M₂.𝐔₂
 
-    return 𝐒₂
+    return 𝐒₂, solved
 end
 
 
@@ -3492,11 +3499,11 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     C *= M₃.𝐂₃
     droptol!(C,tol)
 
-    𝐒₃ = solve_sylvester_equation([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
+    𝐒₃, solved = solve_sylvester_equation([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
     
     𝐒₃ *= M₃.𝐔₃
 
-    return 𝐒₃
+    return 𝐒₃, solved
 end
 
 
