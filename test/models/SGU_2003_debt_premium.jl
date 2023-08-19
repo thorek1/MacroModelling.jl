@@ -28,7 +28,7 @@
 end
 
 
-@parameters SGU_2003_debt_premium begin
+@parameters SGU_2003_debt_premium verbose = true begin
     β  = 1 / (1 + r̄)
 
 	γ = 2

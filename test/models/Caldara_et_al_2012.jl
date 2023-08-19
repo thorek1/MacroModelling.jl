@@ -27,7 +27,7 @@
 end
 
 
-@parameters Caldara_et_al_2012 begin
+@parameters Caldara_et_al_2012 verbose = true begin
 	β = 0.991
 
 	l[ss] = 1/3 | ν

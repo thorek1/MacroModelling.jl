@@ -1,5 +1,7 @@
 
-import MacroTools: postwalk, unblock
+import MacroTools: unblock, postwalk, @capture
+
+const all_available_algorithms = [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
 
 """
@@ -19,11 +21,12 @@ Endogenous variables can have the following:
 Signed integers are recognised and parsed as such.
 
 Exogenous variables (shocks) can have the following:
-- present: `c[x]` instead of `x` any of the following is also a valid flag for exogenous variables: `ex`, `exo`, `exogenous`, and the parser is case-insensitive (`Ex` or `exoGenous` will work as well).
-- past: `c[x-1]`
-- future: `c[x+1]`
+- present: `eps_z[x]` instead of `x` any of the following is also a valid flag for exogenous variables: `ex`, `exo`, `exogenous`, and the parser is case-insensitive (`Ex` or `exoGenous` will work as well).
+- past: `eps_z[x-1]`
+- future: `eps_z[x+1]`
 
 Parameters enter the equations without squared brackets.
+
 # Examples
 ```julia
 using MacroModelling
@@ -35,8 +38,38 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 ```
+
+# Programmatic model writing
+
+Parameters and variables can be indexed using curly braces: e.g. `c{H}[0]`, `eps_z{F}[x]`, or `α{H}`.
+
+`for` loops can be used to write models programmatically. They can either be used to generate expressions where you iterate over the time index or the index in curly braces:
+- generate equation with different indices in curly braces: `for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end`
+- generate multiple equations with different indices in curly braces: `for co in [H, F] K{co}[0] = (1-delta{co}) * K{co}[-1] + S{co}[0] end`
+- generate equation with different time indices: `Y_annual[0] = for lag in -3:0 Y[lag] end` or `R_annual[0] = for operator = :*, lag in -3:0 R[lag] end`
 """
-macro model(𝓂,ex)
+macro model(𝓂,ex...)
+    # parse options
+    verbose = false
+    precompile = false
+
+    for exp in ex[1:end-1]
+        postwalk(x -> 
+            x isa Expr ?
+                x.head == :(=) ?  
+                    x.args[1] == :verbose && x.args[2] isa Bool ?
+                        verbose = x.args[2] :
+                    x.args[1] == :precompile && x.args[2] isa Bool ?
+                        precompile = x.args[2] :
+                    begin
+                        @warn "Invalid options." 
+                        x
+                    end :
+                x :
+            x,
+        exp)
+    end
+
     # create data containers
     parameters = []
     parameter_values = Vector{Float64}(undef,0)
@@ -72,8 +105,10 @@ macro model(𝓂,ex)
     ss_eq_aux_ind = Int[]
     dyn_eq_aux_ind = Int[]
 
+    model_ex = parse_for_loops(ex[end])
+
     # write down dynamic equations and add auxilliary variables for leads and lags > 1
-    for (i,arg) in enumerate(ex.args)
+    for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
             # write down dynamic equations
             t_ex = postwalk(x -> 
@@ -230,7 +265,7 @@ macro model(𝓂,ex)
                         x.args[1] : 
                     unblock(x) : 
                 x,
-            ex.args[i])
+            model_ex.args[i])
 
             push!(dyn_equations,unblock(t_ex))
             
@@ -270,7 +305,11 @@ macro model(𝓂,ex)
                                     x :
                                 x.args[2].head == :call ? # nonnegative expressions
                                     begin
-                                        replacement = simplify(x.args[2])
+                                        if precompile
+                                            replacement = x.args[2]
+                                        else
+                                            replacement = simplify(x.args[2])
+                                        end
 
                                         if !(replacement isa Int) # check if the nonnegative term is just a constant
                                             if x.args[2] ∈ unique_➕_vars
@@ -314,8 +353,12 @@ macro model(𝓂,ex)
                                 x :
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
-                                    replacement = simplify(x.args[2])
-                                    
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
                                         if x.args[2] ∈ unique_➕_vars
                                             ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
@@ -354,8 +397,12 @@ macro model(𝓂,ex)
                                 x :
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
-                                    replacement = simplify(x.args[2])
-                                    
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
                                         if x.args[2] ∈ unique_➕_vars
                                             ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
@@ -395,7 +442,12 @@ macro model(𝓂,ex)
                                 x :
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
-                                    replacement = simplify(x.args[2])
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
                                     # println(replacement)
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
                                         if x.args[2] ∈ unique_➕_vars
@@ -436,7 +488,12 @@ macro model(𝓂,ex)
                                 x :
                             x.args[2].head == :call ? # nonnegative expressions
                                 begin
-                                    replacement = simplify(x.args[2])
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
                                     # println(replacement)
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
                                         if x.args[2] ∈ unique_➕_vars
@@ -460,7 +517,7 @@ macro model(𝓂,ex)
                         x :
                     x :
                 x,
-            ex.args[i])
+            model_ex.args[i])
             push!(ss_and_aux_equations,unblock(eqs))
         end
     end
@@ -544,9 +601,17 @@ macro model(𝓂,ex)
         prs_ex = convert_to_ss_equation(eq)
         
         if idx ∈ ss_eq_aux_ind
-            ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],simplify(unblock(prs_ex).args[3])) # simplify RHS if nonnegative auxilliary variable
+            if precompile
+                ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],unblock(prs_ex).args[3]) 
+            else
+                ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],simplify(unblock(prs_ex).args[3])) # simplify RHS if nonnegative auxilliary variable
+            end
         else
-            ss_aux_equation = simplify(unblock(prs_ex))
+            if precompile
+                ss_aux_equation = unblock(prs_ex)
+            else
+                ss_aux_equation = simplify(unblock(prs_ex))
+            end
         end
         ss_aux_equation_expr = if ss_aux_equation isa Symbol Expr(:call,:-,ss_aux_equation,0) else ss_aux_equation end
 
@@ -665,13 +730,13 @@ macro model(𝓂,ex)
 
     # println(ss_aux_equations)
     # write down original equations as written down in model block
-    for (i,arg) in enumerate(ex.args)
+    for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
             prs_exx = postwalk(x -> 
                 x isa Expr ? 
                     unblock(x) : 
                 x,
-            ex.args[i])
+            model_ex.args[i])
             push!(original_equations,unblock(prs_exx))
         end
     end
@@ -700,7 +765,7 @@ macro model(𝓂,ex)
     end
 
 
-    default_optimizer = NLopt.LD_LBFGS
+    # default_optimizer = nlboxsolve
     # default_optimizer = Optimisers.Adam
     # default_optimizer = NLopt.LN_BOBYQA
     
@@ -709,7 +774,7 @@ macro model(𝓂,ex)
     quote
        global $𝓂 =  ℳ(
                         $model_name,
-                        $default_optimizer,
+                        # $default_optimizer,
                         sort(collect($exo)), 
                         sort(collect($parameters_in_equations)), 
 
@@ -775,22 +840,27 @@ macro model(𝓂,ex)
                         $unique_lower_bounds,
                         $unique_upper_bounds,
 
-                        # x->x,
                         x->x,
+                        # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
                         [],#x->x,
                         [],#x->x,
 
                         $T,
 
                         solution(
-                            perturbation(  perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
+                            perturbation(   perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
                                             perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
-                                            higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x),
-                                            higher_order_perturbation_solution(Matrix{Float64}(undef,0,0), [],x->x)
+                                            perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
+                                            second_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [],x->x),
+                                            second_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [],x->x),
+                                            third_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [],x->x),
+                                            third_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [],x->x),
+                                            second_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
+                                            third_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
                             ),
                             Float64[], 
                             Set([:first_order]),
-                            Set([:linear_time_iteration, :riccati, :first_order, :second_order, :third_order]),
+                            Set(all_available_algorithms),
                             true,
                             false
                         )
@@ -818,8 +888,12 @@ Parameters can be defined in either of the following ways:
 - expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneaously with the non-stochastic steady state using the equation defined with it.
 
 # Optional arguments to be placed between `𝓂` and `ex`
-- `verbose` [Default: `false`]: print more information about how the non stochastic steady state is solved
-- `symbolic` [Default: `false`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
+- `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non stochastic steady state is solved
+- `silent` [Default: `false`, Type: `Bool`]: do not print any information
+- `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
+- `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. In case you want to work with higher order perturbation later on, respective derivatives will be taken at that stage.
+
+
 
 # Examples
 ```julia
@@ -840,16 +914,20 @@ end
     β = 0.95
 end
 ```
+
+# Programmatic model writing
+
+Variables and parameters indexed with curly braces can be either referenced specifically (e.g. `c{H}[ss]`) or generally (e.g. `alpha`). If they are referenced generaly the parse assumes all instances (indices) are meant. For example, in a model where `alpha` has two indices `H` and `F`, the expression `alpha = 0.3` is interpreted as two expressions: `alpha{H} = 0.3` and `alpha{F} = 0.3`. The same goes for calibration equations.
 """
 macro parameters(𝓂,ex...)
     calib_equations = []
     calib_equations_no_var = []
     calib_values_no_var = []
     
-    calib_parameters_no_var = []
+    calib_parameters_no_var = Symbol[]
     
-    calib_eq_parameters = []
-    calib_equations_list = []
+    calib_eq_parameters = Symbol[]
+    calib_equations_list = Expr[]
     
     ss_calib_list = []
     par_calib_list = []
@@ -860,8 +938,8 @@ macro parameters(𝓂,ex...)
     ss_no_var_calib_list = []
     par_no_var_calib_list = []
     
-    calib_parameters = []
-    calib_values = []
+    calib_parameters = Symbol[]
+    calib_values = Float64[]
 
     par_defined_more_than_once = Set()
     
@@ -869,7 +947,10 @@ macro parameters(𝓂,ex...)
 
     # parse options
     verbose = false
+    silent = false
     symbolic = false
+    precompile = false
+    perturbation_order = 1
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -879,6 +960,12 @@ macro parameters(𝓂,ex...)
                         symbolic = x.args[2] :
                     x.args[1] == :verbose && x.args[2] isa Bool ?
                         verbose = x.args[2] :
+                    x.args[1] == :silent && x.args[2] isa Bool ?
+                        silent = x.args[2] :
+                    x.args[1] == :precompile && x.args[2] isa Bool ?
+                        precompile = x.args[2] :
+                    x.args[1] == :perturbation_order && x.args[2] isa Int ?
+                        perturbation_order = x.args[2] :
                     begin
                         @warn "Invalid options." 
                         x
@@ -887,6 +974,8 @@ macro parameters(𝓂,ex...)
             x,
         exp)
     end
+
+    parameter_definitions = replace_indices(ex[end])
 
     # parse parameter inputs
     # label all variables parameters and exogenous vairables and timings across all equations
@@ -928,7 +1017,7 @@ macro parameters(𝓂,ex...)
                 x :
             x :
         x,
-    ex[end])
+    parameter_definitions)
 
 
 
@@ -949,11 +1038,16 @@ macro parameters(𝓂,ex...)
                         x :
                 x.args[2].head == :block ?
                     x.args[1].args[1] == :| ?
-                            x :
-                    begin # this is calibration by targeting SS values (conditional parameter at the end)
-                        if x.args[2].args[end].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end].args[end]) end
-                        push!(calib_eq_parameters,x.args[2].args[end].args[end])
-                        push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
+                        x :
+                    x.args[2].args[2].args[1] == :| ?
+                        begin # this is calibration by targeting SS values (conditional parameter at the end)
+                            if x.args[2].args[end].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end].args[end]) end
+                            push!(calib_eq_parameters,x.args[2].args[end].args[end])
+                            push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2].args[2])))
+                        end :
+                    begin 
+                        @warn "Invalid parameter input ignored: " * repr(x)
+                        x
                     end :
                 x.args[2].head == :call ?
                     x.args[1].args[1] == :| ?
@@ -966,7 +1060,7 @@ macro parameters(𝓂,ex...)
                 x :
             x :
         x,
-    ex[end])
+    parameter_definitions)
     
     @assert length(par_defined_more_than_once) == 0 "Parameters can only be defined once. This is not the case for: " * repr([par_defined_more_than_once...])
     
@@ -984,7 +1078,7 @@ macro parameters(𝓂,ex...)
     calib_parameters_no_var = setdiff(calib_parameters_no_var,calib_parameters)
     
     for (i, cal_eq) in enumerate(calib_equations)
-        ss_tmp = Set()
+        ss_tmp = Set{Symbol}()
         par_tmp = Set()
     
         # parse SS variables
@@ -1241,11 +1335,15 @@ macro parameters(𝓂,ex...)
         x,bound)
     end
 
-
     # println($m)
     return quote
         mod = @__MODULE__
-        @assert length(setdiff(setdiff(setdiff(union(reduce(union,$par_calib_list,init = []),mod.$𝓂.parameters_in_equations),$calib_parameters),$calib_parameters_no_var),$calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,$par_calib_list,init = []),mod.$𝓂.parameters_in_equations),$calib_parameters),$calib_parameters_no_var),$calib_eq_parameters)...])
+
+        calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
+        calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
+        calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
+
+        @assert length(setdiff(setdiff(setdiff(union(reduce(union, par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)...])
         
         $lower_bounds[indexin(intersect(mod.$𝓂.bounded_vars,$bounded_vars),$bounded_vars)] = max.(mod.$𝓂.lower_bounds[indexin(intersect(mod.$𝓂.bounded_vars,$bounded_vars),mod.$𝓂.bounded_vars)],$lower_bounds[indexin(intersect(mod.$𝓂.bounded_vars,$bounded_vars),$bounded_vars)])
 
@@ -1255,50 +1353,79 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.upper_bounds = vcat($upper_bounds, mod.$𝓂.upper_bounds[indexin(setdiff(mod.$𝓂.bounded_vars,$bounded_vars),mod.$𝓂.bounded_vars)])
         mod.$𝓂.bounded_vars = vcat($bounded_vars,setdiff(mod.$𝓂.bounded_vars,$bounded_vars))
 
+        # _, mod.$𝓂.upper_bounds = expand_indices(mod.$𝓂.bounded_vars, mod.$𝓂.upper_bounds, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
+        # mod.$𝓂.bounded_vars, mod.$𝓂.lower_bounds = expand_indices(mod.$𝓂.bounded_vars, mod.$𝓂.lower_bounds, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
+    
         @assert all(mod.$𝓂.lower_bounds .< mod.$𝓂.upper_bounds) "Invalid bounds: " * repr([mod.$𝓂.bounded_vars[findall(mod.$𝓂.lower_bounds .>= mod.$𝓂.upper_bounds)]...])
-
-        mod.$𝓂.ss_calib_list = $ss_calib_list
-        mod.$𝓂.par_calib_list = $par_calib_list
-
+    
+        mod.$𝓂.ss_calib_list = ss_calib_list
+        mod.$𝓂.par_calib_list = par_calib_list
+    
         mod.$𝓂.ss_no_var_calib_list = $ss_no_var_calib_list
         mod.$𝓂.par_no_var_calib_list = $par_no_var_calib_list
-
-        mod.$𝓂.parameters = $calib_parameters
-        mod.$𝓂.parameter_values = $calib_values
-        mod.$𝓂.calibration_equations = $calib_equations_list
-        mod.$𝓂.parameters_as_function_of_parameters = $calib_parameters_no_var
-        mod.$𝓂.calibration_equations_no_var = $calib_equations_no_var_list
-        mod.$𝓂.calibration_equations_parameters = $calib_eq_parameters
+    
+        mod.$𝓂.parameters = calib_parameters
+        mod.$𝓂.parameter_values = calib_values
+        mod.$𝓂.calibration_equations = calib_equations_list
+        mod.$𝓂.parameters_as_function_of_parameters = calib_parameters_no_var
+        mod.$𝓂.calibration_equations_no_var = calib_equations_no_var_list
+        mod.$𝓂.calibration_equations_parameters = calib_eq_parameters
         # mod.$𝓂.solution.outdated_NSSS = true
 
-        start_time = time()
         # time_symbolics = @elapsed 
-        symbolics = create_symbols_eqs!(mod.$𝓂)
         # time_rm_red_SS_vars = @elapsed 
-        remove_redundant_SS_vars!(mod.$𝓂, symbolics)
-        println("Remove redundant variables in non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds")
-        start_time = time()
+        if !$precompile 
+            start_time = time()
 
-        # time_SS_solve = @elapsed 
-        solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 1nd argument is SS_symbolic
-        println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds")
-        start_time = time()
+            symbolics = create_symbols_eqs!(mod.$𝓂)
+            remove_redundant_SS_vars!(mod.$𝓂, symbolics) 
 
+            if !$silent println("Remove redundant variables in non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
+
+
+            start_time = time()
+    
+            solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 2nd argument is SS_symbolic
+
+            if !$silent println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
+        else
+            start_time = time()
+        
+            solve_steady_state!(mod.$𝓂, verbose = $verbose)
+
+            if !$silent println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
+        end
+
+        start_time = time()
         # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(mod.$𝓂, symbolics)
-        println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
+        write_functions_mapping!(mod.$𝓂, $perturbation_order)
+
+        mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+        
+        if !$silent
+            if $perturbation_order == 1
+                println("Take symbolic derivatives up to first order:\t",round(time() - start_time, digits = 3), " seconds")
+            elseif $perturbation_order == 2
+                println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds")
+            elseif $perturbation_order == 3
+                println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
+            end
+        end
+
         start_time = time()
 
         mod.$𝓂.solution.functions_written = true
 
-        # time_SS_real_solve = @elapsed 
-        SS_and_pars, solution_error = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, false, $verbose)
-        println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds")
+        if !$precompile
+            # time_SS_real_solve = @elapsed 
+            SS_and_pars, solution_error = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose)
+            if !$silent println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds") end
 
-        mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
-        mod.$𝓂.solution.outdated_NSSS = false
+            mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
+            mod.$𝓂.solution.outdated_NSSS = false
+        end
 
-        Base.show(mod.$𝓂)
+        if !$silent Base.show(mod.$𝓂) end
         nothing
     end
 end

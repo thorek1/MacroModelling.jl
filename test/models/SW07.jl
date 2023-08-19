@@ -1,5 +1,3 @@
-m = nothing
-
 @model m begin
     a[0] = calfa * rkf[0] + (1 - calfa) * (wf[0])
 
@@ -84,7 +82,7 @@ m = nothing
 end
 
 
-@parameters m begin  
+@parameters m verbose = true begin  
     ctou=.025
     clandaw=1.5
     cg=0.18

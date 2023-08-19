@@ -1,7 +1,5 @@
 # Translated from: https://archives.dynare.org/documentation/examples.html
 
-m = nothing
-
 @model m begin
     dA[0] = exp(gam + z_e_a  *  e_a[x])
 
@@ -37,7 +35,7 @@ m = nothing
 end
 
 
-@parameters m begin  
+@parameters m verbose = true begin  
     alp     = 0.356
     bet     = 0.993
     gam     = 0.0085

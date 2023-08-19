@@ -42,9 +42,10 @@ Parameter definitions are similar to assigning values in julia. Note that we hav
 
 ## Plot impulse response functions (IRFs)
 
-Given the equations and parameters, we have everything to solve the model and do some analysis. A common output are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), [`plot_IRF`](@ref), or simply [`plot`](@ref)) will take care of this. In the background the package solves (symbolically in this simple case) for the non stochastic steady state (SS) and calculates the first order perturbation solution.
+Given the equations and parameters, we have everything to solve the model and do some analysis. A common output are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non stochastic steady state (SS) and calculates the first order perturbation solution.
 
 ```@repl tutorial_1
+import StatsPlots
 plot_irf(RBC)
 ```
 
@@ -68,7 +69,7 @@ First, the package finds the new steady state, solves the model dynamics around 
 
 ## Plot model simulation
 
-Another insightful output is simulations of the model. Here we can use the [`plot_simulations`](@ref) function. To the same effect we can use the [`plot`](@ref) function and specify in the `shocks` argument that we want to `:simulate` the model and set the `periods` argument to 100.
+Another insightful output is simulations of the model. Here we can use the [`plot_simulations`](@ref) function. Please note that you need to import the `StatsPlots` packages once before the first plot. To the same effect we can use the [`plot_irf`](@ref) function and specify in the `shocks` argument that we want to `:simulate` the model and set the `periods` argument to 100.
 
 ```@repl tutorial_1
 plot_simulations(RBC)
@@ -80,13 +81,13 @@ The plots show the models endogenous variables in response to random draws for a
 
 ## Plot specific series of shocks
 
-Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or `KeyedArray` of the series of shocks to the `shocks` argument of the [`plot`](@ref) function:
+Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or `KeyedArray` of the series of shocks to the `shocks` argument of the [`plot_irf`](@ref) function:
 
 ```@repl tutorial_1
 shock_series = zeros(1,4)
 shock_series[1,2] = 1
 shock_series[1,4] = -1
-plot(RBC, shocks = shock_series)
+plot_irf(RBC, shocks = shock_series)
 ```
 
 ![Series of shocks RBC](../assets/irf__RBC__shock_matrix__1.png)
@@ -147,7 +148,7 @@ get_solution(RBC)
 
 The solution provides information about how past states and present shocks impact present variables. The first row contains the SS for the variables denoted in the columns. The second to last rows contain the past states, with the time index `₍₋₁₎`, and present shocks, with exogenous variables denoted by `₍ₓ₎`. For example, the immediate impact of a shock to `eps_z` on `q` is 0.0688.
 
-There is also the possibility to visually inspect the solution using the [`plot_solution`](@ref) function:
+There is also the possibility to visually inspect the solution. Please note that you need to import the `StatsPlots` packages once before the first plot. We can use the [`plot_solution`](@ref) function:
 
 ```@repl tutorial_1
 plot_solution(RBC, :k)
@@ -174,7 +175,7 @@ For simulations this is possible by calling [`simulate`](@ref):
 simulate(RBC)
 ```
 
-which returns the simulated data in a 3-dimensional `KeyedArray` of the same structure as for the IRFs.
+which returns the simulated data in levels in a 3-dimensional `KeyedArray` of the same structure as for the IRFs.
 
 ## Conditional forecasts
 
@@ -205,17 +206,19 @@ Note that for the first 4 periods the shock has no predetermined value and is de
 Finally we can get the conditional forecast:
 
 ```@repl tutorial_1
-get_conditional_forecast(RBC, conditions, shocks = shocks)
+get_conditional_forecast(RBC, conditions, shocks = shocks, conditions_in_levels = false)
 ```
 
 The function returns a `KeyedArray` with the values of the endogenous variables and shocks matching the conditions exactly.
 
-We can also plot the conditional forecast using:
+We can also plot the conditional forecast. Please note that you need to import the `StatsPlots` packages once before the first plot. In order to plot we can use:
 
 ```@repl tutorial_1
-plot_conditional_forecast(RBC, conditions, shocks = shocks)
+plot_conditional_forecast(RBC, conditions, shocks = shocks, conditions_in_levels = false)
 ```
 
 ![RBC conditional forecast](../assets/conditional_fcst__RBC__conditional_forecast__1.png)
+
+and we need to set `conditions_in_levels = false` since the conditions are defined in deviations.
 
 Note that the stars indicate the values the model is conditioned on.

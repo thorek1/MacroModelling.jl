@@ -2,40 +2,92 @@
 
 ## High priority
 
+- [ ] implement occasionally binding constraints with shocks
+- [ ] make higher order suable with zygote (currently only analytical pushforward, no implicitdiff)
+- [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
+- [ ] use more implicit diff for the other functions as well
+- [ ] add for loop parser in @parameters
+- [ ] compressed higher order derivatives and sparsity of jacobian
+- [ ] implement more multi country models
+- [ ] implement moment matching for pruned models
+- [ ] speed benchmarking (focus on ImplicitDiff part)
 - [ ] add balanced growth path handling
-- [ ] flag if equations contaij no info for SS, suggest to set ss values as parameters
-- [ ] handle SS case where there are equations which have no information for the SS. use SS definitions in parameter block to complete system
-- [ ] weed out SS solver and saved objects
+- [ ] add JOSS article (see Makie.jl)
+- [ ] write docs for (non-linear) solution algorithms
+- [ ] for cond forecasting and kalman, get rid of observables input and use axis key of data input
+- [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
+- [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
+- [ ] when doing calibration with optimiser have better return values when he doesnt find a solution (probably NaN)
+- [ ] sampler returned negative std. investigate and come up with solution ensuring sampler can continue
+- [ ] automatically adjust plots for different legend widhts and heights
+- [ ] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
+- [ ] write to mod file for unicode characters. have them take what you would type: \alpha\bar
+- [ ] have get_std take variables as an input
+- [ ] more informative errors when something goes wrong when writing a model
+- [ ] initial state accept keyed array
+- [ ] bring solution error into an object of the model so we dont have to pass it on as output
+- [ ] check that there is an error if he cant find SS
+- [ ] plot_model_estimates with unconditional forecast at the end
+- [ ] check if you can do analytic derivatives for higher order derivatives
+- [ ] kick out unused parameters from m.parameters
+- [ ] higher order solution derivs with Zygote
+- [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
+- [ ] speed up sparse matrix calcs in implicit diff of higher order funcs
+- [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
 - [ ] streamline estimation part (dont do string matching... but rely on precomputed indices...)
 - [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
-- [ ] catch cases where you define calibration equation without declaring conditional variable
-- [ ] check out Aqua.jl as additional tests
 - [ ] write functions to debug (fix_SS.jl...)
-- [ ] parser model into per equation functions instead of single big functions
-- [ ] model compression -> model setup as maximisation problem (gEcon) -> HANK models
-- [ ] add other outputs from estimation (smoothed, filter states and shocks)
+- [ ] model compression (speed up 2nd moment calc (derivatives) for large models; gradient loglikelihood is very slow due to large matmuls) -> model setup as maximisation problem (gEcon) -> HANK models
 - [ ] implement global solution methods
 - [ ] add more models
 - [ ] plot multiple solutions or models - multioptions in one graph
-- [ ] write tests and documentation for solution, estimation... making sure results are consistent
 - [ ] write documentation/docstrings
 
 - [ ] use @assert for errors and @test_throws
-- [ ] print SS dependencies, show SS solver
-- [ ] speed up 2nd moment calc for large models. maybe its only the derivatives but its slow for SW03
-- [ ] make the nonnegativity trick optional
-- [ ] get parameters (in function of parameters) into the dependencies
-- [ ] for larger models write a model compression. gradient loglikelihood is very slow due to large matmuls
-- [ ] see if we can avoid try catch and test for invertability instead
+- [ ] print SS dependencies (get parameters (in function of parameters) into the dependencies), show SS solver
+- [ ] use strings instead of symbols internally
+- [ ] write how-to for calibration equations
+- [ ] have a look again at get_statistics function
+- [ ] make the nonnegativity trick optional or use nanmath?
 - [ ] use packages for kalman filter
 - [ ] clean up different parameter types
 - [ ] clean up printouts/reporting
 - [ ] clean up function inputs and harmonise AD and standard commands
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
-- [ ] have Flux solve SS field
-- [ ] check control flow in SS solver
-  
+- [ ] weed out SS solver and saved objects
+
+- [x] handle KeyedArrays with strings as dimension names as input- [x] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
+- [x] have for loop where the items are multiplied or divided or whatever, defined by operator | + or * only
+- [x] write documentation for string inputs
+- [x] write documentation for programmatic model writing
+- [x] input indices not as symbol
+- [x] make sure plots and printed output also uses strings instead of symbols if adequate
+- [x] have keyedarray with strings as axis type if necessary as output
+- [x] write test for keyedarray with strings as primary axis
+- [x] test string input
+- [x] have all functions accept strings and write tests for it
+- [x] parser model into per equation functions instead of single big functions
+- [x] use krylov instead of linearsolve
+- [x] implement for loops in model macro (e.g. to setup multi country models)
+- [x] fix ss of pruned solution in plotsolution. seems detached
+- [x] try solve first order with JuMP - doesnt work because JuMP cannot handle matrix constraints/objectives 
+- [x] get solution higher order with multidimensional array (states, 1 and 2 partial derivatives variables names as dimensions in 2order case)
+- [x] add pruning
+- [x] add other outputs from estimation (smoothed, filter states and shocks)
+- [x] shorten plot_irf (take inspiration from model estimate)
+- [x] fix solution plot
+- [x] see if we can avoid try catch and test for invertability instead
+- [x] have Flux solve SS field #gradient descent based is worse than LM based
+- [x] have parameters keyword accept Int and 2/3
+- [x] plot_solution colors change from 2nd to 2rd order
+- [x] custom LM: optimize for other RBC models, use third order backtracking
+- [x] add SSS for third order (can be different than the one from 2nd order, see Gali (2015)) in solution plot; also put legend to the bottom as with Condition
+- [x] check out Aqua.jl as additional tests
+- [x] write tests and documentation for solution, estimation... making sure results are consistent
+- [x] catch cases where you define calibration equation without declaring conditional variable
+- [x] flag if equations contain no info for SS, suggest to set ss values as parameters
+- [x] handle SS case where there are equations which have no information for the SS. use SS definitions in parameter block to complete system | no, set steady state values to parameters instead. might fail if redundant equation has y[0] - y[-1] instead of y[0] - y[ss]
 - [x] try eval instead of runtimegeneratedfunctions; eval is slower but can be typed
 - [x] check correctness of solution for models added
 - [x] SpecialFunctions eta and gamma cause conflicts; consider importing used functions explicitly
@@ -88,7 +140,6 @@
 - [ ] rewrite first order with riccati equation MatrixEquations.jl
 - [ ] exploit variable incidence and compression for higher order derivatives
 - [ ] for estimation use CUDA with st order: linear time iteration starting from last 1st order solution and then LinearSolveCUDA solvers for higher orders. this should bring benefits for large models and HANK models
-- [ ] test on highly [nonlinear model](https://www.sciencedirect.com/science/article/pii/S0165188917300970)
 - [ ] pull request in StatsFuns to have norminv... accept type numbers and add translation from matlab: norminv to StatsFuns norminvcdf
 - [ ] more informative errors when declaring equations/ calibration
 - [ ] unit equation errors
@@ -98,6 +149,7 @@
 - [ ] print legend for algorithm in last subplot of plot only
 - [ ] select variables for moments
 
+- [x] test on highly [nonlinear model](https://www.sciencedirect.com/science/article/pii/S0165188917300970) # caldara et al is actually epstein zin wiht stochastic vol
 - [x] conditional forecasting
 - [x] find way to recover from failed SS solution which is written to init guess
 - [x] redo ugly solution for selecting parameters to differentiate for
