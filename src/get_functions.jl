@@ -868,14 +868,18 @@ function get_irf(𝓂::ℳ;
         end
     end
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state - reference_steady_state[1:length(𝓂.var)]
+    unspecified_initial_state = initial_state == [0.0]
+
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state - reference_steady_state[1:𝓂.timings.nVars]
 
     if generalised_irf
         girfs =  girf(state_update,
                         SSS_delta,
                         levels ? reference_steady_state : SSS_delta,
                         pruning,
+                        unspecified_initial_state,
                         𝓂.timings; 
+                        algorithm = algorithm,
                         periods = periods, 
                         shocks = shocks, 
                         variables = variables, 
@@ -886,7 +890,9 @@ function get_irf(𝓂::ℳ;
                     initial_state, 
                     levels ? reference_steady_state : SSS_delta,
                     pruning,
+                    unspecified_initial_state,
                     𝓂.timings; 
+                    algorithm = algorithm,
                     periods = periods, 
                     shocks = shocks, 
                     variables = variables, 

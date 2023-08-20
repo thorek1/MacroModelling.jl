@@ -1802,8 +1802,7 @@ end
 
 
 
-function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool,
-    tol::AbstractFloat = 1e-10)    
+function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{Float64};  dims::Vector{Tuple{Int,Int}},  𝓂::ℳ, tol::AbstractFloat = eps())
     len𝐒₁ = dims[1][1] * dims[1][2]
 
     𝐒₁ = reshape(𝐒₁𝐒₂[1 : len𝐒₁],dims[1])
@@ -1816,35 +1815,21 @@ function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁
     1
     shock]
 
-    if pruning
-        pruned_aug_state = copy(aug_state)
-        
-        sol = speedmapping(state; 
-                    m! = (SSS, sss) -> begin 
-                                        aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
-                                                    1
-                                                    shock]
+    sol = speedmapping(state; 
+                m! = (SSS, sss) -> begin 
+                                    aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
+                                                1
+                                                shock]
 
-                                        SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(pruned_aug_state, pruned_aug_state) / 2
-                    end, 
-        tol = tol, maps_limit = 10000)
-    else
-        sol = speedmapping(state; 
-                    m! = (SSS, sss) -> begin 
-                                        aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
-                                                    1
-                                                    shock]
-
-                                        SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-                    end, 
-        tol = tol, maps_limit = 10000)
-    end
+                                    SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+                end, 
+    tol = tol, maps_limit = 10000)
     
     return sol.minimizer, sol.converged
 end
 
 
-function second_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂::SparseVector, SSS, converged::Bool; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
+function second_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂::SparseVector, SSS, converged::Bool; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps())
     len𝐒₁ = dims[1][1] * dims[1][2]
 
     𝐒₁ = reshape(𝐒₁𝐒₂[1 : len𝐒₁],dims[1])
@@ -1856,28 +1841,20 @@ function second_order_stochastic_steady_state_iterative_solution_conditions(𝐒
     1
     shock]
 
-    if pruning
-        pruned_aug_state = [zeros(𝓂.timings.nPast_not_future_and_mixed)
-        1
-        shock]
-        
-        return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(pruned_aug_state, pruned_aug_state) / 2 - SSS
-    else
-        return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 - SSS
-    end
+    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 - SSS
 end
 
 
-function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps()) where {Z,S,N}
+function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps()) where {Z,S,N}
     S₁S₂, ps = separate_values_and_partials_from_sparsevec_dual(𝐒₁𝐒₂)
 
     # get f(vs)
-    val, converged = second_order_stochastic_steady_state_iterative_solution_forward(S₁S₂; dims = dims, 𝓂 = 𝓂, pruning = pruning, tol = tol)
+    val, converged = second_order_stochastic_steady_state_iterative_solution_forward(S₁S₂; dims = dims, 𝓂 = 𝓂, tol = tol)
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, pruning = pruning, tol = tol), S₁S₂)
-        A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂, x, converged; dims = dims, 𝓂 = 𝓂, pruning = pruning, tol = tol), val)
+        B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂)
+        A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)
 
         Â = RF.lu(A, check = false)
 
@@ -1920,8 +1897,16 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
-    state, converged = second_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂)]; dims = [size(𝐒₁); size(𝐒₂)], 𝓂 = 𝓂, pruning = pruning)
+    if pruning
+        aug_state₁ = sparse([zeros(𝓂.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.timings.nExo)])
 
+        SSSstates = (ℒ.I - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]) \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx]
+
+        state = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
+        converged = true
+    else
+        state, converged = second_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂)]; dims = [size(𝐒₁); size(𝐒₂)], 𝓂 = 𝓂)
+    end
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     # all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
@@ -1938,7 +1923,7 @@ end
 
 
 
-function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
+function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps())
     len𝐒₁ = dims[1][1] * dims[1][2]
     len𝐒₂ = dims[2][1] * dims[2][2]
 
@@ -1953,36 +1938,21 @@ function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁�
     1
     shock]
 
-    if pruning
-        pruned_aug_state = copy(aug_state)
-        
-        sol = speedmapping(state; 
-            m! = (SSS, sss) -> begin 
-                                aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
-                                            1
-                                            shock]
+    sol = speedmapping(state; 
+                m! = (SSS, sss) -> begin 
+                                    aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
+                                                1
+                                                shock]
 
-                                SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(pruned_aug_state, pruned_aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(pruned_aug_state,pruned_aug_state),pruned_aug_state) / 6
-            end, 
-        tol = tol, maps_limit = 10000)
-    else
-        sol = speedmapping(state; 
-                    m! = (SSS, sss) -> begin 
-                                        aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
-                                                    1
-                                                    shock]
-    
-                                        SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-                    end, 
-        tol = tol, maps_limit = 10000)
-    end
-    
+                                    SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                end, 
+    tol = tol, maps_limit = 10000)
 
     return sol.minimizer, sol.converged
 end
 
 
-function third_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂𝐒₃::SparseVector, SSS, converged::Bool; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps())
+function third_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂𝐒₃::SparseVector, SSS, converged::Bool; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps())
     len𝐒₁ = dims[1][1] * dims[1][2]
     len𝐒₂ = dims[2][1] * dims[2][2]
 
@@ -1995,32 +1965,24 @@ function third_order_stochastic_steady_state_iterative_solution_conditions(𝐒�
     aug_state = [SSS[𝓂.timings.past_not_future_and_mixed_idx]
     1
     shock]
-    
-    if pruning
-        pruned_aug_state = [zeros(𝓂.timings.nPast_not_future_and_mixed)
-        1
-        shock]
-        
-        return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(pruned_aug_state, pruned_aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(pruned_aug_state,pruned_aug_state),pruned_aug_state) / 6 - SSS
-    else
-        return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6 - SSS
-    end
+
+    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6 - SSS
 end
 
 third_order_stochastic_steady_state_iterative_solution = ID.ImplicitFunction(third_order_stochastic_steady_state_iterative_solution_forward,
                                                                                 third_order_stochastic_steady_state_iterative_solution_conditions; 
                                                                                 linear_solver = ID.DirectLinearSolver())
 
-function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, pruning::Bool, tol::AbstractFloat = eps()) where {Z,S,N}
+function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps()) where {Z,S,N}
     S₁S₂S₃, ps = separate_values_and_partials_from_sparsevec_dual(𝐒₁𝐒₂𝐒₃)
 
     # get f(vs)
-    val, converged = third_order_stochastic_steady_state_iterative_solution_forward(S₁S₂S₃; dims = dims, 𝓂 = 𝓂, pruning = pruning, tol = tol)
+    val, converged = third_order_stochastic_steady_state_iterative_solution_forward(S₁S₂S₃; dims = dims, 𝓂 = 𝓂, tol = tol)
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, pruning = pruning, tol = tol), S₁S₂S₃)
-        A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, converged; dims = dims, 𝓂 = 𝓂, pruning = pruning, tol = tol), val)
+        B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂S₃)
+        A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)
         
         Â = RF.lu(A, check = false)
     
@@ -2062,7 +2024,16 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
-    state, converged = third_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂); vec(𝐒₃)]; dims = [size(𝐒₁); size(𝐒₂); size(𝐒₃)], 𝓂 = 𝓂, pruning = pruning)
+    if pruning
+        aug_state₁ = sparse([zeros(𝓂.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.timings.nExo)])
+        
+        SSSstates = (ℒ.I - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]) \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx]
+
+        state = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
+        converged = true
+    else
+        state, converged = third_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂); vec(𝐒₃)]; dims = [size(𝐒₁); size(𝐒₂); size(𝐒₃)], 𝓂 = 𝓂)
+    end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -2163,19 +2134,17 @@ function solve!(𝓂::ℳ;
                 any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
-            
+
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₂ = function(state::Vector{Float64}, shock::Vector{Float64}, pruned_state::Vector{Float64})
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                            1
-                            shock]
+            state_update₂ = function(pruned_states::Vector{Vector{Float64}}, shock::Vector{Float64})
+                aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+                aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                
+                pruned_states[1] .= 𝐒₁ * aug_state₁
+                pruned_states[2] .= 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
 
-                pruned_aug_state = [pruned_state[𝓂.timings.past_not_future_and_mixed_idx]
-                            1
-                            shock]
-
-                return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(pruned_aug_state, pruned_aug_state) / 2, 𝐒₁ * pruned_aug_state
+                return pruned_states[1] + pruned_states[2] # strictly following Andreasen et al. (2018)
             end
 
             𝓂.solution.perturbation.pruned_second_order = second_order_perturbation_solution(𝐒₂,stochastic_steady_state,state_update₂)
@@ -2207,16 +2176,19 @@ function solve!(𝓂::ℳ;
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₃ = function(state::Vector{Float64}, shock::Vector{Float64}, pruned_state::Vector{Float64})
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                                1
-                                shock]
+            state_update₃ = function(pruned_states::Vector{Vector{Float64}}, shock::Vector{Float64})
+                aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+                aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
+                aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                
+                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+                
+                pruned_states[1] .= 𝐒₁ * aug_state₁
+                pruned_states[2] .= 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2
+                pruned_states[3] .= 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6
 
-                pruned_aug_state = [pruned_state[𝓂.timings.past_not_future_and_mixed_idx]
-                            1
-                            shock]
-
-                return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(pruned_aug_state, pruned_aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(pruned_aug_state,pruned_aug_state),pruned_aug_state) / 6, 𝐒₁ * pruned_aug_state
+                return pruned_states[1] + pruned_states[2] + pruned_states[3]
             end
 
             𝓂.solution.perturbation.pruned_third_order = third_order_perturbation_solution(𝐒₃,stochastic_steady_state,state_update₃)
@@ -3516,7 +3488,9 @@ function irf(state_update::Function,
     initial_state::Vector{Float64}, 
     level::Vector{Float64}, 
     pruning::Bool, 
+    unspecified_initial_state::Bool,
     T::timings; 
+    algorithm::Symbol = :first_order,
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
@@ -3567,10 +3541,21 @@ function irf(state_update::Function,
         Y = zeros(T.nVars,periods,1)
 
         if pruning
-            Y[:,1,1], pruned_state = state_update(initial_state, shock_history[:,1], initial_state)
+            if algorithm == :pruned_second_order
+                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+                pruned_state² = copy(initial_state)
 
-            for t in 1:periods-1
-                Y[:,t+1,1], pruned_state = state_update(Y[:,t,1], shock_history[:,t+1], pruned_state)
+                for t in 1:periods
+                    Y[:,t,1] = state_update([pruned_state¹, pruned_state²], shock_history[:,t])
+                end
+            elseif algorithm == :pruned_third_order
+                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+                pruned_state² = copy(initial_state)
+                pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+
+                for t in 1:periods
+                    Y[:,t,1] = state_update([pruned_state¹, pruned_state², pruned_state³], shock_history[:,t])
+                end
             end
         else
             Y[:,1,1] = state_update(initial_state,shock_history[:,1])
@@ -3587,10 +3572,21 @@ function irf(state_update::Function,
         shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
         
         if pruning
-            Y[:,1,1], pruned_state = state_update(initial_state, shck, initial_state)
+            if algorithm == :pruned_second_order
+                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+                pruned_state² = copy(initial_state)
 
-            for t in 1:periods-1
-                Y[:,t+1,1], pruned_state = state_update(Y[:,t,1], shck, pruned_state)
+                for t in 1:periods
+                    Y[:,t,1] = state_update([pruned_state¹, pruned_state²], shck)
+                end
+            elseif algorithm == :pruned_third_order
+                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+                pruned_state² = copy(initial_state)
+                pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+
+                for t in 1:periods
+                    Y[:,t,1] = state_update([pruned_state¹, pruned_state², pruned_state³], shck)
+                end
             end
         else 
             Y[:,1,1] = state_update(initial_state,shck)
@@ -3611,10 +3607,21 @@ function irf(state_update::Function,
             end
 
             if pruning
-                Y[:,1,i], pruned_state = state_update(initial_state, shock_history[:,1], initial_state)
-
-                for t in 1:periods-1
-                    Y[:,t+1,i], pruned_state = state_update(Y[:,t,i], shock_history[:,t+1],pruned_state)
+                if algorithm == :pruned_second_order
+                    pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+                    pruned_state² = copy(initial_state)
+    
+                    for t in 1:periods
+                        Y[:,t,i] = state_update([pruned_state¹, pruned_state²], shock_history[:,t])
+                    end
+                elseif algorithm == :pruned_third_order
+                    pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+                    pruned_state² = copy(initial_state)
+                    pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+    
+                    for t in 1:periods
+                        Y[:,t,i] = state_update([pruned_state¹, pruned_state², pruned_state³], shock_history[:,t])
+                    end
                 end
             else
                 Y[:,1,i] = state_update(initial_state,shock_history[:,1])
@@ -3642,7 +3649,9 @@ function girf(state_update::Function,
     initial_state::Vector{Float64}, 
     level::Vector{Float64}, 
     pruning::Bool, 
+    unspecified_initial_state::Bool,
     T::timings; 
+    algorithm::Symbol = :first_order,
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
@@ -3683,14 +3692,20 @@ function girf(state_update::Function,
     var_idx = parse_variables_input_to_index(variables, T)
 
     Y = zeros(T.nVars, periods + 1, length(shock_idx))
-    
-    pruned_initial_state = copy(initial_state)
+
+    pruned_initial_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+    pruned_initial_state² = copy(initial_state)
+    pruned_initial_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
 
     for (i,ii) in enumerate(shock_idx)
         for draw in 1:draws
             for i in 1:warmup_periods
                 if pruning
-                    initial_state, pruned_initial_state = state_update(initial_state, randn(T.nExo), pruned_initial_state)
+                    if algorithm == :pruned_second_order
+                        initial_state = state_update([pruned_initial_state¹, pruned_initial_state²], randn(T.nExo))
+                    elseif algorithm == :pruned_third_order
+                        initial_state = state_update([pruned_initial_state¹, pruned_initial_state², pruned_initial_state³], randn(T.nExo))
+                    end
                 else
                     initial_state = state_update(initial_state, randn(T.nExo))
                 end
@@ -3707,8 +3722,25 @@ function girf(state_update::Function,
             end
 
             if pruning
-                Y1[:,1], pruned_state1 = state_update(initial_state, baseline_noise, pruned_initial_state)
-                Y2[:,1], pruned_state2 = state_update(initial_state, baseline_noise, pruned_initial_state)
+                if algorithm == :pruned_second_order
+                    Y1[:,1] = state_update([pruned_initial_state¹, pruned_initial_state²], baseline_noise)
+                    Y2[:,1] = state_update([pruned_initial_state¹, pruned_initial_state²], baseline_noise)
+
+                    pruned_initial_state¹₁ = copy(pruned_initial_state¹)
+                    pruned_initial_state¹₂ = copy(pruned_initial_state¹)
+                    pruned_initial_state²₁ = copy(pruned_initial_state²)
+                    pruned_initial_state²₂ = copy(pruned_initial_state²)
+                elseif algorithm == :pruned_third_order
+                    Y1[:,1] = state_update([pruned_initial_state¹, pruned_initial_state², pruned_initial_state³], baseline_noise)
+                    Y2[:,1] = state_update([pruned_initial_state¹, pruned_initial_state², pruned_initial_state³], baseline_noise)
+
+                    pruned_initial_state¹₁ = copy(pruned_initial_state¹)
+                    pruned_initial_state¹₂ = copy(pruned_initial_state¹)
+                    pruned_initial_state²₁ = copy(pruned_initial_state²)
+                    pruned_initial_state²₂ = copy(pruned_initial_state²)
+                    pruned_initial_state³₁ = copy(pruned_initial_state³)
+                    pruned_initial_state³₂ = copy(pruned_initial_state³)
+                end
             else
                 Y1[:,1] = state_update(initial_state, baseline_noise)
                 Y2[:,1] = state_update(initial_state, baseline_noise)
@@ -3718,8 +3750,13 @@ function girf(state_update::Function,
                 baseline_noise = randn(T.nExo)
 
                 if pruning
-                    Y1[:,t+1], pruned_state1 = state_update(Y1[:,t], baseline_noise, pruned_state1)
-                    Y2[:,t+1], pruned_state2 = state_update(Y2[:,t], baseline_noise + shock_history[:,t], pruned_state2)
+                    if algorithm == :pruned_second_order
+                        Y1[:,t+1] = state_update([pruned_initial_state¹₁, pruned_initial_state²₁], baseline_noise)
+                        Y2[:,t+1] = state_update([pruned_initial_state¹₂, pruned_initial_state²₂], baseline_noise + shock_history[:,t])
+                    elseif algorithm == :pruned_third_order
+                        Y1[:,t+1] = state_update([pruned_initial_state¹₁, pruned_initial_state²₁, pruned_initial_state³₁], baseline_noise)
+                        Y2[:,t+1] = state_update([pruned_initial_state¹₂, pruned_initial_state²₂, pruned_initial_state³₂], baseline_noise + shock_history[:,t])
+                    end
                 else
                     Y1[:,t+1] = state_update(Y1[:,t],baseline_noise)
                     Y2[:,t+1] = state_update(Y2[:,t],baseline_noise + shock_history[:,t])

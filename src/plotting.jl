@@ -409,6 +409,8 @@ function plot_irf(𝓂::ℳ;
         reference_steady_state = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
     end
 
+    unspecified_initial_state = initial_state == [0.0]
+
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
     
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
@@ -432,9 +434,29 @@ function plot_irf(𝓂::ℳ;
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
     if generalised_irf
-        Y = girf(state_update, SSS_delta, zeros(𝓂.timings.nVars), pruning, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
+        Y = girf(state_update, 
+                    SSS_delta, 
+                    zeros(𝓂.timings.nVars), 
+                    pruning, 
+                    unspecified_initial_state,
+                    𝓂.timings; 
+                    algorithm = algorithm,
+                    periods = periods, 
+                    shocks = shocks, 
+                    variables = variables, 
+                    negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
     else
-        Y = irf(state_update, initial_state, zeros(𝓂.timings.nVars), pruning, 𝓂.timings; periods = periods, shocks = shocks, variables = variables, negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        Y = irf(state_update, 
+                initial_state, 
+                zeros(𝓂.timings.nVars), 
+                pruning, 
+                unspecified_initial_state,
+                𝓂.timings; 
+                algorithm = algorithm,
+                periods = periods, 
+                shocks = shocks, 
+                variables = variables, 
+                negative_shock = negative_shock) .+ SSS_delta[var_idx]
     end
 
     if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
