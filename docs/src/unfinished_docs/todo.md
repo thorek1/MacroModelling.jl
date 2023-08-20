@@ -6,7 +6,11 @@
 - [ ] make higher order suable with zygote (currently only analytical pushforward, no implicitdiff)
 - [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
 - [ ] use more implicit diff for the other functions as well
+- [ ] write dynare model using function converting unicode to tab completion
+- [ ] nonlinear conditional forecasts
 - [ ] add for loop parser in @parameters
+- [ ] test pruning and add literature
+- [ ] include option to provide pruned states for irfs
 - [ ] compressed higher order derivatives and sparsity of jacobian
 - [ ] implement more multi country models
 - [ ] implement moment matching for pruned models
