@@ -54,7 +54,7 @@ The package contains the following models in the `models` folder:
 **Automatic declaration of variables and parameters**|yes|||||||||||||
 **Derivatives (Automatic Differentiation) wrt parameters**|yes|||||||||yes - for all 1st, 2nd order perturbation solution related output *if user supplied steady state equations*|||
 **Perturbation solution order**|1, 2, 3|k|1 to 5|1|1|1|1|1, 2, 3|1, 2, 3|1, 2|1||1 to 5|
-**Pruning**|yes|yes|tbc|||||tbc|tbc|tbc|||tbc|
+**Pruning**|yes|yes|yes|||||||yes||||
 **Automatic derivation of first order conditions**|||||||||||yes||
 **Handles occasionally binding constraints**||yes|yes|||yes||yes|yes|||yes||
 **Global solution**||||||||yes|yes|||yes||
