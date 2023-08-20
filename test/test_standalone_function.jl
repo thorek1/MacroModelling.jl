@@ -2,6 +2,7 @@ using SparseArrays
 using MacroModelling: timings
 using ForwardDiff, FiniteDifferences, Zygote
 import Optim, LineSearches
+import LinearAlgebra as ℒ
 
 
 @testset verbose = true "Basic model solution and std" begin
