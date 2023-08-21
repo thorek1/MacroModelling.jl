@@ -59,6 +59,8 @@ end
 SS_and_pars, _ = RBC_CME.SS_solve_func(RBC_CME.parameter_values, RBC_CME, true)
 
 get_irf(RBC_CME, algorithm = :third_order)
+get_irf(RBC_CME, algorithm = :pruned_third_order)
+get_irf(RBC_CME, algorithm = :pruned_second_order)
 
 ∇₁ = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, RBC_CME)
 ∇₂ = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
