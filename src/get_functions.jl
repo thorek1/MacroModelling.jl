@@ -1829,7 +1829,7 @@ autocorr = get_autocorrelation
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using the linearised solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
+Return the first and second moments of endogenous variables using the linearised or pruned higher order solutions. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
 
 # Arguments
 - $MODEL
@@ -1895,14 +1895,17 @@ And data, 4×6 Matrix{Float64}:
 function get_moments(𝓂::ℳ; 
     parameters = nothing,  
     non_stochastic_steady_state::Bool = true, 
+    mean::Bool = false,
     standard_deviation::Bool = true, 
     variance::Bool = false, 
     covariance::Bool = false, 
     derivatives::Bool = true,
     parameter_derivatives::Union{Symbol_input,String_input} = :all,
-    verbose::Bool = false)#limit output by selecting pars and vars like for plots and irfs!?
+    algorithm::Symbol = :first_order,
+    verbose::Bool = false,
+    silent::Bool = true)#limit output by selecting pars and vars like for plots and irfs!?
     
-    solve!(𝓂, parameters = parameters, verbose = verbose)
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, silent = silent)
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
@@ -1926,15 +1929,13 @@ function get_moments(𝓂::ℳ;
 
     NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
-    if length_par * length(NSSS) > 200 || (!variance && !standard_deviation && !non_stochastic_steady_state)
+    if length_par * length(NSSS) > 200 || (!variance && !standard_deviation && !non_stochastic_steady_state && !mean)
         derivatives = false
     end
 
-    if parameter_derivatives != :all && (variance || standard_deviation || non_stochastic_steady_state)
+    if parameter_derivatives != :all && (variance || standard_deviation || non_stochastic_steady_state || mean)
         derivatives = true
     end
-
-
 
 
     axis1 = 𝓂.var
@@ -2033,6 +2034,24 @@ function get_moments(𝓂::ℳ;
             
             st_dev =  KeyedArray(hcat(standard_dev,dst_dev);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
         end
+
+
+        if mean
+            axis2 = vcat(:Mean, 𝓂.parameters[param_idx])
+        
+            if any(x -> contains(string(x), "◖"), axis2)
+                axis2_decomposed = decompose_name.(axis2)
+                axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+            end
+
+            state_μ, ___ = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose)
+
+            state_μ_dev = ℱ.jacobian(x -> mean_parameter_derivatives(x, param_idx, 𝓂, algorithm = algorithm, verbose = verbose), 𝓂.parameter_values[param_idx])
+            
+            var_means =  KeyedArray(hcat(state_μ, state_μ_dev);  Variables = axis1, Mean_and_∂mean∂parameter = axis2)
+        end
+
+
     else
         if non_stochastic_steady_state
             axis1 = [𝓂.var...,𝓂.calibration_equations_parameters...]
@@ -2050,6 +2069,11 @@ function get_moments(𝓂::ℳ;
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
             axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+        end
+
+        if mean
+            state_μ, ___ = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose)
+            var_means = KeyedArray(state_μ;  Variables = axis1)
         end
 
         if variance
@@ -2075,6 +2099,9 @@ function get_moments(𝓂::ℳ;
     ret = []
     if non_stochastic_steady_state
         push!(ret,SS)
+    end
+    if mean
+        push!(ret,var_means)
     end
     if standard_deviation
         push!(ret,st_dev)
@@ -2265,3 +2292,9 @@ get_cov = get_covariance
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
 """
 cov = get_covariance
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `mean = true`, the default algorithm being `:pruned_second_order`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
+"""
+get_mean(args...; kwargs...) =  get_moments(args...; algorithm = :pruned_second_order, kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[1]
