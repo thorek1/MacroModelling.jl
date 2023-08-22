@@ -2849,6 +2849,24 @@ function covariance_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameter
 end
 
 
+# helper for get functions
+function mean_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; algorithm::Symbol = :pruned_second_order, verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    convert(Vector{ℱ.Dual{Z,S,N}}, calculate_mean(params, 𝓂, algorithm = algorithm, verbose = verbose)[1])
+end
+
+
+# helper for get functions
+function mean_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; algorithm::Symbol = :pruned_second_order, verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    convert(Vector{ℱ.Dual{Z,S,N}}, calculate_mean(params, 𝓂, algorithm = algorithm, verbose = verbose)[1])
+end
+
+
 
 function calculate_jacobian(parameters::Vector{M}, SS_and_pars::AbstractArray{N}, 𝓂::ℳ) where {M,N}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
@@ -3963,6 +3981,83 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
 end
 
 
+
+
+function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false, algorithm = :pruned_second_order, tol::Float64 = eps()) where T <: Real
+    @assert algorithm ∈ [:pruned_second_order, :pruned_third_order] "Theoretical mean only available for pruned second and third order perturbation solutions."
+
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+    
+    𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+    
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+
+    if algorithm == :pruned_third_order
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
+        
+        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+    end
+
+    augmented_states = vcat(𝓂.timings.past_not_future_and_mixed, :Volatility, 𝓂.timings.exo)
+
+    states_in_augmented_states      = augmented_states .∈ (𝓂.timings.past_not_future_and_mixed,)
+    shocks_in_augmented_states      = augmented_states .∈ (𝓂.timings.exo,)
+    volatility_in_augmented_states  = augmented_states .∈ ([:Volatility],)
+
+    kron_states     = ℒ.kron(states_in_augmented_states, states_in_augmented_states)
+    kron_shocks     = ℒ.kron(shocks_in_augmented_states, shocks_in_augmented_states)
+    kron_volatility = ℒ.kron(volatility_in_augmented_states, volatility_in_augmented_states)
+
+    # first order
+    states_to_variables¹ = sparse(𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed])
+
+    states_to_states¹ = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, 1:𝓂.timings.nPast_not_future_and_mixed]
+    shocks_to_states¹ = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+
+    # second order
+    states_to_variables²        = 𝐒₂[:, kron_states]
+    shocks_to_variables²        = 𝐒₂[:, kron_shocks]
+    volatility_to_variables²    = 𝐒₂[:, kron_volatility]
+
+    states_to_states²       = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_states] |> collect
+    shocks_to_states²       = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_shocks]
+    volatility_to_states²   = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_volatility]
+
+    kron_states_to_states¹ = ℒ.kron(states_to_states¹, states_to_states¹) |> collect
+    kron_shocks_to_states¹ = ℒ.kron(shocks_to_states¹, shocks_to_states¹)
+
+    n_sts = 𝓂.timings.nPast_not_future_and_mixed
+
+    # Set up in pruned state transition matrices
+    pruned_states_to_pruned_states = [  states_to_states¹       zeros(T,n_sts, n_sts)   zeros(T,n_sts, n_sts^2)
+                                        zeros(T,n_sts, n_sts)   states_to_states¹       states_to_states² / 2
+                                        zeros(T,n_sts^2, 2 * n_sts)                     kron_states_to_states¹   ]
+
+    pruned_states_to_variables = [states_to_variables¹  states_to_variables¹  states_to_variables² / 2]
+
+    pruned_states_vol_and_shock_effect = [  zeros(T,n_sts) 
+                                            vec(volatility_to_states²) / 2 + shocks_to_states² / 2 * vec(ℒ.I(𝓂.timings.nExo))
+                                            kron_shocks_to_states¹ * vec(ℒ.I(𝓂.timings.nExo))]
+
+    variables_vol_and_shock_effect = (vec(volatility_to_variables²) + shocks_to_variables² * vec(ℒ.I(𝓂.timings.nExo))) / 2
+
+    ## First-order moments, ie mean of variables
+    mean_of_pruned_states   = (ℒ.I - pruned_states_to_pruned_states) \ pruned_states_vol_and_shock_effect
+    mean_of_variables   = SS_and_pars[1:𝓂.timings.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
+    
+    if algorithm == :pruned_third_order
+        return states_μ .+ SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, 𝐒₃, ∇₃
+    else
+        return mean_of_variables, 𝐒₁, ∇₁, 𝐒₂, ∇₂
+    end
+end
+
+
+
 function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose::Bool = false, tol::AbstractFloat = eps())
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
@@ -4226,7 +4321,8 @@ end
         data = simulate(FS2000)[:,:,1]
         observables = [:c,:k]
         calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
-        # get_SSS(FS2000, silent = true)
+        get_mean(FS2000, silent = true)
+        get_SSS(FS2000, silent = true)
         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
         # import Plots, StatsPlots
