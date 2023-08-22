@@ -4050,7 +4050,7 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
     mean_of_variables   = SS_and_pars[1:𝓂.timings.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
     
     if algorithm == :pruned_third_order
-        return states_μ .+ SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, 𝐒₃, ∇₃
+        return mean_of_variables, 𝐒₁, ∇₁, 𝐒₂, ∇₂, 𝐒₃, ∇₃
     else
         return mean_of_variables, 𝐒₁, ∇₁, 𝐒₂, ∇₂
     end
