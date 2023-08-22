@@ -62,7 +62,7 @@ export get_irfs, get_irf, get_IRF, simulate, get_simulation
 export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS
-export get_moments, get_statistics, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_cov, var, std, cov
+export get_moments, get_statistics, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_cov, var, std, cov, get_mean
 export get_autocorrelation, get_correlation, get_variance_decomposition, get_corr, get_autocorr, get_var_decomp, corr, autocorr
 export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
@@ -3984,6 +3984,7 @@ end
 
 
 function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false, algorithm = :pruned_second_order, tol::Float64 = eps()) where T <: Real
+    # Theoretical mean identical for 2nd and 3rd order pruned solution.
     @assert algorithm ∈ [:pruned_second_order, :pruned_third_order] "Theoretical mean only available for pruned second and third order perturbation solutions."
 
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
@@ -3995,12 +3996,6 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
-
-    if algorithm == :pruned_third_order
-        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
-        
-        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
-    end
 
     augmented_states = vcat(𝓂.timings.past_not_future_and_mixed, :Volatility, 𝓂.timings.exo)
 
@@ -4049,11 +4044,7 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
     mean_of_pruned_states   = (ℒ.I - pruned_states_to_pruned_states) \ pruned_states_vol_and_shock_effect
     mean_of_variables   = SS_and_pars[1:𝓂.timings.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
     
-    if algorithm == :pruned_third_order
-        return mean_of_variables, 𝐒₁, ∇₁, 𝐒₂, ∇₂, 𝐒₃, ∇₃
-    else
-        return mean_of_variables, 𝐒₁, ∇₁, 𝐒₂, ∇₂
-    end
+    return mean_of_variables, 𝐒₁, ∇₁, 𝐒₂, ∇₂
 end
 
 
