@@ -120,6 +120,135 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
 
 
 
+
+                # higher order solutions moment helper functions
+
+
+function bivariate_moment(moment::Vector{Int}, rho::Int)::Int
+    if (moment[1] + moment[2]) % 2 == 1
+        return 0
+    end
+
+    result = 1
+    coefficient = 1
+    odd_value = 2 * (moment[1] % 2)
+
+    for j = 1:min(moment[1] ÷ 2, moment[2] ÷ 2)
+        coefficient *= 2 * (moment[1] ÷ 2 + 1 - j) * (moment[2] ÷ 2 + 1 - j) * rho^2 / (j * (2 * j - 1 + odd_value))
+        result += coefficient
+    end
+
+    if odd_value == 2
+        result *= rho
+    end
+
+    result *= prod(1:2:moment[1]) * prod(1:2:moment[2])
+
+    return result
+end
+
+
+function product_moments(V, ii, nu)
+    s = sum(nu)
+
+    if s == 0
+        return 1
+    elseif isodd(s)
+        return 0
+    end
+
+    mask = .!(nu .== 0)
+    nu = nu[mask]
+    ii = ii[mask]
+    V = V[ii, ii]
+
+    m, s2 = length(ii), s / 2
+
+    if m == 1
+        return (V^s2 * prod(1:2:s-1))[1]
+    elseif m == 2
+        if V[1,1]==0 || V[2,2]==0
+            return 0
+        end
+        rho = V[1, 2] / sqrt(V[1, 1] * V[2, 2])
+        return (V[1, 1]^(nu[1] / 2) * V[2, 2]^(nu[2] / 2) * bivariate_moment(nu, Int(rho)))[1]
+    end
+
+    nu, inu = sort(nu, dims=2, rev=true)
+    V = V[inu, inu]
+
+    x = zeros(Int, 1, m)
+    V = V / 2
+    nu2 = nu / 2
+    p = 2
+    q = nu2' * V * nu2
+    y = 0
+
+    for _ in 1:round(Int, prod(nu .+ 1) / 2)
+        y += p * q^s2
+        for j in 1:m
+            if x[j] < nu[j]
+                x[j] += 1
+                p = -round(p * (nu[j] + 1 - x[j]) / x[j])
+                q -= 2 * (nu2 .- x) * V[:, j] + V[j, j]
+                break
+            else
+                x[j] = 0
+                p = isodd(nu[j]) ? -p : p
+                q += 2 * nu[j] * (nu2 .- x) * V[:, j] - nu[j]^2 * V[j, j]
+            end
+        end
+    end
+
+    return (y / prod(1:s2))[1]
+end
+
+
+function multiplicate(p::Int, order::Int)
+    # precompute p powers
+    pⁿ = [p^i for i in 0:order-1]
+
+    DP = spzeros(Bool, p^order, prod(p - 1 .+ (1:order)) ÷ factorial(order))
+
+    binom_p_ord = binomial(p + order - 1, order)
+
+    # Initialize index and binomial arrays
+    indexes = ones(Int, order)  # Vector to hold current indexes
+    binomials = zeros(Int, order)  # Vector to hold binomial values
+
+    # Helper function to handle the nested loops
+    function loop(level::Int)
+        for i=1:p
+            indexes[level] = i
+            binomials[level] = binomial(p + level - 1 - i, level)
+
+            if level < order  # If not at innermost loop yet, continue nesting
+                loop(level + 1)
+            else  # At innermost loop, perform calculation
+                n = sum((indexes[k] - 1) * pⁿ[k] for k in 1:order)
+                m = binom_p_ord - sum(binomials[k] for k in 1:order)
+                DP[n+1, m] = 1  # Arrays are 1-indexed in Julia
+            end
+        end
+    end
+
+    loop(1)  # Start the recursive loop
+
+    return DP
+end
+
+
+function generateSumVectors(vectorLength::Int, totalSum::Int)
+    # Base case: if vectorLength is 1, return totalSum
+    if vectorLength == 1
+        return [totalSum]
+    end
+
+    # Recursive case: generate all possible vectors for smaller values of vectorLength and totalSum
+    return [[currentInt; smallerVector...]'; for currentInt in totalSum:-1:0 for smallerVector in generateSumVectors(vectorLength-1, totalSum-currentInt)]
+end
+
+
 function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
     return filter(r -> match(pattern, string(r)) !== nothing, strings)
 end
@@ -2849,6 +2978,26 @@ function covariance_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameter
 end
 
 
+
+
+# helper for get functions
+function covariance_parameter_derivatives_second_order(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_covariance(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
+end
+
+
+# helper for get functions
+function covariance_parameter_derivatives_second_order(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_covariance(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
+end
+
+
 # helper for get functions
 function mean_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; algorithm::Symbol = :pruned_second_order, verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
@@ -4049,6 +4198,192 @@ end
 
 
 
+
+function calculate_second_order_covariance_forward(AC::AbstractVector{Float64}; dims::Vector{Tuple{Int,Int}})
+    lenA = dims[1][1] * dims[1][2]
+
+    A = reshape(AC[1 : lenA],dims[1])
+    C = reshape(AC[lenA + 1 : end],dims[2])
+
+    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), false, false, 
+    (sol,𝐱) -> begin 
+        𝐗 = sparse(reshape(𝐱, size(C)))
+        sol .= vec(A * 𝐗 * A' - 𝐗)
+        return sol
+    end)
+
+    𝐂, info = Krylov.bicgstab(sylvester, vec(-C))
+
+    if !info.solved
+        𝐂, info = Krylov.gmres(sylvester, vec(-C))
+    end
+
+    return reshape(𝐂,size(C)), info.solved # return info on convergence
+end
+
+
+
+function calculate_second_order_covariance_conditions(AC::AbstractVector{<: Real}, covar::AbstractMatrix{<: Real}, solved::Bool; dims::Vector{Tuple{Int,Int}})
+    lenA = dims[1][1] * dims[1][2]
+
+    A = reshape(AC[1 : lenA],dims[1])
+    C = reshape(AC[lenA + 1 : end],dims[2])
+
+    A * covar * A' + C - covar
+end
+
+
+
+function calculate_second_order_covariance_forward(AC::AbstractVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}) where {Z,S,N}
+    # unpack: AoS -> SoA
+    ACv = ℱ.value.(AC)
+
+    # you can play with the dimension here, sometimes it makes sense to transpose
+    partials = mapreduce(ℱ.partials, hcat, AC)'
+
+    val, solved = calculate_second_order_covariance_forward(ACv, dims = dims)
+
+    # get J(f, vs) * ps (cheating). Write your custom rule here
+    BB = ℱ.jacobian(x -> calculate_second_order_covariance_conditions(x, val, solved, dims = dims), ACv)
+    AA = ℱ.jacobian(x -> calculate_second_order_covariance_conditions(𝑺₁̂, x, solved, dims = dims), val)
+
+    Â = RF.lu(AA, check = false)
+
+    if !ℒ.issuccess(Â)
+        Â = ℒ.svd(AA)
+    end
+    
+    jvp = -(Â \ BB) * partials
+
+    # pack: SoA -> AoS
+    return reshape(map(val, eachrow(jvp)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end,size(val)), solved
+end
+
+calculate_second_order_covariance_AD = ID.ImplicitFunction(calculate_second_order_covariance_forward, 
+                                                calculate_second_order_covariance_conditions; 
+                                                linear_solver = ID.DirectLinearSolver())
+
+
+
+function calculate_second_order_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false, tol::AbstractFloat = eps())
+    covar_raw, 𝐒₁, ∇₁, SS_and_pars = calculate_covariance(parameters, 𝓂, verbose = verbose)
+
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+    
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+
+    augmented_states = vcat(𝓂.timings.past_not_future_and_mixed, :Volatility, 𝓂.timings.exo)
+
+    states_in_augmented_states      = augmented_states .∈ (𝓂.timings.past_not_future_and_mixed,)
+    shocks_in_augmented_states      = augmented_states .∈ (𝓂.timings.exo,)
+    volatility_in_augmented_states  = augmented_states .∈ ([:Volatility],)
+
+    kron_states     = ℒ.kron(states_in_augmented_states, states_in_augmented_states)
+    kron_shocks     = ℒ.kron(shocks_in_augmented_states, shocks_in_augmented_states)
+    kron_volatility = ℒ.kron(volatility_in_augmented_states, volatility_in_augmented_states)
+
+    # first order
+    states_to_variables¹ = sparse(𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed])
+
+    states_to_states¹ = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, 1:𝓂.timings.nPast_not_future_and_mixed]
+    shocks_to_states¹ = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+
+    shocks_to_variables¹ = 𝐒₁[:, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+
+    # second order
+    states_to_variables²        = 𝐒₂[:, kron_states]
+    shocks_to_variables²        = 𝐒₂[:, kron_shocks]
+    volatility_to_variables²    = 𝐒₂[:, kron_volatility]
+
+    states_to_states²       = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_states] |> collect
+    shocks_to_states²       = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_shocks]
+    volatility_to_states²   = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_volatility] |> collect
+    shocks_states_to_states²= 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, ℒ.kron(states_in_augmented_states, shocks_in_augmented_states)]
+
+    shocks_to_variables²       = 𝐒₂[:, kron_shocks]
+    shocks_states_to_variables²       = 𝐒₂[:, ℒ.kron(states_in_augmented_states, shocks_in_augmented_states)]
+
+    kron_states_to_states¹ = ℒ.kron(states_to_states¹, states_to_states¹) |> collect
+    kron_shocks_to_states¹ = ℒ.kron(shocks_to_states¹, shocks_to_states¹)
+    kron_states_shocks_to_states¹ = ℒ.kron(states_to_states¹, shocks_to_states¹)
+
+    n_sts = 𝓂.timings.nPast_not_future_and_mixed
+    
+    I_and_K_x_x = sparse(reshape(ℒ.kron(vec(ℒ.I(n_sts)), ℒ.I(n_sts)), n_sts^2, n_sts^2) + ℒ.I)
+
+    # # Set up in pruned state transition matrices
+    pruned_states_to_pruned_states = [   states_to_states¹       zeros(n_sts, n_sts) zeros(n_sts, n_sts^2)
+                                        zeros(n_sts, n_sts) states_to_states¹       states_to_states² / 2
+                                        zeros(n_sts^2, 2 * n_sts)                   kron_states_to_states¹   ]
+
+    shocks_to_augemented_states = [ shocks_to_states¹   zeros(n_sts,𝓂.timings.nExo^2 + 𝓂.timings.nExo * n_sts)
+                                    zeros(n_sts,𝓂.timings.nExo)  shocks_to_states² / 2   shocks_states_to_states²
+                                    zeros(n_sts^2,𝓂.timings.nExo)  kron_shocks_to_states¹  I_and_K_x_x * kron_states_shocks_to_states¹]
+
+    pruned_states_to_variables = [states_to_variables¹  states_to_variables¹  states_to_variables² / 2]
+
+    shocks_to_variables = [shocks_to_variables¹  shocks_to_variables² / 2  shocks_states_to_variables²]
+
+    pruned_states_vol_and_shock_effect = [  zeros(n_sts) 
+                                            vec(volatility_to_states²) / 2 + shocks_to_states² / 2 * vec(ℒ.I(𝓂.timings.nExo))
+                                            kron_shocks_to_states¹ * vec(ℒ.I(𝓂.timings.nExo))]
+
+    
+    variables_vol_and_shock_effect = (vec(volatility_to_variables²) + shocks_to_variables² * vec(ℒ.I(𝓂.timings.nExo))) / 2
+
+    ## First-order moments, ie mean of variables
+    mean_of_pruned_states   = (ℒ.I - pruned_states_to_pruned_states) \ pruned_states_vol_and_shock_effect
+    mean_of_variables   = SS_and_pars[1:𝓂.timings.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
+
+
+
+    # Covariance
+    E_u_u_u_u = zeros(𝓂.timings.nExo * (𝓂.timings.nExo + 1)÷2 * (𝓂.timings.nExo + 2)÷3 * (𝓂.timings.nExo + 3)÷4)
+    
+    quadrup = multiplicate(𝓂.timings.nExo, 4)
+    
+    SumVectors = reduce(vcat, generateSumVectors(𝓂.timings.nExo, 4))
+    
+    SumVectors = SumVectors isa Int64 ? reshape([SumVectors],1,1) : SumVectors
+    
+    for j4 = 1:size(SumVectors,1)
+        E_u_u_u_u[j4] = product_moments(ℒ.I(𝓂.timings.nExo), 1:𝓂.timings.nExo, SumVectors[j4,:])
+    end
+
+    C₂z₁ = covar_raw[𝓂.timings.past_not_future_and_mixed_idx, 𝓂.timings.past_not_future_and_mixed_idx]
+
+    Γ₂₂ = [ ℒ.I(𝓂.timings.nExo)             zeros(𝓂.timings.nExo, 𝓂.timings.nExo^2 + 𝓂.timings.nExo * n_sts)
+            zeros(n_sts, 𝓂.timings.nExo)    reshape(quadrup * E_u_u_u_u, 𝓂.timings.nExo^2, 𝓂.timings.nExo^2) - vec(ℒ.I(𝓂.timings.nExo)) * vec(ℒ.I(𝓂.timings.nExo))'     zeros(n_sts, 𝓂.timings.nExo * n_sts)
+            zeros(n_sts * 𝓂.timings.nExo, 𝓂.timings.nExo + 𝓂.timings.nExo^2)    ℒ.kron(C₂z₁, ℒ.I(𝓂.timings.nExo))]
+
+
+    CC = shocks_to_augemented_states * Γ₂₂ * shocks_to_augemented_states'
+    
+    # if size(initial_guess) == (0,0)
+    #     initial_guess = collect(CC)
+    # end
+    
+    # soll = speedmapping(collect(CC); m! = (C₂z₂, c₂z₂) -> C₂z₂ .= pruned_states_to_pruned_states * c₂z₂ * pruned_states_to_pruned_states' + CC, stabilize = true)
+
+    # Σ̂ = soll.minimizer
+    
+    # if !soll.converged
+    #     return fill(Inf,T.nVars), fill(Inf,T.nVars,T.nVars)
+    # end
+    
+    Σ̂, info = calculate_second_order_covariance_AD([vec(pruned_states_to_pruned_states); vec(CC)], dims = [size(pruned_states_to_pruned_states) ;size(CC)])
+    
+    Σ₂ = pruned_states_to_variables * Σ̂ * pruned_states_to_variables' + shocks_to_variables * Γ₂₂ * shocks_to_variables'
+
+    return Σ₂, mean_of_variables, covar_raw, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
+end
+
+
+
+
+
 function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose::Bool = false, tol::AbstractFloat = eps())
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
@@ -4248,79 +4583,79 @@ end
 
 
 
-@setup_workload begin
-    # Putting some things in `setup` can reduce the size of the
-    # precompile file and potentially make loading faster.
-    @model FS2000 precompile = true begin
-        dA[0] = exp(gam + z_e_a  *  e_a[x])
-        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-        W[0] = l[0] / n[0]
-        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-        P[0] * c[0] = m[0]
-        m[0] - 1 + d[0] = l[0]
-        e[0] = exp(z_e_a  *  e_a[x])
-        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-        gy_obs[0] = dA[0] * y[0] / y[-1]
-        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-        log_gy_obs[0] = log(gy_obs[0])
-        log_gp_obs[0] = log(gp_obs[0])
-    end
+# @setup_workload begin
+#     # Putting some things in `setup` can reduce the size of the
+#     # precompile file and potentially make loading faster.
+#     @model FS2000 precompile = true begin
+#         dA[0] = exp(gam + z_e_a  *  e_a[x])
+#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#         W[0] = l[0] / n[0]
+#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#         P[0] * c[0] = m[0]
+#         m[0] - 1 + d[0] = l[0]
+#         e[0] = exp(z_e_a  *  e_a[x])
+#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#         gy_obs[0] = dA[0] * y[0] / y[-1]
+#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#         log_gy_obs[0] = log(gy_obs[0])
+#         log_gp_obs[0] = log(gp_obs[0])
+#     end
 
-    @parameters FS2000 silent = true precompile = true begin  
-        alp     = 0.356
-        bet     = 0.993
-        gam     = 0.0085
-        mst     = 1.0002
-        rho     = 0.129
-        psi     = 0.65
-        del     = 0.01
-        z_e_a   = 0.035449
-        z_e_m   = 0.008862
-    end
+#     @parameters FS2000 silent = true precompile = true begin  
+#         alp     = 0.356
+#         bet     = 0.993
+#         gam     = 0.0085
+#         mst     = 1.0002
+#         rho     = 0.129
+#         psi     = 0.65
+#         del     = 0.01
+#         z_e_a   = 0.035449
+#         z_e_m   = 0.008862
+#     end
     
-    ENV["GKSwstype"] = "nul"
+#     ENV["GKSwstype"] = "nul"
 
-    @compile_workload begin
-        # all calls in this block will be precompiled, regardless of whether
-        # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC precompile = true begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
+#     @compile_workload begin
+#         # all calls in this block will be precompiled, regardless of whether
+#         # they belong to your package or not (on Julia 1.8 and higher)
+#         @model RBC precompile = true begin
+#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#         end
 
-        @parameters RBC silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
+#         @parameters RBC silent = true precompile = true begin
+#             δ = 0.02
+#             α = 0.5
+#         end
 
-        get_SS(FS2000)
-        get_SS(FS2000, parameters = :alp => 0.36)
-        get_solution(FS2000)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)
+#         get_SS(FS2000)
+#         get_SS(FS2000, parameters = :alp => 0.36)
+#         get_solution(FS2000)
+#         get_solution(FS2000, parameters = :alp => 0.35)
+#         get_standard_deviation(FS2000)
+#         get_correlation(FS2000)
+#         get_autocorrelation(FS2000)
+#         get_variance_decomposition(FS2000)
+#         get_conditional_variance_decomposition(FS2000)
+#         get_irf(FS2000)
 
-        data = simulate(FS2000)[:,:,1]
-        observables = [:c,:k]
-        calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
-        get_mean(FS2000, silent = true)
-        get_SSS(FS2000, silent = true)
-        # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#         data = simulate(FS2000)[:,:,1]
+#         observables = [:c,:k]
+#         calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
+#         get_mean(FS2000, silent = true)
+#         get_SSS(FS2000, silent = true)
+#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-        # import Plots, StatsPlots
-        # plot_irf(FS2000)
-        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        # plot_conditional_variance_decomposition(FS2000)
-    end
-end
+#         # import Plots, StatsPlots
+#         # plot_irf(FS2000)
+#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#         # plot_conditional_variance_decomposition(FS2000)
+#     end
+# end
 
 end

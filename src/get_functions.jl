@@ -1993,12 +1993,23 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            if algorithm == :pruned_second_order
+                covar_dcmp, state_μ, ______, _____, ____, ___, __, _ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+                dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
+
+                if mean
+                    var_means = KeyedArray(state_μ;  Variables = axis1)
+                end
+            else
+                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+                dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
+            end
 
             vari = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
 
             # dvariance = ℱ.jacobian(x-> convert(Vector{Number},max.(ℒ.diag(calculate_covariance(x, 𝓂)),eps(Float64))), Float64.(𝓂.parameter_values))
-            dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
             
             
             varrs =  KeyedArray(hcat(vari,dvariance);  Variables = axis1, Variance_and_∂variance∂parameter = axis2)
@@ -2012,7 +2023,12 @@ function get_moments(𝓂::ℳ;
                 end
     
                 standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
-                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+
+                if algorithm == :pruned_second_order
+                    dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                else
+                    dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                end
 
                 st_dev =  KeyedArray(hcat(standard_dev,dst_dev);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
             end
@@ -2026,17 +2042,27 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            if algorithm == :pruned_second_order
+                covar_dcmp, state_μ, ______, _____, ____, ___, __, _ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+
+                if mean
+                    var_means = KeyedArray(state_μ;  Variables = axis1)
+                end
+            else
+                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                
+                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+            end
 
             standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
 
-            dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
-            
             st_dev =  KeyedArray(hcat(standard_dev,dst_dev);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
         end
 
 
-        if mean
+        if mean && !(variance || standard_deviation || covariance)
             axis2 = vcat(:Mean, 𝓂.parameters[param_idx])
         
             if any(x -> contains(string(x), "◖"), axis2)
@@ -2071,13 +2097,20 @@ function get_moments(𝓂::ℳ;
             axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
         end
 
-        if mean
+        if mean && !(variance || standard_deviation || covariance)
             state_μ, ___ = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose)
             var_means = KeyedArray(state_μ;  Variables = axis1)
         end
 
         if variance
-            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            if algorithm == :pruned_second_order
+                covar_dcmp, state_μ, ______, _____, ____, ___, __, _ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                if mean
+                    var_means = KeyedArray(state_μ;  Variables = axis1)
+                end
+            else
+                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            end
             varr = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
             varrs = KeyedArray(varr;  Variables = axis1)
             if standard_deviation
@@ -2086,12 +2119,26 @@ function get_moments(𝓂::ℳ;
         end
 
         if standard_deviation
-            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            if algorithm == :pruned_second_order
+                covar_dcmp, state_μ, ______, _____, ____, ___, __, _ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                if mean
+                    var_means = KeyedArray(state_μ;  Variables = axis1)
+                end
+            else
+                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            end
             st_dev = KeyedArray(sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))));  Variables = axis1)
         end
 
         if covariance
-            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            if algorithm == :pruned_second_order
+                covar_dcmp, state_μ, ______, _____, ____, ___, __, _ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                if mean
+                    var_means = KeyedArray(state_μ;  Variables = axis1)
+                end
+            else
+                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            end
         end
     end
 
