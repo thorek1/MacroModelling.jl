@@ -2016,7 +2016,7 @@ second_order_stochastic_steady_state_iterative_solution = ID.ImplicitFunction(se
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false) where M
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
     
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
@@ -2139,7 +2139,7 @@ end
 function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = eps()) where M
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
     
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
@@ -2220,7 +2220,7 @@ function solve!(𝓂::ℳ;
 
             # @assert solution_error < eps() "Could not find non stochastic steady steady."
             
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
             sol_mat, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
             
@@ -2329,7 +2329,7 @@ function solve!(𝓂::ℳ;
             
             SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
             sol_mat, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
             
@@ -2346,7 +2346,7 @@ function solve!(𝓂::ℳ;
         if :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
             SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
             sol_mat = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
             
@@ -3046,7 +3046,7 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::AbstractArray{N}
 
     # return ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
     # return Matrix(𝓂.model_jacobian(([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])))
-    return Matrix(𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]))
+    return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
 end
 
 
@@ -4120,7 +4120,7 @@ calculate_covariance_AD = ID.ImplicitFunction(calculate_covariance_forward,
 function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false)
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
@@ -4138,7 +4138,7 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
 
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
     
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
@@ -4361,23 +4361,276 @@ function calculate_second_order_covariance(parameters::Vector{<: Real}, 𝓂::�
 
     CC = shocks_to_augemented_states * Γ₂₂ * shocks_to_augemented_states'
     
-    # if size(initial_guess) == (0,0)
-    #     initial_guess = collect(CC)
-    # end
-    
-    # soll = speedmapping(collect(CC); m! = (C₂z₂, c₂z₂) -> C₂z₂ .= pruned_states_to_pruned_states * c₂z₂ * pruned_states_to_pruned_states' + CC, stabilize = true)
-
-    # Σ̂ = soll.minimizer
-    
-    # if !soll.converged
-    #     return fill(Inf,T.nVars), fill(Inf,T.nVars,T.nVars)
-    # end
-    
     Σ̂, info = calculate_second_order_covariance_AD([vec(pruned_states_to_pruned_states); vec(CC)], dims = [size(pruned_states_to_pruned_states) ;size(CC)])
     
     Σ₂ = pruned_states_to_variables * Σ̂ * pruned_states_to_variables' + shocks_to_variables * Γ₂₂ * shocks_to_variables'
 
     return Σ₂, mean_of_variables, covar_raw, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
+end
+
+
+
+
+
+
+function calculate_third_order_covariance(parameters::Vector{<: Real}, 
+    variance_observable::Symbol,
+    𝓂::ℳ; 
+    verbose::Bool = false, 
+    tol::AbstractFloat = eps(),
+    dependencies_tol::AbstractFloat = 1e-15)
+
+    nᵉ = 𝓂.timings.nExo
+    n̂ˢ = 𝓂.timings.nPast_not_future_and_mixed
+
+    if variance_observable == :all
+        obs_in_var_idx = 1:𝓂.timings.nVars
+    else
+        obs_in_var_idx = indexin([variance_observable], 𝓂.timings.var)
+    end
+
+    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars = calculate_covariance(parameters, 𝓂, verbose = verbose)
+
+    # determine subspace
+    dependencies_in_states_bitvector = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:n̂ˢ], dims=1) .> dependencies_tol) .> 0
+
+    while dependencies_in_states_bitvector .| vec(abs.(dependencies_in_states_bitvector' * 𝐒₁[indexin(𝓂.timings.past_not_future_and_mixed, 𝓂.timings.var),1:n̂ˢ]) .> dependencies_tol) != dependencies_in_states_bitvector
+        dependencies_in_states_bitvector = dependencies_in_states_bitvector .| vec(abs.(dependencies_in_states_bitvector' * 𝐒₁[indexin(𝓂.timings.past_not_future_and_mixed, 𝓂.timings.var),1:n̂ˢ]) .> dependencies_tol)
+    end
+
+    dependencies = 𝓂.timings.past_not_future_and_mixed[dependencies_in_states_bitvector]
+
+    dependencies_in_states_idx = indexin(dependencies,𝓂.timings.past_not_future_and_mixed)
+    dependencies_in_var_idx = Int.(indexin(dependencies, 𝓂.timings.var))
+
+
+    nˢ = length(dependencies)
+
+    iˢ = dependencies_in_var_idx
+
+    Σᶻ₁ = Σʸ₁[iˢ, iˢ]
+
+    # precalc second order
+    ## mean
+    I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
+
+    ## covariance
+    E_e⁴ = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4)
+
+    quadrup = multiplicate(nᵉ, 4)
+
+    comb⁴ = reduce(vcat, generateSumVectors(nᵉ, 4))
+
+    comb⁴ = comb⁴ isa Int64 ? reshape([comb⁴],1,1) : comb⁴
+
+    for j = 1:size(comb⁴,1)
+        E_e⁴[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb⁴[j,:])
+    end
+
+    e⁴ = quadrup * E_e⁴
+
+
+    # precalc third order
+    sextup = multiplicate(nᵉ, 6)
+    E_e⁶ = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4 * (nᵉ + 4)÷5 * (nᵉ + 5)÷6)
+
+    comb⁶   = reduce(vcat, generateSumVectors(nᵉ, 6))
+
+    comb⁶ = comb⁶ isa Int64 ? reshape([comb⁶],1,1) : comb⁶
+
+    for j = 1:size(comb⁶,1)
+        E_e⁶[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb⁶[j,:])
+    end
+
+    e⁶ = sextup * E_e⁶
+
+    e_es = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nᵉ*nˢ)), nˢ*nᵉ^2, nˢ*nᵉ^2))
+    e_ss = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nˢ^2)), nᵉ*nˢ^2, nᵉ*nˢ^2))
+    ss_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ^2)), ℒ.I(nˢ)), nˢ^3, nˢ^3))
+    s_s  = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2))
+
+    # second order
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+
+    s⁺ = vcat(𝓂.timings.past_not_future_and_mixed, :Volatility, 𝓂.timings.exo)
+
+    s_in_s⁺ = s⁺ .∈ (dependencies,)
+    e_in_s⁺ = s⁺ .∈ (𝓂.timings.exo,)
+    v_in_s⁺ = s⁺ .∈ ([:Volatility],)
+
+    kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
+    kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
+    kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
+
+    # first order
+    s_to_y₁ = 𝐒₁[obs_in_var_idx,:][:,dependencies_in_states_idx]
+    e_to_y₁ = 𝐒₁[obs_in_var_idx,:][:, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+    
+    s_to_s₁ = 𝐒₁[iˢ, dependencies_in_states_idx]
+    e_to_s₁ = 𝐒₁[iˢ, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+
+
+    # second order
+    s_s_to_y₂ = 𝐒₂[obs_in_var_idx,:][:, kron_s_s]
+    e_e_to_y₂ = 𝐒₂[obs_in_var_idx,:][:, kron_e_e]
+    v_v_to_y₂ = 𝐒₂[obs_in_var_idx,:][:, kron_v_v]
+    s_e_to_y₂ = 𝐒₂[obs_in_var_idx,:][:, kron_s_e]
+
+    s_s_to_s₂ = 𝐒₂[iˢ, kron_s_s] |> collect
+    e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
+    v_v_to_s₂ = 𝐒₂[iˢ, kron_v_v] |> collect
+    s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
+
+    s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+    e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
+    s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
+
+    # # Set up in pruned state transition matrices
+    ŝ_to_ŝ₂ = [ s_to_s₁             zeros(nˢ, nˢ + nˢ^2)
+                zeros(nˢ, nˢ)       s_to_s₁             s_s_to_s₂ / 2
+                zeros(nˢ^2, 2*nˢ)   s_to_s₁_by_s_to_s₁                  ]
+
+    ê_to_ŝ₂ = [ e_to_s₁         zeros(nˢ, nᵉ^2 + nᵉ * nˢ)
+                zeros(nˢ,nᵉ)    e_e_to_s₂ / 2       s_e_to_s₂
+                zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁]
+
+    ŝ_to_y₂ = [s_to_y₁  s_to_y₁         s_s_to_y₂ / 2]
+
+    ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
+
+    ŝv₂ = [ zeros(nˢ) 
+            vec(v_v_to_s₂) / 2 + e_e_to_s₂ / 2 * vec(ℒ.I(nᵉ))
+            e_to_s₁_by_e_to_s₁ * vec(ℒ.I(nᵉ))]
+
+    yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec(ℒ.I(nᵉ))) / 2
+
+    ## Mean
+    μˢ⁺₂ = (ℒ.I - ŝ_to_ŝ₂) \ ŝv₂
+    Δμˢ₂ = vec((ℒ.I - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec(ℒ.I(nᵉ))) / 2))
+    μʸ₂  = SS_and_pars[obs_in_var_idx] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+
+
+    # Covariance
+    Γ₂ = [ ℒ.I(nᵉ)             zeros(nᵉ, nᵉ^2 + nᵉ * nˢ)
+            zeros(nᵉ^2, nᵉ)    reshape(e⁴, nᵉ^2, nᵉ^2) - vec(ℒ.I(nᵉ)) * vec(ℒ.I(nᵉ))'     zeros(nᵉ^2, nᵉ * nˢ)
+            zeros(nˢ * nᵉ, nᵉ + nᵉ^2)    ℒ.kron(Σᶻ₁, ℒ.I(nᵉ))]
+
+    C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
+
+    Σᶻ₂, info = calculate_second_order_covariance_AD([vec(ŝ_to_ŝ₂); vec(C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])
+
+    Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
+
+    # third order
+    kron_s_v = ℒ.kron(s_in_s⁺, v_in_s⁺)
+    kron_e_v = ℒ.kron(e_in_s⁺, v_in_s⁺)
+
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
+
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
+                                                𝓂.solution.perturbation.second_order_auxilliary_matrices, 
+                                                𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+
+    s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx,:][:, ℒ.kron(kron_s_s, s_in_s⁺)]
+    s_s_e_to_y₃ = 𝐒₃[obs_in_var_idx,:][:, ℒ.kron(kron_s_s, e_in_s⁺)]
+    s_e_e_to_y₃ = 𝐒₃[obs_in_var_idx,:][:, ℒ.kron(kron_s_e, e_in_s⁺)]
+    e_e_e_to_y₃ = 𝐒₃[obs_in_var_idx,:][:, ℒ.kron(kron_e_e, e_in_s⁺)]
+    s_v_v_to_y₃ = 𝐒₃[obs_in_var_idx,:][:, ℒ.kron(kron_s_v, v_in_s⁺)]
+    e_v_v_to_y₃ = 𝐒₃[obs_in_var_idx,:][:, ℒ.kron(kron_e_v, v_in_s⁺)]
+
+    s_s_s_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, s_in_s⁺)]
+    s_s_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, e_in_s⁺)]
+    s_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_e, e_in_s⁺)]
+    e_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_e, e_in_s⁺)]
+    s_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_v, v_in_s⁺)]
+    e_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_v, v_in_s⁺)]
+
+    # Set up pruned state transition matrices
+    ŝ_to_ŝ₃ = [  s_to_s₁                      zeros(nˢ, 2*nˢ + 2*nˢ^2 + nˢ^3)
+                                        zeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2   zeros(nˢ, nˢ + nˢ^2 + nˢ^3)
+                                        zeros(nˢ^2, 2 * nˢ)               s_to_s₁_by_s_to_s₁  zeros(nˢ^2, nˢ + nˢ^2 + nˢ^3)
+                                        s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + nˢ^2)      s_to_s₁       s_s_to_s₂    s_s_s_to_s₃ / 6
+                                        ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, 2*nˢ + nˢ^2)     s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2)    
+                                        zeros(nˢ^3, 3*nˢ + 2*nˢ^2)   ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁)]
+
+    ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                    zeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   zeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                    zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(nˢ^2, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                    e_v_v_to_s₃ / 2    zeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
+                                    ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    zeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
+                                    zeros(nˢ^3, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss   ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es  ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+
+    ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6]
+
+    ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
+
+    μˢ₃δμˢ₁ = reshape((ℒ.I - s_to_s₁_by_s_to_s₁) \ vec( 
+                                (s_s_to_s₂  * reshape(ss_s * vec(Σᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σᶻ₁) * Δμˢ₂'),nˢ^2, nˢ) +
+                                s_s_s_to_s₃ * reshape(Σᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σᶻ₁) * vec(Σᶻ₁)', nˢ^3, nˢ) / 6 +
+                                s_e_e_to_s₃ * ℒ.kron(Σᶻ₁, vec(ℒ.I(nᵉ))) / 2 +
+                                s_v_v_to_s₃ * Σᶻ₁ / 2) * s_to_s₁' +
+                                (s_e_to_s₂  * ℒ.kron(Δμˢ₂,ℒ.I(nᵉ)) +
+                                e_e_e_to_s₃ * reshape(e⁴, nᵉ^3, nᵉ) / 6 +
+                                s_s_e_to_s₃ * ℒ.kron(vec(Σᶻ₁), ℒ.I(nᵉ)) / 2 +
+                                e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
+                                ), nˢ, nˢ)
+
+
+    Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δμˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    reshape(e⁴, nᵉ, nᵉ^3)
+            spzeros(nᵉ^2, nᵉ)    reshape(e⁴, nᵉ^2, nᵉ^2) - vec(ℒ.I(nᵉ)) * vec(ℒ.I(nᵉ))'     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
+            spzeros(nˢ * nᵉ, nᵉ + nᵉ^2)    ℒ.kron(Σᶻ₁, ℒ.I(nᵉ))   spzeros(nˢ * nᵉ, nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
+            ℒ.kron(Δμˢ₂,ℒ.I(nᵉ))    spzeros(nᵉ * nˢ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σᶻ₂[nˢ + 1:2*nˢ,nˢ + 1:2*nˢ] + Δμˢ₂ * Δμˢ₂',ℒ.I(nᵉ)) ℒ.kron(Σᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δμˢ₂ * vec(Σᶻ₁)',ℒ.I(nᵉ))   spzeros(nᵉ * nˢ, nˢ * nᵉ^2) ℒ.kron(Δμˢ₂, reshape(e⁴, nᵉ, nᵉ^3))
+            ℒ.kron(vec(Σᶻ₁), ℒ.I(nᵉ))  spzeros(nᵉ * nˢ^2, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σᶻ₁) * Δμˢ₂', ℒ.I(nᵉ))  ℒ.kron(Σᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σᶻ₁) * vec(Σᶻ₁)', ℒ.I(nᵉ))   spzeros(nᵉ * nˢ^2, nˢ * nᵉ^2)  ℒ.kron(vec(Σᶻ₁), reshape(e⁴, nᵉ, nᵉ^3))
+            spzeros(nˢ*nᵉ^2, nᵉ + nᵉ^2 + 2*nᵉ * nˢ + nˢ^2*nᵉ)   ℒ.kron(Σᶻ₁, reshape(e⁴, nᵉ^2, nᵉ^2))    spzeros(nˢ*nᵉ^2,nᵉ^3)
+            reshape(e⁴, nᵉ^3, nᵉ)  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δμˢ₂', reshape(e⁴, nᵉ^3, nᵉ))     ℒ.kron(vec(Σᶻ₁)', reshape(e⁴, nᵉ^3, nᵉ))  spzeros(nᵉ^3, nˢ*nᵉ^2)     reshape(e⁶, nᵉ^3, nᵉ^3)]
+
+
+    Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
+            ℒ.kron(Σᶻ₁,vec(ℒ.I(nᵉ)))   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec(ℒ.I(nᵉ)))    ℒ.kron(reshape(ss_s * vec(Σᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δμˢ₂ * vec(Σᶻ₁)'), nˢ, nˢ^2), vec(ℒ.I(nᵉ)))  ℒ.kron(reshape(Σᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σᶻ₁) * vec(Σᶻ₁)', nˢ, nˢ^3), vec(ℒ.I(nᵉ)))
+            spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+
+    A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+
+    C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
+
+    # if size(initial_guess³) == (0,0)
+    #     initial_guess³ = collect(C)
+    # end
+
+    if length(C) < 1e7
+        function sylvester!(sol,𝐱)
+            𝐗 = reshape(𝐱, size(C))
+            sol .= vec(ŝ_to_ŝ₃ * 𝐗 * ŝ_to_ŝ₃' - 𝐗)
+            return sol
+        end
+
+        sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
+
+        Σ̂ᶻ₃, info = Krylov.gmres(sylvester, sparsevec(collect(-C)), atol = eps())
+
+        if !info.solved
+            Σ̂ᶻ₃, info = Krylov.bicgstab(sylvester, sparsevec(collect(-C)), atol = eps())
+        end
+
+        Σᶻ₃ = reshape(Σ̂ᶻ₃, size(C))
+    else
+        soll = speedmapping(collect(C); m! = (Σᶻ₃, Σ̂ᶻ₃) -> Σᶻ₃ .= ŝ_to_ŝ₃ * Σ̂ᶻ₃ * ŝ_to_ŝ₃' + C, 
+        # time_limit = 200, 
+        stabilize = true)
+        
+        Σᶻ₃ = soll.minimizer
+
+        if !soll.converged
+            return Inf
+        end
+    end
+
+    Σʸ₃ = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃'
+
+    return Σʸ₃, μʸ₂
 end
 
 
@@ -4422,7 +4675,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
@@ -4497,7 +4750,7 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
     
     @assert solution_error < tol "Could not solve non stochastic steady state." 
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
@@ -4583,79 +4836,79 @@ end
 
 
 
-# @setup_workload begin
-#     # Putting some things in `setup` can reduce the size of the
-#     # precompile file and potentially make loading faster.
-#     @model FS2000 precompile = true begin
-#         dA[0] = exp(gam + z_e_a  *  e_a[x])
-#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-#         W[0] = l[0] / n[0]
-#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-#         P[0] * c[0] = m[0]
-#         m[0] - 1 + d[0] = l[0]
-#         e[0] = exp(z_e_a  *  e_a[x])
-#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-#         gy_obs[0] = dA[0] * y[0] / y[-1]
-#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-#         log_gy_obs[0] = log(gy_obs[0])
-#         log_gp_obs[0] = log(gp_obs[0])
-#     end
+@setup_workload begin
+    # Putting some things in `setup` can reduce the size of the
+    # precompile file and potentially make loading faster.
+    @model FS2000 precompile = true begin
+        dA[0] = exp(gam + z_e_a  *  e_a[x])
+        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+        W[0] = l[0] / n[0]
+        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+        P[0] * c[0] = m[0]
+        m[0] - 1 + d[0] = l[0]
+        e[0] = exp(z_e_a  *  e_a[x])
+        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+        gy_obs[0] = dA[0] * y[0] / y[-1]
+        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+        log_gy_obs[0] = log(gy_obs[0])
+        log_gp_obs[0] = log(gp_obs[0])
+    end
 
-#     @parameters FS2000 silent = true precompile = true begin  
-#         alp     = 0.356
-#         bet     = 0.993
-#         gam     = 0.0085
-#         mst     = 1.0002
-#         rho     = 0.129
-#         psi     = 0.65
-#         del     = 0.01
-#         z_e_a   = 0.035449
-#         z_e_m   = 0.008862
-#     end
+    @parameters FS2000 silent = true precompile = true begin  
+        alp     = 0.356
+        bet     = 0.993
+        gam     = 0.0085
+        mst     = 1.0002
+        rho     = 0.129
+        psi     = 0.65
+        del     = 0.01
+        z_e_a   = 0.035449
+        z_e_m   = 0.008862
+    end
     
-#     ENV["GKSwstype"] = "nul"
+    ENV["GKSwstype"] = "nul"
 
-#     @compile_workload begin
-#         # all calls in this block will be precompiled, regardless of whether
-#         # they belong to your package or not (on Julia 1.8 and higher)
-#         @model RBC precompile = true begin
-#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-#         end
+    @compile_workload begin
+        # all calls in this block will be precompiled, regardless of whether
+        # they belong to your package or not (on Julia 1.8 and higher)
+        @model RBC precompile = true begin
+            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+        end
 
-#         @parameters RBC silent = true precompile = true begin
-#             δ = 0.02
-#             α = 0.5
-#         end
+        @parameters RBC silent = true precompile = true begin
+            δ = 0.02
+            α = 0.5
+        end
 
-#         get_SS(FS2000)
-#         get_SS(FS2000, parameters = :alp => 0.36)
-#         get_solution(FS2000)
-#         get_solution(FS2000, parameters = :alp => 0.35)
-#         get_standard_deviation(FS2000)
-#         get_correlation(FS2000)
-#         get_autocorrelation(FS2000)
-#         get_variance_decomposition(FS2000)
-#         get_conditional_variance_decomposition(FS2000)
-#         get_irf(FS2000)
+        get_SS(FS2000)
+        get_SS(FS2000, parameters = :alp => 0.36)
+        get_solution(FS2000)
+        get_solution(FS2000, parameters = :alp => 0.35)
+        get_standard_deviation(FS2000)
+        get_correlation(FS2000)
+        get_autocorrelation(FS2000)
+        get_variance_decomposition(FS2000)
+        get_conditional_variance_decomposition(FS2000)
+        get_irf(FS2000)
 
-#         data = simulate(FS2000)[:,:,1]
-#         observables = [:c,:k]
-#         calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
-#         get_mean(FS2000, silent = true)
-#         get_SSS(FS2000, silent = true)
-#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
+        data = simulate(FS2000)[:,:,1]
+        observables = [:c,:k]
+        calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
+        get_mean(FS2000, silent = true)
+        get_SSS(FS2000, silent = true)
+        # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-#         # import Plots, StatsPlots
-#         # plot_irf(FS2000)
-#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-#         # plot_conditional_variance_decomposition(FS2000)
-#     end
-# end
+        # import Plots, StatsPlots
+        # plot_irf(FS2000)
+        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+        # plot_conditional_variance_decomposition(FS2000)
+    end
+end
 
 end

@@ -3,6 +3,10 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
+- [ ] recheck results for third order cov
+- [ ] write function to smart select variables to calc cov for
+- [ ] redo naming in moments calc and make whole process faster (put outside of loop the ignore derviatives for derivatives and precalc wrangling matrices)
+- [ ] consolidate sylvester solvers (diff)
 - [ ] make higher order suable with zygote (currently only analytical pushforward, no implicitdiff)
 - [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
 - [ ] use more implicit diff for the other functions as well

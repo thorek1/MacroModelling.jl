@@ -721,7 +721,7 @@ function get_irf(𝓂::ℳ,
 
     reference_steady_state, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
-	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)
+	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂) |> Matrix
 								
     sol_mat, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
@@ -1362,7 +1362,7 @@ function get_solution(𝓂::ℳ,
         end
     end
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
 
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
@@ -1490,7 +1490,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
     
-	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
 
     𝑺₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
@@ -1632,7 +1632,7 @@ function get_variance_decomposition(𝓂::ℳ;
 
     SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
     
-	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
@@ -2108,6 +2108,11 @@ function get_moments(𝓂::ℳ;
                 if mean
                     var_means = KeyedArray(state_μ;  Variables = axis1)
                 end
+            elseif algorithm == :pruned_third_order
+                covar_dcmp, state_μ = calculate_third_order_covariance(𝓂.parameter_values, :all, 𝓂, verbose = verbose)
+                if mean
+                    var_means = KeyedArray(state_μ;  Variables = axis1)
+                end
             else
                 covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
             end
@@ -2124,6 +2129,11 @@ function get_moments(𝓂::ℳ;
                 if mean
                     var_means = KeyedArray(state_μ;  Variables = axis1)
                 end
+            elseif algorithm == :pruned_third_order
+                covar_dcmp, state_μ = calculate_third_order_covariance(𝓂.parameter_values, :all, 𝓂, verbose = verbose)
+                if mean
+                    var_means = KeyedArray(state_μ;  Variables = axis1)
+                end
             else
                 covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
             end
@@ -2133,6 +2143,11 @@ function get_moments(𝓂::ℳ;
         if covariance
             if algorithm == :pruned_second_order
                 covar_dcmp, state_μ, ______, _____, ____, ___, __, _ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                if mean
+                    var_means = KeyedArray(state_μ;  Variables = axis1)
+                end
+            elseif algorithm == :pruned_third_order
+                covar_dcmp, state_μ = calculate_third_order_covariance(𝓂.parameter_values, :all, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ;  Variables = axis1)
                 end
