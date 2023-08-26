@@ -4245,7 +4245,7 @@ function calculate_second_order_covariance_forward(AC::AbstractVector{ℱ.Dual{Z
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
     BB = ℱ.jacobian(x -> calculate_second_order_covariance_conditions(x, val, solved, dims = dims), ACv)
-    AA = ℱ.jacobian(x -> calculate_second_order_covariance_conditions(𝑺₁̂, x, solved, dims = dims), val)
+    AA = ℱ.jacobian(x -> calculate_second_order_covariance_conditions(ACv, x, solved, dims = dims), val)
 
     Â = RF.lu(AA, check = false)
 
