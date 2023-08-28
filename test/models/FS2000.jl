@@ -30,6 +30,9 @@
 
     gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
 
+    log_gy_obs[0] = log(gy_obs[0])
+
+    log_gp_obs[0] = log(gp_obs[0])
 end
 
 
