@@ -1994,7 +1994,7 @@ function get_moments(𝓂::ℳ;
             end
 
             if algorithm == :pruned_second_order
-                covar_dcmp, state_μ, ______, _____, ____, ___, __, _ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
 
                 dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
 
@@ -2043,7 +2043,7 @@ function get_moments(𝓂::ℳ;
             end
 
             if algorithm == :pruned_second_order
-                covar_dcmp, state_μ, ______, _____, ____, ___, __, _ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
 
                 dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
 
@@ -2104,7 +2104,7 @@ function get_moments(𝓂::ℳ;
 
         if variance
             if algorithm == :pruned_second_order
-                covar_dcmp, state_μ, ______, _____, ____, ___, __, _ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ;  Variables = axis1)
                 end
@@ -2125,7 +2125,7 @@ function get_moments(𝓂::ℳ;
 
         if standard_deviation
             if algorithm == :pruned_second_order
-                covar_dcmp, state_μ, ______, _____, ____, ___, __, _ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ;  Variables = axis1)
                 end
@@ -2142,7 +2142,7 @@ function get_moments(𝓂::ℳ;
 
         if covariance
             if algorithm == :pruned_second_order
-                covar_dcmp, state_μ, ______, _____, ____, ___, __, _ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ;  Variables = axis1)
                 end
