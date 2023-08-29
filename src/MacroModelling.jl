@@ -124,6 +124,90 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 # higher order solutions moment helper functions
 
 
+
+
+
+
+function warshall_algorithm!(R::SparseMatrixCSC{Bool,Int64})
+    # Size of the matrix
+    n, m = size(R)
+    
+    @assert n == m "Warshall algorithm only works for square matrices."
+
+    # The core idea of the Warshall algorithm is to consider each node (in this case, block)
+    # as an intermediate node and check if a path can be created between two nodes by using the
+    # intermediate node.
+    
+    # k is the intermediate node (or block).
+    for k in 1:n
+        # i is the starting node (or block).
+        for i in 1:n
+            # j is the ending node (or block).
+            for j in 1:n
+                # If there is a direct path from i to k AND a direct path from k to j, 
+                # then a path from i to j exists via k.
+                # Thus, set the value of R[i, j] to 1 (true).
+                R[i, j] = R[i, j] || (R[i, k] && R[k, j])
+            end
+        end
+    end
+    
+    # Return the transitive closure matrix.
+    return R
+end
+
+
+function determine_efficient_order(∇₁::SparseMatrixCSC{<: Real}, T::timings, observables::Union{Symbol,Vector{Symbol}}; verbose::Bool = false)
+    if observables == :full_covar
+        return [T.var => T.var]
+    elseif observables == :all
+        observables = T.var
+    end
+
+    expand = [  spdiagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
+                spdiagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+    
+    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇₋ = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+
+    incidence = abs.(∇₊) + abs.(∇₀) + abs.(∇₋)
+
+    Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(incidence))
+    R̂ = []
+    for i in 1:n_blocks
+        [push!(R̂, n_blocks - i + 1) for ii in R[i]:R[i+1] - 1]
+    end
+    push!(R̂,1)
+    
+    vars = hcat(P, R̂)'
+    eqs  = hcat(Q, R̂)'
+    
+    dependency_matrix = incidence[vars[1,:], eqs[1,:]] .!= 0
+    
+    warshall_algorithm!(dependency_matrix)
+
+    permut = sortperm(indexin(observables, T.var[eqs[1,:]]))
+    
+    solve_order = Vector{Symbol}[]
+    already_solved_for = Set{Symbol}()
+    corresponding_dependencies = Vector{Symbol}[]
+
+    for obs in observables[permut]
+        dependencies = T.var[eqs[1,:]][findall(dependency_matrix[indexin([obs], T.var[eqs[1,:]])[1],:])]
+        to_be_solved_for = setdiff(intersect(observables, dependencies), already_solved_for)
+        if length(to_be_solved_for) > 0
+            push!(solve_order, to_be_solved_for)
+            push!(corresponding_dependencies, dependencies)
+        end
+        push!(already_solved_for, intersect(observables, dependencies)...)
+    end
+
+    return solve_order .=> corresponding_dependencies
+end
+
+
+
 function bivariate_moment(moment::Vector{Int}, rho::Int)::Int
     if (moment[1] + moment[2]) % 2 == 1
         return 0
@@ -4120,9 +4204,9 @@ calculate_covariance_AD = ID.ImplicitFunction(calculate_covariance_forward,
 function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false)
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
-    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    sol, solved = calculate_first_order_solution(Matrix(∇₁); T = 𝓂.timings)
 
     covar_raw, solved_cov = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
 
@@ -4268,145 +4352,13 @@ calculate_second_order_covariance_AD = ID.ImplicitFunction(calculate_second_orde
 
 
 function calculate_second_order_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false, tol::AbstractFloat = eps())
-    covar_raw, 𝐒₁, ∇₁, SS_and_pars = calculate_covariance(parameters, 𝓂, verbose = verbose)
-
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
-    
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
-
-    augmented_states = vcat(𝓂.timings.past_not_future_and_mixed, :Volatility, 𝓂.timings.exo)
-
-    states_in_augmented_states      = augmented_states .∈ (𝓂.timings.past_not_future_and_mixed,)
-    shocks_in_augmented_states      = augmented_states .∈ (𝓂.timings.exo,)
-    volatility_in_augmented_states  = augmented_states .∈ ([:Volatility],)
-
-    kron_states     = ℒ.kron(states_in_augmented_states, states_in_augmented_states)
-    kron_shocks     = ℒ.kron(shocks_in_augmented_states, shocks_in_augmented_states)
-    kron_volatility = ℒ.kron(volatility_in_augmented_states, volatility_in_augmented_states)
-
-    # first order
-    states_to_variables¹ = sparse(𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed])
-
-    states_to_states¹ = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, 1:𝓂.timings.nPast_not_future_and_mixed]
-    shocks_to_states¹ = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
-
-    shocks_to_variables¹ = 𝐒₁[:, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
-
-    # second order
-    states_to_variables²        = 𝐒₂[:, kron_states]
-    shocks_to_variables²        = 𝐒₂[:, kron_shocks]
-    volatility_to_variables²    = 𝐒₂[:, kron_volatility]
-
-    states_to_states²       = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_states] |> collect
-    shocks_to_states²       = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_shocks]
-    volatility_to_states²   = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_volatility] |> collect
-    shocks_states_to_states²= 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, ℒ.kron(states_in_augmented_states, shocks_in_augmented_states)]
-
-    shocks_to_variables²       = 𝐒₂[:, kron_shocks]
-    shocks_states_to_variables²       = 𝐒₂[:, ℒ.kron(states_in_augmented_states, shocks_in_augmented_states)]
-
-    kron_states_to_states¹ = ℒ.kron(states_to_states¹, states_to_states¹) |> collect
-    kron_shocks_to_states¹ = ℒ.kron(shocks_to_states¹, shocks_to_states¹)
-    kron_states_shocks_to_states¹ = ℒ.kron(states_to_states¹, shocks_to_states¹)
-
-    n_sts = 𝓂.timings.nPast_not_future_and_mixed
-    
-    I_and_K_x_x = sparse(reshape(ℒ.kron(vec(ℒ.I(n_sts)), ℒ.I(n_sts)), n_sts^2, n_sts^2) + ℒ.I)
-
-    # # Set up in pruned state transition matrices
-    pruned_states_to_pruned_states = [   states_to_states¹       zeros(n_sts, n_sts) zeros(n_sts, n_sts^2)
-                                        zeros(n_sts, n_sts) states_to_states¹       states_to_states² / 2
-                                        zeros(n_sts^2, 2 * n_sts)                   kron_states_to_states¹   ]
-
-    shocks_to_augemented_states = [ shocks_to_states¹   zeros(n_sts,𝓂.timings.nExo^2 + 𝓂.timings.nExo * n_sts)
-                                    zeros(n_sts,𝓂.timings.nExo)  shocks_to_states² / 2   shocks_states_to_states²
-                                    zeros(n_sts^2,𝓂.timings.nExo)  kron_shocks_to_states¹  I_and_K_x_x * kron_states_shocks_to_states¹]
-
-    pruned_states_to_variables = [states_to_variables¹  states_to_variables¹  states_to_variables² / 2]
-
-    shocks_to_variables = [shocks_to_variables¹  shocks_to_variables² / 2  shocks_states_to_variables²]
-
-    pruned_states_vol_and_shock_effect = [  zeros(n_sts) 
-                                            vec(volatility_to_states²) / 2 + shocks_to_states² / 2 * vec(ℒ.I(𝓂.timings.nExo))
-                                            kron_shocks_to_states¹ * vec(ℒ.I(𝓂.timings.nExo))]
-
-    
-    variables_vol_and_shock_effect = (vec(volatility_to_variables²) + shocks_to_variables² * vec(ℒ.I(𝓂.timings.nExo))) / 2
-
-    ## First-order moments, ie mean of variables
-    mean_of_pruned_states   = (ℒ.I - pruned_states_to_pruned_states) \ pruned_states_vol_and_shock_effect
-    mean_of_variables   = SS_and_pars[1:𝓂.timings.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
-
-
-
-    # Covariance
-    E_u_u_u_u = zeros(𝓂.timings.nExo * (𝓂.timings.nExo + 1)÷2 * (𝓂.timings.nExo + 2)÷3 * (𝓂.timings.nExo + 3)÷4)
-    
-    quadrup = multiplicate(𝓂.timings.nExo, 4)
-    
-    SumVectors = reduce(vcat, generateSumVectors(𝓂.timings.nExo, 4))
-    
-    SumVectors = SumVectors isa Int64 ? reshape([SumVectors],1,1) : SumVectors
-    
-    for j4 = 1:size(SumVectors,1)
-        E_u_u_u_u[j4] = product_moments(ℒ.I(𝓂.timings.nExo), 1:𝓂.timings.nExo, SumVectors[j4,:])
-    end
-
-    C₂z₁ = covar_raw[𝓂.timings.past_not_future_and_mixed_idx, 𝓂.timings.past_not_future_and_mixed_idx]
-
-    Γ₂₂ = [ ℒ.I(𝓂.timings.nExo)             zeros(𝓂.timings.nExo, 𝓂.timings.nExo^2 + 𝓂.timings.nExo * n_sts)
-            zeros(n_sts, 𝓂.timings.nExo)    reshape(quadrup * E_u_u_u_u, 𝓂.timings.nExo^2, 𝓂.timings.nExo^2) - vec(ℒ.I(𝓂.timings.nExo)) * vec(ℒ.I(𝓂.timings.nExo))'     zeros(n_sts, 𝓂.timings.nExo * n_sts)
-            zeros(n_sts * 𝓂.timings.nExo, 𝓂.timings.nExo + 𝓂.timings.nExo^2)    ℒ.kron(C₂z₁, ℒ.I(𝓂.timings.nExo))]
-
-
-    CC = shocks_to_augemented_states * Γ₂₂ * shocks_to_augemented_states'
-    
-    Σ̂, info = calculate_second_order_covariance_AD([vec(pruned_states_to_pruned_states); vec(CC)], dims = [size(pruned_states_to_pruned_states) ;size(CC)])
-    
-    Σ₂ = pruned_states_to_variables * Σ̂ * pruned_states_to_variables' + shocks_to_variables * Γ₂₂ * shocks_to_variables'
-
-    return Σ₂, mean_of_variables, covar_raw, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
-end
-
-
-
-
-
-
-function calculate_third_order_covariance(parameters::Vector{<: Real}, 
-    variance_observable::Symbol,
-    𝓂::ℳ; 
-    verbose::Bool = false, 
-    tol::AbstractFloat = eps(),
-    dependencies_tol::AbstractFloat = 1e-15)
-
-    nᵉ = 𝓂.timings.nExo
-    n̂ˢ = 𝓂.timings.nPast_not_future_and_mixed
-
-    if variance_observable == :all
-        obs_in_var_idx = 1:𝓂.timings.nVars
-    else
-        obs_in_var_idx = indexin([variance_observable], 𝓂.timings.var)
-    end
-
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars = calculate_covariance(parameters, 𝓂, verbose = verbose)
 
-    # determine subspace
-    dependencies_in_states_bitvector = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:n̂ˢ], dims=1) .> dependencies_tol) .> 0
+    nᵉ = 𝓂.timings.nExo
 
-    while dependencies_in_states_bitvector .| vec(abs.(dependencies_in_states_bitvector' * 𝐒₁[indexin(𝓂.timings.past_not_future_and_mixed, 𝓂.timings.var),1:n̂ˢ]) .> dependencies_tol) != dependencies_in_states_bitvector
-        dependencies_in_states_bitvector = dependencies_in_states_bitvector .| vec(abs.(dependencies_in_states_bitvector' * 𝐒₁[indexin(𝓂.timings.past_not_future_and_mixed, 𝓂.timings.var),1:n̂ˢ]) .> dependencies_tol)
-    end
+    nˢ = 𝓂.timings.nPast_not_future_and_mixed
 
-    dependencies = 𝓂.timings.past_not_future_and_mixed[dependencies_in_states_bitvector]
-
-    dependencies_in_states_idx = indexin(dependencies,𝓂.timings.past_not_future_and_mixed)
-    dependencies_in_var_idx = Int.(indexin(dependencies, 𝓂.timings.var))
-
-
-    nˢ = length(dependencies)
-
-    iˢ = dependencies_in_var_idx
+    iˢ = 𝓂.timings.past_not_future_and_mixed_idx
 
     Σᶻ₁ = Σʸ₁[iˢ, iˢ]
 
@@ -4429,26 +4381,6 @@ function calculate_third_order_covariance(parameters::Vector{<: Real},
 
     e⁴ = quadrup * E_e⁴
 
-
-    # precalc third order
-    sextup = multiplicate(nᵉ, 6)
-    E_e⁶ = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4 * (nᵉ + 4)÷5 * (nᵉ + 5)÷6)
-
-    comb⁶   = reduce(vcat, generateSumVectors(nᵉ, 6))
-
-    comb⁶ = comb⁶ isa Int64 ? reshape([comb⁶],1,1) : comb⁶
-
-    for j = 1:size(comb⁶,1)
-        E_e⁶[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb⁶[j,:])
-    end
-
-    e⁶ = sextup * E_e⁶
-
-    e_es = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nᵉ*nˢ)), nˢ*nᵉ^2, nˢ*nᵉ^2))
-    e_ss = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nˢ^2)), nᵉ*nˢ^2, nᵉ*nˢ^2))
-    ss_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ^2)), ℒ.I(nˢ)), nˢ^3, nˢ^3))
-    s_s  = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2))
-
     # second order
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
 
@@ -4456,7 +4388,7 @@ function calculate_third_order_covariance(parameters::Vector{<: Real},
 
     s⁺ = vcat(𝓂.timings.past_not_future_and_mixed, :Volatility, 𝓂.timings.exo)
 
-    s_in_s⁺ = s⁺ .∈ (dependencies,)
+    s_in_s⁺ = s⁺ .∈ (𝓂.timings.past_not_future_and_mixed,)
     e_in_s⁺ = s⁺ .∈ (𝓂.timings.exo,)
     v_in_s⁺ = s⁺ .∈ ([:Volatility],)
 
@@ -4466,18 +4398,18 @@ function calculate_third_order_covariance(parameters::Vector{<: Real},
     kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
 
     # first order
-    s_to_y₁ = 𝐒₁[obs_in_var_idx,:][:,dependencies_in_states_idx]
-    e_to_y₁ = 𝐒₁[obs_in_var_idx,:][:, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+    s_to_y₁ = 𝐒₁[:, 1:𝓂.timings.nPast_not_future_and_mixed]
+    e_to_y₁ = 𝐒₁[:, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
     
-    s_to_s₁ = 𝐒₁[iˢ, dependencies_in_states_idx]
+    s_to_s₁ = 𝐒₁[iˢ, 1:𝓂.timings.nPast_not_future_and_mixed]
     e_to_s₁ = 𝐒₁[iˢ, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
 
 
     # second order
-    s_s_to_y₂ = 𝐒₂[obs_in_var_idx,:][:, kron_s_s]
-    e_e_to_y₂ = 𝐒₂[obs_in_var_idx,:][:, kron_e_e]
-    v_v_to_y₂ = 𝐒₂[obs_in_var_idx,:][:, kron_v_v]
-    s_e_to_y₂ = 𝐒₂[obs_in_var_idx,:][:, kron_s_e]
+    s_s_to_y₂ = 𝐒₂[:, kron_s_s]
+    e_e_to_y₂ = 𝐒₂[:, kron_e_e]
+    v_v_to_y₂ = 𝐒₂[:, kron_v_v]
+    s_e_to_y₂ = 𝐒₂[:, kron_s_e]
 
     s_s_to_s₂ = 𝐒₂[iˢ, kron_s_s] |> collect
     e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
@@ -4510,7 +4442,7 @@ function calculate_third_order_covariance(parameters::Vector{<: Real},
     ## Mean
     μˢ⁺₂ = (ℒ.I - ŝ_to_ŝ₂) \ ŝv₂
     Δμˢ₂ = vec((ℒ.I - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec(ℒ.I(nᵉ))) / 2))
-    μʸ₂  = SS_and_pars[obs_in_var_idx] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+    μʸ₂  = SS_and_pars[1:𝓂.timings.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
 
     # Covariance
@@ -4524,111 +4456,239 @@ function calculate_third_order_covariance(parameters::Vector{<: Real},
 
     Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
 
-    # third order
-    kron_s_v = ℒ.kron(s_in_s⁺, v_in_s⁺)
-    kron_e_v = ℒ.kron(e_in_s⁺, v_in_s⁺)
+    return Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
+end
 
+
+
+
+
+
+function calculate_third_order_covariance(parameters::Vector{<: Real}, 
+    observables::Union{Vector{Symbol},Symbol},
+    𝓂::ℳ; 
+    verbose::Bool = false, 
+    tol::AbstractFloat = eps())
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+    
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
                                                 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
 
-    s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx,:][:, ℒ.kron(kron_s_s, s_in_s⁺)]
-    s_s_e_to_y₃ = 𝐒₃[obs_in_var_idx,:][:, ℒ.kron(kron_s_s, e_in_s⁺)]
-    s_e_e_to_y₃ = 𝐒₃[obs_in_var_idx,:][:, ℒ.kron(kron_s_e, e_in_s⁺)]
-    e_e_e_to_y₃ = 𝐒₃[obs_in_var_idx,:][:, ℒ.kron(kron_e_e, e_in_s⁺)]
-    s_v_v_to_y₃ = 𝐒₃[obs_in_var_idx,:][:, ℒ.kron(kron_s_v, v_in_s⁺)]
-    e_v_v_to_y₃ = 𝐒₃[obs_in_var_idx,:][:, ℒ.kron(kron_e_v, v_in_s⁺)]
+    orders = determine_efficient_order(∇₁, 𝓂.timings, observables)
 
-    s_s_s_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, s_in_s⁺)]
-    s_s_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, e_in_s⁺)]
-    s_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_e, e_in_s⁺)]
-    e_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_e, e_in_s⁺)]
-    s_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_v, v_in_s⁺)]
-    e_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_v, v_in_s⁺)]
+    nᵉ = 𝓂.timings.nExo
 
-    # Set up pruned state transition matrices
-    ŝ_to_ŝ₃ = [  s_to_s₁                      zeros(nˢ, 2*nˢ + 2*nˢ^2 + nˢ^3)
-                                        zeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2   zeros(nˢ, nˢ + nˢ^2 + nˢ^3)
-                                        zeros(nˢ^2, 2 * nˢ)               s_to_s₁_by_s_to_s₁  zeros(nˢ^2, nˢ + nˢ^2 + nˢ^3)
-                                        s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + nˢ^2)      s_to_s₁       s_s_to_s₂    s_s_s_to_s₃ / 6
-                                        ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, 2*nˢ + nˢ^2)     s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2)    
-                                        zeros(nˢ^3, 3*nˢ + 2*nˢ^2)   ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁)]
+    s⁺ = vcat(𝓂.timings.past_not_future_and_mixed, :Volatility, 𝓂.timings.exo)
 
-    ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                    zeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   zeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                    zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(nˢ^2, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
-                                    e_v_v_to_s₃ / 2    zeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
-                                    ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    zeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
-                                    zeros(nˢ^3, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss   ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es  ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+    # precalc second order
+    ## covariance
+    E_e⁴ = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4)
 
-    ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6]
+    quadrup = multiplicate(nᵉ, 4)
 
-    ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
+    comb⁴ = reduce(vcat, generateSumVectors(nᵉ, 4))
 
-    μˢ₃δμˢ₁ = reshape((ℒ.I - s_to_s₁_by_s_to_s₁) \ vec( 
-                                (s_s_to_s₂  * reshape(ss_s * vec(Σᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σᶻ₁) * Δμˢ₂'),nˢ^2, nˢ) +
-                                s_s_s_to_s₃ * reshape(Σᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σᶻ₁) * vec(Σᶻ₁)', nˢ^3, nˢ) / 6 +
-                                s_e_e_to_s₃ * ℒ.kron(Σᶻ₁, vec(ℒ.I(nᵉ))) / 2 +
-                                s_v_v_to_s₃ * Σᶻ₁ / 2) * s_to_s₁' +
-                                (s_e_to_s₂  * ℒ.kron(Δμˢ₂,ℒ.I(nᵉ)) +
-                                e_e_e_to_s₃ * reshape(e⁴, nᵉ^3, nᵉ) / 6 +
-                                s_s_e_to_s₃ * ℒ.kron(vec(Σᶻ₁), ℒ.I(nᵉ)) / 2 +
-                                e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
-                                ), nˢ, nˢ)
+    comb⁴ = comb⁴ isa Int64 ? reshape([comb⁴],1,1) : comb⁴
 
-
-    Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δμˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    reshape(e⁴, nᵉ, nᵉ^3)
-            spzeros(nᵉ^2, nᵉ)    reshape(e⁴, nᵉ^2, nᵉ^2) - vec(ℒ.I(nᵉ)) * vec(ℒ.I(nᵉ))'     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
-            spzeros(nˢ * nᵉ, nᵉ + nᵉ^2)    ℒ.kron(Σᶻ₁, ℒ.I(nᵉ))   spzeros(nˢ * nᵉ, nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
-            ℒ.kron(Δμˢ₂,ℒ.I(nᵉ))    spzeros(nᵉ * nˢ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σᶻ₂[nˢ + 1:2*nˢ,nˢ + 1:2*nˢ] + Δμˢ₂ * Δμˢ₂',ℒ.I(nᵉ)) ℒ.kron(Σᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δμˢ₂ * vec(Σᶻ₁)',ℒ.I(nᵉ))   spzeros(nᵉ * nˢ, nˢ * nᵉ^2) ℒ.kron(Δμˢ₂, reshape(e⁴, nᵉ, nᵉ^3))
-            ℒ.kron(vec(Σᶻ₁), ℒ.I(nᵉ))  spzeros(nᵉ * nˢ^2, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σᶻ₁) * Δμˢ₂', ℒ.I(nᵉ))  ℒ.kron(Σᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σᶻ₁) * vec(Σᶻ₁)', ℒ.I(nᵉ))   spzeros(nᵉ * nˢ^2, nˢ * nᵉ^2)  ℒ.kron(vec(Σᶻ₁), reshape(e⁴, nᵉ, nᵉ^3))
-            spzeros(nˢ*nᵉ^2, nᵉ + nᵉ^2 + 2*nᵉ * nˢ + nˢ^2*nᵉ)   ℒ.kron(Σᶻ₁, reshape(e⁴, nᵉ^2, nᵉ^2))    spzeros(nˢ*nᵉ^2,nᵉ^3)
-            reshape(e⁴, nᵉ^3, nᵉ)  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δμˢ₂', reshape(e⁴, nᵉ^3, nᵉ))     ℒ.kron(vec(Σᶻ₁)', reshape(e⁴, nᵉ^3, nᵉ))  spzeros(nᵉ^3, nˢ*nᵉ^2)     reshape(e⁶, nᵉ^3, nᵉ^3)]
-
-
-    Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
-            ℒ.kron(Σᶻ₁,vec(ℒ.I(nᵉ)))   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec(ℒ.I(nᵉ)))    ℒ.kron(reshape(ss_s * vec(Σᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δμˢ₂ * vec(Σᶻ₁)'), nˢ, nˢ^2), vec(ℒ.I(nᵉ)))  ℒ.kron(reshape(Σᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σᶻ₁) * vec(Σᶻ₁)', nˢ, nˢ^3), vec(ℒ.I(nᵉ)))
-            spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
-
-    A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
-
-    C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
-
-    # if size(initial_guess³) == (0,0)
-    #     initial_guess³ = collect(C)
-    # end
-
-    if length(C) < 1e7
-        function sylvester!(sol,𝐱)
-            𝐗 = reshape(𝐱, size(C))
-            sol .= vec(ŝ_to_ŝ₃ * 𝐗 * ŝ_to_ŝ₃' - 𝐗)
-            return sol
-        end
-
-        sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
-
-        Σ̂ᶻ₃, info = Krylov.gmres(sylvester, sparsevec(collect(-C)), atol = eps())
-
-        if !info.solved
-            Σ̂ᶻ₃, info = Krylov.bicgstab(sylvester, sparsevec(collect(-C)), atol = eps())
-        end
-
-        Σᶻ₃ = reshape(Σ̂ᶻ₃, size(C))
-    else
-        soll = speedmapping(collect(C); m! = (Σᶻ₃, Σ̂ᶻ₃) -> Σᶻ₃ .= ŝ_to_ŝ₃ * Σ̂ᶻ₃ * ŝ_to_ŝ₃' + C, 
-        # time_limit = 200, 
-        stabilize = true)
-        
-        Σᶻ₃ = soll.minimizer
-
-        if !soll.converged
-            return Inf
-        end
+    for j = 1:size(comb⁴,1)
+        E_e⁴[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb⁴[j,:])
     end
 
-    Σʸ₃ = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃'
+    e⁴ = quadrup * E_e⁴
+
+
+    # precalc third order
+    sextup = multiplicate(nᵉ, 6)
+    E_e⁶ = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4 * (nᵉ + 4)÷5 * (nᵉ + 5)÷6)
+
+    comb⁶   = reduce(vcat, generateSumVectors(nᵉ, 6))
+
+    comb⁶ = comb⁶ isa Int64 ? reshape([comb⁶],1,1) : comb⁶
+
+    for j = 1:size(comb⁶,1)
+        E_e⁶[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb⁶[j,:])
+    end
+
+    e⁶ = sextup * E_e⁶
+
+    Σʸ₃ = zero(Σʸ₂)
+
+    for ords in orders 
+        variance_observable, dependencies_all_vars = ords
+
+        sort!(variance_observable)
+
+        sort!(dependencies_all_vars)
+
+        dependencies = intersect(𝓂.timings.past_not_future_and_mixed, dependencies_all_vars)
+
+        obs_in_y = indexin(variance_observable, 𝓂.timings.var)
+
+        dependencies_in_states_idx = indexin(dependencies, 𝓂.timings.past_not_future_and_mixed)
+
+        dependencies_in_var_idx = Int.(indexin(dependencies, 𝓂.timings.var))
+
+        nˢ = length(dependencies)
+
+        iˢ = dependencies_in_var_idx
+
+        Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
+
+        dependencies_extended_idx = vcat(dependencies_in_states_idx, 
+                dependencies_in_states_idx .+ 𝓂.timings.nPast_not_future_and_mixed, 
+                findall(ℒ.kron(𝓂.timings.past_not_future_and_mixed .∈ (intersect(𝓂.timings.past_not_future_and_mixed,dependencies),), 𝓂.timings.past_not_future_and_mixed .∈ (intersect(𝓂.timings.past_not_future_and_mixed,dependencies),))) .+ 2*𝓂.timings.nPast_not_future_and_mixed)
+        
+        Σ̂ᶻ₂ = Σᶻ₂[dependencies_extended_idx, dependencies_extended_idx]
+        
+        Δ̂μˢ₂ = Δμˢ₂[dependencies_in_states_idx]
+
+        # precalc second order
+        ## mean
+        I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
+
+        e_es = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nᵉ*nˢ)), nˢ*nᵉ^2, nˢ*nᵉ^2))
+        e_ss = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nˢ^2)), nᵉ*nˢ^2, nᵉ*nˢ^2))
+        ss_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ^2)), ℒ.I(nˢ)), nˢ^3, nˢ^3))
+        s_s  = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2))
+
+        # second order
+        s_in_s⁺ = s⁺ .∈ (dependencies,)
+        e_in_s⁺ = s⁺ .∈ (𝓂.timings.exo,)
+        v_in_s⁺ = s⁺ .∈ ([:Volatility],)
+
+        kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
+        kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
+        kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
+        kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
+
+        # first order
+        s_to_y₁ = 𝐒₁[obs_in_y,:][:,dependencies_in_states_idx]
+        e_to_y₁ = 𝐒₁[obs_in_y,:][:, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+        
+        s_to_s₁ = 𝐒₁[iˢ, dependencies_in_states_idx]
+        e_to_s₁ = 𝐒₁[iˢ, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+
+
+        # second order
+        s_s_to_y₂ = 𝐒₂[obs_in_y,:][:, kron_s_s]
+        e_e_to_y₂ = 𝐒₂[obs_in_y,:][:, kron_e_e]
+        s_e_to_y₂ = 𝐒₂[obs_in_y,:][:, kron_s_e]
+
+        s_s_to_s₂ = 𝐒₂[iˢ, kron_s_s] |> collect
+        e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
+        v_v_to_s₂ = 𝐒₂[iˢ, kron_v_v] |> collect
+        s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
+
+        s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+        e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
+        s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
+
+        # third order
+        kron_s_v = ℒ.kron(s_in_s⁺, v_in_s⁺)
+        kron_e_v = ℒ.kron(e_in_s⁺, v_in_s⁺)
+
+        s_s_s_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_s_s, s_in_s⁺)]
+        s_s_e_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_s_s, e_in_s⁺)]
+        s_e_e_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_s_e, e_in_s⁺)]
+        e_e_e_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_e_e, e_in_s⁺)]
+        s_v_v_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_s_v, v_in_s⁺)]
+        e_v_v_to_y₃ = 𝐒₃[obs_in_y,:][:, ℒ.kron(kron_e_v, v_in_s⁺)]
+
+        s_s_s_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, s_in_s⁺)]
+        s_s_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_s, e_in_s⁺)]
+        s_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_e, e_in_s⁺)]
+        e_e_e_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_e, e_in_s⁺)]
+        s_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_s_v, v_in_s⁺)]
+        e_v_v_to_s₃ = 𝐒₃[iˢ, ℒ.kron(kron_e_v, v_in_s⁺)]
+
+        # Set up pruned state transition matrices
+        ŝ_to_ŝ₃ = [  s_to_s₁                zeros(nˢ, 2*nˢ + 2*nˢ^2 + nˢ^3)
+                                            zeros(nˢ, nˢ) s_to_s₁   s_s_to_s₂ / 2   zeros(nˢ, nˢ + nˢ^2 + nˢ^3)
+                                            zeros(nˢ^2, 2 * nˢ)               s_to_s₁_by_s_to_s₁  zeros(nˢ^2, nˢ + nˢ^2 + nˢ^3)
+                                            s_v_v_to_s₃ / 2    zeros(nˢ, nˢ + nˢ^2)      s_to_s₁       s_s_to_s₂    s_s_s_to_s₃ / 6
+                                            ℒ.kron(s_to_s₁,v_v_to_s₂ / 2)    zeros(nˢ^2, 2*nˢ + nˢ^2)     s_to_s₁_by_s_to_s₁  ℒ.kron(s_to_s₁,s_s_to_s₂ / 2)    
+                                            zeros(nˢ^3, 3*nˢ + 2*nˢ^2)   ℒ.kron(s_to_s₁,s_to_s₁_by_s_to_s₁)]
+
+        ê_to_ŝ₃ = [ e_to_s₁   zeros(nˢ,nᵉ^2 + 2*nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        zeros(nˢ,nᵉ)  e_e_to_s₂ / 2   s_e_to_s₂   zeros(nˢ,nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁  zeros(nˢ^2, nᵉ * nˢ + nᵉ * nˢ^2 + nᵉ^2 * nˢ + nᵉ^3)
+                                        e_v_v_to_s₃ / 2    zeros(nˢ,nᵉ^2 + nᵉ * nˢ)  s_e_to_s₂    s_s_e_to_s₃ / 2    s_e_e_to_s₃ / 2    e_e_e_to_s₃ / 6
+                                        ℒ.kron(e_to_s₁, v_v_to_s₂ / 2)    zeros(nˢ^2, nᵉ^2 + nᵉ * nˢ)      s_s * s_to_s₁_by_e_to_s₁    ℒ.kron(s_to_s₁, s_e_to_s₂) + s_s * ℒ.kron(s_s_to_s₂ / 2, e_to_s₁)  ℒ.kron(s_to_s₁, e_e_to_s₂ / 2) + s_s * ℒ.kron(s_e_to_s₂, e_to_s₁)  ℒ.kron(e_to_s₁, e_e_to_s₂ / 2)
+                                        zeros(nˢ^3, nᵉ + nᵉ^2 + 2*nᵉ * nˢ) ℒ.kron(s_to_s₁_by_s_to_s₁,e_to_s₁) + ℒ.kron(s_to_s₁, s_s * s_to_s₁_by_e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_s_to_s₁) * e_ss   ℒ.kron(s_to_s₁_by_e_to_s₁,e_to_s₁) + ℒ.kron(e_to_s₁,s_to_s₁_by_e_to_s₁) * e_es + ℒ.kron(e_to_s₁, s_s * s_to_s₁_by_e_to_s₁) * e_es  ℒ.kron(e_to_s₁,e_to_s₁_by_e_to_s₁)]
+
+        ŝ_to_y₃ = [s_to_y₁ + s_v_v_to_y₃ / 2  s_to_y₁  s_s_to_y₂ / 2   s_to_y₁    s_s_to_y₂     s_s_s_to_y₃ / 6]
+
+        ê_to_y₃ = [e_to_y₁ + e_v_v_to_y₃ / 2  e_e_to_y₂ / 2  s_e_to_y₂   s_e_to_y₂     s_s_e_to_y₃ / 2    s_e_e_to_y₃ / 2    e_e_e_to_y₃ / 6]
+
+        μˢ₃δμˢ₁ = reshape((ℒ.I - s_to_s₁_by_s_to_s₁) \ vec( 
+                                    (s_s_to_s₂  * reshape(ss_s * vec(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂'),nˢ^2, nˢ) +
+                                    s_s_s_to_s₃ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end , 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ^3, nˢ) / 6 +
+                                    s_e_e_to_s₃ * ℒ.kron(Σ̂ᶻ₁, vec(ℒ.I(nᵉ))) / 2 +
+                                    s_v_v_to_s₃ * Σ̂ᶻ₁ / 2) * s_to_s₁' +
+                                    (s_e_to_s₂  * ℒ.kron(Δ̂μˢ₂,ℒ.I(nᵉ)) +
+                                    e_e_e_to_s₃ * reshape(e⁴, nᵉ^3, nᵉ) / 6 +
+                                    s_s_e_to_s₃ * ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ)) / 2 +
+                                    e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
+                                    ), nˢ, nˢ)
+
+
+        Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σ̂ᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    reshape(e⁴, nᵉ, nᵉ^3)
+                spzeros(nᵉ^2, nᵉ)    reshape(e⁴, nᵉ^2, nᵉ^2) - vec(ℒ.I(nᵉ)) * vec(ℒ.I(nᵉ))'     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
+                spzeros(nˢ * nᵉ, nᵉ + nᵉ^2)    ℒ.kron(Σ̂ᶻ₁, ℒ.I(nᵉ))   spzeros(nˢ * nᵉ, nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
+                ℒ.kron(Δ̂μˢ₂,ℒ.I(nᵉ))    spzeros(nᵉ * nˢ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σ̂ᶻ₂[nˢ + 1:2*nˢ,nˢ + 1:2*nˢ] + Δ̂μˢ₂ * Δ̂μˢ₂',ℒ.I(nᵉ)) ℒ.kron(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)',ℒ.I(nᵉ))   spzeros(nᵉ * nˢ, nˢ * nᵉ^2) ℒ.kron(Δ̂μˢ₂, reshape(e⁴, nᵉ, nᵉ^3))
+                ℒ.kron(vec(Σ̂ᶻ₁), ℒ.I(nᵉ))  spzeros(nᵉ * nˢ^2, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Σ̂ᶻ₂[2 * nˢ + 1 : end, nˢ + 1:2*nˢ] + vec(Σ̂ᶻ₁) * Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', ℒ.I(nᵉ))   spzeros(nᵉ * nˢ^2, nˢ * nᵉ^2)  ℒ.kron(vec(Σ̂ᶻ₁), reshape(e⁴, nᵉ, nᵉ^3))
+                spzeros(nˢ*nᵉ^2, nᵉ + nᵉ^2 + 2*nᵉ * nˢ + nˢ^2*nᵉ)   ℒ.kron(Σ̂ᶻ₁, reshape(e⁴, nᵉ^2, nᵉ^2))    spzeros(nˢ*nᵉ^2,nᵉ^3)
+                reshape(e⁴, nᵉ^3, nᵉ)  spzeros(nᵉ^3, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', reshape(e⁴, nᵉ^3, nᵉ))     ℒ.kron(vec(Σ̂ᶻ₁)', reshape(e⁴, nᵉ^3, nᵉ))  spzeros(nᵉ^3, nˢ*nᵉ^2)     reshape(e⁶, nᵉ^3, nᵉ^3)]
+
+
+        Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
+                ℒ.kron(Σ̂ᶻ₁,vec(ℒ.I(nᵉ)))   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec(ℒ.I(nᵉ)))    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec(ℒ.I(nᵉ)))  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec(ℒ.I(nᵉ)))
+                spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+
+        A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+
+        C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
+
+        # if size(initial_guess³) == (0,0)
+        #     initial_guess³ = collect(C)
+        # end
+
+        if length(C) < 1e7
+            function sylvester!(sol,𝐱)
+                𝐗 = reshape(𝐱, size(C))
+                sol .= vec(ŝ_to_ŝ₃ * 𝐗 * ŝ_to_ŝ₃' - 𝐗)
+                return sol
+            end
+
+            sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
+
+            Σ̂ᶻ₃, info = Krylov.gmres(sylvester, sparsevec(collect(-C)), atol = eps())
+
+            if !info.solved
+                Σ̂ᶻ₃, info = Krylov.bicgstab(sylvester, sparsevec(collect(-C)), atol = eps())
+            end
+
+            Σᶻ₃ = reshape(Σ̂ᶻ₃, size(C))
+        else
+            soll = speedmapping(collect(C); m! = (Σᶻ₃, Σ̂ᶻ₃) -> Σᶻ₃ .= ŝ_to_ŝ₃ * Σ̂ᶻ₃ * ŝ_to_ŝ₃' + C, 
+            # time_limit = 200, 
+            stabilize = true)
+            
+            Σᶻ₃ = soll.minimizer
+
+            if !soll.converged
+                return Inf
+            end
+        end
+        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃'
+
+        for obs in variance_observable
+            Σʸ₃[indexin([obs], 𝓂.timings.var), indexin(variance_observable, 𝓂.timings.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
+        end
+    end
 
     return Σʸ₃, μʸ₂
 end
