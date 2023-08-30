@@ -157,11 +157,13 @@ function warshall_algorithm!(R::SparseMatrixCSC{Bool,Int64})
 end
 
 
-function determine_efficient_order(∇₁::SparseMatrixCSC{<: Real}, T::timings, observables::Union{Symbol,Vector{Symbol}}; verbose::Bool = false)
-    if observables == :full_covar
+function determine_efficient_order(∇₁::SparseMatrixCSC{<: Real}, T::timings, 
+    variables::Union{Symbol_input,String_input}; verbose::Bool = false)
+    if variables == :full_covar
         return [T.var => T.var]
-    elseif observables == :all
-        observables = T.var
+    else
+        var_idx = parse_variables_input_to_index(variables, T)
+        observables = T.var[var_idx]
     end
 
     expand = [  spdiagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
@@ -3081,6 +3083,24 @@ end
 
 
 # helper for get functions
+function covariance_parameter_derivatives_third_order(parameters::Vector{ℱ.Dual{Z,S,N}}, variables::Union{Symbol_input,String_input}, parameters_idx, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_covariance(params, variables, 𝓂, verbose = verbose)[1]),eps(Float64)))
+end
+
+
+# helper for get functions
+function covariance_parameter_derivatives_third_order(parameters::ℱ.Dual{Z,S,N}, variables::Union{Symbol_input,String_input}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+    params = copy(𝓂.parameter_values)
+    params = convert(Vector{ℱ.Dual{Z,S,N}},params)
+    params[parameters_idx] = parameters
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_covariance(params, variables, 𝓂, verbose = verbose)[1]),eps(Float64)))
+end
+
+
+# helper for get functions
 function mean_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; algorithm::Symbol = :pruned_second_order, verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -4281,7 +4301,7 @@ end
 
 
 
-function calculate_second_order_covariance_forward(AC::AbstractVector{Float64}; dims::Vector{Tuple{Int,Int}})
+function solve_symmetric_sylvester_forward(AC::AbstractVector{Float64}; dims::Vector{Tuple{Int,Int}})
     lenA = dims[1][1] * dims[1][2]
 
     A = reshape(AC[1 : lenA],dims[1])
@@ -4305,7 +4325,7 @@ end
 
 
 
-function calculate_second_order_covariance_conditions(AC::AbstractVector{<: Real}, covar::AbstractMatrix{<: Real}, solved::Bool; dims::Vector{Tuple{Int,Int}})
+function solve_symmetric_sylvester_conditions(AC::AbstractVector{<: Real}, covar::AbstractMatrix{<: Real}, solved::Bool; dims::Vector{Tuple{Int,Int}})
     lenA = dims[1][1] * dims[1][2]
 
     A = reshape(AC[1 : lenA],dims[1])
@@ -4316,18 +4336,18 @@ end
 
 
 
-function calculate_second_order_covariance_forward(AC::AbstractVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}) where {Z,S,N}
+function solve_symmetric_sylvester_forward(AC::AbstractVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}) where {Z,S,N}
     # unpack: AoS -> SoA
     ACv = ℱ.value.(AC)
 
     # you can play with the dimension here, sometimes it makes sense to transpose
     partials = mapreduce(ℱ.partials, hcat, AC)'
 
-    val, solved = calculate_second_order_covariance_forward(ACv, dims = dims)
+    val, solved = solve_symmetric_sylvester_forward(ACv, dims = dims)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
-    BB = ℱ.jacobian(x -> calculate_second_order_covariance_conditions(x, val, solved, dims = dims), ACv)
-    AA = ℱ.jacobian(x -> calculate_second_order_covariance_conditions(ACv, x, solved, dims = dims), val)
+    BB = ℱ.jacobian(x -> solve_symmetric_sylvester_conditions(x, val, solved, dims = dims), ACv)
+    AA = ℱ.jacobian(x -> solve_symmetric_sylvester_conditions(ACv, x, solved, dims = dims), val)
 
     Â = RF.lu(AA, check = false)
 
@@ -4343,8 +4363,8 @@ function calculate_second_order_covariance_forward(AC::AbstractVector{ℱ.Dual{Z
     end,size(val)), solved
 end
 
-calculate_second_order_covariance_AD = ID.ImplicitFunction(calculate_second_order_covariance_forward, 
-                                                calculate_second_order_covariance_conditions; 
+solve_symmetric_sylvester_AD = ID.ImplicitFunction(solve_symmetric_sylvester_forward, 
+                                                solve_symmetric_sylvester_conditions; 
                                                 linear_solver = ID.DirectLinearSolver())
 
 
@@ -4450,7 +4470,7 @@ function calculate_second_order_covariance(parameters::Vector{<: Real}, 𝓂::�
 
     C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
 
-    Σᶻ₂, info = calculate_second_order_covariance_AD([vec(ŝ_to_ŝ₂); vec(C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])
+    Σᶻ₂, info = solve_symmetric_sylvester_AD([vec(ŝ_to_ŝ₂); vec(C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])
 
     Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
 
@@ -4462,11 +4482,12 @@ end
 
 
 
-function calculate_third_order_covariance(parameters::Vector{<: Real}, 
+function calculate_third_order_covariance(parameters::Vector{T}, 
     observables::Union{Vector{Symbol},Symbol},
     𝓂::ℳ; 
     verbose::Bool = false, 
-    tol::AbstractFloat = eps())
+    tol::AbstractFloat = eps()) where T <: Real
+    
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
     
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
@@ -4512,7 +4533,7 @@ function calculate_third_order_covariance(parameters::Vector{<: Real},
 
     e⁶ = sextup * E_e⁶
 
-    Σʸ₃ = zero(Σʸ₂)
+    Σʸ₃ = zeros(T, size(Σʸ₂))
 
     for ords in orders 
         variance_observable, dependencies_all_vars = ords
@@ -4650,37 +4671,40 @@ function calculate_third_order_covariance(parameters::Vector{<: Real},
 
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
 
-        # if size(initial_guess³) == (0,0)
-        #     initial_guess³ = collect(C)
+        Σᶻ₃, info = solve_symmetric_sylvester_AD([vec(ŝ_to_ŝ₃); vec(C)], dims = [size(ŝ_to_ŝ₃) ;size(C)])
+
+        # # if size(initial_guess³) == (0,0)
+        # #     initial_guess³ = collect(C)
+        # # end
+
+        # if length(C) < 1e7
+        #     function sylvester!(sol,𝐱)
+        #         𝐗 = reshape(𝐱, size(C))
+        #         sol .= vec(ŝ_to_ŝ₃ * 𝐗 * ŝ_to_ŝ₃' - 𝐗)
+        #         return sol
+        #     end
+
+        #     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
+
+        #     Σ̂ᶻ₃, info = Krylov.gmres(sylvester, sparsevec(collect(-C)), atol = eps())
+
+        #     if !info.solved
+        #         Σ̂ᶻ₃, info = Krylov.bicgstab(sylvester, sparsevec(collect(-C)), atol = eps())
+        #     end
+
+        #     Σᶻ₃ = reshape(Σ̂ᶻ₃, size(C))
+        # else
+        #     soll = speedmapping(collect(C); m! = (Σᶻ₃, Σ̂ᶻ₃) -> Σᶻ₃ .= ŝ_to_ŝ₃ * Σ̂ᶻ₃ * ŝ_to_ŝ₃' + C, 
+        #     # time_limit = 200, 
+        #     stabilize = true)
+            
+        #     Σᶻ₃ = soll.minimizer
+
+        #     if !soll.converged
+        #         return Inf
+        #     end
         # end
 
-        if length(C) < 1e7
-            function sylvester!(sol,𝐱)
-                𝐗 = reshape(𝐱, size(C))
-                sol .= vec(ŝ_to_ŝ₃ * 𝐗 * ŝ_to_ŝ₃' - 𝐗)
-                return sol
-            end
-
-            sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
-
-            Σ̂ᶻ₃, info = Krylov.gmres(sylvester, sparsevec(collect(-C)), atol = eps())
-
-            if !info.solved
-                Σ̂ᶻ₃, info = Krylov.bicgstab(sylvester, sparsevec(collect(-C)), atol = eps())
-            end
-
-            Σᶻ₃ = reshape(Σ̂ᶻ₃, size(C))
-        else
-            soll = speedmapping(collect(C); m! = (Σᶻ₃, Σ̂ᶻ₃) -> Σᶻ₃ .= ŝ_to_ŝ₃ * Σ̂ᶻ₃ * ŝ_to_ŝ₃' + C, 
-            # time_limit = 200, 
-            stabilize = true)
-            
-            Σᶻ₃ = soll.minimizer
-
-            if !soll.converged
-                return Inf
-            end
-        end
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃'
 
         for obs in variance_observable
@@ -4894,79 +4918,79 @@ end
 
 
 
-@setup_workload begin
-    # Putting some things in `setup` can reduce the size of the
-    # precompile file and potentially make loading faster.
-    @model FS2000 precompile = true begin
-        dA[0] = exp(gam + z_e_a  *  e_a[x])
-        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-        W[0] = l[0] / n[0]
-        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-        P[0] * c[0] = m[0]
-        m[0] - 1 + d[0] = l[0]
-        e[0] = exp(z_e_a  *  e_a[x])
-        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-        gy_obs[0] = dA[0] * y[0] / y[-1]
-        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-        log_gy_obs[0] = log(gy_obs[0])
-        log_gp_obs[0] = log(gp_obs[0])
-    end
+# @setup_workload begin
+#     # Putting some things in `setup` can reduce the size of the
+#     # precompile file and potentially make loading faster.
+#     @model FS2000 precompile = true begin
+#         dA[0] = exp(gam + z_e_a  *  e_a[x])
+#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#         W[0] = l[0] / n[0]
+#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#         P[0] * c[0] = m[0]
+#         m[0] - 1 + d[0] = l[0]
+#         e[0] = exp(z_e_a  *  e_a[x])
+#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#         gy_obs[0] = dA[0] * y[0] / y[-1]
+#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#         log_gy_obs[0] = log(gy_obs[0])
+#         log_gp_obs[0] = log(gp_obs[0])
+#     end
 
-    @parameters FS2000 silent = true precompile = true begin  
-        alp     = 0.356
-        bet     = 0.993
-        gam     = 0.0085
-        mst     = 1.0002
-        rho     = 0.129
-        psi     = 0.65
-        del     = 0.01
-        z_e_a   = 0.035449
-        z_e_m   = 0.008862
-    end
+#     @parameters FS2000 silent = true precompile = true begin  
+#         alp     = 0.356
+#         bet     = 0.993
+#         gam     = 0.0085
+#         mst     = 1.0002
+#         rho     = 0.129
+#         psi     = 0.65
+#         del     = 0.01
+#         z_e_a   = 0.035449
+#         z_e_m   = 0.008862
+#     end
     
-    ENV["GKSwstype"] = "nul"
+#     ENV["GKSwstype"] = "nul"
 
-    @compile_workload begin
-        # all calls in this block will be precompiled, regardless of whether
-        # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC precompile = true begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
+#     @compile_workload begin
+#         # all calls in this block will be precompiled, regardless of whether
+#         # they belong to your package or not (on Julia 1.8 and higher)
+#         @model RBC precompile = true begin
+#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#         end
 
-        @parameters RBC silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
+#         @parameters RBC silent = true precompile = true begin
+#             δ = 0.02
+#             α = 0.5
+#         end
 
-        get_SS(FS2000)
-        get_SS(FS2000, parameters = :alp => 0.36)
-        get_solution(FS2000)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)
+#         get_SS(FS2000)
+#         get_SS(FS2000, parameters = :alp => 0.36)
+#         get_solution(FS2000)
+#         get_solution(FS2000, parameters = :alp => 0.35)
+#         get_standard_deviation(FS2000)
+#         get_correlation(FS2000)
+#         get_autocorrelation(FS2000)
+#         get_variance_decomposition(FS2000)
+#         get_conditional_variance_decomposition(FS2000)
+#         get_irf(FS2000)
 
-        data = simulate(FS2000)[:,:,1]
-        observables = [:c,:k]
-        calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
-        get_mean(FS2000, silent = true)
-        get_SSS(FS2000, silent = true)
-        # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#         data = simulate(FS2000)[:,:,1]
+#         observables = [:c,:k]
+#         calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
+#         get_mean(FS2000, silent = true)
+#         get_SSS(FS2000, silent = true)
+#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-        # import Plots, StatsPlots
-        # plot_irf(FS2000)
-        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        # plot_conditional_variance_decomposition(FS2000)
-    end
-end
+#         # import Plots, StatsPlots
+#         # plot_irf(FS2000)
+#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#         # plot_conditional_variance_decomposition(FS2000)
+#     end
+# end
 
 end
