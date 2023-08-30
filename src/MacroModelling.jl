@@ -187,13 +187,11 @@ function determine_efficient_order(∇₁::SparseMatrixCSC{<: Real}, T::timings,
     
     warshall_algorithm!(dependency_matrix)
 
-    permut = sortperm(indexin(observables, T.var[eqs[1,:]]))
-    
     solve_order = Vector{Symbol}[]
     already_solved_for = Set{Symbol}()
     corresponding_dependencies = Vector{Symbol}[]
 
-    for obs in observables[permut]
+    for obs in intersect(T.var[eqs[1,:]], observables)
         dependencies = T.var[eqs[1,:]][findall(dependency_matrix[indexin([obs], T.var[eqs[1,:]])[1],:])]
         to_be_solved_for = setdiff(intersect(observables, dependencies), already_solved_for)
         if length(to_be_solved_for) > 0
