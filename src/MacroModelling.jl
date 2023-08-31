@@ -4498,7 +4498,7 @@ function calculate_third_order_covariance(parameters::Vector{T},
                                             verbose::Bool = false, 
                                             tol::AbstractFloat = eps()) where T <: Real
 
-    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(parameters, 𝓂, verbose = verbose)
     
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
 
