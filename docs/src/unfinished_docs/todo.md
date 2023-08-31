@@ -7,6 +7,7 @@
 - [ ] write tests for variables argument in get_moment and for higher order moments
 - [ ] redo naming in moments calc and make whole process faster (put outside of loop the ignore derviatives for derivatives and precalc wrangling matrices)
 - [ ] consolidate sylvester solvers (diff)
+- [ ] handle sparsity in sylvester solver better (hand over indices and nzvals instead of vec)
 - [ ] make higher order suable with zygote (currently only analytical pushforward, no implicitdiff)
 - [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
 - [ ] use more implicit diff for the other functions as well
