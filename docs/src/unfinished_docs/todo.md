@@ -4,7 +4,7 @@
 
 - [ ] implement occasionally binding constraints with shocks
 - [ ] recheck results for third order cov
-- [ ] write function to smart select variables to calc cov for
+- [ ] write tests for variables argument in get_moment and for higher order moments
 - [ ] redo naming in moments calc and make whole process faster (put outside of loop the ignore derviatives for derivatives and precalc wrangling matrices)
 - [ ] consolidate sylvester solvers (diff)
 - [ ] make higher order suable with zygote (currently only analytical pushforward, no implicitdiff)
@@ -67,7 +67,9 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
-- [x] handle KeyedArrays with strings as dimension names as input- [x] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
+- [x] handle KeyedArrays with strings as dimension names as input
+- [x] write function to smart select variables to calc cov for
+- [x] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
 - [x] have for loop where the items are multiplied or divided or whatever, defined by operator | + or * only
 - [x] write documentation for string inputs
 - [x] write documentation for programmatic model writing
