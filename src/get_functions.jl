@@ -1978,8 +1978,14 @@ function get_moments(𝓂::ℳ;
 
             dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), 𝓂.parameter_values[param_idx])
             
+            if length(𝓂.calibration_equations_parameters) > 0
+                var_idx_ext = vcat(var_idx, 𝓂.timings.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
+            else
+                var_idx_ext = var_idx
+            end
+
             # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
-            SS =  KeyedArray(hcat(collect(NSSS[var_idx]),dNSSS[var_idx,:]);  Variables = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
+            SS =  KeyedArray(hcat(collect(NSSS[var_idx_ext]),dNSSS[var_idx_ext,:]);  Variables = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         end
         
         axis1 = 𝓂.var[var_idx]
@@ -2109,7 +2115,13 @@ function get_moments(𝓂::ℳ;
                 axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
             end
 
-            SS =  KeyedArray(collect(NSSS)[var_idx];  Variables = axis1)
+            if length(𝓂.calibration_equations_parameters) > 0
+                var_idx_ext = vcat(var_idx, 𝓂.timings.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
+            else
+                var_idx_ext = var_idx
+            end
+
+            SS =  KeyedArray(collect(NSSS)[var_idx_ext];  Variables = axis1)
         end
 
         axis1 = 𝓂.var[var_idx]
