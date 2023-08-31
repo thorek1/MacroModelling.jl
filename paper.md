@@ -13,19 +13,21 @@ authors:
 affiliations:
  - name: Norges Bank, Norway
    index: 1
-date: 1 June 2023
+date: 1 September 2023
 bibliography: paper.bib
 ---
 
 # Summary
 
-`MacroModelling.jl` is a Julia [@Bezanson:2012] package for developing and solving dynamic stochastic general equilibrium (DSGE) models. These kind of models are typicaly used to decsribe the behaviour of a macroeconomy and are particularly suited for counterfactual analysis (economic policy evaluation) and exploring/quantifying specific mechanisms (academic research). These models are difficult to work with because they consist of a nonlinear system of equations describing a stochastic control problem.
+`MacroModelling.jl` is a Julia [@Bezanson:2012] package for developing and solving dynamic stochastic general equilibrium (DSGE) models. These kind of models are typically used to describe the behavior of a macroeconomy and are particularly suited for counterfactual analysis (economic policy evaluation) and exploring/quantifying specific mechanisms (academic research). These models are difficult to work with because they consist of a nonlinear system of equations describing a stochastic control problem. The forward looking expectations, nonlinearity, and high dimensionality of these models necessitate efficient numerical tools.
 
-The goal of this package is to reduce coding time and speed up model development by providing functions for creating, calibrating, simulating, and estimating discrete-time DSGE models. The package includes several pre-defined models from prominent economic papers, providing an immediate starting point for policy makers, economic researchers, and students.
+The goal of this package is to reduce coding time and speed up model development by providing functions for working with discrete-time DSGE models. The intuitive syntax, automatic variable declaration, and effective steady state solver facilitate fast prototyping of models. The package includes several pre-defined models from prominent economic papers, providing an immediate starting point for policy makers, economic researchers, or students.
 
-The package can parse a model written with user-friendly syntax, solve the model knowing only the model equations and parameter values, calculate first, second, and third-order perturbation solutions  [@villemot2011solving; @levintal2017fifth] using symbolic and automatic differentiation. It can also calibrate parameters, match model moments, and estimate the model on data using the Kalman filter [@durbin2012time]. The package is designed to be user-friendly and efficient, enabling users to generate outputs or change parameters rapidly once the functions are compiled and the non-stochastic steady state has been found.
+The package can parse a model written with user-friendly syntax, solve the model knowing only the model equations and parameter values, calculate first, second, and third-order perturbation solutions [@villemot2011solving; @levintal2017fifth] using symbolic and automatic differentiation. It can also calibrate parameters, match model moments, and estimate the model on data using the Kalman filter [@durbin2012time]. The package is designed to be user-friendly and efficient, enabling users to generate outputs or change parameters rapidly once the functions are compiled and the non-stochastic steady state (NSSS) has been found.
 
-The user can implement a simple real business cycle model with the following code:
+# Example
+
+One relatively simple example to study with the package is a real business cycle model (see e.g. [@kydland_and_prescott_1982]). The model describes the dynamics of an economy with households consuming a consumption good `c`, produced by competitive firms using the capital stock `k`, and an exogenous technology process `z`. The households maximize their utility (`log(c)`) and decide whether to invest in the capital stock or consume and the firms maximize their profits while minimizing their costs when deciding the amount of production inputs and quantity of output. The capital stock depreciates by the factor `δ` and the production technology takes the form: `k^α`. All agents discount the future with `β` and the exogenous AR(1) technology process is governed by parameters `ρ` and `σᶻ`. Given the two optimization problems one can write down the optimality conditions (first-order conditions) as follows:
 
 ```julia
 using MacroModelling
@@ -35,38 +37,30 @@ import StatsPlots
     1 / c[0] = (β / c[1]) * (α * z[1] * k[0]^(α - 1) + (1 - δ))
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = z[0] * k[-1]^α
-    z[0] = (1 - ρ) + ρ * z[-1] + σ_z * eps_z[x]
+    z[0] = (1 - ρ) + ρ * z[-1] + σᶻ * ϵᶻ[x]
 end
 
 @parameters RBC begin
-    σ_z= 0.01
-    ρ = 0.2
-    δ = 0.02
-    α = 0.5
-    β = 0.95
+    σᶻ = 0.01
+    ρ  = 0.2
+    δ  = 0.02
+    α  = 0.5
+    β  = 0.95
 end
 
 plot_irf(RBC)
 ```
 
 ![Impulse response to a positive 1 standard deviation shock.\label{fig:irf__RBC__eps_z__1}](irf__RBC__eps_z__1.png)
-The plot shows both the level, percent deviation from the non stochastic steady steady (NSSS) as well as the NSSS itself. Note that the code to generate the impulse response function (IRF) plot contains only the equations, parameter values, and the command to plot.
-
-# Statement of need
-
-DSGE models are used in academia and policy institutions to explain economic phenomena such as business cycles, or the effects of economic policy. The forward looking expectations, nonlinearity, and high dimensionality of these models necessitate efficient numerical tools for their solution, calibration, simulation, and estimation. This is where `MacroModelling.jl` comes in.
-
-The package supports the user especially in the model development phase. The intuitive syntax, automatic variable declaration, and effective steady state solver facilitate fast prototyping of models.
-
-Once the model is solved the package provides user-friendly functions to generate output. The package stands out for its ability to calculate sensitivities of model moments, its automatic variable declaration, and effective steady state solver.
+The plot shows both the level, percent deviation from the NSSS as well as the NSSS itself. Note that the code to generate the impulse response function (IRF) plot contains only the equations, parameter values, and the command to plot.
 
 # Comparison with other packages
 
 `MacroModelling.jl` differentiates itself among macroeconomic modelling packages by offering a unique blend of capabilities and conveniences, such as automatic declaration of variables and parameters, automatic differentiation with respect to parameters, and support for perturbation solution orders up to 3. While it operates within the Julia environment, it presents an alternative to the MATLAB-dominated field, which includes [dynare](https://www.dynare.org), [RISE](https://github.com/jmaih/RISE_toolbox), [Taylor Projection](https://sites.google.com/site/orenlevintal/taylor-projection), [NBTOOLBOX](https://github.com/Coksp1/NBTOOLBOX/tree/main/Documentation), and [IRIS](https://iris.igpmn.org), the latter two being capable of providing only 1st order perturbation solutions.
 
-Other Julia-based packages such as [DSGE.jl](https://github.com/FRBNY-DSGE/DSGE.jl), [StateSpaceEcon.jl](https://bankofcanada.github.io/DocsEcon.jl/dev/), [SolveDSGE.jl](https://github.com/RJDennis/SolveDSGE.jl), and [DifferentiableStateSpaceModels.jl](https://github.com/HighDimensionalEconLab/DifferentiableStateSpaceModels.jl) have similar functionalities to `MacroModelling.jl`, but they are not as general and convenience focused as the MATLAB packages and `MacroModelling.jl`. Furthermore, they do not possess the unique feature set of `MacroModelling.jl` regarding variable declaration and automatic differentiation. Notably, the Python-based [dolo.py](https://www.econforge.org/dolo.py/) offers global solutions, but does not include estimation and balanced growth path features which are available in `MacroModelling.jl`.
+Other Julia-based packages such as [DSGE.jl](https://github.com/FRBNY-DSGE/DSGE.jl), [StateSpaceEcon.jl](https://bankofcanada.github.io/DocsEcon.jl/dev/), [SolveDSGE.jl](https://github.com/RJDennis/SolveDSGE.jl), and [DifferentiableStateSpaceModels.jl](https://github.com/HighDimensionalEconLab/DifferentiableStateSpaceModels.jl) have similar functionalities to `MacroModelling.jl`, but they are not as general and convenience focused as the MATLAB packages and `MacroModelling.jl`. The julia packages are missing convenience functionalities such as automatic creation of auxiliary variables for variables in lead and lag larger than 1, or programmatic model definition which are convenient to the user but require significant effort to implement in the parser. Furthermore, they do not possess the unique feature set of `MacroModelling.jl` regarding variable declaration and automatic differentiation. Notably, the Python-based [dolo.py](https://www.econforge.org/dolo.py/) offers global solutions, but does not include estimation and balanced growth path features which are available in `MacroModelling.jl`.
 
-`MacroModelling.jl` stands out as one of the few packages that can solve non-stochastic steady states symbolically, a feature shared only with [gEcon](http://gecon.r-forge.r-project.org), an R-based package. Furthermore, unlike many of its competitors, the domain specific model language of `MacroModelling.jl` is integrated into the Julia language, which makes for covenient reading and coding, with the help of Julia macros.
+`MacroModelling.jl` stands out as one of the few packages that can solve non-stochastic steady states symbolically, a feature shared only with [gEcon](http://gecon.r-forge.r-project.org), an R-based package. When symbolic solution is not possible `MacroModelling.jl` uses search space transformation, automatic domain restrictions, restarts with different initial values, warm starts using previous solutions, and Levenberg-Marquardt type optimizer. The combination of which makes it possible to solve all 16 models currently implemented in the examples out-of-the box. This is remarkable because all other packages rely either on NSSS derivation by hand or a subset of the features outlined above and are in general far less reliable in finding the NSSS without further information (e.g. close enough initial guess). Furthermore, unlike many of its competitors, the domain specific model language of `MacroModelling.jl` is integrated into the Julia language, which makes for convenient reading and coding, with the help of Julia macros.
 
 # Acknowledgements
 
