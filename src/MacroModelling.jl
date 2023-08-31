@@ -157,8 +157,10 @@ function warshall_algorithm!(R::SparseMatrixCSC{Bool,Int64})
 end
 
 
-function determine_efficient_order(∇₁::SparseMatrixCSC{<: Real}, T::timings, 
-    variables::Union{Symbol_input,String_input}; verbose::Bool = false)
+function determine_efficient_order(∇₁::SparseMatrixCSC{<: Real}, 
+                                    T::timings, 
+                                    variables::Union{Symbol_input,String_input})
+
     if variables == :full_covar
         return [T.var => T.var]
     else
@@ -3083,7 +3085,11 @@ end
 
 
 # helper for get functions
-function covariance_parameter_derivatives_third_order(parameters::Vector{ℱ.Dual{Z,S,N}}, variables::Union{Symbol_input,String_input}, parameters_idx, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+function covariance_parameter_derivatives_third_order(parameters::Vector{ℱ.Dual{Z,S,N}}, 
+                                                        variables::Union{Symbol_input,String_input}, 
+                                                        parameters_idx, 
+                                                        𝓂::ℳ; 
+                                                        verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
@@ -3092,7 +3098,11 @@ end
 
 
 # helper for get functions
-function covariance_parameter_derivatives_third_order(parameters::ℱ.Dual{Z,S,N}, variables::Union{Symbol_input,String_input}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+function covariance_parameter_derivatives_third_order(parameters::ℱ.Dual{Z,S,N}, 
+                                                        variables::Union{Symbol_input,String_input}, 
+                                                        parameters_idx::Int, 
+                                                        𝓂::ℳ; 
+                                                        verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
@@ -4483,11 +4493,11 @@ end
 
 
 function calculate_third_order_covariance(parameters::Vector{T}, 
-    observables::Union{Vector{Symbol},Symbol},
-    𝓂::ℳ; 
-    verbose::Bool = false, 
-    tol::AbstractFloat = eps()) where T <: Real
-    
+                                            observables::Union{Symbol_input,String_input},
+                                            𝓂::ℳ; 
+                                            verbose::Bool = false, 
+                                            tol::AbstractFloat = eps()) where T <: Real
+
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
     
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
