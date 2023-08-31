@@ -386,7 +386,7 @@ function calculate_kalman_filter_loglikelihoods(𝓂::ℳ, data::AbstractArray{F
 
     data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
 
     sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
@@ -485,7 +485,7 @@ function calculate_kalman_filter_loglikelihoods(𝓂::ℳ, data::AbstractArray{F
 
     data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix |> Matrix
 
     sol = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
