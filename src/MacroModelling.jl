@@ -4304,7 +4304,7 @@ function solve_symmetric_sylvester_forward(AC::AbstractVector{Float64}; dims::Ve
 
     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), false, false, 
     (sol,𝐱) -> begin 
-        𝐗 = sparse(reshape(𝐱, size(C)))
+        𝐗 = reshape(𝐱, size(C))
         sol .= vec(A * 𝐗 * A' - 𝐗)
         return sol
     end)
