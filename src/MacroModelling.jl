@@ -331,7 +331,7 @@ function generateSumVectors(vectorLength::Int, totalSum::Int)
     end
 
     # Recursive case: generate all possible vectors for smaller values of vectorLength and totalSum
-    return [[currentInt; smallerVector...]'; for currentInt in totalSum:-1:0 for smallerVector in generateSumVectors(vectorLength-1, totalSum-currentInt)]
+    return [[currentInt; smallerVector...]' for currentInt in totalSum:-1:0 for smallerVector in generateSumVectors(vectorLength-1, totalSum-currentInt)]
 end
 
 
