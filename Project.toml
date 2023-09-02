@@ -59,7 +59,7 @@ RuntimeGeneratedFunctions = "^0.5"
 SpecialFunctions = "^2"
 SpeedMapping = "^0.3"
 Subscripts = "^0.1"
-SymPyPythonCall = "^0.1"
+SymPyPythonCall = "^0.1.1"
 Symbolics = "^5"
 julia = "1.8"
 
