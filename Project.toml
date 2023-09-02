@@ -1,7 +1,7 @@
 name = "MacroModelling"
 uuid = "687ffad2-3618-405e-ac50-e0f7b9c75e44"
 authors = ["Thore Kockerols <mail@thorekockerols.com>"]
-version = "0.1.26"
+version = "0.1.28"
 
 [deps]
 AbstractDifferentiation = "c29ec348-61ec-40c8-8164-b8c60e9d9f3d"
@@ -59,7 +59,7 @@ RuntimeGeneratedFunctions = "^0.5"
 SpecialFunctions = "^2"
 SpeedMapping = "^0.3"
 Subscripts = "^0.1"
-SymPyPythonCall = "^0.1"
+SymPyPythonCall = "^0.1.1"
 Symbolics = "^5"
 julia = "1.8"
 
