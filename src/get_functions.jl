@@ -1635,10 +1635,22 @@ function get_variance_decomposition(𝓂::ℳ;
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    
+    variances_by_shock = zeros(𝓂.timings.nVars, 𝓂.timings.nExo)
 
-    variances_by_shock = reduce(hcat,[ℒ.diag(calculate_covariance_AD(sol[:,[1:𝓂.timings.nPast_not_future_and_mixed..., 𝓂.timings.nPast_not_future_and_mixed + i]], T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))[1]) for i in 1:𝓂.timings.nExo])
+    for i in 1:𝓂.timings.nExo
+        A = sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
 
-    var_decomp = variances_by_shock ./ sum(variances_by_shock,dims=2)
+        C = sol[:, 𝓂.timings.nPast_not_future_and_mixed + i]
+        
+        CC = C * C'
+
+        covar_raw, _ = solve_symmetric_sylvester_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)])
+
+        variances_by_shock[:,i] = ℒ.diag(covar_raw)
+    end
+    
+    var_decomp = variances_by_shock ./ sum(variances_by_shock, dims=2)
 
     axis1 = 𝓂.var
 
