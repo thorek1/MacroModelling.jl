@@ -127,6 +127,22 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
 
 
 
+function reconstruct_sparse_matrix(sp_vector::SparseVector{Float64, Int64}, dims::Tuple{Int64, Int64})
+    # Function to reconstruct the matrix from the vector and dimensions
+    
+    # Create an empty sparse matrix with original dimensions
+    sp_reconstructed = spzeros(eltype(sp_vector), dims)
+    
+    # Fill in the non-zero values
+    for (i, val) in zip(findnz(sp_vector)...)
+        row = rem(i-1, dims[1]) + 1
+        col = div(i-1, dims[1]) + 1
+        sp_reconstructed[row, col] = val
+    end
+    
+    return sp_reconstructed
+end
+                
 
 function warshall_algorithm!(R::SparseMatrixCSC{Bool,Int64})
     # Size of the matrix
@@ -4297,13 +4313,35 @@ end
 
 
 
-function solve_symmetric_sylvester_forward(AC::AbstractVector{Float64}; dims::Vector{Tuple{Int,Int}})
+function solve_symmetric_sylvester_forward(AC::SparseVector{Float64, Int64}; dims::Vector{Tuple{Int,Int}})
     lenA = dims[1][1] * dims[1][2]
 
-    A = reshape(AC[1 : lenA],dims[1])
-    C = reshape(AC[lenA + 1 : end],dims[2])
+    A = reconstruct_sparse_matrix(AC[1 : lenA],       dims[1])
+    C = reconstruct_sparse_matrix(AC[lenA + 1 : end], dims[2])
 
-    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), false, false, 
+    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, 
+    (sol,𝐱) -> begin 
+        𝐗 = reshape(𝐱, size(C))
+        sol .= vec(A * 𝐗 * A' - 𝐗)
+        return sol
+    end)
+
+    𝐂, info = Krylov.gmres(sylvester, [vec(-C);])
+
+    if !info.solved
+        𝐂, info = Krylov.bicgstab(sylvester, [vec(-C);])
+    end
+
+    return reshape(𝐂, size(C)), info.solved # return info on convergence
+end
+
+function solve_symmetric_sylvester_forward(AC::Vector{Float64}; dims::Vector{Tuple{Int,Int}})
+    lenA = dims[1][1] * dims[1][2]
+
+    A = reshape(AC[1 : lenA],       dims[1])
+    C = reshape(AC[lenA + 1 : end], dims[2])
+
+    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, 
     (sol,𝐱) -> begin 
         𝐗 = reshape(𝐱, size(C))
         sol .= vec(A * 𝐗 * A' - 𝐗)
@@ -4316,12 +4354,20 @@ function solve_symmetric_sylvester_forward(AC::AbstractVector{Float64}; dims::Ve
         𝐂, info = Krylov.bicgstab(sylvester, vec(-C))
     end
 
-    return reshape(𝐂,size(C)), info.solved # return info on convergence
+    return reshape(𝐂, size(C)), info.solved # return info on convergence
 end
 
 
+function solve_symmetric_sylvester_conditions(AC::SparseVector{<: Real, Int64}, covar::AbstractMatrix{<: Real}, solved::Bool; dims::Vector{Tuple{Int,Int}})
+    lenA = dims[1][1] * dims[1][2]
 
-function solve_symmetric_sylvester_conditions(AC::AbstractVector{<: Real}, covar::AbstractMatrix{<: Real}, solved::Bool; dims::Vector{Tuple{Int,Int}})
+    A = reconstruct_sparse_matrix(AC[1 : lenA],       dims[1])
+    C = reconstruct_sparse_matrix(AC[lenA + 1 : end], dims[2])
+    
+    A * covar * A' + C - covar
+end
+
+function solve_symmetric_sylvester_conditions(AC::Vector{<: Real}, covar::AbstractMatrix{<: Real}, solved::Bool; dims::Vector{Tuple{Int,Int}})
     lenA = dims[1][1] * dims[1][2]
 
     A = reshape(AC[1 : lenA],dims[1])
@@ -4360,6 +4406,9 @@ function solve_symmetric_sylvester_forward(AC::AbstractVector{ℱ.Dual{Z,S,N}}; 
 end
 
 solve_symmetric_sylvester_AD = ID.ImplicitFunction(solve_symmetric_sylvester_forward, 
+                                                solve_symmetric_sylvester_conditions)
+
+solve_symmetric_sylvester_AD_direct = ID.ImplicitFunction(solve_symmetric_sylvester_forward, 
                                                 solve_symmetric_sylvester_conditions; 
                                                 linear_solver = ID.DirectLinearSolver())
 
