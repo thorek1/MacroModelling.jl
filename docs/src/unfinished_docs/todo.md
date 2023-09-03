@@ -5,10 +5,10 @@
 - [ ] implement occasionally binding constraints with shocks
 - [ ] recheck results for third order cov
 - [ ] write tests for variables argument in get_moment and for higher order moments
-- [ ] redo naming in moments calc and make whole process faster (put outside of loop the ignore derviatives for derivatives and precalc wrangling matrices)
+- [ ] redo naming in moments calc and make whole process faster (precalc wrangling matrices)
 - [ ] consolidate sylvester solvers (diff)
 - [ ] handle sparsity in sylvester solver better (hand over indices and nzvals instead of vec)
-- [ ] make higher order suable with zygote (currently only analytical pushforward, no implicitdiff)
+- [ ] make higher order usable with zygote (currently only analytical pushforward, no implicitdiff)
 - [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
 - [ ] use more implicit diff for the other functions as well
 - [ ] write dynare model using function converting unicode to tab completion
@@ -69,6 +69,7 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] handle KeyedArrays with strings as dimension names as input
+- [x] put outside of loop the ignore derviatives for derivatives
 - [x] write function to smart select variables to calc cov for
 - [x] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
 - [x] have for loop where the items are multiplied or divided or whatever, defined by operator | + or * only
