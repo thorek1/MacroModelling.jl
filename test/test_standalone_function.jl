@@ -345,11 +345,11 @@ end
     @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = [RBC_CME.parameters[1]], standard_deviation = [RBC_CME.var[5]])[1] ,[.21], atol = 1e-6)
 
     # multiple parameter inputs and targets
-    sol = Optim.optimize(x -> sum(abs2,get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[1:2], standard_deviation = RBC_CME.var[[2,5]])[1] - [.0008,.21]),
+    sol = Optim.optimize(x -> sum(abs2,get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[[6,1]], standard_deviation = RBC_CME.var[[2,5]])[1] - [.0008,.21]),
     [0,0], [1,1], [.006,.16], 
     Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
-    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:2], standard_deviation = RBC_CME.var[[2,5]])[1], [.0008,.21], atol=1e-6)
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[[6,1]], standard_deviation = RBC_CME.var[[2,5]])[1], [.0008,.21], atol=1e-6)
 
     # function combining targets for SS and St.Dev.
     function get_variances_optim(x)
