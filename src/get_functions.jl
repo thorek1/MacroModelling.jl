@@ -1639,9 +1639,9 @@ function get_variance_decomposition(𝓂::ℳ;
     variances_by_shock = zeros(𝓂.timings.nVars, 𝓂.timings.nExo)
 
     for i in 1:𝓂.timings.nExo
-        A = sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+        A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
 
-        C = sol[:, 𝓂.timings.nPast_not_future_and_mixed + i]
+        C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed + i]
         
         CC = C * C'
 
