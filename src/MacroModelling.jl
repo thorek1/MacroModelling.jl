@@ -5032,8 +5032,8 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     # Gaussian Prior
     CC = sol[observables_and_states, 𝓂.timings.nPast_not_future_and_mixed+1:end] * sol[observables_and_states, 𝓂.timings.nPast_not_future_and_mixed+1:end]'
 
-    # P, _ = solve_symmetric_sylvester_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)])
-    P, _ = solve_symmetric_sylvester_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
+    P, _ = solve_symmetric_sylvester_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)])
+    # P, _ = solve_symmetric_sylvester_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
     # P, _ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
 
     # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
