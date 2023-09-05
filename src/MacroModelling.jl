@@ -4373,7 +4373,11 @@ function solve_symmetric_sylvester_forward(ABC::SparseVector{Float64, Int64};
     return sparse_output ? sparse(reshape(𝐂, size(C))) : reshape(𝐂, size(C)), info.solved # return info on convergence
 end
 
-function solve_symmetric_sylvester_forward(ABC::Vector{Float64}; dims::Vector{Tuple{Int,Int}}, sparse_output::Bool = false)
+function solve_symmetric_sylvester_forward(ABC::Vector{Float64}; 
+    dims::Vector{Tuple{Int,Int}}, 
+    sparse_output::Bool = false,
+    solver::Symbol = :gmres)
+
     lenA = dims[1][1] * dims[1][2]
 
     A = reshape(ABC[1 : lenA], dims[1])
@@ -4417,7 +4421,13 @@ function solve_symmetric_sylvester_forward(ABC::Vector{Float64}; dims::Vector{Tu
 end
 
 
-function solve_symmetric_sylvester_conditions(ABC::SparseVector{<: Real, Int64}, covar::AbstractMatrix{<: Real}, solved::Bool; dims::Vector{Tuple{Int,Int}}, sparse_output::Bool = false)
+function solve_symmetric_sylvester_conditions(ABC::SparseVector{<: Real, Int64}, 
+    covar::AbstractMatrix{<: Real}, 
+    solved::Bool; 
+    dims::Vector{Tuple{Int,Int}}, 
+    sparse_output::Bool = false,
+    solver::Symbol = :gmres)
+
     lenA = dims[1][1] * dims[1][2]
 
     A = reconstruct_sparse_matrix(ABC[1 : lenA], dims[1])
@@ -4434,7 +4444,12 @@ function solve_symmetric_sylvester_conditions(ABC::SparseVector{<: Real, Int64},
     A * covar * B - C - covar
 end
 
-function solve_symmetric_sylvester_conditions(ABC::Vector{<: Real}, covar::AbstractMatrix{<: Real}, solved::Bool; dims::Vector{Tuple{Int,Int}}, sparse_output::Bool = false)
+function solve_symmetric_sylvester_conditions(ABC::Vector{<: Real}, 
+    covar::AbstractMatrix{<: Real}, solved::Bool; 
+    dims::Vector{Tuple{Int,Int}}, 
+    sparse_output::Bool = false,
+    solver::Symbol = :gmres)
+
     lenA = dims[1][1] * dims[1][2]
 
     A = reshape(ABC[1 : lenA], dims[1])
@@ -4453,14 +4468,18 @@ end
 
 
 
-function solve_symmetric_sylvester_forward(ABC::AbstractVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, sparse_output::Bool = false) where {Z,S,N}
+function solve_symmetric_sylvester_forward(ABC::AbstractVector{ℱ.Dual{Z,S,N}}; 
+    dims::Vector{Tuple{Int,Int}}, 
+    sparse_output::Bool = false,
+    solver::Symbol = :gmres) where {Z,S,N}
+
     # unpack: AoS -> SoA
     ABCv = ℱ.value.(ABC)
 
     # you can play with the dimension here, sometimes it makes sense to transpose
     partials = mapreduce(ℱ.partials, hcat, ABC)'
 
-    val, solved = solve_symmetric_sylvester_forward(ABCv, dims = dims, sparse_output = sparse_output)
+    val, solved = solve_symmetric_sylvester_forward(ABCv, dims = dims, sparse_output = sparse_output, solver = solver)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
     BB = ℱ.jacobian(x -> solve_symmetric_sylvester_conditions(x, val, solved, dims = dims), ABCv)
@@ -4482,13 +4501,16 @@ end
 
 
 
-function solve_symmetric_sylvester_forward(abc::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, sparse_output::Bool = false) where {Z,S,N}
+function solve_symmetric_sylvester_forward(abc::SparseVector{ℱ.Dual{Z,S,N}}; 
+    dims::Vector{Tuple{Int,Int}}, 
+    sparse_output::Bool = false,
+    solver::Symbol = :gmres) where {Z,S,N}
 
     # unpack: AoS -> SoA
     ABC, partials = separate_values_and_partials_from_sparsevec_dual(abc)
 
     # get f(vs)
-    val, solved = solve_symmetric_sylvester_forward(ABC, dims = dims, sparse_output = sparse_output)
+    val, solved = solve_symmetric_sylvester_forward(ABC, dims = dims, sparse_output = sparse_output, solver = solver)
 
     lenA = dims[1][1] * dims[1][2]
 
@@ -4537,7 +4559,11 @@ end
 
 
 
-function solve_symmetric_sylvester_forward(abc::DenseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, sparse_output::Bool = false) where {Z,S,N}
+function solve_symmetric_sylvester_forward(abc::DenseVector{ℱ.Dual{Z,S,N}};
+    dims::Vector{Tuple{Int,Int}}, 
+    sparse_output::Bool = false,
+    solver::Symbol = :gmres) where {Z,S,N}
+
     # unpack: AoS -> SoA
     ABC = ℱ.value.(abc)
 
@@ -4545,7 +4571,7 @@ function solve_symmetric_sylvester_forward(abc::DenseVector{ℱ.Dual{Z,S,N}}; di
     partials = mapreduce(ℱ.partials, hcat, abc)'
 
     # get f(vs)
-    val, solved = solve_symmetric_sylvester_forward(ABC, dims = dims, sparse_output = sparse_output)
+    val, solved = solve_symmetric_sylvester_forward(ABC, dims = dims, sparse_output = sparse_output, solver = solver)
 
     lenA = dims[1][1] * dims[1][2]
 
