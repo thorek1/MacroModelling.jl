@@ -3499,44 +3499,6 @@ function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive
 end
 
 
-function solve_sylvester_equation_conditions(concat_sparse_vec::SparseVector, S, solved; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps())
-    lenA = dims[1][1] * dims[1][2]
-    lenB = dims[2][1] * dims[2][2]
-
-    A = sparse(reshape(concat_sparse_vec[1 : lenA], dims[1]))
-    B = sparse(reshape(concat_sparse_vec[lenA .+ (1 : lenB)], dims[2]))
-    X = sparse(reshape(concat_sparse_vec[lenA + lenB + 1 : end], dims[3]))
-
-    X + S - A * S * B
-end
-
-function solve_sylvester_equation_forward(concat_sparse_vec::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps())
-    lenA = dims[1][1] * dims[1][2]
-    lenB = dims[2][1] * dims[2][2]
-    lenX = dims[3][1] * dims[3][2]
-
-    A = sparse(reshape(concat_sparse_vec[1 : lenA],dims[1]))
-    B = sparse(reshape(concat_sparse_vec[lenA .+ (1 : lenB)],dims[2]))
-
-    sylvester = LinearOperators.LinearOperator(Float64, lenX, lenX, false, false, 
-        (sol,𝐱) -> begin 
-        𝐗 = reshape(𝐱, dims[3])
-        sol .= vec(𝐗 - A * 𝐗 * B)
-        return sol
-    end)
-
-    X, info = Krylov.gmres(sylvester, -concat_sparse_vec[lenA + lenB + 1 : end])#, atol = tol)
-
-    if !info.solved
-        X, info = Krylov.bicgstab(sylvester, -concat_sparse_vec[lenA + lenB + 1 : end])#, atol = tol)
-    end
-
-    𝐒₂ = sparse(reshape(X,dims[3]))
-    droptol!(𝐒₂, tol)
-
-    return 𝐒₂, info.solved
-end
-
 function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = eps()) where {Z,S,N}
     nrows = length(V)
     ncols = length(V.nzval[1].partials)
@@ -3561,56 +3523,6 @@ function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Du
 
     return vvals, ps
 end
-
-function solve_sylvester_equation_forward(concat_sparse_vec::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, tol::AbstractFloat = eps()) where {Z,S,N}
-    # unpack: AoS -> SoA
-    values, partials = separate_values_and_partials_from_sparsevec_dual(concat_sparse_vec)
-
-    lenA = dims[1][1] * dims[1][2]
-    lenB = dims[2][1] * dims[2][2]
-
-    A = sparse(reshape(values[1 : lenA],dims[1]))
-    B = sparse(reshape(values[lenA .+ (1 : lenB)],dims[2]))
-
-    # get f(vs)
-    val, solved = solve_sylvester_equation_forward(values, dims = dims, tol = tol)
-
-    # get J(f, vs) * ps (cheating). Write your custom rule here. This used to be the conditions but here they are analytically derived.
-    A¹ = sparse((values[1 : lenA]).nzind, (values[1 : lenA]).nzind, 1, lenA, lenA)
-    B¹ = sparse((values[lenA .+ (1 : lenB)]).nzind, (values[lenA .+ (1 : lenB)]).nzind, 1, lenB, lenB)
-
-    jacobian_A = A¹ * ℒ.kron(-val * B, ℒ.I(size(A,1)))
-    jacobian_B = ℒ.kron(ℒ.I(size(B,1)), -A * val) * B¹
-
-    b = hcat(jacobian_A', jacobian_B, ℒ.I(length(val)))
-    # a = reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
-
-    reshape_matmul = LinearOperators.LinearOperator(Float64, size(b,1) * size(partials,2), size(b,1) * size(partials,2), false, false, 
-        (sol,𝐱) -> begin 
-        𝐗 = reshape(𝐱, (size(b,1),size(partials,2)))
-        sol .= vec(reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1)) * 𝐗)
-        return sol
-    end)
-
-    X, info = Krylov.gmres(reshape_matmul, -vec(b * partials))#, atol = tol)
-
-    jvp = reshape(X, (size(b,1),size(partials,2)))
-
-    # Â = RF.lu(a, check = false)
-
-    # if !ℒ.issuccess(Â)
-    #     Â = ℒ.svd(a)
-    # end
-    
-    # jvp = -(Â \ b) * partials
-
-    # pack: SoA -> AoS
-    return sparse(reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-        end,size(val))), solved
-end
-
-solve_sylvester_equation = ID.ImplicitFunction(solve_sylvester_equation_forward, solve_sylvester_equation_conditions)
 
 
 function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
@@ -3664,8 +3576,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     droptol!(C,tol)
 
     # 𝐒₂, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
-    # 𝐒₂, solved = solve_symmetric_sylvester_AD([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
-    𝐒₂, solved = solve_symmetric_sylvester_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
+    # 𝐒₂, solved = solve_sylvester_equation_AD([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
+    𝐒₂, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
 
     𝐒₂ *= M₂.𝐔₂
 
@@ -3756,8 +3668,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     droptol!(C,tol)
 
     # 𝐒₃, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
-    # 𝐒₃, solved = solve_symmetric_sylvester_AD([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
-    𝐒₃, solved = solve_symmetric_sylvester_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
+    # 𝐒₃, solved = solve_sylvester_equation_AD([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
+    𝐒₃, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
     
     𝐒₃ *= M₃.𝐔₃
 
@@ -4170,70 +4082,6 @@ end
 
 
 
-
-# function calculate_covariance_forward(𝑺₁::AbstractMatrix{Float64}; T::timings, subset_indices::Vector{Int64})
-#     A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[indexin(T.past_not_future_and_mixed_idx,subset_indices),:]
-#     C = @views 𝑺₁[subset_indices,T.nPast_not_future_and_mixed+1:end]
-    
-#     CC = C * C'
-
-#     sylvester = LinearOperators.LinearOperator(Float64, length(CC), length(CC), false, false, 
-#     (sol,𝐱) -> begin 
-#         𝐗 = sparse(reshape(𝐱, size(CC)))
-#         sol .= vec(A * 𝐗 * A' - 𝐗)
-#         return sol
-#     end)
-
-#     𝐂, info = Krylov.bicgstab(sylvester, vec(-CC))
-
-#     if !info.solved
-#         𝐂, info = Krylov.gmres(sylvester, vec(-CC))
-#     end
-
-#     return reshape(𝐂,size(CC)), info.solved # return info on convergence
-# end
-
-
-
-# function calculate_covariance_conditions(𝑺₁::AbstractMatrix{<: Real}, covar::AbstractMatrix{<: Real}, solved::Bool; T::timings, subset_indices::Vector{Int64})
-#     A = @views 𝑺₁[subset_indices,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(subset_indices)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,subset_indices)),:]
-#     C = @views 𝑺₁[subset_indices,T.nPast_not_future_and_mixed+1:end]
-    
-#     A * covar * A' + C * C' - covar
-# end
-
-
-
-# function calculate_covariance_forward(𝑺₁::AbstractMatrix{ℱ.Dual{Z,S,N}}; T::timings, subset_indices::Vector{Int64}) where {Z,S,N}
-#     # unpack: AoS -> SoA
-#     𝑺₁̂ = ℱ.value.(𝑺₁)
-#     # you can play with the dimension here, sometimes it makes sense to transpose
-#     partials = mapreduce(ℱ.partials, hcat, 𝑺₁)'
-
-#     val, solved = calculate_covariance_forward(𝑺₁̂, T = T, subset_indices = subset_indices)
-
-#     # get J(f, vs) * ps (cheating). Write your custom rule here
-#     BB = ℱ.jacobian(x -> calculate_covariance_conditions(x, val, solved, T = T, subset_indices = subset_indices), 𝑺₁̂)
-#     AA = ℱ.jacobian(x -> calculate_covariance_conditions(𝑺₁̂, x, solved, T = T, subset_indices = subset_indices), val)
-
-#     Â = RF.lu(AA, check = false)
-
-#     if !ℒ.issuccess(Â)
-#         Â = ℒ.svd(AA)
-#     end
-    
-#     jvp = -(Â \ BB) * partials
-
-#     # pack: SoA -> AoS
-#     return reshape(map(val, eachrow(jvp)) do v, p
-#         ℱ.Dual{Z}(v, p...) # Z is the tag
-#     end,size(val)), solved
-# end
-
-# calculate_covariance_AD = ID.ImplicitFunction(calculate_covariance_forward, 
-#                                                 calculate_covariance_conditions; 
-#                                                 linear_solver = ID.DirectLinearSolver())
-
 function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false)
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
@@ -4250,8 +4098,8 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
     
     CC = C * C'
 
-    covar_raw, _ = solve_symmetric_sylvester_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)], solver = :bicgstab)
-    # covar_raw, _ = solve_symmetric_sylvester_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
+    covar_raw, _ = solve_sylvester_equation_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)], solver = :bicgstab)
+    # covar_raw, _ = solve_sylvester_equation_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
     
     return covar_raw, sol , ∇₁, SS_and_pars
 end
@@ -4326,7 +4174,7 @@ end
 
 
 
-function solve_symmetric_sylvester_forward(ABC::SparseVector{Float64, Int64}; 
+function solve_sylvester_equation_forward(ABC::SparseVector{Float64, Int64}; 
     dims::Vector{Tuple{Int,Int}}, 
     sparse_output::Bool = false,
     solver::Symbol = :gmres)
@@ -4373,7 +4221,7 @@ function solve_symmetric_sylvester_forward(ABC::SparseVector{Float64, Int64};
     return sparse_output ? sparse(reshape(𝐂, size(C))) : reshape(𝐂, size(C)), info.solved # return info on convergence
 end
 
-function solve_symmetric_sylvester_forward(ABC::Vector{Float64}; 
+function solve_sylvester_equation_forward(ABC::Vector{Float64}; 
     dims::Vector{Tuple{Int,Int}}, 
     sparse_output::Bool = false,
     solver::Symbol = :gmres)
@@ -4421,8 +4269,8 @@ function solve_symmetric_sylvester_forward(ABC::Vector{Float64};
 end
 
 
-function solve_symmetric_sylvester_conditions(ABC::SparseVector{<: Real, Int64}, 
-    covar::AbstractMatrix{<: Real}, 
+function solve_sylvester_equation_conditions(ABC::SparseVector{<: Real, Int64}, 
+    X::AbstractMatrix{<: Real}, 
     solved::Bool; 
     dims::Vector{Tuple{Int,Int}}, 
     sparse_output::Bool = false,
@@ -4441,11 +4289,11 @@ function solve_symmetric_sylvester_conditions(ABC::SparseVector{<: Real, Int64},
         C = reconstruct_sparse_matrix(ABC[lenA + 1 : end], dims[2])
     end
 
-    A * covar * B - C - covar
+    A * X * B - C - X
 end
 
-function solve_symmetric_sylvester_conditions(ABC::Vector{<: Real}, 
-    covar::AbstractMatrix{<: Real}, solved::Bool; 
+function solve_sylvester_equation_conditions(ABC::Vector{<: Real}, 
+    X::AbstractMatrix{<: Real}, solved::Bool; 
     dims::Vector{Tuple{Int,Int}}, 
     sparse_output::Bool = false,
     solver::Symbol = :gmres)
@@ -4463,12 +4311,12 @@ function solve_symmetric_sylvester_conditions(ABC::Vector{<: Real},
         C = reshape(ABC[lenA + 1 : end], dims[2])
     end
 
-    A * covar * B - C - covar
+    A * X * B - C - X
 end
 
 
 
-function solve_symmetric_sylvester_forward(ABC::AbstractVector{ℱ.Dual{Z,S,N}}; 
+function solve_sylvester_equation_forward(ABC::AbstractVector{ℱ.Dual{Z,S,N}}; 
     dims::Vector{Tuple{Int,Int}}, 
     sparse_output::Bool = false,
     solver::Symbol = :gmres) where {Z,S,N}
@@ -4479,11 +4327,11 @@ function solve_symmetric_sylvester_forward(ABC::AbstractVector{ℱ.Dual{Z,S,N}};
     # you can play with the dimension here, sometimes it makes sense to transpose
     partials = mapreduce(ℱ.partials, hcat, ABC)'
 
-    val, solved = solve_symmetric_sylvester_forward(ABCv, dims = dims, sparse_output = sparse_output, solver = solver)
+    val, solved = solve_sylvester_equation_forward(ABCv, dims = dims, sparse_output = sparse_output, solver = solver)
 
     # get J(f, vs) * ps (cheating). Write your custom rule here
-    BB = ℱ.jacobian(x -> solve_symmetric_sylvester_conditions(x, val, solved, dims = dims), ABCv)
-    AA = ℱ.jacobian(x -> solve_symmetric_sylvester_conditions(ABCv, x, solved, dims = dims), val)
+    BB = ℱ.jacobian(x -> solve_sylvester_equation_conditions(x, val, solved, dims = dims), ABCv)
+    AA = ℱ.jacobian(x -> solve_sylvester_equation_conditions(ABCv, x, solved, dims = dims), val)
 
     Â = RF.lu(AA, check = false)
 
@@ -4501,7 +4349,7 @@ end
 
 
 
-function solve_symmetric_sylvester_forward(abc::SparseVector{ℱ.Dual{Z,S,N}}; 
+function solve_sylvester_equation_forward(abc::SparseVector{ℱ.Dual{Z,S,N}}; 
     dims::Vector{Tuple{Int,Int}}, 
     sparse_output::Bool = false,
     solver::Symbol = :gmres) where {Z,S,N}
@@ -4510,7 +4358,7 @@ function solve_symmetric_sylvester_forward(abc::SparseVector{ℱ.Dual{Z,S,N}};
     ABC, partials = separate_values_and_partials_from_sparsevec_dual(abc)
 
     # get f(vs)
-    val, solved = solve_symmetric_sylvester_forward(ABC, dims = dims, sparse_output = sparse_output, solver = solver)
+    val, solved = solve_sylvester_equation_forward(ABC, dims = dims, sparse_output = sparse_output, solver = solver)
 
     lenA = dims[1][1] * dims[1][2]
 
@@ -4559,7 +4407,7 @@ end
 
 
 
-function solve_symmetric_sylvester_forward(abc::DenseVector{ℱ.Dual{Z,S,N}};
+function solve_sylvester_equation_forward(abc::DenseVector{ℱ.Dual{Z,S,N}};
     dims::Vector{Tuple{Int,Int}}, 
     sparse_output::Bool = false,
     solver::Symbol = :gmres) where {Z,S,N}
@@ -4571,7 +4419,7 @@ function solve_symmetric_sylvester_forward(abc::DenseVector{ℱ.Dual{Z,S,N}};
     partials = mapreduce(ℱ.partials, hcat, abc)'
 
     # get f(vs)
-    val, solved = solve_symmetric_sylvester_forward(ABC, dims = dims, sparse_output = sparse_output, solver = solver)
+    val, solved = solve_sylvester_equation_forward(ABC, dims = dims, sparse_output = sparse_output, solver = solver)
 
     lenA = dims[1][1] * dims[1][2]
 
@@ -4613,11 +4461,11 @@ function solve_symmetric_sylvester_forward(abc::DenseVector{ℱ.Dual{Z,S,N}};
 end
 
 
-solve_symmetric_sylvester_AD = ID.ImplicitFunction(solve_symmetric_sylvester_forward, 
-                                                solve_symmetric_sylvester_conditions)
+solve_sylvester_equation_AD = ID.ImplicitFunction(solve_sylvester_equation_forward, 
+                                                solve_sylvester_equation_conditions)
 
-solve_symmetric_sylvester_AD_direct = ID.ImplicitFunction(solve_symmetric_sylvester_forward, 
-                                                solve_symmetric_sylvester_conditions; 
+solve_sylvester_equation_AD_direct = ID.ImplicitFunction(solve_sylvester_equation_forward, 
+                                                solve_sylvester_equation_conditions; 
                                                 linear_solver = ID.DirectLinearSolver())
 
 
@@ -4723,8 +4571,8 @@ function calculate_second_order_covariance(parameters::Vector{<: Real}, 𝓂::�
 
     C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
 
-    Σᶻ₂, info = solve_symmetric_sylvester_AD([vec(ŝ_to_ŝ₂); vec(-C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])
-    # Σᶻ₂, info = solve_symmetric_sylvester_forward([vec(ŝ_to_ŝ₂); vec(-C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])
+    Σᶻ₂, info = solve_sylvester_equation_AD([vec(ŝ_to_ŝ₂); vec(-C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])
+    # Σᶻ₂, info = solve_sylvester_equation_forward([vec(ŝ_to_ŝ₂); vec(-C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])
     
     Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
 
@@ -4925,8 +4773,8 @@ function calculate_third_order_covariance(parameters::Vector{T},
 
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
 
-        Σᶻ₃, info = solve_symmetric_sylvester_AD([vec(ŝ_to_ŝ₃); vec(-C)], dims = [size(ŝ_to_ŝ₃) ;size(C)])
-        # Σᶻ₃, info = solve_symmetric_sylvester_forward([vec(ŝ_to_ŝ₃); vec(-C)], dims = [size(ŝ_to_ŝ₃) ;size(C)])
+        Σᶻ₃, info = solve_sylvester_equation_AD([vec(ŝ_to_ŝ₃); vec(-C)], dims = [size(ŝ_to_ŝ₃) ;size(C)])
+        # Σᶻ₃, info = solve_sylvester_equation_forward([vec(ŝ_to_ŝ₃); vec(-C)], dims = [size(ŝ_to_ŝ₃) ;size(C)])
         
         # # if size(initial_guess³) == (0,0)
         # #     initial_guess³ = collect(C)
@@ -5030,8 +4878,8 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     𝐁 = B * B'
 
     # Gaussian Prior
-    P, _ = solve_symmetric_sylvester_AD_direct([vec(A); vec(-𝐁)], dims = [size(A), size(𝐁)], solver = :bicgstab)
-    # P, _ = solve_symmetric_sylvester_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
+    P, _ = solve_sylvester_equation_AD_direct([vec(A); vec(-𝐁)], dims = [size(A), size(𝐁)], solver = :bicgstab)
+    # P, _ = solve_sylvester_equation_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
     # P, _ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
 
     # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
