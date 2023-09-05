@@ -29,6 +29,12 @@ GC.gc()
     end
 end
 
+
+@testset verbose = true "Standalone functions" begin
+    include("test_standalone_function.jl")
+end
+GC.gc()
+
 @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
     include("models/Backus_Kehoe_Kydland_1992.jl")
     functionality_test(Backus_Kehoe_Kydland_1992, plots = true)
@@ -129,10 +135,6 @@ m = nothing
 GC.gc()
 
 
-@testset verbose = true "Standalone functions" begin
-    include("test_standalone_function.jl")
-end
-GC.gc()
 
 
 @testset verbose = true "Model without shocks" begin

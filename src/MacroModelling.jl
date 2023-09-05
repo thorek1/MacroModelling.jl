@@ -4250,7 +4250,7 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
     
     CC = C * C'
 
-    covar_raw, _ = solve_symmetric_sylvester_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)])
+    covar_raw, _ = solve_symmetric_sylvester_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)], solver = :bicgstab)
     # covar_raw, _ = solve_symmetric_sylvester_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
     
     return covar_raw, sol , ∇₁, SS_and_pars
@@ -4326,7 +4326,11 @@ end
 
 
 
-function solve_symmetric_sylvester_forward(ABC::SparseVector{Float64, Int64}; dims::Vector{Tuple{Int,Int}}, sparse_output::Bool = false)
+function solve_symmetric_sylvester_forward(ABC::SparseVector{Float64, Int64}; 
+    dims::Vector{Tuple{Int,Int}}, 
+    sparse_output::Bool = false,
+    solver::Symbol = :gmres)
+
     lenA = dims[1][1] * dims[1][2]
 
     A = reconstruct_sparse_matrix(ABC[1 : lenA], dims[1])
@@ -4340,17 +4344,30 @@ function solve_symmetric_sylvester_forward(ABC::SparseVector{Float64, Int64}; di
         C = reconstruct_sparse_matrix(ABC[lenA + 1 : end], dims[2])
     end
 
-    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, 
-    (sol,𝐱) -> begin 
-        𝐗 = reshape(𝐱, size(C))
-        sol .= vec(A * 𝐗 * B - 𝐗)
-        return sol
-    end)
+    if solver ∈ [:gmres, :bicgstab]   
+        sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, 
+        (sol,𝐱) -> begin 
+            𝐗 = reshape(𝐱, size(C))
+            sol .= vec(A * 𝐗 * B - 𝐗)
+            return sol
+        end)
 
-    𝐂, info = Krylov.gmres(sylvester, [vec(C);])
+        if solver == :gmres
+            𝐂, info = Krylov.gmres(sylvester, [vec(C);])
+        elseif solver == :bicgstab
+            𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])
+        end
 
-    if !info.solved
-        𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])
+    elseif solver == :speedmapping
+        soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
+
+        𝐂 = soll.minimizer
+
+        info = soll.converged
+    end
+
+    if !info.solved && !(solver == :gmres)
+        𝐂, info = Krylov.gmres(sylvester, [vec(C);])
     end
 
     return sparse_output ? sparse(reshape(𝐂, size(C))) : reshape(𝐂, size(C)), info.solved # return info on convergence
@@ -4370,17 +4387,30 @@ function solve_symmetric_sylvester_forward(ABC::Vector{Float64}; dims::Vector{Tu
         C = reshape(ABC[lenA + 1 : end], dims[2])
     end
 
-    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, 
-    (sol,𝐱) -> begin 
-        𝐗 = reshape(𝐱, size(C))
-        sol .= vec(A * 𝐗 * B - 𝐗)
-        return sol
-    end)
+    if solver ∈ [:gmres, :bicgstab]   
+        sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, 
+        (sol,𝐱) -> begin 
+            𝐗 = reshape(𝐱, size(C))
+            sol .= vec(A * 𝐗 * B - 𝐗)
+            return sol
+        end)
 
-    𝐂, info = Krylov.gmres(sylvester, vec(C))
+        if solver == :gmres
+            𝐂, info = Krylov.gmres(sylvester, [vec(C);])
+        elseif solver == :bicgstab
+            𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])
+        end
+        
+    elseif solver == :speedmapping
+        soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
 
-    if !info.solved
-        𝐂, info = Krylov.bicgstab(sylvester, vec(C))
+        𝐂 = soll.minimizer
+
+        info = soll.converged
+    end
+
+    if !info.solved && !(solver == :gmres)
+        𝐂, info = Krylov.gmres(sylvester, [vec(C);])
     end
 
     return sparse_output ? sparse(reshape(𝐂, size(C))) : reshape(𝐂, size(C)), info.solved # return info on convergence
@@ -5120,79 +5150,79 @@ end
 
 
 
-@setup_workload begin
-    # Putting some things in `setup` can reduce the size of the
-    # precompile file and potentially make loading faster.
-    @model FS2000 precompile = true begin
-        dA[0] = exp(gam + z_e_a  *  e_a[x])
-        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-        W[0] = l[0] / n[0]
-        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-        P[0] * c[0] = m[0]
-        m[0] - 1 + d[0] = l[0]
-        e[0] = exp(z_e_a  *  e_a[x])
-        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-        gy_obs[0] = dA[0] * y[0] / y[-1]
-        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-        log_gy_obs[0] = log(gy_obs[0])
-        log_gp_obs[0] = log(gp_obs[0])
-    end
+# @setup_workload begin
+#     # Putting some things in `setup` can reduce the size of the
+#     # precompile file and potentially make loading faster.
+#     @model FS2000 precompile = true begin
+#         dA[0] = exp(gam + z_e_a  *  e_a[x])
+#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#         W[0] = l[0] / n[0]
+#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#         P[0] * c[0] = m[0]
+#         m[0] - 1 + d[0] = l[0]
+#         e[0] = exp(z_e_a  *  e_a[x])
+#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#         gy_obs[0] = dA[0] * y[0] / y[-1]
+#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#         log_gy_obs[0] = log(gy_obs[0])
+#         log_gp_obs[0] = log(gp_obs[0])
+#     end
 
-    @parameters FS2000 silent = true precompile = true begin  
-        alp     = 0.356
-        bet     = 0.993
-        gam     = 0.0085
-        mst     = 1.0002
-        rho     = 0.129
-        psi     = 0.65
-        del     = 0.01
-        z_e_a   = 0.035449
-        z_e_m   = 0.008862
-    end
+#     @parameters FS2000 silent = true precompile = true begin  
+#         alp     = 0.356
+#         bet     = 0.993
+#         gam     = 0.0085
+#         mst     = 1.0002
+#         rho     = 0.129
+#         psi     = 0.65
+#         del     = 0.01
+#         z_e_a   = 0.035449
+#         z_e_m   = 0.008862
+#     end
     
-    ENV["GKSwstype"] = "nul"
+#     ENV["GKSwstype"] = "nul"
 
-    @compile_workload begin
-        # all calls in this block will be precompiled, regardless of whether
-        # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC precompile = true begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
+#     @compile_workload begin
+#         # all calls in this block will be precompiled, regardless of whether
+#         # they belong to your package or not (on Julia 1.8 and higher)
+#         @model RBC precompile = true begin
+#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#         end
 
-        @parameters RBC silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
+#         @parameters RBC silent = true precompile = true begin
+#             δ = 0.02
+#             α = 0.5
+#         end
 
-        get_SS(FS2000)
-        get_SS(FS2000, parameters = :alp => 0.36)
-        get_solution(FS2000)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)
+#         get_SS(FS2000)
+#         get_SS(FS2000, parameters = :alp => 0.36)
+#         get_solution(FS2000)
+#         get_solution(FS2000, parameters = :alp => 0.35)
+#         get_standard_deviation(FS2000)
+#         get_correlation(FS2000)
+#         get_autocorrelation(FS2000)
+#         get_variance_decomposition(FS2000)
+#         get_conditional_variance_decomposition(FS2000)
+#         get_irf(FS2000)
 
-        data = simulate(FS2000)[:,:,1]
-        observables = [:c,:k]
-        calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
-        get_mean(FS2000, silent = true)
-        get_SSS(FS2000, silent = true)
-        # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#         data = simulate(FS2000)[:,:,1]
+#         observables = [:c,:k]
+#         calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
+#         get_mean(FS2000, silent = true)
+#         get_SSS(FS2000, silent = true)
+#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-        # import Plots, StatsPlots
-        # plot_irf(FS2000)
-        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        # plot_conditional_variance_decomposition(FS2000)
-    end
-end
+#         # import Plots, StatsPlots
+#         # plot_irf(FS2000)
+#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#         # plot_conditional_variance_decomposition(FS2000)
+#     end
+# end
 
 end
