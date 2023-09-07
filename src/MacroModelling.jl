@@ -62,7 +62,7 @@ export get_irfs, get_irf, get_IRF, simulate, get_simulation
 export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS
-export get_moments, get_statistics, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_cov, var, std, cov, get_mean
+export get_moments, get_statistics, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_cov, var, std, cov, get_mean, mean
 export get_autocorrelation, get_correlation, get_variance_decomposition, get_corr, get_autocorr, get_var_decomp, corr, autocorr
 export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
@@ -3114,7 +3114,7 @@ function covariance_parameter_derivatives_second_order(parameters::Vector{ℱ.Du
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_covariance(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_moments(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -3123,7 +3123,7 @@ function covariance_parameter_derivatives_second_order(parameters::ℱ.Dual{Z,S,
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_covariance(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_moments(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -3136,7 +3136,7 @@ function covariance_parameter_derivatives_third_order(parameters::Vector{ℱ.Dua
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_covariance(params, variables, 𝓂, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -3149,7 +3149,7 @@ function covariance_parameter_derivatives_third_order(parameters::ℱ.Dual{Z,S,N
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_covariance(params, variables, 𝓂, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -4470,7 +4470,13 @@ solve_sylvester_equation_AD_direct = ID.ImplicitFunction(solve_sylvester_equatio
 
 
 
-function calculate_second_order_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false, tol::AbstractFloat = eps())
+function calculate_second_order_moments(
+    parameters::Vector{<: Real}, 
+    𝓂::ℳ; 
+    covariance::Bool = true,
+    verbose::Bool = false, 
+    tol::AbstractFloat = eps())
+
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars = calculate_covariance(parameters, 𝓂, verbose = verbose)
 
     nᵉ = 𝓂.timings.nExo
@@ -4563,6 +4569,9 @@ function calculate_second_order_covariance(parameters::Vector{<: Real}, 𝓂::�
     Δμˢ₂ = vec((ℒ.I - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec(ℒ.I(nᵉ))) / 2))
     μʸ₂  = SS_and_pars[1:𝓂.timings.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
+    if !covariance
+        return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
+    end
 
     # Covariance
     Γ₂ = [ ℒ.I(nᵉ)             zeros(nᵉ, nᵉ^2 + nᵉ * nˢ)
@@ -4584,14 +4593,19 @@ end
 
 
 
-function calculate_third_order_covariance(parameters::Vector{T}, 
+function calculate_third_order_moments(parameters::Vector{T}, 
                                             observables::Union{Symbol_input,String_input},
                                             𝓂::ℳ; 
+                                            covariance::Bool = true,
                                             verbose::Bool = false, 
                                             tol::AbstractFloat = eps()) where T <: Real
 
-    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(parameters, 𝓂, verbose = verbose)
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(parameters, 𝓂, verbose = verbose)
     
+    if !covariance
+        return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
+    end
+
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
@@ -4852,7 +4866,7 @@ function calculate_third_order_covariance(parameters::Vector{T},
         end
     end
 
-    return Σʸ₃, μʸ₂
+    return Σʸ₃, μʸ₂, SS_and_pars
 end
 
 
