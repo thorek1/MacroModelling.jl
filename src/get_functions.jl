@@ -2245,8 +2245,9 @@ Function to use when differentiating model moments with repect to parameters.
 
 # Arguments
 - $MODEL
-- $PARAMETER_VALUES
+- `parameter_values` [Type: `Vector`]: Parameter values.
 # Keyword Arguments
+- `parameters` [Type: `Vector{Symbol}`]: Corresponding names of parameters values.
 - `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: switch to return SS of endogenous variables
 - `standard_deviation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the standard deviation of the mentioned variables
 - `variance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the variance of the mentioned variables
@@ -2280,7 +2281,8 @@ get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_
  [0.02666420378525503, 0.26467737291221793, 0.07393254045396483, 0.010206207261596574]
 ```
 """
-function get_statistics(𝓂, parameter_values::Vector{T}; 
+function get_statistics(𝓂, 
+    parameter_values::Vector{T}; 
     parameters::Vector{Symbol} = Symbol[], 
     non_stochastic_steady_state::Vector{Symbol} = Symbol[], 
     standard_deviation::Vector{Symbol} = Symbol[], 
