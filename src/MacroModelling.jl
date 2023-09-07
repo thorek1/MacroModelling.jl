@@ -4807,8 +4807,45 @@ function calculate_third_order_covariance(parameters::Vector{T},
         #         return Inf
         #     end
         # end
+        # id_z1_xf    = (1:nˢ)
+        # id_z2_xs      = id_z1_xf[end]     .+ (1:nˢ)
+        # id_z3_xf_xf   = id_z2_xs[end]     .+ (1:nˢ*nˢ)
+        # id_z4_xrd     = id_z3_xf_xf[end]  .+ (1:nˢ)
+        # id_z5_xf_xs   = id_z4_xrd[end]    .+ (1:nˢ*nˢ)
+        # id_z6_xf_xf_xf= id_z5_xf_xs[end]  .+ (1:nˢ*nˢ*nˢ)
 
-        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃'
+
+        # Σᶻ₃[id_z1_xf       , vcat(id_z2_xs, id_z3_xf_xf)]       .= 0
+        # Σᶻ₃[id_z2_xs       , vcat(id_z1_xf, id_z4_xrd, id_z5_xf_xs, id_z6_xf_xf_xf)] .= 0   #zeros(nˢ,nˢ^3);
+        # Σᶻ₃[id_z3_xf_xf    , id_z1_xf]       .= 0   #zeros(nˢ^2,nˢ);
+        # Σᶻ₃[id_z3_xf_xf    , id_z4_xrd]      .= 0   #zeros(nˢ^2,nˢ);
+        # Σᶻ₃[id_z3_xf_xf    , id_z5_xf_xs]    .= 0   #zeros(nˢ^2,nˢ^2);
+        # Σᶻ₃[id_z3_xf_xf    , id_z6_xf_xf_xf] .= 0   #zeros(nˢ^2,nˢ^3);
+        # Σᶻ₃[id_z4_xrd      , id_z2_xs]       .= 0   #zeros(nˢ,nˢ);
+        # Σᶻ₃[id_z4_xrd      , id_z3_xf_xf]    .= 0   #zeros(nˢ,nˢ^2);
+        # Σᶻ₃[id_z5_xf_xs    , id_z2_xs]       .= 0   #zeros(nˢ^2,nˢ);
+        # Σᶻ₃[id_z5_xf_xs    , id_z3_xf_xf]    .= 0   #zeros(nˢ^2,nˢ^2);
+        # Σᶻ₃[id_z6_xf_xf_xf , id_z2_xs]       .= 0   #zeros(nˢ^3,nˢ);
+        # Σᶻ₃[id_z6_xf_xf_xf , id_z3_xf_xf]    .= 0   #zeros(nˢ^3,nˢ^2);
+
+        # Σᶻ₃[id_z1_xf       , id_z2_xs]       .= 0   #zeros(nˢ,nˢ);
+        # Σᶻ₃[id_z1_xf       , id_z3_xf_xf]    .= 0   #zeros(nˢ,nˢ^2);
+        # Σᶻ₃[id_z2_xs       , id_z1_xf]       .= 0   #zeros(nˢ,nˢ);
+        # Σᶻ₃[id_z2_xs       , id_z4_xrd]      .= 0   #zeros(nˢ,nˢ);
+        # Σᶻ₃[id_z2_xs       , id_z5_xf_xs]    .= 0   #zeros(nˢ,nˢ^2);
+        # Σᶻ₃[id_z2_xs       , id_z6_xf_xf_xf] .= 0   #zeros(nˢ,nˢ^3);
+        # Σᶻ₃[id_z3_xf_xf    , id_z1_xf]       .= 0   #zeros(nˢ^2,nˢ);
+        # Σᶻ₃[id_z3_xf_xf    , id_z4_xrd]      .= 0   #zeros(nˢ^2,nˢ);
+        # Σᶻ₃[id_z3_xf_xf    , id_z5_xf_xs]    .= 0   #zeros(nˢ^2,nˢ^2);
+        # Σᶻ₃[id_z3_xf_xf    , id_z6_xf_xf_xf] .= 0   #zeros(nˢ^2,nˢ^3);
+        # Σᶻ₃[id_z4_xrd      , id_z2_xs]       .= 0   #zeros(nˢ,nˢ);
+        # Σᶻ₃[id_z4_xrd      , id_z3_xf_xf]    .= 0   #zeros(nˢ,nˢ^2);
+        # Σᶻ₃[id_z5_xf_xs    , id_z2_xs]       .= 0   #zeros(nˢ^2,nˢ);
+        # Σᶻ₃[id_z5_xf_xs    , id_z3_xf_xf]    .= 0   #zeros(nˢ^2,nˢ^2);
+        # Σᶻ₃[id_z6_xf_xf_xf , id_z2_xs]       .= 0   #zeros(nˢ^3,nˢ);
+        # Σᶻ₃[id_z6_xf_xf_xf , id_z3_xf_xf]    .= 0   #zeros(nˢ^3,nˢ^2);
+
+        Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
         for obs in variance_observable
             Σʸ₃[indexin([obs], 𝓂.timings.var), indexin(variance_observable, 𝓂.timings.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]

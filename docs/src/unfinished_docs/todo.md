@@ -3,10 +3,9 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
-- [ ] recheck results for third order cov
 - [ ] write tests for variables argument in get_moment and for higher order moments
 - [ ] redo naming in moments calc and make whole process faster (precalc wrangling matrices)
-- [ ] consolidate sylvester solvers (diff)
+- [ ] use ID for sparse output sylvester solvers (filed issue)
 - [ ] handle sparsity in sylvester solver better (hand over indices and nzvals instead of vec)
 - [ ] make higher order usable with zygote (currently only analytical pushforward, no implicitdiff)
 - [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
@@ -58,7 +57,6 @@
 - [ ] print SS dependencies (get parameters (in function of parameters) into the dependencies), show SS solver
 - [ ] use strings instead of symbols internally
 - [ ] write how-to for calibration equations
-- [ ] have a look again at get_statistics function
 - [ ] make the nonnegativity trick optional or use nanmath?
 - [ ] use packages for kalman filter
 - [ ] clean up different parameter types
@@ -69,6 +67,9 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] handle KeyedArrays with strings as dimension names as input
+- [x] recheck results for third order cov
+- [x] have a look again at get_statistics function
+- [x] consolidate sylvester solvers (diff)
 - [x] put outside of loop the ignore derviatives for derivatives
 - [x] write function to smart select variables to calc cov for
 - [x] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
