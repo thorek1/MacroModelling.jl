@@ -4,6 +4,8 @@
 
 - [ ] implement occasionally binding constraints with shocks
 - [ ] write tests for variables argument in get_moment and for higher order moments
+- [ ] recheck get function examples and docs
+- [ ] autocorr to statistics output and in general for higher order pruned sols
 - [ ] redo naming in moments calc and make whole process faster (precalc wrangling matrices)
 - [ ] use ID for sparse output sylvester solvers (filed issue)
 - [ ] handle sparsity in sylvester solver better (hand over indices and nzvals instead of vec)
@@ -67,6 +69,7 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] handle KeyedArrays with strings as dimension names as input
+- [x] add mean in output funcs for higher order 
 - [x] recheck results for third order cov
 - [x] have a look again at get_statistics function
 - [x] consolidate sylvester solvers (diff)
