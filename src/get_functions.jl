@@ -1688,6 +1688,7 @@ Return the correlations of endogenous variables using the linearised solution.
 - $MODEL
 # Keyword Arguments
 - $PARAMETERS
+- $ALGORITHM
 - $VERBOSE
 
 # Examples
@@ -1724,13 +1725,20 @@ And data, 4×4 Matrix{Float64}:
 """
 function get_correlation(𝓂::ℳ; 
     parameters = nothing,  
+    algorithm::Symbol = :first_order,
     verbose::Bool = false)
     
-    solve!(𝓂, parameters = parameters, verbose = verbose)
+    @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration,:pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
-    # write_parameters_input!(𝓂,parameters, verbose = verbose)
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose)
 
-    covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+    if algorithm == :pruned_third_order
+        covar_dcmp, state_μ, SS_and_pars = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, verbose = verbose)
+    elseif algorithm == :pruned_second_order
+        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+    else
+        covar_dcmp, sol, _, SS_and_pars = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+    end
 
     std = sqrt.(ℒ.diag(covar_dcmp))
 
@@ -1849,6 +1857,7 @@ Return the first and second moments of endogenous variables using the linearised
 # Keyword Arguments
 - $PARAMETERS
 - `non_stochastic_steady_state` [Default: `true`, Type: `Bool`]: switch to return SS of endogenous variables
+- `mean` [Default: `false`, Type: `Bool`]: switch to return mean of endogenous variables (the mean for the linearised solutoin is the NSSS)
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
@@ -2017,7 +2026,7 @@ function get_moments(𝓂::ℳ;
             end
 
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
 
                 dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
 
@@ -2025,7 +2034,7 @@ function get_moments(𝓂::ℳ;
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ = calculate_third_order_covariance(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
 
                 dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
 
@@ -2076,7 +2085,7 @@ function get_moments(𝓂::ℳ;
             end
 
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
 
                 dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
 
@@ -2084,7 +2093,7 @@ function get_moments(𝓂::ℳ;
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ = calculate_third_order_covariance(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
 
                 dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
 
@@ -2151,12 +2160,12 @@ function get_moments(𝓂::ℳ;
 
         if variance
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ = calculate_third_order_covariance(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
@@ -2175,12 +2184,12 @@ function get_moments(𝓂::ℳ;
 
         if standard_deviation
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ = calculate_third_order_covariance(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
@@ -2192,12 +2201,12 @@ function get_moments(𝓂::ℳ;
 
         if covariance
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ = calculate_third_order_covariance(𝓂.parameter_values, :full_covar, 𝓂, verbose = verbose)
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
@@ -2240,7 +2249,7 @@ end
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using the linearised solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
+Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or third order perturbation solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
 Function to use when differentiating model moments with repect to parameters.
 
 # Arguments
@@ -2248,12 +2257,14 @@ Function to use when differentiating model moments with repect to parameters.
 - `parameter_values` [Type: `Vector`]: Parameter values.
 # Keyword Arguments
 - `parameters` [Type: `Vector{Symbol}`]: Corresponding names of parameters values.
-- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: switch to return SS of endogenous variables
+- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the SS of endogenous variables
+- `mean` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the mean of endogenous variables (the mean for the linearised solutoin is the NSSS)
 - `standard_deviation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the standard deviation of the mentioned variables
 - `variance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the variance of the mentioned variables
 - `covariance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the covariance of the mentioned variables
 - `autocorrelation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the autocorrelation of the mentioned variables
 - `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation of the mentioned variables
+- $ALGORITHM
 - $VERBOSE
 
 # Examples
@@ -2281,20 +2292,28 @@ get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_
  [0.02666420378525503, 0.26467737291221793, 0.07393254045396483, 0.010206207261596574]
 ```
 """
+
 function get_statistics(𝓂, 
     parameter_values::Vector{T}; 
     parameters::Vector{Symbol} = Symbol[], 
-    non_stochastic_steady_state::Vector{Symbol} = Symbol[], 
-    standard_deviation::Vector{Symbol} = Symbol[], 
-    variance::Vector{Symbol} = Symbol[], 
+    non_stochastic_steady_state::Vector{Symbol} = Symbol[],
+    mean::Vector{Symbol} = Symbol[],
+    standard_deviation::Vector{Symbol} = Symbol[],
+    variance::Vector{Symbol} = Symbol[],
     covariance::Vector{Symbol} = Symbol[],
     autocorrelation::Vector{Symbol} = Symbol[],
     autocorrelation_periods::U = 1:5,
+    algorithm::Symbol = :first_order,
     verbose::Bool = false) where {U,T}
 
-    @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
+
+    @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration,:pruned_second_order,:pruned_third_order] "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
+
+    @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
 
     SS_var_idx = indexin(non_stochastic_steady_state, 𝓂.var)
+
+    mean_var_idx = indexin(mean, 𝓂.var)
 
     std_var_idx = indexin(standard_deviation, 𝓂.var)
 
@@ -2310,9 +2329,37 @@ function get_statistics(𝓂,
 
     all_parameters = vcat(other_parameter_values, parameter_values)[sort_idx]
 
-    solve!(𝓂, verbose = verbose)
+    if algorithm == :pruned_third_order && !(!(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]))
+        algorithm = :pruned_second_order
+    end
 
-    covar_dcmp, sol, _, SS_and_pars = calculate_covariance(all_parameters,𝓂, verbose = verbose)
+    solve!(𝓂, algorithm = algorithm, verbose = verbose)
+
+    if algorithm == :pruned_third_order
+
+        if !(autocorrelation == Symbol[])
+            autocorrelation = Symbol[]
+        end
+
+        if !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
+            covar_dcmp, state_μ, SS_and_pars = calculate_third_order_moments(all_parameters, union(variance,covariance,standard_deviation), 𝓂, verbose = verbose)
+        end
+
+    elseif algorithm == :pruned_second_order
+
+        if !(autocorrelation == Symbol[])
+            autocorrelation = Symbol[]
+        end
+
+        if !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
+            covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(all_parameters, 𝓂, verbose = verbose)
+        else
+            state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(all_parameters, 𝓂, verbose = verbose, covariance = false)
+        end
+
+    else
+        covar_dcmp, sol, _, SS_and_pars = calculate_covariance(all_parameters, 𝓂, verbose = verbose)
+    end
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
 
@@ -2334,6 +2381,13 @@ function get_statistics(𝓂,
     ret = []
     if !(non_stochastic_steady_state == Symbol[])
         push!(ret,SS[SS_var_idx])
+    end
+    if !(mean == Symbol[])
+        if algorithm ∉ [:pruned_second_order,:pruned_third_order]
+            push!(ret,SS[mean_var_idx])
+        else
+            push!(ret,state_μ[mean_var_idx])
+        end
     end
     if !(standard_deviation == Symbol[])
         push!(ret,st_dev[std_var_idx])
@@ -2412,3 +2466,9 @@ cov = get_covariance
 Wrapper for [`get_moments`](@ref) with `mean = true`, the default algorithm being `:pruned_second_order`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
 """
 get_mean(args...; kwargs...) =  get_moments(args...; algorithm = :pruned_second_order, kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[1]
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `mean = true`, the default algorithm being `:pruned_second_order`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
+"""
+mean = get_mean
