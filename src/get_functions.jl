@@ -1823,7 +1823,28 @@ function get_autocorrelation(𝓂::ℳ;
     solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose)
 
     if algorithm == :pruned_third_order
-        covar_dcmp, state_μ, SS_and_pars = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, verbose = verbose)
+        covar_dcmp, state_μ, Σᶻ₃, Eᴸᶻ, autocorr_tmp, Σᶻ₂, Δμˢ₂, Σᶻ₁, μˢ₃δμˢ₁, ss_s, s_to_s₁, ŝ_to_ŝ₃, ŝ_to_y₃, ê_to_ŝ₃, ê_to_y₃, SS_and_pars = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, verbose = verbose, autocorrelation = true)
+
+        autocorr = zeros(size(covar_dcmp,1),length(autocorrelation_periods))
+
+        nˢ = size(s_to_s₁,1)
+        nᵉ = 𝓂.timings.nExo
+
+        s_to_s₁ⁱ = ℒ.diagm(ones(nˢ))
+        ŝ_to_ŝ₃ⁱ = ℒ.diagm(ones(size(Σᶻ₃,1)))
+        Σᶻ₃ⁱ = copy(Σᶻ₃)
+
+        for i in autocorrelation_periods
+            Σᶻ₃ⁱ .= ŝ_to_ŝ₃ * Σᶻ₃ⁱ + ê_to_ŝ₃ * Eᴸᶻ
+            s_to_s₁ⁱ *= s_to_s₁
+
+            Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
+            ℒ.kron(s_to_s₁ⁱ * Σᶻ₁,vec(ℒ.I(nᵉ)))   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(s_to_s₁ⁱ * μˢ₃δμˢ₁',vec(ℒ.I(nᵉ)))    ℒ.kron(s_to_s₁ⁱ * reshape(ss_s * vec(Σᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δμˢ₂ * vec(Σᶻ₁)'), nˢ, nˢ^2), vec(ℒ.I(nᵉ)))  ℒ.kron(s_to_s₁ⁱ * reshape(Σᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σᶻ₁) * vec(Σᶻ₁)', nˢ, nˢ^3), vec(ℒ.I(nᵉ)))
+            spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+
+            autocorr[:,i] .= ℒ.diag(ŝ_to_y₃ * Σᶻ₃ⁱ * ŝ_to_y₃' + ŝ_to_y₃ * ŝ_to_ŝ₃ⁱ * autocorr_tmp + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃') ./ ℒ.diag(covar_dcmp)
+            ŝ_to_ŝ₃ⁱ *= ŝ_to_ŝ₃
+        end
     elseif algorithm == :pruned_second_order
         covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
 
@@ -1832,7 +1853,7 @@ function get_autocorrelation(𝓂::ℳ;
         autocorr = zeros(size(covar_dcmp,1),length(autocorrelation_periods))
 
         for i in autocorrelation_periods
-            autocorr[:,i] = ℒ.diag(ŝ_to_y₂ * ŝ_to_ŝ₂ⁱ * autocorr_tmp) ./ ℒ.diag(covar_dcmp) 
+            autocorr[:,i] .= ℒ.diag(ŝ_to_y₂ * ŝ_to_ŝ₂ⁱ * autocorr_tmp) ./ ℒ.diag(covar_dcmp) 
             ŝ_to_ŝ₂ⁱ *= ŝ_to_ŝ₂
         end
     else

@@ -4599,12 +4599,13 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             observables::Union{Symbol_input,String_input},
                                             𝓂::ℳ; 
                                             covariance::Bool = true,
+                                            autocorrelation::Bool = false,
                                             verbose::Bool = false, 
                                             tol::AbstractFloat = eps()) where T <: Real
 
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(parameters, 𝓂, verbose = verbose)
     
-    if !covariance
+    if !covariance && !autocorrelation
         return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
     end
 
@@ -4866,9 +4867,16 @@ function calculate_third_order_moments(parameters::Vector{T},
         for obs in variance_observable
             Σʸ₃[indexin([obs], 𝓂.timings.var), indexin(variance_observable, 𝓂.timings.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
         end
+
+        if autocorrelation
+            autocorr_tmp = ŝ_to_ŝ₃ * Eᴸᶻ' * ê_to_y₃' + ê_to_ŝ₃ * Γ₃ * ê_to_y₃'
+            
+            return Σʸ₃, μʸ₂, Σᶻ₃, Eᴸᶻ, autocorr_tmp, Σᶻ₂, Δμˢ₂, Σᶻ₁, μˢ₃δμˢ₁, ss_s, s_to_s₁, ŝ_to_ŝ₃, ŝ_to_y₃, ê_to_ŝ₃, ê_to_y₃, SS_and_pars
+        end
     end
 
     return Σʸ₃, μʸ₂, SS_and_pars
+
 end
 
 
