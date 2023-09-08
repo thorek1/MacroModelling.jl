@@ -1735,7 +1735,7 @@ function get_correlation(𝓂::ℳ;
     if algorithm == :pruned_third_order
         covar_dcmp, state_μ, SS_and_pars = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, verbose = verbose)
     elseif algorithm == :pruned_second_order
-        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
     else
         covar_dcmp, sol, _, SS_and_pars = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
     end
@@ -1770,12 +1770,14 @@ corr = get_correlation
 
 """
 $(SIGNATURES)
-Return the autocorrelations of endogenous variables using the linearised solution. 
+Return the autocorrelations of endogenous variables using the first, pruned second, or pruned third order perturbation solution. 
 
 # Arguments
 - $MODEL
 # Keyword Arguments
+- `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation
 - $PARAMETERS
+- $ALGORITHM
 - $VERBOSE
 
 # Examples
@@ -1811,18 +1813,36 @@ And data, 4×5 Matrix{Float64}:
 ```
 """
 function get_autocorrelation(𝓂::ℳ; 
+    autocorrelation_periods = 1:5,
     parameters = nothing,  
+    algorithm::Symbol = :first_order,
     verbose::Bool = false)
     
-    solve!(𝓂, parameters = parameters, verbose = verbose)
+    @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration,:pruned_second_order,:pruned_third_order] "Autocorrelation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
-    # write_parameters_input!(𝓂,parameters, verbose = verbose)
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose)
 
-    covar_dcmp, sol, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+    if algorithm == :pruned_third_order
+        covar_dcmp, state_μ, SS_and_pars = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, verbose = verbose)
+    elseif algorithm == :pruned_second_order
+        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
 
-    A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+        ŝ_to_ŝ₂ⁱ = ℒ.diagm(ones(size(Σᶻ₂,1)))
 
-    autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp)) for i in 1:5])
+        autocorr = zeros(size(covar_dcmp,1),length(autocorrelation_periods))
+
+        for i in autocorrelation_periods
+            autocorr[:,i] = ℒ.diag(ŝ_to_y₂ * ŝ_to_ŝ₂ⁱ * autocorr_tmp) ./ ℒ.diag(covar_dcmp) 
+            ŝ_to_ŝ₂ⁱ *= ŝ_to_ŝ₂
+        end
+    else
+        covar_dcmp, sol, _, SS_and_pars = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+        A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+    
+        autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp)) for i in autocorrelation_periods])
+    end
+
     
     axis1 = 𝓂.var
 
@@ -1831,7 +1851,7 @@ function get_autocorrelation(𝓂::ℳ;
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    KeyedArray(collect(autocorr); Variables = axis1, Autocorrelation_orders = 1:5)
+    KeyedArray(collect(autocorr); Variables = axis1, Autocorrelation_orders = autocorrelation_periods)
 end
 
 """
@@ -2026,7 +2046,7 @@ function get_moments(𝓂::ℳ;
             end
 
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
 
                 dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
 
@@ -2085,7 +2105,7 @@ function get_moments(𝓂::ℳ;
             end
 
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
 
                 dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
 
@@ -2160,7 +2180,7 @@ function get_moments(𝓂::ℳ;
 
         if variance
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
@@ -2184,7 +2204,7 @@ function get_moments(𝓂::ℳ;
 
         if standard_deviation
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
@@ -2201,7 +2221,7 @@ function get_moments(𝓂::ℳ;
 
         if covariance
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
@@ -2352,7 +2372,7 @@ function get_statistics(𝓂,
         end
 
         if !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
-            covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(all_parameters, 𝓂, verbose = verbose)
+            covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(all_parameters, 𝓂, verbose = verbose)
         else
             state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(all_parameters, 𝓂, verbose = verbose, covariance = false)
         end
