@@ -76,11 +76,13 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         moms_no_nsss = get_moments(m, algorithm = algorithm, verbose = true, standard_deviation = false, variance = true)
         moms_no_derivs = get_moments(m, algorithm = algorithm, verbose = true, derivatives = false)
         moms_no_derivs_var = get_moments(m, algorithm = algorithm, verbose = true, derivatives = false, variance = true)
+        moms_no_derivs_var = get_moments(m, algorithm = algorithm, verbose = true, derivatives = false, variance = true, variables = m.var[2:4])
 
         moms_select_par_deriv1 = get_moments(m, algorithm = algorithm, verbose = true, parameter_derivatives = m.parameters[1])
         moms_select_par_deriv2 = get_moments(m, algorithm = algorithm, verbose = true, parameter_derivatives = m.parameters[1:2])
         moms_select_par_deriv3 = get_moments(m, algorithm = algorithm, verbose = true, parameter_derivatives = Tuple(m.parameters[1:3]))
         moms_select_par_deriv4 = get_moments(m, algorithm = algorithm, verbose = true, parameter_derivatives = reshape(m.parameters[1:3],3,1))
+        moms_select_par_deriv4 = get_moments(m, algorithm = algorithm, verbose = true, parameter_derivatives = reshape(m.parameters[1:3],3,1), variables = m.var[2:4])
 
         moms_select_par_deriv1 = get_moments(m, algorithm = algorithm, verbose = true, parameter_derivatives = string.(m.parameters[1]))
         moms_select_par_deriv2 = get_moments(m, algorithm = algorithm, verbose = true, parameter_derivatives = string.(m.parameters[1:2]))
