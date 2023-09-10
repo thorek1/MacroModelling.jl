@@ -344,6 +344,21 @@ end
 
     @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = [RBC_CME.parameters[1]], standard_deviation = [RBC_CME.var[5]])[1] ,[.21], atol = 1e-6)
 
+    # pruned second order
+    sol = Optim.optimize(x -> sum(abs2, get_statistics(RBC_CME, x, parameters = [RBC_CME.parameters[1]], standard_deviation = [RBC_CME.var[5]], algorithm = :pruned_second_order)[1] - [.21]),
+    [0], [1], [.16], 
+    Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
+
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = [RBC_CME.parameters[1]], standard_deviation = [RBC_CME.var[5]], algorithm = :pruned_second_order)[1] ,[.21], atol = 1e-6)
+
+    # pruned third order
+    sol = Optim.optimize(x -> sum(abs2, get_statistics(RBC_CME, x, parameters = [RBC_CME.parameters[1]], standard_deviation = [RBC_CME.var[5]], algorithm = :pruned_third_order)[1] - [.21]),
+    [0], [1], [.16], 
+    Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
+
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = [RBC_CME.parameters[1]], standard_deviation = [RBC_CME.var[5]], algorithm = :pruned_third_order)[1] ,[.21], atol = 1e-6)
+
+
     # multiple parameter inputs and targets
     sol = Optim.optimize(x -> sum(abs2,get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[[6,1]], standard_deviation = RBC_CME.var[[2,5]])[1] - [.0008,.21]),
     [0,0], [1,1], [.5,.16], 
@@ -355,6 +370,30 @@ end
     autodiff = :forward)
 
     @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[[6,1]], standard_deviation = RBC_CME.var[[2,5]])[1], [.0008,.21], atol=1e-6)
+
+    # pruned second order
+    sol = Optim.optimize(x -> sum(abs2,get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[[6,1]], standard_deviation = RBC_CME.var[[2,5]], algorithm = :pruned_second_order)[1] - [.0008,.21]),
+    [0,0], [1,1], [.5,.16], 
+    Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))),
+    # Optim.Options(show_trace = true,
+    # store_trace = true,
+    # extended_trace = true)
+    ;
+    autodiff = :forward)
+
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[[6,1]], standard_deviation = RBC_CME.var[[2,5]], algorithm = :pruned_second_order)[1], [.0008,.21], atol=1e-6)
+
+    # pruned third order
+    sol = Optim.optimize(x -> sum(abs2,get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[[6,1]], standard_deviation = RBC_CME.var[[2,5]], algorithm = :pruned_third_order)[1] - [.0008,.21]),
+    [0,0], [1,1], [.5,.16], 
+    Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))),
+    # Optim.Options(show_trace = true,
+    # store_trace = true,
+    # extended_trace = true)
+    ;
+    autodiff = :forward)
+
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[[6,1]], standard_deviation = RBC_CME.var[[2,5]], algorithm = :pruned_third_order)[1], [.0008,.21], atol=1e-6)
 
     # function combining targets for SS and St.Dev.
     function get_variances_optim(x)
@@ -372,7 +411,29 @@ end
 
     @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:2], non_stochastic_steady_state = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]]),[[1.45],[.2]],atol = 1e-6)
 
+    # pruned second order
+    function get_variances_optim_2nd(x)
+        out = get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[1:2], mean = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]], algorithm = :pruned_second_order)
+        sum(abs2,[out[1][1] - 1.45, out[2][1] - .2])
+    end
 
+    sol = Optim.optimize(x -> get_variances_optim_2nd(x),
+    [0,0.95], [1,1], [.16, .999], 
+    Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
+
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:2], mean = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]], algorithm = :pruned_second_order),[[1.45],[.2]],atol = 1e-6)
+
+    # pruned third order
+    function get_variances_optim_3rd(x)
+        out = get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[1:2], mean = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]], algorithm = :pruned_third_order)
+        sum(abs2,[out[1][1] - 1.45, out[2][1] - .2])
+    end
+
+    sol = Optim.optimize(x -> get_variances_optim_3rd(x),
+    [0,0.95], [1,1], [.16, .999], 
+    Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
+
+    @test isapprox(get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:2], mean = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]], algorithm = :pruned_third_order),[[1.45],[.2]],atol = 1e-6)
 
 
     # function combining targets for SS, St.Dev., and parameter
@@ -388,6 +449,84 @@ end
 
     @test isapprox([get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:3], non_stochastic_steady_state = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]])
     sol.minimizer[3]],[[1.45],[.2],.02],atol = 1e-6)
+
+
+    # pruned second order
+    function get_variances_optim2_2nd(x)
+        out = get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[1:3], mean = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]], algorithm = :pruned_second_order)
+        sum(abs2,[out[1][1] - 1.45, out[2][1] - .2, x[3] - .02])
+    end
+    out = get_variances_optim2([.157,.999,.022])
+
+    sol = Optim.optimize(x -> get_variances_optim2_2nd(x),
+    [0,0.95,0], [1,1,1], [.16, .999,.022], 
+    Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
+
+    @test isapprox([get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:3], mean = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]], algorithm = :pruned_second_order)
+    sol.minimizer[3]],[[1.45],[.2],.02], atol = 1e-6)
+
+    # pruned third order
+    function get_variances_optim2_3rd(x)
+        out = get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[1:3], mean = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]], algorithm = :pruned_third_order)
+        sum(abs2,[out[1][1] - 1.45, out[2][1] - .2, x[3] - .02])
+    end
+    out = get_variances_optim2([.157,.999,.022])
+
+    sol = Optim.optimize(x -> get_variances_optim2_3rd(x),
+    [0,0.95,0], [1,1,1], [.16, .999,.022], 
+    Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
+
+    @test isapprox([get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:3], mean = [RBC_CME.var[6]], standard_deviation = [RBC_CME.var[5]], algorithm = :pruned_third_order)
+    sol.minimizer[3]],[[1.45],[.2],.02], atol = 1e-6)
+
+    get_statistics(RBC_CME, RBC_CME.parameter_values[1:3], parameters = RBC_CME.parameters[1:3], non_stochastic_steady_state = RBC_CME.var[[4,6]], standard_deviation = RBC_CME.var[4:5], autocorrelation = RBC_CME.var[[3,5]], autocorrelation_periods = 1)
+
+    # function combining targets for SS/mean, St.Dev., autocorrelation and parameter
+    function get_variances_optim3(x)
+        out = get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[1:4], non_stochastic_steady_state = RBC_CME.var[[4,6]], standard_deviation = RBC_CME.var[4:5], autocorrelation = RBC_CME.var[[3,5]], autocorrelation_periods = 1)
+        sum(abs2,vcat(out[1] - [1.2,1.4], out[2] - [.013,.2], out[3][:,1] - [.955,.997], x[3] - .0215))
+    end
+    out = get_variances_optim3([.157,.999,.022,1.008])
+
+    sol = Optim.optimize(x -> get_variances_optim3(x),
+    [0,0.95,0,0], [1,1,1,2], [.16, .999,.022,1], 
+    Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
+
+    @test isapprox([get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:3], non_stochastic_steady_state = RBC_CME.var[[4,6]], standard_deviation = RBC_CME.var[4:5], autocorrelation = RBC_CME.var[[3,5]], autocorrelation_periods = 1)
+    sol.minimizer[3]],
+    [[1.2,1.4],[.013,.2],[.955,.997][:,:],.0215],
+    atol = 1e-3)
+
+
+    # pruned second order
+    function get_variances_optim3_2nd(x)
+        out = get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[1:4], mean = RBC_CME.var[[4,6]], standard_deviation = RBC_CME.var[4:5], autocorrelation = RBC_CME.var[[3,5]], autocorrelation_periods = 1, algorithm = :pruned_second_order)
+        sum(abs2,vcat(out[1] - [1.2,1.4], out[2] - [.013,.2], out[3][:,1] - [.955,.997], x[3] - .0215))
+    end
+
+    sol = Optim.optimize(x -> get_variances_optim3_2nd(x),
+    [0,0.95,0,0], [1,1,1,2], [.16, .999,.022,1], 
+    Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
+
+    @test isapprox([get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:3], mean = RBC_CME.var[[4,6]], standard_deviation = RBC_CME.var[4:5], autocorrelation = RBC_CME.var[[3,5]], autocorrelation_periods = 1, algorithm = :pruned_second_order)
+    sol.minimizer[3]],
+    [[1.2,1.4],[.013,.2],[.955,.997][:,:],.0215],
+    atol = 1e-3)
+
+    # pruned third order
+    function get_variances_optim3_3rd(x)
+        out = get_statistics(RBC_CME, x, parameters = RBC_CME.parameters[1:4], mean = RBC_CME.var[[4,6]], standard_deviation = RBC_CME.var[4:5], autocorrelation = RBC_CME.var[[3,5]], autocorrelation_periods = 1, algorithm = :pruned_third_order)
+        sum(abs2,vcat(out[1] - [1.2,1.4], out[2] - [.013,.2], out[3][:,1] - [.955,.997], x[3] - .0215))
+    end
+
+    sol = Optim.optimize(x -> get_variances_optim3_3rd(x),
+    [0,0.95,0,0], [1,1,1,2], [.16, .999,.022,1], 
+    Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
+
+    @test isapprox([get_statistics(RBC_CME, sol.minimizer, parameters = RBC_CME.parameters[1:3], mean = RBC_CME.var[[4,6]], standard_deviation = RBC_CME.var[4:5], autocorrelation = RBC_CME.var[[3,5]], autocorrelation_periods = 1, algorithm = :pruned_third_order)
+    sol.minimizer[3]],
+    [[1.2,1.4],[.013,.2],[.955,.997][:,:],.0215],
+    atol = 1e-3)
 end
 
 RBC_CME = nothing
