@@ -4656,7 +4656,7 @@ function calculate_third_order_moments(parameters::Vector{T},
     Σʸ₃ = zeros(T, size(Σʸ₂))
 
     if autocorrelation
-        autocorr = zeros(size(Σʸ₂,1), length(autocorrelation_periods))
+        autocorr = zeros(T, size(Σʸ₂,1), length(autocorrelation_periods))
     end
 
     for ords in orders 
