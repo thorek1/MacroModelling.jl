@@ -4109,7 +4109,7 @@ end
 
 function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false, algorithm = :pruned_second_order, tol::Float64 = eps()) where T <: Real
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
-    @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean only available for pruned second and third order perturbation solutions."
+    @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean only available for first order, pruned second and third order perturbation solutions."
 
     SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
