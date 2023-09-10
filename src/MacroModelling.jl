@@ -4600,8 +4600,9 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             𝓂::ℳ; 
                                             covariance::Bool = true,
                                             autocorrelation::Bool = false,
+                                            autocorrelation_periods::U = 1:5,
                                             verbose::Bool = false, 
-                                            tol::AbstractFloat = eps()) where T <: Real
+                                            tol::AbstractFloat = eps()) where {U, T <: Real}
 
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(parameters, 𝓂, verbose = verbose)
     
@@ -4653,6 +4654,10 @@ function calculate_third_order_moments(parameters::Vector{T},
     e⁶ = sextup * E_e⁶
 
     Σʸ₃ = zeros(T, size(Σʸ₂))
+
+    if autocorrelation
+        autocorr = zeros(size(Σʸ₂,1), length(autocorrelation_periods))
+    end
 
     for ords in orders 
         variance_observable, dependencies_all_vars = ords
@@ -4870,12 +4875,38 @@ function calculate_third_order_moments(parameters::Vector{T},
 
         if autocorrelation
             autocorr_tmp = ŝ_to_ŝ₃ * Eᴸᶻ' * ê_to_y₃' + ê_to_ŝ₃ * Γ₃ * ê_to_y₃'
-            
-            return Σʸ₃, μʸ₂, Σᶻ₃, Eᴸᶻ, autocorr_tmp, Σᶻ₂, Δμˢ₂, Σᶻ₁, μˢ₃δμˢ₁, ss_s, s_to_s₁, ŝ_to_ŝ₃, ŝ_to_y₃, ê_to_ŝ₃, ê_to_y₃, SS_and_pars
+
+            s_to_s₁ⁱ = zero(s_to_s₁)
+            s_to_s₁ⁱ += ℒ.diagm(ones(nˢ))
+
+            ŝ_to_ŝ₃ⁱ = zero(ŝ_to_ŝ₃)
+            ŝ_to_ŝ₃ⁱ += ℒ.diagm(ones(size(Σᶻ₃,1)))
+
+            Σᶻ₃ⁱ = copy(Σᶻ₃)
+
+            for i in autocorrelation_periods
+                Σᶻ₃ⁱ .= ŝ_to_ŝ₃ * Σᶻ₃ⁱ + ê_to_ŝ₃ * Eᴸᶻ
+                s_to_s₁ⁱ *= s_to_s₁
+
+                Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
+                ℒ.kron(s_to_s₁ⁱ * Σ̂ᶻ₁,vec(ℒ.I(nᵉ)))   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(s_to_s₁ⁱ * μˢ₃δμˢ₁',vec(ℒ.I(nᵉ)))    ℒ.kron(s_to_s₁ⁱ * reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec(ℒ.I(nᵉ)))  ℒ.kron(s_to_s₁ⁱ * reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec(ℒ.I(nᵉ)))
+                spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
+
+                for obs in variance_observable
+                    autocorr[indexin([obs], 𝓂.timings.var), i] .= (ℒ.diag(ŝ_to_y₃ * Σᶻ₃ⁱ * ŝ_to_y₃' + ŝ_to_y₃ * ŝ_to_ŝ₃ⁱ * autocorr_tmp + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃') ./ ℒ.diag(Σʸ₃tmp))[indexin([obs], variance_observable)]
+                end
+
+                ŝ_to_ŝ₃ⁱ *= ŝ_to_ŝ₃
+            end
+
         end
     end
 
-    return Σʸ₃, μʸ₂, SS_and_pars
+    if autocorrelation
+        return Σʸ₃, μʸ₂, autocorr, SS_and_pars
+    else
+        return Σʸ₃, μʸ₂, SS_and_pars
+    end
 
 end
 
