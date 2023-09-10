@@ -2358,8 +2358,8 @@ function get_statistics(𝓂,
     if algorithm == :pruned_third_order
 
         if !(autocorrelation == Symbol[])
-
-            covar_dcmp, state_μ, autocorr, SS_and_pars = calculate_third_order_moments(all_parameters, autocorrelation, 𝓂, verbose = verbose, autocorrelation = true)
+            second_mom_third_order = union(autocorrelation, standard_deviation, variance, covariance)
+            covar_dcmp, state_μ, autocorr, SS_and_pars = calculate_third_order_moments(all_parameters, second_mom_third_order, 𝓂, verbose = verbose, autocorrelation = true)
 
         elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
 
@@ -2382,7 +2382,7 @@ function get_statistics(𝓂,
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
 
     if !(variance == Symbol[])
-        varrs = convert(Vector{Real},ℒ.diag(covar_dcmp))
+        varrs = convert(Vector{T},ℒ.diag(covar_dcmp))
         if !(standard_deviation == Symbol[])
             st_dev = sqrt.(varrs)
         end
@@ -2404,15 +2404,15 @@ function get_statistics(𝓂,
         end
 
         if !(standard_deviation == Symbol[])
-            st_dev = sqrt.(abs.(convert(Vector{Real},ℒ.diag(covar_dcmp))))
+            st_dev = sqrt.(abs.(convert(Vector{T},ℒ.diag(covar_dcmp))))
         end
     else
         if !(standard_deviation == Symbol[])
-            st_dev = sqrt.(abs.(convert(Vector{Real},ℒ.diag(covar_dcmp))))
+            st_dev = sqrt.(abs.(convert(Vector{T},ℒ.diag(covar_dcmp))))
         end
     end
 
-    ret = []
+    ret = AbstractArray{T}[]
     if !(non_stochastic_steady_state == Symbol[])
         push!(ret,SS[SS_var_idx])
     end
