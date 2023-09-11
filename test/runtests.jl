@@ -212,7 +212,7 @@ GC.gc()
 
 @testset verbose = true "RBC_CME second order" begin
     include("models/RBC_CME.jl")
-    functionality_test(m, algorihm = :second_order, plots = false)
+    functionality_test(m, algorithm = :second_order, plots = false)
 end
 m = nothing
 GC.gc()
@@ -220,7 +220,7 @@ GC.gc()
 
 @testset verbose = true "RBC_CME pruned second order" begin
     include("models/RBC_CME.jl")
-    functionality_test(m, algorihm = :pruned_second_order, plots = false)
+    functionality_test(m, algorithm = :pruned_second_order, plots = false)
 end
 m = nothing
 GC.gc()
@@ -228,7 +228,7 @@ GC.gc()
 
 @testset verbose = true "RBC_CME third order" begin
     include("models/RBC_CME.jl")
-    functionality_test(m, algorihm = :third_order, plots = false)
+    functionality_test(m, algorithm = :third_order, plots = false)
 end
 m = nothing
 GC.gc()
@@ -236,7 +236,7 @@ GC.gc()
 
 @testset verbose = true "RBC_CME pruned third order" begin
     include("models/RBC_CME.jl")
-    functionality_test(m, algorihm = :pruned_third_order, plots = false)
+    functionality_test(m, algorithm = :pruned_third_order, plots = false)
 end
 m = nothing
 GC.gc()
