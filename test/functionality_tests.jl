@@ -1,5 +1,5 @@
 function functionality_test(m; algorithm = :first_order, plots = true, verbose = true)
-    m_orig = deepcopy(m)
+    # m_orig = deepcopy(m)
     # figure out dependencies for defined parameters
 
     # Check different inputs for get_steady_state
