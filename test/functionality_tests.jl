@@ -123,6 +123,8 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_moms4 = get_mean(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.000))
     end
 
+    GC.gc()
+
     if algorithm == :first_order
         irfs_nv = get_irf(m, m.parameter_values)
         irfs = get_irf(m, m.parameter_values, verbose = true)
@@ -391,6 +393,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     new_sols4 = get_solution(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
     old_sols = get_solution(m, algorithm = algorithm, verbose = true, parameters = old_par_vals)
 
+    GC.gc()
     # irfs
     irfs_nv = get_irf(m, algorithm = algorithm)
     irfs = get_irf(m, verbose = true, algorithm = algorithm)
@@ -465,6 +468,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
     sims = simulate(m, algorithm = algorithm)
 
+    GC.gc()
     # Inspect Model
     get_equations(m) 
     get_steady_state_equations(m) 
