@@ -111,6 +111,9 @@ GC.gc()
     include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
     functionality_test(m, plots = false)
     for algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        m = nothing
+        GC.gc()
+        include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
         functionality_test(m, algorithm = algorithm, plots = false)
     end
 end
@@ -121,6 +124,9 @@ GC.gc()
     include("models/RBC_CME_calibration_equations.jl")
     functionality_test(m, plots = false)
     for algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        m = nothing
+        GC.gc()
+        include("models/RBC_CME_calibration_equations.jl")
         functionality_test(m, algorithm = algorithm, plots = false)
     end
 end
@@ -131,6 +137,9 @@ GC.gc()
     include("models/RBC_CME.jl")
     functionality_test(m, plots = false)
     for algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        m = nothing
+        GC.gc()
+        include("models/RBC_CME.jl")
         functionality_test(m, algorithm = algorithm, plots = false)
     end
 end
