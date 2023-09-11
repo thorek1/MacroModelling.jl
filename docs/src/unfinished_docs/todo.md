@@ -70,6 +70,7 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] autocorr to statistics output and in general for higher order pruned sols
+- [x] fix product moments and test for cases with more than 2 shocks
 - [x] write tests for variables argument in get_moment and for higher order moments
 - [x] handle KeyedArrays with strings as dimension names as input
 - [x] add mean in output funcs for higher order 
