@@ -47,15 +47,38 @@ GC.gc()
 @testset verbose = true "FS2000" begin
     include("models/FS2000.jl")
     functionality_test(m, plots = false)
-    for algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
-        m = nothing
-        GC.gc()
-        include("models/FS2000.jl")
-        functionality_test(m, algorithm = algorithm, plots = false)
-    end
 end
 m = nothing
 GC.gc()
+
+@testset verbose = true "FS2000 second order" begin
+    include("models/FS2000.jl")
+    functionality_test(m, algorithm = :second_order, plots = false)
+end
+m = nothing
+GC.gc()
+
+@testset verbose = true "FS2000 pruned second order" begin
+    include("models/FS2000.jl")
+    functionality_test(m, algorithm = :pruned_second_order, plots = false)
+end
+m = nothing
+GC.gc()
+
+@testset verbose = true "FS2000 third order" begin
+    include("models/FS2000.jl")
+    functionality_test(m, algorithm = :third_order, plots = false)
+end
+m = nothing
+GC.gc()
+
+@testset verbose = true "FS2000 pruned third order" begin
+    include("models/FS2000.jl")
+    functionality_test(m, algorithm = :pruned_third_order, plots = false)
+end
+m = nothing
+GC.gc()
+
 
 @testset verbose = true "Test dynare read/write" begin
     include("models/FS2000.jl")
@@ -110,43 +133,113 @@ GC.gc()
 @testset verbose = true "RBC_CME with calibration equations and parameter definitions" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
     functionality_test(m, plots = false)
-    for algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
-        m = nothing
-        GC.gc()
-        include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-        functionality_test(m, algorithm = algorithm, plots = false)
-    end
 end
 m = nothing
 GC.gc()
+
+@testset verbose = true "RBC_CME with calibration equations and parameter definitions second order" begin
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+    functionality_test(m, algorithm = :second_order, plots = false)
+end
+m = nothing
+GC.gc()
+
+@testset verbose = true "RBC_CME with calibration equations and parameter definitions pruned second order" begin
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+    functionality_test(m, algorithm = :pruned_second_order, plots = false)
+end
+m = nothing
+GC.gc()
+
+@testset verbose = true "RBC_CME with calibration equations and parameter definitions third order" begin
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+    functionality_test(m, algorithm = :third_order, plots = false)
+end
+m = nothing
+GC.gc()
+
+@testset verbose = true "RBC_CME with calibration equations and parameter definitions pruned third order" begin
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+    functionality_test(m, algorithm = :pruned_third_order, plots = false)
+end
+m = nothing
+GC.gc()
+
+
 
 @testset verbose = true "RBC_CME with calibration equations" begin
     include("models/RBC_CME_calibration_equations.jl")
     functionality_test(m, plots = false)
-    for algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
-        m = nothing
-        GC.gc()
-        include("models/RBC_CME_calibration_equations.jl")
-        functionality_test(m, algorithm = algorithm, plots = false)
-    end
 end
 m = nothing
 GC.gc()
+
+@testset verbose = true "RBC_CME with calibration equations second order" begin
+    include("models/RBC_CME_calibration_equations.jl")
+    functionality_test(m, algorithm = :second_order, plots = false)
+end
+m = nothing
+GC.gc()
+
+@testset verbose = true "RBC_CME with calibration equations pruned second order" begin
+    include("models/RBC_CME_calibration_equations.jl")
+    functionality_test(m, algorithm = :pruned_second_order, plots = false)
+end
+m = nothing
+GC.gc()
+
+@testset verbose = true "RBC_CME with calibration equations third order" begin
+    include("models/RBC_CME_calibration_equations.jl")
+    functionality_test(m, algorithm = :third_order, plots = false)
+end
+m = nothing
+GC.gc()
+
+@testset verbose = true "RBC_CME with calibration equations pruned third order" begin
+    include("models/RBC_CME_calibration_equations.jl")
+    functionality_test(m, algorithm = :pruned_third_order, plots = false)
+end
+m = nothing
+GC.gc()
+
 
 @testset verbose = true "RBC_CME" begin
     include("models/RBC_CME.jl")
     functionality_test(m, plots = false)
-    for algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
-        m = nothing
-        GC.gc()
-        include("models/RBC_CME.jl")
-        functionality_test(m, algorithm = algorithm, plots = false)
-    end
+end
+m = nothing
+GC.gc()
+
+@testset verbose = true "RBC_CME second order" begin
+    include("models/RBC_CME.jl")
+    functionality_test(m, algorihm = :second_order, plots = false)
 end
 m = nothing
 GC.gc()
 
 
+@testset verbose = true "RBC_CME pruned second order" begin
+    include("models/RBC_CME.jl")
+    functionality_test(m, algorihm = :pruned_second_order, plots = false)
+end
+m = nothing
+GC.gc()
+
+
+@testset verbose = true "RBC_CME third order" begin
+    include("models/RBC_CME.jl")
+    functionality_test(m, algorihm = :third_order, plots = false)
+end
+m = nothing
+GC.gc()
+
+
+@testset verbose = true "RBC_CME pruned third order" begin
+    include("models/RBC_CME.jl")
+    functionality_test(m, algorihm = :pruned_third_order, plots = false)
+end
+m = nothing
+GC.gc()
 
 
 @testset verbose = true "Model without shocks" begin
