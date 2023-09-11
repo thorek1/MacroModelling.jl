@@ -275,14 +275,17 @@ function product_moments(V, ii, nu)
         return (V[1, 1]^(nu[1] / 2) * V[2, 2]^(nu[2] / 2) * bivariate_moment(nu, Int(rho)))[1]
     end
 
-    nu, inu = sort(nu, dims=2, rev=true)
+    inu = sortperm(nu, rev=true)
+
+    sort!(nu, rev=true)
+
     V = V[inu, inu]
 
     x = zeros(Int, 1, m)
     V = V / 2
-    nu2 = nu / 2
+    nu2 = nu' / 2
     p = 2
-    q = nu2' * V * nu2
+    q = nu2 * V * nu2'
     y = 0
 
     for _ in 1:round(Int, prod(nu .+ 1) / 2)
@@ -291,17 +294,17 @@ function product_moments(V, ii, nu)
             if x[j] < nu[j]
                 x[j] += 1
                 p = -round(p * (nu[j] + 1 - x[j]) / x[j])
-                q -= 2 * (nu2 .- x) * V[:, j] + V[j, j]
+                q -= (2 * (nu2 - x) * V[:, j] .+ V[j, j])[1]
                 break
             else
                 x[j] = 0
                 p = isodd(nu[j]) ? -p : p
-                q += 2 * nu[j] * (nu2 .- x) * V[:, j] - nu[j]^2 * V[j, j]
+                q += (2 * nu[j] * (nu2 - x) * V[:, j] .- nu[j]^2 * V[j, j])[1]
             end
         end
     end
 
-    return (y / prod(1:s2))[1]
+    return y / prod(1:s2)
 end
 
 
