@@ -4128,15 +4128,13 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
     
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
 
-    augmented_states = vcat(𝓂.timings.past_not_future_and_mixed, :Volatility, 𝓂.timings.exo)
-
-    states_in_augmented_states      = augmented_states .∈ (𝓂.timings.past_not_future_and_mixed,)
-    shocks_in_augmented_states      = augmented_states .∈ (𝓂.timings.exo,)
-    volatility_in_augmented_states  = augmented_states .∈ ([:Volatility],)
-
-    kron_states     = ℒ.kron(states_in_augmented_states, states_in_augmented_states)
-    kron_shocks     = ℒ.kron(shocks_in_augmented_states, shocks_in_augmented_states)
-    kron_volatility = ℒ.kron(volatility_in_augmented_states, volatility_in_augmented_states)
+    s_in_s⁺ = BitVector(vcat(𝓂.timings.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
+    v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
+    
+    kron_states     = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    kron_shocks     = ℒ.kron(e_in_s⁺, e_in_s⁺)
+    kron_volatility = ℒ.kron(v_in_s⁺, v_in_s⁺)
 
     # first order
     states_to_variables¹ = sparse(𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed])
