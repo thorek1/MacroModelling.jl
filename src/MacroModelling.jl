@@ -4518,11 +4518,9 @@ function calculate_second_order_moments(
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
 
-    s⁺ = vcat(𝓂.timings.past_not_future_and_mixed, :Volatility, 𝓂.timings.exo)
-
-    s_in_s⁺ = s⁺ .∈ (𝓂.timings.past_not_future_and_mixed,)
-    e_in_s⁺ = s⁺ .∈ (𝓂.timings.exo,)
-    v_in_s⁺ = s⁺ .∈ ([:Volatility],)
+    s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
+    v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
 
     kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
     kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
@@ -4627,8 +4625,6 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     nᵉ = 𝓂.timings.nExo
 
-    s⁺ = vcat(𝓂.timings.past_not_future_and_mixed, :Volatility, 𝓂.timings.exo)
-
     # precalc second order
     ## covariance
     E_e⁴ = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4)
@@ -4705,9 +4701,9 @@ function calculate_third_order_moments(parameters::Vector{T},
         s_s  = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2))
 
         # second order
-        s_in_s⁺ = s⁺ .∈ (dependencies,)
-        e_in_s⁺ = s⁺ .∈ (𝓂.timings.exo,)
-        v_in_s⁺ = s⁺ .∈ ([:Volatility],)
+        s_in_s⁺ = BitVector(vcat(𝓂.timings.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
+        e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
+        v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
 
         kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
         kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
