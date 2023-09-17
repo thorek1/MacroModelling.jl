@@ -1946,6 +1946,7 @@ function get_moments(𝓂::ℳ;
     derivatives::Bool = true,
     parameter_derivatives::Union{Symbol_input,String_input} = :all,
     algorithm::Symbol = :first_order,
+    dependencies_tol::AbstractFloat = 1e-12,
     verbose::Bool = false,
     silent::Bool = true)#limit output by selecting pars and vars like for plots and irfs!?
     
@@ -2056,7 +2057,7 @@ function get_moments(𝓂::ℳ;
             elseif algorithm == :pruned_third_order
                 covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
 
-                dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
+                dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose), 𝓂.parameter_values[param_idx])
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
@@ -2087,7 +2088,7 @@ function get_moments(𝓂::ℳ;
                 if algorithm == :pruned_second_order
                     dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
                 elseif algorithm == :pruned_third_order
-                    dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                    dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)), 𝓂.parameter_values[param_idx])
                 else
                     dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
                 end
@@ -2115,7 +2116,7 @@ function get_moments(𝓂::ℳ;
             elseif algorithm == :pruned_third_order
                 covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
 
-                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)), 𝓂.parameter_values[param_idx])
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
@@ -2185,7 +2186,7 @@ function get_moments(𝓂::ℳ;
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
@@ -2209,7 +2210,7 @@ function get_moments(𝓂::ℳ;
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
@@ -2226,7 +2227,7 @@ function get_moments(𝓂::ℳ;
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, verbose = verbose)
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end

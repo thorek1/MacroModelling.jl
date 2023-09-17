@@ -3,6 +3,7 @@ module MacroModelling
 
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 # import StatsFuns: normcdf
+import ThreadedSparseArrays
 using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
@@ -171,57 +172,120 @@ function warshall_algorithm!(R::SparseMatrixCSC{Bool,Int64})
     return R
 end
 
+function combine_pairs(v::Vector{Pair{Vector{Symbol}, Vector{Symbol}}})
+    i = 1
+    while i <= length(v)
+        subset_found = false
+        for j in i+1:length(v)
+            # Check if v[i].second is subset of v[j].second or vice versa
+            if all(elem -> elem in v[j].second, v[i].second) || all(elem -> elem in v[i].second, v[j].second)
+                # Combine the first elements and assign to the one with the larger second element
+                if length(v[i].second) > length(v[j].second)
+                    v[i] = v[i].first ∪ v[j].first => v[i].second
+                else
+                    v[j] = v[i].first ∪ v[j].first => v[j].second
+                end
+                # Remove the one with the smaller second element
+                deleteat!(v, length(v[i].second) > length(v[j].second) ? j : i)
+                subset_found = true
+                break
+            end
+        end
+        # If no subset was found for v[i], move to the next element
+        if !subset_found
+            i += 1
+        end
+    end
+    return v
+end
 
-function determine_efficient_order(∇₁::SparseMatrixCSC{<: Real}, 
-                                    T::timings, 
-                                    variables::Union{Symbol_input,String_input})
+function determine_efficient_order(𝐒₁::Matrix{<: Real}, 
+    T::timings, 
+    variables::Union{Symbol_input,String_input};
+    tol::AbstractFloat = eps())
 
+    orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
+
+    nˢ = T.nPast_not_future_and_mixed
+    
     if variables == :full_covar
-        return [T.var => T.var]
+        return [T.var => T.past_not_future_and_mixed]
     else
-        var_idx = parse_variables_input_to_index(variables, T)
+        var_idx = MacroModelling.parse_variables_input_to_index(variables, T)
         observables = T.var[var_idx]
     end
 
-    expand = [  spdiagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
-                spdiagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
-    
-    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    ∇₋ = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+    for obs in observables
+        obs_in_var_idx = indexin([obs],T.var)
+        dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
 
-    incidence = abs.(∇₊) + abs.(∇₀) + abs.(∇₋)
-
-    Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(incidence))
-    R̂ = []
-    for i in 1:n_blocks
-        [push!(R̂, n_blocks - i + 1) for ii in R[i]:R[i+1] - 1]
-    end
-    push!(R̂,1)
-    
-    vars = hcat(P, R̂)'
-    eqs  = hcat(Q, R̂)'
-    
-    dependency_matrix = incidence[vars[1,:], eqs[1,:]] .!= 0
-    
-    warshall_algorithm!(dependency_matrix)
-
-    solve_order = Vector{Symbol}[]
-    already_solved_for = Set{Symbol}()
-    corresponding_dependencies = Vector{Symbol}[]
-
-    for obs in intersect(T.var[eqs[1,:]], observables)
-        dependencies = T.var[eqs[1,:]][findall(dependency_matrix[indexin([obs], T.var[eqs[1,:]])[1],:])]
-        to_be_solved_for = setdiff(intersect(observables, dependencies), already_solved_for)
-        if length(to_be_solved_for) > 0
-            push!(solve_order, to_be_solved_for)
-            push!(corresponding_dependencies, dependencies)
+        while dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[indexin(T.past_not_future_and_mixed, T.var),1:nˢ]) .> tol) != dependencies_in_states
+            dependencies_in_states = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[indexin(T.past_not_future_and_mixed, T.var),1:nˢ]) .> tol)
         end
-        push!(already_solved_for, intersect(observables, dependencies)...)
+
+        dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+
+        push!(orders,[obs] => sort(dependencies))
     end
 
-    return solve_order .=> corresponding_dependencies
+    sort!(orders, by = x -> length(x[2]), rev = true)
+
+    return combine_pairs(orders)
 end
+
+# function determine_efficient_order(∇₁::SparseMatrixCSC{<: Real}, 
+#                                     T::timings, 
+#                                     variables::Union{Symbol_input,String_input};
+#                                     tol::AbstractFloat = eps())
+
+#     droptol!(∇₁, tol)
+
+#     if variables == :full_covar
+#         return [T.var => T.var]
+#     else
+#         var_idx = parse_variables_input_to_index(variables, T)
+#         observables = T.var[var_idx]
+#     end
+
+#     expand = [  spdiagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
+#                 spdiagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+    
+#     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+#     ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+#     ∇₋ = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+
+#     incidence = abs.(∇₊) + abs.(∇₀) + abs.(∇₋)
+
+#     Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(incidence))
+#     R̂ = []
+#     for i in 1:n_blocks
+#         [push!(R̂, n_blocks - i + 1) for ii in R[i]:R[i+1] - 1]
+#     end
+#     push!(R̂,1)
+    
+#     vars = hcat(P, R̂)'
+#     eqs  = hcat(Q, R̂)'
+    
+#     dependency_matrix = incidence[vars[1,:], eqs[1,:]] .!= 0
+    
+#     warshall_algorithm!(dependency_matrix)
+
+#     solve_order = Vector{Symbol}[]
+#     already_solved_for = Set{Symbol}()
+#     corresponding_dependencies = Vector{Symbol}[]
+
+#     for obs in intersect(T.var[eqs[1,:]], observables)
+#         dependencies = T.var[eqs[1,:]][findall(dependency_matrix[indexin([obs], T.var[eqs[1,:]])[1],:])]
+#         to_be_solved_for = setdiff(intersect(observables, dependencies), already_solved_for)
+#         if length(to_be_solved_for) > 0
+#             push!(solve_order, to_be_solved_for)
+#             push!(corresponding_dependencies, dependencies)
+#         end
+#         push!(already_solved_for, intersect(observables, dependencies)...)
+#     end
+
+#     return solve_order .=> corresponding_dependencies
+# end
 
 
 
@@ -3134,12 +3198,13 @@ end
 function covariance_parameter_derivatives_third_order(parameters::Vector{ℱ.Dual{Z,S,N}}, 
                                                         variables::Union{Symbol_input,String_input}, 
                                                         parameters_idx, 
-                                                        𝓂::ℳ; 
+                                                        𝓂::ℳ;
+                                                        dependencies_tol::AbstractFloat = 1e-12,
                                                         verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -3148,11 +3213,12 @@ function covariance_parameter_derivatives_third_order(parameters::ℱ.Dual{Z,S,N
                                                         variables::Union{Symbol_input,String_input}, 
                                                         parameters_idx::Int, 
                                                         𝓂::ℳ; 
+                                                        dependencies_tol::AbstractFloat = 1e-12,
                                                         verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -3578,9 +3644,26 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
 
+    r1,c1,v1 = findnz(B)
+    r2,c2,v2 = findnz(C)
+    r3,c3,v3 = findnz(X)
+
+    coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    push!(coordinates,(r1,c1))
+    push!(coordinates,(r2,c2))
+    push!(coordinates,(r3,c3))
+    
+    values = vcat(v1, v2, v3)
+
+    dimensions = Tuple{Int, Int}[]
+    push!(dimensions,size(B))
+    push!(dimensions,size(C))
+    push!(dimensions,size(X))
+
+    𝐒₂, solved = solve_sylvester_equation_forward(values, coordinates, dimensions, solver = :gmres, sparse_output = true)
     # 𝐒₂, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
     # 𝐒₂, solved = solve_sylvester_equation_AD([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
-    𝐒₂, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
+    # 𝐒₂, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
 
     𝐒₂ *= M₂.𝐔₂
 
@@ -3670,9 +3753,27 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     C *= M₃.𝐂₃
     droptol!(C,tol)
 
+    r1,c1,v1 = findnz(B)
+    r2,c2,v2 = findnz(C)
+    r3,c3,v3 = findnz(X)
+
+    coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    push!(coordinates,(r1,c1))
+    push!(coordinates,(r2,c2))
+    push!(coordinates,(r3,c3))
+    
+    values = vcat(v1, v2, v3)
+
+    dimensions = Tuple{Int, Int}[]
+    push!(dimensions,size(B))
+    push!(dimensions,size(C))
+    push!(dimensions,size(X))
+    
+
+    𝐒₃, solved = solve_sylvester_equation_forward(values, coordinates, dimensions, solver = :gmres, sparse_output = true)
     # 𝐒₃, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
     # 𝐒₃, solved = solve_sylvester_equation_AD([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
-    𝐒₃, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
+    # 𝐒₃, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
     
     𝐒₃ *= M₃.𝐔₃
 
@@ -4198,36 +4299,151 @@ function solve_sylvester_equation_forward(ABC::SparseVector{Float64, Int64};
     elseif length(dims) == 2
         B = A'
         C = reconstruct_sparse_matrix(ABC[lenA + 1 : end], dims[2])
+        symm = true
     end
 
-    if solver ∈ [:gmres, :bicgstab]   
-        sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, 
-        (sol,𝐱) -> begin 
+    A = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
+
+    if solver ∈ [:gmres, :bicgstab]
+        function sylvester!(sol,𝐱)
             𝐗 = reshape(𝐱, size(C))
             sol .= vec(A * 𝐗 * B - 𝐗)
             return sol
-        end)
+        end
+        
+        sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
 
         if solver == :gmres
             𝐂, info = Krylov.gmres(sylvester, [vec(C);])
         elseif solver == :bicgstab
             𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])
         end
-
+        solved = info.solved
+    elseif solver == :doubling && symm
+        iter = 1
+        change = 1
+        𝐂 = collect(-C)
+        𝐂¹ = collect(-C)
+        while change > eps() && iter < 100
+            𝐂¹ = A * 𝐂 * A' + 𝐂
+            A = A * A
+            droptol!(A, eps())
+            if iter > 10
+                change = maximum(abs, 𝐂¹ - 𝐂)
+            end
+            𝐂 = 𝐂¹
+            iter += 1
+        end
+        solved = change < eps()
     elseif solver == :speedmapping
         soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
 
         𝐂 = soll.minimizer
 
-        info = soll.converged
+        solved = soll.converged
     end
 
-    if !info.solved && !(solver == :gmres)
-        𝐂, info = Krylov.gmres(sylvester, [vec(C);])
-    end
-
-    return sparse_output ? sparse(reshape(𝐂, size(C))) : reshape(𝐂, size(C)), info.solved # return info on convergence
+    return sparse_output ? sparse(reshape(𝐂, size(C))) : reshape(𝐂, size(C)), solved # return info on convergence
 end
+
+
+
+
+
+
+function solve_sylvester_equation_forward(ABC::Vector{Float64},
+    coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
+    dims::Vector{Tuple{Int,Int}};
+    sparse_output::Bool = false,
+    solver::Symbol = :doubling)
+
+    if length(coords) == 1
+        lengthA = length(coords[1][1])
+        vA = ABC[1:lengthA]
+        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        C = reshape(ABC[lengthA+1:end],dims[2]...)
+        if solver != :doubling
+            B = A'
+        end
+    elseif length(coords) == 3
+        lengthA = length(coords[1][1])
+        lengthB = length(coords[2][1])
+
+        vA = ABC[1:lengthA]
+        vB = ABC[lengthA .+ (1:lengthB)]
+        vC = ABC[lengthA + lengthB + 1:end]
+
+        A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        B = sparse(coords[2]...,vB,dims[2]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        C = sparse(coords[3]...,vC,dims[3]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+    else
+        lengthA = dims[1][1] * dims[1][2]
+        A = reshape(ABC[1:lengthA],dims[1]...)
+        C = reshape(ABC[lengthA+1:end],dims[2]...)
+        if solver != :doubling
+            B = A'
+        end
+    end
+    
+
+    if solver ∈ [:gmres, :bicgstab]
+        function sylvester!(sol,𝐱)
+            𝐗 = reshape(𝐱, size(C))
+            sol .= vec(A * 𝐗 * B - 𝐗)
+            return sol
+        end
+        
+        sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
+
+        if solver == :gmres
+            𝐂, info = Krylov.gmres(sylvester, [vec(C);])
+        elseif solver == :bicgstab
+            𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])
+        end
+        solved = info.solved
+    elseif solver == :doubling
+        iter = 1
+        change = 1
+        𝐂  = -C
+        𝐂¹ = -C
+        while change > eps(Float32) && iter < 100
+            𝐂¹ = A * 𝐂 * A' + 𝐂
+            A = A * A
+            if !(A isa DenseMatrix)
+                droptol!(A, eps())
+            end
+            if iter > 10
+                change = maximum(abs, 𝐂¹ - 𝐂)
+            end
+            𝐂 = 𝐂¹
+            iter += 1
+        end
+        solved = change < eps()
+    elseif solver == :speedmapping
+        soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
+
+        𝐂 = soll.minimizer
+
+        solved = soll.converged
+    end
+
+    # if !solved && !(solver == :gmres)
+    #     function sylvester!(sol,𝐱)
+    #         𝐗 = reshape(𝐱, size(C))
+    #         sol .= vec(A * 𝐗 * B - 𝐗)
+    #         return sol
+    #     end
+        
+    #     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
+        
+    #     𝐂, info = Krylov.gmres(sylvester, [vec(C);])
+    #     solved = info.solved
+    # end
+
+    return sparse_output ? sparse(reshape(𝐂, size(C))) : reshape(𝐂, size(C)), solved # return info on convergence
+end
+
+
 
 function solve_sylvester_equation_forward(ABC::Vector{Float64}; 
     dims::Vector{Tuple{Int,Int}}, 
@@ -4247,14 +4463,15 @@ function solve_sylvester_equation_forward(ABC::Vector{Float64};
         C = reshape(ABC[lenA + 1 : end], dims[2])
     end
 
-    if solver ∈ [:gmres, :bicgstab]   
-        sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, 
-        (sol,𝐱) -> begin 
-            𝐗 = reshape(𝐱, size(C))
-            sol .= vec(A * 𝐗 * B - 𝐗)
-            return sol
-        end)
+    function sylvester!(sol,𝐱)
+        𝐗 = reshape(𝐱, size(C))
+        sol .= vec(A * 𝐗 * B - 𝐗)
+        return sol
+    end
 
+    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
+
+    if solver ∈ [:gmres, :bicgstab]   
         if solver == :gmres
             𝐂, info = Krylov.gmres(sylvester, [vec(C);])
         elseif solver == :bicgstab
@@ -4275,6 +4492,49 @@ function solve_sylvester_equation_forward(ABC::Vector{Float64};
 
     return sparse_output ? sparse(reshape(𝐂, size(C))) : reshape(𝐂, size(C)), info.solved # return info on convergence
 end
+
+
+function solve_sylvester_equation_conditions(ABC::Vector{<: Real}, 
+    coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
+    dims::Vector{Tuple{Int,Int}}, 
+    X::AbstractMatrix{<: Real}, 
+    solved::Bool; 
+    sparse_output::Bool = false,
+    solver::Symbol = :doubling)
+
+    solver = :gmres # ensure the AXB works always
+
+    if length(coords) == 1
+        lengthA = length(coords[1][1])
+        vA = ABC[1:lengthA]
+        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        C = reshape(ABC[lengthA+1:end],dims[2]...)
+        if solver != :doubling
+            B = A'
+        end
+    elseif length(coords) == 3
+        lengthA = length(coords[1][1])
+        lengthB = length(coords[2][1])
+        
+        vA = ABC[1:lengthA]
+        vB = ABC[lengthA .+ (1:lengthB)]
+        vC = ABC[lengthA + lengthB + 1:end]
+
+        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+    else
+        lengthA = dims[1][1] * dims[1][2]
+        A = reshape(ABC[1:lengthA],dims[1]...)
+        C = reshape(ABC[lengthA+1:end],dims[2]...)
+        if solver != :doubling
+            B = A'
+        end
+    end
+
+    A * X * B - C - X
+end
+
 
 
 function solve_sylvester_equation_conditions(ABC::SparseVector{<: Real, Int64}, 
@@ -4529,11 +4789,11 @@ function calculate_second_order_moments(
     kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
 
     # first order
-    s_to_y₁ = 𝐒₁[:, 1:𝓂.timings.nPast_not_future_and_mixed]
-    e_to_y₁ = 𝐒₁[:, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+    s_to_y₁ = 𝐒₁[:, 1:nˢ]
+    e_to_y₁ = 𝐒₁[:, (nˢ + 1):end]
     
-    s_to_s₁ = 𝐒₁[iˢ, 1:𝓂.timings.nPast_not_future_and_mixed]
-    e_to_s₁ = 𝐒₁[iˢ, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+    s_to_s₁ = 𝐒₁[iˢ, 1:nˢ]
+    e_to_s₁ = 𝐒₁[iˢ, (nˢ + 1):end]
 
 
     # second order
@@ -4586,7 +4846,16 @@ function calculate_second_order_moments(
 
     C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
 
-    Σᶻ₂, info = solve_sylvester_equation_AD([vec(ŝ_to_ŝ₂); vec(-C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])
+    coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    
+    dimensions = Tuple{Int, Int}[]
+    push!(dimensions,size(ŝ_to_ŝ₂))
+    push!(dimensions,size(C))
+    
+    values = vcat(vec(ŝ_to_ŝ₂), vec(collect(-C)))
+
+    Σᶻ₂, info = solve_sylvester_equation_AD(values, coordinates, dimensions, solver = :doubling)
+    # Σᶻ₂, info = solve_sylvester_equation_AD([vec(ŝ_to_ŝ₂); vec(-C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])#, solver = :doubling)
     # Σᶻ₂, info = solve_sylvester_equation_forward([vec(ŝ_to_ŝ₂); vec(-C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])
     
     Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
@@ -4608,10 +4877,11 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             autocorrelation::Bool = false,
                                             autocorrelation_periods::U = 1:5,
                                             verbose::Bool = false, 
+                                            dependencies_tol::AbstractFloat = 1e-12, 
                                             tol::AbstractFloat = eps()) where {U, T <: Real}
 
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(parameters, 𝓂, verbose = verbose)
-    
+
     if !covariance && !autocorrelation
         return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
     end
@@ -4622,7 +4892,7 @@ function calculate_third_order_moments(parameters::Vector{T},
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
                                                 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
 
-    orders = determine_efficient_order(∇₁, 𝓂.timings, observables)
+    orders = determine_efficient_order(𝐒₁, 𝓂.timings, observables, tol = dependencies_tol)
 
     nᵉ = 𝓂.timings.nExo
 
@@ -4641,7 +4911,6 @@ function calculate_third_order_moments(parameters::Vector{T},
     end
 
     e⁴ = quadrup * E_e⁴
-
 
     # precalc third order
     sextup = multiplicate(nᵉ, 6)
@@ -4663,6 +4932,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         autocorr = zeros(T, size(Σʸ₂,1), length(autocorrelation_periods))
     end
 
+    # Threads.@threads for ords in orders 
     for ords in orders 
         variance_observable, dependencies_all_vars = ords
 
@@ -4692,6 +4962,10 @@ function calculate_third_order_moments(parameters::Vector{T},
         
         Δ̂μˢ₂ = Δμˢ₂[dependencies_in_states_idx]
 
+        s_in_s⁺ = BitVector(vcat(𝓂.timings.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
+        e_in_s⁺ = BitVector(vcat(zeros(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), ones(Bool, nᵉ)))
+        v_in_s⁺ = BitVector(vcat(zeros(Bool, 𝓂.timings.nPast_not_future_and_mixed), 1, zeros(Bool, nᵉ)))
+
         # precalc second order
         ## mean
         I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
@@ -4701,16 +4975,6 @@ function calculate_third_order_moments(parameters::Vector{T},
         ss_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ^2)), ℒ.I(nˢ)), nˢ^3, nˢ^3))
         s_s  = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2))
 
-        # second order
-        s_in_s⁺ = BitVector(vcat(𝓂.timings.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
-        e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
-        v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
-
-        kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
-        kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
-        kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
-        kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
-
         # first order
         s_to_y₁ = 𝐒₁[obs_in_y,:][:,dependencies_in_states_idx]
         e_to_y₁ = 𝐒₁[obs_in_y,:][:, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
@@ -4718,8 +4982,12 @@ function calculate_third_order_moments(parameters::Vector{T},
         s_to_s₁ = 𝐒₁[iˢ, dependencies_in_states_idx]
         e_to_s₁ = 𝐒₁[iˢ, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
 
-
         # second order
+        kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
+        kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
+        kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
+        kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
+
         s_s_to_y₂ = 𝐒₂[obs_in_y,:][:, kron_s_s]
         e_e_to_y₂ = 𝐒₂[obs_in_y,:][:, kron_e_e]
         s_e_to_y₂ = 𝐒₂[obs_in_y,:][:, kron_s_e]
@@ -4781,7 +5049,6 @@ function calculate_third_order_moments(parameters::Vector{T},
                                     e_v_v_to_s₃ * ℒ.I(nᵉ) / 2) * e_to_s₁'
                                     ), nˢ, nˢ)
 
-
         Γ₃ = [ ℒ.I(nᵉ)             spzeros(nᵉ, nᵉ^2 + nᵉ * nˢ)    ℒ.kron(Δ̂μˢ₂', ℒ.I(nᵉ))  ℒ.kron(vec(Σ̂ᶻ₁)', ℒ.I(nᵉ)) spzeros(nᵉ, nˢ * nᵉ^2)    reshape(e⁴, nᵉ, nᵉ^3)
                 spzeros(nᵉ^2, nᵉ)    reshape(e⁴, nᵉ^2, nᵉ^2) - vec(ℒ.I(nᵉ)) * vec(ℒ.I(nᵉ))'     spzeros(nᵉ^2, 2*nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
                 spzeros(nˢ * nᵉ, nᵉ + nᵉ^2)    ℒ.kron(Σ̂ᶻ₁, ℒ.I(nᵉ))   spzeros(nˢ * nᵉ, nˢ*nᵉ + nˢ^2*nᵉ + nˢ*nᵉ^2 + nᵉ^3)
@@ -4794,82 +5061,30 @@ function calculate_third_order_moments(parameters::Vector{T},
         Eᴸᶻ = [ spzeros(nᵉ + nᵉ^2 + 2*nᵉ*nˢ + nᵉ*nˢ^2, 3*nˢ + 2*nˢ^2 +nˢ^3)
                 ℒ.kron(Σ̂ᶻ₁,vec(ℒ.I(nᵉ)))   zeros(nˢ*nᵉ^2, nˢ + nˢ^2)  ℒ.kron(μˢ₃δμˢ₁',vec(ℒ.I(nᵉ)))    ℒ.kron(reshape(ss_s * vec(Σ̂ᶻ₂[nˢ + 1:2*nˢ,2 * nˢ + 1 : end] + Δ̂μˢ₂ * vec(Σ̂ᶻ₁)'), nˢ, nˢ^2), vec(ℒ.I(nᵉ)))  ℒ.kron(reshape(Σ̂ᶻ₂[2 * nˢ + 1 : end, 2 * nˢ + 1 : end] + vec(Σ̂ᶻ₁) * vec(Σ̂ᶻ₁)', nˢ, nˢ^3), vec(ℒ.I(nᵉ)))
                 spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
-
+        
+        droptol!(ŝ_to_ŝ₃, eps())
+        droptol!(ê_to_ŝ₃, eps())
+        droptol!(Eᴸᶻ, eps())
+        droptol!(Γ₃, eps())
+        
         A = ê_to_ŝ₃ * Eᴸᶻ * ŝ_to_ŝ₃'
+        droptol!(A, eps())
 
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
+        droptol!(C, eps())
 
-        Σᶻ₃, info = solve_sylvester_equation_AD([vec(ŝ_to_ŝ₃); vec(-C)], dims = [size(ŝ_to_ŝ₃) ;size(C)])
-        # Σᶻ₃, info = solve_sylvester_equation_forward([vec(ŝ_to_ŝ₃); vec(-C)], dims = [size(ŝ_to_ŝ₃) ;size(C)])
+        r1,c1,v1 = findnz(ŝ_to_ŝ₃)
+
+        coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+        push!(coordinates,(r1,c1))
         
-        # # if size(initial_guess³) == (0,0)
-        # #     initial_guess³ = collect(C)
-        # # end
+        dimensions = Tuple{Int, Int}[]
+        push!(dimensions,size(ŝ_to_ŝ₃))
+        push!(dimensions,size(C))
+        
+        values = vcat(v1, vec(collect(-C)))
 
-        # if length(C) < 1e7
-        #     function sylvester!(sol,𝐱)
-        #         𝐗 = reshape(𝐱, size(C))
-        #         sol .= vec(ŝ_to_ŝ₃ * 𝐗 * ŝ_to_ŝ₃' - 𝐗)
-        #         return sol
-        #     end
-
-        #     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
-
-        #     Σ̂ᶻ₃, info = Krylov.gmres(sylvester, sparsevec(collect(-C)), atol = eps())
-
-        #     if !info.solved
-        #         Σ̂ᶻ₃, info = Krylov.bicgstab(sylvester, sparsevec(collect(-C)), atol = eps())
-        #     end
-
-        #     Σᶻ₃ = reshape(Σ̂ᶻ₃, size(C))
-        # else
-        #     soll = speedmapping(collect(C); m! = (Σᶻ₃, Σ̂ᶻ₃) -> Σᶻ₃ .= ŝ_to_ŝ₃ * Σ̂ᶻ₃ * ŝ_to_ŝ₃' + C, 
-        #     # time_limit = 200, 
-        #     stabilize = true)
-            
-        #     Σᶻ₃ = soll.minimizer
-
-        #     if !soll.converged
-        #         return Inf
-        #     end
-        # end
-        # id_z1_xf    = (1:nˢ)
-        # id_z2_xs      = id_z1_xf[end]     .+ (1:nˢ)
-        # id_z3_xf_xf   = id_z2_xs[end]     .+ (1:nˢ*nˢ)
-        # id_z4_xrd     = id_z3_xf_xf[end]  .+ (1:nˢ)
-        # id_z5_xf_xs   = id_z4_xrd[end]    .+ (1:nˢ*nˢ)
-        # id_z6_xf_xf_xf= id_z5_xf_xs[end]  .+ (1:nˢ*nˢ*nˢ)
-
-
-        # Σᶻ₃[id_z1_xf       , vcat(id_z2_xs, id_z3_xf_xf)]       .= 0
-        # Σᶻ₃[id_z2_xs       , vcat(id_z1_xf, id_z4_xrd, id_z5_xf_xs, id_z6_xf_xf_xf)] .= 0   #zeros(nˢ,nˢ^3);
-        # Σᶻ₃[id_z3_xf_xf    , id_z1_xf]       .= 0   #zeros(nˢ^2,nˢ);
-        # Σᶻ₃[id_z3_xf_xf    , id_z4_xrd]      .= 0   #zeros(nˢ^2,nˢ);
-        # Σᶻ₃[id_z3_xf_xf    , id_z5_xf_xs]    .= 0   #zeros(nˢ^2,nˢ^2);
-        # Σᶻ₃[id_z3_xf_xf    , id_z6_xf_xf_xf] .= 0   #zeros(nˢ^2,nˢ^3);
-        # Σᶻ₃[id_z4_xrd      , id_z2_xs]       .= 0   #zeros(nˢ,nˢ);
-        # Σᶻ₃[id_z4_xrd      , id_z3_xf_xf]    .= 0   #zeros(nˢ,nˢ^2);
-        # Σᶻ₃[id_z5_xf_xs    , id_z2_xs]       .= 0   #zeros(nˢ^2,nˢ);
-        # Σᶻ₃[id_z5_xf_xs    , id_z3_xf_xf]    .= 0   #zeros(nˢ^2,nˢ^2);
-        # Σᶻ₃[id_z6_xf_xf_xf , id_z2_xs]       .= 0   #zeros(nˢ^3,nˢ);
-        # Σᶻ₃[id_z6_xf_xf_xf , id_z3_xf_xf]    .= 0   #zeros(nˢ^3,nˢ^2);
-
-        # Σᶻ₃[id_z1_xf       , id_z2_xs]       .= 0   #zeros(nˢ,nˢ);
-        # Σᶻ₃[id_z1_xf       , id_z3_xf_xf]    .= 0   #zeros(nˢ,nˢ^2);
-        # Σᶻ₃[id_z2_xs       , id_z1_xf]       .= 0   #zeros(nˢ,nˢ);
-        # Σᶻ₃[id_z2_xs       , id_z4_xrd]      .= 0   #zeros(nˢ,nˢ);
-        # Σᶻ₃[id_z2_xs       , id_z5_xf_xs]    .= 0   #zeros(nˢ,nˢ^2);
-        # Σᶻ₃[id_z2_xs       , id_z6_xf_xf_xf] .= 0   #zeros(nˢ,nˢ^3);
-        # Σᶻ₃[id_z3_xf_xf    , id_z1_xf]       .= 0   #zeros(nˢ^2,nˢ);
-        # Σᶻ₃[id_z3_xf_xf    , id_z4_xrd]      .= 0   #zeros(nˢ^2,nˢ);
-        # Σᶻ₃[id_z3_xf_xf    , id_z5_xf_xs]    .= 0   #zeros(nˢ^2,nˢ^2);
-        # Σᶻ₃[id_z3_xf_xf    , id_z6_xf_xf_xf] .= 0   #zeros(nˢ^2,nˢ^3);
-        # Σᶻ₃[id_z4_xrd      , id_z2_xs]       .= 0   #zeros(nˢ,nˢ);
-        # Σᶻ₃[id_z4_xrd      , id_z3_xf_xf]    .= 0   #zeros(nˢ,nˢ^2);
-        # Σᶻ₃[id_z5_xf_xs    , id_z2_xs]       .= 0   #zeros(nˢ^2,nˢ);
-        # Σᶻ₃[id_z5_xf_xs    , id_z3_xf_xf]    .= 0   #zeros(nˢ^2,nˢ^2);
-        # Σᶻ₃[id_z6_xf_xf_xf , id_z2_xs]       .= 0   #zeros(nˢ^3,nˢ);
-        # Σᶻ₃[id_z6_xf_xf_xf , id_z3_xf_xf]    .= 0   #zeros(nˢ^3,nˢ^2);
+        Σᶻ₃, info = solve_sylvester_equation_AD(values, coordinates, dimensions, solver = :doubling)
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
@@ -5118,79 +5333,79 @@ end
 
 
 
-@setup_workload begin
-    # Putting some things in `setup` can reduce the size of the
-    # precompile file and potentially make loading faster.
-    @model FS2000 precompile = true begin
-        dA[0] = exp(gam + z_e_a  *  e_a[x])
-        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-        W[0] = l[0] / n[0]
-        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-        P[0] * c[0] = m[0]
-        m[0] - 1 + d[0] = l[0]
-        e[0] = exp(z_e_a  *  e_a[x])
-        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-        gy_obs[0] = dA[0] * y[0] / y[-1]
-        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-        log_gy_obs[0] = log(gy_obs[0])
-        log_gp_obs[0] = log(gp_obs[0])
-    end
+# @setup_workload begin
+#     # Putting some things in `setup` can reduce the size of the
+#     # precompile file and potentially make loading faster.
+#     @model FS2000 precompile = true begin
+#         dA[0] = exp(gam + z_e_a  *  e_a[x])
+#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#         W[0] = l[0] / n[0]
+#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#         P[0] * c[0] = m[0]
+#         m[0] - 1 + d[0] = l[0]
+#         e[0] = exp(z_e_a  *  e_a[x])
+#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#         gy_obs[0] = dA[0] * y[0] / y[-1]
+#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#         log_gy_obs[0] = log(gy_obs[0])
+#         log_gp_obs[0] = log(gp_obs[0])
+#     end
 
-    @parameters FS2000 silent = true precompile = true begin  
-        alp     = 0.356
-        bet     = 0.993
-        gam     = 0.0085
-        mst     = 1.0002
-        rho     = 0.129
-        psi     = 0.65
-        del     = 0.01
-        z_e_a   = 0.035449
-        z_e_m   = 0.008862
-    end
+#     @parameters FS2000 silent = true precompile = true begin  
+#         alp     = 0.356
+#         bet     = 0.993
+#         gam     = 0.0085
+#         mst     = 1.0002
+#         rho     = 0.129
+#         psi     = 0.65
+#         del     = 0.01
+#         z_e_a   = 0.035449
+#         z_e_m   = 0.008862
+#     end
     
-    ENV["GKSwstype"] = "nul"
+#     ENV["GKSwstype"] = "nul"
 
-    @compile_workload begin
-        # all calls in this block will be precompiled, regardless of whether
-        # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC precompile = true begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
+#     @compile_workload begin
+#         # all calls in this block will be precompiled, regardless of whether
+#         # they belong to your package or not (on Julia 1.8 and higher)
+#         @model RBC precompile = true begin
+#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#         end
 
-        @parameters RBC silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
+#         @parameters RBC silent = true precompile = true begin
+#             δ = 0.02
+#             α = 0.5
+#         end
 
-        get_SS(FS2000)
-        get_SS(FS2000, parameters = :alp => 0.36)
-        get_solution(FS2000)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)
+#         get_SS(FS2000)
+#         get_SS(FS2000, parameters = :alp => 0.36)
+#         get_solution(FS2000)
+#         get_solution(FS2000, parameters = :alp => 0.35)
+#         get_standard_deviation(FS2000)
+#         get_correlation(FS2000)
+#         get_autocorrelation(FS2000)
+#         get_variance_decomposition(FS2000)
+#         get_conditional_variance_decomposition(FS2000)
+#         get_irf(FS2000)
 
-        data = simulate(FS2000)[:,:,1]
-        observables = [:c,:k]
-        calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
-        get_mean(FS2000, silent = true)
-        get_SSS(FS2000, silent = true)
-        # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#         data = simulate(FS2000)[:,:,1]
+#         observables = [:c,:k]
+#         calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
+#         get_mean(FS2000, silent = true)
+#         get_SSS(FS2000, silent = true)
+#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-        # import Plots, StatsPlots
-        # plot_irf(FS2000)
-        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        # plot_conditional_variance_decomposition(FS2000)
-    end
-end
+#         # import Plots, StatsPlots
+#         # plot_irf(FS2000)
+#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#         # plot_conditional_variance_decomposition(FS2000)
+#     end
+# end
 
 end

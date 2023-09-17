@@ -4,6 +4,7 @@
 
 - [ ] implement occasionally binding constraints with shocks
 - [ ] recheck get function examples and docs
+- [ ] set to 0 SS values < 1e-12
 - [ ] write method of moments how to
 - [ ] autocorr and covariance with derivatives. return 3d array
 - [ ] Docs: document outputs and associated functions to work with function
