@@ -3660,7 +3660,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     push!(dimensions,size(C))
     push!(dimensions,size(X))
 
-    𝐒₂, solved = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres, sparse_output = true)
+    𝐒₂, solved = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :iterative, sparse_output = true)
     # 𝐒₂, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
     # 𝐒₂, solved = solve_sylvester_equation_AD([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
     # 𝐒₂, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
@@ -3770,7 +3770,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     push!(dimensions,size(X))
     
 
-    𝐒₃, solved = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres, sparse_output = true)
+    𝐒₃, solved = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :iterative, sparse_output = true)
     # 𝐒₃, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
     # 𝐒₃, solved = solve_sylvester_equation_AD([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
     # 𝐒₃, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
@@ -4382,9 +4382,9 @@ function solve_sylvester_equation_forward(ABC::Vector{Float64};
         vB = ABC[lengthA .+ (1:lengthB)]
         vC = ABC[lengthA + lengthB + 1:end]
 
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        B = sparse(coords[2]...,vB,dims[2]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        C = sparse(coords[3]...,vC,dims[3]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
     else
         lengthA = dims[1][1] * dims[1][2]
         A = reshape(ABC[1:lengthA],dims[1]...)
@@ -4410,14 +4410,31 @@ function solve_sylvester_equation_forward(ABC::Vector{Float64};
             𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])
         end
         solved = info.solved
+    elseif solver == :iterative
+        iter = 1
+        change = 1
+        𝐂  = copy(C)
+        𝐂¹ = copy(C)
+        while change > eps(Float32) && iter < 10000
+            𝐂¹ = A * 𝐂 * B - C
+            if !(A isa DenseMatrix)
+                droptol!(𝐂¹, eps())
+            end
+            if iter > 500
+                change = maximum(abs, 𝐂¹ - 𝐂)
+            end
+            𝐂 = 𝐂¹
+            iter += 1
+        end
+        solved = change < eps(Float32)
     elseif solver == :doubling
         iter = 1
         change = 1
         𝐂  = -C
         𝐂¹ = -C
-        while change > eps(Float32) && iter < 100
+        while change > eps(Float32) && iter < 500
             𝐂¹ = A * 𝐂 * A' + 𝐂
-            A = A * A
+            A *= A
             if !(A isa DenseMatrix)
                 droptol!(A, eps())
             end
@@ -4427,7 +4444,7 @@ function solve_sylvester_equation_forward(ABC::Vector{Float64};
             𝐂 = 𝐂¹
             iter += 1
         end
-        solved = change < eps()
+        solved = change < eps(Float32)
     elseif solver == :speedmapping
         soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
 
