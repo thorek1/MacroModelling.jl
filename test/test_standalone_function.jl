@@ -613,7 +613,11 @@ end
 
     SSSdiff2 = get_SSS(m)
 
+    SSSdiff2p = get_SSS(m, algorithm = :pruned_second_order)
+
     SSSdiff3 = get_SSS(m, algorithm = :third_order)
+
+    SSSdiff3p = get_SSS(m, algorithm = :pruned_third_order)
 
     𝓂 = m
 
@@ -632,12 +636,78 @@ end
 
     @test isapprox(SSS2finitediff, SSSdiff2[:,2:end], rtol = 1e-6)
 
+    SSS2pfinitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
+            x -> collect(get_SSS(m; parameters = x, derivatives = false, algorithm = :pruned_second_order)), 
+            parameters)[1]
+
+    @test isapprox(SSS2pfinitediff, SSSdiff2p[:,2:end], rtol = 1e-6)
+
 
     SSS3finitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
             x -> collect(get_SSS(m; parameters = x, derivatives = false, algorithm = :third_order)), 
             parameters)[1]
 
     @test isapprox(SSS3finitediff, SSSdiff3[:,2:end], rtol = 1e-6)
+
+    SSS3pfinitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
+            x -> collect(get_SSS(m; parameters = x, derivatives = false, algorithm = :pruned_third_order)), 
+            parameters)[1]
+
+    @test isapprox(SSS3pfinitediff, SSSdiff3p[:,2:end], rtol = 1e-6)
+end
+
+
+
+
+@testset verbose = true "μ, σ + μ, σ derivatives" begin
+    # Test diff of SS and SSS
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+
+    μdiff = get_mean(m)
+
+    μdiff2 = get_mean(m, algorithm = :pruned_second_order)
+
+    σdiff = get_std(m)
+
+    σdiff2 = get_std(m, algorithm = :pruned_second_order)
+
+    σdiff3 = get_std(m, algorithm = :pruned_third_order)
+
+    𝓂 = m
+
+    parameters = copy(m.parameter_values)
+
+    μfinitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
+            x -> collect(get_mean(m; parameters = x, derivatives = false)), 
+            parameters)[1]
+
+    @test isapprox(μfinitediff, μdiff[:,2:end], rtol = 1e-6)
+
+
+    μ2finitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
+            x -> collect(get_mean(m; parameters = x, derivatives = false, algorithm = :pruned_second_order)), 
+            parameters)[1]
+
+    @test isapprox(μ2finitediff, μdiff2[:,2:end], rtol = 1e-6)
+
+    σfinitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
+            x -> collect(get_std(m; parameters = x, derivatives = false)), 
+            parameters)[1]
+
+    @test isapprox(σfinitediff, σdiff[:,2:end], rtol = 1e-6)
+
+
+    σ2finitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
+            x -> collect(get_std(m; parameters = x, derivatives = false, algorithm = :pruned_second_order)), 
+            parameters)[1]
+
+    @test isapprox(σ2finitediff, σdiff2[:,2:end], rtol = 1e-6)
+
+    σ3finitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
+            x -> collect(get_std(m; parameters = x, derivatives = false, algorithm = :pruned_third_order)), 
+            parameters)[1]
+
+    @test isapprox(σ3finitediff, σdiff3[:,2:end], rtol = 1e-6)
 end
 m = nothing
 𝓂 = nothing
