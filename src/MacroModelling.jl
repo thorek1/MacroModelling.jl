@@ -124,6 +124,37 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
 
 
 
+function jacobian_wrt_values(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T}) where T
+    # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
+
+    # Compute the Kronecker product and subtract from identity
+    C = ℒ.I - ℒ.kron(A, B)
+
+    # Extract the row, column, and value indices from C
+    rows, cols, vals = findnz(C)
+
+    # Lists to store the 2D indices after the operations
+    final_rows = zeros(Int,length(rows))
+    final_cols = zeros(Int,length(rows))
+
+    Threads.@threads for i = 1:length(rows)
+        # Convert the 1D row index to its 2D components
+        i1, i2 = divrem(rows[i]-1, size(B,1)) .+ 1
+
+        # Convert the 1D column index to its 2D components
+        j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
+
+        # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
+        final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(B,1), size(B,1)), i1, j2, j1, i2) - 1, size(A,1) * size(B,1)) .+ 1
+
+        # Store the 2D indices
+        final_rows[i] = final_row
+        final_cols[i] = final_col
+    end
+
+    return sparse(final_rows, final_cols, vals, size(A,1) * size(B,1), size(A,1) * size(B,1))
+end
+
 
 function reconstruct_sparse_matrix(sp_vector::SparseVector{T, Int}, dims::Tuple{Int, Int}) where T
     # Function to reconstruct the matrix from the vector and dimensions
@@ -2407,8 +2438,8 @@ function solve!(𝓂::ℳ;
 
         if (:second_order == algorithm && 
                 :second_order ∈ 𝓂.solution.outdated_algorithms) || 
-            (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && 
-                any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+            (any([:third_order] .∈ ([algorithm],)) && 
+                any([:third_order] .∈ (𝓂.solution.outdated_algorithms,)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
             
@@ -3544,13 +3575,15 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
 end
 
 
-riccati_AD = ID.ImplicitFunction(riccati_forward, 
+riccati_AD_direct = ID.ImplicitFunction(riccati_forward, 
                                     riccati_conditions; 
                                     linear_solver = ID.DirectLinearSolver())
 
+riccati_AD = ID.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt converge!?
+
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
-    A, solved = riccati_AD(∇₁; T = T, explosive = explosive)
+    A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
 
     if !solved
         return hcat(A, zeros(size(A,1),T.nExo)), solved
@@ -4292,74 +4325,6 @@ end
 
 
 
-# function solve_sylvester_equation_forward(ABC::SparseVector{Float64, Int64}; 
-#     dims::Vector{Tuple{Int,Int}}, 
-#     sparse_output::Bool = false,
-#     solver::Symbol = :gmres)
-
-#     lenA = dims[1][1] * dims[1][2]
-
-#     A = reconstruct_sparse_matrix(ABC[1 : lenA], dims[1])
-
-#     if length(dims) == 3
-#         lenB = dims[2][1] * dims[2][2]
-#         B = reconstruct_sparse_matrix(ABC[lenA .+ (1 : lenB)], dims[2])
-#         C = reconstruct_sparse_matrix(ABC[lenA + lenB + 1 : end], dims[3])
-#     elseif length(dims) == 2
-#         B = A'
-#         C = reconstruct_sparse_matrix(ABC[lenA + 1 : end], dims[2])
-#         symm = true
-#     end
-
-#     A = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
-
-#     if solver ∈ [:gmres, :bicgstab]
-#         function sylvester!(sol,𝐱)
-#             𝐗 = reshape(𝐱, size(C))
-#             sol .= vec(A * 𝐗 * B - 𝐗)
-#             return sol
-#         end
-        
-#         sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
-
-#         if solver == :gmres
-#             𝐂, info = Krylov.gmres(sylvester, [vec(C);])
-#         elseif solver == :bicgstab
-#             𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])
-#         end
-#         solved = info.solved
-#     elseif solver == :doubling && symm
-#         iter = 1
-#         change = 1
-#         𝐂 = collect(-C)
-#         𝐂¹ = collect(-C)
-#         while change > eps() && iter < 100
-#             𝐂¹ = A * 𝐂 * A' + 𝐂
-#             A = A * A
-#             droptol!(A, eps())
-#             if iter > 10
-#                 change = maximum(abs, 𝐂¹ - 𝐂)
-#             end
-#             𝐂 = 𝐂¹
-#             iter += 1
-#         end
-#         solved = change < eps()
-#     elseif solver == :speedmapping
-#         soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
-
-#         𝐂 = soll.minimizer
-
-#         solved = soll.converged
-#     end
-
-#     return sparse_output ? sparse(reshape(𝐂, size(C))) : reshape(𝐂, size(C)), solved # return info on convergence
-# end
-
-
-
-
-
-
 function solve_sylvester_equation_forward(ABC::Vector{Float64};
     coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
     dims::Vector{Tuple{Int,Int}},
@@ -4458,55 +4423,6 @@ end
 
 
 
-# function solve_sylvester_equation_forward(ABC::Vector{Float64}; 
-#     dims::Vector{Tuple{Int,Int}}, 
-#     sparse_output::Bool = false,
-#     solver::Symbol = :gmres)
-
-#     lenA = dims[1][1] * dims[1][2]
-
-#     A = reshape(ABC[1 : lenA], dims[1])
-
-#     if length(dims) == 3
-#         lenB = dims[2][1] * dims[2][2]
-#         B = reshape(ABC[lenA .+ (1 : lenB)], dims[2])
-#         C = reshape(ABC[lenA + lenB + 1 : end], dims[3])
-#     elseif length(dims) == 2
-#         B = A'
-#         C = reshape(ABC[lenA + 1 : end], dims[2])
-#     end
-
-#     function sylvester!(sol,𝐱)
-#         𝐗 = reshape(𝐱, size(C))
-#         sol .= vec(A * 𝐗 * B - 𝐗)
-#         return sol
-#     end
-
-#     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
-
-#     if solver ∈ [:gmres, :bicgstab]   
-#         if solver == :gmres
-#             𝐂, info = Krylov.gmres(sylvester, [vec(C);])
-#         elseif solver == :bicgstab
-#             𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])
-#         end
-        
-#     elseif solver == :speedmapping
-#         soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
-
-#         𝐂 = soll.minimizer
-
-#         info = soll.converged
-#     end
-
-#     if !info.solved && !(solver == :gmres)
-#         𝐂, info = Krylov.gmres(sylvester, [vec(C);])
-#     end
-
-#     return sparse_output ? sparse(reshape(𝐂, size(C))) : reshape(𝐂, size(C)), info.solved # return info on convergence
-# end
-
-
 function solve_sylvester_equation_conditions(ABC::Vector{<: Real},
     X::AbstractMatrix{<: Real}, 
     solved::Bool;
@@ -4550,53 +4466,6 @@ end
 
 
 
-# function solve_sylvester_equation_conditions(ABC::SparseVector{<: Real, Int64}, 
-#     X::AbstractMatrix{<: Real}, 
-#     solved::Bool; 
-#     dims::Vector{Tuple{Int,Int}}, 
-#     sparse_output::Bool = false,
-#     solver::Symbol = :gmres)
-
-#     lenA = dims[1][1] * dims[1][2]
-
-#     A = reconstruct_sparse_matrix(ABC[1 : lenA], dims[1])
-
-#     if length(dims) == 3
-#         lenB = dims[2][1] * dims[2][2]
-#         B = reconstruct_sparse_matrix(ABC[lenA .+ (1 : lenB)], dims[2])
-#         C = reconstruct_sparse_matrix(ABC[lenA + lenB + 1 : end], dims[3])
-#     elseif length(dims) == 2
-#         B = A'
-#         C = reconstruct_sparse_matrix(ABC[lenA + 1 : end], dims[2])
-#     end
-
-#     A * X * B - C - X
-# end
-
-# function solve_sylvester_equation_conditions(ABC::Vector{<: Real}, 
-#     X::AbstractMatrix{<: Real}, solved::Bool; 
-#     dims::Vector{Tuple{Int,Int}}, 
-#     sparse_output::Bool = false,
-#     solver::Symbol = :gmres)
-
-#     lenA = dims[1][1] * dims[1][2]
-
-#     A = reshape(ABC[1 : lenA], dims[1])
-
-#     if length(dims) == 3
-#         lenB = dims[2][1] * dims[2][2]
-#         B = reshape(ABC[lenA .+ (1 : lenB)], dims[2])
-#         C = reshape(ABC[lenA + lenB + 1 : end], dims[3])
-#     elseif length(dims) == 2
-#         B = A'
-#         C = reshape(ABC[lenA + 1 : end], dims[2])
-#     end
-
-#     A * X * B - C - X
-# end
-
-
-
 function solve_sylvester_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
     coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
     dims::Vector{Tuple{Int,Int}},
@@ -4616,7 +4485,7 @@ function solve_sylvester_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
         lengthA = length(coords[1][1])
 
         vA = ABC[1:lengthA]
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         # C = reshape(ABC[lengthA+1:end],dims[2]...)
 
         B = A'
@@ -4634,8 +4503,8 @@ function solve_sylvester_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
         vB = ABC[lengthA .+ (1:lengthB)]
         # vC = ABC[lengthA + lengthB + 1:end]
 
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        B = sparse(coords[2]...,vB,dims[2]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         # C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
         jacobian_A = ℒ.kron(-val * B, ℒ.I(size(A,1)))
@@ -4643,7 +4512,7 @@ function solve_sylvester_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
 
         b = hcat(jacobian_A', jacobian_B, ℒ.I(length(val)))
 
-        partials = zeros(dims[1][1] * dims[1][2] + dims[2][1] * dims[2][2] + dims[3][1] * dims[3][2], size(partial_values,2))
+        partials = spzeros(dims[1][1] * dims[1][2] + dims[2][1] * dims[2][2] + dims[3][1] * dims[3][2], size(partial_values,2))
         partials[vcat(
             coords[1][1] + (coords[1][2] .- 1) * dims[1][1], 
             coords[2][1] + (coords[2][2] .- 1) * dims[2][1] .+ dims[1][1] * dims[1][2], 
@@ -4664,12 +4533,13 @@ function solve_sylvester_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
     
 
     # get J(f, vs) * ps (cheating). Write your custom rule here. This used to be the conditions but here they are analytically derived.
-    # a = reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
+    a = jacobian_wrt_values(A, B)
+    droptol!(a,eps())
 
     reshape_matmul = LinearOperators.LinearOperator(Float64, size(b,1) * size(partials,2), size(b,1) * size(partials,2), false, false, 
         (sol,𝐱) -> begin 
-        𝐗 = reshape(𝐱, (size(b,1),size(partials,2)))
-        sol .= vec(reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1)) * 𝐗)
+        𝐗 = reshape(𝐱, (size(b,1),size(partials,2))) |> sparse
+        sol .= vec(a * 𝐗)
         return sol
     end)
 
