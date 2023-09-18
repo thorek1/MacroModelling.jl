@@ -1645,7 +1645,16 @@ function get_variance_decomposition(𝓂::ℳ;
         
         CC = C * C'
 
-        covar_raw, _ = solve_sylvester_equation_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)], solver = :bicgstab)
+        coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    
+        dimensions = Tuple{Int, Int}[]
+        push!(dimensions,size(A))
+        push!(dimensions,size(CC))
+        
+        values = vcat(vec(A), vec(collect(-CC)))
+    
+        covar_raw, _ = solve_sylvester_equation_AD_direct(values, coords = coordinates, dims = dimensions, solver = :doubling)
+        # covar_raw, _ = solve_sylvester_equation_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)], solver = :bicgstab)
         # covar_raw, _ = solve_sylvester_equation_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
 
         variances_by_shock[:,i] = ℒ.diag(covar_raw)
