@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
+- [ ] add pydsge and econpizza to overview
 - [ ] make higher order suable with zygote (currently only analytical pushforward, no implicitdiff)
 - [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
 - [ ] use more implicit diff for the other functions as well
