@@ -42,3 +42,86 @@
  volume = {50},
  year = {1982}
 }
+
+@TechReport{dynare,
+  author      = {Adjemian, St\'ephane and Bastani, Houtan and
+                 Juillard, Michel and Karam\'e, Fr\'ederic and
+                 Mihoubi, Ferhat and Mutschler, Willi
+                 and Pfeifer, Johannes and Ratto, Marco and
+                 Rion, Normann and Villemot, S\'ebastien},
+  title       = {Dynare: Reference Manual Version 5},
+  year        = {2022},
+  institution = {CEPREMAP},
+  type        = {Dynare Working Papers},
+  number      = {72},
+}
+
+@TechReport{rise,
+  author={Junior Maih},
+  title={{Efficient perturbation methods for solving regime-switching DSGE models}},
+  year=2015,
+  month=Jan,
+  institution={Norges Bank},
+  type={Working Paper},
+  url={https://ideas.repec.org/p/bno/worpap/2015_01.html},
+  number={2015/01},
+  abstract={In an environment where economic structures break, variances change, distributions shift, conventional policies weaken and past events tend to reoccur, economic agents have to form expectations over different regimes. This makes the regime-switching dynamic stochastic general equilibrium (RS-DSGE) model the natural framework for analyzing the dynamics of macroeconomic variables. We present effcient solution methods for solving this class of models, allowing for the transition probabilities to be endogenous and for agents to react to anticipated events. The solution algorithms derived use a perturbation strategy which, unlike what has been proposed in the literature, does not rely on the partitioning of the switching parameters. These algorithms are all implemented in RISE, a exible object-oriented toolbox that can easily integrate alternative solution methods. We show that our algorithms replicate various examples found in the literature. Among those is a switching RBC model for which we present a third-order perturbation solution.},
+  keywords={DSGE; Markov switching; Sylvester equation; Newton algorithm; Pertubation; Matrix polynominal},
+  doi={},
+}
+
+@Article{taylorprojection,
+  author={Oren Levintal},
+  title={{Taylor Projection: A New Solution Method For Dynamic General Equilibrium Models}},
+  journal={International Economic Review},
+  year=2018,
+  volume={59},
+  number={3},
+  pages={1345-1373},
+  month={August},
+  keywords={},
+  doi={10.1111/iere.12306},
+  abstract={This article presents a new solution method for dynamic equilibrium models. The solution is approximated by polynomials that zero the residual function and its derivatives at a given point x0. The algorithm is essentially a type of projection but is significantly faster, since the problem is highly sparse and can be easily solved by a Newton solver. The obtained solution is accurate locally in the neighborhood of x0. Importantly, a local solution can be obtained at any point of the state space. This makes it possible to solve models at points that are further away from the steady state.},
+  url={https://ideas.repec.org/a/wly/iecrev/v59y2018i3p1345-1373.html}
+}
+
+@TechReport{gecon,
+  author={Klima, Grzegorz and Podemski, Karol and Retkiewicz-Wijtiwiak, Kaja and Sowińska, Anna E.},
+  title={{Smets-Wouters '03 model revisited - an implementation in gEcon}},
+  year=2015,
+  month=Feb,
+  institution={University Library of Munich, Germany},
+  type={MPRA Paper},
+  url={https://ideas.repec.org/p/pra/mprapa/64440.html},
+  number={64440},
+  abstract={This paper presents an implementation of the well-known Smets-Wouters 2003 model for Euro Area using the gEcon package - what we call the ``third generation'' DSGE modelling toolbox. Our exercise serves three goals. First, we show how gEcon can be used to implement an important - from both applications and historical perspective - model. Second, through rigorous exposition enforced by the gEcon’s block-agent paradigm we analyse all the Smets-Wouters model’s building blocks. Last, but not least, the implementation presented here serves as a natural starting point for important from applications point of view extensions, like opening the economy, introducing non-lump-sum taxes, or adding sectors to the model economy. Full model implementation is attached.},
+  keywords={DSGE; monetary policy; staggered prices; staggered wages},
+  doi={},
+}
+
+
+@article{gdsge,
+title = {Global DSGE models},
+journal = {Review of Economic Dynamics},
+year = {2023},
+issn = {1094-2025},
+doi = {https://doi.org/10.1016/j.red.2023.01.001},
+url = {https://www.sciencedirect.com/science/article/pii/S1094202523000017},
+author = {Dan Cao and Wenlan Luo and Guangyu Nie},
+keywords = {Nonlinear DSGE models, Incomplete markets, Financial crises, Rare disasters, Portfolio choices, Occasionally binding constraints},
+abstract = {We introduce our GDSGE framework and a novel global solution method, called simultaneous transition and policy function iterations (STPFIs), for solving dynamic stochastic general equilibrium models. The framework encompasses many well-known incomplete markets models with highly nonlinear dynamics such as models of financial crises and models with rare disasters including the current COVID-19 pandemic. Using consistency equations, our method is most effective at solving models featuring endogenous state variables with implicit laws of motion such as wealth or consumption shares. Finally, we incorporate this method in an automated and publicly available toolbox that solves many important models in the aforementioned topics, and in many cases, more efficiently and/or accurately than their original algorithms.}
+}
+
+@TechReport{diffstatespace,
+  author={David Childers and Jesús Fernández-Villaverde and Jesse Perla and Christopher Rackauckas and Peifan Wu},
+  title={{Differentiable State-Space Models and Hamiltonian Monte Carlo Estimation}},
+  year=2022,
+  month=Oct,
+  institution={National Bureau of Economic Research, Inc},
+  type={NBER Working Papers},
+  url={https://ideas.repec.org/p/nbr/nberwo/30573.html},
+  number={30573},
+  abstract={We propose a methodology to take dynamic stochastic general equilibrium (DSGE) models to the data based on the combination of differentiable state-space models and the Hamiltonian Monte Carlo (HMC) sampler. First, we introduce a method for implicit automatic differentiation of perturbation solutions of DSGE models with respect to the model's parameters. We can use the resulting output for various tasks requiring gradients, such as building an HMC sampler, to estimate first- and second-order approximations of DSGE models. The availability of derivatives also enables a general filter-free method to estimate nonlinear, non-Gaussian DSGE models by sampling the joint likelihood of parameters and latent states. We show that the gradient-based joint likelihood sampling approach is superior in efficiency and robustness to standard Metropolis-Hastings samplers by estimating a canonical real business cycle model, a real small open economy model, and a medium-scale New Keynesian DSGE model.},
+  keywords={},
+  doi={},
+}
