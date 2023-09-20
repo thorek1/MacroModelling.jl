@@ -10,7 +10,7 @@ import SymPyPythonCall as SPyPyC
 import Symbolics
 import ForwardDiff as ℱ 
 # import Zygote
-import SparseArrays: SparseMatrixCSC, SparseVector#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
+import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 # import ComponentArrays as 𝒞
 import BlockTriangularForm
@@ -122,9 +122,7 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
 
 
 
-
-
-function jacobian_wrt_values(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T}) where T
+function jacobian_wrt_values(A::AbstractSparseArray{T}, B::AbstractSparseArray{T}) where T
     # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
 
     # Compute the Kronecker product and subtract from identity
@@ -155,6 +153,45 @@ function jacobian_wrt_values(A::SparseMatrixCSC{T}, B::SparseMatrixCSC{T}) where
     return sparse(final_rows, final_cols, vals, size(A,1) * size(B,1), size(A,1) * size(B,1))
 end
 
+
+
+
+function jacobian_wrt_A(A::AbstractSparseArray{T}, X::Matrix{T}) where T
+    # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
+
+    # Compute the Kronecker product and subtract from identity
+    C = ℒ.kron(ℒ.I(size(A,1)), sparse(A * X))
+
+    # Extract the row, column, and value indices from C
+    rows, cols, vals = findnz(C)
+
+    # Lists to store the 2D indices after the operations
+    final_rows = zeros(Int,length(rows))
+    final_cols = zeros(Int,length(rows))
+
+    Threads.@threads for i = 1:length(rows)
+        # Convert the 1D row index to its 2D components
+        i1, i2 = divrem(rows[i]-1, size(A,1)) .+ 1
+
+        # Convert the 1D column index to its 2D components
+        j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
+
+        # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
+        final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(A,1), size(A,1)), i2, i1, j1, j2) - 1, size(A,1) * size(A,1)) .+ 1
+
+        # Store the 2D indices
+        final_rows[i] = final_row
+        final_cols[i] = final_col
+    end
+
+    r,c,_ = findnz(A) 
+    
+    non_zeros_only = spzeros(Int,size(A,1)^2,size(A,1)^2)
+    
+    non_zeros_only[CartesianIndex.(r .+ (c.-1) * size(A,1), r .+ (c.-1) * size(A,1))] .= 1
+    
+    return sparse(final_rows, final_cols, vals, size(A,1) * size(A,1), size(A,1) * size(A,1)) + ℒ.kron(sparse(X * A'), ℒ.I(size(A,1)))' * non_zeros_only
+end
 
 function reconstruct_sparse_matrix(sp_vector::SparseVector{T, Int}, dims::Tuple{Int, Int}) where T
     # Function to reconstruct the matrix from the vector and dimensions
@@ -4243,7 +4280,8 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
     
     values = vcat(vec(A), vec(collect(-CC)))
 
-    covar_raw, _ = solve_sylvester_equation_AD_direct(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    covar_raw, _ = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    # covar_raw, _ = solve_sylvester_equation_AD_direct(values, coords = coordinates, dims = dimensions, solver = :doubling)
     # covar_raw, _ = solve_sylvester_equation_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)], solver = :bicgstab)
     # covar_raw, _ = solve_sylvester_equation_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
     
@@ -4485,13 +4523,17 @@ function solve_sylvester_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
         lengthA = length(coords[1][1])
 
         vA = ABC[1:lengthA]
-        A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         # C = reshape(ABC[lengthA+1:end],dims[2]...)
+        droptol!(A,eps())
 
-        B = A'
-        jacobian_A = ℒ.kron(-val * B, ℒ.I(size(A,1)))
-    
-        b = hcat(jacobian_A', ℒ.I(length(val)))
+        B = sparse(A')
+
+        b = hcat(jacobian_wrt_A(A, -val), ℒ.I(length(val)))
+        droptol!(b,eps())
+
+        a = jacobian_wrt_values(A, B)
+        droptol!(a,eps())
 
         partials = zeros(dims[1][1] * dims[1][2] + dims[2][1] * dims[2][2], size(partial_values,2))
         partials[vcat(coords[1][1] + (coords[1][2] .- 1) * dims[1][1], dims[1][1] * dims[1][2] + 1:end),:] = partial_values
@@ -4511,6 +4553,10 @@ function solve_sylvester_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
         jacobian_B = ℒ.kron(ℒ.I(size(B,1)), -A * val)
 
         b = hcat(jacobian_A', jacobian_B, ℒ.I(length(val)))
+        droptol!(b,eps())
+
+        a = jacobian_wrt_values(A, B)
+        droptol!(a,eps())
 
         partials = spzeros(dims[1][1] * dims[1][2] + dims[2][1] * dims[2][2] + dims[3][1] * dims[3][2], size(partial_values,2))
         partials[vcat(
@@ -4521,21 +4567,21 @@ function solve_sylvester_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
         lengthA = dims[1][1] * dims[1][2]
         A = reshape(ABC[1:lengthA],dims[1]...)
         # C = reshape(ABC[lengthA+1:end],dims[2]...)
-
         B = A'
-        jacobian_A = ℒ.kron(-val * B, ℒ.I(size(A,1)))
-    
-        b = hcat(jacobian_A', ℒ.I(length(val)))
+        # jacobian_A = reshape(permutedims(reshape(ℒ.kron(ℒ.I(size(A,1)), -A * val) ,size(A,1), size(A,1), size(A,1), size(A,1)), [1, 2, 4, 3]), size(A,1) * size(A,1), size(A,1) * size(A,1))
+
+        spA = sparse(A)
+        droptol!(spA, eps())
+
+        b = hcat(jacobian_wrt_A(spA, -val), ℒ.I(length(val)))
+
+        a = reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
 
         partials = partial_values
     end
     
-    
 
     # get J(f, vs) * ps (cheating). Write your custom rule here. This used to be the conditions but here they are analytically derived.
-    a = jacobian_wrt_values(A, B)
-    droptol!(a,eps())
-
     reshape_matmul = LinearOperators.LinearOperator(Float64, size(b,1) * size(partials,2), size(b,1) * size(partials,2), false, false, 
         (sol,𝐱) -> begin 
         𝐗 = reshape(𝐱, (size(b,1),size(partials,2))) |> sparse
@@ -4818,15 +4864,19 @@ function calculate_second_order_moments(
 
     C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
 
+    r1,c1,v1 = findnz(sparse(ŝ_to_ŝ₂))
+
     coordinates = Tuple{Vector{Int}, Vector{Int}}[]
-    
+    push!(coordinates,(r1,c1))
+
     dimensions = Tuple{Int, Int}[]
     push!(dimensions,size(ŝ_to_ŝ₂))
     push!(dimensions,size(C))
     
-    values = vcat(vec(ŝ_to_ŝ₂), vec(collect(-C)))
+    values = vcat(v1, vec(collect(-C)))
 
-    Σᶻ₂, info = solve_sylvester_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    Σᶻ₂, info = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    # Σᶻ₂, info = solve_sylvester_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
     # Σᶻ₂, info = solve_sylvester_equation_AD([vec(ŝ_to_ŝ₂); vec(-C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])#, solver = :doubling)
     # Σᶻ₂, info = solve_sylvester_equation_forward([vec(ŝ_to_ŝ₂); vec(-C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])
     
@@ -5056,7 +5106,8 @@ function calculate_third_order_moments(parameters::Vector{T},
         
         values = vcat(v1, vec(collect(-C)))
 
-        Σᶻ₃, info = solve_sylvester_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+        Σᶻ₃, info = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
+        # Σᶻ₃, info = solve_sylvester_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
@@ -5167,7 +5218,8 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     
     values = vcat(vec(A), vec(collect(-𝐁)))
 
-    P, _ = solve_sylvester_equation_AD_direct(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    P, _ = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    # P, _ = solve_sylvester_equation_AD_direct(values, coords = coordinates, dims = dimensions, solver = :doubling)
     # P, _ = solve_sylvester_equation_AD_direct([vec(A); vec(-𝐁)], dims = [size(A), size(𝐁)], solver = :bicgstab)
     # P, _ = solve_sylvester_equation_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
     # P, _ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
