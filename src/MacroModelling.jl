@@ -847,8 +847,7 @@ function levenberg_marquardt(f::Function,
     λ̂̅¹::T   =       0.9815,
     λ̂̅²::T   =       1.0,
     transformation_level::S = 3,
-    backtracking_order::S = 2,
-    ) where {T <: AbstractFloat, S <: Integer}
+    backtracking_order::S = 2) where {T <: AbstractFloat, S <: Integer}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
@@ -976,7 +975,9 @@ function levenberg_marquardt(f::Function,
         end
     end
 
-    return undo_transform(current_guess,transformation_level), (iterations, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level)))
+    best_guess = undo_transform(current_guess,transformation_level)
+
+    return best_guess, (iterations, largest_step, largest_residual, f(best_guess))
 end
 
 
@@ -1667,7 +1668,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             $(SS_solve_func...)
                             if scale == 1
                                 # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
-                                return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)] , solution_error
+                                NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
+                                NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0
+                                return NSSS_solution , solution_error
                             end
                         end
                     end
@@ -4281,7 +4284,7 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
     
     values = vcat(vec(A), vec(collect(-CC)))
 
-    covar_raw, _ = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    covar_raw, _ = solve_sylvester_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
     # covar_raw, _ = solve_sylvester_equation_AD_direct(values, coords = coordinates, dims = dimensions, solver = :doubling)
     # covar_raw, _ = solve_sylvester_equation_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)], solver = :bicgstab)
     # covar_raw, _ = solve_sylvester_equation_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
@@ -4478,7 +4481,7 @@ function solve_sylvester_equation_conditions(ABC::Vector{<: Real},
         A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         C = reshape(ABC[lengthA+1:end],dims[2]...)
         if solver != :doubling
-            B = A'
+            B = A' |> sparse |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         end
     elseif length(coords) == 3
         lengthA = length(coords[1][1])
@@ -4621,151 +4624,6 @@ function solve_sylvester_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
     # pack: SoA -> AoS
     return sparse_output ? sparse(out) : out, solved
 end
-
-
-# function solve_sylvester_equation_forward(ABC::AbstractVector{ℱ.Dual{Z,S,N}}; 
-#     dims::Vector{Tuple{Int,Int}}, 
-#     sparse_output::Bool = false,
-#     solver::Symbol = :gmres) where {Z,S,N}
-
-#     # unpack: AoS -> SoA
-#     ABCv = ℱ.value.(ABC)
-
-#     # you can play with the dimension here, sometimes it makes sense to transpose
-#     partials = mapreduce(ℱ.partials, hcat, ABC)'
-
-#     val, solved = solve_sylvester_equation_forward(ABCv, dims = dims, sparse_output = sparse_output, solver = solver)
-
-#     # get J(f, vs) * ps (cheating). Write your custom rule here
-#     BB = ℱ.jacobian(x -> solve_sylvester_equation_conditions(x, val, solved, dims = dims), ABCv)
-#     AA = ℱ.jacobian(x -> solve_sylvester_equation_conditions(ABCv, x, solved, dims = dims), val)
-
-#     Â = RF.lu(AA, check = false)
-
-#     if !ℒ.issuccess(Â)
-#         Â = ℒ.svd(AA)
-#     end
-    
-#     jvp = -(Â \ BB) * partials
-
-#     # pack: SoA -> AoS
-#     return reshape(map(val, eachrow(jvp)) do v, p
-#         ℱ.Dual{Z}(v, p...) # Z is the tag
-#     end,size(val)), solved
-# end
-
-
-
-# function solve_sylvester_equation_forward(abc::SparseVector{ℱ.Dual{Z,S,N}}; 
-#     dims::Vector{Tuple{Int,Int}}, 
-#     sparse_output::Bool = false,
-#     solver::Symbol = :gmres) where {Z,S,N}
-
-#     # unpack: AoS -> SoA
-#     ABC, partials = separate_values_and_partials_from_sparsevec_dual(abc)
-
-#     # get f(vs)
-#     val, solved = solve_sylvester_equation_forward(ABC, dims = dims, sparse_output = sparse_output, solver = solver)
-
-#     lenA = dims[1][1] * dims[1][2]
-
-#     A = reconstruct_sparse_matrix(ABC[1 : lenA], dims[1])
-#     A¹ = sparse((ABC[1 : lenA]).nzind, (ABC[1 : lenA]).nzind, 1, lenA, lenA)
-
-#     if length(dims) == 3
-#         lenB = dims[2][1] * dims[2][2]
-#         B = reconstruct_sparse_matrix(ABC[lenA .+ (1 : lenB)], dims[2])
-#         B¹ = sparse((ABC[lenA .+ (1 : lenB)]).nzind, (ABC[lenA .+ (1 : lenB)]).nzind, 1, lenB, lenB)
-
-#         jacobian_A = A¹ * ℒ.kron(-val * B, ℒ.I(size(A,1)))
-#         jacobian_B = ℒ.kron(ℒ.I(size(B,1)), -A * val) * B¹
-    
-#         b = hcat(jacobian_A', jacobian_B, ℒ.I(length(val)))
-#     elseif length(dims) == 2
-#         B = A'
-#         lenB = lenA
-        
-#         jacobian_A = A¹ * ℒ.kron(-val * B, ℒ.I(size(A,1)))
-
-#         b = hcat(jacobian_A', ℒ.I(length(val)))
-#     end
-
-#     # get J(f, vs) * ps (cheating). Write your custom rule here. This used to be the conditions but here they are analytically derived.
-#     # a = reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
-
-#     reshape_matmul = LinearOperators.LinearOperator(Float64, size(b,1) * size(partials,2), size(b,1) * size(partials,2), false, false, 
-#         (sol,𝐱) -> begin 
-#         𝐗 = reshape(𝐱, (size(b,1),size(partials,2)))
-#         sol .= vec(reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1)) * 𝐗)
-#         return sol
-#     end)
-
-#     X, info = Krylov.gmres(reshape_matmul, -vec(b * partials))#, atol = tol)
-
-#     jvp = reshape(X, (size(b,1),size(partials,2)))
-
-
-#     # pack: SoA -> AoS
-#     return sparse(reshape(map(val, eachrow(jvp)) do v, p
-#         ℱ.Dual{Z}(v, p...) # Z is the tag
-#         end,size(val))), solved
-# end
-
-
-
-
-# function solve_sylvester_equation_forward(abc::DenseVector{ℱ.Dual{Z,S,N}};
-#     dims::Vector{Tuple{Int,Int}}, 
-#     sparse_output::Bool = false,
-#     solver::Symbol = :gmres) where {Z,S,N}
-
-#     # unpack: AoS -> SoA
-#     ABC = ℱ.value.(abc)
-
-#     # you can play with the dimension here, sometimes it makes sense to transpose
-#     partials = mapreduce(ℱ.partials, hcat, abc)'
-
-#     # get f(vs)
-#     val, solved = solve_sylvester_equation_forward(ABC, dims = dims, sparse_output = sparse_output, solver = solver)
-
-#     lenA = dims[1][1] * dims[1][2]
-
-#     A = reshape(ABC[1 : lenA], dims[1])
-
-#     if length(dims) == 3
-#         lenB = dims[2][1] * dims[2][2]
-#         B = reshape(ABC[lenA .+ (1 : lenB)], dims[2])
-
-#         jacobian_A = ℒ.kron(-val * B, ℒ.I(size(A,1)))
-#         jacobian_B = ℒ.kron(ℒ.I(size(B,1)), -A * val)
-        
-#         b = hcat(jacobian_A', jacobian_B, ℒ.I(length(val)))
-#     elseif length(dims) == 2
-#         B = A'
-#         jacobian_A = ℒ.kron(-val * B, ℒ.I(size(A,1)))
-    
-#         b = hcat(jacobian_A', ℒ.I(length(val)))
-#     end
-
-#     # get J(f, vs) * ps (cheating). Write your custom rule here. This used to be the conditions but here they are analytically derived.
-#     # a = reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
-
-#     reshape_matmul = LinearOperators.LinearOperator(Float64, size(b,1) * size(partials,2), size(b,1) * size(partials,2), false, false, 
-#         (sol,𝐱) -> begin 
-#         𝐗 = reshape(𝐱, (size(b,1),size(partials,2)))
-#         sol .= vec(reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1)) * 𝐗)
-#         return sol
-#     end)
-
-#     X, info = Krylov.gmres(reshape_matmul, -vec(b * partials))#, atol = tol)
-
-#     jvp = reshape(X, (size(b,1),size(partials,2)))
-
-#     # pack: SoA -> AoS
-#     return reshape(map(val, eachrow(jvp)) do v, p
-#         ℱ.Dual{Z}(v, p...) # Z is the tag
-#         end,size(val)), solved
-# end
 
 
 solve_sylvester_equation_AD = ID.ImplicitFunction(solve_sylvester_equation_forward, 
