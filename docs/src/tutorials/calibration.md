@@ -16,51 +16,51 @@ Random.seed!(30)
 using MacroModelling
 
 @model Gali_2015 begin
-	W_real[0] = C[0] ^ σ * N[0] ^ φ
+    W_real[0] = C[0] ^ σ * N[0] ^ φ
 
-	Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
 
-	R[0] = 1 / Q[0]
+    R[0] = 1 / Q[0]
 
-	Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+    Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
 
-	R[0] = Pi[1] * realinterest[0]
+    R[0] = Pi[1] * realinterest[0]
 
-	R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])
+    R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])
 
-	C[0] = Y[0]
+    C[0] = Y[0]
 
-	log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+    log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
 
-	log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+    log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
 
-	nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+    nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
 
-	MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+    MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
 
-	1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+    1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
 
-	S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+    S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
 
-	Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+    Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
 
-	x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+    x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
 
-	x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+    x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
 
-	log_y[0] = log(Y[0])
+    log_y[0] = log(Y[0])
 
-	log_W_real[0] = log(W_real[0])
+    log_W_real[0] = log(W_real[0])
 
-	log_N[0] = log(N[0])
+    log_N[0] = log(N[0])
 
-	pi_ann[0] = 4 * log(Pi[0])
+    pi_ann[0] = 4 * log(Pi[0])
 
-	i_ann[0] = 4 * log(R[0])
+    i_ann[0] = 4 * log(R[0])
 
-	r_real_ann[0] = 4 * log(realinterest[0])
+    r_real_ann[0] = 4 * log(realinterest[0])
 
-	M_real[0] = Y[0] / R[0] ^ η
+    M_real[0] = Y[0] / R[0] ^ η
 
 end
 ```
@@ -73,31 +73,31 @@ Next we need to add the parameters of the model. The macro [`@parameters`](@ref)
 
 ```@repl tutorial_3
 @parameters Gali_2015 begin
-	σ = 1
+    σ = 1
 
-	φ = 5
+    φ = 5
 
-	ϕᵖⁱ = 1.5
-	
-	ϕʸ = 0.125
+    ϕᵖⁱ = 1.5
+    
+    ϕʸ = 0.125
 
-	θ = 0.75
+    θ = 0.75
 
-	ρ_ν = 0.5
+    ρ_ν = 0.5
 
-	ρ_z = 0.5
+    ρ_z = 0.5
 
-	ρ_a = 0.9
+    ρ_a = 0.9
 
-	β = 0.99
+    β = 0.99
 
-	η = 3.77
+    η = 3.77
 
-	α = 0.25
+    α = 0.25
 
-	ϵ = 9
+    ϵ = 9
 
-	τ = 0
+    τ = 0
 
     std_a = .01
 
@@ -112,7 +112,9 @@ The block defining the parameters above only describes the simple parameter defi
 
 Note that we have to write one parameter definition per line.
 
-## Inspect model moments
+## Linear solution
+
+### Inspect model moments
 
 Given the equations and parameters, we have everything to we need for the package to generate the theoretical model moments. You can retrieve the mean of the linearised model as follows:
 
@@ -140,7 +142,7 @@ or the covariance:
 get_covariance(Gali_2015)
 ```
 
-## Understand parameter sensitivities
+### Parameter sensitivities
 
 Before embarking on calibrating the model it is useful to get familiar with the impact of parameter changes on model moments. `MacroModelling.jl` provides the partial derivatives of the model moments with respect to the model parameters. The model we are working with is of a medium size and by default derivatives are automatically shown as long as the calculation does not take too long (too many derivatives need to be taken). In this case they are not shown but it is possible to show them by explicitly defining the parameter for which to take the partial derivatives for:
 
@@ -151,204 +153,188 @@ get_mean(Gali_2015, parameter_derivatives = :σ)
 or for multiple parameters:
 
 ```@repl tutorial_3
-get_mean(Gali_2015, parameter_derivatives = [:σ, :α])
+get_mean(Gali_2015, parameter_derivatives = [:σ, :α, :β, :ϕᵖⁱ, :φ])
 ```
 
+We can do the same for standard deviation or variance, and all parameters:
 
-only need the data and define the observables to be able to estimate the model.
-First, we load in the data from a CSV file (using the CSV and DataFrames packages) and convert it to a `KeyedArray` (using the AxisKeys package). Furthermore, we log transform the data provided in levels, and define the observables of the model. Last but not least we select only those variables in the data which are declared observables in the model.
-
-```@repl tutorial_2
-using CSV, DataFrames, AxisKeys
-
-# load data
-dat = CSV.read("../assets/FS2000_data.csv", DataFrame)
-data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
-data = log.(data)
-
-# declare observables
-observables = sort(Symbol.("log_".*names(dat)))
-
-# subset observables in data
-data = data(observables,:)
+```@repl tutorial_3
+get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015))
 ```
 
-## Define bayesian model
+```@repl tutorial_3
+get_variance(Gali_2015, parameter_derivatives = get_parameters(Gali_2015))
+```
 
-Next we define the parameter priors using the Turing package. The `@model` macro of the Turing package allows us to define the prior distributions over the parameters and combine it with the loglikelihood of the model and parameters given the data with the help of the `calculate_kalman_filter_loglikelihood` function. Inside the macro we first define the prior distribution and their mean and standard deviation. Note that the `μσ` parameter allows us to hand over the moments (`μ` and `σ`) of the distribution as parameters in case of the non-normal distributions (Gamma, Beta, InverseGamma). Last but not least, we define the loglikelihood and add it to the posterior loglikelihood with the help of the `@addlogprob!` macro.
+You can use this information to calibrate certain values to your targets. For example, let's say we want to have higher real wages (`:W_real`), and lower inflation volatility. Looking at the sensitivity table we see that lowering the production function parameter `:α` will increase real wages, but at the same time it will increase inflation volatility. We could compensate that effect by decreasing the standard deviation of the total factor productivity shock `:std_a`.
 
-```@repl tutorial_2
-import Turing
-import Turing: NUTS, sample, logpdf
+### Method of moments
 
-Turing.@model function FS2000_loglikelihood_function(data, m, observables)
-    alp     ~ Beta(0.356, 0.02, μσ = true)
-    bet     ~ Beta(0.993, 0.002, μσ = true)
-    gam     ~ Normal(0.0085, 0.003)
-    mst     ~ Normal(1.0002, 0.007)
-    rho     ~ Beta(0.129, 0.223, μσ = true)
-    psi     ~ Beta(0.65, 0.05, μσ = true)
-    del     ~ Beta(0.01, 0.005, μσ = true)
-    z_e_a   ~ InverseGamma(0.035449, Inf, μσ = true)
-    z_e_m   ~ InverseGamma(0.008862, Inf, μσ = true)
-    # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
-    Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
+Instead of doing this by hand we can also set a target and have the computer figure out the corresponding parameter values. In order to do that we need to define targets, and set up an optimisation problem.
+
+Our targets are:
+
+- Mean of `W_real = 0.7`
+- Standard deviation of `Pi = 0.01`
+
+Now for the optimisation problem we use the L-BFGS algorithm implemented in `Optim.jl`. This optimisation algorithm is very efficient and gradient based. Note that all model outputs are differentiable with respect to the parameters using automatic and implicit differentiation.
+
+The package provides functions specialised for the use with gradient based code (e.g. gradient-based optimisers or samplers). For model statistics we can use `get_statistics` to get the mean of real wages and the standard deviation of inflation like this:
+
+```@repl tutorial_3
+get_statistics(Gali_2015, Gali_2015.parameter_values, parameters = Gali_2015.parameters, mean = [:W_real], standard_deviation = [:Pi])
+```
+
+First we pass on the model object, followed by the parameter values and the parameter names the values correspond to. Then we define the outputs we want: for the mean we want real wages and for the standard deviation we want inflation. We can also get outputs for variance, covariance, or autocorrelation the same way as for the mean and standard deviation.
+
+Next, let's define a function measuring how close we are to our target for given values of `:α` and `:std_a`:
+
+```@repl tutorial_3
+function distance_to_target(parameter_value_inputs)
+    model_statistics = get_statistics(Gali_2015, parameter_value_inputs, parameters = [:α, :std_a], mean = [:W_real], standard_deviation = [:Pi])
+    targets = [0.7, 0.01]
+    return sum(abs2, vcat(model_statistics...) - targets)
 end
 ```
 
-## Sample from posterior: No-U-Turn Sampler (NUTS)
+Now let's test the function with the current parameter values. In case we forgot the parameter values we can also look them up like this:
 
-We use the NUTS sampler to retrieve the posterior distribution of the parameters. This sampler uses the gradient of the posterior loglikelihood with respect to the model parameters to navigate the parameter space. The NUTS sampler is considered robust, fast, and user-friendly (auto-tuning of hyper-parameters).
-
-First we define the loglikelihood model with the specific data, observables, and model. Next, we draw 1000 samples from the model:
-
-```@repl tutorial_2
-FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, observables)
-
-n_samples = 1000
-
-chain_NUTS  = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false);
+```@repl tutorial_3
+get_parameters(Gali_2015, values = true)
 ```
 
-### Inspect posterior
+with this we can test the distance function:
 
-In order to understand the posterior distribution and the sequence of sample we are plot them:
-
-```@repl tutorial_2; setup = :(chain_NUTS = read("../assets/chain_FS2000.jls", Chains))
-using StatsPlots
-StatsPlots.plot(chain_NUTS);
+```@repl tutorial_3
+distance_to_target([0.25, 0.01])
 ```
 
-![NUTS chain](../assets/FS2000_chain_NUTS.png)
+Next we can pass it on to an optimiser and find the parameter corresponding to the best fit like this:
 
-Next, we are plotting the posterior loglikelihood along two parameters dimensions, with the other parameters ket at the posterior mean, and add the samples to the visualisation. This visualisation allows us to understand the curvature of the posterior and puts the samples in context.
-
-```@repl tutorial_2
-using ComponentArrays, MCMCChains, DynamicPPL, Plots
-
-parameter_mean = mean(chain_NUTS)
-pars = ComponentArray(parameter_mean.nt[2],Axis(parameter_mean.nt[1]))
-
-logjoint(FS2000_loglikelihood, pars)
-
-function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
-    orig_pars[pars_syms] = [par1, par2]
-    logjoint(model, orig_pars)
-end
-
-granularity = 32;
-
-par1 = :del;
-par2 = :gam;
-par_range1 = collect(range(minimum(chain_NUTS[par1]), stop = maximum(chain_NUTS[par1]), length = granularity));
-par_range2 = collect(range(minimum(chain_NUTS[par2]), stop = maximum(chain_NUTS[par2]), length = granularity));
-
-p = surface(par_range1, par_range2, 
-            (x,y) -> calculate_log_probability(x, y, [par1, par2], pars, FS2000_loglikelihood),
-            camera=(30, 65),
-            colorbar=false,
-            color=:inferno);
-
-
-joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray(reduce(hcat, get(chain_NUTS, FS2000.parameters)[FS2000.parameters])[s,:], Axis(FS2000.parameters))) for s in 1:length(chain_NUTS)]
-
-scatter3d!(vec(collect(chain_NUTS[par1])),
-           vec(collect(chain_NUTS[par2])),
-           joint_loglikelihood,
-            mc = :viridis, 
-            marker_z = collect(1:length(chain_NUTS)), 
-            msw = 0,
-            legend = false, 
-            colorbar = false, 
-            xlabel = string(par1),
-            ylabel = string(par2),
-            zlabel = "Log probability",
-            alpha = 0.5);
-
-p
-```
-
-![Posterior surface](../assets/FS2000_posterior_surface.png)
-
-## Find posterior mode
-
-Other than the mean and median of the posterior distribution we can also calculate the mode. To this end we will use L-BFGS optimisation routines from the Optim package.
-
-First, we define the posterior loglikelihood function, similar to how we defined it for the Turing model macro.
-
-```@repl tutorial_2
-function calculate_posterior_loglikelihood(parameters)
-    alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
-    log_lik = 0
-    log_lik -= calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables; parameters = parameters)
-    log_lik -= logpdf(Beta(0.356, 0.02, μσ = true),alp)
-    log_lik -= logpdf(Beta(0.993, 0.002, μσ = true),bet)
-    log_lik -= logpdf(Normal(0.0085, 0.003),gam)
-    log_lik -= logpdf(Normal(1.0002, 0.007),mst)
-    log_lik -= logpdf(Beta(0.129, 0.223, μσ = true),rho)
-    log_lik -= logpdf(Beta(0.65, 0.05, μσ = true),psi)
-    log_lik -= logpdf(Beta(0.01, 0.005, μσ = true),del)
-    log_lik -= logpdf(InverseGamma(0.035449, Inf, μσ = true),z_e_a)
-    log_lik -= logpdf(InverseGamma(0.008862, Inf, μσ = true),z_e_m)
-    return log_lik
-end
-```
-
-Next, we set up the optimisation problem, parameter bounds, and use the optimizer L-BFGS.
-
-```@repl tutorial_2
+```@repl tutorial_3
 using Optim, LineSearches
-
-lbs = [0,0,-10,-10,0,0,0,0,0];
-ubs = [1,1,10,10,1,1,1,100,100];
-
-sol = optimize(calculate_posterior_loglikelihood, lbs, ubs , FS2000.parameter_values, Fminbox(LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
-
-sol.minimum
+sol = Optim.optimize(distance_to_target,
+                        [0,0], 
+                        [1,1], 
+                        [0.25, 0.01], 
+                        Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))))
 ```
 
-## Model estimates given the data and the model solution
+The first argument to the optimisation call is the function we defined previously, followed by lower and upper bounds, the starting values, and finally the algorithm. For the algorithm we have to add `Fminbox` because we have bounds (optional) and we specify the specific line search method to speed up convergence (recommended but optional).
 
-Having found the parameters at the posterior mode we can retrieve model estimates of the shocks which explain the data used to estimate it. This can be done with the `get_estimated_shocks` function:
+The output shows that we could almost perfectly match the target and the values of the parameters found by the optimiser are:
 
-```@repl tutorial_2
-get_estimated_shocks(FS2000, data, parameters = sol.minimizer)
+```@repl tutorial_3
+sol.minimizer
 ```
 
-As the first argument we pass the model, followed by the data (in levels), and then we pass the parameters at the posterior mode. The model is solved with this parameterisation and the shocks are calculated using the Kalman smoother.
+slightly lower for both parameters (in line with what we understood from the sensitivities).
 
-We estimated the model on two variables but our model allows us to look at all variables given the data. Looking at the estimated variables can be done using the `get_estimated_variables` function:
+You can combine the method of moments with estimation by simply adding the distance to the target to the posterior loglikelihood.
 
-```@repl tutorial_2
-get_estimated_variables(FS2000, data)
+## Nonlinear solutions
+
+So far we used the linearised solution of the model. The package does also provide nonlinear solutions and can calculate the theoretical model moments for pruned second and third order perturbation solutions. This can be of interest because nonlinear solutions capture volatility effects (at second order) and asymmetries (at third order). Furthermore, the moments of the data are often non-gaussian while linear solutions with gaussian noise can only generate gaussian distribution of model variables. Already pruned second order solution produce non-gaussian skewness and kurtosis with gaussian noise.
+
+From a users perspective little changes other than specifying that the algorithm is `:pruned_second_order` or `:pruned_third_order`.
+
+For example we can get the mean for the pruned second order solution:
+
+```@repl tutorial_3
+get_mean(Gali_2015, parameter_derivatives = get_parameters(Gali_2015), algorithm = :pruned_second_order)
 ```
 
-Since we already solved the model with the parameters at the posterior mode we do not need to do so again. The function returns a KeyedArray with the values of the variables in levels at each point in time.
+Note that the mean of real wages is lower, while inflation is higher. We can see the effect of volatility in the no longer zero partial derivatives for the shock standard deviations. Larger shocks sizes drive down the mean of real wages while they increase inflation.
 
-Another useful tool is a historical shock decomposition. It allows us to understand the contribution of the shocks for each variable. This can be done using the `get_shock_decomposition` function:
+The mean of the variables does not change if we use pruned third order perturbation but the standard deviation does. Let's look at the standard deviations for the pruned second order solution first:
 
-```@repl tutorial_2
-get_shock_decomposition(FS2000, data)
+```@repl tutorial_3
+get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015), algorithm = :pruned_second_order)
 ```
 
-We get a 3-dimensional array with variables, shocks, and time periods as dimensions. The shocks dimension also includes the initial value as a residual between the actual value and what was explained by the shocks. This computation also relies on the Kalman smoother.
+for both inflation and real wages the volatility is higher and the standard deviation of the total factor productivity shock `std_a` has a much larger impact on the standard deviation of real wages compared to the linear solution.
 
-Last but not least, we can also plot the model estimates and the shock decomposition. The model estimates plot, using `plot_model_estimates`:
+At third order we get the following results:
 
-```@repl tutorial_2
-plot_model_estimates(FS2000, data)
+```@repl tutorial_3
+get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015), algorithm = :pruned_third_order)
 ```
 
-![Model estimates](../assets/estimation__m__2.png)
+standard deviations of inflation is almost three times as high and for real wages it is also substantially higher. Furthermore, standard deviations of shocks matter even more for the volatility of the endogenous variables.
 
-shows the variables of the model (blue), the estimated shocks (in the last panel), and the data (red) used to estimate the model.
+These results make it clear that capturing the nonlinear interactions by using nonlinear solutions has important implications for the model moments and by extension the model dynamics.
 
-The shock decomposition can be plotted using `plot_shock_decomposition`:
+### Method of moments for nonlinear solutions
 
-```@repl tutorial_2
-plot_shock_decomposition(FS2000, data)
+Matching the theoretical moment of the nonlinear model solution to the data is no more complicated for the user than in the linear solution case (see above).
+
+We need to define the target value and function and let an optimiser find the parameters minimising the distance to the target.
+
+Keeping the targets:
+
+- Mean of `W_real = 0.7`
+- Standard deviation of `Pi = 0.01`
+
+we need to define the target function and specify that we use a nonlinear solution algorithm (e.g. pruned third order):
+
+```@repl tutorial_3
+function distance_to_target(parameter_value_inputs)
+    model_statistics = get_statistics(Gali_2015, parameter_value_inputs, algorithm = :pruned_third_order, parameters = [:α, :std_a], mean = [:W_real], standard_deviation = [:Pi])
+    targets = [0.7, 0.01]
+    return sum(abs2, vcat(model_statistics...) - targets)
+end
 ```
 
-![Shock decomposition](../assets/estimation_shock_decomp__m__2.png)
+and then we can use the same code to optimise as in the linear solution case:
 
-and it shows the contribution of the shocks and the contribution of the initial value to the deviations of the variables.
+```@repl tutorial_3
+sol = Optim.optimize(distance_to_target,
+                        [0,0], 
+                        [1,1], 
+                        [0.25, 0.01], 
+                        Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))))
+```
+
+the calculations take substantially longer and we don't get as close to our target as for the linear solution case. The parameter values minimising the distance are:
+
+```@repl tutorial_3
+sol.minimizer
+```
+
+lower than for the linear solution case and the theoretical moments given these parameter are:
+
+```@repl tutorial_3
+get_statistics(Gali_2015, sol.minimizer, algorithm = :pruned_third_order, parameters = [:α, :std_a], mean = [:W_real], standard_deviation = [:Pi])
+```
+
+The solution does not match the standard deviation of inflation very well.
+
+Potentially the partial derivatives change a lot for small changes in parameters and even though the partial derivatives for standard deviation of inflation were large wrt `std_a` they might be small for value returned from the optimisation. We can check this with:
+
+```@repl tutorial_3
+get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015), algorithm = :pruned_third_order, parameters = [:α, :std_a] .=> sol.minimizer)
+```
+
+and indeed it seems also the second derivative is large since the first derivative changed significantly.
+
+Another parameter we cna try is `:σ`. It has a positive impact on the mean of real wages and a negative impact on standard deviation of inflation.
+
+We need to redefine our target function and optimise it. Note that the previous call made a permanent change of parameters (as do all calls where parameters are explicitly set) and now `std_a` is set to 2.91e-9 and no longer 0.01.
+
+```@repl tutorial_3
+function distance_to_target(parameter_value_inputs)
+    model_statistics = get_statistics(Gali_2015, parameter_value_inputs, algorithm = :pruned_third_order, parameters = [:α, :σ], mean = [:W_real], standard_deviation = [:Pi])
+    targets = [0.7, 0.01]
+    return sum(abs2, vcat(model_statistics...) - targets)
+end
+
+sol = Optim.optimize(distance_to_target,
+                        [0,0], 
+                        [1,3], 
+                        [0.25, 1], 
+                        Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))))
+
+sol.minimizer
+```
+
+Given the new value for `std_a` and optimising over `σ` allows us to match the target exactly.
