@@ -233,12 +233,14 @@ end
 
 """
 $(SIGNATURES)
-Returns the parameters which have an impact on the model dynamics but do not depend on other parameters and are not determined by calibration equations. 
+Returns the parameters (and optionally the values) which have an impact on the model dynamics but do not depend on other parameters and are not determined by calibration equations. 
 
 In case programmatic model writing was used this function returns the parsed parameters (see `σ` in example).
 
 # Arguments
 - $MODEL
+# Keyword Arguments
+- `values` [Default: `false`, Type: `Bool`]: return the values together with the parameter names
 
 # Examples
 ```jldoctest
@@ -277,17 +279,24 @@ get_parameters(RBC)
  "β"
 ```
 """
-function get_parameters(𝓂::ℳ)
-    replace.(string.(𝓂.parameters), "◖" => "{", "◗" => "}")# |> sort
+function get_parameters(𝓂::ℳ; values::Bool = false)
+    if values
+        return replace.(string.(𝓂.parameters), "◖" => "{", "◗" => "}") .=> 𝓂.parameter_values
+    else
+        return replace.(string.(𝓂.parameters), "◖" => "{", "◗" => "}")# |> sort
+    end
 end
 
 
 """
 $(SIGNATURES)
-Returns the parameters which are determined by a calibration equation. 
+Returns the parameters (and optionally the values) which are determined by a calibration equation. 
 
 # Arguments
 - $MODEL
+# Keyword Arguments
+- `values` [Default: `false`, Type: `Bool`]: return the values together with the parameter names
+
 
 # Examples
 ```jldoctest
@@ -320,8 +329,12 @@ get_calibrated_parameters(RBC)
  "δ"
 ```
 """
-function get_calibrated_parameters(𝓂::ℳ)
-    replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}")# |> sort
+function get_calibrated_parameters(𝓂::ℳ; values::Bool = false)
+    if values
+        return replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}") .=> 𝓂.solution.non_stochastic_steady_state[𝓂.timings.nVars + 1:end]
+    else
+        return replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}")# |> sort
+    end
 end
 
 
