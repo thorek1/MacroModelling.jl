@@ -4,6 +4,7 @@
 
 - [ ] implement occasionally binding constraints with shocks
 - [ ] recheck get function examples and docs
+- [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
 - [ ] set to 0 SS values < 1e-12
 - [ ] write method of moments how to
 - [ ] autocorr and covariance with derivatives. return 3d array
@@ -70,6 +71,7 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
+- [x] sylvester with analytical derivatives (much faster if sparse) instead of implicit diff - yes but there are still way too large matrices being realised. implicitdiff is better here
 - [x] autocorr to statistics output and in general for higher order pruned sols
 - [x] fix product moments and test for cases with more than 2 shocks
 - [x] write tests for variables argument in get_moment and for higher order moments
