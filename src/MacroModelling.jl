@@ -3382,7 +3382,7 @@ end
 
 
 
-function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = eps(Float64))
+function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = eps())
     expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
             ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 

@@ -390,6 +390,7 @@ Limited to the first order perturbation solution of the model.
 - $CONDITIONS
 # Keyword Arguments
 - $SHOCK_CONDITIONS
+- $INITIAL_STATE
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS
 - $VARIABLES
@@ -635,7 +636,6 @@ Function to use when differentiating IRFs with repect to parameters.
 - $VARIABLES
 - $SHOCKS
 - $NEGATIVE_SHOCK
-- $GENERALISED_IRF
 - $INITIAL_STATE
 - $LEVELS
 - $VERBOSE

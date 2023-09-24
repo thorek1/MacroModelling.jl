@@ -3,7 +3,6 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
-- [ ] check tols
 - [ ] recheck function examples and docs (include output description)
 - [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
 - [ ] write method of moments how to
@@ -71,6 +70,7 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
+- [x] check tols - all set to eps() except for dependencies tol (1e-12)
 - [x] set to 0 SS values < 1e-12 - doesnt work with Zygote
 - [x] sylvester with analytical derivatives (much faster if sparse) instead of implicit diff - yes but there are still way too large matrices being realised. implicitdiff is better here
 - [x] autocorr to statistics output and in general for higher order pruned sols
