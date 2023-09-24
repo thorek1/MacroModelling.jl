@@ -906,27 +906,42 @@ end
 """
 See [`get_irf`](@ref)
 """
-get_irfs = get_irf
+get_irfs(𝓂::ℳ; kwargs...) = get_irf(𝓂; kwargs...)
 
 """
 See [`get_irf`](@ref)
 """
-get_IRF = get_irf
+get_IRF(𝓂::ℳ; kwargs...) = get_irf(𝓂; kwargs...)
+
+"""
+See [`get_irf`](@ref)
+"""
+irfs(𝓂::ℳ; kwargs...) = get_irf(𝓂; kwargs...)
+
+"""
+See [`get_irf`](@ref)
+"""
+irf(𝓂::ℳ; kwargs...) = get_irf(𝓂; kwargs...)
+
+"""
+See [`get_irf`](@ref)
+"""
+IRF(𝓂::ℳ; kwargs...) = get_irf(𝓂; kwargs...)
 
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
 """
-simulate(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
+simulate(𝓂::ℳ; kwargs...) =  get_irf(𝓂; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
 
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
 """
-get_simulation(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
+get_simulation(𝓂::ℳ; kwargs...) =  get_irf(𝓂; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
 
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`.
 """
-get_girf(args...; kwargs...) =  get_irf(args...; kwargs..., generalised_irf = true)
+get_girf(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., generalised_irf = true)
 
 
 
@@ -1130,47 +1145,58 @@ end
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = false`.
 """
-get_non_stochastic_steady_state(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = false)
+get_non_stochastic_steady_state(𝓂::ℳ; kwargs...) = get_steady_state(𝓂; kwargs..., stochastic = false)
 
 
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
-get_stochastic_steady_state(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
+get_stochastic_steady_state(𝓂::ℳ; kwargs...) = get_steady_state(𝓂; kwargs..., stochastic = true)
 
 
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
-get_SSS(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
+get_SSS(𝓂::ℳ; kwargs...) = get_steady_state(𝓂; kwargs..., stochastic = true)
 
 
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
-SSS(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
+SSS(𝓂::ℳ; kwargs...) = get_steady_state(𝓂; kwargs..., stochastic = true)
+
+
+"""
+Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
+"""
+sss(𝓂::ℳ; kwargs...) = get_steady_state(𝓂; kwargs..., stochastic = true)
 
 
 
 """
 See [`get_steady_state`](@ref)
 """
-SS = get_steady_state
+SS(𝓂::ℳ; kwargs...) = get_steady_state(𝓂; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
 """
-steady_state = get_steady_state
+steady_state(𝓂::ℳ; kwargs...) = get_steady_state(𝓂; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
 """
-get_SS = get_steady_state
+get_SS(𝓂::ℳ; kwargs...) = get_steady_state(𝓂; kwargs...)
 
 """
 See [`get_steady_state`](@ref)
 """
-get_ss = get_steady_state
+get_ss(𝓂::ℳ; kwargs...) = get_steady_state(𝓂; kwargs...)
+
+"""
+See [`get_steady_state`](@ref)
+"""
+ss(𝓂::ℳ; kwargs...) = get_steady_state(𝓂; kwargs...)
 
 
 
@@ -1317,14 +1343,24 @@ end
 
 
 """
-See [`get_solution`](@ref)
+Wrapper for [`get_solution`](@ref) with `algorithm = :first_order`.
 """
-get_first_order_solution = get_solution
+get_first_order_solution(𝓂::ℳ; kwargs...) = get_solution(𝓂; kwargs..., algorithm = :first_order)
+
+"""
+Wrapper for [`get_solution`](@ref) with `algorithm = :second_order`.
+"""
+get_second_order_solution(𝓂::ℳ; kwargs...) = get_solution(𝓂; kwargs..., algorithm = :second_order)
+
+"""
+Wrapper for [`get_solution`](@ref) with `algorithm = :third_order`.
+"""
+get_third_order_solution(𝓂::ℳ; kwargs...) = get_solution(𝓂; kwargs..., algorithm = :third_order)
 
 """
 See [`get_solution`](@ref)
 """
-get_perturbation_solution = get_solution
+get_perturbation_solution(𝓂::ℳ; kwargs...) = get_solution(𝓂; kwargs...)
 
 
 
@@ -1553,19 +1589,19 @@ end
 """
 See [`get_conditional_variance_decomposition`](@ref)
 """
-get_fevd = get_conditional_variance_decomposition
+get_fevd(𝓂::ℳ; kwargs...) = get_conditional_variance_decomposition(𝓂; kwargs...)
 
 
 """
 See [`get_conditional_variance_decomposition`](@ref)
 """
-get_forecast_error_variance_decomposition = get_conditional_variance_decomposition
+get_forecast_error_variance_decomposition(𝓂::ℳ; kwargs...) = get_conditional_variance_decomposition(𝓂; kwargs...)
 
 
 """
 See [`get_conditional_variance_decomposition`](@ref)
 """
-fevd = get_conditional_variance_decomposition
+fevd(𝓂::ℳ; kwargs...) = get_conditional_variance_decomposition(𝓂; kwargs...)
 
 
 
@@ -1684,14 +1720,14 @@ end
 """
 See [`get_variance_decomposition`](@ref)
 """
-get_var_decomp = get_variance_decomposition
+get_var_decomp(𝓂::ℳ; kwargs...) = get_variance_decomposition(𝓂; kwargs...)
 
 
 
 
 """
 $(SIGNATURES)
-Return the correlations of endogenous variables using the linearised solution. 
+Return the correlations of endogenous variables using the first, pruned second, or pruned third order perturbation solution. 
 
 # Arguments
 - $MODEL
@@ -1766,13 +1802,13 @@ end
 """
 See [`get_correlation`](@ref)
 """
-get_corr = get_correlation
+get_corr(𝓂::ℳ; kwargs...) = get_correlation(𝓂; kwargs...)
 
 
 """
 See [`get_correlation`](@ref)
 """
-corr = get_correlation
+corr(𝓂::ℳ; kwargs...) = get_correlation(𝓂; kwargs...)
 
 
 
@@ -1866,20 +1902,20 @@ end
 """
 See [`get_autocorrelation`](@ref)
 """
-get_autocorr = get_autocorrelation
+get_autocorr(𝓂::ℳ; kwargs...) = get_autocorrelation(𝓂; kwargs...)
 
 
 """
 See [`get_autocorrelation`](@ref)
 """
-autocorr = get_autocorrelation
+autocorr(𝓂::ℳ; kwargs...) = get_autocorrelation(𝓂; kwargs...)
 
 
 
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using the linearised or pruned higher order solutions. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
+Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non stochastic steady state (SS), and standard deviations, but can optionally return variances, and covariance matrix.
 
 # Arguments
 - $MODEL
@@ -1893,6 +1929,8 @@ Return the first and second moments of endogenous variables using the linearised
 - $VARIABLES
 - $DERIVATIVES
 - $PARAMETER_DERIVATIVES
+- $ALGORITHM
+- `dependencies_tol` [Default: `1e-12`, Type: `AbstractFloat`]: tolerance for the effect of a variable on the variable of interest when isolating part of the system for calculating covariance related statistics
 - $VERBOSE
 
 # Examples
@@ -2274,69 +2312,68 @@ function get_moments(𝓂::ℳ;
     return ret
 end
 
-
 """
 Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
 """
-get_variance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false)[1]
-
-
-"""
-Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
-"""
-get_var = get_variance
+get_variance(𝓂::ℳ; kwargs...) =  get_moments(𝓂; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false)[1]
 
 
 """
 Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
 """
-var = get_variance
+get_var(𝓂::ℳ; kwargs...) = get_variance(𝓂; kwargs...)
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
+"""
+var(𝓂::ℳ; kwargs...) = get_variance(𝓂; kwargs...)
 
 
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false)[1]
+get_standard_deviation(𝓂::ℳ; kwargs...) =  get_moments(𝓂; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false)[1]
 
 
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-get_std =  get_standard_deviation
+get_std(𝓂::ℳ; kwargs...) =  get_standard_deviation(𝓂; kwargs...)
 
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-std =  get_standard_deviation
+std(𝓂::ℳ; kwargs...) =  get_standard_deviation(𝓂; kwargs...)
 
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
 """
-get_covariance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true)[1]
-
-
-"""
-Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
-"""
-get_cov = get_covariance
+get_covariance(𝓂::ℳ; kwargs...) =  get_moments(𝓂; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true)[1]
 
 
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
 """
-cov = get_covariance
+get_cov(𝓂::ℳ; kwargs...) = get_covariance(𝓂; kwargs...)
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
+"""
+cov(𝓂::ℳ; kwargs...) = get_covariance(𝓂; kwargs...)
 
 
 """
 Wrapper for [`get_moments`](@ref) with `mean = true`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
 """
-get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[1]
+get_mean(𝓂::ℳ; kwargs...) =  get_moments(𝓂; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[1]
 
 
-# """
-# Wrapper for [`get_moments`](@ref) with `mean = true`, the default algorithm being `:pruned_second_order`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
-# """
-# mean = get_mean
+"""
+Wrapper for [`get_moments`](@ref) with `mean = true`, the default algorithm being `:pruned_second_order`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
+"""
+mean(𝓂::ℳ; kwargs...) = get_mean(𝓂; kwargs...)
 
 
 

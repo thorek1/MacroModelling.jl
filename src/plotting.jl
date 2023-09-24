@@ -296,7 +296,7 @@ end
 """
 Wrapper for [`plot_model_estimates`](@ref) with `shock_decomposition = true`.
 """
-plot_shock_decomposition(args...; kwargs...) =  plot_model_estimates(args...; kwargs..., shock_decomposition = true)
+plot_shock_decomposition(𝓂::ℳ, data::KeyedArray{Float64}; kwargs...) =  plot_model_estimates(𝓂, data; kwargs..., shock_decomposition = true)
 
 
 
@@ -588,25 +588,30 @@ end
 """
 See [`plot_irf`](@ref)
 """
-plot_IRF = plot_irf
+plot(𝓂::ℳ; kwargs...) = plot_irf(𝓂; kwargs...)
+
+"""
+See [`plot_irf`](@ref)
+"""
+plot_IRF(𝓂::ℳ; kwargs...) = plot_irf(𝓂; kwargs...)
 
 
 """
 See [`plot_irf`](@ref)
 """
-plot_irfs = plot_irf
+plot_irfs(𝓂::ℳ; kwargs...) = plot_irf(𝓂; kwargs...)
 
 
 """
 Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
 """
-plot_simulations(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
+plot_simulations(𝓂::ℳ; kwargs...) =  plot_irf(𝓂; kwargs..., shocks = :simulate, periods = 100)
 
 
 """
 Wrapper for [`plot_irf`](@ref) with `generalised_irf = true`.
 """
-plot_girf(args...; kwargs...) =  plot_irf(args...; kwargs..., generalised_irf = true)
+plot_girf(𝓂::ℳ; kwargs...) =  plot_irf(𝓂; kwargs..., generalised_irf = true)
 
 
 
@@ -773,12 +778,12 @@ end
 """
 See [`plot_conditional_variance_decomposition`](@ref)
 """
-plot_fevd = plot_conditional_variance_decomposition
+plot_fevd(𝓂::ℳ; kwargs...) = plot_conditional_variance_decomposition(𝓂; kwargs...)
 
 """
 See [`plot_conditional_variance_decomposition`](@ref)
 """
-plot_forecast_error_variance_decomposition = plot_conditional_variance_decomposition
+plot_forecast_error_variance_decomposition(𝓂::ℳ; kwargs...) = plot_conditional_variance_decomposition(𝓂; kwargs...)
 
 
 
