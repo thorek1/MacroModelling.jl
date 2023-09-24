@@ -1,6 +1,6 @@
 # Calibration / method of moments - Gali (2015)
 
-This tutorial is intended to show the workflow to calibrate a model using method of moments. The tutorial is based on a standard model of monetary policy and will showcase the the use of gradient based optimisers and 2nd and 3rd order pruned solutions.
+This tutorial is intended to show the workflow to calibrate a model using the method of moments. The tutorial is based on a standard model of monetary policy and will showcase the the use of gradient based optimisers and 2nd and 3rd order pruned solutions.
 
 ## Define the model
 
@@ -130,7 +130,7 @@ get_standard_deviation(Gali_2015)
 
 You could also simply use: `std` or `get_std` to the same effect.
 
-Another interesting output is the autocorrelation of the model variables, which you can look at by calling:
+Another interesting output is the autocorrelation of the model variables:
 
 ```@repl tutorial_3
 get_autocorrelation(Gali_2015)
@@ -170,14 +170,14 @@ You can use this information to calibrate certain values to your targets. For ex
 
 ### Method of moments
 
-Instead of doing this by hand we can also set a target and have the computer figure out the corresponding parameter values. In order to do that we need to define targets, and set up an optimisation problem.
+Instead of doing this by hand we can also set a target and have an optimiser find the corresponding parameter values. In order to do that we need to define targets, and set up an optimisation problem.
 
 Our targets are:
 
 - Mean of `W_real = 0.7`
 - Standard deviation of `Pi = 0.01`
 
-Now for the optimisation problem we use the L-BFGS algorithm implemented in `Optim.jl`. This optimisation algorithm is very efficient and gradient based. Note that all model outputs are differentiable with respect to the parameters using automatic and implicit differentiation.
+For the optimisation problem we use the L-BFGS algorithm implemented in `Optim.jl`. This optimisation algorithm is very efficient and gradient based. Note that all model outputs are differentiable with respect to the parameters using automatic and implicit differentiation.
 
 The package provides functions specialised for the use with gradient based code (e.g. gradient-based optimisers or samplers). For model statistics we can use `get_statistics` to get the mean of real wages and the standard deviation of inflation like this:
 
@@ -209,7 +209,7 @@ with this we can test the distance function:
 distance_to_target([0.25, 0.01])
 ```
 
-Next we can pass it on to an optimiser and find the parameter corresponding to the best fit like this:
+Next we can pass it on to an optimiser and find the parameters corresponding to the best fit like this:
 
 ```@repl tutorial_3
 using Optim, LineSearches
@@ -234,9 +234,9 @@ You can combine the method of moments with estimation by simply adding the dista
 
 ## Nonlinear solutions
 
-So far we used the linearised solution of the model. The package does also provide nonlinear solutions and can calculate the theoretical model moments for pruned second and third order perturbation solutions. This can be of interest because nonlinear solutions capture volatility effects (at second order) and asymmetries (at third order). Furthermore, the moments of the data are often non-gaussian while linear solutions with gaussian noise can only generate gaussian distribution of model variables. Already pruned second order solution produce non-gaussian skewness and kurtosis with gaussian noise.
+So far we used the linearised solution of the model. The package also provides nonlinear solutions and can calculate the theoretical model moments for pruned second and third order perturbation solutions. This can be of interest because nonlinear solutions capture volatility effects (at second order) and asymmetries (at third order). Furthermore, the moments of the data are often non-gaussian while linear solutions with gaussian noise can only generate gaussian distributions of model variables. Nonetheless, already pruned second order solutions produce non-gaussian skewness and kurtosis with gaussian noise.
 
-From a users perspective little changes other than specifying that the algorithm is `:pruned_second_order` or `:pruned_third_order`.
+From a users perspective little changes other than specifying that the solution algorithm is `:pruned_second_order` or `:pruned_third_order`.
 
 For example we can get the mean for the pruned second order solution:
 
@@ -246,7 +246,7 @@ get_mean(Gali_2015, parameter_derivatives = get_parameters(Gali_2015), algorithm
 
 Note that the mean of real wages is lower, while inflation is higher. We can see the effect of volatility in the no longer zero partial derivatives for the shock standard deviations. Larger shocks sizes drive down the mean of real wages while they increase inflation.
 
-The mean of the variables does not change if we use pruned third order perturbation but the standard deviation does. Let's look at the standard deviations for the pruned second order solution first:
+The mean of the variables does not change if we use pruned third order perturbation by construction but the standard deviation does. Let's look at the standard deviations for the pruned second order solution first:
 
 ```@repl tutorial_3
 get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015), algorithm = :pruned_second_order)
@@ -266,7 +266,7 @@ These results make it clear that capturing the nonlinear interactions by using n
 
 ### Method of moments for nonlinear solutions
 
-Matching the theoretical moment of the nonlinear model solution to the data is no more complicated for the user than in the linear solution case (see above).
+Matching the theoretical moments of the nonlinear model solution to the data is no more complicated for the user than in the linear solution case (see above).
 
 We need to define the target value and function and let an optimiser find the parameters minimising the distance to the target.
 
@@ -317,7 +317,7 @@ get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015), algorithm 
 
 and indeed it seems also the second derivative is large since the first derivative changed significantly.
 
-Another parameter we cna try is `:σ`. It has a positive impact on the mean of real wages and a negative impact on standard deviation of inflation.
+Another parameter we can try is `σ`. It has a positive impact on the mean of real wages and a negative impact on standard deviation of inflation.
 
 We need to redefine our target function and optimise it. Note that the previous call made a permanent change of parameters (as do all calls where parameters are explicitly set) and now `std_a` is set to 2.91e-9 and no longer 0.01.
 
