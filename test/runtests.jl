@@ -61,28 +61,28 @@ GC.gc()
 if test_higher_order
     @testset verbose = true "FS2000 second order" begin
         include("models/FS2000.jl")
-        functionality_test(m, algorithm = :second_order, plots = false)
+        functionality_test(m, algorithm = :second_order, plots = true)
     end
     m = nothing
     GC.gc()
 
     @testset verbose = true "FS2000 pruned second order" begin
         include("models/FS2000.jl")
-        functionality_test(m, algorithm = :pruned_second_order, plots = false)
+        functionality_test(m, algorithm = :pruned_second_order, plots = true)
     end
     m = nothing
     GC.gc()
 
     @testset verbose = true "FS2000 third order" begin
         include("models/FS2000.jl")
-        functionality_test(m, algorithm = :third_order, plots = false)
+        functionality_test(m, algorithm = :third_order, plots = true)
     end
     m = nothing
     GC.gc()
 
     @testset verbose = true "FS2000 pruned third order" begin
         include("models/FS2000.jl")
-        functionality_test(m, algorithm = :pruned_third_order, plots = false)
+        functionality_test(m, algorithm = :pruned_third_order, plots = true)
     end
     m = nothing
     GC.gc()
