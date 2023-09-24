@@ -156,89 +156,73 @@ end
 
 
 
-function jacobian_wrt_A(A, X)
-    # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
+# function jacobian_wrt_A(A, X)
+#     # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
 
-    # Compute the Kronecker product and subtract from identity
-    C = ℒ.kron(ℒ.I(size(A,1)), sparse(A * X))
+#     # Compute the Kronecker product and subtract from identity
+#     C = ℒ.kron(ℒ.I(size(A,1)), sparse(A * X))
 
-    # Extract the row, column, and value indices from C
-    rows, cols, vals = findnz(C)
+#     # Extract the row, column, and value indices from C
+#     rows, cols, vals = findnz(C)
 
-    # Lists to store the 2D indices after the operations
-    final_rows = zeros(Int,length(rows))
-    final_cols = zeros(Int,length(rows))
+#     # Lists to store the 2D indices after the operations
+#     final_rows = zeros(Int,length(rows))
+#     final_cols = zeros(Int,length(rows))
 
-    Threads.@threads for i = 1:length(rows)
-        # Convert the 1D row index to its 2D components
-        i1, i2 = divrem(rows[i]-1, size(A,1)) .+ 1
+#     Threads.@threads for i = 1:length(rows)
+#         # Convert the 1D row index to its 2D components
+#         i1, i2 = divrem(rows[i]-1, size(A,1)) .+ 1
 
-        # Convert the 1D column index to its 2D components
-        j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
+#         # Convert the 1D column index to its 2D components
+#         j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
 
-        # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
-        final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(A,1), size(A,1)), i2, i1, j1, j2) - 1, size(A,1) * size(A,1)) .+ 1
+#         # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
+#         final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(A,1), size(A,1)), i2, i1, j1, j2) - 1, size(A,1) * size(A,1)) .+ 1
 
-        # Store the 2D indices
-        final_rows[i] = final_row
-        final_cols[i] = final_col
-    end
+#         # Store the 2D indices
+#         final_rows[i] = final_row
+#         final_cols[i] = final_col
+#     end
 
-    r,c,_ = findnz(A) 
+#     r,c,_ = findnz(A) 
     
-    non_zeros_only = spzeros(Int,size(A,1)^2,size(A,1)^2)
+#     non_zeros_only = spzeros(Int,size(A,1)^2,size(A,1)^2)
     
-    non_zeros_only[CartesianIndex.(r .+ (c.-1) * size(A,1), r .+ (c.-1) * size(A,1))] .= 1
+#     non_zeros_only[CartesianIndex.(r .+ (c.-1) * size(A,1), r .+ (c.-1) * size(A,1))] .= 1
     
-    return sparse(final_rows, final_cols, vals, size(A,1) * size(A,1), size(A,1) * size(A,1)) + ℒ.kron(sparse(X * A'), ℒ.I(size(A,1)))' * non_zeros_only
-end
-
-function reconstruct_sparse_matrix(sp_vector::SparseVector{T, Int}, dims::Tuple{Int, Int}) where T
-    # Function to reconstruct the matrix from the vector and dimensions
-    
-    # Create an empty sparse matrix with original dimensions
-    sp_reconstructed = spzeros(T, dims)
-    
-    # Fill in the non-zero values
-    for (i, val) in zip(findnz(sp_vector)...)
-        row = rem(i-1, dims[1]) + 1
-        col = div(i-1, dims[1]) + 1
-        sp_reconstructed[row, col] = val
-    end
-    
-    return sp_reconstructed
-end
+#     return sparse(final_rows, final_cols, vals, size(A,1) * size(A,1), size(A,1) * size(A,1)) + ℒ.kron(sparse(X * A'), ℒ.I(size(A,1)))' * non_zeros_only
+# end
 
 
-# higher order solutions moment helper functions
+# # higher order solutions moment helper functions
 
-function warshall_algorithm!(R::SparseMatrixCSC{Bool,Int64})
-    # Size of the matrix
-    n, m = size(R)
+# function warshall_algorithm!(R::SparseMatrixCSC{Bool,Int64})
+#     # Size of the matrix
+#     n, m = size(R)
     
-    @assert n == m "Warshall algorithm only works for square matrices."
+#     @assert n == m "Warshall algorithm only works for square matrices."
 
-    # The core idea of the Warshall algorithm is to consider each node (in this case, block)
-    # as an intermediate node and check if a path can be created between two nodes by using the
-    # intermediate node.
+#     # The core idea of the Warshall algorithm is to consider each node (in this case, block)
+#     # as an intermediate node and check if a path can be created between two nodes by using the
+#     # intermediate node.
     
-    # k is the intermediate node (or block).
-    for k in 1:n
-        # i is the starting node (or block).
-        for i in 1:n
-            # j is the ending node (or block).
-            for j in 1:n
-                # If there is a direct path from i to k AND a direct path from k to j, 
-                # then a path from i to j exists via k.
-                # Thus, set the value of R[i, j] to 1 (true).
-                R[i, j] = R[i, j] || (R[i, k] && R[k, j])
-            end
-        end
-    end
+#     # k is the intermediate node (or block).
+#     for k in 1:n
+#         # i is the starting node (or block).
+#         for i in 1:n
+#             # j is the ending node (or block).
+#             for j in 1:n
+#                 # If there is a direct path from i to k AND a direct path from k to j, 
+#                 # then a path from i to j exists via k.
+#                 # Thus, set the value of R[i, j] to 1 (true).
+#                 R[i, j] = R[i, j] || (R[i, k] && R[k, j])
+#             end
+#         end
+#     end
     
-    # Return the transitive closure matrix.
-    return R
-end
+#     # Return the transitive closure matrix.
+#     return R
+# end
 
 function combine_pairs(v::Vector{Pair{Vector{Symbol}, Vector{Symbol}}})
     i = 1

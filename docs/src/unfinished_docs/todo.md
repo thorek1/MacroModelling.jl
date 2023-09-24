@@ -3,7 +3,8 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
-- [ ] recheck get function examples and docs
+- [ ] check tols
+- [ ] recheck function examples and docs (include output description)
 - [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
 - [ ] write method of moments how to
 - [ ] autocorr and covariance with derivatives. return 3d array
