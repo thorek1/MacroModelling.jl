@@ -30,6 +30,12 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     nsss = get_non_stochastic_steady_state(m)
     nsss = get_SS(m)
 
+    if algorithm ∈ [:pruned_second_order,:second_order]
+        sols_nv = get_second_order_solution(m)
+    elseif algorithm ∈ [:pruned_third_order,:third_order]
+        sols_nv = get_third_order_solution(m)
+    end
+
     if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
         auto_corr_nv = get_autocorrelation(m, algorithm = algorithm)
         auto_corrr = get_autocorrelation(m, algorithm = algorithm, verbose = true)
@@ -381,6 +387,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
     # get_solution
     sols_nv = get_solution(m, algorithm = algorithm)
+    sols_nv = get_first_order_solution(m)
     sols = get_solution(m, algorithm = algorithm, verbose = true)
     new_sols1 = get_solution(m, algorithm = algorithm, verbose = true, parameters = m.parameter_values * 1.0001)
     new_sols2 = get_solution(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
