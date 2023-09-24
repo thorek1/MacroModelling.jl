@@ -5293,7 +5293,7 @@ end
         observables = [:c,:k]
         calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
         get_mean(FS2000, silent = true)
-        get_SSS(FS2000, silent = true)
+        # get_SSS(FS2000, silent = true)
         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
         # import Plots, StatsPlots
