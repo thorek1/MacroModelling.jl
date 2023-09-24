@@ -591,8 +591,8 @@ RBC_CME = nothing
 
     fin_grad = FiniteDifferences.grad(central_fdm(4,1),x->calculate_kalman_filter_loglikelihood(RBC_CME, data(observables), observables; parameters = x),RBC_CME.parameter_values)[1]
 
-    @test isapprox(forw_grad,fin_grad, rtol = 1e-4)
-    @test isapprox(forw_grad,reverse_grad, rtol = 1e-4)
+    @test isapprox(forw_grad,fin_grad, rtol = 1e-6)
+    @test isapprox(forw_grad,reverse_grad, rtol = 1e-6)
 
     RBC_CME = nothing
 end
