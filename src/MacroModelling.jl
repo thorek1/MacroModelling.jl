@@ -3608,7 +3608,7 @@ riccati_AD = ID.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt c
 
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
-    A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
+    A, solved = riccati_AD(∇₁; T = T, explosive = explosive)
 
     if !solved
         return hcat(A, zeros(size(A,1),T.nExo)), solved
