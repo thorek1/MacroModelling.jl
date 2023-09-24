@@ -5,27 +5,20 @@
 - [ ] implement occasionally binding constraints with shocks
 - [ ] recheck function examples and docs (include output description)
 - [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
-- [ ] write method of moments how to
 - [ ] autocorr and covariance with derivatives. return 3d array
 - [ ] Docs: document outputs and associated functions to work with function
-- [ ] redo naming in moments calc and make whole process faster (precalc wrangling matrices)
 - [ ] use ID for sparse output sylvester solvers (filed issue)
-- [ ] handle sparsity in sylvester solver better (hand over indices and nzvals instead of vec)
 - [ ] make higher order usable with zygote (currently only analytical pushforward, no implicitdiff)
 - [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
-- [ ] use more implicit diff for the other functions as well
 - [ ] write dynare model using function converting unicode to tab completion
 - [ ] nonlinear conditional forecasts
 - [ ] add for loop parser in @parameters
-- [ ] test pruning and add literature
 - [ ] include option to provide pruned states for irfs
 - [ ] compressed higher order derivatives and sparsity of jacobian
 - [ ] implement more multi country models
-- [ ] implement moment matching for pruned models
 - [ ] speed benchmarking (focus on ImplicitDiff part)
 - [ ] add balanced growth path handling
 - [ ] add JOSS article (see Makie.jl)
-- [ ] pruning of 3rd order takes pruned 2nd order input
 - [ ] write docs for (non-linear) solution algorithms
 - [ ] have initial_state accept SS and SSS as arguments
 - [ ] for cond forecasting and kalman, get rid of observables input and use axis key of data input
@@ -70,6 +63,13 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
+- [x] pruning of 3rd order takes pruned 2nd order input
+- [x] implement moment matching for pruned models
+- [x] test pruning and add literature
+- [x] use more implicit diff for the other functions as well
+- [x] handle sparsity in sylvester solver better (hand over indices and nzvals instead of vec)
+- [x] redo naming in moments calc and make whole process faster (precalc wrangling matrices)
+- [x] write method of moments how to
 - [x] check tols - all set to eps() except for dependencies tol (1e-12)
 - [x] set to 0 SS values < 1e-12 - doesnt work with Zygote
 - [x] sylvester with analytical derivatives (much faster if sparse) instead of implicit diff - yes but there are still way too large matrices being realised. implicitdiff is better here
