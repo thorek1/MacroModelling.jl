@@ -117,3 +117,8 @@ Durbin, J, and Koopman, S. J. (2012), "Time Series Analysis by State Space Metho
 Levintal, O., (2017), "Fifth-Order Perturbation Solution to DSGE models", Journal of Economic Dynamics and Control, 80, p. 1---16.
 
 Villemot, S., (2011), "Solving rational expectations models at first order: what Dynare does", Dynare Working Papers 2, CEPREMAP.
+
+## Questions and Contributions
+If you have questions regarding the usage or encounter unexpected behaviour please file an issue.
+
+Contributions are very welcome, as are feature requests and suggestions. Please open an issue or even better become a contributor and create a pull request.

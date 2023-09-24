@@ -9,6 +9,7 @@
 - [ ] Docs: document outputs and associated functions to work with function
 - [ ] use ID for sparse output sylvester solvers (filed issue)
 - [ ] make higher order usable with zygote (currently only analytical pushforward, no implicitdiff)
+- [ ] add pydsge and econpizza to overview
 - [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
 - [ ] write dynare model using function converting unicode to tab completion
 - [ ] nonlinear conditional forecasts
