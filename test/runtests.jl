@@ -2134,4 +2134,6 @@ end
 end
 GC.gc()
 
-include("test_estimation.jl")
+if !test_higher_order #don't test estimation if you are testing higher order
+    include("test_estimation.jl")
+end
