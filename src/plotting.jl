@@ -585,10 +585,12 @@ end
 
 
 
-"""
-See [`plot_irf`](@ref)
-"""
-plot(𝓂::ℳ; kwargs...) = plot_irf(𝓂; kwargs...)
+# """
+# See [`plot_irf`](@ref)
+# """
+# plot(𝓂::ℳ; kwargs...) = plot_irf(𝓂; kwargs...)
+
+# plot(args...;kwargs...) = StatsPlots.plot(args...;kwargs...) #fallback
 
 """
 See [`plot_irf`](@ref)

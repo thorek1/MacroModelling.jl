@@ -2370,10 +2370,10 @@ Wrapper for [`get_moments`](@ref) with `mean = true`, and `non_stochastic_steady
 get_mean(𝓂::ℳ; kwargs...) =  get_moments(𝓂; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[1]
 
 
-"""
-Wrapper for [`get_moments`](@ref) with `mean = true`, the default algorithm being `:pruned_second_order`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
-"""
-mean(𝓂::ℳ; kwargs...) = get_mean(𝓂; kwargs...)
+# """
+# Wrapper for [`get_moments`](@ref) with `mean = true`, the default algorithm being `:pruned_second_order`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
+# """
+# mean(𝓂::ℳ; kwargs...) = get_mean(𝓂; kwargs...)
 
 
 
