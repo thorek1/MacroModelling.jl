@@ -390,6 +390,7 @@ Limited to the first order perturbation solution of the model.
 - $CONDITIONS
 # Keyword Arguments
 - $SHOCK_CONDITIONS
+- $INITIAL_STATE
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS
 - $VARIABLES
@@ -635,7 +636,6 @@ Function to use when differentiating IRFs with repect to parameters.
 - $VARIABLES
 - $SHOCKS
 - $NEGATIVE_SHOCK
-- $GENERALISED_IRF
 - $INITIAL_STATE
 - $LEVELS
 - $VERBOSE
@@ -721,7 +721,7 @@ function get_irf(𝓂::ℳ,
 
     reference_steady_state, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
     
-	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)
+	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂) |> Matrix
 								
     sol_mat, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
@@ -868,14 +868,18 @@ function get_irf(𝓂::ℳ;
         end
     end
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state - reference_steady_state[1:length(𝓂.var)]
+    unspecified_initial_state = initial_state == [0.0]
+
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state - reference_steady_state[1:𝓂.timings.nVars]
 
     if generalised_irf
         girfs =  girf(state_update,
                         SSS_delta,
                         levels ? reference_steady_state : SSS_delta,
                         pruning,
+                        unspecified_initial_state,
                         𝓂.timings; 
+                        algorithm = algorithm,
                         periods = periods, 
                         shocks = shocks, 
                         variables = variables, 
@@ -886,7 +890,9 @@ function get_irf(𝓂::ℳ;
                     initial_state, 
                     levels ? reference_steady_state : SSS_delta,
                     pruning,
+                    unspecified_initial_state,
                     𝓂.timings; 
+                    algorithm = algorithm,
                     periods = periods, 
                     shocks = shocks, 
                     variables = variables, 
@@ -906,6 +912,21 @@ get_irfs = get_irf
 See [`get_irf`](@ref)
 """
 get_IRF = get_irf
+
+# """
+# See [`get_irf`](@ref)
+# """
+# irfs = get_irf
+
+# """
+# See [`get_irf`](@ref)
+# """
+# irf = get_irf
+
+# """
+# See [`get_irf`](@ref)
+# """
+# IRF = get_irf
 
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
@@ -1145,6 +1166,12 @@ Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 SSS(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
 
 
+"""
+Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
+"""
+sss(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
+
+
 
 """
 See [`get_steady_state`](@ref)
@@ -1165,6 +1192,11 @@ get_SS = get_steady_state
 See [`get_steady_state`](@ref)
 """
 get_ss = get_steady_state
+
+"""
+See [`get_steady_state`](@ref)
+"""
+ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 
 
@@ -1311,14 +1343,24 @@ end
 
 
 """
-See [`get_solution`](@ref)
+Wrapper for [`get_solution`](@ref) with `algorithm = :first_order`.
 """
-get_first_order_solution = get_solution
+get_first_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :first_order)
+
+"""
+Wrapper for [`get_solution`](@ref) with `algorithm = :second_order`.
+"""
+get_second_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :second_order)
+
+"""
+Wrapper for [`get_solution`](@ref) with `algorithm = :third_order`.
+"""
+get_third_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :third_order)
 
 """
 See [`get_solution`](@ref)
 """
-get_perturbation_solution = get_solution
+get_perturbation_solution(args...; kwargs...) = get_solution(args...; kwargs...)
 
 
 
@@ -1356,7 +1398,7 @@ function get_solution(𝓂::ℳ,
         end
     end
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
 
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
@@ -1484,7 +1526,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
     
-	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
 
     𝑺₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
@@ -1626,13 +1668,35 @@ function get_variance_decomposition(𝓂::ℳ;
 
     SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose)
     
-	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    
+    variances_by_shock = zeros(𝓂.timings.nVars, 𝓂.timings.nExo)
 
-    variances_by_shock = reduce(hcat,[ℒ.diag(calculate_covariance_AD(sol[:,[1:𝓂.timings.nPast_not_future_and_mixed..., 𝓂.timings.nPast_not_future_and_mixed + i]], T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))[1]) for i in 1:𝓂.timings.nExo])
+    for i in 1:𝓂.timings.nExo
+        A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
 
-    var_decomp = variances_by_shock ./ sum(variances_by_shock,dims=2)
+        C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed + i]
+        
+        CC = C * C'
+
+        coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    
+        dimensions = Tuple{Int, Int}[]
+        push!(dimensions,size(A))
+        push!(dimensions,size(CC))
+        
+        values = vcat(vec(A), vec(collect(-CC)))
+    
+        covar_raw, _ = solve_sylvester_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+        # covar_raw, _ = solve_sylvester_equation_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)], solver = :bicgstab)
+        # covar_raw, _ = solve_sylvester_equation_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
+
+        variances_by_shock[:,i] = ℒ.diag(covar_raw)
+    end
+    
+    var_decomp = variances_by_shock ./ sum(variances_by_shock, dims=2)
 
     axis1 = 𝓂.var
 
@@ -1663,12 +1727,13 @@ get_var_decomp = get_variance_decomposition
 
 """
 $(SIGNATURES)
-Return the correlations of endogenous variables using the linearised solution. 
+Return the correlations of endogenous variables using the first, pruned second, or pruned third order perturbation solution. 
 
 # Arguments
 - $MODEL
 # Keyword Arguments
 - $PARAMETERS
+- $ALGORITHM
 - $VERBOSE
 
 # Examples
@@ -1705,13 +1770,20 @@ And data, 4×4 Matrix{Float64}:
 """
 function get_correlation(𝓂::ℳ; 
     parameters = nothing,  
+    algorithm::Symbol = :first_order,
     verbose::Bool = false)
     
-    solve!(𝓂, parameters = parameters, verbose = verbose)
+    @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration,:pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
-    # write_parameters_input!(𝓂,parameters, verbose = verbose)
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose)
 
-    covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+    if algorithm == :pruned_third_order
+        covar_dcmp, state_μ, SS_and_pars = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, verbose = verbose)
+    elseif algorithm == :pruned_second_order
+        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+    else
+        covar_dcmp, sol, _, SS_and_pars = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+    end
 
     std = sqrt.(ℒ.diag(covar_dcmp))
 
@@ -1743,12 +1815,14 @@ corr = get_correlation
 
 """
 $(SIGNATURES)
-Return the autocorrelations of endogenous variables using the linearised solution. 
+Return the autocorrelations of endogenous variables using the first, pruned second, or pruned third order perturbation solution. 
 
 # Arguments
 - $MODEL
 # Keyword Arguments
+- `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation
 - $PARAMETERS
+- $ALGORITHM
 - $VERBOSE
 
 # Examples
@@ -1784,18 +1858,36 @@ And data, 4×5 Matrix{Float64}:
 ```
 """
 function get_autocorrelation(𝓂::ℳ; 
+    autocorrelation_periods = 1:5,
     parameters = nothing,  
+    algorithm::Symbol = :first_order,
     verbose::Bool = false)
     
-    solve!(𝓂, parameters = parameters, verbose = verbose)
+    @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration,:pruned_second_order,:pruned_third_order] "Autocorrelation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
-    # write_parameters_input!(𝓂,parameters, verbose = verbose)
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose)
 
-    covar_dcmp, sol, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+    if algorithm == :pruned_third_order
+        covar_dcmp, state_μ, autocorr, SS_and_pars = calculate_third_order_moments(𝓂.parameter_values, 𝓂.timings.var, 𝓂, verbose = verbose, autocorrelation = true)
+    elseif algorithm == :pruned_second_order
+        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
 
-    A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+        ŝ_to_ŝ₂ⁱ = ℒ.diagm(ones(size(Σᶻ₂,1)))
 
-    autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp)) for i in 1:5])
+        autocorr = zeros(size(covar_dcmp,1),length(autocorrelation_periods))
+
+        for i in autocorrelation_periods
+            autocorr[:,i] .= ℒ.diag(ŝ_to_y₂ * ŝ_to_ŝ₂ⁱ * autocorr_tmp) ./ ℒ.diag(covar_dcmp) 
+            ŝ_to_ŝ₂ⁱ *= ŝ_to_ŝ₂
+        end
+    else
+        covar_dcmp, sol, _, SS_and_pars = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+        A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+    
+        autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp)) for i in autocorrelation_periods])
+    end
+
     
     axis1 = 𝓂.var
 
@@ -1804,7 +1896,7 @@ function get_autocorrelation(𝓂::ℳ;
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    KeyedArray(collect(autocorr); Variables = axis1, Autocorrelation_orders = 1:5)
+    KeyedArray(collect(autocorr); Variables = axis1, Autocorrelation_orders = autocorrelation_periods)
 end
 
 """
@@ -1823,18 +1915,22 @@ autocorr = get_autocorrelation
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using the linearised solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
+Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non stochastic steady state (SS), and standard deviations, but can optionally return variances, and covariance matrix.
 
 # Arguments
 - $MODEL
 # Keyword Arguments
 - $PARAMETERS
 - `non_stochastic_steady_state` [Default: `true`, Type: `Bool`]: switch to return SS of endogenous variables
+- `mean` [Default: `false`, Type: `Bool`]: switch to return mean of endogenous variables (the mean for the linearised solutoin is the NSSS)
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
+- $VARIABLES
 - $DERIVATIVES
 - $PARAMETER_DERIVATIVES
+- $ALGORITHM
+- `dependencies_tol` [Default: `1e-12`, Type: `AbstractFloat`]: tolerance for the effect of a variable on the variable of interest when isolating part of the system for calculating covariance related statistics
 - $VERBOSE
 
 # Examples
@@ -1889,16 +1985,23 @@ And data, 4×6 Matrix{Float64}:
 function get_moments(𝓂::ℳ; 
     parameters = nothing,  
     non_stochastic_steady_state::Bool = true, 
+    mean::Bool = false,
     standard_deviation::Bool = true, 
     variance::Bool = false, 
     covariance::Bool = false, 
+    variables::Union{Symbol_input,String_input} = :all_including_auxilliary, 
     derivatives::Bool = true,
     parameter_derivatives::Union{Symbol_input,String_input} = :all,
-    verbose::Bool = false)#limit output by selecting pars and vars like for plots and irfs!?
+    algorithm::Symbol = :first_order,
+    dependencies_tol::AbstractFloat = 1e-12,
+    verbose::Bool = false,
+    silent::Bool = true)#limit output by selecting pars and vars like for plots and irfs!?
     
-    solve!(𝓂, parameters = parameters, verbose = verbose)
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, silent = silent)
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
+
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
     parameter_derivatives = parameter_derivatives isa String_input ? parameter_derivatives .|> Meta.parse .|> replace_indices : parameter_derivatives
 
@@ -1920,15 +2023,13 @@ function get_moments(𝓂::ℳ;
 
     NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
-    if length_par * length(NSSS) > 200 || (!variance && !standard_deviation && !non_stochastic_steady_state)
+    if length_par * length(NSSS) > 200 || (!variance && !standard_deviation && !non_stochastic_steady_state && !mean)
         derivatives = false
     end
 
-    if parameter_derivatives != :all && (variance || standard_deviation || non_stochastic_steady_state)
+    if parameter_derivatives != :all && (variance || standard_deviation || non_stochastic_steady_state || mean)
         derivatives = true
     end
-
-
 
 
     axis1 = 𝓂.var
@@ -1951,7 +2052,7 @@ function get_moments(𝓂::ℳ;
 
     if derivatives
         if non_stochastic_steady_state
-            axis1 = [𝓂.var...,𝓂.calibration_equations_parameters...]
+            axis1 = [𝓂.var[var_idx]...,𝓂.calibration_equations_parameters...]
     
             if any(x -> contains(string(x), "◖"), axis1)
                 axis1_decomposed = decompose_name.(axis1)
@@ -1967,11 +2068,17 @@ function get_moments(𝓂::ℳ;
 
             dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), 𝓂.parameter_values[param_idx])
             
+            if length(𝓂.calibration_equations_parameters) > 0
+                var_idx_ext = vcat(var_idx, 𝓂.timings.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
+            else
+                var_idx_ext = var_idx
+            end
+
             # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
-            SS =  KeyedArray(hcat(collect(NSSS),dNSSS);  Variables = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
+            SS =  KeyedArray(hcat(collect(NSSS[var_idx_ext]),dNSSS[var_idx_ext,:]);  Variables = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         end
         
-        axis1 = 𝓂.var
+        axis1 = 𝓂.var[var_idx]
 
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
@@ -1986,15 +2093,34 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            if algorithm == :pruned_second_order
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+                dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
+
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            elseif algorithm == :pruned_third_order
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
+
+                dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose), 𝓂.parameter_values[param_idx])
+
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            else
+                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+                dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
+            end
 
             vari = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
 
             # dvariance = ℱ.jacobian(x-> convert(Vector{Number},max.(ℒ.diag(calculate_covariance(x, 𝓂)),eps(Float64))), Float64.(𝓂.parameter_values))
-            dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
             
             
-            varrs =  KeyedArray(hcat(vari,dvariance);  Variables = axis1, Variance_and_∂variance∂parameter = axis2)
+            varrs =  KeyedArray(hcat(vari[var_idx],dvariance[var_idx,:]);  Variables = axis1, Variance_and_∂variance∂parameter = axis2)
 
             if standard_deviation
                 axis2 = vcat(:Standard_deviation, 𝓂.parameters[param_idx])
@@ -2005,9 +2131,16 @@ function get_moments(𝓂::ℳ;
                 end
     
                 standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
-                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
 
-                st_dev =  KeyedArray(hcat(standard_dev,dst_dev);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
+                if algorithm == :pruned_second_order
+                    dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                elseif algorithm == :pruned_third_order
+                    dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                else
+                    dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                end
+
+                st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
             end
         end
 
@@ -2019,49 +2152,135 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            if algorithm == :pruned_second_order
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            elseif algorithm == :pruned_third_order
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
+
+                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)), 𝓂.parameter_values[param_idx])
+
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            else
+                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+                
+                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+            end
 
             standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
 
-            dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
-            
-            st_dev =  KeyedArray(hcat(standard_dev,dst_dev);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
+            st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
         end
+
+
+        if mean && !(variance || standard_deviation || covariance)
+            axis2 = vcat(:Mean, 𝓂.parameters[param_idx])
+        
+            if any(x -> contains(string(x), "◖"), axis2)
+                axis2_decomposed = decompose_name.(axis2)
+                axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+            end
+
+            state_μ, ___ = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose)
+
+            state_μ_dev = ℱ.jacobian(x -> mean_parameter_derivatives(x, param_idx, 𝓂, algorithm = algorithm, verbose = verbose), 𝓂.parameter_values[param_idx])
+            
+            var_means =  KeyedArray(hcat(state_μ[var_idx], state_μ_dev[var_idx, :]);  Variables = axis1, Mean_and_∂mean∂parameter = axis2)
+        end
+
+
     else
         if non_stochastic_steady_state
-            axis1 = [𝓂.var...,𝓂.calibration_equations_parameters...]
+            axis1 = [𝓂.var[var_idx]...,𝓂.calibration_equations_parameters...]
     
             if any(x -> contains(string(x), "◖"), axis1)
                 axis1_decomposed = decompose_name.(axis1)
                 axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
             end
 
-            SS =  KeyedArray(collect(NSSS);  Variables = axis1)
+            if length(𝓂.calibration_equations_parameters) > 0
+                var_idx_ext = vcat(var_idx, 𝓂.timings.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
+            else
+                var_idx_ext = var_idx
+            end
+
+            SS =  KeyedArray(collect(NSSS)[var_idx_ext];  Variables = axis1)
         end
 
-        axis1 = 𝓂.var
+        axis1 = 𝓂.var[var_idx]
 
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
             axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
         end
 
+        if mean && !(variance || standard_deviation || covariance)
+            state_μ, ___ = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose)
+            var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+        end
+
         if variance
-            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            if algorithm == :pruned_second_order
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            elseif algorithm == :pruned_third_order
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            else
+                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            end
+
             varr = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
-            varrs = KeyedArray(varr;  Variables = axis1)
+
+            varrs = KeyedArray(varr[var_idx];  Variables = axis1)
+
             if standard_deviation
-                st_dev = KeyedArray(sqrt.(varr);  Variables = axis1)
+                st_dev = KeyedArray(sqrt.(varr)[var_idx];  Variables = axis1)
             end
         end
 
         if standard_deviation
-            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
-            st_dev = KeyedArray(sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))));  Variables = axis1)
+            if algorithm == :pruned_second_order
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            elseif algorithm == :pruned_third_order
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            else
+                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            end
+            st_dev = KeyedArray(sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))[var_idx];  Variables = axis1)
         end
 
         if covariance
-            covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            if algorithm == :pruned_second_order
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            elseif algorithm == :pruned_third_order
+                covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)
+                if mean
+                    var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
+                end
+            else
+                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
+            end
         end
     end
 
@@ -2070,6 +2289,9 @@ function get_moments(𝓂::ℳ;
     if non_stochastic_steady_state
         push!(ret,SS)
     end
+    if mean
+        push!(ret,var_means)
+    end
     if standard_deviation
         push!(ret,st_dev)
     end
@@ -2077,137 +2299,18 @@ function get_moments(𝓂::ℳ;
         push!(ret,varrs)
     end
     if covariance
-        axis1 = 𝓂.var
+        axis1 = 𝓂.var[var_idx]
 
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
             axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
         end
 
-        push!(ret,KeyedArray(covar_dcmp; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1))
+        push!(ret,KeyedArray(covar_dcmp[var_idx, var_idx]; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1))
     end
 
     return ret
 end
-
-
-
-
-"""
-$(SIGNATURES)
-Return the first and second moments of endogenous variables using the linearised solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
-Function to use when differentiating model moments with repect to parameters.
-
-# Arguments
-- $MODEL
-- $PARAMETER_VALUES
-# Keyword Arguments
-- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: switch to return SS of endogenous variables
-- `standard_deviation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the standard deviation of the mentioned variables
-- `variance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the variance of the mentioned variables
-- `covariance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the covariance of the mentioned variables
-- `autocorrelation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the autocorrelation of the mentioned variables
-- `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation of the mentioned variables
-- $VERBOSE
-
-# Examples
-```jldoctest
-using MacroModelling
-
-@model RBC begin
-    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
-    q[0] = exp(z[0]) * k[-1]^α
-    z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
-
-@parameters RBC begin
-    std_z = 0.01
-    ρ = 0.2
-    δ = 0.02
-    α = 0.5
-    β = 0.95
-end;
-
-get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_deviation = RBC.var)
-# output
-1-element Vector{Any}:
- [0.02666420378525503, 0.26467737291221793, 0.07393254045396483, 0.010206207261596574]
-```
-"""
-function get_statistics(𝓂, parameter_values::Vector{T}; 
-    parameters::Vector{Symbol} = Symbol[], 
-    non_stochastic_steady_state::Vector{Symbol} = Symbol[], 
-    standard_deviation::Vector{Symbol} = Symbol[], 
-    variance::Vector{Symbol} = Symbol[], 
-    covariance::Vector{Symbol} = Symbol[],
-    autocorrelation::Vector{Symbol} = Symbol[],
-    autocorrelation_periods::U = 1:5,
-    verbose::Bool = false) where {U,T}
-
-    @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
-
-    SS_var_idx = indexin(non_stochastic_steady_state, 𝓂.var)
-
-    std_var_idx = indexin(standard_deviation, 𝓂.var)
-
-    var_var_idx = indexin(variance, 𝓂.var)
-
-    covar_var_idx = indexin(covariance, 𝓂.var)
-
-    autocorr_var_idx = indexin(autocorrelation, 𝓂.var)
-
-    other_parameter_values = 𝓂.parameter_values[indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters)]
-
-    sort_idx = sortperm(vcat(indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters), indexin(parameters, 𝓂.parameters)))
-
-    all_parameters = vcat(other_parameter_values, parameter_values)[sort_idx]
-
-    solve!(𝓂, verbose = verbose)
-
-    covar_dcmp, sol, _, SS_and_pars = calculate_covariance(all_parameters,𝓂, verbose = verbose)
-
-    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-
-    if !(variance == Symbol[])
-        varrs = convert(Vector{Real},ℒ.diag(covar_dcmp))
-        if !(standard_deviation == Symbol[])
-            st_dev = sqrt.(varrs)
-        end
-    elseif !(autocorrelation == Symbol[])
-        A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
-
-        autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp)) for i in autocorrelation_periods])
-    else
-        if !(standard_deviation == Symbol[])
-            st_dev = sqrt.(abs.(convert(Vector{Real},ℒ.diag(covar_dcmp))))
-        end
-    end
-
-    ret = []
-    if !(non_stochastic_steady_state == Symbol[])
-        push!(ret,SS[SS_var_idx])
-    end
-    if !(standard_deviation == Symbol[])
-        push!(ret,st_dev[std_var_idx])
-    end
-    if !(variance == Symbol[])
-        push!(ret,varrs[var_var_idx])
-    end
-    if !(covariance == Symbol[])
-        covar_dcmp_sp = sparse(ℒ.triu(covar_dcmp))
-
-        droptol!(covar_dcmp_sp,eps(Float64))
-
-        push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
-    end
-    if !(autocorrelation == Symbol[]) 
-        push!(ret,autocorr[autocorr_var_idx,:] )
-    end
-
-    return ret
-end
-
 
 """
 Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
@@ -2259,3 +2362,193 @@ get_cov = get_covariance
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
 """
 cov = get_covariance
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `mean = true`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
+"""
+get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[1]
+
+
+# """
+# Wrapper for [`get_moments`](@ref) with `mean = true`, the default algorithm being `:pruned_second_order`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
+# """
+# mean(𝓂::ℳ; kwargs...) = get_mean(𝓂; kwargs...)
+
+
+
+"""
+$(SIGNATURES)
+Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or third order perturbation solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
+Function to use when differentiating model moments with repect to parameters.
+
+# Arguments
+- $MODEL
+- `parameter_values` [Type: `Vector`]: Parameter values.
+# Keyword Arguments
+- `parameters` [Type: `Vector{Symbol}`]: Corresponding names of parameters values.
+- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the SS of endogenous variables
+- `mean` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the mean of endogenous variables (the mean for the linearised solutoin is the NSSS)
+- `standard_deviation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the standard deviation of the mentioned variables
+- `variance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the variance of the mentioned variables
+- `covariance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the covariance of the mentioned variables
+- `autocorrelation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the autocorrelation of the mentioned variables
+- `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation of the mentioned variables
+- $ALGORITHM
+- $VERBOSE
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_deviation = RBC.var)
+# output
+1-element Vector{Any}:
+ [0.02666420378525503, 0.26467737291221793, 0.07393254045396483, 0.010206207261596574]
+```
+"""
+function get_statistics(𝓂, 
+    parameter_values::Vector{T}; 
+    parameters::Vector{Symbol} = Symbol[], 
+    non_stochastic_steady_state::Vector{Symbol} = Symbol[],
+    mean::Vector{Symbol} = Symbol[],
+    standard_deviation::Vector{Symbol} = Symbol[],
+    variance::Vector{Symbol} = Symbol[],
+    covariance::Vector{Symbol} = Symbol[],
+    autocorrelation::Vector{Symbol} = Symbol[],
+    autocorrelation_periods::U = 1:5,
+    algorithm::Symbol = :first_order,
+    verbose::Bool = false) where {U,T}
+
+
+    @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration,:pruned_second_order,:pruned_third_order] "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
+
+    @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
+
+    SS_var_idx = indexin(non_stochastic_steady_state, 𝓂.var)
+
+    mean_var_idx = indexin(mean, 𝓂.var)
+
+    std_var_idx = indexin(standard_deviation, 𝓂.var)
+
+    var_var_idx = indexin(variance, 𝓂.var)
+
+    covar_var_idx = indexin(covariance, 𝓂.var)
+
+    autocorr_var_idx = indexin(autocorrelation, 𝓂.var)
+
+    other_parameter_values = 𝓂.parameter_values[indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters)]
+
+    sort_idx = sortperm(vcat(indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters), indexin(parameters, 𝓂.parameters)))
+
+    all_parameters = vcat(other_parameter_values, parameter_values)[sort_idx]
+
+    if algorithm == :pruned_third_order && !(!(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]))
+        algorithm = :pruned_second_order
+    end
+
+    solve!(𝓂, algorithm = algorithm, verbose = verbose)
+
+    if algorithm == :pruned_third_order
+
+        if !(autocorrelation == Symbol[])
+            second_mom_third_order = union(autocorrelation, standard_deviation, variance, covariance)
+
+            covar_dcmp, state_μ, autocorr, SS_and_pars = calculate_third_order_moments(all_parameters, second_mom_third_order, 𝓂, verbose = verbose, autocorrelation = true, autocorrelation_periods = autocorrelation_periods)
+
+        elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
+
+            covar_dcmp, state_μ, SS_and_pars = calculate_third_order_moments(all_parameters, union(variance,covariance,standard_deviation), 𝓂, verbose = verbose)
+
+        end
+
+    elseif algorithm == :pruned_second_order
+
+        if !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])
+            covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(all_parameters, 𝓂, verbose = verbose)
+        else
+            state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(all_parameters, 𝓂, verbose = verbose, covariance = false)
+        end
+
+    else
+        covar_dcmp, sol, _, SS_and_pars = calculate_covariance(all_parameters, 𝓂, verbose = verbose)
+    end
+
+    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+
+    if !(variance == Symbol[])
+        varrs = convert(Vector{T},ℒ.diag(covar_dcmp))
+        if !(standard_deviation == Symbol[])
+            st_dev = sqrt.(varrs)
+        end
+    elseif !(autocorrelation == Symbol[])
+        if algorithm == :pruned_second_order
+            ŝ_to_ŝ₂ⁱ = zero(ŝ_to_ŝ₂)
+            ŝ_to_ŝ₂ⁱ += ℒ.diagm(ones(size(ŝ_to_ŝ₂,1)))
+
+            autocorr = zeros(T,size(covar_dcmp,1),length(autocorrelation_periods))
+
+            for i in autocorrelation_periods
+                autocorr[:,i] .= ℒ.diag(ŝ_to_y₂ * ŝ_to_ŝ₂ⁱ * autocorr_tmp) ./ ℒ.diag(covar_dcmp) 
+                ŝ_to_ŝ₂ⁱ *= ŝ_to_ŝ₂
+            end
+        elseif !(algorithm == :pruned_third_order)
+            A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+        
+            autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp)) for i in autocorrelation_periods])
+        end
+
+        if !(standard_deviation == Symbol[])
+            st_dev = sqrt.(abs.(convert(Vector{T},ℒ.diag(covar_dcmp))))
+        end
+    else
+        if !(standard_deviation == Symbol[])
+            st_dev = sqrt.(abs.(convert(Vector{T},ℒ.diag(covar_dcmp))))
+        end
+    end
+
+    ret = AbstractArray{T}[]
+    if !(non_stochastic_steady_state == Symbol[])
+        push!(ret,SS[SS_var_idx])
+    end
+    if !(mean == Symbol[])
+        if algorithm ∉ [:pruned_second_order,:pruned_third_order]
+            push!(ret,SS[mean_var_idx])
+        else
+            push!(ret,state_μ[mean_var_idx])
+        end
+    end
+    if !(standard_deviation == Symbol[])
+        push!(ret,st_dev[std_var_idx])
+    end
+    if !(variance == Symbol[])
+        push!(ret,varrs[var_var_idx])
+    end
+    if !(covariance == Symbol[])
+        covar_dcmp_sp = sparse(ℒ.triu(covar_dcmp))
+
+        droptol!(covar_dcmp_sp,eps(Float64))
+
+        push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
+    end
+    if !(autocorrelation == Symbol[]) 
+        push!(ret,autocorr[autocorr_var_idx,:] )
+    end
+
+    return ret
+end

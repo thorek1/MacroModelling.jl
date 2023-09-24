@@ -1,7 +1,7 @@
 name = "MacroModelling"
 uuid = "687ffad2-3618-405e-ac50-e0f7b9c75e44"
 authors = ["Thore Kockerols <mail@thorekockerols.com>"]
-version = "0.1.28"
+version = "0.1.29"
 
 [deps]
 AbstractDifferentiation = "c29ec348-61ec-40c8-8164-b8c60e9d9f3d"
@@ -31,6 +31,7 @@ SpeedMapping = "f1835b91-879b-4a3f-a438-e4baacf14412"
 Subscripts = "2b7f82d5-8785-4f63-971e-f18ddbeb808e"
 SymPyPythonCall = "bc8888f7-b21e-4b7c-a06a-5d9c9496438c"
 Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
+ThreadedSparseArrays = "59d54670-b8ac-4d81-ab7a-bb56233e17ab"
 
 [weakdeps]
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
@@ -61,6 +62,7 @@ SpeedMapping = "^0.3"
 Subscripts = "^0.1"
 SymPyPythonCall = "^0.1.1"
 Symbolics = "^5"
+ThreadedSparseArrays = "^0.2"
 julia = "1.8"
 
 [extras]

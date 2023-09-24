@@ -3,18 +3,25 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
+- [ ] recheck function examples and docs (include output description)
+- [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
+- [ ] autocorr and covariance with derivatives. return 3d array
+- [ ] Docs: document outputs and associated functions to work with function
+- [ ] use ID for sparse output sylvester solvers (filed issue)
+- [ ] make higher order usable with zygote (currently only analytical pushforward, no implicitdiff)
 - [ ] add pydsge and econpizza to overview
-- [ ] make higher order suable with zygote (currently only analytical pushforward, no implicitdiff)
 - [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
-- [ ] use more implicit diff for the other functions as well
+- [ ] write dynare model using function converting unicode to tab completion
+- [ ] nonlinear conditional forecasts
 - [ ] add for loop parser in @parameters
+- [ ] include option to provide pruned states for irfs
 - [ ] compressed higher order derivatives and sparsity of jacobian
 - [ ] implement more multi country models
-- [ ] implement moment matching for pruned models
 - [ ] speed benchmarking (focus on ImplicitDiff part)
 - [ ] add balanced growth path handling
 - [ ] add JOSS article (see Makie.jl)
 - [ ] write docs for (non-linear) solution algorithms
+- [ ] have initial_state accept SS and SSS as arguments
 - [ ] for cond forecasting and kalman, get rid of observables input and use axis key of data input
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
 - [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
@@ -48,7 +55,6 @@
 - [ ] print SS dependencies (get parameters (in function of parameters) into the dependencies), show SS solver
 - [ ] use strings instead of symbols internally
 - [ ] write how-to for calibration equations
-- [ ] have a look again at get_statistics function
 - [ ] make the nonnegativity trick optional or use nanmath?
 - [ ] use packages for kalman filter
 - [ ] clean up different parameter types
@@ -58,7 +64,27 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
-- [x] handle KeyedArrays with strings as dimension names as input- [x] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
+- [x] pruning of 3rd order takes pruned 2nd order input
+- [x] implement moment matching for pruned models
+- [x] test pruning and add literature
+- [x] use more implicit diff for the other functions as well
+- [x] handle sparsity in sylvester solver better (hand over indices and nzvals instead of vec)
+- [x] redo naming in moments calc and make whole process faster (precalc wrangling matrices)
+- [x] write method of moments how to
+- [x] check tols - all set to eps() except for dependencies tol (1e-12)
+- [x] set to 0 SS values < 1e-12 - doesnt work with Zygote
+- [x] sylvester with analytical derivatives (much faster if sparse) instead of implicit diff - yes but there are still way too large matrices being realised. implicitdiff is better here
+- [x] autocorr to statistics output and in general for higher order pruned sols
+- [x] fix product moments and test for cases with more than 2 shocks
+- [x] write tests for variables argument in get_moment and for higher order moments
+- [x] handle KeyedArrays with strings as dimension names as input
+- [x] add mean in output funcs for higher order 
+- [x] recheck results for third order cov
+- [x] have a look again at get_statistics function
+- [x] consolidate sylvester solvers (diff)
+- [x] put outside of loop the ignore derviatives for derivatives
+- [x] write function to smart select variables to calc cov for
+- [x] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
 - [x] have for loop where the items are multiplied or divided or whatever, defined by operator | + or * only
 - [x] write documentation for string inputs
 - [x] write documentation for programmatic model writing

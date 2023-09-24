@@ -148,6 +148,14 @@ struct symbolics
     # var_solved_calib_list::Vector{Set{SPyPyC.Sym}}
 end
 
+struct auxilliary_indices
+    dyn_var_future_idx::Vector{Int}
+    dyn_var_present_idx::Vector{Int}
+    dyn_var_past_idx::Vector{Int}
+    dyn_ss_idx::Vector{Int}
+    shocks_ss::Vector{Int}
+end
+
 struct second_order_auxilliary_matrices
     𝛔::SparseMatrixCSC{Int}
     𝐂₂::SparseMatrixCSC{Int}
@@ -201,6 +209,7 @@ mutable struct perturbation
     pruned_second_order::second_order_perturbation_solution
     third_order::third_order_perturbation_solution
     pruned_third_order::third_order_perturbation_solution
+    auxilliary_indices::auxilliary_indices
     second_order_auxilliary_matrices::second_order_auxilliary_matrices
     third_order_auxilliary_matrices::third_order_auxilliary_matrices
 end

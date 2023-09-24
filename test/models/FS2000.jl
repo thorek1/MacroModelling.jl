@@ -1,4 +1,5 @@
 # Translated from: https://archives.dynare.org/documentation/examples.html
+# be aware that dynare dynamics differ if c[2] or P[2] (not sure which one) are not declared explicitly as an auxilliary variable (c_lead(0) = c(+1);). The system in dynare has one less variable and the higher order solutions are different for the stochastic vol term.
 
 @model m begin
     dA[0] = exp(gam + z_e_a  *  e_a[x])
