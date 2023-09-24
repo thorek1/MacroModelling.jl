@@ -2,9 +2,9 @@
 
 **Author: Thore Kockerols (@thorek1)**
 
-`MacroModelling.jl` is a package for developing and solving dynamic stochastic general equilibrium (DSGE) models. The package provides functions for creating, calibrating, simulating and estimating discrete-time DSGE models. These kind of models are typically used to describe the behaviour of a macroeconomy and are particularly suited for counterfactual analysis (economic policy evaluation) and exploring/quantifying specific mechanisms (academic research). These models are difficult to work with because they consist of a nonlinear system of equations describing a stochastic control problem.
+`MacroModelling.jl` is a Julia package for developing and solving dynamic stochastic general equilibrium (DSGE) models. These kinds of models describe the behavior of a macroeconomy and are particularly suited for counterfactual analysis (economic policy evaluation) and exploring / quantifying specific mechanisms (academic research). Due to the complexity of these models, efficient numerical tools are required, as analytical solutions are often unavailable. `MacroModelling.jl` serves as a tool for handling the complexities involved, such as forward-looking expectations, nonlinearity, and high dimensionality.
 
-The goal of `MacroModelling.jl` is to reduce coding time and speed up model development.
+The goal of this package is to reduce coding time and speed up model development by providing functions for working with discrete-time DSGE models. The user-friendly syntax, automatic variable declaration, and effective steady state solver facilitates fast prototyping of models. The target audience for the package includes central bankers, regulators, graduate students, and others working in academia with an interest in DSGE modelling.
 
 As of now the package can:
 
@@ -64,6 +64,7 @@ The package contains the following models in the `models` folder:
 **Timing convention**|end-of-period|end-of-period|end-of-period|end-of-period|end-of-period||end-of-period|start-of-period|end-of-period|start-of-period|end-of-period|start-of-period|start-of-period|
 
 ## Bibliography
+
 Andreasen, M. M., Fernández-Villaverde, J., and Rubio-Ramírez, J. F.  (2018), "The pruned state-space system for non-linear DSGE models: Theory and empirical applications.", The Review of Economic Studies, 85.1, p. 1-49.
 
 Durbin, J, and Koopman, S. J. (2012), "Time Series Analysis by State Space Methods, 2nd edn", Oxford University Press.
