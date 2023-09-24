@@ -14,6 +14,7 @@ makedocs(
             "Installation" => "tutorials/install.md",
             "Write your first simple model - RBC" => "tutorials/rbc.md",
             "Work with a more complex model - Smets and Wouters (2003)" => "tutorials/sw03.md",
+            "Calibration / method of moments (for higher order perturbation solutions) - Gali (2015)" => "tutorials/calibration.md",
             "Estimate a model using gradient based samplers - Schorfheide (2000)" => "tutorials/estimation.md",
         ],
         "How-to guides" => [
