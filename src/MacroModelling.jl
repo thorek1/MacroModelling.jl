@@ -59,7 +59,7 @@ end
 export @model, @parameters, solve!
 export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution#, plot
 export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
-export get_irfs, get_irf, get_IRF, simulate, get_simulation, irfs, irf, IRF
+export get_irfs, get_irf, get_IRF, simulate, get_simulation
 export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution, get_second_order_solution, get_third_order_solution
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS, ss, sss

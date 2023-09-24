@@ -913,20 +913,20 @@ See [`get_irf`](@ref)
 """
 get_IRF = get_irf
 
-"""
-See [`get_irf`](@ref)
-"""
-irfs = get_irf
+# """
+# See [`get_irf`](@ref)
+# """
+# irfs = get_irf
 
-"""
-See [`get_irf`](@ref)
-"""
-irf = get_irf
+# """
+# See [`get_irf`](@ref)
+# """
+# irf = get_irf
 
-"""
-See [`get_irf`](@ref)
-"""
-IRF = get_irf
+# """
+# See [`get_irf`](@ref)
+# """
+# IRF = get_irf
 
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
