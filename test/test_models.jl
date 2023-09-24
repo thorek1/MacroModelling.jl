@@ -37,6 +37,14 @@ corrr = get_correlation(SGU_2003_debt_premium)
 @test isapprox(corrr(:i,:r),0.0114,rtol = 1e-3)
 @test isapprox(corrr(:i,:k),0.4645,rtol = 1e-3)
 
+if test_higher_order
+    mean_2nd = get_mean(SGU_2003_debt_premium, algorithm = :pruned_second_order, derivatives = false)
+    autocorr_3rd = get_autocorrelation(SGU_2003_debt_premium, algorithm = :pruned_third_order)
+
+    @test isapprox(mean_2nd(:r),exp(-3.2194),rtol = 1e-3)
+    @test isapprox(autocorr_3rd(:c,5),0.4784,rtol = 1e-3)
+end
+
 SGU_2003_debt_premium = nothing
 
 
@@ -65,6 +73,14 @@ var_dec = get_variance_decomposition(JQ_2012_RBC)
 @test isapprox(var_dec(:R,:) * 100, [67.43,32.57],rtol = 1e-4)
 @test isapprox(var_dec(:k,:) * 100, [17.02,82.98],rtol = 1e-4)
 @test isapprox(var_dec(:c,:) * 100, [13.12,86.88],rtol = 1e-4)
+
+if test_higher_order
+    mean_2nd = get_mean(JQ_2012_RBC, algorithm = :pruned_second_order, derivatives = false)
+    autocorr_3rd = get_autocorrelation(JQ_2012_RBC, algorithm = :pruned_third_order)
+
+    @test isapprox(mean_2nd(:k),10.0762,rtol = 1e-3)
+    @test isapprox(autocorr_3rd(:r,5),0.2927,rtol = 1e-3)
+end
 
 JQ_2012_RBC = nothing
 
@@ -110,6 +126,15 @@ var_dec = get_var_decomp(Ghironi_Melitz_2005)
 @test isapprox(var_dec(:C,:) * 100, [99.86, 0.14],rtol = 1e-3)
 @test isapprox(var_dec(:Nx,:) * 100, [29.27, 70.73],rtol = 1e-3)
 
+
+if test_higher_order
+    mean_2nd = get_mean(Ghironi_Melitz_2005, algorithm = :pruned_second_order, derivatives = false)
+    autocorr_3rd = get_autocorrelation(Ghironi_Melitz_2005, algorithm = :pruned_third_order)
+
+    @test isapprox(mean_2nd(:w),3.1434,rtol = 1e-3)
+    @test isapprox(autocorr_3rd(:C,5),0.9178,rtol = 1e-3)
+end
+
 Ghironi_Melitz_2005 = nothing
 
 
@@ -141,6 +166,12 @@ var_dec = get_var_decomp(Gali_2015_chapter_3_nonlinear)
 @test isapprox(var_dec(:R,:) * 100, [15.37, 0.23, 84.40],rtol = 1e-3)
 @test isapprox(var_dec(:Y,:) * 100, [27.53, 0.72, 71.76],rtol = 1e-3)
 
+if test_higher_order
+    mean_2nd = get_mean(Gali_2015_chapter_3_nonlinear, algorithm = :pruned_second_order, derivatives = false)
+
+    @test isapprox(mean_2nd(:C),0.9156,rtol = 1e-3)
+end
+
 Gali_2015_chapter_3_nonlinear = nothing
 
 
@@ -153,6 +184,11 @@ moments = get_moments(Caldara_et_al_2012, derivatives = false)
 
 @test isapprox(moments[2]([:Rᵏ,:V,:c,:i],:),[0.0022, 0.0061, 0.0566, 0.0528],atol = 1e-4)
 
+if test_higher_order
+    autocorr_3rd = get_autocorrelation(Caldara_et_al_2012, algorithm = :pruned_third_order)
+
+    @test isapprox(autocorr_3rd(:c,5),0.9424,rtol = 1e-3)
+end
 Caldara_et_al_2012 = nothing
 
 
@@ -181,5 +217,13 @@ var_dec = get_var_decomp(Aguiar_Gopinath_2007)
 
 @test isapprox(var_dec(:c,:) * 100, [0.02, 99.98],rtol = 1e-3)
 @test isapprox(var_dec(:i_y,:) * 100, [0.31, 99.69],rtol = 1e-3)
+
+if test_higher_order
+    mean_2nd = get_mean(Aguiar_Gopinath_2007, algorithm = :pruned_second_order, derivatives = false)
+    autocorr_3rd = get_autocorrelation(Aguiar_Gopinath_2007, algorithm = :pruned_third_order)
+    
+    @test isapprox(mean_2nd(:k),2.5946,rtol = 1e-3)
+    @test isapprox(autocorr_3rd(:c,5),0.9299,rtol = 1e-3)
+end
 
 Aguiar_Gopinath_2007 = nothing
