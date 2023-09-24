@@ -156,42 +156,42 @@ end
 
 
 
-# function jacobian_wrt_A(A, X)
-#     # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
+function jacobian_wrt_A(A, X)
+    # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
 
-#     # Compute the Kronecker product and subtract from identity
-#     C = ℒ.kron(ℒ.I(size(A,1)), sparse(A * X))
+    # Compute the Kronecker product and subtract from identity
+    C = ℒ.kron(ℒ.I(size(A,1)), sparse(A * X))
 
-#     # Extract the row, column, and value indices from C
-#     rows, cols, vals = findnz(C)
+    # Extract the row, column, and value indices from C
+    rows, cols, vals = findnz(C)
 
-#     # Lists to store the 2D indices after the operations
-#     final_rows = zeros(Int,length(rows))
-#     final_cols = zeros(Int,length(rows))
+    # Lists to store the 2D indices after the operations
+    final_rows = zeros(Int,length(rows))
+    final_cols = zeros(Int,length(rows))
 
-#     Threads.@threads for i = 1:length(rows)
-#         # Convert the 1D row index to its 2D components
-#         i1, i2 = divrem(rows[i]-1, size(A,1)) .+ 1
+    Threads.@threads for i = 1:length(rows)
+        # Convert the 1D row index to its 2D components
+        i1, i2 = divrem(rows[i]-1, size(A,1)) .+ 1
 
-#         # Convert the 1D column index to its 2D components
-#         j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
+        # Convert the 1D column index to its 2D components
+        j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
 
-#         # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
-#         final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(A,1), size(A,1)), i2, i1, j1, j2) - 1, size(A,1) * size(A,1)) .+ 1
+        # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
+        final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(A,1), size(A,1)), i2, i1, j1, j2) - 1, size(A,1) * size(A,1)) .+ 1
 
-#         # Store the 2D indices
-#         final_rows[i] = final_row
-#         final_cols[i] = final_col
-#     end
+        # Store the 2D indices
+        final_rows[i] = final_row
+        final_cols[i] = final_col
+    end
 
-#     r,c,_ = findnz(A) 
+    r,c,_ = findnz(A) 
     
-#     non_zeros_only = spzeros(Int,size(A,1)^2,size(A,1)^2)
+    non_zeros_only = spzeros(Int,size(A,1)^2,size(A,1)^2)
     
-#     non_zeros_only[CartesianIndex.(r .+ (c.-1) * size(A,1), r .+ (c.-1) * size(A,1))] .= 1
+    non_zeros_only[CartesianIndex.(r .+ (c.-1) * size(A,1), r .+ (c.-1) * size(A,1))] .= 1
     
-#     return sparse(final_rows, final_cols, vals, size(A,1) * size(A,1), size(A,1) * size(A,1)) + ℒ.kron(sparse(X * A'), ℒ.I(size(A,1)))' * non_zeros_only
-# end
+    return sparse(final_rows, final_cols, vals, size(A,1) * size(A,1), size(A,1) * size(A,1)) + ℒ.kron(sparse(X * A'), ℒ.I(size(A,1)))' * non_zeros_only
+end
 
 
 # # higher order solutions moment helper functions
