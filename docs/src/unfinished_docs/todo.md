@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
+- [ ] check if higher order effects might distort results for autocorr (problem with order deffinition)
 - [ ] recheck function examples and docs (include output description)
 - [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
 - [ ] autocorr and covariance with derivatives. return 3d array
