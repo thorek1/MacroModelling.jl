@@ -21,6 +21,8 @@ import DataStructures: CircularBuffer
 import ImplicitDifferentiation as ID
 import AbstractDifferentiation as AD
 import SpeedMapping: speedmapping
+import REPL
+import Unicode
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
 # using AxisKeys
@@ -119,7 +121,48 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 )
 
 
+function translate_symbol_to_ascii(x::Symbol)
+    ss = Unicode.normalize(string(x), :NFD)
 
+    outstr = ""
+
+    for i in ss
+        out = REPL.symbol_latex(string(i))[2:end]
+        if out == ""
+            outstr *= string(i)
+        else
+            outstr *= replace(out, 
+                        r"\^" => s"_",
+                        r"\_\^" => s"_",
+                        r"\+" => s"plus",
+                        r"\-" => s"minus",
+                        r"\*" => s"times")
+            if i != ss[end]
+                outstr *= "_"
+            end
+        end
+    end
+
+    return outstr
+end
+
+
+function translate_expression_to_ascii(exp::Expr)
+    postwalk(x -> 
+                x isa Symbol ?
+                    begin
+                        x_tmp = translate_symbol_to_ascii(x)
+
+                        if x_tmp == string(x)
+                            x
+                        else
+                            Symbol(x_tmp)
+                        end
+                    end :
+                x,
+    exp)
+end
+                
 
 
 function jacobian_wrt_values(A, B)

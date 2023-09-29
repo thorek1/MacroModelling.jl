@@ -136,21 +136,21 @@ function write_mod_file(m::ℳ)
 
     open(m.model_name * ".mod", "w") do io
         println(io, "var ")
-        [print(io, string(v) * " ") for v in setdiff(m.vars_in_ss_equations, m.➕_vars)]
+        [print(io, translate_symbol_to_ascii(v) * " ") for v in setdiff(m.vars_in_ss_equations, m.➕_vars)]
 
         println(io, ";\n\nvarexo ")
-        [print(io, string(e) * " ") for e in m.exo]
+        [print(io, translate_symbol_to_ascii(e) * " ") for e in m.exo]
 
         println(io, ";\n\nparameters ")
-        [print(io, string(p) * " ") for p in m.parameters_in_equations]
+        [print(io, translate_symbol_to_ascii(p) * " ") for p in m.parameters_in_equations]
 
 
         println(io, ";\n\n% Parameter definitions:")
         for (i, p) in enumerate(m.parameters)
-            println(io, "\t" * string(p) * "\t=\t" * string(m.parameter_values[i]) * ";")
+            println(io, "\t" * translate_symbol_to_ascii(p) * "\t=\t" * string(m.parameter_values[i]) * ";")
         end
         [
-            println(io, "\t" * string(p) * "\t=\t" * string(NSSS(p)) * ";") for
+            println(io, "\t" * translate_symbol_to_ascii(p) * "\t=\t" * string(NSSS(p)) * ";") for
             p in m.calibration_equations_parameters
         ]
 
@@ -160,7 +160,7 @@ function write_mod_file(m::ℳ)
                 io,
                 "\t" *
                 replace(
-                    string(e),
+                    string(translate_expression_to_ascii(e)),
                     r"\[(-?\d+)\]" => s"(\1)",
                     r"(\w+)\[(ss|stst|steady|steadystate|steady_state){1}\]" =>
                         s"STEADY_STATE(\1)",
@@ -173,11 +173,11 @@ function write_mod_file(m::ℳ)
         ]
 
         println(io, "end;\n\nshocks;")
-        [println(io, "var\t" * string(e) * "\t=\t1;") for e in m.exo]
+        [println(io, "var\t" * translate_symbol_to_ascii(e) * "\t=\t1;") for e in m.exo]
 
         println(io, "end;\n\ninitval;")
         [
-            print(io, "\t" * string(v) * "\t=\t" * string(NSSS(v)) * ";\n") for
+            print(io, "\t" * translate_symbol_to_ascii(v) * "\t=\t" * string(NSSS(v)) * ";\n") for
             v in setdiff(m.vars_in_ss_equations, m.➕_vars)
         ]
 
