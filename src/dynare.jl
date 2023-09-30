@@ -134,6 +134,8 @@ The recommended workflow is to use this function to write a .mod-file, and then 
 function write_mod_file(m::ℳ)
     NSSS = get_SS(m, derivatives = false)
 
+    index_in_name = NSSS.keys isa Base.RefValue{Vector{String}}
+
     open(m.model_name * ".mod", "w") do io
         println(io, "var ")
         [print(io, translate_symbol_to_ascii(v) * " ") for v in setdiff(m.vars_in_ss_equations, m.➕_vars)]
@@ -149,9 +151,20 @@ function write_mod_file(m::ℳ)
         for (i, p) in enumerate(m.parameters)
             println(io, "\t" * translate_symbol_to_ascii(p) * "\t=\t" * string(m.parameter_values[i]) * ";")
         end
+
+        for p in m.calibration_equations_parameters
+            println(io, "\t" * translate_symbol_to_ascii(p) * "\t=\t" * string(NSSS(index_in_name ? replace(string(p), "◖" => "{", "◗" => "}") : p)) * ";") 
+        end
+
         [
-            println(io, "\t" * translate_symbol_to_ascii(p) * "\t=\t" * string(NSSS(p)) * ";") for
-            p in m.calibration_equations_parameters
+            println(io, "\t" * replace(
+                    string(translate_expression_to_ascii(e)),
+                    r"norminv(?=\()" => s"norminvcdf",
+                    r"qnorm(?=\()" => s"norminvcdf",
+                    r"pnorm(?=\()" => s"normcdf",
+                    r"dnorm(?=\()" => s"normpdf",
+                ) * ";") for 
+                e in m.calibration_equations_no_var
         ]
 
         println(io, "\nmodel;")
@@ -167,6 +180,10 @@ function write_mod_file(m::ℳ)
                     r"(\w+)\[(x|ex|exo|exogenous){1}\]" => s"\1",
                     r"(\w+)\[(x|ex|exo|exogenous){1}(\s*(\-|\+)\s*(\d{1}))\]" =>
                         s"\1(\4\5)",
+                    r"norminv(?=\()" => s"norminvcdf",
+                    r"qnorm(?=\()" => s"norminvcdf",
+                    r"pnorm(?=\()" => s"normcdf",
+                    r"dnorm(?=\()" => s"normpdf",
                 ) *
                 ";\n",
             ) for e in m.original_equations
@@ -176,17 +193,16 @@ function write_mod_file(m::ℳ)
         [println(io, "var\t" * translate_symbol_to_ascii(e) * "\t=\t1;") for e in m.exo]
 
         println(io, "end;\n\ninitval;")
-        [
-            print(io, "\t" * translate_symbol_to_ascii(v) * "\t=\t" * string(NSSS(v)) * ";\n") for
-            v in setdiff(m.vars_in_ss_equations, m.➕_vars)
-        ]
+        for v in setdiff(m.vars_in_ss_equations, m.➕_vars)
+            print(io, "\t" * translate_symbol_to_ascii(v) * "\t=\t" * string(NSSS(index_in_name ? replace(string(v), "◖" => "{", "◗" => "}") : v)) * ";\n") 
+        end
 
-        println(io, "end;\n\nstoch_simul(irf=40);")
+        println(io, "end;\n\nstoch_simul(order = 1, irf = 40);")
     end
 
     @info "Created " * m.model_name * ".mod"
 
-    @warn "This is an experimental function. Manual adjustments are most likely necessary. Please check before running the model."
+    # @warn "This is an experimental function. Manual adjustments are most likely necessary. Please check before running the model."
 end
 
 """

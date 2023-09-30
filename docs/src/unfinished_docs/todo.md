@@ -65,6 +65,7 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
+- [x] write parameter equations to dynare (take ordering on board)
 - [x] pruning of 3rd order takes pruned 2nd order input
 - [x] implement moment matching for pruned models
 - [x] test pruning and add literature

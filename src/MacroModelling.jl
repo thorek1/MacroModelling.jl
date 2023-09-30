@@ -122,7 +122,7 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
 
 
 function translate_symbol_to_ascii(x::Symbol)
-    ss = Unicode.normalize(string(x), :NFD)
+    ss = Unicode.normalize(replace(string(x),  "◖" => "__", "◗" => "__"), :NFD)
 
     outstr = ""
 
@@ -131,7 +131,7 @@ function translate_symbol_to_ascii(x::Symbol)
         if out == ""
             outstr *= string(i)
         else
-            outstr *= replace(out, 
+            outstr *= replace(out,  
                         r"\^" => s"_",
                         r"\_\^" => s"_",
                         r"\+" => s"plus",
