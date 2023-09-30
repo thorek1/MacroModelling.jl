@@ -3,7 +3,6 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
-- [ ] check if higher order effects might distort results for autocorr (problem with order deffinition)
 - [ ] recheck function examples and docs (include output description)
 - [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
 - [ ] autocorr and covariance with derivatives. return 3d array
@@ -65,6 +64,7 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
+- [x] check if higher order effects might distort results for autocorr (problem with order deffinition) - doesnt seem to be the case; full_covar yields same result
 - [x] write parameter equations to dynare (take ordering on board)
 - [x] pruning of 3rd order takes pruned 2nd order input
 - [x] implement moment matching for pruned models

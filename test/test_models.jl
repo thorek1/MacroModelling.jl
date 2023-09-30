@@ -8,6 +8,7 @@ var_dec = get_var_decomp(Backus_Kehoe_Kydland_1992)
 @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{F}") * 100, [51.34, 42.44, 52.59],rtol = 1e-3)
 @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{H}") * 100, [48.66, 57.56, 47.41],rtol = 1e-3)
 
+write_to_dynare_file(Backus_Kehoe_Kydland_1992)
 Backus_Kehoe_Kydland_1992 = nothing
 
 
@@ -24,6 +25,7 @@ var_dec = get_var_decomp(NAWM_EAUS_2008)
 @test isapprox(var_dec(:EA_Y,[:EA_EPSR,:EA_EPSZ,:US_EPSZ]) * 100, [50.02, 13.54, 4.35],rtol = 1e-3)
 @test isapprox(var_dec(:US_K,[:EA_EPSRP,:US_EPSR,:US_EPSZ]) * 100, [17.48, 26.83, 27.76],rtol = 1e-3)
 
+write_to_dynare_file(NAWM_EAUS_2008)
 NAWM_EAUS_2008 = nothing
 
 
@@ -45,6 +47,7 @@ if test_higher_order
     @test isapprox(autocorr_3rd(:c,5),0.4784,rtol = 1e-3)
 end
 
+write_to_dynare_file(SGU_2003_debt_premium)
 SGU_2003_debt_premium = nothing
 
 
@@ -58,6 +61,7 @@ corrr = get_correlation(Baxter_and_King_1993)
 @test isapprox(corrr(:k,:l),0.8553,rtol = 1e-3)
 @test isapprox(corrr(:r,:w),-0.9898,rtol = 1e-3)
 
+write_to_dynare_file(Baxter_and_King_1993)
 Baxter_and_King_1993 = nothing
 
 
@@ -82,6 +86,7 @@ if test_higher_order
     @test isapprox(autocorr_3rd(:r,5),0.2927,rtol = 1e-3)
 end
 
+write_to_dynare_file(JQ_2012_RBC)
 JQ_2012_RBC = nothing
 
 
@@ -95,6 +100,7 @@ var_dec = get_variance_decomposition(Ireland_2004)
 
 @test isapprox(var_dec(:π̂,:) * 100, [4.51, 0.91, 87.44, 7.14],rtol = 1e-4)
 
+write_to_dynare_file(Ireland_2004)
 Ireland_2004 = nothing
 
 
@@ -109,6 +115,7 @@ var_dec = get_var_decomp(GNSS_2010)
 
 @test isapprox(var_dec(:B,:) * 100, [42.97, 19.31, 11.70,  0.36,  4.45,  1.41,  0.70,  0.00,  0.61,  12.54, 2.85, 2.72,  0.38],rtol = 1e-3)
 
+write_to_dynare_file(GNSS_2010)
 GNSS_2010 = nothing
 
 
@@ -135,6 +142,7 @@ if test_higher_order
     @test isapprox(autocorr_3rd(:C,5),0.9178,rtol = 1e-3)
 end
 
+write_to_dynare_file(Ghironi_Melitz_2005)
 Ghironi_Melitz_2005 = nothing
 
 
@@ -149,6 +157,7 @@ var_dec = get_var_decomp(Gali_Monacelli_2005_CITR)
 @test isapprox(var_dec(:pih,:) * 100, [62.06, 37.94],rtol = 1e-3)
 @test isapprox(var_dec(:x,:) * 100, [56.22, 43.78],rtol = 1e-3)
 
+write_to_dynare_file(Gali_Monacelli_2005_CITR)
 Gali_Monacelli_2005_CITR = nothing
 
 
@@ -172,6 +181,7 @@ if test_higher_order
     @test isapprox(mean_2nd(:C),0.9156,rtol = 1e-3)
 end
 
+write_to_dynare_file(Gali_2015_chapter_3_nonlinear)
 Gali_2015_chapter_3_nonlinear = nothing
 
 
@@ -189,6 +199,8 @@ if test_higher_order
 
     @test isapprox(autocorr_3rd(:c,5),0.9424,rtol = 1e-3)
 end
+
+write_to_dynare_file(Caldara_et_al_2012)
 Caldara_et_al_2012 = nothing
 
 
@@ -204,6 +216,7 @@ var_dec = get_var_decomp(Ascari_Sbordone_2014)
 @test isapprox(var_dec(:w,:) * 100, [2.02, 95.18, 2.80],rtol = 1e-3)
 @test isapprox(var_dec(:y,:) * 100, [0.47, 99.41, 0.12],rtol = 1e-3)
 
+write_to_dynare_file(Ascari_Sbordone_2014)
 Ascari_Sbordone_2014 = nothing
 
 
@@ -226,4 +239,5 @@ if test_higher_order
     @test isapprox(autocorr_3rd(:c,5),0.9299,rtol = 1e-3)
 end
 
+write_to_dynare_file(Aguiar_Gopinath_2007)
 Aguiar_Gopinath_2007 = nothing

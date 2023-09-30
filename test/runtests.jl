@@ -88,15 +88,6 @@ if test_higher_order
     GC.gc()
 end
 
-
-@testset verbose = true "Test dynare read/write" begin
-    include("models/FS2000.jl")
-    write_to_dynare_file(m)
-    translate_mod_file("m.mod")
-end
-m = nothing
-GC.gc()
-
 # @testset verbose = true "Code formatting (JuliaFormatter.jl)" begin
 #     @test format(MacroModelling; verbose=true, overwrite=true)
 # end
