@@ -3,6 +3,9 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
+- [ ] nonlinear estimation using unscented kalman filter
+- [ ] nonlinear conditional forecasts
+- [ ] add balanced growth path handling
 - [ ] recheck function examples and docs (include output description)
 - [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
 - [ ] autocorr and covariance with derivatives. return 3d array
@@ -11,15 +14,11 @@
 - [ ] make higher order usable with zygote (currently only analytical pushforward, no implicitdiff)
 - [ ] add pydsge and econpizza to overview
 - [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
-- [ ] write dynare model using function converting unicode to tab completion
-- [ ] nonlinear conditional forecasts
 - [ ] add for loop parser in @parameters
 - [ ] include option to provide pruned states for irfs
 - [ ] compressed higher order derivatives and sparsity of jacobian
 - [ ] implement more multi country models
 - [ ] speed benchmarking (focus on ImplicitDiff part)
-- [ ] add balanced growth path handling
-- [ ] add JOSS article (see Makie.jl)
 - [ ] write docs for (non-linear) solution algorithms
 - [ ] have initial_state accept SS and SSS as arguments
 - [ ] for cond forecasting and kalman, get rid of observables input and use axis key of data input
@@ -29,7 +28,6 @@
 - [ ] sampler returned negative std. investigate and come up with solution ensuring sampler can continue
 - [ ] automatically adjust plots for different legend widhts and heights
 - [ ] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
-- [ ] write to mod file for unicode characters. have them take what you would type: \alpha\bar
 - [ ] have get_std take variables as an input
 - [ ] more informative errors when something goes wrong when writing a model
 - [ ] initial state accept keyed array
@@ -65,6 +63,9 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] check if higher order effects might distort results for autocorr (problem with order deffinition) - doesnt seem to be the case; full_covar yields same result
+- [x] add JOSS article (see Makie.jl)
+- [x] write to mod file for unicode characters. have them take what you would type: \alpha\bar
+- [x] write dynare model using function converting unicode to tab completion
 - [x] write parameter equations to dynare (take ordering on board)
 - [x] pruning of 3rd order takes pruned 2nd order input
 - [x] implement moment matching for pruned models
