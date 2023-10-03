@@ -4309,7 +4309,6 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
 
     covar_raw, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
 
-    
     return covar_raw, sol , ∇₁, SS_and_pars
 end
 
@@ -5010,7 +5009,6 @@ function calculate_third_order_moments(parameters::Vector{T},
         
         values = vcat(v1, vec(collect(-C)))
 
-        # Σᶻ₃, info = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
         Σᶻ₃, info = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
@@ -5123,13 +5121,8 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     values = vcat(vec(A), vec(collect(-𝐁)))
 
     P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    # P, _ = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    # P, _ = solve_matrix_equation_AD_direct(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    # P, _ = solve_matrix_equation_AD_direct([vec(A); vec(-𝐁)], dims = [size(A), size(𝐁)], solver = :bicgstab)
-    # P, _ = solve_matrix_equation_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
-    # P, _ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
-
     # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+
     u = zeros(length(observables_and_states))
     # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
     z = C * u
