@@ -4475,9 +4475,12 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
             iter += 1
         end
         solved = change < eps(Float32)
+    elseif solver == :sylvester
+        𝐂 = sylvd(collect(-A),collect(B),-C)
+        solved = isapprox(𝐂, A * 𝐂 * B - C, rtol = eps(Float32))
     elseif solver == :lyapunov
         𝐂 = MatrixEquations.lyapd(A,-C)
-        solved = isapprox(𝐂, A * (-C) * A' + -C, rtol = eps(Float32))
+        solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = eps(Float32))
     elseif solver == :speedmapping
         soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
 
