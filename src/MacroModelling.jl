@@ -23,7 +23,7 @@ import AbstractDifferentiation as AD
 import SpeedMapping: speedmapping
 import REPL
 import Unicode
-import MatrixEquations
+import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mpcsc/benner/talks/Benner-Melbourne2019.pdf
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
 # using AxisKeys
@@ -3762,10 +3762,9 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     push!(dimensions,size(C))
     push!(dimensions,size(X))
 
-    𝐒₂, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :iterative, sparse_output = true)
-    # 𝐒₂, solved = solve_matrix_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
-    # 𝐒₂, solved = solve_matrix_equation_AD([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
-    # 𝐒₂, solved = solve_matrix_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
+    solver = length(X.nzval) / length(X) < .1 ? :sylvester : :gmres
+
+    𝐒₂, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = solver, sparse_output = true)
 
     𝐒₂ *= M₂.𝐔₂
 
@@ -3870,9 +3869,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     push!(dimensions,size(B))
     push!(dimensions,size(C))
     push!(dimensions,size(X))
-    
 
-    𝐒₃, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :iterative, sparse_output = true)
+    𝐒₃, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres, sparse_output = true)
 
     𝐒₃ *= M₃.𝐔₃
 
@@ -4447,7 +4445,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         𝐂¹ = C
         while change > eps(Float32) && iter < 10000
             𝐂¹ = A * 𝐂 * B - C
-            if !(A isa DenseMatrix)
+            if !(𝐂¹ isa DenseMatrix)
                 droptol!(𝐂¹, eps())
             end
             if iter > 500
@@ -4476,10 +4474,10 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         end
         solved = change < eps(Float32)
     elseif solver == :sylvester
-        𝐂 = sylvd(collect(-A),collect(B),-C)
+        𝐂 = MatrixEquations.sylvd(collect(-A),collect(B),-C)
         solved = isapprox(𝐂, A * 𝐂 * B - C, rtol = eps(Float32))
     elseif solver == :lyapunov
-        𝐂 = MatrixEquations.lyapd(A,-C)
+        𝐂 = MatrixEquations.lyapd(collect(A),-C)
         solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = eps(Float32))
     elseif solver == :speedmapping
         soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
