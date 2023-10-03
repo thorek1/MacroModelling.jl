@@ -23,6 +23,7 @@ import AbstractDifferentiation as AD
 import SpeedMapping: speedmapping
 import REPL
 import Unicode
+import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mpcsc/benner/talks/Benner-Melbourne2019.pdf
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
 # using AxisKeys
@@ -3761,10 +3762,9 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     push!(dimensions,size(C))
     push!(dimensions,size(X))
 
-    𝐒₂, solved = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :iterative, sparse_output = true)
-    # 𝐒₂, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
-    # 𝐒₂, solved = solve_sylvester_equation_AD([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
-    # 𝐒₂, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
+    solver = length(X.nzval) / length(X) < .1 ? :sylvester : :gmres
+
+    𝐒₂, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = solver, sparse_output = true)
 
     𝐒₂ *= M₂.𝐔₂
 
@@ -3869,13 +3869,9 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     push!(dimensions,size(B))
     push!(dimensions,size(C))
     push!(dimensions,size(X))
-    
 
-    𝐒₃, solved = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :iterative, sparse_output = true)
-    # 𝐒₃, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], tol = tol)
-    # 𝐒₃, solved = solve_sylvester_equation_AD([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
-    # 𝐒₃, solved = solve_sylvester_equation_forward([vec(B) ;vec(C) ;vec(X)], dims = [size(B) ;size(C) ;size(X)], sparse_output = true)
-    
+    𝐒₃, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres, sparse_output = true)
+
     𝐒₃ *= M₃.𝐔₃
 
     return 𝐒₃, solved
@@ -4311,11 +4307,8 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
     
     values = vcat(vec(A), vec(collect(-CC)))
 
-    covar_raw, _ = solve_sylvester_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    # covar_raw, _ = solve_sylvester_equation_AD_direct(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    # covar_raw, _ = solve_sylvester_equation_AD_direct([vec(A); vec(-CC)], dims = [size(A), size(CC)], solver = :bicgstab)
-    # covar_raw, _ = solve_sylvester_equation_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
-    
+    covar_raw, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+
     return covar_raw, sol , ∇₁, SS_and_pars
 end
 
@@ -4394,7 +4387,7 @@ end
 
 
 
-function solve_sylvester_equation_forward(ABC::Vector{Float64};
+function solve_matrix_equation_forward(ABC::Vector{Float64};
     coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
     dims::Vector{Tuple{Int,Int}},
     sparse_output::Bool = false,
@@ -4451,7 +4444,7 @@ function solve_sylvester_equation_forward(ABC::Vector{Float64};
         𝐂¹ = C
         while change > eps(Float32) && iter < 10000
             𝐂¹ = A * 𝐂 * B - C
-            if !(A isa DenseMatrix)
+            if !(𝐂¹ isa DenseMatrix)
                 droptol!(𝐂¹, eps())
             end
             if iter > 500
@@ -4479,6 +4472,12 @@ function solve_sylvester_equation_forward(ABC::Vector{Float64};
             iter += 1
         end
         solved = change < eps(Float32)
+    elseif solver == :sylvester
+        𝐂 = MatrixEquations.sylvd(collect(-A),collect(B),-C)
+        solved = isapprox(𝐂, A * 𝐂 * B - C, rtol = eps(Float32))
+    elseif solver == :lyapunov
+        𝐂 = MatrixEquations.lyapd(collect(A),-C)
+        solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = eps(Float32))
     elseif solver == :speedmapping
         soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
 
@@ -4492,7 +4491,7 @@ end
 
 
 
-function solve_sylvester_equation_conditions(ABC::Vector{<: Real},
+function solve_matrix_equation_conditions(ABC::Vector{<: Real},
     X::AbstractMatrix{<: Real}, 
     solved::Bool;
     coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
@@ -4535,7 +4534,7 @@ end
 
 
 
-function solve_sylvester_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
+function solve_matrix_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
     coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
     dims::Vector{Tuple{Int,Int}},
     sparse_output::Bool = false,
@@ -4551,7 +4550,7 @@ function solve_sylvester_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
     end
 
     # get f(vs)
-    val, solved = solve_sylvester_equation_forward(ABC, coords = coords, dims = dims, sparse_output = sparse_output, solver = solver)
+    val, solved = solve_matrix_equation_forward(ABC, coords = coords, dims = dims, sparse_output = sparse_output, solver = solver)
 
     if length(coords) == 1
         lengthA = length(coords[1][1])
@@ -4653,11 +4652,11 @@ function solve_sylvester_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
 end
 
 
-solve_sylvester_equation_AD = ID.ImplicitFunction(solve_sylvester_equation_forward, 
-                                                solve_sylvester_equation_conditions)
+solve_matrix_equation_AD = ID.ImplicitFunction(solve_matrix_equation_forward, 
+                                                solve_matrix_equation_conditions)
 
-solve_sylvester_equation_AD_direct = ID.ImplicitFunction(solve_sylvester_equation_forward, 
-                                                solve_sylvester_equation_conditions; 
+solve_matrix_equation_AD_direct = ID.ImplicitFunction(solve_matrix_equation_forward, 
+                                                solve_matrix_equation_conditions; 
                                                 linear_solver = ID.DirectLinearSolver())
 
 
@@ -4781,10 +4780,8 @@ function calculate_second_order_moments(
     
     values = vcat(v1, vec(collect(-C)))
 
-    # Σᶻ₂, info = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    Σᶻ₂, info = solve_sylvester_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    # Σᶻ₂, info = solve_sylvester_equation_AD([vec(ŝ_to_ŝ₂); vec(-C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])#, solver = :doubling)
-    # Σᶻ₂, info = solve_sylvester_equation_forward([vec(ŝ_to_ŝ₂); vec(-C)], dims = [size(ŝ_to_ŝ₂) ;size(C)])
+    Σᶻ₂, info = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+
     
     Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
 
@@ -5012,8 +5009,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         
         values = vcat(v1, vec(collect(-C)))
 
-        # Σᶻ₃, info = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
-        Σᶻ₃, info = solve_sylvester_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+        Σᶻ₃, info = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
@@ -5124,14 +5120,9 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
     
     values = vcat(vec(A), vec(collect(-𝐁)))
 
-    P, _ = solve_sylvester_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    # P, _ = solve_sylvester_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    # P, _ = solve_sylvester_equation_AD_direct(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    # P, _ = solve_sylvester_equation_AD_direct([vec(A); vec(-𝐁)], dims = [size(A), size(𝐁)], solver = :bicgstab)
-    # P, _ = solve_sylvester_equation_forward([vec(A); vec(-CC)], dims = [size(A), size(CC)])
-    # P, _ = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])
-
+    P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
     # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+
     u = zeros(length(observables_and_states))
     # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
     z = C * u

@@ -8,6 +8,7 @@
 - [ ] add balanced growth path handling
 - [ ] recheck function examples and docs (include output description)
 - [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
+- [ ] add user facing option to choose sylvester solver
 - [ ] autocorr and covariance with derivatives. return 3d array
 - [ ] Docs: document outputs and associated functions to work with function
 - [ ] use ID for sparse output sylvester solvers (filed issue)
