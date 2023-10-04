@@ -122,6 +122,47 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 )
 
 
+
+
+function A_mult_kron_power_3_B(A::AbstractArray{T},B::AbstractArray{T}; tol::AbstractFloat = eps()) where T <: Real
+    n_row = size(B,1)
+    n_col = size(B,2)
+
+    B̄ = collect(B)
+
+    vals = T[]
+    rows = Int[]
+    cols = Int[]
+
+    for row in 1:size(A,1)
+        idx_mat, vals_mat = A[row,:] |> findnz
+
+        if length(vals_mat) == 0 continue end
+
+        for col in 1:size(B,2)^3
+            col_1, col_3 = divrem((col - 1) % (n_col^2), n_col) .+ 1
+            col_2 = ((col - 1) ÷ (n_col^2)) + 1
+
+            mult_val = 0.0
+
+            for (i,idx) in enumerate(idx_mat)
+                i_1, i_3 = divrem((idx - 1) % (n_row^2), n_row) .+ 1
+                i_2 = ((idx - 1) ÷ (n_row^2)) + 1
+                mult_val += vals_mat[i] * B̄[i_1,col_1] * B̄[i_2,col_2] * B̄[i_3,col_3]
+            end
+
+            if abs(mult_val) > tol
+                push!(vals,mult_val)
+                push!(rows,row)
+                push!(cols,col)
+            end
+        end
+    end
+
+    sparse(rows,cols,vals,size(A,1),size(B,2)^3)
+end
+
+
 function translate_symbol_to_ascii(x::Symbol)
     ss = Unicode.normalize(replace(string(x),  "◖" => "__", "◗" => "__"), :NFD)
 
@@ -3827,7 +3868,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
 
-    𝐗₃ = -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
+    # 𝐗₃ = -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
+    𝐗₃ = -A_mult_kron_power_3_B(∇₃,aux)
 
     tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
     out = - ∇₃ * tmpkron - ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ - ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
