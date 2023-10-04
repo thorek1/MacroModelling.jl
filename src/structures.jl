@@ -160,11 +160,14 @@ struct second_order_auxilliary_matrices
     𝛔::SparseMatrixCSC{Int}
     𝐂₂::SparseMatrixCSC{Int}
     𝐔₂::SparseMatrixCSC{Int}
+    𝐔∇₂::SparseMatrixCSC{Int}
 end
 
 struct third_order_auxilliary_matrices
     𝐂₃::SparseMatrixCSC{Int}
     𝐔₃::SparseMatrixCSC{Int}
+
+    𝐔∇₃::SparseMatrixCSC{Int}
 
     𝐏::SparseMatrixCSC{Int}
 

@@ -2724,19 +2724,25 @@ function create_second_order_auxilliary_matrices(T::timings)
     # Indices and number of variables
     n₋ = T.nPast_not_future_and_mixed
     nₑ = T.nExo
-    nₑ₋ = n₋ + 1 + nₑ
+
+    # setup compression matrices for hessian matrix
+    nₑ₋ = T.nPast_not_future_and_mixed + T.nVars + T.nFuture_not_past_and_mixed + T.nExo
+    colls2 = [nₑ₋ * (i-1) + k for i in 1:nₑ₋ for k in 1:i]
+    𝐂∇₂ = sparse(colls2, 1:length(colls2), 1)
+    𝐔∇₂ = 𝐂∇₂' * sparse([i <= k ? (k - 1) * nₑ₋ + i : (i - 1) * nₑ₋ + k for k in 1:nₑ₋ for i in 1:nₑ₋], 1:nₑ₋^2, 1)
 
     # set up vector to capture volatility effect
+    nₑ₋ = n₋ + 1 + nₑ
     redu = sparsevec(nₑ₋ - nₑ + 1:nₑ₋, 1)
     redu_idxs = findnz(ℒ.kron(redu, redu))[1]
     𝛔 = @views sparse(redu_idxs[Int.(range(1,nₑ^2,nₑ))], fill(n₋ * (nₑ₋ + 1) + 1, nₑ), 1, nₑ₋^2, nₑ₋^2)
     
-    # setup compression matrices
+    # setup compression matrices for transition matrix
     colls2 = [nₑ₋ * (i-1) + k for i in 1:nₑ₋ for k in 1:i]
     𝐂₂ = sparse(colls2, 1:length(colls2), 1)
     𝐔₂ = 𝐂₂' * sparse([i <= k ? (k - 1) * nₑ₋ + i : (i - 1) * nₑ₋ + k for k in 1:nₑ₋ for i in 1:nₑ₋], 1:nₑ₋^2, 1)
 
-    return second_order_auxilliary_matrices(𝛔, 𝐂₂, 𝐔₂)
+    return second_order_auxilliary_matrices(𝛔, 𝐂₂, 𝐔₂, 𝐔∇₂)
 end
 
 
@@ -2748,11 +2754,28 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
     n₊ = T.nFuture_not_past_and_mixed
     n = T.nVars
     nₑ = T.nExo
-    nₑ₋ = n₋ + 1 + nₑ
 
     n̄ = n₋ + n + n₊ + nₑ
 
-    # compression matrices for third order
+    # compression matrices for third order derivatives matrix
+    nₑ₋ = T.nPast_not_future_and_mixed + T.nVars + T.nFuture_not_past_and_mixed + T.nExo
+    colls3 = [nₑ₋^2 * (i-1) + nₑ₋ * (k-1) + l for i in 1:nₑ₋ for k in 1:i for l in 1:k]
+    𝐂∇₃ = sparse(colls3, 1:length(colls3) , 1.0)
+    
+    idxs = []
+    for k in 1:nₑ₋
+        for j in 1:nₑ₋
+            for i in 1:nₑ₋
+                sorted_ids = sort([k,j,i])
+                push!(idxs, (sorted_ids[3] - 1) * nₑ₋ ^ 2 + (sorted_ids[2] - 1) * nₑ₋ + sorted_ids[1])
+            end
+        end
+    end
+    
+    𝐔∇₃ = 𝐂∇₃' * sparse(idxs,1:nₑ₋ ^ 3, 1)
+
+    # compression matrices for third order transition matrix
+    nₑ₋ = n₋ + 1 + nₑ
     colls3 = [nₑ₋^2 * (i-1) + nₑ₋ * (k-1) + l for i in 1:nₑ₋ for k in 1:i for l in 1:k]
     𝐂₃ = sparse(colls3, 1:length(colls3) , 1.0)
     
@@ -2787,11 +2810,13 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
     𝐏₁ᵣ̃ = @views sparse(spdiagm(ones(nₑ₋^3))[:,vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(1,3,2)))])
     𝐏₂ᵣ̃ = @views sparse(spdiagm(ones(nₑ₋^3))[:,vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(3,1,2)))])
 
+    ∇₃_col_indices_extended = findnz(sparse(ones(Int,length(∇₃_col_indices)),∇₃_col_indices,ones(Int,length(∇₃_col_indices)),1,size(𝐔∇₃,1)) * 𝐔∇₃)[2]
+
     nonnull_columns = Set()
     for i in 1:n̄ 
         for j in i:n̄ 
             for k in j:n̄ 
-                if n̄^2 * (i - 1)  + n̄ * (j - 1) + k in ∇₃_col_indices
+                if n̄^2 * (i - 1)  + n̄ * (j - 1) + k in ∇₃_col_indices_extended
                     push!(nonnull_columns,i)
                     push!(nonnull_columns,j)
                     push!(nonnull_columns,k)
@@ -2802,8 +2827,7 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
             
     𝐒𝐏 = sparse(collect(nonnull_columns), collect(nonnull_columns), 1, n̄, n̄)
 
-    
-    return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
+    return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
 end
 
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
@@ -2892,6 +2916,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     eqs = Symbolics.parse_expr_to_symbolic.(𝓂.dyn_equations,(@__MODULE__,))
 
+    if max_perturbation_order >= 2 
+        nk = length(vars_raw)
+        second_order_idxs = [nk * (i-1) + k for i in 1:nk for k in 1:i]
+        if max_perturbation_order == 3
+            third_order_idxs = [nk^2 * (i-1) + nk * (k-1) + l for i in 1:nk for k in 1:i for l in 1:k]
+        end
+    end
+
     first_order = []
     second_order = []
     third_order = []
@@ -2901,6 +2933,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     column1 = Int[]
     column2 = Int[]
     column3 = Int[]
+    # column3ext = Int[]
     i1 = 1
     i2 = 1
     i3 = 1
@@ -2918,28 +2951,34 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                     i1 += 1
                     if max_perturbation_order >= 2 
                         for (c2,var2) in enumerate(vars)
-                            if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
+                            # if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
+                            if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
                                 deriv_second = Symbolics.derivative(deriv_first,var2)
                                 # if deriv_second != 0 
                                 #     deriv_expr = Meta.parse(string(deriv_second.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
                                 #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
                                     push!(second_order,Symbolics.toexpr(deriv_second))
                                     push!(row2,r)
-                                    push!(column2,(c1 - 1) * length(vars) + c2)
+                                    # push!(column2,(c1 - 1) * length(vars) + c2)
+                                    push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
                                     i2 += 1
                                     if max_perturbation_order == 3
                                         for (c3,var3) in enumerate(vars)
-                                            if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
-                                                deriv_third = Symbolics.derivative(deriv_second,var3)
-                                                # if deriv_third != 0 
-                                                #     deriv_expr = Meta.parse(string(deriv_third.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
-                                                #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                                                    push!(third_order,Symbolics.toexpr(deriv_third))
-                                                    push!(row3,r)
-                                                    push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
-                                                    i3 += 1
-                                                # end
-                                            end
+                                            # if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
+                                                # push!(column3ext,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
+                                                if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
+                                                    deriv_third = Symbolics.derivative(deriv_second,var3)
+                                                    # if deriv_third != 0 
+                                                    #     deriv_expr = Meta.parse(string(deriv_third.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
+                                                    #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                                                        push!(third_order,Symbolics.toexpr(deriv_third))
+                                                        push!(row3,r)
+                                                        # push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
+                                                        push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
+                                                        i3 += 1
+                                                    # end
+                                                end
+                                            # end
                                         end
                                     end
                                 # end
@@ -2967,19 +3006,19 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
 
     if max_perturbation_order >= 2 && 𝓂.model_hessian == Function[]
-        if length(row2) == 0 
-            out = :(spzeros($(length(eqs)), $(length(vars)^2)))
-        else 
-            out = :(sparse([$(row2...)], [$(column2...)], [$(second_order...)], $(length(eqs)), $(length(vars)^2)))
-        end
+        # if length(row2) == 0 
+        #     out = :(spzeros($(length(eqs)), $(length(second_order_idxs))))
+        # else 
+        #     out = :(sparse([$(row2...)], [$(column2...)], [$(second_order...)], $(length(eqs)), $(length(second_order_idxs))))
+        # end
 
-        mod_func4 = :(function model_hessian(X::Vector, params::Vector{Real}, X̄::Vector)
-            $(alll...)
-            $(paras...)
-            $(𝓂.calibration_equations_no_var...)
-            $(steady_state...)
-            $out
-        end)
+        # mod_func4 = :(function model_hessian(X::Vector, params::Vector{Real}, X̄::Vector)
+        #     $(alll...)
+        #     $(paras...)
+        #     $(𝓂.calibration_equations_no_var...)
+        #     $(steady_state...)
+        #     $out
+        # end)
 
         for (l,second) in enumerate(second_order)
             exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
@@ -3000,21 +3039,19 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     end
 
     if max_perturbation_order == 3 && 𝓂.model_third_order_derivatives == Function[]
+        # if length(row3) == 0 
+        #     out = :(spzeros($(length(eqs)), $(length(third_order_idxs))))
+        # else 
+        #     out = :(sparse([$(row3...)], [$(column3...)], [$(third_order...)], $(length(eqs)), $(length(third_order_idxs))))
+        # end
 
-        if length(row3) == 0 
-            out = :(spzeros($(length(eqs)), $(length(vars)^3)))
-        else 
-            out = :(sparse([$(row3...)], [$(column3...)], [$(third_order...)], $(length(eqs)), $(length(vars)^3)))
-        end
-
-        mod_func5 = :(function model_hessian(X::Vector, params::Vector{Real}, X̄::Vector)
-            $(alll...)
-            $(paras...)
-            $(𝓂.calibration_equations_no_var...)
-            $(steady_state...)
-            $out
-        end)
-
+        # mod_func5 = :(function model_hessian(X::Vector, params::Vector{Real}, X̄::Vector)
+        #     $(alll...)
+        #     $(paras...)
+        #     $(𝓂.calibration_equations_no_var...)
+        #     $(steady_state...)
+        #     $out
+        # end)
 
         for (l,third) in enumerate(third_order)
             exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
@@ -3463,8 +3500,6 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     # return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
     # return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
 
-    nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-    
     second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_hessian]
     
     vals = [i[1] for i in second_out]
@@ -3473,7 +3508,9 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
 
     vals = convert(Vector{M}, vals)
 
-    sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^2)
+    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+    # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^2)
+    sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 end
 
 
@@ -3495,7 +3532,6 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
     # return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
     # return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
     
-    nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
     
     third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
     
@@ -3505,7 +3541,9 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
 
     vals = convert(Vector{M}, vals)
 
-    sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
+    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+    # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
+    sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 end
 
 
@@ -3817,7 +3855,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     spinv = sparse(inv(∇₁₊𝐒₁➕∇₁₀))
     droptol!(spinv,tol)
 
-    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = - ∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+    # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = - ∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = -(mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
 
     X = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
     droptol!(X,tol)
@@ -3912,7 +3951,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
 
     # 𝐗₃ = -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
-    𝐗₃ = -A_mult_kron_power_3_B(∇₃,aux)
+    𝐗₃ = -A_mult_kron_power_3_B(∇₃, aux)
 
     tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
     out = - ∇₃ * tmpkron - ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ - ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
