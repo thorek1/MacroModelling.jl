@@ -124,7 +124,50 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
 
 
 
-function A_mult_kron_power_3_B(A::AbstractArray{T},B::AbstractArray{T}; tol::AbstractFloat = eps()) where T <: Real
+
+function mat_mult_kron(A::AbstractArray{T},B::AbstractArray{T},C::AbstractArray{T}; tol::AbstractFloat = eps()) where T <: Real
+    n_rowB = size(B,1)
+    n_colB = size(B,2)
+
+    n_rowC = size(C,1)
+    n_colC = size(C,2)
+
+    B̄ = collect(B)
+    C̄ = collect(C)
+
+    vals = T[]
+    rows = Int[]
+    cols = Int[]
+
+    for row in 1:size(A,1)
+        idx_mat, vals_mat = A[row,:] |> findnz
+
+        if length(vals_mat) == 0 continue end
+
+        for col in 1:(n_colB*n_colC)
+            col_1, col_2 = divrem((col - 1) % (n_colB*n_colC), n_colC) .+ 1
+
+            mult_val = 0.0
+
+            for (i,idx) in enumerate(idx_mat)
+                i_1, i_2 = divrem((idx - 1) % (n_rowB*n_rowC), n_rowC) .+ 1
+                
+                mult_val += vals_mat[i] * B̄[i_1,col_1] * C̄[i_2,col_2]
+            end
+
+            if abs(mult_val) > tol
+                push!(vals,mult_val)
+                push!(rows,row)
+                push!(cols,col)
+            end
+        end
+    end
+
+    sparse(rows,cols,vals,size(A,1),n_colB*n_colC)
+end
+
+
+function A_mult_kron_power_3_B(A::AbstractArray{R},B::AbstractArray{T}; tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
     n_row = size(B,1)
     n_col = size(B,2)
 
@@ -3875,7 +3918,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     out = - ∇₃ * tmpkron - ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ - ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
     𝐗₃ += out
     
-    tmp𝐗₃ = -∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
+    # tmp𝐗₃ = -∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
+    tmp𝐗₃ = -mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
 
     tmpkron1 = -∇₂ *  ℒ.kron(𝐒₁₊╱𝟎,𝐒₂₊╱𝟎)
     tmpkron2 = ℒ.kron(M₂.𝛔,𝐒₁₋╱𝟏ₑ)
@@ -3892,7 +3936,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
     
     C = M₃.𝐔₃ * tmpkron + M₃.𝐔₃ * M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐔₃ * M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
-    C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ))
+    C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) # no speed up here from A_mult_kron_power_3_B
     C *= M₃.𝐂₃
     droptol!(C,tol)
 
