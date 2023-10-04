@@ -6,6 +6,7 @@
 - [ ] nonlinear estimation using unscented kalman filter
 - [ ] nonlinear conditional forecasts
 - [ ] add balanced growth path handling
+- [ ] feedback: write out RBC equations, provide option for external SS guess, highlight NUTS sampler compatibility, sell the sampler better (ESS vs dynare), reorder other toolboxes according to popularity, differentiate more vs diffstatespace, more details on algorithm (SS solver)
 - [ ] recheck function examples and docs (include output description)
 - [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
 - [ ] add user facing option to choose sylvester solver
