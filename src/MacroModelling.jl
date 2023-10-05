@@ -23,6 +23,7 @@ import AbstractDifferentiation as AD
 import SpeedMapping: speedmapping
 import REPL
 import Unicode
+import Polyester
 import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mpcsc/benner/talks/Benner-Melbourne2019.pdf
 # import NLboxsolve: nlboxsolve
 # using NamedArrays
@@ -2916,6 +2917,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     eqs = Symbolics.parse_expr_to_symbolic.(𝓂.dyn_equations,(@__MODULE__,))
 
+    second_order_idxs = []
+    third_order_idxs = []
     if max_perturbation_order >= 2 
         nk = length(vars_raw)
         second_order_idxs = [nk * (i-1) + k for i in 1:nk for k in 1:i]
@@ -2938,16 +2941,19 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     i2 = 1
     i3 = 1
     
-    for (c1,var1) in enumerate(vars)
+    sparse_init() = [[], [], [],  [], [], [],  [], [], []]
+    Polyester.@batch per=thread threadlocal = sparse_init() for c1 in 1:length(vars)
+        var1 = vars[c1]
+    # for (c1,var1) in enumerate(vars)
         for (r,eq) in enumerate(eqs)
             if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
                 deriv_first = Symbolics.derivative(eq,var1)
                 # if deriv_first != 0 
                 #     deriv_expr = Meta.parse(string(deriv_first.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
                 #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                    push!(first_order, Symbolics.toexpr(deriv_first))
-                    push!(row1,r)
-                    push!(column1,c1)
+                    push!(threadlocal[1], Symbolics.toexpr(deriv_first))
+                    push!(threadlocal[2],r)
+                    push!(threadlocal[3],c1)
                     i1 += 1
                     if max_perturbation_order >= 2 
                         for (c2,var2) in enumerate(vars)
@@ -2957,10 +2963,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                                 # if deriv_second != 0 
                                 #     deriv_expr = Meta.parse(string(deriv_second.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
                                 #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                                    push!(second_order,Symbolics.toexpr(deriv_second))
-                                    push!(row2,r)
+                                    push!(threadlocal[4],Symbolics.toexpr(deriv_second))
+                                    push!(threadlocal[5],r)
                                     # push!(column2,(c1 - 1) * length(vars) + c2)
-                                    push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
+                                    push!(threadlocal[6], Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
                                     i2 += 1
                                     if max_perturbation_order == 3
                                         for (c3,var3) in enumerate(vars)
@@ -2971,10 +2977,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                                                     # if deriv_third != 0 
                                                     #     deriv_expr = Meta.parse(string(deriv_third.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
                                                     #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                                                        push!(third_order,Symbolics.toexpr(deriv_third))
-                                                        push!(row3,r)
+                                                        push!(threadlocal[7],Symbolics.toexpr(deriv_third))
+                                                        push!(threadlocal[8],r)
                                                         # push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
-                                                        push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
+                                                        push!(threadlocal[9], Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
                                                         i3 += 1
                                                     # end
                                                 end
@@ -2989,6 +2995,18 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             end
         end
     end
+
+    first_order  = threadlocal[1][1]
+    row1         = Int.(threadlocal[1][2])
+    column1      = Int.(threadlocal[1][3])
+
+    second_order = threadlocal[1][4]
+    row2         = Int.(threadlocal[1][5])
+    column2      = Int.(threadlocal[1][6])
+
+    third_order  = threadlocal[1][7]
+    row3         = Int.(threadlocal[1][8])
+    column3      = Int.(threadlocal[1][9])
 
 
     mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
@@ -5387,79 +5405,79 @@ end
 
 
 
-@setup_workload begin
-    # Putting some things in `setup` can reduce the size of the
-    # precompile file and potentially make loading faster.
-    @model FS2000 precompile = true begin
-        dA[0] = exp(gam + z_e_a  *  e_a[x])
-        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-        W[0] = l[0] / n[0]
-        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-        P[0] * c[0] = m[0]
-        m[0] - 1 + d[0] = l[0]
-        e[0] = exp(z_e_a  *  e_a[x])
-        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-        gy_obs[0] = dA[0] * y[0] / y[-1]
-        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-        log_gy_obs[0] = log(gy_obs[0])
-        log_gp_obs[0] = log(gp_obs[0])
-    end
+# @setup_workload begin
+#     # Putting some things in `setup` can reduce the size of the
+#     # precompile file and potentially make loading faster.
+#     @model FS2000 precompile = true begin
+#         dA[0] = exp(gam + z_e_a  *  e_a[x])
+#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#         W[0] = l[0] / n[0]
+#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#         P[0] * c[0] = m[0]
+#         m[0] - 1 + d[0] = l[0]
+#         e[0] = exp(z_e_a  *  e_a[x])
+#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#         gy_obs[0] = dA[0] * y[0] / y[-1]
+#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#         log_gy_obs[0] = log(gy_obs[0])
+#         log_gp_obs[0] = log(gp_obs[0])
+#     end
 
-    @parameters FS2000 silent = true precompile = true begin  
-        alp     = 0.356
-        bet     = 0.993
-        gam     = 0.0085
-        mst     = 1.0002
-        rho     = 0.129
-        psi     = 0.65
-        del     = 0.01
-        z_e_a   = 0.035449
-        z_e_m   = 0.008862
-    end
+#     @parameters FS2000 silent = true precompile = true begin  
+#         alp     = 0.356
+#         bet     = 0.993
+#         gam     = 0.0085
+#         mst     = 1.0002
+#         rho     = 0.129
+#         psi     = 0.65
+#         del     = 0.01
+#         z_e_a   = 0.035449
+#         z_e_m   = 0.008862
+#     end
     
-    ENV["GKSwstype"] = "nul"
+#     ENV["GKSwstype"] = "nul"
 
-    @compile_workload begin
-        # all calls in this block will be precompiled, regardless of whether
-        # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC precompile = true begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
+#     @compile_workload begin
+#         # all calls in this block will be precompiled, regardless of whether
+#         # they belong to your package or not (on Julia 1.8 and higher)
+#         @model RBC precompile = true begin
+#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#         end
 
-        @parameters RBC silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
+#         @parameters RBC silent = true precompile = true begin
+#             δ = 0.02
+#             α = 0.5
+#         end
 
-        get_SS(FS2000)
-        get_SS(FS2000, parameters = :alp => 0.36)
-        get_solution(FS2000)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)
+#         get_SS(FS2000)
+#         get_SS(FS2000, parameters = :alp => 0.36)
+#         get_solution(FS2000)
+#         get_solution(FS2000, parameters = :alp => 0.35)
+#         get_standard_deviation(FS2000)
+#         get_correlation(FS2000)
+#         get_autocorrelation(FS2000)
+#         get_variance_decomposition(FS2000)
+#         get_conditional_variance_decomposition(FS2000)
+#         get_irf(FS2000)
 
-        data = simulate(FS2000)[:,:,1]
-        observables = [:c,:k]
-        calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
-        get_mean(FS2000, silent = true)
-        # get_SSS(FS2000, silent = true)
-        # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#         data = simulate(FS2000)[:,:,1]
+#         observables = [:c,:k]
+#         calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
+#         get_mean(FS2000, silent = true)
+#         # get_SSS(FS2000, silent = true)
+#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-        # import Plots, StatsPlots
-        # plot_irf(FS2000)
-        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        # plot_conditional_variance_decomposition(FS2000)
-    end
-end
+#         # import Plots, StatsPlots
+#         # plot_irf(FS2000)
+#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#         # plot_conditional_variance_decomposition(FS2000)
+#     end
+# end
 
 end
