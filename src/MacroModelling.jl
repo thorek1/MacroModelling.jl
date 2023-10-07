@@ -2831,6 +2831,61 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
     return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
 end
 
+
+
+function take_symbolic_derivatives(all_inputs::Vector)
+    var_chunk, eqs, vars, max_perturbation_order, second_order_idxs, third_order_idxs = all_inputs
+
+    # Initialize storage for derivatives and indices
+    first_order, second_order, third_order = [], [], []
+    row1, row2, row3 = Int[], Int[], Int[]
+    column1, column2, column3 = Int[], Int[], Int[]
+
+    # Compute derivatives for each variable in the chunk
+    for var1 in var_chunk
+        c1 = Int(indexin(var1, vars)...)
+
+        # Check each equation for the presence of the variable
+        for (r, eq) in enumerate(eqs)
+            if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
+                deriv_first = Symbolics.derivative(eq, var1)
+                push!(first_order, Symbolics.toexpr(deriv_first))
+                push!(row1, r)
+                push!(column1, c1)
+
+                # Compute second order derivatives if required
+                if max_perturbation_order >= 2 
+                    for (c2, var2) in enumerate(vars)
+                        if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && 
+                            (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
+                            deriv_second = Symbolics.derivative(deriv_first, var2)
+                            push!(second_order, Symbolics.toexpr(deriv_second))
+                            push!(row2, r)
+                            push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
+
+                            # Compute third order derivatives if required
+                            if max_perturbation_order == 3
+                                for (c3, var3) in enumerate(vars)
+                                    if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && 
+                                        (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
+                                        deriv_third = Symbolics.derivative(deriv_second, var3)
+                                        push!(third_order, Symbolics.toexpr(deriv_third))
+                                        push!(row3, r)
+                                        push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return first_order, second_order, third_order, row1, row2, row3, column1, column2, column3
+end
+
+
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
@@ -2927,99 +2982,41 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         end
     end
 
-    tasks_per_thread = 200 # customize this as needed. More tasks have more overhead, but better
-                    # load balancing
+    tasks_per_thread = 1 # customize this as needed. More tasks have more overhead, but better
+    # load balancing
 
     chunk_size = max(1, length(vars) ÷ (tasks_per_thread * Threads.nthreads()))
     data_chunks = Iterators.partition(vars, chunk_size) # partition your data into chunks that
-                                                # individual tasks will deal with
+                                    # individual tasks will deal with
     #See also ChunkSplitters.jl and SplittablesBase.jl for partitioning data
+    full_data_chunks = [[i,eqs,vars,max_perturbation_order,second_order_idxs,third_order_idxs] for i in data_chunks]
 
-    tasks = map(data_chunks) do chunk
+    tasks = map(full_data_chunks) do chunk
         # Each chunk of your data gets its own spawned task that does its own local, sequential work
         # and then returns the result
-        Threads.@spawn begin
-            for var1 in chunk
-                c1 = Int(indexin(var1,vars)...)
-
-                first_order = []
-                second_order = []
-                third_order = []
-
-                row1 = Int[]
-                row2 = Int[]
-                row3 = Int[]
-
-                column1 = Int[]
-                column2 = Int[]
-                column3 = Int[]
-
-
-                for (r,eq) in enumerate(eqs)
-                    if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
-                        deriv_first = Symbolics.derivative(eq,var1)
-                            push!(first_order, Symbolics.toexpr(deriv_first))
-                            push!(row1,r)
-                            push!(column1,c1)
-                            if max_perturbation_order >= 2 
-                                for (c2,var2) in enumerate(vars)
-                                    # if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
-                                    if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
-                                        deriv_second = Symbolics.derivative(deriv_first,var2)
-                                        # if deriv_second != 0 
-                                        #     deriv_expr = Meta.parse(string(deriv_second.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
-                                        #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                                            push!(second_order,Symbolics.toexpr(deriv_second))
-                                            push!(row2,r)
-                                            # push!(column2,(c1 - 1) * length(vars) + c2)
-                                            push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
-                                            if max_perturbation_order == 3
-                                                for (c3,var3) in enumerate(vars)
-                                                    # if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
-                                                        # push!(column3ext,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
-                                                        if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
-                                                            deriv_third = Symbolics.derivative(deriv_second,var3)
-                                                            # if deriv_third != 0 
-                                                            #     deriv_expr = Meta.parse(string(deriv_third.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
-                                                            #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                                                                push!(third_order,Symbolics.toexpr(deriv_third))
-                                                                push!(row3,r)
-                                                                # push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
-                                                                push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
-                                                            # end
-                                                        end
-                                                    # end
-                                                end
-                                            end
-                                        # end
-                                    end
-                                end
-                            end
-                        # end
-                    end
-                end
-            
-            end
-
-            return first_order, second_order, third_order, row1, row2, row3, column1, column2, column3
-        end
+        # Threads.@spawn begin
+            take_symbolic_derivatives(chunk)
+        # end
     end
-
-    # println(tasks)
 
     states = fetch.(tasks)
 
-    first_order =   vcat(states[1]...)
-    second_order =  vcat(states[2]...)
-    third_order =   vcat(states[3]...)
 
-    row1 =  vcat(states[4]...)
-    row2 =  vcat(states[5]...)
-    row3 =  vcat(states[6]...)
+    # Polyester.@batch per=thread for chunk in full_data_chunks
+    #     take_symbolic_derivatives(chunk)
+    # end
 
-    column1 =   vcat(states[7]...)
-    column2 =   vcat(states[8]...)
-    column3 =   vcat(states[9]...)
+    first_order =   vcat([i[1] for i in states]...)
+    second_order =  vcat([i[2] for i in states]...)
+    third_order =   vcat([i[3] for i in states]...)
+    
+    row1 =  vcat([i[4] for i in states]...)
+    row2 =  vcat([i[5] for i in states]...)
+    row3 =  vcat([i[6] for i in states]...)
+    
+    column1 =   vcat([i[7] for i in states]...)
+    column2 =   vcat([i[8] for i in states]...)
+    column3 =   vcat([i[9] for i in states]...)    
 
 
     mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
