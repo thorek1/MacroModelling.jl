@@ -20,7 +20,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
     z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+end
 
 @parameters RBC begin
     std_z = 0.01
@@ -28,9 +28,9 @@ end;
     δ = 0.02
     α = 0.5
     β = 0.95
-end;
+end
 
-simulation = simulate(RBC);
+simulation = simulate(RBC)
 
 get_shock_decomposition(RBC,simulation([:c],:,:simulate))
 # output
@@ -134,7 +134,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
     z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+end
 
 @parameters RBC begin
     std_z = 0.01
@@ -142,9 +142,9 @@ end;
     δ = 0.02
     α = 0.5
     β = 0.95
-end;
+end
 
-simulation = simulate(RBC);
+simulation = simulate(RBC)
 
 get_estimated_shocks(RBC,simulation([:c],:,:simulate))
 # output
@@ -224,7 +224,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
     z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+end
 
 @parameters RBC begin
     std_z = 0.01
@@ -232,9 +232,9 @@ end;
     δ = 0.02
     α = 0.5
     β = 0.95
-end;
+end
 
-simulation = simulate(RBC);
+simulation = simulate(RBC)
 
 get_estimated_variables(RBC,simulation([:c],:,:simulate))
 # output
@@ -313,7 +313,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
     z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+end
 
 @parameters RBC begin
     std_z = 0.01
@@ -321,9 +321,9 @@ end;
     δ = 0.02
     α = 0.5
     β = 0.95
-end;
+end
 
-simulation = simulate(RBC);
+simulation = simulate(RBC)
 
 get_estimated_variable_standard_deviations(RBC,simulation([:c],:,:simulate))
 # output
@@ -649,7 +649,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
     z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+end
 
 @parameters RBC begin
     std_z = 0.01
@@ -657,7 +657,7 @@ end;
     δ = 0.02
     α = 0.5
     β = 0.95
-end;
+end
 
 get_irf(RBC, RBC.parameter_values)
 # output
@@ -793,7 +793,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
     z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+end
 
 @parameters RBC begin
     std_z = 0.01
@@ -801,7 +801,7 @@ end;
     δ = 0.02
     α = 0.5
     β = 0.95
-end;
+end
 
 get_irf(RBC)
 # output
@@ -975,7 +975,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
     z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+end
 
 @parameters RBC begin
     std_z = 0.01
@@ -983,7 +983,7 @@ end;
     δ = 0.02
     α = 0.5
     β = 0.95
-end;
+end
 
 get_steady_state(RBC)
 # output
@@ -1223,7 +1223,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
     z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+end
 
 @parameters RBC begin
     std_z = 0.01
@@ -1231,7 +1231,7 @@ end;
     δ = 0.02
     α = 0.5
     β = 0.95
-end;
+end
 
 get_solution(RBC)
 # output
@@ -1496,7 +1496,7 @@ And data, 7×2×21 Array{Float64, 3}:
 
 [:, :, 11] ~ (:, :, 11.0):
               (:delta_eps)  (:eps_z)
-  (:A)         1.29651e-31   1.0
+  (:A)         5.88653e-32   1.0
   (:Pi)        0.0245641     0.975436
   (:R)         0.0245641     0.975436
   (:c)         0.0175249     0.982475
@@ -1506,7 +1506,7 @@ And data, 7×2×21 Array{Float64, 3}:
 
 [:, :, 21] ~ (:, :, Inf):
               (:delta_eps)  (:eps_z)
-  (:A)         2.47454e-30   1.0
+  (:A)         9.6461e-31    1.0
   (:Pi)        0.0156771     0.984323
   (:R)         0.0156771     0.984323
   (:c)         0.0134672     0.986533
@@ -1651,7 +1651,7 @@ get_variance_decomposition(RBC_CME)
 →   Shocks ∈ 2-element Vector{Symbol}
 And data, 7×2 Matrix{Float64}:
               (:delta_eps)  (:eps_z)
-  (:A)         1.69478e-29   1.0
+  (:A)         9.78485e-31   1.0
   (:Pi)        0.0156771     0.984323
   (:R)         0.0156771     0.984323
   (:c)         0.0134672     0.986533
@@ -1743,7 +1743,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
     z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+end
 
 @parameters RBC begin
     std_z = 0.01
@@ -1751,7 +1751,7 @@ end;
     δ = 0.02
     α = 0.5
     β = 0.95
-end;
+end
 
 get_correlation(RBC)
 # output
@@ -1832,7 +1832,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
     z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+end
 
 @parameters RBC begin
     std_z = 0.01
@@ -1840,7 +1840,7 @@ end;
     δ = 0.02
     α = 0.5
     β = 0.95
-end;
+end
 
 get_autocorrelation(RBC)
 # output
@@ -1940,7 +1940,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
     z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+end
 
 @parameters RBC begin
     std_z = 0.01
@@ -1948,7 +1948,7 @@ end;
     δ = 0.02
     α = 0.5
     β = 0.95
-end;
+end
 
 moments = get_moments(RBC);
 
@@ -2404,7 +2404,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
     z[0] = ρ * z[-1] + std_z * eps_z[x]
-end;
+end
 
 @parameters RBC begin
     std_z = 0.01
@@ -2412,7 +2412,7 @@ end;
     δ = 0.02
     α = 0.5
     β = 0.95
-end;
+end
 
 get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_deviation = RBC.var)
 # output
