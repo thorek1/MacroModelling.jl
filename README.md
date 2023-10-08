@@ -121,6 +121,7 @@ Levintal, O., (2017), "Fifth-Order Perturbation Solution to DSGE models", Journa
 Villemot, S., (2011), "Solving rational expectations models at first order: what Dynare does", Dynare Working Papers 2, CEPREMAP.
 
 ## Questions and Contributions
+
 If you have questions regarding the usage or encounter unexpected behaviour please file an issue.
 
 Contributions are very welcome, as are feature requests and suggestions. Please open an issue or even better become a contributor and create a pull request.
