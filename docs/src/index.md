@@ -10,7 +10,7 @@ As of now the package can:
 
 - parse a model written with user friendly syntax (variables are followed by time indices `...[2], [1], [0], [-1], [-2]...`, or `[x]` for shocks)
 - (tries to) solve the model only knowing the model equations and parameter values (no steady state file needed)
-- calculate first, second, and third order (pruned) perturbation solutions (see [villemot2011solving, andreasen2018pruning](@cite) and [levintal2017fifth](@cite)) using (forward or reverse-mode) automatic differentiation (AD)
+- calculate first, second, and third order (pruned) perturbation solutions (see [villemot2011solving](@cite), [andreasen2018pruning](@cite) and [levintal2017fifth](@cite)) using (forward or reverse-mode) automatic differentiation (AD)
 - calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts
 - calibrate parameters using (non stochastic) steady state relationships
 - match model moments
