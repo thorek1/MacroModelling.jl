@@ -166,7 +166,17 @@ get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015))
 get_variance(Gali_2015, parameter_derivatives = get_parameters(Gali_2015))
 ```
 
-You can use this information to calibrate certain values to your targets. For example, let's say we want to have higher real wages (`:W_real`), and lower inflation volatility. Looking at the sensitivity table we see that lowering the production function parameter `:α` will increase real wages, but at the same time it will increase inflation volatility. We could compensate that effect by decreasing the standard deviation of the total factor productivity shock `:std_a`.
+You can use this information to calibrate certain values to your targets. For example, let's say we want to have higher real wages (`:W_real`), and lower inflation volatility. Since there are too many variables and parameters for them to be shown here, let's print only a subset of them:
+
+```@repl tutorial_3
+get_mean(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi])
+```
+
+```@repl tutorial_3
+get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi])
+```
+
+Looking at the sensitivity table we see that lowering the production function parameter `:α` will increase real wages, but at the same time it will increase inflation volatility. We could compensate that effect by decreasing the standard deviation of the total factor productivity shock `:std_a`.
 
 ### Method of moments
 
@@ -220,7 +230,7 @@ sol = Optim.optimize(distance_to_target,
                         Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))))
 ```
 
-The first argument to the optimisation call is the function we defined previously, followed by lower and upper bounds, the starting values, and finally the algorithm. For the algorithm we have to add `Fminbox` because we have bounds (optional) and we specify the specific line search method to speed up convergence (recommended but optional).
+The first argument to the optimisation call is the function we defined previously, followed by lower and upper bounds, the starting values, and finally the algorithm. For the algorithm we have to add `Fminbox` because we have bounds (optional) and we set the specific line search method to speed up convergence (recommended but optional).
 
 The output shows that we could almost perfectly match the target and the values of the parameters found by the optimiser are:
 
@@ -236,20 +246,20 @@ You can combine the method of moments with estimation by simply adding the dista
 
 So far we used the linearised solution of the model. The package also provides nonlinear solutions and can calculate the theoretical model moments for pruned second and third order perturbation solutions. This can be of interest because nonlinear solutions capture volatility effects (at second order) and asymmetries (at third order). Furthermore, the moments of the data are often non-gaussian while linear solutions with gaussian noise can only generate gaussian distributions of model variables. Nonetheless, already pruned second order solutions produce non-gaussian skewness and kurtosis with gaussian noise.
 
-From a users perspective little changes other than specifying that the solution algorithm is `:pruned_second_order` or `:pruned_third_order`.
+From a user perspective little changes other than specifying that the solution algorithm is `:pruned_second_order` or `:pruned_third_order`.
 
 For example we can get the mean for the pruned second order solution:
 
 ```@repl tutorial_3
-get_mean(Gali_2015, parameter_derivatives = get_parameters(Gali_2015), algorithm = :pruned_second_order)
+get_mean(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_second_order)
 ```
 
-Note that the mean of real wages is lower, while inflation is higher. We can see the effect of volatility in the no longer zero partial derivatives for the shock standard deviations. Larger shocks sizes drive down the mean of real wages while they increase inflation.
+Note that the mean of real wages is lower, while inflation is higher. We can see the effect of volatility with the partial derivatives for the shock standard deviations being non-zero. Larger shocks sizes drive down the mean of real wages while they increase inflation.
 
 The mean of the variables does not change if we use pruned third order perturbation by construction but the standard deviation does. Let's look at the standard deviations for the pruned second order solution first:
 
 ```@repl tutorial_3
-get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015), algorithm = :pruned_second_order)
+get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_second_order)
 ```
 
 for both inflation and real wages the volatility is higher and the standard deviation of the total factor productivity shock `std_a` has a much larger impact on the standard deviation of real wages compared to the linear solution.
@@ -257,7 +267,7 @@ for both inflation and real wages the volatility is higher and the standard devi
 At third order we get the following results:
 
 ```@repl tutorial_3
-get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015), algorithm = :pruned_third_order)
+get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_third_order)
 ```
 
 standard deviations of inflation is almost three times as high and for real wages it is also substantially higher. Furthermore, standard deviations of shocks matter even more for the volatility of the endogenous variables.
@@ -312,7 +322,7 @@ The solution does not match the standard deviation of inflation very well.
 Potentially the partial derivatives change a lot for small changes in parameters and even though the partial derivatives for standard deviation of inflation were large wrt `std_a` they might be small for value returned from the optimisation. We can check this with:
 
 ```@repl tutorial_3
-get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015), algorithm = :pruned_third_order, parameters = [:α, :std_a] .=> sol.minimizer)
+get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_third_order, parameters = [:α, :std_a] .=> sol.minimizer)
 ```
 
 and indeed it seems also the second derivative is large since the first derivative changed significantly.
