@@ -23,7 +23,7 @@ As of now the package can:
 - calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts
 - calibrate parameters using (non stochastic) steady state relationships
 - match model moments (also for pruned higher order solutions)
-- estimate the model on data (Kalman filter using first order perturbation) with gradient based samplers (NUTS, HMC and also MH)
+- estimate the model on data (Kalman filter using first order perturbation) with gradient based samplers (e.g. NUTS, HMC)
 - **differentiate** (forward AD) the model solution, Kalman filter loglikelihood (reverse-mode AD), model moments, steady state, **with respect to the parameters**
 
 The package is not:
