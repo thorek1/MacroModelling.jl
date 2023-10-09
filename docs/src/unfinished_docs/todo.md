@@ -6,7 +6,7 @@
 - [ ] nonlinear estimation using unscented kalman filter
 - [ ] nonlinear conditional forecasts
 - [ ] add balanced growth path handling
-- [ ] feedback: write out RBC equations, provide option for external SS guess, highlight NUTS sampler compatibility, sell the sampler better (ESS vs dynare), reorder other toolboxes according to popularity, differentiate more vs diffstatespace, more details on algorithm (SS solver)
+- [ ] feedback: write out RBC equations, provide option for external SS guess, sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
 - [ ] recheck function examples and docs (include output description)
 - [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
 - [ ] add user facing option to choose sylvester solver
@@ -65,6 +65,9 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] check if higher order effects might distort results for autocorr (problem with order deffinition) - doesnt seem to be the case; full_covar yields same result
+- [x] highlight NUTS sampler compatibility
+- [x] differentiate more vs diffstatespace
+- [x] reorder other toolboxes according to popularity
 - [x] add JOSS article (see Makie.jl)
 - [x] write to mod file for unicode characters. have them take what you would type: \alpha\bar
 - [x] write dynare model using function converting unicode to tab completion
