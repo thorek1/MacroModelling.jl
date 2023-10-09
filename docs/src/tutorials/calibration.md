@@ -270,7 +270,7 @@ At third order we get the following results:
 get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_third_order)
 ```
 
-standard deviations of inflation is almost three times as high and for real wages it is also substantially higher. Furthermore, standard deviations of shocks matter even more for the volatility of the endogenous variables.
+standard deviations of inflation is more than two times as high and for real wages it is also substantially higher. Furthermore, standard deviations of shocks matter even more for the volatility of the endogenous variables.
 
 These results make it clear that capturing the nonlinear interactions by using nonlinear solutions has important implications for the model moments and by extension the model dynamics.
 
