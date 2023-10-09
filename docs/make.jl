@@ -1,12 +1,20 @@
 using Documenter
 using MacroModelling
 import Turing, StatsPlots
+using DocumenterCitations
+
+bib = CitationBibliography(
+    joinpath(@__DIR__, "src", "refs.bib");
+    style=:authoryear
+)
+
+# doctest(MacroModelling, fix=true)
 
 makedocs(
     sitename = "MacroModelling.jl",
     authors = "Thore Kockerols",
     doctest = true,
-    format = Documenter.HTML(),
+    format = Documenter.HTML(size_threshold = 204800*10),
     modules = [MacroModelling],
     pages = [
         "Introduction" => "index.md",
@@ -25,6 +33,8 @@ makedocs(
         "API" => "api.md",
         "Index" => "call_index.md",
     ],
+    warnonly = true,
+    plugins=[bib]
 )
 
 # Documenter can also automatically deploy documentation to gh-pages.

@@ -10,11 +10,11 @@ As of now the package can:
 
 - parse a model written with user friendly syntax (variables are followed by time indices `...[2], [1], [0], [-1], [-2]...`, or `[x]` for shocks)
 - (tries to) solve the model only knowing the model equations and parameter values (no steady state file needed)
-- calculate first, second, and third order (pruned) perturbation solutions using (forward or reverse-mode) automatic differentiation (AD)
+- calculate first, second, and third order (pruned) perturbation solutions (see [villemot2011solving](@citet), [andreasen2018pruning](@citet) and [levintal2017fifth](@citet)) using (forward or reverse-mode) automatic differentiation (AD)
 - calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts
 - calibrate parameters using (non stochastic) steady state relationships
 - match model moments
-- estimate the model on data (Kalman filter using first order perturbation)
+- estimate the model on data (Kalman filter using first order perturbation; see [durbin2012time](@citet))
 - **differentiate** (forward AD) the model solution (first order perturbation), Kalman filter loglikelihood (reverse-mode AD), model moments, steady state, **with respect to the parameters**
 
 The package is not:
@@ -65,10 +65,5 @@ The package contains the following models in the `models` folder:
 
 ## Bibliography
 
-Andreasen, M. M., Fernández-Villaverde, J., and Rubio-Ramírez, J. F.  (2018), "The pruned state-space system for non-linear DSGE models: Theory and empirical applications.", The Review of Economic Studies, 85.1, p. 1-49.
-
-Durbin, J, and Koopman, S. J. (2012), "Time Series Analysis by State Space Methods, 2nd edn", Oxford University Press.
-
-Levintal, O., (2017), "Fifth-Order Perturbation Solution to DSGE models", Journal of Economic Dynamics and Control, 80, pp. 1---16.
-
-Villemot, S., (2011), "Solving rational expectations models at first order: what Dynare does", Dynare Working Papers 2, CEPREMAP.
+```@bibliography
+```
