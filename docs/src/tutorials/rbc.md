@@ -33,13 +33,13 @@ Firms rent capital from households to produce goods. Their profits, ``\Pi_t``, a
 Given the Cobb-Douglas production function with a stochastic technology process:
 
 ```math
-q_t = \e^{z_t} k_{t-1}^{\alpha}
+q_t = e^{z_t} k_{t-1}^{\alpha}
 ```
 
 The FOC with respect to capital ``k_{t}`` determines the optimal amount of capital the firm should rent. It equates the marginal product of capital (how much additional output one more unit of capital would produce) to its cost (the rental rate).
 
 ```math
-R_t = \alpha \e^{z_t} k_{t-1}^{\alpha-1}
+R_t = \alpha e^{z_t} k_{t-1}^{\alpha-1}
 ```
 
 **Market Clearing**:
@@ -99,7 +99,7 @@ using MacroModelling
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
 
     q[0] = exp(z[0]) * k[-1]^α
-    
+
     z[0] = ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
 end
 ```
