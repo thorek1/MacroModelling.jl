@@ -78,7 +78,7 @@ q_t = e^{z_t} k_{t-1}^{\alpha}
 - **Technology Process**: Traces the evolution of technological progress. Exogenous innovations are captured by ``\epsilon^z_{t}``.
 
 ```math
-z_{t+1} = \rho^z z_{t-1} + \sigma^z \epsilon^z_{t}
+z_{t} = \rho^z z_{t-1} + \sigma^z \epsilon^z_{t}
 ```
 
 ## Define the model
@@ -95,8 +95,11 @@ ENV["GKSwstype"] = "100"
 using MacroModelling
 @model RBC begin
     1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+
     q[0] = exp(z[0]) * k[-1]^α
+    
     z[0] = ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
 end
 ```
