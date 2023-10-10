@@ -4,7 +4,7 @@ This tutorial is intended to show the workflow to estimate a model using the No-
 
 ## Define the model
 
-The first step is always to name the model and write down the equations. For the [schorfheide_2000](@citet) model this would go as follows:
+The first step is always to name the model and write down the equations. For the [schorfheide2000](@citet) model this would go as follows:
 
 ```@setup tutorial_2
 ENV["GKSwstype"] = "100"
