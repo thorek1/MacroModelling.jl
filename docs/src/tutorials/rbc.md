@@ -1,10 +1,61 @@
 # Write your first model - simple RBC
 
-The following tutorial will walk you through the steps of writing down a model (not explained here / taken as given) and analysing it. Prior knowledge of DSGE models and their solution in practical terms (e.g. having used a mod file with dynare) is useful in understanding this tutorial.
+The following tutorial will walk you through the steps of writing down a model (not explained here / taken as given) and analysing it. Prior knowledge of DSGE models and their solution in practical terms (e.g. having used a mod file with dynare) is useful in understanding this tutorial. For the purpose of this tutorial we will work with a simplified version of a real business cycle (RBC) model. The model laid out below examines capital accumulation, consumption, and random technological progress. Households maximize lifetime utility from consumption, weighing current against future consumption. Firms produce using capital and a stochastic technology factor, setting capital rental rates based on marginal productivity. The model integrates households' decisions, firms' production, and random technological shifts to understand economic growth and dynamics.
+
+## RBC - derivation of model equations
+
+**Household's Problem**:
+Households derive utility from consuming goods and discount future consumption. The decision they face every period is how much of their income to consume now versus how much to invest for future consumption.
+
+\[ E_0 \sum_{t=0}^{\infty} \beta^t \ln(c_t) \]
+
+Their budget constraint reflects that their available resources for consumption or investment come from returns on their owned capital (both from the rental rate and from undepreciated capital) and any profits distributed from firms.
+
+\[ c_t + k_t = (1-\delta) k_{t-1} + R_t k_{t-1} + \Pi_t \]
+
+The FOC with respect to \( c_t \) represents the intertemporal trade-off. It balances the marginal utility of consuming one more unit today against the expected discounted marginal utility of consuming that unit in the future.
+
+\[ \frac{1}{c_t} = \beta E_t \left[ (R_{t+1} + 1 - \delta) \frac{1}{c_{t+1}} \right] \]
+
+**Firm's Problem**:
+Firms rent capital from households to produce goods. Their profits, \( \Pi_t \), are the difference between their revenue from selling goods and their costs from renting capital. Competition ensures that profits are 0.
+
+\[ \Pi_t = q_t - R_t k_{t-1} \]
+
+Given the Cobb-Douglas production function with a stochastic technology process:
+
+\[ q_t = \exp(z_t) k_{t-1}^{\alpha} \]
+
+The FOC with respect to capital \( k_{t} \) determines the optimal amount of capital the firm should rent. It equates the marginal product of capital (how much additional output one more unit of capital would produce) to its cost (the rental rate).
+
+\[ R_t = \alpha \exp(z_t) k_{t-1}^{\alpha-1} \]
+
+**Market Clearing**:
+This condition ensures that every good produced in the economy is either consumed by households or invested to augment future production capabilities.
+
+\[ q_t = c_t + i_t \]
+
+With:
+
+\[ i_t = k_t - (1-\delta)k_{t-1} \]
+
+**Equations describing the dynamics of the economy**:
+
+1. **Technology Process**: Traces the evolution of technological progress. Exogenous innovations are captured by \( \epsilon_{t} \).
+\[ z_{t+1} = \rho z_{t-1} + \sigma^z \epsilon^z_{t} \]
+
+2. **Production**: Describes the output generation from the previous period's capital stock, enhanced by current technology.
+\[ q_t = \exp(z_t) k_{t-1}^{\alpha} \]
+
+3. **Household's Optimization (Euler Equation)**: Signifies the balance households strike between current and future consumption. The rental rate of capital has been substituted for.
+\[ \frac{1}{c_t} = \beta \left[ (\alpha \exp(z_{t+1}) k_t^{\alpha-1} + 1 - \delta) \frac{1}{c_{t+1}} \right] \]
+
+4. **Capital Accumulation**: Charts the progression of capital stock over time.
+\[ k_t = (1-\delta)k_{t-1} + q_t - c_t \]
 
 ## Define the model
 
-The first step is always to name the model and write down the equations. Taking a standard real business cycle (RBC) model this would go as follows.
+The first step is always to name the model and write down the equations. Taking the RBC model described above this would go as follows.
 
 First, we load the package and then use the [`@model`](@ref) macro to define our model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which we write down between `begin` and `end`. One equation per line and timing of endogenous variables are expressed in the squared brackets following the variable name. Exogenous variables (shocks) are followed by a keyword in squared brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julias unicode capabilities (`alpha` can be written as `α`).
 
@@ -18,7 +69,7 @@ using MacroModelling
     1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
-    z[0] = ρ * z[-1] + std_z * eps_z[x]
+    z[0] = ρ * z[-1] + σᶻ * ϵᶻ[x]
 end
 ```
 
@@ -30,7 +81,7 @@ Next we need to add the parameters of the model. The macro [`@parameters`](@ref)
 
 ```@repl tutorial_1
 @parameters RBC begin
-    std_z = 0.01
+    σᶻ= 0.01
     ρ = 0.2
     δ = 0.02
     α = 0.5
