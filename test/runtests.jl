@@ -104,12 +104,6 @@ end
 m = nothing
 GC.gc()
 
-@testset verbose = true "SW03 with calibration equations" begin
-    include("models/SW03.jl")
-    functionality_test(m)
-end
-m = nothing
-GC.gc()
 
 @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
     include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
@@ -225,6 +219,12 @@ if test_higher_order
 end
 
 
+@testset verbose = true "SW03 with calibration equations" begin
+    include("models/SW03.jl")
+    functionality_test(m)
+end
+m = nothing
+GC.gc()
 
 @testset verbose = true "Model without shocks" begin
     @model m begin
