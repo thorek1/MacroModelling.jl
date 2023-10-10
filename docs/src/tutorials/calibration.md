@@ -4,7 +4,7 @@ This tutorial is intended to show the workflow to calibrate a model using the me
 
 ## Define the model
 
-The first step is always to name the model and write down the equations. For the Gali (2015) model (chapter 3 of the book) this would go as follows:
+The first step is always to name the model and write down the equations. For the [gali2015; Chapter 3](@citet) this would go as follows:
 
 ```@setup tutorial_2
 ENV["GKSwstype"] = "100"
