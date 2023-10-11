@@ -7,6 +7,7 @@
 - [ ] nonlinear conditional forecasts
 - [ ] add balanced growth path handling
 - [ ] feedback: write out RBC equations, provide option for external SS guess, sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
+- [ ] higher order solutions: some kron matrix mults are later compressed. write custom compressed kron mult; check if sometimes dense mult is faster? (e.g. GNSS2010 seems dense at higher order)
 - [ ] recheck function examples and docs (include output description)
 - [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
 - [ ] add user facing option to choose sylvester solver
