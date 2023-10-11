@@ -602,6 +602,10 @@ function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
 end
 
 
+# compatibility with SymPy
+Max = max
+Min = min
+
 function simplify(ex::Expr)
     ex_ss = convert_to_ss_equation(ex)
 
@@ -611,7 +615,11 @@ function simplify(ex::Expr)
 
 	parsed = ex_ss |> eval |> string |> Meta.parse
 
-    postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, parsed)
+    postwalk(x ->   x isa Expr ? 
+                        x.args[1] == :conjugate ? 
+                            x.args[2] : 
+                        x : 
+                    x, parsed)
 end
 
 function convert_to_ss_equation(eq::Expr)
@@ -1231,8 +1239,8 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
     redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(Symbolics.var_list) .> 1))
 
     for i in redundant_idx
-        for var_to_solve in redundant_vars[i]
-            soll = try SPyPyC.solve(ss_equations[i],var_to_solve)
+        for var_to_solve_for in redundant_vars[i]
+            soll = try SPyPyC.solve(ss_equations[i],var_to_solve_for)
             catch
             end
             
@@ -1241,8 +1249,8 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
             end
             
             if length(soll) == 0 || soll == SPyPyC.Sym[0] # take out variable if it is redundant from that euation only
-                push!(Symbolics.var_redundant_list[i],var_to_solve)
-                ss_equations[i] = ss_equations[i].subs(var_to_solve,1).replace(SPyPyC.Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
+                push!(Symbolics.var_redundant_list[i],var_to_solve_for)
+                ss_equations[i] = ss_equations[i].subs(var_to_solve_for,1).replace(SPyPyC.Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
             end
 
         end
@@ -1299,27 +1307,54 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     relevant_pars_across = []
     NSSS_solver_cache_init_tmp = []
 
+    min_max_errors = []
+
     n_block = 1
 
     while n > 0 
         if length(eqs[:,eqs[2,:] .== n]) == 2
-            var_to_solve = collect(unknowns)[vars[:,vars[2,:] .== n][1]]
+            var_to_solve_for = collect(unknowns)[vars[:,vars[2,:] .== n][1]]
 
-            soll = try SPyPyC.solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
+            eq_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1]]
+
+            # eliminate min/max from equations if solving for variables inside min/max. set to the variable we solve for automatically
+            parsed_eq_to_solve_for = eq_to_solve |> string |> Meta.parse
+
+            minmax_fixed_eqs = postwalk(x -> 
+                x isa Expr ?
+                    x.head == :call ? 
+                        x.args[1] ∈ [:Max,:Min] ?
+                            Symbol(var_to_solve_for) ∈ get_symbols(x.args[2]) ?
+                                x.args[2] :
+                            Symbol(var_to_solve_for) ∈ get_symbols(x.args[3]) ?
+                                x.args[3] :
+                            x :
+                        x :
+                    x :
+                x,
+            parsed_eq_to_solve_for)
+
+            if parsed_eq_to_solve_for != minmax_fixed_eqs
+                [push!(atoms_in_equations, a) for a in setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs))]
+                push!(min_max_errors,:(solution_error += abs($parsed_eq_to_solve_for)))
+                eq_to_solve = eval(minmax_fixed_eqs)
+            end
+
+            soll = try SPyPyC.solve(eq_to_solve,var_to_solve_for)
             catch
             end
 
             if isnothing(soll)
                 # println("Could not solve single variables case symbolically.")
-                println("Failed finding solution symbolically for: ",var_to_solve," in: ",ss_equations[eqs[:,eqs[2,:] .== n][1]])
+                println("Failed finding solution symbolically for: ",var_to_solve_for," in: ",eq_to_solve)
                 # solve numerically
                 continue
             # elseif PythonCall.pyconvert(Bool,soll[1].is_number)
             elseif soll[1].is_number == SPyPyC.TRUE
-                # ss_equations = ss_equations.subs(var_to_solve,soll[1])
-                ss_equations = [eq.subs(var_to_solve,soll[1]) for eq in ss_equations]
+                # ss_equations = ss_equations.subs(var_to_solve_for,soll[1])
+                ss_equations = [eq.subs(var_to_solve_for,soll[1]) for eq in ss_equations]
                 
-                push!(𝓂.solved_vars,Symbol(var_to_solve))
+                push!(𝓂.solved_vars,Symbol(var_to_solve_for))
                 push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
 
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
@@ -1331,12 +1366,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 push!(atoms_in_equations_list,[])
             else
 
-                push!(𝓂.solved_vars,Symbol(var_to_solve))
+                push!(𝓂.solved_vars,Symbol(var_to_solve_for))
                 push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
                 
                 # atoms = reduce(union,soll[1].atoms())
                 [push!(atoms_in_equations, a) for a in soll[1].atoms()]
-                push!(atoms_in_equations_list, Set(Symbol.(soll[1].atoms())))
+                push!(atoms_in_equations_list, Set(union(setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs)),Symbol.(soll[1].atoms()))))
                 # println(atoms_in_equations)
                 # push!(atoms_in_equations, soll[1].atoms())
 
@@ -1706,6 +1741,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     push!(SS_solve_func,:($(dyn_exos...)))
     
+    push!(SS_solve_func, min_max_errors...)
     # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
     push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [params_scaled_flt] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp...,params_scaled_flt] end))
     
@@ -2070,6 +2106,8 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
 
     push!(SS_solve_func,:($(dyn_exos...)))
     
+    push!(SS_solve_func, min_max_errors...)
+
     # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
     push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [params_scaled_flt] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp...,params_scaled_flt] end))
     
@@ -2540,7 +2578,8 @@ function solve!(𝓂::ℳ;
     algorithm::Symbol = :riccati, 
     symbolic_SS::Bool = false,
     verbose::Bool = false,
-    silent::Bool = false)
+    silent::Bool = false,
+    tol::AbstractFloat = eps())
 
     @assert algorithm ∈ all_available_algorithms
 
@@ -2571,8 +2610,10 @@ function solve!(𝓂::ℳ;
 
             SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
-            # @assert solution_error < eps() "Could not find non stochastic steady steady."
-            
+            if solution_error > tol
+                @warn "Could not find non stochastic steady steady."
+            end
+
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
             sol_mat, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
@@ -2585,7 +2626,7 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
-            𝓂.solution.outdated_NSSS = false
+            𝓂.solution.outdated_NSSS = solution_error > tol
 
         end
 
@@ -2682,6 +2723,10 @@ function solve!(𝓂::ℳ;
             
             SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
 
+            if solution_error > tol
+                @warn "Could not find non stochastic steady steady."
+            end
+
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
             sol_mat, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
@@ -2692,12 +2737,16 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:quadratic_iteration, :binder_pesaran])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
-            𝓂.solution.outdated_NSSS = false
+            𝓂.solution.outdated_NSSS = solution_error > tol
             
         end
 
         if :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
             SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+
+            if solution_error > tol
+                @warn "Could not find non stochastic steady steady."
+            end
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
@@ -2709,8 +2758,7 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:linear_time_iteration])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
-            𝓂.solution.outdated_NSSS = false
-            
+            𝓂.solution.outdated_NSSS = solution_error > tol
         end
     end
     
@@ -5387,79 +5435,79 @@ end
 
 
 
-@setup_workload begin
-    # Putting some things in `setup` can reduce the size of the
-    # precompile file and potentially make loading faster.
-    @model FS2000 precompile = true begin
-        dA[0] = exp(gam + z_e_a  *  e_a[x])
-        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-        W[0] = l[0] / n[0]
-        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-        P[0] * c[0] = m[0]
-        m[0] - 1 + d[0] = l[0]
-        e[0] = exp(z_e_a  *  e_a[x])
-        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-        gy_obs[0] = dA[0] * y[0] / y[-1]
-        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-        log_gy_obs[0] = log(gy_obs[0])
-        log_gp_obs[0] = log(gp_obs[0])
-    end
+# @setup_workload begin
+#     # Putting some things in `setup` can reduce the size of the
+#     # precompile file and potentially make loading faster.
+#     @model FS2000 precompile = true begin
+#         dA[0] = exp(gam + z_e_a  *  e_a[x])
+#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#         W[0] = l[0] / n[0]
+#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#         P[0] * c[0] = m[0]
+#         m[0] - 1 + d[0] = l[0]
+#         e[0] = exp(z_e_a  *  e_a[x])
+#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#         gy_obs[0] = dA[0] * y[0] / y[-1]
+#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#         log_gy_obs[0] = log(gy_obs[0])
+#         log_gp_obs[0] = log(gp_obs[0])
+#     end
 
-    @parameters FS2000 silent = true precompile = true begin  
-        alp     = 0.356
-        bet     = 0.993
-        gam     = 0.0085
-        mst     = 1.0002
-        rho     = 0.129
-        psi     = 0.65
-        del     = 0.01
-        z_e_a   = 0.035449
-        z_e_m   = 0.008862
-    end
+#     @parameters FS2000 silent = true precompile = true begin  
+#         alp     = 0.356
+#         bet     = 0.993
+#         gam     = 0.0085
+#         mst     = 1.0002
+#         rho     = 0.129
+#         psi     = 0.65
+#         del     = 0.01
+#         z_e_a   = 0.035449
+#         z_e_m   = 0.008862
+#     end
     
-    ENV["GKSwstype"] = "nul"
+#     ENV["GKSwstype"] = "nul"
 
-    @compile_workload begin
-        # all calls in this block will be precompiled, regardless of whether
-        # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC precompile = true begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
+#     @compile_workload begin
+#         # all calls in this block will be precompiled, regardless of whether
+#         # they belong to your package or not (on Julia 1.8 and higher)
+#         @model RBC precompile = true begin
+#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#         end
 
-        @parameters RBC silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
+#         @parameters RBC silent = true precompile = true begin
+#             δ = 0.02
+#             α = 0.5
+#         end
 
-        get_SS(FS2000)
-        get_SS(FS2000, parameters = :alp => 0.36)
-        get_solution(FS2000)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)
+#         get_SS(FS2000)
+#         get_SS(FS2000, parameters = :alp => 0.36)
+#         get_solution(FS2000)
+#         get_solution(FS2000, parameters = :alp => 0.35)
+#         get_standard_deviation(FS2000)
+#         get_correlation(FS2000)
+#         get_autocorrelation(FS2000)
+#         get_variance_decomposition(FS2000)
+#         get_conditional_variance_decomposition(FS2000)
+#         get_irf(FS2000)
 
-        data = simulate(FS2000)[:,:,1]
-        observables = [:c,:k]
-        calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
-        get_mean(FS2000, silent = true)
-        # get_SSS(FS2000, silent = true)
-        # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#         data = simulate(FS2000)[:,:,1]
+#         observables = [:c,:k]
+#         calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
+#         get_mean(FS2000, silent = true)
+#         # get_SSS(FS2000, silent = true)
+#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-        # import Plots, StatsPlots
-        # plot_irf(FS2000)
-        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        # plot_conditional_variance_decomposition(FS2000)
-    end
-end
+#         # import Plots, StatsPlots
+#         # plot_irf(FS2000)
+#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#         # plot_conditional_variance_decomposition(FS2000)
+#     end
+# end
 
 end

@@ -1005,7 +1005,8 @@ function get_steady_state(𝓂::ℳ;
     algorithm::Symbol = :first_order,
     parameter_derivatives::Union{Symbol_input,String_input} = :all,
     verbose::Bool = false,
-    silent::Bool = true)
+    silent::Bool = true,
+    tol::AbstractFloat = eps())
 
     solve!(𝓂, parameters = parameters, verbose = verbose)
 
@@ -1032,6 +1033,10 @@ function get_steady_state(𝓂::ℳ;
     end
 
     SS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+
+    if solution_error > tol
+        @warn "Could not find non stochastic steady state."
+    end
 
     if stochastic
         if  algorithm == :third_order
