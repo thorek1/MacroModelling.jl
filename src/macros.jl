@@ -107,6 +107,8 @@ macro model(𝓂,ex...)
 
     model_ex = parse_for_loops(ex[end])
 
+    model_ex, condition_list = parse_occasionally_binding_constraints(model_ex)
+    
     # write down dynamic equations and add auxilliary variables for leads and lags > 1
     for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
