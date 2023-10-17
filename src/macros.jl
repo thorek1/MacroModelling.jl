@@ -109,6 +109,14 @@ macro model(𝓂,ex...)
 
     model_ex, condition_list = parse_occasionally_binding_constraints(model_ex)
     
+    obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
+
+    for c in condition_list
+        if c isa Expr
+            push!(obc_shock_bounds, parse_obc_shock_bounds(c))
+        end
+    end
+
     # write down dynamic equations and add auxilliary variables for leads and lags > 1
     for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
@@ -848,6 +856,8 @@ macro model(𝓂,ex...)
                         [],#x->x,
 
                         $T,
+
+                        $obc_shock_bounds,
 
                         solution(
                             perturbation(   perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),

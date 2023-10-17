@@ -26,11 +26,13 @@ end
 get_irf(testmax)(:r,:,:ϵᶻᵒᵇᶜ⁽⁻¹⁾)
 get_solution(testmax)
 
-using Optimization, Ipopt, OptimizationMOI, OptimizationOptimJL
+# using Optimization, Ipopt, OptimizationMOI, OptimizationOptimJL, LineSearches, OptimizationNLopt, KNITRO
 import MacroTools: postwalk, unblock
 import MacroModelling: parse_for_loops, convert_to_ss_equation, simplify,create_symbols_eqs!,remove_redundant_SS_vars!,get_symbols, parse_occasionally_binding_constraints, parse_algorithm_to_state_update
 import DataStructures: CircularBuffer
 import Subscripts: super, sub
+import LinearAlgebra as ℒ
+using BenchmarkTools, JuMP, StatusSwitchingQP
 
 𝓂 = testmax
 algorithm = :first_order
@@ -38,21 +40,267 @@ state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
 T = 𝓂.timings
 periods = 40
 
-initial_state = zeros(Real, T.nVars)
-Y = zeros(Real,T.nVars,periods,1)
-T.exo
-shock_history = zeros(Real,T.nExo,periods)
-shock_history[1,1] = -3
+initial_state = zeros(T.nVars)
+# Y = zeros(Real,T.nVars,periods,1)
+# T.exo
+obc_shocks = [i[1] for i in 𝓂.obc_shock_bounds]
+
+shock_history = zeros(T.nExo,periods)
+shock_history[1,1] = -4
 
 
 reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
-shock_history[16,1]
+# shock_history[16,1]
+
+obc_shock_idx = contains.(string.(T.exo),"ᵒᵇᶜ")
+
+function calc_state(x::Vector{S}) where S
+    Y = zeros(AffExpr,T.nVars,periods,1)
+    # println(collect(x))
+    shock_hst = AffExpr.(copy(shock_history[:,1]))
+    shock_hst[obc_shock_idx] .= x
+
+    Y[:,1,1] = state_update(initial_state, shock_hst)
+
+    for t in 1:periods-1
+        Y[:,t+1,1] = state_update(Y[:,t,1],shock_history[:,t+1])
+    end
+
+    Y .+= reference_steady_state[1:T.nVars]
+
+    return Y[4,:,:]
+end
+
+# get bound on shocks
+# get minmax condition
+
+# fill(a[3],sum(obc_shock_idx)÷length(𝓂.obc_shock_bounds))
+
+model = Model(StatusSwitchingQP.Optimizer)
+set_silent(model)
+
+periods_per_shock = sum(obc_shock_idx)÷length(𝓂.obc_shock_bounds)
+num_shocks = length(𝓂.obc_shock_bounds)
+
+# Create the variables over the full set of indices first.
+@variable(model, x[1:num_shocks*periods_per_shock])
+
+# Now loop through obc_shock_bounds to set the bounds on these variables.
+for (idx, v) in enumerate(𝓂.obc_shock_bounds)
+    is_upper_bound = v[2]
+    bound = v[3]
+    idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
+    if is_upper_bound
+        set_upper_bound.(x[idxs], bound)
+    else
+        set_lower_bound.(x[idxs], bound)
+    end
+end
+
+@objective(model, Min, x' * ℒ.I * x)
+@constraint(model, calc_state(x) .>= 0)
+JuMP.optimize!(model)
+
+
+@profview for i in 1:100 JuMP.optimize!(model) end
+
+value.(x)
+
+# ≤≥
+:(a-b-c)|>dump
+testmax.dyn_equations[3]|>dump
+
+eq = testmax.dyn_equations[3]
+[i for (i,c) in enumerate(condition_list) if c isa Expr]
+
+import MacroModelling: get_symbols, match_pattern
+
+#check if equation contains maxmin
+
+expression_for_placeholder = []
+ismax = []
+eqs = postwalk(x -> 
+            x isa Expr ?
+                x.head == :call ?
+                    x.args[1] ∈ [:max,:min] ?
+                        begin 
+                            if length(intersect(get_symbols(x.args[2]),testmax.var)) == 0
+                                push!(expression_for_placeholder,x.args[2])
+                            else
+                                push!(expression_for_placeholder,x.args[3])
+                            end
+                            if x.args[1] == :max
+                                push!(ismax,true)
+                                :max_placeholder
+                            else
+                                push!(ismax,false)
+                                :min_placeholder
+                            end
+                        end :
+                    x :
+                x :
+            x,
+        eq)
+
+# solve for the placeholder
+using SymPyPythonCall
+
+@syms max_placeholder, min_placeholder, r₍₀₎
+
+eq_to_solve = eval(eqs)
+
+if ismax[1]
+    sol = solve(eq_to_solve, max_placeholder)
+else
+    sol = solve(eq_to_solve, min_placeholder)
+end
+
+
+final_expr = Expr(:call, :-, ismax[1] ? :($(expression_for_placeholder[1])) : :(-$(expression_for_placeholder[1])), Meta.parse(string(sol[1])))
+
+
+
+
+
+
+future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
+present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
+past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
+shock_varss   = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎$")))
+ss_varss      = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎$")))
+
+sort!(future_varss  ,by = x->replace(string(x),r"₍₁₎$"=>"")) #sort by name without time index because otherwise eps_zᴸ⁽⁻¹⁾₍₋₁₎ comes before eps_z₍₋₁₎
+sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
+sort!(past_varss    ,by = x->replace(string(x),r"₍₋₁₎$"=>""))
+sort!(shock_varss   ,by = x->replace(string(x),r"₍ₓ₎$"=>""))
+sort!(ss_varss      ,by = x->replace(string(x),r"₍ₛₛ₎$"=>""))
+
+steady_state = []
+for (i, var) in enumerate(ss_varss)
+    push!(steady_state,:($var = X̄[$i]))
+    # ii += 1
+end
+
+ii = 1
+
+alll = []
+for var in future_varss
+    push!(alll,:($var = X[$ii]))
+    ii += 1
+end
+
+for var in present_varss
+    push!(alll,:($var = X[$ii]))
+    ii += 1
+end
+
+for var in past_varss
+    push!(alll,:($var = X[$ii]))
+    ii += 1
+end
+
+for var in shock_varss
+    push!(alll,:($var = X[$ii]))
+    ii += 1
+end
+
+
+# paras = []
+# push!(paras,:((;$(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)...)) = params))
+
+paras = []
+for (i, parss) in enumerate(vcat(𝓂.parameters,𝓂.calibration_equations_parameters))
+    push!(paras,:($parss = params[$i]))
+end
+
+
+
+
+
+mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
+$(alll...)
+$(paras...)
+$(𝓂.calibration_equations_no_var...)
+$(steady_state...)
+$final_expr
+end)
+
+
+
+intersect(get_symbols(:r̄),testmax.var)
+# replace maxmin with the side containing parameters only
+
+
+check_minmax()
+max(r̄,r̂[0]) = r[0]
+
+r[0] = max(r̄,r̂[0]) 
+r[0] - r̄ > 0
+:(begin
+r[0] = max(r̄,r̂[0]) + v[0]
+r[0] - r̄ - v[0] > 0
+end)
+
+using MacroTools
+MacroTools.postwalk(:(r[0] = max(r̄,r̂[0]) + v[0]))
+
+r[0] = max(r̄,r̂[0]) + v[0]
+r[0] - r̄ - v[0] > 0
+
+:(ϵᶻ > 0) |> dump
+
+
+using MacroTools
+
+function parse_obc_shock_bounds(expr::Expr)
+    # Determine the order of the shock and bound in the expression
+    shock_first = isa(expr.args[2], Symbol)
+    
+    # Extract the shock and bound from the expression
+    shock = shock_first ? expr.args[2] : expr.args[3]
+    bound_expr = shock_first ? expr.args[3] : expr.args[2]
+    
+    # Evaluate the bound expression to get a numerical value
+    bound = eval(bound_expr) |> Float64
+    
+    # Determine whether the bound is a lower or upper bound based on the comparison operator and order
+    is_upper_bound = (expr.args[1] in (:<, :≤) && shock_first) || (expr.args[1] in (:>, :≥) && !shock_first)
+    
+    return shock, is_upper_bound, bound
+end
+
+# Example usage:
+expressions = [:(ϵᶻ > 0), :(1/2 < ϵᶻ), :(ϵᶻ > 1/3+1), :(ϵᶻ ≤ -1), :(1 ≥ ϵᶻ)]
+parsed_expressions = [parse_expression(expr) for expr in expressions]
+
+
 
 sol_mat = 𝓂.solution.perturbation.first_order.solution_matrix
-function bound_violations(x,p)
-    shock_history[2:end,1] = x
 
-    Y[:,1,1] = sol_mat * [initial_state[𝓂.timings.past_not_future_and_mixed_idx]; shock_history[:,1]] #state_update(initial_state,shock_history[:,1])
+function bound_violations(x,p)
+    # shock_history[2:end,1] = x
+
+    # Y[:,1,1] = sol_mat * [initial_state[𝓂.timings.past_not_future_and_mixed_idx]; shock_history[:,1]] #state_update(initial_state,shock_history[:,1])
+
+    # for t in 1:periods-1
+    #     Y[:,t+1,1] = sol_mat * [Y[𝓂.timings.past_not_future_and_mixed_idx,t,1]; shock_history[:,t+1]] #state_update(Y[:,t,1],shock_history[:,t+1])
+    # end
+
+    # Y .+= reference_steady_state[1:T.nVars]
+
+    # target = sum(abs,Y[4,:,:] .- max.(0,Y[5,:,:])) + sum(abs2,x)
+    return sum(x.^2)#target
+end
+
+# bound_violation(4*zeros(21),[])
+
+# bound_violations([zeros(14)...,2,zeros(6)...],[])
+
+function shock_constraints(res, x, p)
+    # shock_history[2:end,1] = x
+
+    Y = zeros(Real,T.nVars,periods,1)
+    Y[:,1,1] = sol_mat * [initial_state[𝓂.timings.past_not_future_and_mixed_idx]; vcat(shock_history[1,1],x)] #state_update(initial_state,shock_history[:,1])
 
     for t in 1:periods-1
         Y[:,t+1,1] = sol_mat * [Y[𝓂.timings.past_not_future_and_mixed_idx,t,1]; shock_history[:,t+1]] #state_update(Y[:,t,1],shock_history[:,t+1])
@@ -60,23 +308,204 @@ function bound_violations(x,p)
 
     Y .+= reference_steady_state[1:T.nVars]
 
-    target = sum(abs,Y[4,:,:] .- max.(0,Y[5,:,:])) + sum(abs2,x)
-    return target
+    res .= vcat(x, Y[4,:,:])
 end
 
-bound_violation(4*zeros(21),[])
+# T.exo
 
-bound_violation([zeros(14)...,2,zeros(6)...],[])
+x0 = zeros(T.nExo-1)
+# x0[indexin([:ϵᶻᵒᵇᶜ⁽⁻⁰⁾], T.exo)[1] - 1] = 2
 
-T.exo[16]
-function shock_constraints(res, x, p)
-    res .= x
+# bound_violations(x0*.2,())
+# shock_constraints(zeros(T.nExo-1 + periods), x0, [])
+
+# optprob = OptimizationFunction(bound_violations, Optimization.AutoForwardDiff(), cons = shock_constraints)
+# prob = OptimizationProblem(optprob, x0, (), lcons = zeros(T.nExo-1 + periods), ucons = fill(Inf, T.nExo-1 + periods))
+
+# # vcat(zeros(14),3,zeros(6 + periods))[16]
+# # T.exo[16]
+# # shock_constraints(zeros(21 + periods),vcat(zeros(14),2,zeros(6 + periods)),[])
+
+# sol = solve(prob, Ipopt.Optimizer())
+
+# sol = solve(prob, MadNLP.Optimizer())
+
+# sol = solve(prob, AmplNLWriter.Optimizer("couenne"))
+
+
+
+
+function calc_state(x::Vector{S}) where S
+    Y = zeros(AffExpr,T.nVars,periods,1)
+    
+    Y[:,1,1] = state_update(initial_state, vcat(shock_history[1,1],x))
+
+    for t in 1:periods-1
+        Y[:,t+1,1] = state_update(Y[:,t,1],shock_history[:,t+1])
+    end
+
+    Y .+= reference_steady_state[1:T.nVars]
+    return Y[4,:,:]
 end
 
-x0 = zeros(21) .+ .1
 
-optprob = OptimizationFunction(bound_violations, Optimization.AutoForwardDiff(), cons = shock_constraints)
-prob = OptimizationProblem(optprob, x0, (), lcons = zeros(21), ucons = fill(Inf,21))
+using BenchmarkTools, JuMP, StatusSwitchingQP
+# using BenchmarkTools, JuMP, Ipopt, COSMO, Clarabel, DAQP, HiGHS, MadNLP, OSQP, SCS, StatusSwitchingQP, Hypatia
+# import MultiObjectiveAlgorithms as MOA
+# model = Model(Ipopt.Optimizer)
+
+import LinearAlgebra as ℒ
+
+
+
+model = Model(StatusSwitchingQP.Optimizer)
+set_silent(model)
+@variable(model, x[i = 1:T.nExo - 1] >= 0)
+@objective(model, Min, x' * ℒ.I * x)
+@constraint(model, calc_state(x) .>= 0)
+JuMP.optimize!(model)
+
+value.(x)
+
+@benchmark begin
+    model = Model(COSMO.Optimizer)
+    set_silent(model)
+    @variable(model, x[1:11] >= 0)
+    @objective(model, Min, x'*Q*x)
+    @constraint(model, calc_state(x) .>= 0)
+    JuMP.optimize!(model)
+end
+
+
+@benchmark begin
+    model = Model(MadNLP.Optimizer)
+    set_silent(model)
+    @variable(model, x[1:11] >= 0)
+    @objective(model, Min, x'*Q*x)
+    @constraint(model, calc_state(x) .>= 0)
+    JuMP.optimize!(model)
+end
+
+# favorite
+@benchmark begin
+    model = Model(StatusSwitchingQP.Optimizer)
+    set_silent(model)
+    @variable(model, x[1:11] >= 0)
+    @objective(model, Min, x'*Q*x)
+    @constraint(model, calc_state(x) .>= 0)
+    JuMP.optimize!(model)
+end
+
+value.(x)
+
+@benchmark begin
+    model = Model(Clarabel.Optimizer)
+    set_silent(model)
+    @variable(model, x[1:11] >= 0)
+    @objective(model, Min, x'*Q*x)
+    @constraint(model, calc_state(x) .>= 0)
+    JuMP.optimize!(model)
+end
+
+
+@benchmark begin
+    model = Model(Hypatia.Optimizer)
+    set_silent(model)
+    @variable(model, x[1:11] >= 0)
+    @objective(model, Min, x'*Q*x)
+    @constraint(model, calc_state(x) .>= 0)
+    JuMP.optimize!(model)
+end
+
+
+
+
+
+@benchmark begin
+    model = Model(SCS.Optimizer)
+    set_silent(model)
+    @variable(model, x[1:11] >= 0)
+    @objective(model, Min, x'*Q*x)
+    @constraint(model, calc_state(x) .>= 0)
+    JuMP.optimize!(model)
+end
+
+
+@benchmark begin
+    model = Model(OSQP.Optimizer)
+    set_silent(model)
+    @variable(model, x[1:11] >= 0)
+    @objective(model, Min, x'*Q*x)
+    @constraint(model, calc_state(x) .>= 0)
+    JuMP.optimize!(model)
+end
+
+
+@benchmark begin
+    model = Model(DAQP.Optimizer)
+    set_silent(model)
+    @variable(model, x[1:11] >= 0)
+    @objective(model, Min, x'*Q*x)
+    @constraint(model, calc_state(x) .>= 0)
+    JuMP.optimize!(model)
+end
+
+
+@benchmark begin
+    model = Model(HiGHS.Optimizer)
+    set_silent(model)
+    @variable(model, x[1:11] >= 0)
+    @objective(model, Min, x'*Q*x)
+    @constraint(model, calc_state(x) .>= 0)
+    JuMP.optimize!(model)
+end
+
+
+
+@benchmark begin
+    model = Model(Ipopt.Optimizer)
+    set_silent(model)
+    @variable(model, x[1:11] >= 0)
+    @objective(model, Min, x'*Q*x)
+    @constraint(model, calc_state(x) .>= 0)
+    JuMP.optimize!(model)
+end
+
+
+@benchmark begin
+    model = Model(ProxSDP.Optimizer)
+    set_silent(model)
+    @variable(model, x[1:11] >= 0)
+    @objective(model, Min, x'*Q*x)
+    @constraint(model, calc_state(x) .>= 0)
+    JuMP.optimize!(model)
+end
+
+
+
+
+solution_summary(model)
+
+value.(x)
+
+
+
+# sol = solve(pro, SCIP.Optimizer())
+# sol = solve(prob, Pavito.Optimizer())
+# sol = solve(prob, Juniper.Optimizer())
+# sol = solve(prob, COSMO.Optimizer())
+# sol = solve(prob, BARON.Optimizer())
+# sol = solve(prob, knitro.Optimizer())
+# sol = solve(prob, highs.Optimizer())
+# sol = solve(prob, EAGO.Optimizer())
+
+bound_violations(sol*.9, ())
+shock_constraints(zeros(T.nExo-1 + periods), sol, [])
+
+sol = solve(prob, NelderMead())
+
+sol = solve(prob, LBFGS(linesearch = LineSearches.BackTracking(order=3)))
+
 
 sol = solve(prob, IPNewton())
 
@@ -161,6 +590,15 @@ eq = :(begin
     z[0] = ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
 end)
 model_ex, condition_list = parse_occasionally_binding_constraints(eq)
+
+
+obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
+
+for c in condition_list
+    if c isa Expr
+        push!(obc_shock_bounds, parse_obc_shock_bounds(c))
+    end
+end
 
 obc_shocks = Symbol[]
 

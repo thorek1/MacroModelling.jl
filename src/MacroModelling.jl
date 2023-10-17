@@ -9,6 +9,7 @@ import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
 import Symbolics
 import ForwardDiff as ℱ 
+import JuMP: AffExpr
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -122,6 +123,24 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 )
 
 
+
+
+function parse_obc_shock_bounds(expr::Expr)
+    # Determine the order of the shock and bound in the expression
+    shock_first = isa(expr.args[2], Symbol)
+    
+    # Extract the shock and bound from the expression
+    shock = shock_first ? expr.args[2] : expr.args[3]
+    bound_expr = shock_first ? expr.args[3] : expr.args[2]
+    
+    # Evaluate the bound expression to get a numerical value
+    bound = eval(bound_expr) |> Float64
+    
+    # Determine whether the bound is a lower or upper bound based on the comparison operator and order
+    is_upper_bound = (expr.args[1] in (:<, :≤) && shock_first) || (expr.args[1] in (:>, :≥) && !shock_first)
+    
+    return shock, is_upper_bound, bound
+end
 
 
 
@@ -601,7 +620,7 @@ function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
     return filter(r -> match(pattern, string(r)) !== nothing, strings)
 end
 
-function parse_occasionally_binding_constraints(equations_block; max_obc_shift::Int = 20)
+function parse_occasionally_binding_constraints(equations_block; max_obc_shift::Int = 10)
     eqs = []
     condition_list = []
 
@@ -646,7 +665,7 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_shift::
                                 x.args[1] ∈ obc_shocks ?
                                     begin
                                         obc_shock = intersect([x.args[1]], obc_shocks)[1]
-                                        obc_shifts = [Expr(:ref,Meta.parse(string(obc_shock) * "ᵒᵇᶜ⁽⁻"*super(string(i))*"⁾"),:(x-$i)) for i in 0:max_obc_shift]
+                                        obc_shifts = [Expr(:ref,Meta.parse(string(obc_shock) * "ᵒᵇᶜ⁽⁻"*super(string(i))*"⁾"),i > 0 ? :(x - $i) : :x) for i in 0:max_obc_shift]
                                         Expr(:call,:+, x, obc_shifts...) 
                                     end :
                                 x :
@@ -2675,7 +2694,7 @@ function solve!(𝓂::ℳ;
             
             @assert solved "Could not find stable first order solution."
 
-            state_update₁ = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ = function(state::Vector{<: Union{Real,AffExpr}}, shock::Vector{<: Union{Real,AffExpr}}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
             𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update₁)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
@@ -2694,7 +2713,7 @@ function solve!(𝓂::ℳ;
             
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₂ = function(state::Vector{Float64}, shock::Vector{Float64})
+            state_update₂ = function(state::Vector{<: Union{Real,AffExpr}}, shock::Vector{<: Union{Real,AffExpr}})
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                             1
                             shock]
@@ -2715,7 +2734,7 @@ function solve!(𝓂::ℳ;
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₂ = function(pruned_states::Vector{Vector{Float64}}, shock::Vector{Float64})
+            state_update₂ = function(pruned_states::Vector{Vector{<: Union{Real,AffExpr}}}, shock::Vector{<: Union{Real,AffExpr}})
                 aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
                 aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
                 
@@ -2736,7 +2755,7 @@ function solve!(𝓂::ℳ;
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₃ = function(state::Vector{Float64}, shock::Vector{Float64})
+            state_update₃ = function(state::Vector{<: Union{Real,AffExpr}}, shock::Vector{<: Union{Real,AffExpr}})
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                                 1
                                 shock]
@@ -2754,7 +2773,7 @@ function solve!(𝓂::ℳ;
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₃ = function(pruned_states::Vector{Vector{Float64}}, shock::Vector{Float64})
+            state_update₃ = function(pruned_states::Vector{Vector{<: Union{Real,AffExpr}}}, shock::Vector{<: Union{Real,AffExpr}})
                 aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
                 aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
                 aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
@@ -2786,7 +2805,7 @@ function solve!(𝓂::ℳ;
             
             sol_mat, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
             
-            state_update₁ₜ = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ₜ = function(state::Vector{<: Union{Real,AffExpr}}, shock::Vector{<: Union{Real,AffExpr}}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
             𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:quadratic_iteration, :binder_pesaran])
@@ -2807,7 +2826,7 @@ function solve!(𝓂::ℳ;
             
             sol_mat = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
             
-            state_update₁ₜ = function(state::Vector{Float64}, shock::Vector{Float64}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ₜ = function(state::Vector{<: Union{Real,AffExpr}}, shock::Vector{<: Union{Real,AffExpr}}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
             𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:linear_time_iteration])

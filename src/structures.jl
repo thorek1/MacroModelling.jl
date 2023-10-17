@@ -349,6 +349,9 @@ mutable struct ℳ
     model_third_order_derivatives::Vector{Function}
 
     timings::timings
+
+    obc_shock_bounds::Vector{Tuple{Symbol, Bool, Float64}}
+
     solution::solution
     # symbolics::symbolics
 
