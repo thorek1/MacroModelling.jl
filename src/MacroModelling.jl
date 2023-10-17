@@ -1419,7 +1419,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 for i in eqs_to_solve
                     # push!(syms_in_eqs, Symbol.(PythonCall.pystr.(i.atoms()))...)
-                    push!(syms_in_eqs, Symbol.(SPyPyC.unSym.(SPyPyC.free_symbols(i)))...)
+                    push!(syms_in_eqs, Symbol.(SPyPyC.walk_expression.(SPyPyC.free_symbols(i)))...)
                 end
 
                 # println(syms_in_eqs)
