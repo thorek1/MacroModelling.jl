@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] implement occasionally binding constraints with shocks
+- [ ] cover nested case: min(50,a+b+max(c,10))
 - [ ] nonlinear estimation using unscented kalman filter
 - [ ] nonlinear conditional forecasts
 - [ ] add balanced growth path handling
