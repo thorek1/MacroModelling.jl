@@ -2843,7 +2843,7 @@ function solve!(𝓂::ℳ;
             
             @assert solved "Could not find stable first order solution."
 
-            state_update₁ = function(state::Vector{<: Union{Real,JuMP.AffExpr}}, shock::Vector{<: Union{Real,JuMP.AffExpr}}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ = function(state::Vector{T}, shock::Vector{S}) where {T,S} sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
             𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update₁)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
@@ -2862,7 +2862,7 @@ function solve!(𝓂::ℳ;
             
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₂ = function(state::Vector{<: Union{Real,JuMP.AffExpr}}, shock::Vector{<: Union{Real,JuMP.AffExpr}})
+            state_update₂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                             1
                             shock]
@@ -2883,7 +2883,7 @@ function solve!(𝓂::ℳ;
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₂ = function(pruned_states::Vector{Vector{<: Union{Real,JuMP.AffExpr}}}, shock::Vector{<: Union{Real,JuMP.AffExpr}})
+            state_update₂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
                 aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
                 aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
                 
@@ -2904,7 +2904,7 @@ function solve!(𝓂::ℳ;
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₃ = function(state::Vector{<: Union{Real,JuMP.AffExpr}}, shock::Vector{<: Union{Real,JuMP.AffExpr}})
+            state_update₃ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                                 1
                                 shock]
@@ -2922,7 +2922,7 @@ function solve!(𝓂::ℳ;
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₃ = function(pruned_states::Vector{Vector{<: Union{Real,JuMP.AffExpr}}}, shock::Vector{<: Union{Real,JuMP.AffExpr}})
+            state_update₃ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
                 aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
                 aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
                 aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
@@ -2954,7 +2954,7 @@ function solve!(𝓂::ℳ;
             
             sol_mat, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
             
-            state_update₁ₜ = function(state::Vector{<: Union{Real,JuMP.AffExpr}}, shock::Vector{<: Union{Real,JuMP.AffExpr}}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S} sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
             𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:quadratic_iteration, :binder_pesaran])
@@ -2975,7 +2975,7 @@ function solve!(𝓂::ℳ;
             
             sol_mat = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
             
-            state_update₁ₜ = function(state::Vector{<: Union{Real,JuMP.AffExpr}}, shock::Vector{<: Union{Real,JuMP.AffExpr}}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S} sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
             𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:linear_time_iteration])
@@ -4554,7 +4554,7 @@ function irf(state_update::Function,
         shock_history = randn(T.nExo,periods)
 
         shock_history[contains.(string.(T.exo),"ᵒᵇᶜ"),:] .= 0
-        
+
         Y = zeros(T.nVars,periods,1)
 
         if pruning
