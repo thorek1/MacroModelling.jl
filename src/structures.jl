@@ -350,7 +350,9 @@ mutable struct ℳ
 
     timings::timings
 
+    obc_violation_equations::Vector{Expr}
     obc_shock_bounds::Vector{Tuple{Symbol, Bool, Float64}}
+    obc_violation_function::Function
 
     solution::solution
     # symbolics::symbolics

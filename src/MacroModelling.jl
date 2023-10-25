@@ -9,7 +9,8 @@ import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
 import Symbolics
 import ForwardDiff as ℱ 
-import JuMP: AffExpr
+import JuMP
+import StatusSwitchingQP
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -124,6 +125,154 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
 
 
 
+
+function set_up_obc_violation_function!(𝓂)
+    future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
+    present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
+    past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
+    ss_varss      = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎$")))
+
+    sort!(future_varss  ,by = x->replace(string(x),r"₍₁₎$"=>""))
+    sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
+    sort!(past_varss    ,by = x->replace(string(x),r"₍₋₁₎$"=>""))
+    sort!(ss_varss      ,by = x->replace(string(x),r"₍ₛₛ₎$"=>""))
+
+    # write indices in auxiliary objects
+    dyn_var_future_list  = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎")))
+    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎")))
+    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎")))
+    dyn_exo_list         = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎")))
+    dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎")))
+
+    dyn_var_future  = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_future_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_var_present = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_present_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_var_past    = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_past_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_exo         = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_exo_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_ss          = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_ss_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+
+    SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+
+    dyn_var_future_idx  = indexin(dyn_var_future    , SS_and_pars_names)
+    dyn_var_present_idx = indexin(dyn_var_present   , SS_and_pars_names)
+    dyn_var_past_idx    = indexin(dyn_var_past      , SS_and_pars_names)
+    dyn_ss_idx          = indexin(dyn_ss            , SS_and_pars_names)
+
+    alll = []
+    for (i,var) in enumerate(future_varss)
+        push!(alll,:($var = Y[$(dyn_var_future_idx[i]),3:end]))
+    end
+
+    for (i,var) in enumerate(present_varss)
+        push!(alll,:($var = Y[$(dyn_var_present_idx[i]),2:end-1]))
+    end
+
+    for (i,var) in enumerate(past_varss)
+        push!(alll,:($var = Y[$(dyn_var_past_idx[i]),1:end-2]))
+    end
+
+    steady_state = []
+    for (i, var) in enumerate(ss_varss)
+        push!(steady_state,:($var = reference_steady_state[$(dyn_ss_idx[i])]))
+    end
+
+    paras = []
+    for (i, parss) in enumerate(vcat(𝓂.parameters,𝓂.calibration_equations_parameters))
+        push!(paras,:($parss = 𝓂.parameter_values[$i]))
+    end
+
+    calc_obc_violation = :(function calculate_obc_violation(x::Vector, 
+                                                                past_initial_state,
+                                                                past_shocks,
+                                                                state_update, 
+                                                                reference_steady_state, 
+                                                                𝓂, 
+                                                                periods, 
+                                                                shock_values)
+        T = 𝓂.timings
+
+        Y = zeros(JuMP.AffExpr, T.nVars, periods+2)
+
+        shock_values[contains.(string.(T.exo),"ᵒᵇᶜ")] .= x
+
+        zero_shock = zero(shock_values)
+
+        Y[:,1] = state_update(past_initial_state, past_shocks)
+
+        Y[:,2] = state_update(Y[:,1], shock_values)
+
+        for t in 2:periods+1
+            Y[:,t+1] = state_update(Y[:,t], zero_shock)
+        end
+
+        Y .+= reference_steady_state[1:T.nVars]
+
+        $(alll...)
+        $(paras...)
+        $(𝓂.calibration_equations_no_var...)
+        $(steady_state...)
+
+        return @. $(𝓂.obc_violation_equations...)
+    end)
+
+    𝓂.obc_violation_function = @RuntimeGeneratedFunction(calc_obc_violation)
+
+    return nothing
+end
+
+
+function check_for_minmax(expr)
+    contains_minmax = Bool[]
+
+    postwalk(x -> 
+                x isa Expr ?
+                    x.head == :call ? 
+                        x.args[1] ∈ [:max,:min] ?
+                            begin
+                                push!(contains_minmax,true)
+                                x
+                            end :
+                        x :
+                    x :
+                x,
+    expr)
+
+    any(contains_minmax)
+end
+
+
+function write_obc_violation_equations(𝓂)
+    eqs = Expr[]
+    for (i,eq) in enumerate(𝓂.dyn_equations)
+        if check_for_minmax(eq)
+
+            dyn_vars = union(𝓂.dyn_past_list[i],𝓂.dyn_present_list[i],𝓂.dyn_future_list[i],𝓂.dyn_exo_list[i])
+
+            minmax_fixed_eqs = postwalk(x -> 
+                x isa Expr ?
+                    x.head == :call ? 
+                        x.args[1]  == :max ?
+                            get_symbols(x.args[3]) ⊈ dyn_vars ?
+                                x.args[3] :
+                            get_symbols(x.args[2]) ⊈ dyn_vars ?
+                                x.args[2] :
+                            x :
+                        x.args[1] == :min ?
+                            get_symbols(x.args[3]) ⊈ dyn_vars ?
+                                Expr(:call, :-, x.args[3]) :
+                            get_symbols(x.args[2]) ⊈ dyn_vars ?
+                                Expr(:call, :-, x.args[2]) :
+                            x :
+                        x :
+                    x :
+                x,
+            eq)
+
+            push!(eqs,minmax_fixed_eqs)
+        end
+    end
+
+    return eqs
+end
 
 function parse_obc_shock_bounds(expr::Expr)
     # Determine the order of the shock and bound in the expression
@@ -2694,7 +2843,7 @@ function solve!(𝓂::ℳ;
             
             @assert solved "Could not find stable first order solution."
 
-            state_update₁ = function(state::Vector{<: Union{Real,AffExpr}}, shock::Vector{<: Union{Real,AffExpr}}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ = function(state::Vector{<: Union{Real,JuMP.AffExpr}}, shock::Vector{<: Union{Real,JuMP.AffExpr}}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
             𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update₁)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
@@ -2713,7 +2862,7 @@ function solve!(𝓂::ℳ;
             
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₂ = function(state::Vector{<: Union{Real,AffExpr}}, shock::Vector{<: Union{Real,AffExpr}})
+            state_update₂ = function(state::Vector{<: Union{Real,JuMP.AffExpr}}, shock::Vector{<: Union{Real,JuMP.AffExpr}})
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                             1
                             shock]
@@ -2734,7 +2883,7 @@ function solve!(𝓂::ℳ;
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₂ = function(pruned_states::Vector{Vector{<: Union{Real,AffExpr}}}, shock::Vector{<: Union{Real,AffExpr}})
+            state_update₂ = function(pruned_states::Vector{Vector{<: Union{Real,JuMP.AffExpr}}}, shock::Vector{<: Union{Real,JuMP.AffExpr}})
                 aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
                 aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
                 
@@ -2755,7 +2904,7 @@ function solve!(𝓂::ℳ;
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₃ = function(state::Vector{<: Union{Real,AffExpr}}, shock::Vector{<: Union{Real,AffExpr}})
+            state_update₃ = function(state::Vector{<: Union{Real,JuMP.AffExpr}}, shock::Vector{<: Union{Real,JuMP.AffExpr}})
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                                 1
                                 shock]
@@ -2773,7 +2922,7 @@ function solve!(𝓂::ℳ;
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
 
-            state_update₃ = function(pruned_states::Vector{Vector{<: Union{Real,AffExpr}}}, shock::Vector{<: Union{Real,AffExpr}})
+            state_update₃ = function(pruned_states::Vector{Vector{<: Union{Real,JuMP.AffExpr}}}, shock::Vector{<: Union{Real,JuMP.AffExpr}})
                 aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
                 aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
                 aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
@@ -2805,7 +2954,7 @@ function solve!(𝓂::ℳ;
             
             sol_mat, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
             
-            state_update₁ₜ = function(state::Vector{<: Union{Real,AffExpr}}, shock::Vector{<: Union{Real,AffExpr}}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ₜ = function(state::Vector{<: Union{Real,JuMP.AffExpr}}, shock::Vector{<: Union{Real,JuMP.AffExpr}}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
             𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:quadratic_iteration, :binder_pesaran])
@@ -2826,7 +2975,7 @@ function solve!(𝓂::ℳ;
             
             sol_mat = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
             
-            state_update₁ₜ = function(state::Vector{<: Union{Real,AffExpr}}, shock::Vector{<: Union{Real,AffExpr}}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ₜ = function(state::Vector{<: Union{Real,JuMP.AffExpr}}, shock::Vector{<: Union{Real,JuMP.AffExpr}}) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
             
             𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:linear_time_iteration])
@@ -4127,10 +4276,230 @@ end
 
 
 
+function irf(state_update::Function, 
+    obc_state_update::Function,
+    initial_state::Vector{Float64}, 
+    level::Vector{Float64},
+    pruning::Bool, 
+    unspecified_initial_state::Bool,
+    T::timings; 
+    algorithm::Symbol = :first_order,
+    periods::Int = 40, 
+    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+    variables::Union{Symbol_input,String_input} = :all, 
+    negative_shock::Bool = false)
+
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
+
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
+        periods += size(shocks)[2]
+
+        shock_history = zeros(T.nExo, periods)
+
+        shock_history[:,1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+    elseif shocks isa KeyedArray{Float64}
+        shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
+
+        periods += size(shocks)[2]
+
+        @assert length(setdiff(shock_input, T.exo)) == 0 "Provided shocks which are not part of the model."
+        
+        shock_history = zeros(T.nExo, periods)
+
+        shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+    else
+        shock_idx = parse_shocks_input_to_index(shocks,T)
+    end
+
+    var_idx = parse_variables_input_to_index(variables, T)
+
+    axis1 = T.var[var_idx]
+        
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
+
+    if shocks == :simulate
+        shock_history = randn(T.nExo,periods)
+
+        Y = zeros(T.nVars,periods,1)
+
+        if pruning
+            if algorithm == :pruned_second_order
+                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+                pruned_state² = copy(initial_state)
+
+                for t in 1:periods
+                    Y[:,t,1] = state_update([pruned_state¹, pruned_state²], shock_history[:,t])
+                end
+            elseif algorithm == :pruned_third_order
+                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+                pruned_state² = copy(initial_state)
+                pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+
+                for t in 1:periods
+                    Y[:,t,1] = state_update([pruned_state¹, pruned_state², pruned_state³], shock_history[:,t])
+                end
+            end
+        else
+            past_states, past_shocks, solved = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1])
+
+            always_solved = solved
+            if !solved @warn "No solution at iteration 1" end
+
+            for t in 2:periods
+                past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_history[:,t])
+
+                if !solved @warn "No solution at iteration $t" end
+                always_solved = always_solved && solved
+                if !always_solved break end
+
+                Y[:,t-1,1] = past_states
+                shock_history[:,t-1] = past_shocks
+
+            end
+
+            if always_solved
+                Y[:,periods,1] = state_update(past_states,past_shocks)
+            end
+        #     Y[:,1,1] = state_update(initial_state,shock_history[:,1])
+
+        #     for t in 1:periods-1
+        #         Y[:,t+1,1] = state_update(Y[:,t,1],shock_history[:,t+1])
+        #     end
+        end
+
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:simulate])
+    elseif shocks == :none
+        Y = zeros(T.nVars,periods,1)
+
+        shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
+        
+        if pruning
+            if algorithm == :pruned_second_order
+                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+                pruned_state² = copy(initial_state)
+
+                for t in 1:periods
+                    Y[:,t,1] = state_update([pruned_state¹, pruned_state²], shck)
+                end
+            elseif algorithm == :pruned_third_order
+                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+                pruned_state² = copy(initial_state)
+                pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+
+                for t in 1:periods
+                    Y[:,t,1] = state_update([pruned_state¹, pruned_state², pruned_state³], shck)
+                end
+            end
+        else 
+            past_states, past_shocks, solved = obc_state_update(initial_state, shck, shck)
+
+            always_solved = solved
+            if !solved @warn "No solution at iteration 1" end
+
+            for t in 2:periods
+                past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shck)
+
+                if !solved @warn "No solution at iteration $t" end
+                always_solved = always_solved && solved
+                if !always_solved break end
+
+                Y[:,t-1,1] = past_states
+            end
+
+            if always_solved
+                Y[:,periods,1] = state_update(past_states,past_shocks)
+            end
+            # Y[:,1,1] = state_update(initial_state,shck)
+    
+            # for t in 1:periods-1
+            #     Y[:,t+1,1] = state_update(Y[:,t,1],shck)
+            # end
+        end
+
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
+    else
+        Y = zeros(T.nVars,periods,length(shock_idx))
+
+        for (i,ii) in enumerate(shock_idx)
+            if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
+                shock_history = zeros(T.nExo,periods)
+                shock_history[ii,1] = negative_shock ? -1 : 1
+            end
+
+            if pruning
+                if algorithm == :pruned_second_order
+                    pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+                    pruned_state² = copy(initial_state)
+    
+                    for t in 1:periods
+                        Y[:,t,i] = state_update([pruned_state¹, pruned_state²], shock_history[:,t])
+                    end
+                elseif algorithm == :pruned_third_order
+                    pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+                    pruned_state² = copy(initial_state)
+                    pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+    
+                    for t in 1:periods
+                        Y[:,t,i] = state_update([pruned_state¹, pruned_state², pruned_state³], shock_history[:,t])
+                    end
+                end
+            else
+                past_states, past_shocks, solved = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1])
+
+                always_solved = solved
+                if !solved @warn "No solution at iteration 1" end
+
+                for t in 2:periods
+                    past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_history[:,t])
+
+                    if !solved @warn "No solution at iteration $t" end
+                    always_solved = always_solved && solved
+                    if !always_solved break end
+
+                    Y[:,t-1,i] = past_states
+                    shock_history[:,t-1] = past_shocks
+
+                end
+
+                if always_solved
+                    Y[:,periods,i] = state_update(past_states,past_shocks)
+                end
+                # Y[:,1,i] = state_update(initial_state,shock_history[:,1])
+
+                # for t in 1:periods-1
+                #     Y[:,t+1,i] = state_update(Y[:,t,i],shock_history[:,t+1])
+                # end
+            end
+        end
+
+        axis2 = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix]
+        
+        if any(x -> contains(string(x), "◖"), axis2)
+            axis2_decomposed = decompose_name.(axis2)
+            axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+        end
+    
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+    end
+end
+
+
+
 
 function irf(state_update::Function, 
     initial_state::Vector{Float64}, 
-    level::Vector{Float64}, 
+    level::Vector{Float64},
     pruning::Bool, 
     unspecified_initial_state::Bool,
     T::timings; 
@@ -5028,7 +5397,6 @@ function calculate_second_order_moments(
     values = vcat(v1, vec(collect(-C)))
 
     Σᶻ₂, info = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-
     
     Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
 

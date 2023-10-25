@@ -857,7 +857,9 @@ macro model(𝓂,ex...)
 
                         $T,
 
+                        Expr[],
                         $obc_shock_bounds,
+                        x->x,
 
                         solution(
                             perturbation(   perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
@@ -1399,6 +1401,10 @@ macro parameters(𝓂,ex...)
             start_time = time()
     
             solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 2nd argument is SS_symbolic
+
+            mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
+            
+            set_up_obc_violation_function!(mod.$𝓂)
 
             if !$silent println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
         else

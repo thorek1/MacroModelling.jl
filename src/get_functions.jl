@@ -872,6 +872,8 @@ function get_irf(𝓂::ℳ;
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state - reference_steady_state[1:𝓂.timings.nVars]
 
+    occasionally_binding_constraints = length(𝓂.obc_shock_bounds) > 0
+
     if generalised_irf
         girfs =  girf(state_update,
                         SSS_delta,
@@ -886,17 +888,80 @@ function get_irf(𝓂::ℳ;
                         negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
         return girfs
     else
-        irfs =  irf(state_update, 
-                    initial_state, 
-                    levels ? reference_steady_state : SSS_delta,
-                    pruning,
-                    unspecified_initial_state,
-                    𝓂.timings; 
-                    algorithm = algorithm,
-                    periods = periods, 
-                    shocks = shocks, 
-                    variables = variables, 
-                    negative_shock = negative_shock)
+        if occasionally_binding_constraints
+            function obc_state_update(past_states::Vector{R}, past_shocks::Vector{R}, present_shocks::Vector{R}) where R <: Float64
+                unconditional_forecast_horizon = 40
+
+                state_update = 𝓂.solution.perturbation.first_order.state_update
+
+                reference_steady_state = 𝓂.solution.non_stochastic_steady_state
+
+                obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+
+                periods_per_shock = sum(obc_shock_idx)÷length(𝓂.obc_shock_bounds)
+
+                num_shocks = length(𝓂.obc_shock_bounds)
+
+                # Find shocks fulfilling constraint
+                model = JuMP.Model(StatusSwitchingQP.Optimizer)
+
+                JuMP.set_silent(model)
+                
+                # Create the variables over the full set of indices first.
+                JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
+                
+                # Now loop through obc_shock_bounds to set the bounds on these variables.
+                for (idx, v) in enumerate(𝓂.obc_shock_bounds)
+                    is_upper_bound = v[2]
+                    bound = v[3]
+                    idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
+                    if is_upper_bound
+                        JuMP.set_upper_bound.(x[idxs], bound)
+                    else
+                        JuMP.set_lower_bound.(x[idxs], bound)
+                    end
+                end
+                
+                JuMP.@objective(model, Min, x' * ℒ.I * x)
+
+                JuMP.@constraint(model, 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks)) .>= 0)
+
+                JuMP.optimize!(model)
+                
+                solved = JuMP.termination_status(model) == JuMP.OPTIMAL
+
+                present_states = state_update(past_states,JuMP.value.(past_shocks))
+                present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= JuMP.value.(x)
+
+                return present_states, present_shocks, solved
+            end
+
+            irfs =  irf(state_update,
+                        obc_state_update, 
+                        initial_state, 
+                        levels ? reference_steady_state : SSS_delta,
+                        pruning,
+                        unspecified_initial_state,
+                        𝓂.timings; 
+                        algorithm = algorithm,
+                        periods = periods, 
+                        shocks = shocks, 
+                        variables = variables, 
+                        negative_shock = negative_shock)
+        else
+            irfs =  irf(state_update, 
+                        initial_state, 
+                        levels ? reference_steady_state : SSS_delta,
+                        pruning,
+                        unspecified_initial_state,
+                        𝓂.timings; 
+                        algorithm = algorithm,
+                        periods = periods, 
+                        shocks = shocks, 
+                        variables = variables, 
+                        negative_shock = negative_shock)
+        end
+
         return irfs
     end
 end
