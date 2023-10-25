@@ -1,5 +1,9 @@
 get_symbols(ex::Symbol) = [ex]
 
+get_symbols(ex::Real) = [ex]
+
+get_symbols(ex::Int) = [ex]
+
 function get_symbols(ex::Expr)
     par = Set{Symbol}()
     postwalk(x ->   

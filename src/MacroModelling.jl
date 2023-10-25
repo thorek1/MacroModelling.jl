@@ -10,7 +10,7 @@ import SymPyPythonCall as SPyPyC
 import Symbolics
 import ForwardDiff as ℱ 
 import JuMP
-import StatusSwitchingQP
+import MadNLP # StatusSwitchingQP not reliable
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -4331,6 +4331,8 @@ function irf(state_update::Function,
     if shocks == :simulate
         shock_history = randn(T.nExo,periods)
 
+        shock_history[contains.(string.(T.exo),"ᵒᵇᶜ"),:] .= 0
+
         Y = zeros(T.nVars,periods,1)
 
         if pruning
@@ -4364,7 +4366,7 @@ function irf(state_update::Function,
                 if !always_solved break end
 
                 Y[:,t-1,1] = past_states
-                shock_history[:,t-1] = past_shocks
+                shock_history[:,t] = past_shocks
 
             end
 
@@ -4468,7 +4470,7 @@ function irf(state_update::Function,
                     if !always_solved break end
 
                     Y[:,t-1,i] = past_states
-                    shock_history[:,t-1] = past_shocks
+                    shock_history[:,t] = past_shocks
 
                 end
 
@@ -4551,6 +4553,8 @@ function irf(state_update::Function,
     if shocks == :simulate
         shock_history = randn(T.nExo,periods)
 
+        shock_history[contains.(string.(T.exo),"ᵒᵇᶜ"),:] .= 0
+        
         Y = zeros(T.nVars,periods,1)
 
         if pruning
@@ -4803,10 +4807,12 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
     
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    if variables == :all
-        return indexin(setdiff(T.var,T.aux),sort(union(T.var,T.aux,T.exo_present)))
+    if variables == :all_excluding_auxilliary_and_obc
+        return indexin(setdiff(T.var[.!contains.(string.(T.var),"ᵒᵇᶜ")],T.aux),sort(union(T.var,T.aux,T.exo_present)))
         # return indexin(setdiff(setdiff(T.var,T.exo_present),T.aux),sort(union(T.var,T.aux,T.exo_present)))
-    elseif variables == :all_including_auxilliary
+    elseif variables == :all_excluding_obc
+        return indexin(T.var[.!contains.(string.(T.var),"ᵒᵇᶜ")],sort(union(T.var,T.aux,T.exo_present)))
+    elseif variables == :all
         return 1:length(union(T.var,T.aux,T.exo_present))
     elseif variables isa Matrix{Symbol}
         if length(setdiff(variables,T.var)) > 0
@@ -4839,6 +4845,8 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
 
     if shocks == :all
         shock_idx = 1:T.nExo
+    elseif shocks == :all_excluding_obc
+        shock_idx = findall(.!contains.(string.(T.exo),"ᵒᵇᶜ"))
     elseif shocks == :none
         shock_idx = 1
     elseif shocks == :simulate

@@ -822,12 +822,13 @@ function get_irf(𝓂::ℳ;
     periods::Int = 40, 
     algorithm::Symbol = :first_order, 
     parameters = nothing,
-    variables::Union{Symbol_input,String_input} = :all_including_auxilliary, 
-    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
+    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
     negative_shock::Bool = false, 
     generalised_irf::Bool = false,
     initial_state::Vector{Float64} = [0.0],
     levels::Bool = false,
+    ignore_obc::Bool = false,
     verbose::Bool = false)
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
@@ -871,8 +872,12 @@ function get_irf(𝓂::ℳ;
     unspecified_initial_state = initial_state == [0.0]
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state - reference_steady_state[1:𝓂.timings.nVars]
-
-    occasionally_binding_constraints = length(𝓂.obc_shock_bounds) > 0
+    
+    if ignore_obc
+        occasionally_binding_constraints = false
+    else
+        occasionally_binding_constraints = length(𝓂.obc_shock_bounds) > 0
+    end
 
     if generalised_irf
         girfs =  girf(state_update,
@@ -903,10 +908,12 @@ function get_irf(𝓂::ℳ;
                 num_shocks = length(𝓂.obc_shock_bounds)
 
                 # Find shocks fulfilling constraint
-                model = JuMP.Model(StatusSwitchingQP.Optimizer)
+                model = JuMP.Model(MadNLP.Optimizer)
 
                 JuMP.set_silent(model)
-                
+
+                # JuMP.set_attribute(model, "tol", 1e-12)
+
                 # Create the variables over the full set of indices first.
                 JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
                 
@@ -928,7 +935,7 @@ function get_irf(𝓂::ℳ;
 
                 JuMP.optimize!(model)
                 
-                solved = JuMP.termination_status(model) == JuMP.OPTIMAL
+                solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED]
 
                 present_states = state_update(past_states,JuMP.value.(past_shocks))
                 present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= JuMP.value.(x)
