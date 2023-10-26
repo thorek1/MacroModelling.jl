@@ -171,7 +171,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all)
 
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all_including_auxilliary)
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all_excluding_obc)
 
 
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(m.timings.var[1]))
@@ -181,7 +181,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = reshape(string.(m.timings.var),1,length(m.timings.var)))
         # new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(:all))
 
-        # new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(:all_including_auxilliary))
+        # new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(:all_excluding_obc))
         var_decomp_nv = get_variance_decomposition(m)
         var_decomp = get_variance_decomposition(m, verbose = true)
         new_var_decomp = get_variance_decomposition(m, verbose = true, parameters = m.parameter_values * 1.0001)
@@ -220,7 +220,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
 
         # test conditional forecasting
-        new_sub_irfs_all  = get_irf(m, verbose = true, variables = :all_including_auxilliary)
+        new_sub_irfs_all  = get_irf(m, verbose = true, variables = :all_excluding_obc)
         varnames = axiskeys(new_sub_irfs_all,1)
         shocknames = axiskeys(new_sub_irfs_all,3)
         sol = get_solution(m)
