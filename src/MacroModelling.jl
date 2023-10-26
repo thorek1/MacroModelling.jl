@@ -10,7 +10,7 @@ import SymPyPythonCall as SPyPyC
 import Symbolics
 import ForwardDiff as ℱ 
 import JuMP
-import MadNLP # StatusSwitchingQP not reliable
+import MadNLP # MadNLP doesnt support noninear constraints # StatusSwitchingQP not reliable
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -251,15 +251,15 @@ function write_obc_violation_equations(𝓂)
                 x isa Expr ?
                     x.head == :call ? 
                         x.args[1]  == :max ?
-                            get_symbols(x.args[3]) ⊈ dyn_vars ?
+                            isempty(intersect(get_symbols(x.args[3]), dyn_vars)) ?
                                 x.args[3] :
-                            get_symbols(x.args[2]) ⊈ dyn_vars ?
+                            isempty(intersect(get_symbols(x.args[2]), dyn_vars)) ?
                                 x.args[2] :
                             x :
                         x.args[1] == :min ?
-                            get_symbols(x.args[3]) ⊈ dyn_vars ?
+                            isempty(intersect(get_symbols(x.args[3]), dyn_vars)) ?
                                 Expr(:call, :-, x.args[3]) :
-                            get_symbols(x.args[2]) ⊈ dyn_vars ?
+                            isempty(intersect(get_symbols(x.args[2]), dyn_vars)) ?
                                 Expr(:call, :-, x.args[2]) :
                             x :
                         x :
@@ -5767,9 +5767,15 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
         if Fdet < eps() return -Inf end
 
-        loglik += log(Fdet) + v' / F  * v
+        F̄ = RF.lu(F, check = false)
+
+        if !ℒ.issuccess(F̄) return -Inf end
+
+        invF = inv(F̄)
+
+        loglik += log(Fdet) + v' * invF  * v
         
-        K = P * C' / F
+        K = P * C' * invF
 
         P = A * (P - K * C * P) * A' + 𝐁
 
