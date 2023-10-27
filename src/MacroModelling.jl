@@ -7,6 +7,7 @@ import ThreadedSparseArrays
 using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
+import SymPyPythonCall: ↓
 import Symbolics
 import ForwardDiff as ℱ 
 # import Zygote
@@ -1308,14 +1309,14 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             soll = try SPyPyC.solve(ss_equations[eqs[:,eqs[2,:] .== n][1]],var_to_solve)
             catch
             end
-
+            
             if isnothing(soll)
                 # println("Could not solve single variables case symbolically.")
                 println("Failed finding solution symbolically for: ",var_to_solve," in: ",ss_equations[eqs[:,eqs[2,:] .== n][1]])
                 # solve numerically
                 continue
             # elseif PythonCall.pyconvert(Bool,soll[1].is_number)
-            elseif soll[1].is_number == SPyPyC.TRUE
+            elseif soll[1].is_number == true
                 # ss_equations = ss_equations.subs(var_to_solve,soll[1])
                 ss_equations = [eq.subs(var_to_solve,soll[1]) for eq in ss_equations]
                 
@@ -1419,7 +1420,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 for i in eqs_to_solve
                     # push!(syms_in_eqs, Symbol.(PythonCall.pystr.(i.atoms()))...)
-                    push!(syms_in_eqs, Symbol.(SPyPyC.walk_expression.(SPyPyC.free_symbols(i)))...)
+                    push!(syms_in_eqs, Symbol.(↓(SPyPyC.free_symbols(i)))...)
                 end
 
                 # println(syms_in_eqs)
