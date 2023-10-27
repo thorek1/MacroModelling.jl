@@ -7,7 +7,6 @@ import ThreadedSparseArrays
 using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
-import SymPyPythonCall: ↓
 import Symbolics
 import ForwardDiff as ℱ 
 # import Zygote
@@ -1376,7 +1375,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     end
                     numerical_sol = true
                     # continue
-                elseif length(intersect(vars_to_solve,reduce(union,map(x->x.atoms(),collect(soll[1]))))) > 0
+                # elseif length(intersect(vars_to_solve,reduce(union,map(x->x.atoms(),collect(soll[1]))))) > 0
+                elseif length(intersect((reduce(union,map(x->SPyPyC.free_symbols(x),soll[1])) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
                     if verbose
                         println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
                     end
@@ -1420,7 +1420,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 for i in eqs_to_solve
                     # push!(syms_in_eqs, Symbol.(PythonCall.pystr.(i.atoms()))...)
-                    push!(syms_in_eqs, Symbol.(↓(SPyPyC.free_symbols(i)))...)
+                    push!(syms_in_eqs, Symbol.(SPyPyC.:↓(SPyPyC.free_symbols(i)))...)
                 end
 
                 # println(syms_in_eqs)
