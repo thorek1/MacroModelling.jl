@@ -1376,7 +1376,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     numerical_sol = true
                     # continue
                 # elseif length(intersect(vars_to_solve,reduce(union,map(x->x.atoms(),collect(soll[1]))))) > 0
-                elseif length(intersect((reduce(union,map(x->SPyPyC.free_symbols(x),soll[1])) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
+                elseif length(intersect((union(SPyPyC.free_symbols.(soll[1])...) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
+                # elseif length(intersect(union(SPyPyC.free_symbols.(soll[1])...),vars_to_solve)) > 0
                     if verbose
                         println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
                     end
