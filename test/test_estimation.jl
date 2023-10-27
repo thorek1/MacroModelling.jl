@@ -1,9 +1,11 @@
 using MacroModelling
 import Turing
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf#, SMC, PG, ESS
+# import AdvancedPS
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL: logjoint
+# using Pigeons
 
 include("models/FS2000.jl")
 
@@ -41,11 +43,29 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, observables)
 
 n_samples = 1000
 
+
+# pt = pigeons(target = TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, observables)), 
+#                 # record = [traces; record_default()], 
+#                 record = [traces; round_trip; record_default()],
+#                 n_rounds = 7, 
+#                 n_chains = 10,
+#                 multithreaded = true, 
+#                 show_report = true)#,explorer = AAPS());
+
+# samples = Chains(sample_array(pt), variable_names(pt))
+
+# import StatsPlots
+# StatsPlots.plot(samples)
+
 # using Zygote
 # Turing.setadbackend(:zygote)
+# sampsSMC = sample(FS2000_loglikelihood, SMC( AdvancedPS.resample_systematic), n_samples, progress = true)#, init_params = sol)
+# sampsSMC = sample(FS2000_loglikelihood, SMC(1000), n_samples, progress = true)#, init_params = sol)
 samps = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
 # println(mean(samps).nt.mean)
+# using StatsPlots
+# StatsPlots.plot(sampsSMC)
 
 Random.seed!(30)
 

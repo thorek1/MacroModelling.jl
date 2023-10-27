@@ -5767,7 +5767,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
         if Fdet < eps() return -Inf end
 
-        F̄ = RF.lu(F, check = false)
+        F̄ = ℒ.lu(F, check = false)
 
         if !ℒ.issuccess(F̄) return -Inf end
 
