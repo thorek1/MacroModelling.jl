@@ -1,5 +1,6 @@
 using SparseArrays
-using MacroModelling: timings
+using MacroModelling
+import MacroModelling: timings
 using ForwardDiff, FiniteDifferences, Zygote
 import Optim, LineSearches
 import LinearAlgebra as ℒ
