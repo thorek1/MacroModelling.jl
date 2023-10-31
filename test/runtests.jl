@@ -12,6 +12,12 @@ else
     test_higher_order = true
 end
 
+if Sys.iswindows()
+    selected_plots_only = true
+else
+    selected_plots_only = false
+end
+
 println("Threads used: ", Threads.nthreads())
 
 include("functionality_tests.jl")
@@ -68,7 +74,7 @@ if test_higher_order
 
     @testset verbose = true "FS2000 pruned second order" begin
         include("models/FS2000.jl")
-        functionality_test(m, algorithm = :pruned_second_order, plots = true)
+        functionality_test(m, algorithm = :pruned_second_order, plots = selected_plots_only)
     end
     m = nothing
     GC.gc()
@@ -82,7 +88,7 @@ if test_higher_order
 
     @testset verbose = true "FS2000 pruned third order" begin
         include("models/FS2000.jl")
-        functionality_test(m, algorithm = :pruned_third_order, plots = true)
+        functionality_test(m, algorithm = :pruned_third_order, plots = selected_plots_only)
     end
     m = nothing
     GC.gc()
@@ -99,7 +105,7 @@ GC.gc()
 
 @testset verbose = true "SW07 with calibration equations" begin
     include("models/SW07.jl")
-    functionality_test(m, plots = false)
+    functionality_test(m, plots = selected_plots_only)
 end
 m = nothing
 GC.gc()
