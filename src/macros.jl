@@ -107,15 +107,9 @@ macro model(𝓂,ex...)
 
     model_ex = parse_for_loops(ex[end])
 
-    model_ex, condition_list = parse_occasionally_binding_constraints(model_ex)
+    model_ex = parse_occasionally_binding_constraints(model_ex)
     
     obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
-
-    for c in condition_list
-        if c isa Expr
-            push!(obc_shock_bounds, parse_obc_shock_bounds(c))
-        end
-    end
 
     # write down dynamic equations and add auxilliary variables for leads and lags > 1
     for (i,arg) in enumerate(model_ex.args)
@@ -782,7 +776,7 @@ macro model(𝓂,ex...)
     #assemble data container
     model_name = string(𝓂)
     quote
-       global $𝓂 =  ℳ(
+        global $𝓂 =  ℳ(
                         $model_name,
                         # $default_optimizer,
                         sort(collect($exo)), 

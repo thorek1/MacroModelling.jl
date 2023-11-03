@@ -180,6 +180,23 @@ function set_up_obc_violation_function!(𝓂)
         push!(paras,:($parss = 𝓂.parameter_values[$i]))
     end
 
+    obc_idxs = Set()
+
+    mult1 = findall(x->contains(string(x), "Χᵒᵇᶜ") , 𝓂.var)
+    if length(mult1) > 0
+        push!(obc_idxs, mult1...)
+    end
+
+    mult2 = findall(x->contains(string(x), "χᵒᵇᶜ") , 𝓂.var)
+    if length(mult2) > 0
+        push!(obc_idxs, mult2...)
+    end
+    
+    steady_state_obc = []
+    for i in obc_idxs
+        push!(steady_state_obc,:($(𝓂.var[i]) = reference_steady_state[$i]))
+    end
+
     calc_obc_violation = :(function calculate_obc_violation(x::Vector, 
                                                                 past_initial_state,
                                                                 past_shocks,
@@ -210,6 +227,7 @@ function set_up_obc_violation_function!(𝓂)
         $(paras...)
         $(𝓂.calibration_equations_no_var...)
         $(steady_state...)
+        $(steady_state_obc...)
 
         return @. $(𝓂.obc_violation_equations...)
     end)
@@ -244,30 +262,27 @@ function write_obc_violation_equations(𝓂)
     eqs = Expr[]
     for (i,eq) in enumerate(𝓂.dyn_equations)
         if check_for_minmax(eq)
-
-            dyn_vars = union(𝓂.dyn_past_list[i],𝓂.dyn_present_list[i],𝓂.dyn_future_list[i],𝓂.dyn_exo_list[i])
-
             minmax_fixed_eqs = postwalk(x -> 
                 x isa Expr ?
                     x.head == :call ? 
-                        x.args[1]  == :max ?
-                            isempty(intersect(get_symbols(x.args[3]), dyn_vars)) ?
-                                x.args[3] :
-                            isempty(intersect(get_symbols(x.args[2]), dyn_vars)) ?
-                                x.args[2] :
-                            x :
-                        x.args[1] == :min ?
-                            isempty(intersect(get_symbols(x.args[3]), dyn_vars)) ?
-                                Expr(:call, :-, x.args[3]) :
-                            isempty(intersect(get_symbols(x.args[2]), dyn_vars)) ?
-                                Expr(:call, :-, x.args[2]) :
+                        length(x.args) == 3 ?
+                            x.args[3] isa Expr ?
+                                x.args[3].args[1] ∈ [:Min, :min, :Max, :max] ?
+                                    begin
+                                        plchldr = Symbol(replace(string(x.args[2]), "₍₀₎" => ""))
+
+                                        ineq_plchldr_1 = Symbol(replace(string(x.args[3].args[2]), "₍₀₎" => ""))
+
+                                        :($plchldr ≈ $ineq_plchldr_1 ? $(x.args[3].args[2]) : $(x.args[3].args[3]))
+                                    end :
+                                x :
                             x :
                         x :
                     x :
                 x,
             eq)
 
-            push!(eqs,minmax_fixed_eqs)
+            push!(eqs, minmax_fixed_eqs)
         end
     end
 
@@ -769,63 +784,69 @@ function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
     return filter(r -> match(pattern, string(r)) !== nothing, strings)
 end
 
+
 function parse_occasionally_binding_constraints(equations_block; max_obc_shift::Int = 10)
     eqs = []
-    condition_list = []
+    obc_shocks = Expr[]
 
     for arg in equations_block.args
         if isa(arg,Expr)
-            condition = []
             eq = postwalk(x -> 
-                x isa Expr ?
-                    x.head == :call ? 
-                        x.args[1] ∈ [:>, :<, :≤, :≥] ?
-                            x.args[2].args[1] == :| ?
+                    x isa Expr ?
+                        x.head == :call ? 
+                            x.args[1] == :max ?
                                 begin
-                                    condition = Expr(x.head, x.args[1], x.args[2].args[end], x.args[end])
-                                    x.args[2].args[2]
+                                    obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
+                                    obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
+
+                                    push!(eqs, :($obc_vars_left = $(x.args[2])))
+                                    push!(eqs, :($obc_vars_right = $(x.args[3])))
+
+                                    obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
+
+                                    push!(eqs, :($obc_inequality = $(Expr(x.head, x.args[1], obc_vars_left, obc_vars_right))))
+
+                                    obc_shock = Expr(:ref, Meta.parse("ϵᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ"), 0)
+
+                                    push!(obc_shocks, obc_shock)
+
+                                    :($obc_inequality - $obc_shock)
+                                end :
+                            x.args[1] == :min ?
+                                begin
+                                    obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
+                                    obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
+
+                                    push!(eqs, :($obc_vars_left = $(x.args[2])))
+                                    push!(eqs, :($obc_vars_right = $(x.args[3])))
+
+                                    obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
+
+                                    push!(eqs, :($obc_inequality = $(Expr(x.head, x.args[1], obc_vars_left, obc_vars_right))))
+
+                                    obc_shock = Expr(:ref, Meta.parse("ϵᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ"), 0)
+
+                                    push!(obc_shocks, obc_shock)
+
+                                    :($obc_inequality - $obc_shock)
                                 end :
                             x :
                         x :
-                    x :
-                x,
+                    x,
             arg)
-            push!(condition_list, condition)
-            push!(eqs,eq)
+
+            push!(eqs, eq)
         end
     end
 
-    obc_shocks = Symbol[]
-
-    for a in condition_list 
-        if a isa Expr
-            s = get_symbols(a)
-            for ss in s
-                push!(obc_shocks,ss)
-            end
-        end
+    for obc in obc_shocks
+        obc_shifts = [Expr(:ref, Meta.parse(string(obc.args[1]) * "⁽⁻" * super(string(i)) * "⁾"), i > 0 ? :(x - $i) : :x) for i in 0:max_obc_shift]
+        push!(eqs, :($(obc) = $(Expr(:ref, obc.args[1], -1)) * 0.3 + $(Expr(:call, :+, obc_shifts...))))
     end
 
-    eqs_with_obc_shocks = []
-    for eq in eqs
-        eqq = postwalk(x -> 
-                        x isa Expr ?
-                            x.head == :ref ?
-                                x.args[1] ∈ obc_shocks ?
-                                    begin
-                                        obc_shock = intersect([x.args[1]], obc_shocks)[1]
-                                        obc_shifts = [Expr(:ref,Meta.parse(string(obc_shock) * "ᵒᵇᶜ⁽⁻"*super(string(i))*"⁾"),i > 0 ? :(x - $i) : :x) for i in 0:max_obc_shift]
-                                        Expr(:call,:+, x, obc_shifts...) 
-                                    end :
-                                x :
-                            x :
-                        x,
-        eq)
-        push!(eqs_with_obc_shocks, eqq)
-    end
-
-    return Expr(:block,eqs_with_obc_shocks...), condition_list
+    return Expr(:block, eqs...)
 end
+
 
 # compatibility with SymPy
 Max = max
@@ -1578,7 +1599,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
             elseif soll[1].is_number == true
                 # ss_equations = ss_equations.subs(var_to_solve,soll[1])
-                ss_equations = [eq.subs(var_to_solve,soll[1]) for eq in ss_equations]
+                ss_equations = [eq.subs(var_to_solve_for,soll[1]) for eq in ss_equations]
                 
                 push!(𝓂.solved_vars,Symbol(var_to_solve_for))
                 push!(𝓂.solved_vals,Meta.parse(string(soll[1])))

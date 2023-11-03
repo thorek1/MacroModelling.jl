@@ -438,7 +438,7 @@ function plot_irf(𝓂::ℳ;
     if ignore_obc
         occasionally_binding_constraints = false
     else
-        occasionally_binding_constraints = length(𝓂.obc_shock_bounds) > 0
+        occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
     end
 
     if generalised_irf
@@ -464,35 +464,35 @@ function plot_irf(𝓂::ℳ;
 
                 obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
 
-                periods_per_shock = sum(obc_shock_idx)÷length(𝓂.obc_shock_bounds)
+                obc_inequalities_idx = findall(x->contains(string(x), "Χᵒᵇᶜ") , 𝓂.var)
 
-                num_shocks = length(𝓂.obc_shock_bounds)
+                periods_per_shock = sum(obc_shock_idx)÷length(obc_inequalities_idx)
+
+                num_shocks = length(obc_inequalities_idx)
 
                 # Find shocks fulfilling constraint
                 model = JuMP.Model(MadNLP.Optimizer)
 
                 JuMP.set_silent(model)
-                
+
                 # JuMP.set_attribute(model, "tol", 1e-12)
 
                 # Create the variables over the full set of indices first.
                 JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
                 
                 # Now loop through obc_shock_bounds to set the bounds on these variables.
-                for (idx, v) in enumerate(𝓂.obc_shock_bounds)
-                    is_upper_bound = v[2]
-                    bound = v[3]
+                for (idx, v) in enumerate(𝓂.var[obc_inequalities_idx])
                     idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
-                    if is_upper_bound
-                        JuMP.set_upper_bound.(x[idxs], bound)
+                    if contains(string(v), "ᵒᵇᶜ⁺")
+                        JuMP.set_lower_bound.(x[idxs], 0)
                     else
-                        JuMP.set_lower_bound.(x[idxs], bound)
+                        JuMP.set_upper_bound.(x[idxs], 0)
                     end
                 end
                 
                 JuMP.@objective(model, Min, x' * ℒ.I * x)
 
-                JuMP.@constraint(model, 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks)) .>= 0)
+                JuMP.@constraint(model, 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks)) .<= 0)
 
                 JuMP.optimize!(model)
                 
