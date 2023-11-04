@@ -124,6 +124,24 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 )
 
 
+function check_for_dynamic_variables(ex::Expr)
+    dynamic_indicator = Bool[]
+
+    postwalk(x -> 
+        x isa Expr ?
+            x.head == :ref ? 
+                occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i,string(x.args[2])) ?
+                    x :
+                begin
+                    push!(dynamic_indicator,true)
+                    x
+                end :
+            x :
+        x,
+    ex)
+
+    any(dynamic_indicator)
+end
 
 
 function set_up_obc_violation_function!(𝓂)
@@ -229,7 +247,8 @@ function set_up_obc_violation_function!(𝓂)
         $(steady_state...)
         $(steady_state_obc...)
 
-        return @. $(𝓂.obc_violation_equations...)
+        return_value = $(𝓂.obc_violation_equations...)
+        return return_value
     end)
 
     𝓂.obc_violation_function = @RuntimeGeneratedFunction(calc_obc_violation)
@@ -273,7 +292,19 @@ function write_obc_violation_equations(𝓂)
 
                                         ineq_plchldr_1 = Symbol(replace(string(x.args[3].args[2]), "₍₀₎" => ""))
 
-                                        :($plchldr ≈ $ineq_plchldr_1 ? $(x.args[3].args[2]) : $(x.args[3].args[3]))
+                                        :(if isapprox($plchldr, $ineq_plchldr_1, atol = 1e-12)
+                                            if contains($(string(plchldr)), "⁺")
+                                                $(x.args[3].args[3])
+                                            else 
+                                                $(x.args[3].args[2])
+                                            end
+                                        else
+                                            if contains($(string(plchldr)), "⁻")
+                                                $(x.args[3].args[2])
+                                            else 
+                                                -$(x.args[3].args[3])
+                                            end
+                                        end)
                                     end :
                                 x :
                             x :
@@ -796,11 +827,21 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_shift::
                         x.head == :call ? 
                             x.args[1] == :max ?
                                 begin
+
                                     obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
                                     obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
 
-                                    push!(eqs, :($obc_vars_left = $(x.args[2])))
-                                    push!(eqs, :($obc_vars_right = $(x.args[3])))
+                                    if !(x.args[2] isa Symbol) && check_for_dynamic_variables(x.args[2])
+                                        push!(eqs, :($obc_vars_left = $(x.args[2])))
+                                    else
+                                        obc_vars_left = x.args[2]
+                                    end
+
+                                    if !(x.args[3] isa Symbol) && check_for_dynamic_variables(x.args[3])
+                                        push!(eqs, :($obc_vars_right = $(x.args[3])))
+                                    else
+                                        obc_vars_right = x.args[3]
+                                    end
 
                                     obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
 
@@ -817,8 +858,17 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_shift::
                                     obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
                                     obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
 
-                                    push!(eqs, :($obc_vars_left = $(x.args[2])))
-                                    push!(eqs, :($obc_vars_right = $(x.args[3])))
+                                    if !(x.args[2] isa Symbol) && check_for_dynamic_variables(x.args[2])
+                                        push!(eqs, :($obc_vars_left = $(x.args[2])))
+                                    else
+                                        obc_vars_left = x.args[2]
+                                    end
+
+                                    if !(x.args[3] isa Symbol) && check_for_dynamic_variables(x.args[3])
+                                        push!(eqs, :($obc_vars_right = $(x.args[3])))
+                                    else
+                                        obc_vars_right = x.args[3]
+                                    end
 
                                     obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
 
