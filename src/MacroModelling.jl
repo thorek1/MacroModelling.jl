@@ -817,6 +817,8 @@ end
 
 
 function parse_occasionally_binding_constraints(equations_block; max_obc_shift::Int = 40)
+    precision_factor = 1e-5 #factor to force the optimiser to have non-relevatn shocks at zero
+
     eqs = []
     obc_shocks = Expr[]
 
@@ -891,7 +893,7 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_shift::
 
     for obc in obc_shocks
         # push!(eqs, :($(obc) = $(Expr(:ref, obc.args[1], -1)) * 0.3 + $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(max_obc_shift)) * "⁾"), 0))))
-        push!(eqs, :($(obc) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(max_obc_shift)) * "⁾"), 0))))
+        push!(eqs, :($(obc) = $precision_factor * $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(max_obc_shift)) * "⁾"), 0))))
 
         push!(eqs, :($(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻⁰⁾"), 0)) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "⁽" * super(string(max_obc_shift)) * "⁾"), :x))))
 
