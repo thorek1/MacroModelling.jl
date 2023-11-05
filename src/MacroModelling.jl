@@ -816,7 +816,7 @@ function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
 end
 
 
-function parse_occasionally_binding_constraints(equations_block; max_obc_shift::Int = 10)
+function parse_occasionally_binding_constraints(equations_block; max_obc_shift::Int = 40)
     eqs = []
     obc_shocks = Expr[]
 
@@ -890,8 +890,14 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_shift::
     end
 
     for obc in obc_shocks
-        obc_shifts = [Expr(:ref, Meta.parse(string(obc.args[1]) * "⁽⁻" * super(string(i)) * "⁾"), i > 0 ? :(x - $i) : :x) for i in 0:max_obc_shift]
-        push!(eqs, :($(obc) = $(Expr(:ref, obc.args[1], -1)) * 0.3 + $(Expr(:call, :+, obc_shifts...))))
+        # push!(eqs, :($(obc) = $(Expr(:ref, obc.args[1], -1)) * 0.3 + $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(max_obc_shift)) * "⁾"), 0))))
+        push!(eqs, :($(obc) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(max_obc_shift)) * "⁾"), 0))))
+
+        push!(eqs, :($(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻⁰⁾"), 0)) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "⁽" * super(string(max_obc_shift)) * "⁾"), :x))))
+
+        for i in 1:max_obc_shift
+            push!(eqs, :($(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(i)) * "⁾"), 0)) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(i-1)) * "⁾"), -1)) + $(Expr(:ref, Meta.parse(string(obc.args[1]) * "⁽" * super(string(max_obc_shift-i)) * "⁾"), :x))))
+        end
     end
 
     return Expr(:block, eqs...)
@@ -4432,18 +4438,22 @@ function irf(state_update::Function,
             past_states, past_shocks, solved = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1])
 
             always_solved = solved
-            if !solved @warn "No solution at iteration 1" end
+            if !solved 
+                @warn "No solution at iteration 1"
+            else
+                for t in 2:periods
+                    past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_history[:,t])
 
-            for t in 2:periods
-                past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_history[:,t])
+                    if !solved @warn "No solution at iteration $t" end
 
-                if !solved @warn "No solution at iteration $t" end
-                always_solved = always_solved && solved
-                if !always_solved break end
+                    always_solved = always_solved && solved
 
-                Y[:,t-1,1] = past_states
-                shock_history[:,t] = past_shocks
+                    if !always_solved break end
 
+                    Y[:,t-1,1] = past_states
+                    shock_history[:,t] = past_shocks
+
+                end
             end
 
             if always_solved
@@ -4483,16 +4493,18 @@ function irf(state_update::Function,
             past_states, past_shocks, solved = obc_state_update(initial_state, shck, shck)
 
             always_solved = solved
-            if !solved @warn "No solution at iteration 1" end
+            if !solved 
+                @warn "No solution at iteration 1"
+            else
+                for t in 2:periods
+                    past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shck)
 
-            for t in 2:periods
-                past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shck)
+                    if !solved @warn "No solution at iteration $t" end
+                    always_solved = always_solved && solved
+                    if !always_solved break end
 
-                if !solved @warn "No solution at iteration $t" end
-                always_solved = always_solved && solved
-                if !always_solved break end
-
-                Y[:,t-1,1] = past_states
+                    Y[:,t-1,1] = past_states
+                end
             end
 
             if always_solved
@@ -4536,18 +4548,23 @@ function irf(state_update::Function,
                 past_states, past_shocks, solved = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1])
 
                 always_solved = solved
-                if !solved @warn "No solution at iteration 1" end
 
-                for t in 2:periods
-                    past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_history[:,t])
+                if !solved 
+                    @warn "No solution at iteration 1"
+                else
+                    for t in 2:periods
+                        past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_history[:,t])
 
-                    if !solved @warn "No solution at iteration $t" end
-                    always_solved = always_solved && solved
-                    if !always_solved break end
+                        if !solved @warn "No solution at iteration $t" end
 
-                    Y[:,t-1,i] = past_states
-                    shock_history[:,t] = past_shocks
+                        always_solved = always_solved && solved
 
+                        if !always_solved break end
+
+                        Y[:,t-1,i] = past_states
+                        shock_history[:,t] = past_shocks
+
+                    end
                 end
 
                 if always_solved
