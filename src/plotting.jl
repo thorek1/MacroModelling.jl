@@ -471,7 +471,9 @@ function plot_irf(𝓂::ℳ;
                 num_shocks = length(obc_inequalities_idx)
 
                 # Find shocks fulfilling constraint
-                model = JuMP.Model(MadNLP.Optimizer)
+                # model = JuMP.Model(MadNLP.Optimizer)
+                model = JuMP.Model(NLopt.Optimizer)
+                JuMP.set_attribute(model, "algorithm", :LD_MMA)
 
                 JuMP.set_silent(model)
 
@@ -484,15 +486,23 @@ function plot_irf(𝓂::ℳ;
                 for (idx, v) in enumerate(𝓂.var[obc_inequalities_idx])
                     idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
                     if contains(string(v), "ᵒᵇᶜ⁺")
-                        JuMP.set_lower_bound.(x[idxs], 0)
+                        if 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2]
+                            JuMP.set_upper_bound.(x[idxs], 0)
+                        else
+                            JuMP.set_lower_bound.(x[idxs], 0)
+                        end
                     else
-                        JuMP.set_upper_bound.(x[idxs], 0)
+                        if 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2]
+                            JuMP.set_lower_bound.(x[idxs], 0)
+                        else
+                            JuMP.set_upper_bound.(x[idxs], 0)
+                        end
                     end
                 end
                 
                 JuMP.@objective(model, Min, x' * ℒ.I * x)
 
-                JuMP.@constraint(model, 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks)) .<= 0)
+                JuMP.@constraint(model, 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1] .<= 0)
 
                 JuMP.optimize!(model)
                 

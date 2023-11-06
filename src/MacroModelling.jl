@@ -10,7 +10,7 @@ import SymPyPythonCall as SPyPyC
 import Symbolics
 import ForwardDiff as ℱ 
 import JuMP
-import MadNLP # MadNLP doesnt support noninear constraints # StatusSwitchingQP not reliable
+import NLopt # MadNLP doesnt support noninear constraints # StatusSwitchingQP not reliable
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -248,7 +248,6 @@ function set_up_obc_violation_function!(𝓂)
         $(steady_state_obc...)
 
         return_value = $(𝓂.obc_violation_equations...)
-        return return_value
     end)
 
     𝓂.obc_violation_function = @RuntimeGeneratedFunction(calc_obc_violation)
@@ -294,15 +293,15 @@ function write_obc_violation_equations(𝓂)
 
                                         :(if isapprox($plchldr, $ineq_plchldr_1, atol = 1e-12)
                                             if contains($(string(plchldr)), "⁺")
-                                                $(x.args[3].args[3])
+                                                return $(x.args[3].args[3]), false
                                             else 
-                                                $(x.args[3].args[2])
+                                                return $(x.args[3].args[2]), true
                                             end
                                         else
                                             if contains($(string(plchldr)), "⁻")
-                                                $(x.args[3].args[2])
+                                                return -$(x.args[3].args[2]), true
                                             else 
-                                                -$(x.args[3].args[3])
+                                                return -$(x.args[3].args[3]), false
                                             end
                                         end)
                                     end :
@@ -815,9 +814,9 @@ function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
     return filter(r -> match(pattern, string(r)) !== nothing, strings)
 end
 
-
+# try: run optim only if there is a violation / capture case with small shocks and set them to zero
 function parse_occasionally_binding_constraints(equations_block; max_obc_shift::Int = 40)
-    precision_factor = 1e-5 #factor to force the optimiser to have non-relevatn shocks at zero
+    # precision_factor = 1e  #factor to force the optimiser to have non-relevatn shocks at zero
 
     eqs = []
     obc_shocks = Expr[]
@@ -893,7 +892,7 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_shift::
 
     for obc in obc_shocks
         # push!(eqs, :($(obc) = $(Expr(:ref, obc.args[1], -1)) * 0.3 + $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(max_obc_shift)) * "⁾"), 0))))
-        push!(eqs, :($(obc) = $precision_factor * $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(max_obc_shift)) * "⁾"), 0))))
+        push!(eqs, :($(obc) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(max_obc_shift)) * "⁾"), 0))))
 
         push!(eqs, :($(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻⁰⁾"), 0)) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "⁽" * super(string(max_obc_shift)) * "⁾"), :x))))
 
