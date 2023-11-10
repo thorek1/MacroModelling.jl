@@ -464,11 +464,9 @@ function plot_irf(𝓂::ℳ;
 
                 obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
 
-                obc_inequalities_idx = findall(x->contains(string(x), "Χᵒᵇᶜ") , 𝓂.var)
-
-                periods_per_shock = sum(obc_shock_idx)÷length(obc_inequalities_idx)
-
-                num_shocks = length(obc_inequalities_idx)
+                periods_per_shock = 𝓂.max_obc_shift + 1
+                
+                num_shocks = sum(obc_shock_idx)÷periods_per_shock
 
                 # Find shocks fulfilling constraint
                 # model = JuMP.Model(MadNLP.Optimizer)

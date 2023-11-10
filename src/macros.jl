@@ -107,7 +107,9 @@ macro model(𝓂,ex...)
 
     model_ex = parse_for_loops(ex[end])
 
-    model_ex = parse_occasionally_binding_constraints(model_ex)
+    max_obc_shift = 40
+
+    model_ex = parse_occasionally_binding_constraints(model_ex, max_obc_shift = max_obc_shift)
     
     obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
 
@@ -853,6 +855,7 @@ macro model(𝓂,ex...)
 
                         Expr[],
                         $obc_shock_bounds,
+                        $max_obc_shift,
                         x->x,
 
                         solution(

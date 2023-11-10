@@ -352,6 +352,7 @@ mutable struct ℳ
 
     obc_violation_equations::Vector{Expr}
     obc_shock_bounds::Vector{Tuple{Symbol, Bool, Float64}}
+    max_obc_shift::Int
     obc_violation_function::Function
 
     solution::solution
