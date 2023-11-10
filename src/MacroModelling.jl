@@ -123,6 +123,9 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 # "\nNon-stochastic-steady-state found: ",!𝓂.solution.outdated_NSSS
                 )
 
+check_for_dynamic_variables(ex::Int) = false
+check_for_dynamic_variables(ex::Float64) = false
+check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋₁₎",string(ex))
 
 function check_for_dynamic_variables(ex::Expr)
     dynamic_indicator = Bool[]
@@ -247,7 +250,12 @@ function set_up_obc_violation_function!(𝓂)
         $(steady_state...)
         $(steady_state_obc...)
 
-        return_value = $(𝓂.obc_violation_equations...)
+        constraint_values = Vector{JuMP.AffExpr}[]
+        shock_sign_indicators = Bool[]
+
+        $(𝓂.obc_violation_equations...)
+
+        return vcat(constraint_values...), shock_sign_indicators
     end)
 
     𝓂.obc_violation_function = @RuntimeGeneratedFunction(calc_obc_violation)
@@ -289,20 +297,51 @@ function write_obc_violation_equations(𝓂)
                                     begin
                                         plchldr = Symbol(replace(string(x.args[2]), "₍₀₎" => ""))
 
-                                        ineq_plchldr_1 = Symbol(replace(string(x.args[3].args[2]), "₍₀₎" => ""))
+                                        ineq_plchldr_1 = x.args[3].args[2] isa Symbol ? Symbol(replace(string(x.args[3].args[2]), "₍₀₎" => "")) : x.args[3].args[2]
+
+                                        arg1 = x.args[3].args[2]
+                                        arg2 = x.args[3].args[3]
+
+                                        dyn_1 = check_for_dynamic_variables(x.args[3].args[2])
+                                        dyn_2 = check_for_dynamic_variables(x.args[3].args[3])
+
+                                        cond1 = Expr[]
+                                        cond2 = Expr[]
+
+                                        maximisation = contains(string(plchldr), "⁺")
+                                        
+                                        if dyn_1
+                                            if maximisation
+                                                push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
+                                                push!(cond2, :(push!(constraint_values, $(x.args[3].args[2]))))
+                                            else
+                                                push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
+                                                push!(cond2, :(push!(constraint_values, -$(x.args[3].args[2])))) # RBC
+                                            end
+                                        end
+
+                                        if dyn_2
+                                            if maximisation
+                                                push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
+                                                push!(cond2, :(push!(constraint_values, $(x.args[3].args[3])))) # testmax
+                                            else
+                                                push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
+                                                push!(cond2, :(push!(constraint_values, -$(x.args[3].args[3])))) # RBC
+                                            end
+                                        end
+
+                                        if maximisation
+                                            push!(cond1, :(push!(shock_sign_indicators, true)))
+                                            push!(cond2, :(push!(shock_sign_indicators, true)))
+                                        else
+                                            push!(cond1, :(push!(shock_sign_indicators, false)))
+                                            push!(cond2, :(push!(shock_sign_indicators, false)))
+                                        end
 
                                         :(if isapprox($plchldr, $ineq_plchldr_1, atol = 1e-12)
-                                            if contains($(string(plchldr)), "⁺")
-                                                return $(x.args[3].args[3]), false
-                                            else 
-                                                return $(x.args[3].args[2]), true
-                                            end
+                                            $(Expr(:block, cond1...))
                                         else
-                                            if contains($(string(plchldr)), "⁻")
-                                                return -$(x.args[3].args[2]), true
-                                            else 
-                                                return -$(x.args[3].args[3]), false
-                                            end
+                                            $(Expr(:block, cond2...))
                                         end)
                                     end :
                                 x :
@@ -3508,6 +3547,8 @@ write_parameters_input!(𝓂::ℳ, parameters::Pair{String,Float64}; verbose::Bo
 
 
 write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Float64},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Float64},Vararg{Pair{String,Int}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{String,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
 write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{String,Float64},Vararg{Pair{String,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters])
 , verbose = verbose)
 write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
