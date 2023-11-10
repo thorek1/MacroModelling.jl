@@ -313,36 +313,37 @@ function write_obc_violation_equations(𝓂)
                                         if dyn_1
                                             if maximisation
                                                 push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
-                                                push!(cond2, :(push!(constraint_values, $(x.args[3].args[2]))))
+                                                # push!(cond2, :(push!(constraint_values, $(x.args[3].args[2]))))
                                             else
                                                 push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
-                                                push!(cond2, :(push!(constraint_values, -$(x.args[3].args[2])))) # RBC
+                                                # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[2])))) # RBC
                                             end
                                         end
 
                                         if dyn_2
                                             if maximisation
                                                 push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
-                                                push!(cond2, :(push!(constraint_values, $(x.args[3].args[3])))) # testmax
+                                                # push!(cond2, :(push!(constraint_values, $(x.args[3].args[3])))) # testmax
                                             else
                                                 push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
-                                                push!(cond2, :(push!(constraint_values, -$(x.args[3].args[3])))) # RBC
+                                                # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[3])))) # RBC
                                             end
                                         end
 
                                         if maximisation
                                             push!(cond1, :(push!(shock_sign_indicators, true)))
-                                            push!(cond2, :(push!(shock_sign_indicators, true)))
+                                            # push!(cond2, :(push!(shock_sign_indicators, true)))
                                         else
                                             push!(cond1, :(push!(shock_sign_indicators, false)))
-                                            push!(cond2, :(push!(shock_sign_indicators, false)))
+                                            # push!(cond2, :(push!(shock_sign_indicators, false)))
                                         end
 
-                                        :(if isapprox($plchldr, $ineq_plchldr_1, atol = 1e-12)
-                                            $(Expr(:block, cond1...))
-                                        else
-                                            $(Expr(:block, cond2...))
-                                        end)
+                                        # :(if isapprox($plchldr, $ineq_plchldr_1, atol = 1e-12)
+                                        #     $(Expr(:block, cond1...))
+                                        # else
+                                        #     $(Expr(:block, cond2...))
+                                        # end)
+                                        :($(Expr(:block, cond1...)))
                                     end :
                                 x :
                             x :

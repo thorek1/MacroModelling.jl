@@ -482,23 +482,24 @@ function plot_irf(𝓂::ℳ;
                 JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
                 
                 # Now loop through obc_shock_bounds to set the bounds on these variables.
-                # for (idx, v) in enumerate(𝓂.var[obc_inequalities_idx])
+                # maxmin_indicators = 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2]
+                # for (idx, v) in enumerate(maxmin_indicators)
                 #     idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
-                #     # if contains(string(v), "ᵒᵇᶜ⁺")
-                #         if 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
-                #             # JuMP.set_upper_bound.(x[idxs], 0)
-                #             JuMP.set_lower_bound.(x[idxs], 0)
-                #         else
-                #             JuMP.set_upper_bound.(x[idxs], 0)
-                #             # JuMP.set_lower_bound.(x[idxs], 0)
-                #         end
-                #     # else
-                #     #     if 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
-                #     #         JuMP.set_lower_bound.(x[idxs], 0)
-                #     #     else
-                #     #         JuMP.set_upper_bound.(x[idxs], 0)
-                #     #     end
-                #     # end
+                #     if v
+                # #         if 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
+                #         JuMP.set_upper_bound.(x[idxs], 0)
+                # #             JuMP.set_lower_bound.(x[idxs], 0)
+                #     else
+                # #             JuMP.set_upper_bound.(x[idxs], 0)
+                #         JuMP.set_lower_bound.(x[idxs], 0)
+                #     end
+                # #     # else
+                # #     #     if 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
+                # #     #         JuMP.set_lower_bound.(x[idxs], 0)
+                # #     #     else
+                # #     #         JuMP.set_upper_bound.(x[idxs], 0)
+                # #     #     end
+                # #     # end
                 # end
                 
                 JuMP.@objective(model, Min, x' * ℒ.I * x)
@@ -508,6 +509,10 @@ function plot_irf(𝓂::ℳ;
                 JuMP.optimize!(model)
                 
                 solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED]
+                
+                # precision = JuMP.objective_value(model)
+
+                # if precision > eps(Float32) @warn "Bounds enforced up to reduced precision: $precision" end # I need the dual value (constraints). this relates to the shock size
 
                 present_states = state_update(past_states,JuMP.value.(past_shocks))
                 present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= JuMP.value.(x)
