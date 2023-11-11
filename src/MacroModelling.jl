@@ -10,7 +10,7 @@ import SymPyPythonCall as SPyPyC
 import Symbolics
 import ForwardDiff as ℱ 
 import JuMP
-import NLopt # MadNLP doesnt support noninear constraints # StatusSwitchingQP not reliable
+import MadNLP # NLopt # MadNLP doesnt support noninear constraints # StatusSwitchingQP not reliable
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -355,7 +355,7 @@ function set_up_obc_violation_function!(𝓂)
         $(steady_state...)
         $(steady_state_obc...)
 
-        constraint_values = Vector{JuMP.AffExpr}[]
+        constraint_values = Vector[]
         shock_sign_indicators = Bool[]
 
         $(𝓂.obc_violation_equations...)
@@ -415,24 +415,37 @@ function write_obc_violation_equations(𝓂)
 
                                         maximisation = contains(string(plchldr), "⁺")
                                         
-                                        if dyn_1
-                                            if maximisation
-                                                push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
-                                                # push!(cond2, :(push!(constraint_values, $(x.args[3].args[2]))))
-                                            else
-                                                push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
-                                                # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[2])))) # RBC
-                                            end
-                                        end
+                                        # if dyn_1
+                                        #     if maximisation
+                                        #         push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
+                                        #         # push!(cond2, :(push!(constraint_values, $(x.args[3].args[2]))))
+                                        #     else
+                                        #         push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
+                                        #         # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[2])))) # RBC
+                                        #     end
+                                        # end
 
-                                        if dyn_2
-                                            if maximisation
-                                                push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
-                                                # push!(cond2, :(push!(constraint_values, $(x.args[3].args[3])))) # testmax
-                                            else
-                                                push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
-                                                # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[3])))) # RBC
-                                            end
+                                        # if dyn_2
+                                        #     if maximisation
+                                        #         push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
+                                        #         # push!(cond2, :(push!(constraint_values, $(x.args[3].args[3])))) # testmax
+                                        #     else
+                                        #         push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
+                                        #         # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[3])))) # RBC
+                                        #     end
+                                        # end
+
+
+                                        if maximisation
+                                            push!(cond1, :(push!(constraint_values, [sum($(x.args[3].args[2]) .* $(x.args[3].args[3]))])))
+                                            push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
+                                            push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
+                                            # push!(cond1, :(push!(constraint_values, max.($(x.args[3].args[2]), $(x.args[3].args[3])))))
+                                        else
+                                            push!(cond1, :(push!(constraint_values, [sum($(x.args[3].args[2]) .* $(x.args[3].args[3]))])))
+                                            push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
+                                            push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
+                                            # push!(cond1, :(push!(constraint_values, min.($(x.args[3].args[2]), $(x.args[3].args[3])))))
                                         end
 
                                         if maximisation

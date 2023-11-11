@@ -907,54 +907,63 @@ function get_irf(𝓂::ℳ;
                 
                 num_shocks = sum(obc_shock_idx)÷periods_per_shock
 
-                # Find shocks fulfilling constraint
-                # model = JuMP.Model(MadNLP.Optimizer)
-                model = JuMP.Model(NLopt.Optimizer)
-                JuMP.set_attribute(model, "algorithm", :LD_SLSQP)
-                # JuMP.set_attribute(model, "algorithm", :LD_MMA)
-
-                JuMP.set_silent(model)
-
-                # JuMP.set_attribute(model, "tol", 1e-12)
-
-                # Create the variables over the full set of indices first.
-                JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
+                constraints_violated = any(JuMP.value.(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1]) .> 1e-12)
                 
-                # Now loop through obc_shock_bounds to set the bounds on these variables.
-                # maxmin_indicators = 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2]
-                # for (idx, v) in enumerate(maxmin_indicators)
-                #     idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
-                #     if v
-                # #         if 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
-                #         JuMP.set_upper_bound.(x[idxs], 0)
-                # #             JuMP.set_lower_bound.(x[idxs], 0)
-                #     else
-                # #             JuMP.set_upper_bound.(x[idxs], 0)
-                #         JuMP.set_lower_bound.(x[idxs], 0)
-                #     end
-                # #     # else
-                # #     #     if 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
-                # #     #         JuMP.set_lower_bound.(x[idxs], 0)
-                # #     #     else
-                # #     #         JuMP.set_upper_bound.(x[idxs], 0)
-                # #     #     end
-                # #     # end
-                # end
+                if constraints_violated
+                    # Find shocks fulfilling constraint
+                    model = JuMP.Model(MadNLP.Optimizer)
+                    # model = JuMP.Model(NLopt.Optimizer)
+                    # JuMP.set_attribute(model, "algorithm", :LD_SLSQP)
+                    # JuMP.set_attribute(model, "algorithm", :AUGLAG)
+                    # JuMP.set_attribute(model, "local_optimizer", :LD_LBFGS)
+                    # JuMP.set_attribute(model, "algorithm", :LD_MMA)
 
-                JuMP.@objective(model, Min, x' * ℒ.I * x)
+                    JuMP.set_silent(model)
 
-                JuMP.@constraint(model, 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1] .<= 0)
+                    # JuMP.set_attribute(model, "tol", 1e-12)
 
-                JuMP.optimize!(model)
-                
-                solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED]
+                    # Create the variables over the full set of indices first.
+                    JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
+                    
+                    # Now loop through obc_shock_bounds to set the bounds on these variables.
+                    # maxmin_indicators = 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2]
+                    # for (idx, v) in enumerate(maxmin_indicators)
+                    #     idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
+                    #     if v
+                    # #         if 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
+                    #         JuMP.set_upper_bound.(x[idxs], 0)
+                    # #             JuMP.set_lower_bound.(x[idxs], 0)
+                    #     else
+                    # #             JuMP.set_upper_bound.(x[idxs], 0)
+                    #         JuMP.set_lower_bound.(x[idxs], 0)
+                    #     end
+                    # #     # else
+                    # #     #     if 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
+                    # #     #         JuMP.set_lower_bound.(x[idxs], 0)
+                    # #     #     else
+                    # #     #         JuMP.set_upper_bound.(x[idxs], 0)
+                    # #     #     end
+                    # #     # end
+                    # end
 
-                # precision = JuMP.objective_value(model)
+                    JuMP.@objective(model, Min, x' * ℒ.I * x)
 
-                # if precision > eps(Float32) @warn "Bounds enforced up to reduced precision: $precision" end # I need the dual value (constraints). this relates to the shock size
+                    JuMP.@constraint(model, 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1] .<= 0)
+
+                    JuMP.optimize!(model)
+                    
+                    solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED]
+
+                    # precision = JuMP.objective_value(model)
+
+                    # if precision > eps(Float32) @warn "Bounds enforced up to reduced precision: $precision" end # I need the dual value (constraints). this relates to the shock size
+
+                    present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= JuMP.value.(x)
+                else
+                    solved = true
+                end
 
                 present_states = state_update(past_states,JuMP.value.(past_shocks))
-                present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= JuMP.value.(x)
 
                 return present_states, present_shocks, solved
             end
