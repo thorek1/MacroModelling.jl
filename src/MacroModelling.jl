@@ -329,9 +329,20 @@ function set_up_obc_violation_function!(𝓂)
                                                                 state_update, 
                                                                 reference_steady_state, 
                                                                 𝓂, 
+                                                                algorithm,
                                                                 periods, 
                                                                 shock_values)
         T = 𝓂.timings
+
+        # if algorithm ∈ [:first_order, :riccati, :linear_time_iteration, :quadratic_iteration]
+        #     Ytype = JuMP.AffExpr
+        # elseif algorithm ∈ [:pruned_second_order, :second_order]
+        #     Ytype = JuMP.QuadExpr
+        # elseif algorithm ∈ [:pruned_third_order, :third_order]
+        #     Ytype = JuMP.NonlinearExpr
+        # end
+
+        # Y = zeros(Ytype, T.nVars, periods+2)
 
         Y = zeros(JuMP.AffExpr, T.nVars, periods+2)
 
@@ -1058,10 +1069,10 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_shift::
         # push!(eqs, :($(obc) = $(Expr(:ref, obc.args[1], -1)) * 0.3 + $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(max_obc_shift)) * "⁾"), 0))))
         push!(eqs, :($(obc) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(max_obc_shift)) * "⁾"), 0))))
 
-        push!(eqs, :($(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻⁰⁾"), 0)) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "⁽" * super(string(max_obc_shift)) * "⁾"), :x))))
+        push!(eqs, :($(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻⁰⁾"), 0)) = activeᵒᵇᶜshocks * $(Expr(:ref, Meta.parse(string(obc.args[1]) * "⁽" * super(string(max_obc_shift)) * "⁾"), :x))))
 
         for i in 1:max_obc_shift
-            push!(eqs, :($(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(i)) * "⁾"), 0)) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(i-1)) * "⁾"), -1)) + $(Expr(:ref, Meta.parse(string(obc.args[1]) * "⁽" * super(string(max_obc_shift-i)) * "⁾"), :x))))
+            push!(eqs, :($(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(i)) * "⁾"), 0)) = $(Expr(:ref, Meta.parse(string(obc.args[1]) * "ᴸ⁽⁻" * super(string(i-1)) * "⁾"), -1)) + activeᵒᵇᶜshocks * $(Expr(:ref, Meta.parse(string(obc.args[1]) * "⁽" * super(string(max_obc_shift-i)) * "⁾"), :x))))
         end
     end
 
@@ -4602,14 +4613,14 @@ function irf(state_update::Function,
                 end
             end
         else
-            past_states, past_shocks, solved = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1])
+            past_states, past_shocks, solved = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1], state_update, algorithm)
 
             always_solved = solved
             if !solved 
                 @warn "No solution at iteration 1"
             else
                 for t in 2:periods
-                    past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_history[:,t])
+                    past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_history[:,t], state_update, algorithm)
 
                     if !solved @warn "No solution at iteration $t" end
 
@@ -4657,14 +4668,14 @@ function irf(state_update::Function,
                 end
             end
         else 
-            past_states, past_shocks, solved = obc_state_update(initial_state, shck, shck)
+            past_states, past_shocks, solved = obc_state_update(initial_state, shck, shck, state_update, algorithm)
 
             always_solved = solved
             if !solved 
                 @warn "No solution at iteration 1"
             else
                 for t in 2:periods
-                    past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shck)
+                    past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shck, state_update, algorithm)
 
                     if !solved @warn "No solution at iteration $t" end
                     always_solved = always_solved && solved
@@ -4712,7 +4723,7 @@ function irf(state_update::Function,
                     end
                 end
             else
-                past_states, past_shocks, solved = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1])
+                past_states, past_shocks, solved = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1], state_update, algorithm)
 
                 always_solved = solved
 
@@ -4720,7 +4731,7 @@ function irf(state_update::Function,
                     @warn "No solution at iteration 1"
                 else
                     for t in 2:periods
-                        past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_history[:,t])
+                        past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_history[:,t], state_update, algorithm)
 
                         if !solved @warn "No solution at iteration $t" end
 

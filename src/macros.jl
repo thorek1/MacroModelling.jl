@@ -1351,6 +1351,11 @@ macro parameters(𝓂,ex...)
     return quote
         mod = @__MODULE__
 
+        if any(contains.(string.(mod.$𝓂.var), "ᵒᵇᶜ"))
+            push!($calib_parameters, :activeᵒᵇᶜshocks)
+            push!($calib_values, 0)
+        end
+
         calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
