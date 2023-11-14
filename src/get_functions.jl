@@ -71,7 +71,7 @@ function get_shock_decomposition(𝓂::ℳ,
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
-    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps(), 0)
 
     data = data(sort(axiskeys(data,1)))
 
@@ -165,7 +165,7 @@ function get_estimated_shocks(𝓂::ℳ,
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
-    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps(), 0)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -259,7 +259,7 @@ function get_estimated_variables(𝓂::ℳ,
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
-    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps(), 0)
 
     data = data(sort(axiskeys(data,1)))
 
@@ -347,7 +347,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
-    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps(), 0)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -545,7 +545,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     state_update, pruning = parse_algorithm_to_state_update(:first_order, 𝓂)
 
-    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps(), 0)
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - reference_steady_state[1:length(𝓂.var)]
 
@@ -719,7 +719,7 @@ function get_irf(𝓂::ℳ,
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
     end
 
-    reference_steady_state, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
+    reference_steady_state, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂) |> Matrix
 								
@@ -841,7 +841,7 @@ function get_irf(𝓂::ℳ;
 
     @assert !(shocks == :none && generalised_irf) "Cannot compute generalised IRFs for model without shocks."
 
-    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps(), 0)
 
     if algorithm == :second_order
         SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.second_order.stochastic_steady_state
@@ -1137,7 +1137,7 @@ function get_steady_state(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    SS, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters, 𝓂.solver_parameters)
+    SS, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters, false, 𝓂.solver_parameters)
     # SS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
     if solution_error > tol
@@ -1497,7 +1497,7 @@ function get_solution(𝓂::ℳ,
         return -Inf
     end
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     if solution_error > tol || isnan(solution_error)
         if algorithm == :second_order
@@ -1635,7 +1635,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters)
+    SS_and_pars, _, __ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
 
@@ -1777,7 +1777,7 @@ function get_variance_decomposition(𝓂::ℳ;
     
     solve!(𝓂, parameters = parameters, verbose = verbose)
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
 
@@ -2130,7 +2130,7 @@ function get_moments(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+    NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), eps(), 0)
 
     if length_par * length(NSSS) > 200 || (!variance && !standard_deviation && !non_stochastic_steady_state && !mean)
         derivatives = false

@@ -2152,6 +2152,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                                                         ubs,
                                                                         solver_parameters,
                                                                         # fail_fast_solvers_only = fail_fast_solvers_only,
+                                                                        cold_start,
                                                                         verbose)))
                 
                 # push!(SS_solve_func,:(solution = block_solver_RD([$(calib_pars_input...),$(other_vars_input...)])))#, 
@@ -2164,7 +2165,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                         # ubs,
                         # fail_fast_solvers_only = fail_fast_solvers_only,
                         # verbose = verbose)))
-                push!(SS_solve_func,:(solution_error += solution[2])) 
+                push!(SS_solve_func,:(iters += solution[2][2])) 
+                push!(SS_solve_func,:(solution_error += solution[2][1])) 
                 push!(SS_solve_func,:(sol = solution[1]))
                 # push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)]([$(calib_pars_input...),$(other_vars_input...)],solution))))
                 # push!(SS_solve_func,:(sol = solution))
@@ -2268,6 +2270,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                     𝓂::ℳ,
                                     # fail_fast_solvers_only::Bool, 
                                     verbose::Bool, 
+                                    cold_start::Union{Bool,Float64},
                                     solver_parameters::solver_parameters)
 
                     params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
@@ -2302,12 +2305,13 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             $(𝓂.calibration_equations_no_var...)
                             NSSS_solver_cache_tmp = []
                             solution_error = 0.0
+                            iters = 0
                             $(SS_solve_func...)
                             if scale == 1
                                 # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
                                 # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
                                 # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesnt work with Zygote
-                                return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)] , solution_error
+                                return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)] , ((solution_error, iters))
                             end
                         end
                     end
@@ -2533,12 +2537,14 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                                                                 lbs, 
                                                                 ubs,
                                                                 solver_parameters,
+                                                                cold_start,
                                                                 # fail_fast_solvers_only = fail_fast_solvers_only,
                                                                 verbose)))
         
         # push!(SS_solve_func,:(solution = block_solver_RD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)])))#, 
         
-        push!(SS_solve_func,:(solution_error += solution[2])) 
+        push!(SS_solve_func,:(iters += solution[2][2])) 
+        push!(SS_solve_func,:(solution_error += solution[2][1])) 
         push!(SS_solve_func,:(sol = solution[1]))
 
         # push!(SS_solve_func,:(solution = block_solver_RD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)])))#, 
@@ -2658,11 +2664,12 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                             $(par_bounds...)
                             $(𝓂.calibration_equations_no_var...)
                             NSSS_solver_cache_tmp = []
+                            iters = 0
                             solution_error = 0.0
                             $(SS_solve_func...)
                             if scale == 1
                                 # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
-                                return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)] , solution_error
+                                return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)] , (solution_error, iters)
                             end
                         end
                     end
@@ -2689,6 +2696,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64},
                         parameters::solver_parameters,
+                        cold_start::Union{Bool,Float64},
                         verbose::Bool;
                         tol::AbstractFloat = eps(),
                         # timeout = 120,
@@ -2697,11 +2705,17 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         # verbose::Bool = false
                         )
     
-    sol_values = guess
-    sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,sol_values))
+    if cold_start isa Float64
+        sol_minimum = 1
+        sol_values = max.(lbs,min.(ubs, fill(cold_start,length(guess))))
+    elseif !cold_start
+        sol_values = guess
+        sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,sol_values))
+        iters = 0
 
-    if verbose && sol_minimum < tol
-        println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+        if verbose && sol_minimum < tol
+            println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+        end
     end
 
     # try modified LM to solve hard SS problems
@@ -2720,6 +2734,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
         sol_values = max.(lbs,min.(ubs, sol_new ))
+        iters = info[1]
 
         if sol_minimum < tol
             if verbose
@@ -2742,6 +2757,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 
                     sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
                     sol_values = max.(lbs,min.(ubs, sol_new))
+                    iters = info[1]
 
                     if sol_minimum < tol && verbose
                         println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
@@ -2754,7 +2770,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
     end
 
-    return sol_values, sol_minimum
+    return sol_values, (sol_minimum, iters)
 end
 
 # needed for Julia 1.8
@@ -2767,6 +2783,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     lbs::Vector{Float64}, 
     ubs::Vector{Float64},
     parameters::solver_parameters,
+    cold_start::Union{Bool,Float64},
     verbose::Bool ;
     tol::AbstractFloat = eps(),
     # timeout = 120,
@@ -2783,7 +2800,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
 
     if verbose println("Solution for derivatives.") end
     # get f(vs)
-    val, min = block_solver(inp, 
+    val, (min, iter) = block_solver(inp, 
                         n_block, 
                         ss_solve_blocks, 
                         # SS_optimizer, 
@@ -2792,6 +2809,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
                         lbs, 
                         ubs,
                         parameters,
+                        cold_start,
                         verbose;
                         tol = tol,
                         # timeout = timeout,
@@ -2818,7 +2836,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     # pack: SoA -> AoS
     return reshape(map(val, eachrow(jvp)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(val)), min
+    end, size(val)), (min, iter)
 end
 
 
@@ -2906,7 +2924,7 @@ second_order_stochastic_steady_state_iterative_solution = ID.ImplicitFunction(se
 
 
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false) where M
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
     
@@ -3029,7 +3047,7 @@ end
 
 
 function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = eps()) where M
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
     
@@ -3109,7 +3127,7 @@ function solve!(𝓂::ℳ;
             (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && 
                 any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
 
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, eps(), 0)
 
             if solution_error > tol
                 @warn "Could not find non stochastic steady steady."
@@ -3222,7 +3240,7 @@ function solve!(𝓂::ℳ;
         
         if any([:quadratic_iteration, :binder_pesaran] .∈ ([algorithm],)) && any([:quadratic_iteration, :binder_pesaran] .∈ (𝓂.solution.outdated_algorithms,))
             
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, eps(), 0)
 
             if solution_error > tol
                 @warn "Could not find non stochastic steady steady."
@@ -3243,7 +3261,7 @@ function solve!(𝓂::ℳ;
         end
 
         if :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, eps(), 0)
 
             if solution_error > tol
                 @warn "Could not find non stochastic steady steady."
@@ -3915,7 +3933,7 @@ function SS_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameter
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    𝓂.SS_solve_func(params, 𝓂, verbose, 𝓂.solver_parameters)
+    𝓂.SS_solve_func(params, 𝓂, verbose, false, 𝓂.solver_parameters)
 end
 
 
@@ -3924,7 +3942,7 @@ function SS_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::I
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    𝓂.SS_solve_func(params, 𝓂, verbose, 𝓂.solver_parameters)
+    𝓂.SS_solve_func(params, 𝓂, verbose, false, 𝓂.solver_parameters)
 end
 
 
@@ -5199,7 +5217,7 @@ end
 
 
 function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false)
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters, 0)
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
@@ -5234,7 +5252,7 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean only available for first order, pruned second and third order perturbation solutions."
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     if algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran]
         return SS_and_pars[1:𝓂.timings.nVars], solution_error
@@ -5998,7 +6016,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         end
     end
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     if solution_error > tol || isnan(solution_error)
         return -Inf
@@ -6092,7 +6110,7 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
 
     parameters = 𝓂.parameter_values
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     @assert solution_error < tol "Could not solve non stochastic steady state." 
 

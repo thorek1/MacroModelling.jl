@@ -1,7 +1,7 @@
 using MacroModelling
 
 include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
-include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+# include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
 include("../models/SW03.jl")
 include("../models/GNSS_2010.jl")
 include("../models/Ghironi_Melitz_2005.jl")
@@ -13,10 +13,29 @@ include("../models/Caldara_et_al_2012.jl")
 include("../models/Gali_Monacelli_2005_CITR.jl")
 include("../models/Gali_2015_chapter_3_nonlinear.jl")
 include("../models/Aguiar_Gopinath_2007.jl")
-include("../models/Ascari_Sbordone_2014.jl")# stands out
+include("../models/Ascari_Sbordone_2014.jl") # stands out
 include("../models/FS2000.jl")
 include("../models/SW07.jl")
 include("../models/GI2017.jl")
+
+function calc_total_iters(model, par_inputs, starting_point)
+    outmodel = try model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs) catch end
+    
+    outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
+        (outmodel[2][1] > eps(Float64)) || !isfinite(outmodel[2][1]) ? 
+            1000000 : 
+        outmodel[2][2] : 
+    1000000
+end
+
+par_input = m.solver_parameters
+
+calc_total_iters(m, par_input, 0.897)
+
+
+all_models = [m, SW03, GNSS_2010, Ghironi_Melitz_2005, SGU_2003_debt_premium, NAWM_EAUS_2008, JQ_2012_RBC, Ireland_2004, Caldara_et_al_2012, Gali_Monacelli_2005_CITR, Gali_2015_chapter_3_nonlinear, Aguiar_Gopinath_2007, Ascari_Sbordone_2014, FS2000, SW07, GI2017];
+
+
 
 
 using Optimization, OptimizationNLopt
@@ -25,174 +44,92 @@ f = OptimizationFunction((x,verbose)-> begin
 
     x[1:2] = sort(x[1:2], rev = true)
 
-    par_inputs = Dict(    
-                        :ϕ̄  =>  x[1],
-                        :ϕ̂  =>  x[2],
-                        :μ̄¹ =>  x[3],
-                        :μ̄² =>  x[4],
-                        :p̄¹ =>  x[5],
-                        :p̄² =>  x[6],
-                        :ρ  =>  x[7],
-                        :ρ¹ =>  x[8],
-                        :ρ² =>  x[9],
-                        :ρ³ =>  x[10],
-                        :ν  =>  x[11],
-                        :λ¹ =>  x[12],
-                        :λ² =>  x[13],
-                        :λ̂¹ =>  x[14],
-                        :λ̂² =>  x[15],
-                        :λ̅¹ =>  x[16],
-                        :λ̅² =>  x[17],
-                        :λ̂̅¹ =>  x[18],
-                        :λ̂̅² =>  x[19],
-                        :transformation_level   => Int(abs(round(x[20]))),
-                        :shift   => x[21],
-                        :backtracking_order     => Int(abs(round(x[22])))
+    par_inputs = MacroModelling.solver_parameters(   
+        eps(),eps(),250,  x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], x[19],Int(abs(round(x[20]))),x[21],Int(abs(round(x[22])))
     )
-# println(par_inputs)
-    outSW07 = try SW07.SS_solve_func(SW07.parameter_values, SW07, false, verbose, par_inputs, x[end]) catch end
     
-    total_iters += outSW07 isa Tuple{Vector{Float64}, Float64, Int64} ? (outSW07[2] > eps(Float64)) || !isfinite(outSW07[2]) ? 1000000 : outSW07[3] : 1000000
+    total_iters = 0
+    for model in all_models
+        total_iters += calc_total_iters(model, par_input, x[23])
+    end
 
-    outAscari_Sbordone_2014 = try Ascari_Sbordone_2014.SS_solve_func(Ascari_Sbordone_2014.parameter_values, Ascari_Sbordone_2014, false, verbose, par_inputs, x[end]) catch end
-    # println(outAscari_Sbordone_2014[1][10])
-    total_iters += outAscari_Sbordone_2014 isa Tuple{Vector{Float64}, Float64, Int64} ? (outAscari_Sbordone_2014[2] > eps(Float64)) || !isfinite(outAscari_Sbordone_2014[2]) ? 1000000 : outAscari_Sbordone_2014[3] : 1000000
-    #  || !isapprox(outAscari_Sbordone_2014[1][10], 3.88351239274375, atol = 1e-6)
-
-    outSW03 = try SW03.SS_solve_func(SW03.parameter_values, SW03, false, verbose, par_inputs, x[end]) catch end
-    
-    total_iters += outSW03 isa Tuple{Vector{Float64}, Float64, Int64} ? (outSW03[2] > eps(Float64)) || !isfinite(outSW03[2]) ? 1000000 : outSW03[3] : 1000000
-
-    outNAWM_EAUS_2008 = try NAWM_EAUS_2008.SS_solve_func(NAWM_EAUS_2008.parameter_values, NAWM_EAUS_2008, false, verbose, par_inputs, x[end]) catch end
-
-    total_iters += outNAWM_EAUS_2008 isa Tuple{Vector{Float64}, Float64, Int64} ? (outNAWM_EAUS_2008[2] > eps(Float64)) || !isfinite(outNAWM_EAUS_2008[2]) ? 1000000 : outNAWM_EAUS_2008[3] : 1000000
-
-    outGali_Monacelli_2005_CITR = try Gali_Monacelli_2005_CITR.SS_solve_func(Gali_Monacelli_2005_CITR.parameter_values, Gali_Monacelli_2005_CITR, false, verbose, par_inputs, x[end]) catch end
-    
-    total_iters += outGali_Monacelli_2005_CITR isa Tuple{Vector{Float64}, Float64, Int64} ? (outGali_Monacelli_2005_CITR[2] > eps(Float64)) || !isfinite(outGali_Monacelli_2005_CITR[2]) ? 1000000 : outGali_Monacelli_2005_CITR[3] : 1000000
-    
-    outGali_2015_chapter_3_nonlinear = try Gali_2015_chapter_3_nonlinear.SS_solve_func(Gali_2015_chapter_3_nonlinear.parameter_values, Gali_2015_chapter_3_nonlinear, false, verbose, par_inputs, x[end]) catch end
-    
-    total_iters += outGali_2015_chapter_3_nonlinear isa Tuple{Vector{Float64}, Float64, Int64} ? (outGali_2015_chapter_3_nonlinear[2] > eps(Float64)) || !isfinite(outGali_2015_chapter_3_nonlinear[2]) ? 1000000 : outGali_2015_chapter_3_nonlinear[3] : 1000000
-
-    outAguiar_Gopinath_2007 = try Aguiar_Gopinath_2007.SS_solve_func(Aguiar_Gopinath_2007.parameter_values, Aguiar_Gopinath_2007, false, verbose, par_inputs, x[end]) catch end
-    
-    total_iters += outAguiar_Gopinath_2007 isa Tuple{Vector{Float64}, Float64, Int64} ? (outAguiar_Gopinath_2007[2] > eps(Float64)) || !isfinite(outAguiar_Gopinath_2007[2]) ? 1000000 : outAguiar_Gopinath_2007[3] : 1000000
-
-    outCaldara_et_al_2012 = try Caldara_et_al_2012.SS_solve_func(Caldara_et_al_2012.parameter_values, Caldara_et_al_2012, false, verbose, par_inputs, x[end]) catch end
-    
-    total_iters += outCaldara_et_al_2012 isa Tuple{Vector{Float64}, Float64, Int64} ? (outCaldara_et_al_2012[2] > eps(Float64)) || !isfinite(outCaldara_et_al_2012[2]) ? 1000000 : outCaldara_et_al_2012[3] : 1000000
-
-    outGhironi_Melitz_2005 = try Ghironi_Melitz_2005.SS_solve_func(Ghironi_Melitz_2005.parameter_values, Ghironi_Melitz_2005, false, verbose, par_inputs, x[end]) catch end
-    
-    total_iters += outGhironi_Melitz_2005 isa Tuple{Vector{Float64}, Float64, Int64} ? (outGhironi_Melitz_2005[2] > eps(Float64)) || !isfinite(outGhironi_Melitz_2005[2]) ? 1000000 : outGhironi_Melitz_2005[3] : 1000000
-
-    outGNSS_2010 = try GNSS_2010.SS_solve_func(GNSS_2010.parameter_values, GNSS_2010, false, verbose, par_inputs, x[end]) catch end
-
-    total_iters += outGNSS_2010 isa Tuple{Vector{Float64}, Float64, Int64} ? (outGNSS_2010[2] > eps(Float64)) || !isfinite(outGNSS_2010[2]) ? 1000000 : outGNSS_2010[3] : 1000000
-
-    outSGU_2003_debt_premium = try SGU_2003_debt_premium.SS_solve_func(SGU_2003_debt_premium.parameter_values, SGU_2003_debt_premium, false, verbose, par_inputs, x[end]) catch end
-
-    total_iters += outSGU_2003_debt_premium isa Tuple{Vector{Float64}, Float64, Int64} ? (outSGU_2003_debt_premium[2] > eps(Float64)) || !isfinite(outSGU_2003_debt_premium[2]) ? 1000000 : outSGU_2003_debt_premium[3] : 1000000
-
-    outJQ_2012_RBC = try JQ_2012_RBC.SS_solve_func(JQ_2012_RBC.parameter_values, JQ_2012_RBC, false, verbose, par_inputs, x[end]) catch end
-
-    total_iters += outJQ_2012_RBC isa Tuple{Vector{Float64}, Float64, Int64} ? (outJQ_2012_RBC[2] > eps(Float64)) || !isfinite(outJQ_2012_RBC[2]) ? 1000000 : outJQ_2012_RBC[3] : 1000000
-
-    outIreland_2004 = try Ireland_2004.SS_solve_func(Ireland_2004.parameter_values, Ireland_2004, false, verbose, par_inputs, x[end]) catch end
-
-    total_iters += outIreland_2004 isa Tuple{Vector{Float64}, Float64, Int64} ? (outIreland_2004[2] > eps(Float64)) || !isfinite(outIreland_2004[2]) ? 1000000 : outIreland_2004[3] : 1000000
-
-    outFS2000 = try FS2000.SS_solve_func(FS2000.parameter_values, FS2000, false, verbose, par_inputs, x[end]) catch end
-
-    total_iters += outFS2000 isa Tuple{Vector{Float64}, Float64, Int64} ? (outFS2000[2] > eps(Float64)) || !isfinite(outFS2000[2]) ? 1000000 : outFS2000[3] : 1000000
-
-    outRBC_lead_lags = try RBC_lead_lags.SS_solve_func(RBC_lead_lags.parameter_values, RBC_lead_lags, false, verbose, par_inputs, x[end]) catch end
-
-    total_iters += outRBC_lead_lags isa Tuple{Vector{Float64}, Float64, Int64} ? (outRBC_lead_lags[2] > eps(Float64)) || !isfinite(outRBC_lead_lags[2]) ? 1000000 : outRBC_lead_lags[3] : 1000000
-
-    outRBC_param = try RBC_param.SS_solve_func(RBC_param.parameter_values, RBC_param, false, verbose, par_inputs, x[end]) catch end
-
-    total_iters += outRBC_param isa Tuple{Vector{Float64}, Float64, Int64} ? (outRBC_param[2] > eps(Float64)) || !isfinite(outRBC_param[2]) ? 1000000 : outRBC_param[3] : 1000000
-
-    # total_iters >= 1000000 ? NaN : total_iters
-
-    total_iters_pars = sum(abs2,vcat(x[[3,4]]...,[1 .- x[12:19]]...)) * 10
+    total_iters_pars = sum(abs2,vcat(x[[3,4]]...,[1 .- x[12:19]]..., x[21] / 10)) * 10
 
     # println(total_iters)
-    return Float64(total_iters + total_iters_pars),total_iters
+    return Float64(total_iters + total_iters_pars), total_iters
 end)
 
-innit = [ 
-    3.307670699324403
-    0.8887
-    0.023813243535282552
-    0.026833357448752496
-    2.442999997612768
-    1.49949375
-    0.0008014110419103691
-    0.041527311524283926
-    0.048143903530580914
-    0.0033122894690720854
-    0.5401102854078268
-    0.11292946464826276
-    0.00011413295389511516
-    0.6553524666109665
-    0.02388678809616366
-    0.99778
-    0.00011413295389511516
-    0.6553524666109665
-    0.02388678809616366
-    0.99778
-    1.0
-    3.0
-]
+# innit = [ 
+#     3.307670699324403
+#     0.8887
+#     0.023813243535282552
+#     0.026833357448752496
+#     2.442999997612768
+#     1.49949375
+#     0.0008014110419103691
+#     0.041527311524283926
+#     0.048143903530580914
+#     0.0033122894690720854
+#     0.5401102854078268
+#     0.11292946464826276
+#     0.00011413295389511516
+#     0.6553524666109665
+#     0.02388678809616366
+#     0.99778
+#     0.00011413295389511516
+#     0.6553524666109665
+#     0.02388678809616366
+#     0.99778
+#     1.0
+#     3.0
+# ]
 
 
 
-innit = [
-    2.1463884211036226
-    0.9929437566596109
-    0.6773423825308124
-    0.0
-    4.435883184171622
-    0.1545259444769216
-    0.16236330077946382
-    0.04628182054753979
-    0.5711216406099425
-    0.0
-    0.6804997522959056
-    0.8391805314686501
-    0.15117829923684067
-    0.08883112140047633
-    0.7130603312464207
-    0.935850006981596
-]
+# innit = [
+#     2.1463884211036226
+#     0.9929437566596109
+#     0.6773423825308124
+#     0.0
+#     4.435883184171622
+#     0.1545259444769216
+#     0.16236330077946382
+#     0.04628182054753979
+#     0.5711216406099425
+#     0.0
+#     0.6804997522959056
+#     0.8391805314686501
+#     0.15117829923684067
+#     0.08883112140047633
+#     0.7130603312464207
+#     0.935850006981596
+# ]
 
-innit = [
-    5.0
-    0.8725
-    0.0027
-    0.0
-    8.04
-    0.0
-    0.076
-    0.235
-    0.51
-    0.0
-    0.62
-    0.422
-    1.0
-    0.5047
-    1.0
-    0.422
-    1.0
-    0.5047
-    1.0
-    1.0
-    2.0
-    0.7688
-]
+# innit = [
+#     5.0
+#     0.8725
+#     0.0027
+#     0.0
+#     8.04
+#     0.0
+#     0.076
+#     0.235
+#     0.51
+#     0.0
+#     0.62
+#     0.422
+#     1.0
+#     0.5047
+#     1.0
+#     0.422
+#     1.0
+#     0.5047
+#     1.0
+#     1.0
+#     0.0
+#     2.0
+#     0.7688
+# ]
 
 
 innit = [ 
@@ -216,6 +153,7 @@ innit = [
     1
     1
     2.5
+    0.0
     3
     0.5
 ]
@@ -224,25 +162,29 @@ innit = [
 
 lbs = zero(innit)
 # lbs .+= eps()*2
-lbs[21] = -.5
-lbs[21] = 2
+lbs[22] = -.5
+lbs[22] = 2
 lbs[end] = -100
+
 ubs = zero(innit)
 ubs .+= 1
 ubs[1:2] .= 10
 ubs[5:6] .= 100
 ubs[20] = 4.5
-ubs[21] = 3
+ubs[22] = 3
 ubs[end] = 100
 
 prob = OptimizationProblem(f, innit, false, lb = lbs, ub = ubs)
 
 f(innit,true)
-
-maxt = 10 * 60
+# using BenchmarkTools
+maxt = 1 * 60
 
 
 sol_ESCH    =   solve(prob, NLopt.GN_ESCH(),    maxtime = maxt); sol_ESCH.minimum
+
+
+
 innit = sol_ESCH.u
 innit = [7.971710350206478
 0.9041767277613695
