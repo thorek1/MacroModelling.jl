@@ -150,18 +150,21 @@ plot_irf(Gali_2015_chapter_3_nonlinear, negative_shock = false, ignore_obc = fal
 
 
 get_solution(Gali_2015_chapter_3_nonlinear)(:,:R)
+
+
 # using Optimization, Ipopt, OptimizationMOI, OptimizationOptimJL, LineSearches, OptimizationNLopt, KNITRO
 import MacroTools: postwalk, unblock, @capture
 import MacroModelling: parse_for_loops, convert_to_ss_equation, simplify,create_symbols_eqs!,remove_redundant_SS_vars!,get_symbols, parse_occasionally_binding_constraints, parse_algorithm_to_state_update, match_pattern
 import DataStructures: CircularBuffer
 import Subscripts: super, sub
 import LinearAlgebra as ℒ
-using JuMP, Ipopt # MadNLP# StatusSwitchingQP#, COSMO, MadNLP, Clarabel
+using JuMP#, MadNLP # MadNLP# StatusSwitchingQP#, COSMO, MadNLP, Clarabel
 import JuMP
 
-
-𝓂 = Gali_2015_chapter_3_nonlinear
 # 𝓂 = testmax
+# 𝓂 = borrcon
+# 𝓂 = RBC
+𝓂 = GI2017
 algorithm = :first_order
 state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
 T = 𝓂.timings
@@ -175,7 +178,7 @@ obc_shocks = [i[1] for i in 𝓂.obc_shock_bounds]
 obc_shock_idx = contains.(string.(T.exo),"ᵒᵇᶜ")
 
 shocks = zeros(T.nExo,periods)
-shocks[1,:] = randn(periods)
+shocks[.!obc_shock_idx,:] = randn(sum(.!obc_shock_idx),periods)
 shock_values = shocks[:,1]
 
 shocks[obc_shock_idx,:] .= 0
@@ -187,62 +190,189 @@ past_initial_state = zeros(T.nVars)
 past_shocks = zeros(T.nExo)
 
 
-periods_per_shock = sum(obc_shock_idx)÷length(𝓂.obc_shock_bounds)
-num_shocks = length(𝓂.obc_shock_bounds)
+periods_per_shock = sum(obc_shock_idx)÷length(𝓂.obc_violation_equations)
+num_shocks = length(𝓂.obc_violation_equations)
 
 
-function obc_state_update(past_states::Vector{R}, past_shocks::Vector{R}, present_shocks::Vector{R}, 𝓂) where R <: Float64
-    unconditional_forecast_horizon = 40
+function obc_state_update(past_states::Vector{R}, past_shocks::Vector{R}, present_shocks::Vector{R}, 𝓂; precision_factor::Float64 = 1.0) where R <: Float64
+        unconditional_forecast_horizon = 40
 
-    state_update = 𝓂.solution.perturbation.first_order.state_update
+        state_update = 𝓂.solution.perturbation.first_order.state_update
 
-    reference_steady_state = 𝓂.solution.non_stochastic_steady_state
+        reference_steady_state = 𝓂.solution.non_stochastic_steady_state
 
-    obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+        obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
 
-    periods_per_shock = sum(obc_shock_idx)÷length(𝓂.obc_shock_bounds)
+        obc_inequalities_idx = findall(x->contains(string(x), "Χᵒᵇᶜ") , 𝓂.var)
 
-    num_shocks = length(𝓂.obc_shock_bounds)
+        periods_per_shock = sum(obc_shock_idx)÷length(obc_inequalities_idx)
 
-    # Find shocks fulfilling constraint
-    model = JuMP.Model(Ipopt.Optimizer)
+        num_shocks = length(obc_inequalities_idx)
 
-    JuMP.set_silent(model)
-    
-    # Create the variables over the full set of indices first.
-    JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
-    
-    # Now loop through obc_shock_bounds to set the bounds on these variables.
-    for (idx, v) in enumerate(𝓂.obc_shock_bounds)
-        is_upper_bound = v[2]
-        bound = v[3]
-        idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
-        if is_upper_bound
-            JuMP.set_upper_bound.(x[idxs], bound)
-        else
-            JuMP.set_lower_bound.(x[idxs], bound)
+        # Find shocks fulfilling constraint
+        model = JuMP.Model(MadNLP.Optimizer)
+
+        JuMP.set_silent(model)
+
+        # JuMP.set_attribute(model, "tol", 1e-12)
+
+        # Create the variables over the full set of indices first.
+        JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
+        
+        # Now loop through obc_shock_bounds to set the bounds on these variables.
+        for (idx, v) in enumerate(𝓂.var[obc_inequalities_idx])
+            idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
+            if contains(string(v), "ᵒᵇᶜ⁺")
+                JuMP.set_lower_bound.(x[idxs], 0)
+            else
+                JuMP.set_upper_bound.(x[idxs], 0)
+            end
         end
-    end
-    
-    JuMP.@objective(model, Min, x' * ℒ.I * x)
+        
+        JuMP.@objective(model, Min,  x' * ℒ.I * x)
 
-    JuMP.@constraint(model, 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, AffExpr.(present_shocks)) .>= 0)
+        JuMP.@constraint(model, 𝓂.obc_violation_function(x .* precision_factor, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks)) .<= 0)
 
-    JuMP.optimize!(model)
-    
-    solved = termination_status(model) ∈ [OPTIMAL,LOCALLY_SOLVED]
+        JuMP.optimize!(model)
+        
+        solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED]
 
-    present_states = state_update(past_states,value.(past_shocks))
-    present_shocks[contains.(string.(T.exo),"ᵒᵇᶜ")] .= value.(x)
+        present_states = state_update(past_states,JuMP.value.(past_shocks))
+        present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= JuMP.value.(x) ./ precision_factor
 
-    return present_states, present_shocks, solved
+        return present_states, present_shocks, solved
 end
 
 
 shock_values = shocks[:,1]
-past_states, past_shocks, solved  = obc_state_update(past_initial_state, past_shocks, shock_values, 𝓂)
+obc_state_update(past_initial_state, past_shocks, shock_values, 𝓂, precision_factor = 1e0)
+past_states, past_shocks, solved  = obc_state_update(past_initial_state, past_shocks, shock_values, 𝓂, precision_factor = 1e-0)
 
-if !solved @warn "No solution at iteration $i" end
+if !solved @warn "No solution at iteration 1" end
+
+for i in 2:periods
+    shock_values = shocks[:,i]
+    past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_values, 𝓂, precision_factor = 1e-0)
+    Y[:,i-1] = past_states
+    shocks[:,i] = past_shocks
+    if !solved 
+        @warn "No solution at iteration $i" 
+        break 
+    end
+end
+
+
+RBC.var
+
+
+(Y .+ reference_steady_state)[2,:] |>plot
+
+
+precision_factor = 1.0
+past_states = past_initial_state
+past_shocks = past_shocks
+present_shocks = shock_values
+unconditional_forecast_horizon = 40
+
+state_update = 𝓂.solution.perturbation.first_order.state_update
+
+reference_steady_state = 𝓂.solution.non_stochastic_steady_state
+
+obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+
+obc_inequalities_idx = findall(x->contains(string(x), "Χᵒᵇᶜ") , 𝓂.var)
+
+periods_per_shock = sum(obc_shock_idx)÷length(obc_inequalities_idx)
+
+num_shocks = length(obc_inequalities_idx)
+
+
+# using Clarabel, ÷popt, COSMO, 
+import NLopt
+# Find shocks fulfilling constraint
+# model = JuMP.Model(MadNLP.Optimizer)
+
+# model = JuMP.Model(Ipopt.Optimizer)
+
+# model = JuMP.Model(Clarabel.Optimizer)
+
+# model = JuMP.Model(COSMO.Optimizer)
+
+# using BenchmarkTools
+# @benchmark begin
+
+# model = JuMP.Model(Ipopt.Optimizer) # slow
+
+# model = JuMP.Model(Clarabel.Optimizer) # slightly slow
+
+# model = JuMP.Model(COSMO.Optimizer)
+# model = JuMP.Model(MadNLP.Optimizer)
+model = JuMP.Model(NLopt.Optimizer)
+# set_attribute(model, "algorithm", :LD_SLSQP)
+JuMP.set_attribute(model, "algorithm", :LD_MMA)
+JuMP.set_attribute(model, "verbose", 2)
+# set_attribute(model, "algorithm", :LN_COBYLA) #too long
+# JuMP.set_silent(model)
+
+# JuMP.set_attribute(model, "iter", 1e5)
+
+# Create the variables over the full set of indices first.
+JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
+
+# idx = 1
+# idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
+
+
+# Now loop through obc_shock_bounds to set the bounds on these variables.
+# for (idx, v) in enumerate(𝓂.var[obc_inequalities_idx])
+idx = 1
+    idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
+    # if contains(string(v), "ᵒᵇᶜ⁺")
+        JuMP.set_lower_bound.(x[idxs], 0)
+    # else
+        # JuMP.set_upper_bound.(x[idxs], 0)
+    # end
+# end
+
+JuMP.@objective(model, Min, x' * ℒ.I * x)
+
+JuMP.@constraint(model, 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1] .<= 0)
+
+JuMP.optimize!(model)
+# end
+solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED]
+
+# present_states = state_update(past_states,JuMP.value.(past_shocks))
+# present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= JuMP.value.(x)
+
+# present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= 0
+# 𝓂.var
+
+
+xx = JuMP.value.(x)
+# xx .-=  4
+# xx[4] = 40
+# xx[abs.(xx) .< 1e-5].= 0
+
+𝓂.obc_violation_function(xx , past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, present_shocks)
+
+𝓂.obc_violation_function(zero(xx), past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, present_shocks)
+
+𝓂.obc_violation_function(zero(xx), past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, zero(present_shocks))
+
+:(isapprox(x,y,atol=1e-12))|>dump
+isapprox(SS(𝓂)(:Χᵒᵇᶜ⁺ꜝ¹ꜝ, :Steady_state), SS(𝓂)(:χᵒᵇᶜ⁺ꜝ¹ꜝˡ, :Steady_state),atol = 1e-12) 
+Χᵒᵇᶜ⁺ꜝ¹ꜝ ≈ χᵒᵇᶜ⁺ꜝ¹ꜝˡ
+
+
+
+unconditional_forecast_horizon = 40
+𝓂.obc_violation_function(shock_values[2:end], past_initial_state, past_shocks*-20, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, shock_values)
+
+
+𝓂.obc_violation_function
+
+if !solved @warn "No solution at iteration 1" end
 
 for i in 2:periods
     shock_values = shocks[:,i]
@@ -253,11 +383,12 @@ for i in 2:periods
 end
 
 Y[:,periods] = state_update(past_states,past_shocks)
+𝓂.var
+(Y .+ reference_steady_state)[4,:]
 
-(Y .+ reference_steady_state)[10,:]
-
+Y'
 shocks'
-
+SS(borrcon)
 
 SS(𝓂)
 model = Model(Clarabel.Optimizer)
