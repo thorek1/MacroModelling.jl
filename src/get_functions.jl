@@ -911,7 +911,7 @@ function get_irf(𝓂::ℳ;
                 
                 num_shocks = sum(obc_shock_idx)÷periods_per_shock
 
-                constraints_violated = any(JuMP.value.(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), past_states, past_shocks, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1]) .> 1e-12)
+                constraints_violated = any(JuMP.value.(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), past_states, past_shocks, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1]) .> eps(Float32))
                 
                 if constraints_violated
                     # Find shocks fulfilling constraint
@@ -1001,7 +1001,7 @@ function get_irf(𝓂::ℳ;
         if occasionally_binding_constraints #&& algorithm ∈ [:pruned_second_order, :second_order, :pruned_third_order, :third_order]
             solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
         end
-        
+
         return irfs
     end
 end
