@@ -229,6 +229,34 @@ mutable struct solution
 end
 
 
+mutable struct solver_parameters
+    xtol::Float64 
+    ftol::Float64 
+    iterations::Int
+    ϕ̄::Float64    
+    ϕ̂::Float64    
+    μ̄¹::Float64   
+    μ̄²::Float64   
+    p̄¹::Float64   
+    p̄²::Float64   
+    ρ::Float64    
+    ρ¹::Float64   
+    ρ²::Float64   
+    ρ³::Float64   
+    ν::Float64    
+    λ¹::Float64   
+    λ²::Float64   
+    λ̂¹::Float64   
+    λ̂²::Float64   
+    λ̅¹::Float64   
+    λ̅²::Float64   
+    λ̂̅¹::Float64   
+    λ̂̅²::Float64   
+    transformation_level::Int
+    shift::Float64 
+    backtracking_order::Int
+end
+
 mutable struct ℳ
     model_name::Any
     # SS_optimizer
@@ -355,6 +383,8 @@ mutable struct ℳ
     max_obc_shift::Int
     obc_violation_function::Function
 
+    solver_parameters::solver_parameters
+    
     solution::solution
     # symbolics::symbolics
 

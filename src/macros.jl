@@ -858,6 +858,8 @@ macro model(𝓂,ex...)
                         $max_obc_shift,
                         x->x,
 
+                        solver_parameters(eps(), eps(), 250, 8.0,0.904,0.026,0.0,1.0,0.0,0.1,0.17,0.07,0.01,0.8,0.84,1.0,0.5,1.0,0.0128,1.0,0.9815,1.0,3,0.0,2),
+
                         solution(
                             perturbation(   perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
                                             perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
@@ -1439,7 +1441,7 @@ macro parameters(𝓂,ex...)
 
         if !$precompile
             # time_SS_real_solve = @elapsed 
-            SS_and_pars, solution_error = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose)
+            SS_and_pars, solution_error = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose, mod.$𝓂.solver_parameters)
             if !$silent println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds") end
 
             mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars

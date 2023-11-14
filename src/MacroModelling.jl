@@ -1422,32 +1422,35 @@ function levenberg_marquardt(f::Function,
     initial_guess::Array{T,1}, 
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
-    xtol::T = eps(), 
-    ftol::T = eps(), 
-    iterations::S = 250, 
-    ϕ̄::T    =       8.0,
-    ϕ̂::T    =       0.904,
-    μ̄¹::T   =       0.026,
-    μ̄²::T   =       0.0,
-    p̄¹::T   =       1.0,
-    p̄²::T   =       0.0,
-    ρ::T    =       0.1,
-    ρ¹::T   =       0.17,
-    ρ²::T   =       0.07,
-    ρ³::T   =       0.01,
-    ν::T    =       0.8,
-    λ¹::T   =       0.84,
-    λ²::T   =       1.0,
-    λ̂¹::T   =       0.5,
-    λ̂²::T   =       1.0,
-    λ̅¹::T   =       0.0128,
-    λ̅²::T   =       1.0,
-    λ̂̅¹::T   =       0.9815,
-    λ̂̅²::T   =       1.0,
-    transformation_level::S = 3,
-    shift::T = 0.0,
-    backtracking_order::S = 2) where {T <: AbstractFloat, S <: Integer}
+    parameters::solver_parameters = solver_parameters(eps(), eps(), 250, 8.0,0.904,0.026,0.0,1.0,0.0,0.1,0.17,0.07,0.01,0.8,0.84,1.0,0.5,1.0,0.0128,1.0,0.9815,1.0,3,0.0,2)
+    ) where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
+
+    xtol = parameters.xtol
+    ftol = parameters.ftol
+    iterations = parameters.iterations
+    ϕ̄ = parameters.ϕ̄
+    ϕ̂ = parameters.ϕ̂
+    μ̄¹ = parameters.μ̄¹
+    μ̄² = parameters.μ̄²
+    p̄¹ = parameters.p̄¹
+    p̄² = parameters.p̄²
+    ρ = parameters.ρ
+    ρ¹ = parameters.ρ¹
+    ρ² = parameters.ρ²
+    ρ³ = parameters.ρ³
+    ν = parameters.ν
+    λ¹ = parameters.λ¹
+    λ² = parameters.λ²
+    λ̂¹ = parameters.λ̂¹
+    λ̂² = parameters.λ̂²
+    λ̅¹ = parameters.λ̅¹
+    λ̅² = parameters.λ̅²
+    λ̂̅¹ = parameters.λ̂̅¹
+    λ̂̅² = parameters.λ̂̅²
+    transformation_level = parameters.transformation_level
+    shift = parameters.shift
+    backtracking_order = parameters.backtracking_order
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
     @assert lower_bounds < upper_bounds
@@ -2147,6 +2150,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                                                         inits,
                                                                         lbs, 
                                                                         ubs,
+                                                                        solver_parameters,
                                                                         # fail_fast_solvers_only = fail_fast_solvers_only,
                                                                         verbose)))
                 
@@ -2261,9 +2265,10 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
 
     solve_exp = :(function solve_SS(parameters::Vector{Real}, 
-                                    𝓂::ℳ, 
+                                    𝓂::ℳ,
                                     # fail_fast_solvers_only::Bool, 
-                                    verbose::Bool)
+                                    verbose::Bool, 
+                                    solver_parameters::solver_parameters)
 
                     params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                     current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
@@ -2527,6 +2532,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                                                                 inits,
                                                                 lbs, 
                                                                 ubs,
+                                                                solver_parameters,
                                                                 # fail_fast_solvers_only = fail_fast_solvers_only,
                                                                 verbose)))
         
@@ -2682,6 +2688,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         guess::Vector{Float64}, 
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64},
+                        parameters::solver_parameters,
                         verbose::Bool;
                         tol::AbstractFloat = eps(),
                         # timeout = 120,
@@ -2703,10 +2710,13 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         previous_sol_init = max.(lbs,min.(ubs, sol_values))
         
-        sol_new, info = SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x),
+        sol_new, info = SS_optimizer(
+                                        x->ss_solve_blocks(parameters_and_solved_vars, x),
                                         previous_sol_init,
                                         lbs,
-                                        ubs) # alternatively use .001)#, μ = μ, p = p)# catch e end
+                                        ubs,
+                                        parameters = parameters
+                                    ) # alternatively use .001)#, μ = μ, p = p)# catch e end
 
         sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
         sol_values = max.(lbs,min.(ubs, sol_new ))
@@ -2721,7 +2731,14 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 if sol_minimum > tol
                     standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
                     standard_inits[ubs .<= 1] .= .1 # capture cases where part of values is small
-                    sol_new, info = SS_optimizer(x->ss_solve_blocks(parameters_and_solved_vars, x),standard_inits,lbs,ubs)# catch e end
+
+                    sol_new, info = SS_optimizer(
+                        x->ss_solve_blocks(parameters_and_solved_vars, x),
+                        standard_inits,
+                        lbs,
+                        ubs,
+                        parameters = parameters
+                        )# catch e end
                 
                     sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
                     sol_values = max.(lbs,min.(ubs, sol_new))
@@ -2749,6 +2766,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     guess::Vector{Float64}, 
     lbs::Vector{Float64}, 
     ubs::Vector{Float64},
+    parameters::solver_parameters,
     verbose::Bool ;
     tol::AbstractFloat = eps(),
     # timeout = 120,
@@ -2773,6 +2791,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
                         guess, 
                         lbs, 
                         ubs,
+                        parameters,
                         verbose;
                         tol = tol,
                         # timeout = timeout,
@@ -2887,7 +2906,7 @@ second_order_stochastic_steady_state_iterative_solution = ID.ImplicitFunction(se
 
 
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false) where M
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
     
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
     
@@ -3010,7 +3029,7 @@ end
 
 
 function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = eps()) where M
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
     
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
     
@@ -3090,7 +3109,7 @@ function solve!(𝓂::ℳ;
             (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && 
                 any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
 
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             if solution_error > tol
                 @warn "Could not find non stochastic steady steady."
@@ -3203,7 +3222,7 @@ function solve!(𝓂::ℳ;
         
         if any([:quadratic_iteration, :binder_pesaran] .∈ ([algorithm],)) && any([:quadratic_iteration, :binder_pesaran] .∈ (𝓂.solution.outdated_algorithms,))
             
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             if solution_error > tol
                 @warn "Could not find non stochastic steady steady."
@@ -3224,7 +3243,7 @@ function solve!(𝓂::ℳ;
         end
 
         if :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
-            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+            SS_and_pars, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, eps())
 
             if solution_error > tol
                 @warn "Could not find non stochastic steady steady."
@@ -3896,7 +3915,7 @@ function SS_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameter
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    𝓂.SS_solve_func(params, 𝓂, verbose)
+    𝓂.SS_solve_func(params, 𝓂, verbose, 𝓂.solver_parameters)
 end
 
 
@@ -3905,7 +3924,7 @@ function SS_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::I
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    𝓂.SS_solve_func(params, 𝓂, verbose)
+    𝓂.SS_solve_func(params, 𝓂, verbose, 𝓂.solver_parameters)
 end
 
 
@@ -5180,7 +5199,7 @@ end
 
 
 function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false)
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
@@ -5215,7 +5234,7 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean only available for first order, pruned second and third order perturbation solutions."
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
     
     if algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran]
         return SS_and_pars[1:𝓂.timings.nVars], solution_error
@@ -5979,7 +5998,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
         end
     end
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
     
     if solution_error > tol || isnan(solution_error)
         return -Inf
@@ -6073,7 +6092,7 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
 
     parameters = 𝓂.parameter_values
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose)
+    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, verbose, 𝓂.solver_parameters)
     
     @assert solution_error < tol "Could not solve non stochastic steady state." 
 
