@@ -1,21 +1,22 @@
 using MacroModelling
 
-include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
-include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-include("models/SW03.jl")
-include("models/GNSS_2010.jl")
-include("models/Ghironi_Melitz_2005.jl")
-include("models/SGU_2003_debt_premium.jl")
-include("models/NAWM_EAUS_2008.jl") # stands out
-include("models/JQ_2012_RBC.jl")
-include("models/Ireland_2004.jl")
-include("models/Caldara_et_al_2012.jl")
-include("models/Gali_Monacelli_2005_CITR.jl")
-include("models/Gali_2015_chapter_3_nonlinear.jl")
-include("models/Aguiar_Gopinath_2007.jl")
-include("models/Ascari_Sbordone_2014.jl")# stands out
-include("models/FS2000.jl")
-include("models/SW07.jl")
+include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+include("../models/SW03.jl")
+include("../models/GNSS_2010.jl")
+include("../models/Ghironi_Melitz_2005.jl")
+include("../models/SGU_2003_debt_premium.jl")
+include("../models/NAWM_EAUS_2008.jl") # stands out
+include("../models/JQ_2012_RBC.jl")
+include("../models/Ireland_2004.jl")
+include("../models/Caldara_et_al_2012.jl")
+include("../models/Gali_Monacelli_2005_CITR.jl")
+include("../models/Gali_2015_chapter_3_nonlinear.jl")
+include("../models/Aguiar_Gopinath_2007.jl")
+include("../models/Ascari_Sbordone_2014.jl")# stands out
+include("../models/FS2000.jl")
+include("../models/SW07.jl")
+include("../models/GI2017.jl")
 
 
 using Optimization, OptimizationNLopt
@@ -23,28 +24,30 @@ f = OptimizationFunction((x,verbose)-> begin
     total_iters = 0
 
     x[1:2] = sort(x[1:2], rev = true)
+
     par_inputs = Dict(    
-    :ϕ̄  =>  x[1],
-    :ϕ̂  =>  x[2],
-    :μ̄¹ =>  x[3],
-    :μ̄² =>  x[4],
-    :p̄¹ =>  x[5],
-    :p̄² =>  x[6],
-    :ρ  =>  x[7],
-    :ρ¹ =>  x[8],
-    :ρ² =>  x[9],
-    :ρ³ =>  x[10],
-    :ν  =>  x[11],
-    :λ¹ =>  x[12],
-    :λ² =>  x[13],
-    :λ̂¹ =>  x[14],
-    :λ̂² =>  x[15],
-    :λ̅¹ =>  x[16],
-    :λ̅² =>  x[17],
-    :λ̂̅¹ =>  x[18],
-    :λ̂̅² =>  x[19],
-    :transformation_level   => Int(abs(round(x[20]))),
-    :backtracking_order     => Int(abs(round(x[21])))
+                        :ϕ̄  =>  x[1],
+                        :ϕ̂  =>  x[2],
+                        :μ̄¹ =>  x[3],
+                        :μ̄² =>  x[4],
+                        :p̄¹ =>  x[5],
+                        :p̄² =>  x[6],
+                        :ρ  =>  x[7],
+                        :ρ¹ =>  x[8],
+                        :ρ² =>  x[9],
+                        :ρ³ =>  x[10],
+                        :ν  =>  x[11],
+                        :λ¹ =>  x[12],
+                        :λ² =>  x[13],
+                        :λ̂¹ =>  x[14],
+                        :λ̂² =>  x[15],
+                        :λ̅¹ =>  x[16],
+                        :λ̅² =>  x[17],
+                        :λ̂̅¹ =>  x[18],
+                        :λ̂̅² =>  x[19],
+                        :transformation_level   => Int(abs(round(x[20]))),
+                        :shift   => x[21],
+                        :backtracking_order     => Int(abs(round(x[22])))
     )
 # println(par_inputs)
     outSW07 = try SW07.SS_solve_func(SW07.parameter_values, SW07, false, verbose, par_inputs, x[end]) catch end

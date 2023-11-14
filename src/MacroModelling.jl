@@ -1389,31 +1389,31 @@ end
 
 
 # transformation of NSSS problem
-function transform(x::Vector{T}, option::Int) where T <: Real
+function transform(x::Vector{T}, option::Int, shift::AbstractFloat) where T <: Real
     if option == 4
-        return asinh.(asinh.(asinh.(asinh.(x))))
+        return asinh.(asinh.(asinh.(asinh.(x .+ shift))))
     elseif option == 3
-        return asinh.(asinh.(asinh.(x)))
+        return asinh.(asinh.(asinh.(x .+ shift)))
     elseif option == 2
-        return asinh.(asinh.(x))
+        return asinh.(asinh.(x .+ shift))
     elseif option == 1
-        return asinh.(x)
+        return asinh.(x .+ shift)
     elseif option == 0
-        return x
+        return x .+ shift
     end
 end
 
-function undo_transform(x::Vector{T}, option::Int) where T <: Real
+function undo_transform(x::Vector{T}, option::Int, shift::AbstractFloat) where T <: Real
     if option == 4
-        return sinh.(sinh.(sinh.(sinh.(x))))
+        return sinh.(sinh.(sinh.(sinh.(x)))) .- shift
     elseif option == 3
-        return sinh.(sinh.(sinh.(x)))
+        return sinh.(sinh.(sinh.(x))) .- shift
     elseif option == 2
-        return sinh.(sinh.(x))
+        return sinh.(sinh.(x)) .- shift
     elseif option == 1
-        return sinh.(x)
+        return sinh.(x) .- shift
     elseif option == 0
-        return x
+        return x .- shift
     end
 end
 
@@ -1445,6 +1445,7 @@ function levenberg_marquardt(f::Function,
     λ̂̅¹::T   =       0.9815,
     λ̂̅²::T   =       1.0,
     transformation_level::S = 3,
+    shift::T = 0.0,
     backtracking_order::S = 2) where {T <: AbstractFloat, S <: Integer}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
@@ -1455,13 +1456,13 @@ function levenberg_marquardt(f::Function,
     max_linesearch_iterations = 1000
 
     function f̂(x) 
-        f(undo_transform(x,transformation_level))  
+        f(undo_transform(x,transformation_level,shift))  
     end
 
-    upper_bounds  = transform(upper_bounds,transformation_level)
-    lower_bounds  = transform(lower_bounds,transformation_level)
+    upper_bounds  = transform(upper_bounds,transformation_level,shift)
+    lower_bounds  = transform(lower_bounds,transformation_level,shift)
 
-    current_guess = copy(transform(initial_guess,transformation_level))
+    current_guess = copy(transform(initial_guess,transformation_level,shift))
     previous_guess = similar(current_guess)
     guess_update = similar(current_guess)
 
@@ -1487,7 +1488,7 @@ function levenberg_marquardt(f::Function,
         ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
 
         if !all(isfinite,∇̂)
-            return undo_transform(current_guess,transformation_level), (iter, Inf, Inf, upper_bounds)
+            return undo_transform(current_guess,transformation_level,shift), (iter, Inf, Inf, upper_bounds)
         end
 
         ∇̄ = RF.lu(∇̂, check = false)
@@ -1566,14 +1567,14 @@ function levenberg_marquardt(f::Function,
         end
 
         largest_step = maximum(abs, previous_guess - current_guess)
-        largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level)))
+        largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
 
         if largest_step <= xtol || largest_residual <= ftol
-            return undo_transform(current_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level)))
+            return undo_transform(current_guess,transformation_level,shift), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level,shift)))
         end
     end
 
-    best_guess = undo_transform(current_guess,transformation_level)
+    best_guess = undo_transform(current_guess,transformation_level,shift)
 
     return best_guess, (iterations, largest_step, largest_residual, f(best_guess))
 end
