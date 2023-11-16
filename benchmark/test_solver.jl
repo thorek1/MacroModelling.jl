@@ -2,6 +2,8 @@ using MacroModelling
 
 include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
 # include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+include("../models/Backus_Kehoe_Kydland_1992.jl")
+include("../models/Baxter_and_King_1993.jl")
 include("../models/SW03.jl")
 include("../models/GNSS_2010.jl")
 include("../models/Ghironi_Melitz_2005.jl")
@@ -16,10 +18,36 @@ include("../models/Aguiar_Gopinath_2007.jl")
 include("../models/Ascari_Sbordone_2014.jl") # stands out
 include("../models/FS2000.jl")
 include("../models/SW07.jl")
-include("../models/GI2017.jl")
+include("../models/RBC_baseline.jl")
+include("../models/GI2017.jl") # stands out
+
+
+all_models = [
+    m, 
+    Backus_Kehoe_Kydland_1992, 
+    Baxter_and_King_1993, 
+    SW03, 
+    GNSS_2010, 
+    Ghironi_Melitz_2005, 
+    SGU_2003_debt_premium, 
+    NAWM_EAUS_2008, 
+    JQ_2012_RBC, 
+    Ireland_2004, 
+    Caldara_et_al_2012, 
+    Gali_Monacelli_2005_CITR, 
+    Gali_2015_chapter_3_nonlinear, 
+    Aguiar_Gopinath_2007, 
+    Ascari_Sbordone_2014, 
+    FS2000, 
+    SW07, 
+    GI2017
+];
+
+
 
 function calc_total_iters(model, par_inputs, starting_point)
     outmodel = try model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs) catch end
+    # outmodel = model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs)
     
     outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
         (outmodel[2][1] > eps(Float64)) || !isfinite(outmodel[2][1]) ? 
@@ -28,17 +56,12 @@ function calc_total_iters(model, par_inputs, starting_point)
     1000000
 end
 
-par_input = m.solver_parameters
+par_inputs = m.solver_parameters
 
-calc_total_iters(m, par_input, 0.897)
-
-
-all_models = [m, SW03, GNSS_2010, Ghironi_Melitz_2005, SGU_2003_debt_premium, NAWM_EAUS_2008, JQ_2012_RBC, Ireland_2004, Caldara_et_al_2012, Gali_Monacelli_2005_CITR, Gali_2015_chapter_3_nonlinear, Aguiar_Gopinath_2007, Ascari_Sbordone_2014, FS2000, SW07, GI2017];
-
-
-
+calc_total_iters(m, par_inputs, 0.897)
 
 using Optimization, OptimizationNLopt
+
 f = OptimizationFunction((x,verbose)-> begin 
     total_iters = 0
 
@@ -50,10 +73,10 @@ f = OptimizationFunction((x,verbose)-> begin
     
     total_iters = 0
     for model in all_models
-        total_iters += calc_total_iters(model, par_input, x[23])
+        total_iters += calc_total_iters(model, par_inputs, x[end])
     end
 
-    total_iters_pars = sum(abs2,vcat(x[[3,4]]...,[1 .- x[12:19]]..., x[21] / 10)) * 10
+    total_iters_pars = sum(abs2,vcat(x[[3,4]]..., [1 .- x[12:19]]..., x[21] / 100)) * 10
 
     # println(total_iters)
     return Float64(total_iters + total_iters_pars), total_iters
@@ -154,7 +177,7 @@ innit = [
     1
     2.5
     0.0
-    3
+    2.55
     0.5
 ]
 
@@ -162,8 +185,9 @@ innit = [
 
 lbs = zero(innit)
 # lbs .+= eps()*2
-lbs[22] = -.5
-lbs[22] = 2
+lbs[20] = -.5
+lbs[21] = -100
+lbs[22] = 2.45
 lbs[end] = -100
 
 ubs = zero(innit)
@@ -171,21 +195,134 @@ ubs .+= 1
 ubs[1:2] .= 10
 ubs[5:6] .= 100
 ubs[20] = 4.5
-ubs[22] = 3
+ubs[21] = 100
+ubs[22] = 2.55
 ubs[end] = 100
 
 prob = OptimizationProblem(f, innit, false, lb = lbs, ub = ubs)
 
 f(innit,true)
 # using BenchmarkTools
-maxt = 1 * 60
+
+# max_minutes = 1 * 60
+max_hours = 24 * 60 ^ 2
+# Start 1200 (PT time)
+
+sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_hours); sol_ESCH.minimum
+
+innit2 = deepcopy(sol_ESCH.u)
 
 
-sol_ESCH    =   solve(prob, NLopt.GN_ESCH(),    maxtime = maxt); sol_ESCH.minimum
+
+@benchmark f(innit2,true)
 
 
 
-innit = sol_ESCH.u
+x = innit2
+
+
+
+
+x[1:2] = sort(x[1:2], rev = true)
+
+par_inputs = MacroModelling.solver_parameters(   
+    eps(),eps(),250,  x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], x[19],Int(abs(round(x[20]))),x[21],Int(abs(round(x[22])))
+)
+
+total_iters = 0
+for model in all_models
+    iter = calc_total_iters(model, par_inputs, x[end])
+    println(iter, "\t ", model.model_name)
+    total_iters += iter
+end
+total_iters
+
+
+x[1:2] = sort(x[1:2], rev = true)
+
+par_inputs = MacroModelling.solver_parameters(   
+    eps(),eps(),250,  x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], x[19],Int(abs(round(x[20]))),x[21],Int(abs(round(x[22])))
+)
+
+@benchmark calc_total_iters(NAWM_EAUS_2008, par_inputs, x[23])
+
+@benchmark calc_total_iters(GI2017, par_inputs, x[23])
+
+calc_total_iters(Aguiar_Gopinath_2007, par_inputs, x[end])
+
+calc_total_iters(Ascari_Sbordone_2014, par_inputs, x[23])
+
+calc_total_iters(FS2000, par_inputs, x[23])
+
+calc_total_iters(SW03, par_inputs, x[end])
+
+calc_total_iters(SW07, par_inputs, x[end])
+
+
+model = Backus_Kehoe_Kydland_1992
+starting_point = .9#x[end]
+outmodel = model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs)
+    
+    outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
+        (outmodel[2][1] > eps(Float64)) || !isfinite(outmodel[2][1]) ? 
+            1000000 : 
+        outmodel[2][2] : 
+    1000000
+
+
+
+innit2 = [  2.9286687462521286
+1.0934322881820666
+8.040292279055312e-5
+0.0010349673716525869
+9.612040527215113
+50.1236879266217
+0.5669837295436179
+0.5151760400524997
+0.44424209515580787
+0.0017803001645317015
+0.20165426073261922
+0.9893989333367081
+0.9992664322446558
+0.9947474775878444
+0.9947619544912081
+0.9758001846468876
+0.992316474092166
+0.9753918769395817
+0.9907848466210624
+0.5322997748902552
+0.0007004948302871516
+2.4590286886069483
+25.260971258391464]
+
+x = sol_ESCH.u
+
+
+x[1:2] = sort(x[1:2], rev = true)
+
+par_inputs = MacroModelling.solver_parameters(   
+    eps(),eps(),250,  x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], x[19],Int(abs(round(x[20]))),x[21],Int(abs(round(x[22])))
+)
+
+calc_total_iters(NAWM_EAUS_2008, par_inputs, x[end])
+
+calc_total_iters(GI2017,innit2[1:end-1],innit[end])
+innit2
+sort(innit2[1:2], rev = true)
+x = innit2
+par_inputs = MacroModelling.solver_parameters(   
+        eps(),eps(),250,  x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], x[19],Int(abs(round(x[20]))),x[21],Int(abs(round(x[22])))
+    )
+
+
+calc_total_iters(GI2017,par_inputs,innit2[end])
+
+GI2017.SS_solve_func(GI2017.parameter_values, GI2017, false, innit2[end], par_inputs)
+
+
+
+
+
 innit = [7.971710350206478
 0.9041767277613695
 0.02578560981066282
@@ -266,6 +403,8 @@ f(innit, true)
 f(round.(innit, digits = 8),false)
 
 
+prob = OptimizationProblem(f, innit2, false, lb = lbs, ub = ubs)
+
 sol_BOBYQA  =   solve(prob, NLopt.LN_BOBYQA()); sol_BOBYQA.minimum # fast and solves
 sol_SBPLX   =   solve(prob, NLopt.LN_SBPLX()); sol_SBPLX.minimum
 
@@ -297,6 +436,113 @@ using OptimizationMultistartOptimization
 sol_Multi = solve(prob, MultistartOptimization.TikTak(40), NLopt.LN_SBPLX()); sol_Multi.minimum
 
 sol_Multi = solve(prob, NLopt.G_MLSL_LDS(), local_method =  NLopt.LN_SBPLX(), maxtime = maxt)
+
+
+
+
+
+
+
+
+
+
+
+
+all_models = [
+    # m, 
+    # Backus_Kehoe_Kydland_1992, 
+    # Baxter_and_King_1993, 
+    # SW03, 
+    # GNSS_2010, 
+    # Ghironi_Melitz_2005, 
+    # SGU_2003_debt_premium, 
+    # NAWM_EAUS_2008, 
+    # JQ_2012_RBC, 
+    # Ireland_2004, 
+    # Caldara_et_al_2012, 
+    # Gali_Monacelli_2005_CITR, 
+    # Gali_2015_chapter_3_nonlinear, 
+    # Aguiar_Gopinath_2007, 
+    # Ascari_Sbordone_2014, 
+    # FS2000, 
+    # SW07, 
+    GI2017
+];
+
+
+
+function calc_total_iters(model, par_inputs, starting_point)
+    outmodel = try model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs) catch end
+    # outmodel = model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs)
+    
+    outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
+        (outmodel[2][1] > eps(Float64)) || !isfinite(outmodel[2][1]) ? 
+            1000000 : 
+        outmodel[2][2] : 
+    1000000
+end
+
+
+f = OptimizationFunction((x,verbose)-> begin 
+    total_iters = 0
+
+    # x[1:2] = sort(x[1:2], rev = true)
+
+    # par_inputs = MacroModelling.solver_parameters(   
+    #     eps(),eps(),250,  x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], x[19],Int(abs(round(x[20]))),x[21],Int(abs(round(x[22])))
+    # )
+    
+    total_iters = 0
+    for model in all_models
+        total_iters += calc_total_iters(model, model.solver_parameters, x[end])
+    end
+
+    # total_iters_pars = sum(abs2,vcat(x[[3,4]]..., [1 .- x[12:19]]..., x[21] / 100)) * 10
+
+    return Float64(total_iters), total_iters
+end)
+
+innit = [ 
+    0.5
+]
+
+
+
+lbs = zero(innit)
+# lbs .+= eps()*2
+# lbs[20] = -.5
+# lbs[21] = -100
+# lbs[22] = 2.45
+lbs[end] = -100
+
+ubs = zero(innit)
+ubs .+= 1
+# ubs[1:2] .= 10
+# ubs[5:6] .= 100
+# ubs[20] = 4.5
+# ubs[21] = 100
+# ubs[22] = 2.55
+ubs[end] = 100
+
+prob = OptimizationProblem(f, innit, false, lb = lbs, ub = ubs)
+
+maxt = 10 * 60
+using OptimizationBBO
+sol_BBO   =   solve(prob, BBO_adaptive_de_rand_1_bin_radiuslimited(),   maxtime = maxt); sol_BBO.minimum #gets the far off parameters when only few models are involved
+
+sol_BBO.u
+f(sol_BBO.u, false)
+
+
+# 71.69060992965288 works
+GI2017.SS_solve_func(GI2017.parameter_values, GI2017, false, sol_BBO.u[1], GI2017.solver_parameters)
+
+
+sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = maxt); sol_ESCH.minimum
+
+f(71.69,[])
+GI2017.SS_solve_func(GI2017.parameter_values, GI2017, false, sol_ESCH.u[1], GI2017.solver_parameters)
+GI2017.SS_solve_func(GI2017.parameter_values, GI2017, false, 0.0-10*eps(Float32), GI2017.solver_parameters)
 
 
 innit = xx
