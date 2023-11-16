@@ -2706,9 +2706,9 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         )
     
     if cold_start isa Float64
-        sol_minimum = 1
         sol_values = max.(lbs,min.(ubs, fill(cold_start,length(guess))))
-    elseif !cold_start
+        sol_minimum = 1
+    elseif cold_start isa Bool && !cold_start
         sol_values = guess
         sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,sol_values))
         iters = 0
@@ -2740,7 +2740,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             if verbose
                 println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
             end
-        else
+        elseif cold_start isa Bool && !cold_start
             # if the previous non-converged best guess as a starting point does not work, try the standard starting points
             for starting_point in starting_points
                 if sol_minimum > tol
