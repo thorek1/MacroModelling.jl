@@ -12,6 +12,9 @@ Parses the model equations and assigns them to an object.
 - `𝓂`: name of the object to be created containing the model information.
 - `ex`: equations
 
+# Optional arguments to be placed between `𝓂` and `ex`
+- `max_obc_shift` [Default: `40`, Type: `Int`]: maximum length of anticipated shocks and corresponding unconditional forecast horizon over which the occasionally binding constraint is to be enforced. Increase this number if no solution is found to enforce the constraint.
+
 Variables must be defined with their time subscript in squared brackets.
 Endogenous variables can have the following:
 - present: `c[0]`
@@ -52,6 +55,7 @@ macro model(𝓂,ex...)
     # parse options
     verbose = false
     precompile = false
+    max_obc_shift = 40
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -61,6 +65,8 @@ macro model(𝓂,ex...)
                         verbose = x.args[2] :
                     x.args[1] == :precompile && x.args[2] isa Bool ?
                         precompile = x.args[2] :
+                    x.args[1] == :max_obc_shift && x.args[2] isa Int ?
+                        max_obc_shift = x.args[2] :
                     begin
                         @warn "Invalid options." 
                         x
@@ -106,8 +112,6 @@ macro model(𝓂,ex...)
     dyn_eq_aux_ind = Int[]
 
     model_ex = parse_for_loops(ex[end])
-
-    max_obc_shift = 40
 
     model_ex = parse_occasionally_binding_constraints(model_ex, max_obc_shift = max_obc_shift)
     
