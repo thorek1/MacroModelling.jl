@@ -25,13 +25,13 @@ include("functionality_tests.jl")
 @testset verbose = true "Code quality (Aqua.jl)" begin
     # Aqua.test_all(MacroModelling)
     @testset "Compare Project.toml and test/Project.toml" Aqua.test_project_extras(MacroModelling)
-    @testset "Project.toml formatting" Aqua.test_project_toml_formatting(MacroModelling)
     @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling)#; ignore = [:Aqua, :JET])
     @testset "Unbound type parameters" Aqua.test_unbound_args(MacroModelling)
     @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
-    @testset "Piracy" Aqua.test_piracy(MacroModelling)
+    @testset "Piracy" Aqua.test_piracies(MacroModelling)
     @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
     @testset "Compat" Aqua.test_deps_compat(MacroModelling)#; ignore = [:Aqua, :JET])
+    # @testset "Persistent tasks" Aqua.test_persistent_tasks(MacroModelling)
 end
 GC.gc()
 
