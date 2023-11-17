@@ -11,6 +11,7 @@ As of now the package can:
 - parse a model written with user friendly syntax (variables are followed by time indices `...[2], [1], [0], [-1], [-2]...`, or `[x]` for shocks)
 - (tries to) solve the model only knowing the model equations and parameter values (no steady state file needed)
 - calculate first, second, and third order (pruned) perturbation solutions (see [villemot2011solving](@citet), [andreasen2018pruning](@citet) and [levintal2017fifth](@citet)) using (forward or reverse-mode) automatic differentiation (AD)
+- handle occasionally binding constraints
 - calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts
 - calibrate parameters using (non stochastic) steady state relationships
 - match model moments (also for pruned higher order solutions)
@@ -57,7 +58,7 @@ The package contains the following models in the `models` folder:
 **Perturbation solution order**|1, 2, 3|k|1|1, 2, 3|1, 2, 3|1, 2|1|1|1 to 5|1|1||1 to 5|
 **Pruning**|yes|yes||||yes|||yes|||||
 **Automatic derivation of first order conditions**|||||||||||yes||
-**Handles occasionally binding constraints**||yes|yes|yes|yes||||yes|||yes||
+**Handles occasionally binding constraints**|yes|yes|yes|yes|yes||||yes|||yes||
 **Global solution**||||yes|yes|||||||yes||
 **Estimation**|yes|yes|yes|||||yes|yes|yes|yes|||
 **Balanced growth path**||yes|yes||||yes|yes|yes|yes|||||

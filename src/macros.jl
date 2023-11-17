@@ -30,6 +30,8 @@ Exogenous variables (shocks) can have the following:
 
 Parameters enter the equations without squared brackets.
 
+If an equation contains a `max` or `min` operator, then the default dynamic (first order) solution of the model will enforce the occasionally binding constraint. You can choose to ignore it by setting `ignore_obc = true` in the relevant function calls.
+
 # Examples
 ```julia
 using MacroModelling
