@@ -380,11 +380,11 @@ mutable struct ℳ
 
     obc_violation_equations::Vector{Expr}
     obc_shock_bounds::Vector{Tuple{Symbol, Bool, Float64}}
-    max_obc_shift::Int
+    max_obc_horizon::Int
     obc_violation_function::Function
 
     solver_parameters::solver_parameters
-    
+
     solution::solution
     # symbolics::symbolics
 

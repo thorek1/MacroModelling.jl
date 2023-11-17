@@ -13,7 +13,7 @@ Parses the model equations and assigns them to an object.
 - `ex`: equations
 
 # Optional arguments to be placed between `𝓂` and `ex`
-- `max_obc_shift` [Default: `40`, Type: `Int`]: maximum length of anticipated shocks and corresponding unconditional forecast horizon over which the occasionally binding constraint is to be enforced. Increase this number if no solution is found to enforce the constraint.
+- `max_obc_horizon` [Default: `40`, Type: `Int`]: maximum length of anticipated shocks and corresponding unconditional forecast horizon over which the occasionally binding constraint is to be enforced. Increase this number if no solution is found to enforce the constraint.
 
 Variables must be defined with their time subscript in squared brackets.
 Endogenous variables can have the following:
@@ -55,7 +55,7 @@ macro model(𝓂,ex...)
     # parse options
     verbose = false
     precompile = false
-    max_obc_shift = 40
+    max_obc_horizon = 40
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -65,8 +65,8 @@ macro model(𝓂,ex...)
                         verbose = x.args[2] :
                     x.args[1] == :precompile && x.args[2] isa Bool ?
                         precompile = x.args[2] :
-                    x.args[1] == :max_obc_shift && x.args[2] isa Int ?
-                        max_obc_shift = x.args[2] :
+                    x.args[1] == :max_obc_horizon && x.args[2] isa Int ?
+                        max_obc_horizon = x.args[2] :
                     begin
                         @warn "Invalid options." 
                         x
@@ -113,7 +113,7 @@ macro model(𝓂,ex...)
 
     model_ex = parse_for_loops(ex[end])
 
-    model_ex = parse_occasionally_binding_constraints(model_ex, max_obc_shift = max_obc_shift)
+    model_ex = parse_occasionally_binding_constraints(model_ex, max_obc_horizon = max_obc_horizon)
     
     obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
 
@@ -859,7 +859,7 @@ macro model(𝓂,ex...)
 
                         Expr[],
                         $obc_shock_bounds,
-                        $max_obc_shift,
+                        $max_obc_horizon,
                         x->x,
 
                         solver_parameters(eps(), eps(), 250, 8.0,0.904,0.026,0.0,1.0,0.0,0.1,0.17,0.07,0.01,0.8,0.84,1.0,0.5,1.0,0.0128,1.0,0.9815,1.0,3,0.0,2),
