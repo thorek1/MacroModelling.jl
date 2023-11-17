@@ -150,15 +150,25 @@ end
 
     std_scaling_factor = 10
 
-    std_eta_b   = 0.336     / std_scaling_factor
-    std_eta_L   = 3.52      / std_scaling_factor
-    std_eta_I   = 0.085     / std_scaling_factor
-    std_eta_a   = 0.598     / std_scaling_factor
-    std_eta_w   = 0.6853261 / std_scaling_factor
-    std_eta_p   = 0.7896512 / std_scaling_factor
-    std_eta_G   = 0.325     / std_scaling_factor
-    std_eta_R   = 0.081     / std_scaling_factor
-    std_eta_pi  = 0.017     / std_scaling_factor
+    std_eta_b   = σ_eta_b  / std_scaling_factor
+    std_eta_L   = σ_eta_L  / std_scaling_factor
+    std_eta_I   = σ_eta_I  / std_scaling_factor
+    std_eta_a   = σ_eta_a  / std_scaling_factor
+    std_eta_w   = σ_eta_w  / std_scaling_factor
+    std_eta_p   = σ_eta_p  / std_scaling_factor
+    std_eta_G   = σ_eta_G  / std_scaling_factor
+    std_eta_R   = σ_eta_R  / std_scaling_factor
+    std_eta_pi  = σ_eta_pi / std_scaling_factor
+
+    σ_eta_b   =  0.336
+    σ_eta_L   =  3.52
+    σ_eta_I   =  0.085
+    σ_eta_a   =  0.598
+    σ_eta_w   =  0.6853261
+    σ_eta_p   =  0.7896512
+    σ_eta_G   =  0.325
+    σ_eta_R   =  0.081
+    σ_eta_pi  =  0.017
 
     calibr_pi_obj | 1 = pi_obj[ss]
     calibr_pi | pi[ss] = pi_obj[ss]
