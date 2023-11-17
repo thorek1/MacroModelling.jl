@@ -1,4 +1,4 @@
-@model Baxter_and_King_1993 begin
+@model Baxter_King_1993 begin
     uc[0] = c[0]^-1
     
     ul[0] = θ_l * l[0]^-1
@@ -34,7 +34,7 @@
     w[0] = fn[0]
 end
 
-@parameters Baxter_and_King_1993 begin
+@parameters Baxter_King_1993 begin
     A = 1.0
     
     γ_x = 1.016

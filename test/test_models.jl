@@ -51,18 +51,18 @@ write_to_dynare_file(SGU_2003_debt_premium)
 SGU_2003_debt_premium = nothing
 
 
-include("models/Baxter_and_King_1993.jl")
-moments = get_moments(Baxter_and_King_1993, derivatives = false)
+include("models/Baxter_King_1993.jl")
+moments = get_moments(Baxter_King_1993, derivatives = false)
 
 @test isapprox(moments[1][end-1:end],[0.334599,5.29504],rtol = 1e-3)
 
-corrr = get_correlation(Baxter_and_King_1993)
+corrr = get_correlation(Baxter_King_1993)
 
 @test isapprox(corrr(:k,:l),0.8553,rtol = 1e-3)
 @test isapprox(corrr(:r,:w),-0.9898,rtol = 1e-3)
 
-write_to_dynare_file(Baxter_and_King_1993)
-Baxter_and_King_1993 = nothing
+write_to_dynare_file(Baxter_King_1993)
+Baxter_King_1993 = nothing
 
 
 

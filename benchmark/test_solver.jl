@@ -3,7 +3,7 @@ using MacroModelling
 include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
 # include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
 include("../models/Backus_Kehoe_Kydland_1992.jl")
-include("../models/Baxter_and_King_1993.jl")
+include("../models/Baxter_King_1993.jl")
 include("../models/SW03.jl")
 include("../models/GNSS_2010.jl")
 include("../models/Ghironi_Melitz_2005.jl")
@@ -25,7 +25,7 @@ include("../models/GI2017.jl") # stands out
 all_models = [
     m, 
     Backus_Kehoe_Kydland_1992, 
-    Baxter_and_King_1993, 
+    Baxter_King_1993, 
     SW03, 
     GNSS_2010, 
     Ghironi_Melitz_2005, 
@@ -451,7 +451,7 @@ sol_Multi = solve(prob, NLopt.G_MLSL_LDS(), local_method =  NLopt.LN_SBPLX(), ma
 all_models = [
     # m, 
     # Backus_Kehoe_Kydland_1992, 
-    # Baxter_and_King_1993, 
+    # Baxter_King_1993, 
     # SW03, 
     # GNSS_2010, 
     # Ghironi_Melitz_2005, 
