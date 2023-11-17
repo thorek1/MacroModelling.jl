@@ -525,6 +525,8 @@ function plot_irf(𝓂::ℳ;
                     JuMP.unregister(model, :con)
 
                     JuMP.set_optimizer(model, MadNLP.Optimizer)
+
+                    # JuMP.set_attribute(model, "tol", 1e-12)
                 else
                     solved = true
                 end
@@ -537,6 +539,8 @@ function plot_irf(𝓂::ℳ;
             model = JuMP.Model()
 
             JuMP.set_optimizer(model, MadNLP.Optimizer)
+
+            # JuMP.set_attribute(model, "tol", 1e-12)
 
             JuMP.set_silent(model)
 
