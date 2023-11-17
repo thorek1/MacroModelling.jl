@@ -302,8 +302,11 @@ function set_up_obc_violation_function!(𝓂)
     end
 
     paras = []
-    for (i, parss) in enumerate(vcat(𝓂.parameters,𝓂.calibration_equations_parameters))
+    for (i, parss) in enumerate(𝓂.parameters)
         push!(paras,:($parss = 𝓂.parameter_values[$i]))
+    end
+    for (i, parss) in enumerate(𝓂.calibration_equations_parameters)
+        push!(paras,:($parss = reference_steady_state[$(𝓂.timings.nVars + i)]))
     end
 
     obc_idxs = Set()
