@@ -503,7 +503,7 @@ function plot_irf(𝓂::ℳ;
                     solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED]
 
                     if !solved
-                        for opt in [:LD_MMA, :LN_COBYLA, :LD_SLSQP]
+                        for opt in [:LD_SLSQP, :LD_MMA, :LN_COBYLA]
                             @info "Using $opt solver."
 
                             JuMP.set_optimizer(model, NLopt.Optimizer)
