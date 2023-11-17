@@ -1447,7 +1447,7 @@ macro parameters(𝓂,ex...)
                 println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds") 
 
                 if solution_error > eps()
-                    @warn "Could not find non-stochastic steady state."
+                    @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
                 end
             end
 

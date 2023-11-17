@@ -10,7 +10,7 @@ import SymPyPythonCall as SPyPyC
 import Symbolics
 import ForwardDiff as ℱ 
 import JuMP
-import MadNLP # NLopt # MadNLP doesnt support noninear constraints # StatusSwitchingQP not reliable
+import MadNLP, NLopt # MadNLP doesnt support noninear constraints # StatusSwitchingQP not reliable
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -62,9 +62,9 @@ end
 
 
 export @model, @parameters, solve!
-export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution#, plot
+export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation#, plot
 export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
-export get_irfs, get_irf, get_IRF, simulate, get_simulation
+export get_irfs, get_irf, get_IRF, simulate, get_simulation, get_simulations
 export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution, get_second_order_solution, get_third_order_solution
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS, ss, sss
@@ -1453,7 +1453,7 @@ function levenberg_marquardt(f::Function,
     backtracking_order = parameters.backtracking_order
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
-    @assert lower_bounds < upper_bounds
+    @assert all(lower_bounds .< upper_bounds)
     @assert backtracking_order ∈ [2,3] "Backtracking order can only be quadratic (2) or cubic (3)."
 
     max_linesearch_iterations = 1000
@@ -4576,6 +4576,8 @@ end
 
 function irf(state_update::Function, 
     obc_state_update::Function,
+    model::JuMP.Model,
+    x::Vector{JuMP.VariableRef},
     initial_state::Vector{Float64}, 
     level::Vector{Float64},
     pruning::Bool, 
@@ -4651,14 +4653,14 @@ function irf(state_update::Function,
                 end
             end
         else
-            past_states, past_shocks, solved = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1], state_update, algorithm)
+            past_states, past_shocks, solved, model, x = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1], state_update, algorithm, model, x)
 
             always_solved = solved
             if !solved 
                 @warn "No solution at iteration 1"
             else
                 for t in 2:periods
-                    past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_history[:,t], state_update, algorithm)
+                    past_states, past_shocks, solved, model, x  = obc_state_update(past_states, past_shocks, shock_history[:,t], state_update, algorithm, model, x)
 
                     if !solved @warn "No solution at iteration $t" end
 
@@ -4706,14 +4708,14 @@ function irf(state_update::Function,
                 end
             end
         else 
-            past_states, past_shocks, solved = obc_state_update(initial_state, shck, shck, state_update, algorithm)
+            past_states, past_shocks, solved, model, x = obc_state_update(initial_state, shck, shck, state_update, algorithm, model, x)
 
             always_solved = solved
             if !solved 
                 @warn "No solution at iteration 1"
             else
                 for t in 2:periods
-                    past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shck, state_update, algorithm)
+                    past_states, past_shocks, solved, model, x  = obc_state_update(past_states, past_shocks, shck, state_update, algorithm, model, x)
 
                     if !solved @warn "No solution at iteration $t" end
                     always_solved = always_solved && solved
@@ -4761,7 +4763,7 @@ function irf(state_update::Function,
                     end
                 end
             else
-                past_states, past_shocks, solved = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1], state_update, algorithm)
+                past_states, past_shocks, solved, model, x = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1], state_update, algorithm, model, x)
 
                 always_solved = solved
 
@@ -4769,7 +4771,7 @@ function irf(state_update::Function,
                     @warn "No solution at iteration 1"
                 else
                     for t in 2:periods
-                        past_states, past_shocks, solved  = obc_state_update(past_states, past_shocks, shock_history[:,t], state_update, algorithm)
+                        past_states, past_shocks, solved, model, x  = obc_state_update(past_states, past_shocks, shock_history[:,t], state_update, algorithm, model, x)
 
                         if !solved @warn "No solution at iteration $t" end
 

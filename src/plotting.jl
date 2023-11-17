@@ -461,7 +461,7 @@ function plot_irf(𝓂::ℳ;
                     negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
     else
         if occasionally_binding_constraints
-            function obc_state_update(past_states::Vector{R}, past_shocks::Vector{R}, present_shocks::Vector{R}, state_update::Function, algorithm::Symbol) where R <: Float64
+            function obc_state_update(past_states::Vector{R}, past_shocks::Vector{R}, present_shocks::Vector{R}, state_update::Function, algorithm::Symbol, model::JuMP.Model, x::Vector{JuMP.VariableRef}) where R <: Float64
                 unconditional_forecast_horizon = 40
 
                 reference_steady_state = 𝓂.solution.non_stochastic_steady_state
@@ -475,21 +475,6 @@ function plot_irf(𝓂::ℳ;
                 constraints_violated = any(JuMP.value.(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), past_states, past_shocks, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1]) .> eps(Float32))
                 
                 if constraints_violated
-                    # Find shocks fulfilling constraint
-                    model = JuMP.Model(MadNLP.Optimizer)
-                    # model = JuMP.Model(NLopt.Optimizer)
-                    # JuMP.set_attribute(model, "algorithm", :LD_SLSQP)
-                    # JuMP.set_attribute(model, "algorithm", :AUGLAG)
-                    # JuMP.set_attribute(model, "local_optimizer", :LD_LBFGS)
-                    # JuMP.set_attribute(model, "algorithm", :LD_MMA)
-
-                    JuMP.set_silent(model)
-
-                    # JuMP.set_attribute(model, "tol", 1e-12)
-
-                    # Create the variables over the full set of indices first.
-                    JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
-                    
                     # Now loop through obc_shock_bounds to set the bounds on these variables.
                     # maxmin_indicators = 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2]
                     # for (idx, v) in enumerate(maxmin_indicators)
@@ -511,30 +496,64 @@ function plot_irf(𝓂::ℳ;
                     # #     # end
                     # end
 
-                    JuMP.@objective(model, Min, x' * ℒ.I * x)
-
-                    JuMP.@constraint(model, 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1] .<= 0)
+                    JuMP.@constraint(model, con, 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1] .<= 0)
 
                     JuMP.optimize!(model)
                     
                     solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED]
 
-                    # precision = JuMP.objective_value(model)
+                    if !solved
+                        for opt in [:LD_MMA, :LN_COBYLA, :LD_SLSQP]
+                            @info "Using $opt solver."
 
-                    # if precision > eps(Float32) @warn "Bounds enforced up to reduced precision: $precision" end # I need the dual value (constraints). this relates to the shock size
+                            JuMP.set_optimizer(model, NLopt.Optimizer)
 
+                            JuMP.set_attribute(model, "algorithm", opt)
+
+                            JuMP.optimize!(model)
+
+                            solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED] && !(any(JuMP.value.(𝓂.obc_violation_function(JuMP.value.(x), past_states, past_shocks, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1]) .> eps(Float32)))
+
+                            if solved break end
+                        end
+                    end
+                    
                     present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= JuMP.value.(x)
+
+                    JuMP.delete(model, con)
+
+                    JuMP.unregister(model, :con)
+
+                    JuMP.set_optimizer(model, MadNLP.Optimizer)
                 else
                     solved = true
                 end
 
                 present_states = state_update(past_states,JuMP.value.(past_shocks))
 
-                return present_states, present_shocks, solved
+                return present_states, present_shocks, solved, model, x
             end
 
+            model = JuMP.Model()
+
+            JuMP.set_optimizer(model, MadNLP.Optimizer)
+
+            JuMP.set_silent(model)
+
+            obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+
+            periods_per_shock = 𝓂.max_obc_shift + 1
+
+            num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
+
+            JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
+
+            JuMP.@objective(model, Min, x' * ℒ.I * x)
+
             Y =  irf(state_update,
-                    obc_state_update,  
+                    obc_state_update,
+                    model,
+                    x,
                     initial_state, 
                     zeros(𝓂.timings.nVars), 
                     pruning,
@@ -713,6 +732,11 @@ plot_irfs = plot_irf
 Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
 """
 plot_simulations(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
+
+"""
+Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
+"""
+plot_simulation(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
 
 
 """
