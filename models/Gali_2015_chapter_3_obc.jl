@@ -83,33 +83,5 @@ end
 
     std_nu = .0025
 
-    # R > 1.000001
+    R > 1.000001
 end
-
-using StatsPlots
-
-plot_irf(Gali_2015_chapter_3_obc, shocks = :eps_z, ignore_obc = true)
-plot_simulations(Gali_2015_chapter_3_obc)
-plot_simulations(Gali_2015_chapter_3_obc, variables = :all)
-
-get_solution(Gali_2015_chapter_3_obc)
-get_solution(Gali_2015_chapter_3_obc, algorithm = :riccati, parameters = (:activeᵒᵇᶜshocks => 1.0, :R̄ => 0.0))
-get_solution(Gali_2015_chapter_3_obc, parameters = (:R̄ => 1.0))
-
-get_parameters(Gali_2015_chapter_3_obc)
-
-SS(Gali_2015_chapter_3_obc)
-SS(Gali_2015_chapter_3_obc, parameters = (:R̄ => 1.0))
-SS(Gali_2015_chapter_3_obc, parameters = (:R̄ => 0.0))
-Gali_2015_chapter_3_obc.ss_aux_equations
-Gali_2015_chapter_3_obc.dyn_equations
-
-𝓂 = Gali_2015_chapter_3_obc
-
-SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, true, false, 𝓂.solver_parameters)
-
-∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
-
-∇₁l = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
-
-𝓂.model_jacobian
