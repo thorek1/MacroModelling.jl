@@ -2711,13 +2711,18 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     if cold_start isa Float64
         sol_values = max.(lbs,min.(ubs, fill(cold_start,length(guess))))
         sol_minimum = 1
-    elseif cold_start isa Bool && !cold_start
-        sol_values = guess
-        sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,sol_values))
-        iters = 0
+    elseif cold_start isa Bool 
+        if cold_start
+            sol_values = max.(lbs,min.(ubs, fill(0.0,length(guess))))
+            sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,sol_values))
+        else
+            sol_values = guess
+            sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,sol_values))
+            iters = 0
 
-        if verbose && sol_minimum < tol
-            println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+            if verbose && sol_minimum < tol
+                println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+            end
         end
     end
 
