@@ -1,4 +1,4 @@
-@model QUEST3 begin
+@model QUEST3_2009 begin
 	interest[0] = ((1 + E_INOM[0]) ^ 4 - interestq_exog ^ 4) / interestq_exog ^ 4
 
 	inflation[0] = 0.25 * (inflationq[0] + inflationq[-1] + inflationq[-2] + inflationq[-3])
@@ -95,47 +95,47 @@
 
 	E_WSW[0] = (1 - E_TW[0] - SSC) * E_WS[0]
 
-	E_INOMW[0] = (1 - RII) * E_EX_INOMW + RII * E_INOMW[-1] + RIP * (E_PHIW[-1] - GPW0) + RIX * (E_GYW[-1] - GYW0) + E_EPS_INOMW[x]
+	E_INOMW[0] = (1 - RII) * E_EX_INOMW + RII * E_INOMW[-1] + RIP * (E_PHIW[-1] - GPW0) + RIX * (E_GYW[-1] - GYW0) + STD_EPS_INOMW *E_EPS_INOMW[x]
 
-	E_PHIW[0] - GPW0 = RPI * (E_INOMW[-1] - E_EX_INOMW) + (E_PHIW[-1] - GPW0) * RPP + (E_GYW[-1] - GYW0) * RPX + E_EPS_PW[x]
+	E_PHIW[0] - GPW0 = RPI * (E_INOMW[-1] - E_EX_INOMW) + (E_PHIW[-1] - GPW0) * RPP + (E_GYW[-1] - GYW0) * RPX + STD_EPS_PW * E_EPS_PW[x]
 
-	E_GYW[0] - GYW0 = (E_INOMW[-1] - E_EX_INOMW) * RXI + (E_PHIW[-1] - GPW0) * RXP + (E_GYW[-1] - GYW0) * RXX + RXY * (E_LYWY[-1] - LYWY0) + E_EPS_YW[x]
+	E_GYW[0] - GYW0 = (E_INOMW[-1] - E_EX_INOMW) * RXI + (E_PHIW[-1] - GPW0) * RXP + (E_GYW[-1] - GYW0) * RXX + RXY * (E_LYWY[-1] - LYWY0) + STD_EPS_YW * E_EPS_YW[x]
 
 	E_LYWY[0] - E_LYWY[-1] = E_GYW[0] - E_GY[0]
 
-	E_GTFP[0] - GTFP0 = E_EPS_Y[x]
+	E_GTFP[0] - GTFP0 = STD_EPS_Y * E_EPS_Y[x]
 
-	E_LOL[0] - LOL = RHOLOL * (E_LOL[-1] - LOL) + E_EPS_LOL[x]
+	E_LOL[0] - LOL = RHOLOL * (E_LOL[-1] - LOL) + STD_EPS_LOL * E_EPS_LOL[x]
 
 	E_PHIPI[0] = GPCPI0 + E_ZEPS_PPI[0]
 
-	E_ZEPS_C[0] = RHOCE * E_ZEPS_C[-1] + E_EPS_C[x]
+	E_ZEPS_C[0] = RHOCE * E_ZEPS_C[-1] + STD_EPS_C * E_EPS_C[x]
 
-	E_ZEPS_ETA[0] = RHOETA * E_ZEPS_ETA[-1] + E_EPS_ETA[x]
+	E_ZEPS_ETA[0] = RHOETA * E_ZEPS_ETA[-1] + STD_EPS_ETA * E_EPS_ETA[x]
 
-	E_ZEPS_ETAM[0] = RHOETAM * E_ZEPS_ETAM[-1] + E_EPS_ETAM[x]
+	E_ZEPS_ETAM[0] = RHOETAM * E_ZEPS_ETAM[-1] + STD_EPS_ETAM * E_EPS_ETAM[x]
 
-	E_ZEPS_ETAX[0] = RHOETAX * E_ZEPS_ETAX[-1] + E_EPS_ETAX[x]
+	E_ZEPS_ETAX[0] = RHOETAX * E_ZEPS_ETAX[-1] + STD_EPS_ETAX * E_EPS_ETAX[x]
 
-	E_ZEPS_EX[0] = RHOEXE * E_ZEPS_EX[-1] + E_EPS_EX[x]
+	E_ZEPS_EX[0] = RHOEXE * E_ZEPS_EX[-1] + STD_EPS_EX * E_EPS_EX[x]
 
-	E_ZEPS_G[0] = E_ZEPS_G[-1] * RHOGE + E_EPS_G[x]
+	E_ZEPS_G[0] = E_ZEPS_G[-1] * RHOGE + STD_EPS_G * E_EPS_G[x]
 
-	E_ZEPS_IG[0] = E_ZEPS_IG[-1] * RHOIG + IGEXOFLAG * E_EPS_IG[x]
+	E_ZEPS_IG[0] = E_ZEPS_IG[-1] * RHOIG + IGEXOFLAG * STD_EPS_IG * E_EPS_IG[x]
 
-	E_ZEPS_L[0] = RHOLE * E_ZEPS_L[-1] + E_EPS_L[x]
+	E_ZEPS_L[0] = RHOLE * E_ZEPS_L[-1] + STD_EPS_L * E_EPS_L[x]
 
-	E_ZEPS_M[0] = E_EPS_M[x]
+	E_ZEPS_M[0] = STD_EPS_M * E_EPS_M[x]
 
-	E_ZEPS_PPI[0] = E_EPS_PPI[x] + RHOPPI1 * E_ZEPS_PPI[-1] + RHOPPI2 * E_ZEPS_PPI[-2] + RHOPPI3 * E_ZEPS_PPI[-3] + RHOPPI4 * E_ZEPS_PPI[-4]
+	E_ZEPS_PPI[0] = STD_EPS_PPI * E_EPS_PPI[x] + RHOPPI1 * E_ZEPS_PPI[-1] + RHOPPI2 * E_ZEPS_PPI[-2] + RHOPPI3 * E_ZEPS_PPI[-3] + RHOPPI4 * E_ZEPS_PPI[-4]
 
-	E_ZEPS_RPREME[0] = RHORPE * E_ZEPS_RPREME[-1] + E_EPS_RPREME[x]
+	E_ZEPS_RPREME[0] = RHORPE * E_ZEPS_RPREME[-1] + STD_EPS_RPREME * E_EPS_RPREME[x]
 
-	E_ZEPS_RPREMK[0] = RHORPK * E_ZEPS_RPREMK[-1] + E_EPS_RPREMK[x]
+	E_ZEPS_RPREMK[0] = RHORPK * E_ZEPS_RPREMK[-1] + STD_EPS_RPREMK * E_EPS_RPREMK[x]
 
-	E_ZEPS_W[0] = E_EPS_W[x]
+	E_ZEPS_W[0] = STD_EPS_W * E_EPS_W[x]
 
-	E_ZEPS_TR[0] = RHOTR * E_ZEPS_TR[-1] + TREXOFLAG * E_EPS_TR[x]
+	E_ZEPS_TR[0] = RHOTR * E_ZEPS_TR[-1] + TREXOFLAG * STD_EPS_TR * E_EPS_TR[x]
 
 	E_PHIC[0] + E_GC[0] - E_GY[0] - E_PHI[0] = E_LCSN[0] - E_LCSN[-1]
 
@@ -216,7 +216,45 @@
 end
 
 
-@parameters QUEST3 begin
+@parameters QUEST3_2009 begin
+	STD_EPS_INOMW = 0.0023
+
+	STD_EPS_PW = 0.0029
+
+	STD_EPS_YW = 0.0044
+
+	STD_EPS_PPI = 0.00312216772065
+
+	STD_EPS_C = 0.0597
+
+	STD_EPS_ETA = 0.1500
+
+	STD_EPS_ETAM = 0.0202
+
+	STD_EPS_ETAX = 0.0648
+
+	STD_EPS_EX = 0.0044
+
+	STD_EPS_G = 0.0048
+
+	STD_EPS_IG = 0.0056
+
+	STD_EPS_L = 0.0283
+
+	STD_EPS_LOL = 0.0048
+
+	STD_EPS_M = 0.0013
+
+	STD_EPS_RPREME = 0.0017
+
+	STD_EPS_RPREMK = 0.0070
+
+	STD_EPS_TR = 0.0022
+
+	STD_EPS_W = 0.0437
+
+	STD_EPS_Y = 0.0121
+	
 	A2E = 0.0453
 
 	G1E = (-0.0754)
