@@ -102,6 +102,39 @@ plot_irf(borrowing_constraint, shocks = sks, periods = 50, ignore_obc = true)
 
 ![Simulation](../assets/borrowing_constraint__no_obc.png)
 
+Another interesting statistic is model moments. As there are no theoretical moments we have to rely on simulated data.
+
+```julia
+sims = get_irf(borrowing_constraint, periods = 10000, shocks = :simulate, levels = true)
+```
+
+Let's look at the mean and standard deviation of borrowing:
+
+```julia
+import Statistics
+Statistics.mean(sims(:B,:,:))
+```
+
+and
+
+```julia
+Statistics.std(sims(:B,:,:))
+```
+
+Compare this to the theoretical mean of the model without the occasionally binding constraint:
+
+```julia
+get_mean(borrowing_constraint)
+```
+
+and the theoretical standard deviation:
+
+```julia
+get_std(borrowing_constraint)
+```
+
+The mean of borrowing is lower in the model with occasionally binding constraints compared to the model without and the standard deviation is higher.
+
 ## Bibliography
 
 ```@bibliography
