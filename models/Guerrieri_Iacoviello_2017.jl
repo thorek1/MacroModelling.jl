@@ -1,4 +1,4 @@
-@model GI2017 begin
+@model Guerrieri_Iacoviello_2017 begin
 	c[0] + c1[0] + ik[0] = y[0]
 
 	uc[0] = BETA * r[0] / dp[1] * uc[1]
@@ -76,7 +76,7 @@
 end
 
 
-@parameters GI2017 begin
+@parameters Guerrieri_Iacoviello_2017 begin
 	RBAR = 1
 
 	BETA = 0.995

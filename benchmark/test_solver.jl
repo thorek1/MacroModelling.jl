@@ -19,7 +19,7 @@ include("../models/Ascari_Sbordone_2014.jl") # stands out
 include("../models/FS2000.jl")
 include("../models/SW07.jl")
 include("../models/RBC_baseline.jl")
-include("../models/GI2017.jl") # stands out
+include("../models/Guerrieri_Iacoviello_2017.jl") # stands out
 
 
 all_models = [
@@ -40,7 +40,7 @@ all_models = [
     Ascari_Sbordone_2014, 
     FS2000, 
     SW07, 
-    GI2017
+    Guerrieri_Iacoviello_2017
 ];
 
 
@@ -246,7 +246,7 @@ par_inputs = MacroModelling.solver_parameters(
 
 @benchmark calc_total_iters(NAWM_EAUS_2008, par_inputs, x[23])
 
-@benchmark calc_total_iters(GI2017, par_inputs, x[23])
+@benchmark calc_total_iters(Guerrieri_Iacoviello_2017, par_inputs, x[23])
 
 calc_total_iters(Aguiar_Gopinath_2007, par_inputs, x[end])
 
@@ -306,7 +306,7 @@ par_inputs = MacroModelling.solver_parameters(
 
 calc_total_iters(NAWM_EAUS_2008, par_inputs, x[end])
 
-calc_total_iters(GI2017,innit2[1:end-1],innit[end])
+calc_total_iters(Guerrieri_Iacoviello_2017,innit2[1:end-1],innit[end])
 innit2
 sort(innit2[1:2], rev = true)
 x = innit2
@@ -315,9 +315,9 @@ par_inputs = MacroModelling.solver_parameters(
     )
 
 
-calc_total_iters(GI2017,par_inputs,innit2[end])
+calc_total_iters(Guerrieri_Iacoviello_2017,par_inputs,innit2[end])
 
-GI2017.SS_solve_func(GI2017.parameter_values, GI2017, false, innit2[end], par_inputs)
+Guerrieri_Iacoviello_2017.SS_solve_func(Guerrieri_Iacoviello_2017.parameter_values, Guerrieri_Iacoviello_2017, false, innit2[end], par_inputs)
 
 
 
@@ -466,7 +466,7 @@ all_models = [
     # Ascari_Sbordone_2014, 
     # FS2000, 
     # SW07, 
-    GI2017
+    Guerrieri_Iacoviello_2017
 ];
 
 
@@ -535,14 +535,14 @@ f(sol_BBO.u, false)
 
 
 # 71.69060992965288 works
-GI2017.SS_solve_func(GI2017.parameter_values, GI2017, false, sol_BBO.u[1], GI2017.solver_parameters)
+Guerrieri_Iacoviello_2017.SS_solve_func(Guerrieri_Iacoviello_2017.parameter_values, Guerrieri_Iacoviello_2017, false, sol_BBO.u[1], Guerrieri_Iacoviello_2017.solver_parameters)
 
 
 sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = maxt); sol_ESCH.minimum
 
 f(71.69,[])
-GI2017.SS_solve_func(GI2017.parameter_values, GI2017, false, sol_ESCH.u[1], GI2017.solver_parameters)
-GI2017.SS_solve_func(GI2017.parameter_values, GI2017, false, 0.0-10*eps(Float32), GI2017.solver_parameters)
+Guerrieri_Iacoviello_2017.SS_solve_func(Guerrieri_Iacoviello_2017.parameter_values, Guerrieri_Iacoviello_2017, false, sol_ESCH.u[1], Guerrieri_Iacoviello_2017.solver_parameters)
+Guerrieri_Iacoviello_2017.SS_solve_func(Guerrieri_Iacoviello_2017.parameter_values, Guerrieri_Iacoviello_2017, false, 0.0-10*eps(Float32), Guerrieri_Iacoviello_2017.solver_parameters)
 
 
 innit = xx
