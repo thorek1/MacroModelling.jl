@@ -4,6 +4,8 @@
 
 - [ ] implement occasionally binding constraints with shocks
 - [ ] add obc tests
+- [ ] add technical details about SS solver, obc solver, and other algorithms
+- [ ] add QUEST3 tests
 - [ ] rm obc vars from get_SS
 - [ ] cover nested case: min(50,a+b+max(c,10))
 - [ ] nonlinear estimation using unscented kalman filter
