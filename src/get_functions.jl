@@ -901,7 +901,7 @@ function get_irf(𝓂::ℳ;
     else
         if occasionally_binding_constraints
             function obc_state_update(past_states::Vector{R}, past_shocks::Vector{R}, present_shocks::Vector{R}, state_update::Function, algorithm::Symbol, model::JuMP.Model, x::Vector{JuMP.VariableRef}) where R <: Float64
-                unconditional_forecast_horizon = 40
+                unconditional_forecast_horizon = 𝓂.max_obc_shift
 
                 reference_steady_state = 𝓂.solution.non_stochastic_steady_state
 
