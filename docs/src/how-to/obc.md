@@ -8,7 +8,14 @@ Let us take the Gali 2015 Chapter 3 model containing a Taylor rule and implement
 
 The model definition after the change of the Taylor rule looks like this:
 
-```julia
+```@setup howto_obc
+ENV["GKSwstype"] = "100"
+using Random
+Random.seed!(30)
+```
+
+```@repl howto_obc
+using MacroModelling
 @model Gali_2015_chapter_3_obc begin
     W_real[0] = C[0] ^ σ * N[0] ^ φ
 
@@ -63,7 +70,7 @@ In the background the system of equations is augmented by a series of anticipate
 
 Next we define the parameters including the new parameter defining the effective lower bound (which we set to 1, which implements a zero lower bound):
 
-```julia
+```@repl howto_obc
 @parameters Gali_2015_chapter_3_obc begin
     R̄ = 1.0
 
@@ -104,19 +111,19 @@ end
 
 Let's check out the non stochastic steady state (NSSS):
 
-```julia
+```@repl howto_obc
 SS(Gali_2015_chapter_3_obc)
 ```
 
 There are a few things to note here. First, we get the NSSS values of the auxilliary variables related to the occasionally binding constraint. Second, the NSSS value of `R` is 1, and thereby the effective lower bound is binding in the NSSS. While this is a viable NSSS it is not a viable approximation point for perturbation. We can only find a perturbation solution if the effective lower bound is not binding in NSSS. Calling `get_solution` reveals that he cannot find a stable solution:
 
-```julia
+```@repl howto_obc
 get_solution(Gali_2015_chapter_3_obc)
 ```
 
 In order to get the other viable NSSS we have to restrict the values of R to be larger than the effective lower bound. We can do this by adding a constraint on the variable in the `@parameter` section. Let us redefine the model:
 
-```julia
+```@repl howto_obc
 @model Gali_2015_chapter_3_obc begin
     W_real[0] = C[0] ^ σ * N[0] ^ φ
 
@@ -207,19 +214,19 @@ end
 
 and check the NSSS once more:
 
-```julia
+```@repl howto_obc
 SS(Gali_2015_chapter_3_obc)
 ```
 
 Now we get `R > R̄`, so that the constraint is not binding in the NSSS and we can work with a stable first order solution:
 
-```julia
+```@repl howto_obc
 get_solution(Gali_2015_chapter_3_obc)
 ```
 
 Having defined the system with an occasionally binding constraint we can simply simulate the model by calling:
 
-```julia
+```@repl howto_obc
 import StatsPlots
 plot_simulations(Gali_2015_chapter_3_obc)
 ```
@@ -228,7 +235,7 @@ In the background an optimisation problem is set up to find the smallest shocks 
 
 We can change the bound by simply changing the parameter:
 
-```julia
+```@repl howto_obc
 plot_simulations(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.99)
 ```
 
@@ -236,7 +243,7 @@ Now, the effect of the effective lower bound becomes les important as it binds l
 
 If you want to ignore the occasionally binding constraint you can simply call:
 
-```julia
+```@repl howto_obc
 plot_simulations(Gali_2015_chapter_3_obc, ignore_obc = true)
 ```
 
@@ -244,7 +251,7 @@ and you get the simulation based on the first order solution approximated around
 
 We can plot the impulse response functions for the `eps_z` shock, while setting the parameter of the occasionally binding constraint back to 1, as follows:
 
-```julia
+```@repl howto_obc
 plot_irf(Gali_2015_chapter_3_obc, parameters = :R̄ => 1.0)
 ```
 
@@ -252,7 +259,7 @@ As you can see `R` remains above the effective lower bound in the first period.
 
 Next, let us simulate the model using a series of shocks. E.g. three positive shocks to `eps_z` in periods 5, 10, and 15 in decreasing magnitude:
 
-```julia
+```@repl howto_obc
 shcks = zeros(1,15)
 shcks[5] =  3.0
 shcks[10] = 2.0
@@ -267,32 +274,32 @@ The effective lower bound is binding after all three shocks but the length of th
 
 Last but not least, we can get the simulated moments of the model (theoretical moments are not available):
 
-```julia
-sims = get_irf(Gali_2015_chapter_3_obc, periods = 1000, shocks = :simulate, levels = true)
+```@repl howto_obc
+sims = get_irf(Gali_2015_chapter_3_obc, periods = 100, shocks = :simulate, levels = true)
 ```
 
 Let's look at the mean and standard deviation of borrowing:
 
-```julia
+```@repl howto_obc
 import Statistics
 Statistics.mean(sims(:Y,:,:))
 ```
 
 and
 
-```julia
+```@repl howto_obc
 Statistics.std(sims(:Y,:,:))
 ```
 
 Compare this to the theoretical mean of the model without the occasionally binding constraint:
 
-```julia
+```@repl howto_obc
 get_mean(borrowing_constraint)
 ```
 
 and the theoretical standard deviation:
 
-```julia
+```@repl howto_obc
 get_std(borrowing_constraint)
 ```
 
@@ -319,7 +326,7 @@ in order to write this model down we need to express the Karush-Kuhn-Tucker cond
 
 We can write this model containing an occasionally binding constraint in a very convenient way:
 
-```julia
+```@repl howto_obc
 @model borrowing_constraint begin
     C[0] = Y[0] + B[0] - R * B[-1]
 
@@ -335,7 +342,7 @@ In the background the system of equations is augmented by a series of anticipate
 
 Next we define the parameters as usual:
 
-```julia
+```@repl howto_obc
 @parameters borrowing_constraint begin
     R = 1.05
     β = 0.945
@@ -352,7 +359,7 @@ For the non stochastic steady state (NSSS) to exist the constraint has to be bin
 
 We can check this by getting the NSSS:
 
-```julia
+```@repl howto_obc
 SS(borrowing_constraint)
 ```
 
@@ -360,7 +367,7 @@ A common task is to plot impulse response function for positive and negative sho
 
 First, we need to import the StatsPlots package and then we can plot the positive shock.
 
-```julia
+```@repl howto_obc
 import StatsPlots
 plot_irf(borrowing_constraint)
 ```
@@ -369,7 +376,7 @@ plot_irf(borrowing_constraint)
 
 We can see that the constraint is no longer binding in the first five periods because `Y` and `B` do not increase by the same amount. They should move by the same amount in the case of a negative shock:
 
-```julia
+```@repl howto_obc
 import StatsPlots
 plot_irf(borrowing_constraint, negative_shock = true)
 ```
@@ -380,7 +387,7 @@ and indeed in this case they move by the same amount. The difference between a p
 
 Another common exercise is to plot the impulse response functions from a series of shocks. Let's assume in period 10 there is a positive shocks and in period 30 a negative one. Let's view the results for 50 more periods. We can do this as follows:
 
-```julia
+```@repl howto_obc
 shcks = zeros(1,30)
 shcks[10] =  .6
 shcks[30] = -.6
@@ -394,7 +401,7 @@ plot_irf(borrowing_constraint, shocks = sks, periods = 50)
 
 In this case the difference between the shocks and the impact of the constraint become quite obvious. Let's compare this with a version of the model that ignores the occasionally binding constraint. In order to plot the impulse response functions without dynamically enforcing the constraint we can simply write:
 
-```julia
+```@repl howto_obc
 plot_irf(borrowing_constraint, shocks = sks, periods = 50, ignore_obc = true)
 ```
 
@@ -402,32 +409,32 @@ plot_irf(borrowing_constraint, shocks = sks, periods = 50, ignore_obc = true)
 
 Another interesting statistic is model moments. As there are no theoretical moments we have to rely on simulated data:
 
-```julia
-sims = get_irf(borrowing_constraint, periods = 10000, shocks = :simulate, levels = true)
+```@repl howto_obc
+sims = get_irf(borrowing_constraint, periods = 100, shocks = :simulate, levels = true)
 ```
 
 Let's look at the mean and standard deviation of borrowing:
 
-```julia
+```@repl howto_obc
 import Statistics
 Statistics.mean(sims(:B,:,:))
 ```
 
 and
 
-```julia
+```@repl howto_obc
 Statistics.std(sims(:B,:,:))
 ```
 
 Compare this to the theoretical mean of the model without the occasionally binding constraint:
 
-```julia
+```@repl howto_obc
 get_mean(borrowing_constraint)
 ```
 
 and the theoretical standard deviation:
 
-```julia
+```@repl howto_obc
 get_std(borrowing_constraint)
 ```
 

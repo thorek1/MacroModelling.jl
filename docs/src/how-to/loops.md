@@ -49,7 +49,14 @@ Note that the package internally writes out the for loop and creates two equatio
 
 Putting these these elements together we can write the multi-country model equations of the Backus, Kehoe and Kydland (1992) model like this:
 
-```julia
+```@setup howto_loops
+ENV["GKSwstype"] = "100"
+using Random
+Random.seed!(30)
+```
+
+```@repl howto_loops
+using MacroModelling
 @model Backus_Kehoe_Kydland_1992 begin
     for co in [H, F]
         Y{co}[0] = ((LAMBDA{co}[0] * K{co}[-4]^theta{co} * N{co}[0]^(1 - theta{co}))^(-nu{co}) + sigma{co} * Z{co}[-1]^(-nu{co}))^(-1 / nu{co})
@@ -132,7 +139,7 @@ y_ratio =  0.9
 
 Making use of this and continuing the example of the Backus, Kehoe and Kydland (1992) model we can define the parameters as follows:
 
-```julia
+```@repl howto_loops
 @parameters Backus_Kehoe_Kydland_1992 begin
     F_H_ratio = .9
     K{F}[ss] / K{H}[ss] = F_H_ratio | beta{F}
