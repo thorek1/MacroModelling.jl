@@ -8,8 +8,8 @@
 - [ ] add QUEST3 tests
 - [ ] rm obc vars from get_SS
 - [ ] cover nested case: min(50,a+b+max(c,10))
-- [ ] nonlinear estimation using unscented kalman filter
-- [ ] nonlinear conditional forecasts
+- [ ] nonlinear estimation using unscented kalman filter / inversion filter (minimization problem: find shocks to match states with data)
+- [ ] nonlinear conditional forecasts for higher order and obc
 - [ ] add balanced growth path handling
 - [ ] feedback: write out RBC equations, provide option for external SS guess, sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
 - [ ] higher order solutions: some kron matrix mults are later compressed. write custom compressed kron mult; check if sometimes dense mult is faster? (e.g. GNSS2010 seems dense at higher order)
