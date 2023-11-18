@@ -48,49 +48,54 @@ end
 GC.gc()
 
 @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
-    include("models/Backus_Kehoe_Kydland_1992.jl")
+    include("../models/Backus_Kehoe_Kydland_1992.jl")
     functionality_test(Backus_Kehoe_Kydland_1992, plots = true)
 end
 Backus_Kehoe_Kydland_1992 = nothing
 GC.gc()
 
-
+@testset verbose = true "Gali 2015 ELB" begin
+    include("../models/Gali_2015_chapter_3_obc.jl")
+    functionality_test(Gali_2015_chapter_3_obc, plots = true)
+end
+Gali_2015_chapter_3_obc = nothing
+GC.gc()
 
 @testset verbose = true "FS2000" begin
-    include("models/FS2000.jl")
-    functionality_test(m, plots = false)
+    include("../models/FS2000.jl")
+    functionality_test(FS2000, plots = false)
 end
-m = nothing
+FS2000 = nothing
 GC.gc()
 
 
 if test_higher_order
     @testset verbose = true "FS2000 second order" begin
-        include("models/FS2000.jl")
-        functionality_test(m, algorithm = :second_order, plots = true)
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :second_order, plots = true)
     end
-    m = nothing
+    FS2000 = nothing
     GC.gc()
 
     @testset verbose = true "FS2000 pruned second order" begin
-        include("models/FS2000.jl")
-        functionality_test(m, algorithm = :pruned_second_order, plots = selected_plots_only)
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :pruned_second_order, plots = selected_plots_only)
     end
-    m = nothing
+    FS2000 = nothing
     GC.gc()
 
     @testset verbose = true "FS2000 third order" begin
-        include("models/FS2000.jl")
-        functionality_test(m, algorithm = :third_order, plots = true)
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :third_order, plots = true)
     end
-    m = nothing
+    FS2000 = nothing
     GC.gc()
 
     @testset verbose = true "FS2000 pruned third order" begin
-        include("models/FS2000.jl")
-        functionality_test(m, algorithm = :pruned_third_order, plots = selected_plots_only)
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :pruned_third_order, plots = selected_plots_only)
     end
-    m = nothing
+    FS2000 = nothing
     GC.gc()
 end
 
@@ -104,10 +109,10 @@ end
 GC.gc()
 
 @testset verbose = true "SW07 with calibration equations" begin
-    include("models/SW07.jl")
-    functionality_test(m, plots = selected_plots_only)
+    include("../models/SW07.jl")
+    functionality_test(SW07, plots = selected_plots_only)
 end
-m = nothing
+SW07 = nothing
 GC.gc()
 
 
@@ -226,10 +231,10 @@ end
 
 
 @testset verbose = true "SW03 with calibration equations" begin
-    include("models/SW03.jl")
-    functionality_test(m)
+    include("../models/SW03.jl")
+    functionality_test(SW03)
 end
-m = nothing
+SW03 = nothing
 GC.gc()
 
 @testset verbose = true "Model without shocks" begin
