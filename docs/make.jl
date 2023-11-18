@@ -14,6 +14,8 @@ makedocs(
     sitename = "MacroModelling.jl",
     authors = "Thore Kockerols",
     doctest = true,
+    # doctest = false,
+    # draft = true,
     format = Documenter.HTML(size_threshold = 204800*10),
     modules = [MacroModelling],
     pages = [

@@ -1,10 +1,16 @@
 # Occasionally Binding Constraints
 
-Occasionally binding constraints are a form of nonlinearity frequently used to model effects like the zero lower bound on interest rates, or borrowing constraints. Perturbation methods are not able to capture them as they are local approximations. Nonetheless, there are ways to combine the speed of perturbation solutions and the flexibility of occasionally binding constraints. `MacroModelling.jl` provides a convenient way to write down the constraints and automatically enforces binding constraints with shocks. More specifically, the binding constraints are enforced for each periods unconditional forecast (default forecast horizon of 40 periods) by constraint equation specific anticipated shocks, while minimising the shock size.
+Occasionally binding constraints are a form of nonlinearity frequently used to model effects like the zero lower bound on interest rates, or borrowing constraints. Perturbation methods are not able to capture them as they are local approximations. Nonetheless, there are ways to combine the speed of perturbation solutions and the flexibility of occasionally binding constraints. `MacroModelling.jl` provides a convenient way to write down the constraints and automatically enforces the constraint equation with shocks. More specifically, the constraint equation is enforced for each periods unconditional forecast (default forecast horizon of 40 periods) by constraint equation specific anticipated shocks, while minimising the shock size.
 
-## Writing a model with occasionally binding constraints
+This guide will demonstrate how to write down models containing occasionally binding constraints (e.g. effective lower bound and borrowing constraint), show some potential problems the user may encounter and how to overcome them, and go through some use cases.
 
-Let us take the Gali 2015 Chapter 3 model containing a Taylor rule and implement an effective lower bound on interest rates. The Taylor rule in the model: `R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])` needs to be modified so that `R[0]` never goes below an effective lower bound `R̄`. Wecan do this using the `max` operator: `R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))`
+Common problems that may occur are that no perturbation solution is found, or that the algorithm cannot find a combination of shocks which enforce the constraint equation. The former has to do with the fact that occasionally binding constraints can give rise to more than one steady state but only one is suitable for a perturbation solution. The latter has to do with the dynamics of the model and the fact that we use a finite amount of shocks to enforce the constraint equation.
+
+## Example: Effective lower bound on interest rates
+
+### Writing a model with occasionally binding constraints
+
+Let us take the [gali2015; Chapter 3](@citet) model containing a Taylor rule and implement an effective lower bound on interest rates. The Taylor rule in the model: `R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])` needs to be modified so that `R[0]` never goes below an effective lower bound `R̄`. We can do this using the `max` operator: `R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))`
 
 The model definition after the change of the Taylor rule looks like this:
 
@@ -26,8 +32,6 @@ using MacroModelling
     Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
 
     R[0] = Pi[1] * realinterest[0]
-
-    R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
 
     C[0] = Y[0]
 
@@ -62,6 +66,8 @@ using MacroModelling
     r_real_ann[0] = 4 * log(realinterest[0])
 
     M_real[0] = Y[0] / R[0] ^ η
+
+    R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
 
 end
 ```
@@ -109,13 +115,15 @@ Next we define the parameters including the new parameter defining the effective
 end
 ```
 
+### Verify the non stochastic steady state
+
 Let's check out the non stochastic steady state (NSSS):
 
 ```@repl howto_obc
 SS(Gali_2015_chapter_3_obc)
 ```
 
-There are a few things to note here. First, we get the NSSS values of the auxilliary variables related to the occasionally binding constraint. Second, the NSSS value of `R` is 1, and thereby the effective lower bound is binding in the NSSS. While this is a viable NSSS it is not a viable approximation point for perturbation. We can only find a perturbation solution if the effective lower bound is not binding in NSSS. Calling `get_solution` reveals that he cannot find a stable solution:
+There are a few things to note here. First, we get the NSSS values of the auxilliary variables related to the occasionally binding constraint. Second, the NSSS value of `R` is 1, and thereby the effective lower bound is binding in the NSSS. While this is a viable NSSS it is not a viable approximation point for perturbation. We can only find a perturbation solution if the effective lower bound is not binding in NSSS. Calling `get_solution` reveals that there is no stable solution at this NSSS:
 
 ```@repl howto_obc
 get_solution(Gali_2015_chapter_3_obc)
@@ -134,8 +142,6 @@ In order to get the other viable NSSS we have to restrict the values of R to be 
     Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
 
     R[0] = Pi[1] * realinterest[0]
-
-    R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
 
     C[0] = Y[0]
 
@@ -170,6 +176,8 @@ In order to get the other viable NSSS we have to restrict the values of R to be 
     r_real_ann[0] = 4 * log(realinterest[0])
 
     M_real[0] = Y[0] / R[0] ^ η
+
+    R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
 
 end
 
@@ -224,6 +232,8 @@ Now we get `R > R̄`, so that the constraint is not binding in the NSSS and we c
 get_solution(Gali_2015_chapter_3_obc)
 ```
 
+### Generate model output
+
 Having defined the system with an occasionally binding constraint we can simply simulate the model by calling:
 
 ```@repl howto_obc
@@ -231,15 +241,19 @@ import StatsPlots
 plot_simulations(Gali_2015_chapter_3_obc)
 ```
 
-In the background an optimisation problem is set up to find the smallest shocks in magnitude which enforce the equation containing the occasionally binding constraint over the unconditional forecast horizon (default 40 periods) at each period of the simulation. The plots show multiple spells of a binding effective lower bound and many other variables are skewed as a result of the nonlinearity. It can happen that it is not possible to find a combination of shocks which enforce the occasionally binding constraint equation. In this case one solution can be to make the horizon larger over which the algorithm tries to enforce the equation. You can do this by setting the parameter at the beginning of the `@model` section: `@model Gali_2015_chapter_3_obc max_obc_horizon = 60 begin ... end`
+![Simulation_elb](../assets/Gali_2015_chapter_3_obc__simulation__1.png)
 
-We can change the bound by simply changing the parameter:
+In the background an optimisation problem is set up to find the smallest shocks in magnitude which enforce the equation containing the occasionally binding constraint over the unconditional forecast horizon (default 40 periods) at each period of the simulation. The plots show multiple spells of a binding effective lower bound and many other variables are skewed as a result of the nonlinearity. It can happen that it is not possible to find a combination of shocks which enforce the occasionally binding constraint equation. In this case one solution can be to make the horizon larger over which the algorithm tries to enforce the equation. You can do this by setting the parameter at the beginning of the `@model` section: `@model Gali_2015_chapter_3_obc max_obc_horizon = 60 begin ... end`.
+
+Next let us change the effective lower bound to `0.99` and plot once more:
 
 ```@repl howto_obc
 plot_simulations(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.99)
 ```
 
-Now, the effect of the effective lower bound becomes les important as it binds less often.
+![Simulation_elb2](../assets/Gali_2015_chapter_3_obc__simulation__2.png)
+
+Now, the effect of the effective lower bound becomes less important as it binds less often.
 
 If you want to ignore the occasionally binding constraint you can simply call:
 
@@ -247,13 +261,17 @@ If you want to ignore the occasionally binding constraint you can simply call:
 plot_simulations(Gali_2015_chapter_3_obc, ignore_obc = true)
 ```
 
+![Simulation_no_elb](../assets/Gali_2015_chapter_3_obc__simulation__no.png)
+
 and you get the simulation based on the first order solution approximated around the NSSS, which is the same as the one for the model without the modified Taylor rule.
 
-We can plot the impulse response functions for the `eps_z` shock, while setting the parameter of the occasionally binding constraint back to 1, as follows:
+We can plot the impulse response functions for the `eps_z` shock, while setting the parameter of the occasionally binding constraint back to `1`, as follows:
 
 ```@repl howto_obc
-plot_irf(Gali_2015_chapter_3_obc, parameters = :R̄ => 1.0)
+plot_irf(Gali_2015_chapter_3_obc, shocks = :eps_z, parameters = :R̄ => 1.0)
 ```
+
+![IRF_elb](../assets/Gali_2015_chapter_3_obc__eps_z.png)
 
 As you can see `R` remains above the effective lower bound in the first period.
 
@@ -270,12 +288,14 @@ sks = KeyedArray(shcks;  Shocks = [:eps_z], Periods = 1:15)
 plot_irf(Gali_2015_chapter_3_obc, shocks = sks, periods = 10)
 ```
 
+![Shock_series_elb](../assets/Gali_2015_chapter_3_obc__shock_matrix__1.png)
+
 The effective lower bound is binding after all three shocks but the length of the constraint being binding varies with the shock size and is completely endogenous.
 
 Last but not least, we can get the simulated moments of the model (theoretical moments are not available):
 
 ```@repl howto_obc
-sims = get_irf(Gali_2015_chapter_3_obc, periods = 100, shocks = :simulate, levels = true)
+sims = get_irf(Gali_2015_chapter_3_obc, periods = 1000, shocks = :simulate, levels = true)
 ```
 
 Let's look at the mean and standard deviation of borrowing:
@@ -305,36 +325,38 @@ get_std(borrowing_constraint)
 
 The mean of output is lower in the model with effective lower bound compared to the model without and the standard deviation is higher.
 
+## Example: Borrowing constraint
 
+### Model definition
 
-
-
-Let us start with a consumption model containing a borrowing constraint (see [@citet cuba2019likelihood] for details). Output is exogenously given, households can only borrow up to a fraction output and decide between saving and consumption. The first order conditions of the model are:
+Let us start with a consumption-saving model containing a borrowing constraint (see [@citet cuba2019likelihood] for details). Output is exogenously given, and households can only borrow up to a fraction of output and decide between saving and consumption. The first order conditions of the model are:
 
 ```math
-C_t + RB_{t-1} = Y_t + B_t
-\ln Y_t = \rho \ln Y_{t-1} + \sigma \varepsilon_t
-C_t^{-\gamma} = \beta \mathbb{E}_t (C_{t+1}^{-\gamma}) + \lambda_t
-\lambda_t (B_t - mY_t) = 0
+\begin{align*}
+Y_t + B_t &= C_t + R B_{t-1}\\
+\log(Y_t) &= \rho \log(Y_{t-1}) + \sigma \varepsilon_t\\
+C_t^{-\gamma} &= \beta R \mathbb{E}_t (C_{t+1}^{-\gamma}) + \lambda_t\\
+0 &= \lambda_t (B_t - mY_t)
+\end{align*}
 ```
 
 in order to write this model down we need to express the Karush-Kuhn-Tucker condition (last equation) using a max (or min) operator, so that it becomes:
 
 ```math
-\max(B_t - mY_t, -\lambda_t) = 0
+0 = \max(B_t - mY_t, -\lambda_t)
 ```
 
 We can write this model containing an occasionally binding constraint in a very convenient way:
 
 ```@repl howto_obc
 @model borrowing_constraint begin
-    C[0] = Y[0] + B[0] - R * B[-1]
+    Y[0] + B[0] = C[0] + R * B[-1]
 
     log(Y[0]) = ρ * log(Y[-1]) + σ * ε[x]
 
     C[0]^(-γ) = β * R * C[1]^(-γ) + λ[0]
 
-    max(B[0] - m * Y[0], -λ[0]) = 0
+    0 = max(B[0] - m * Y[0], -λ[0])
 end
 ```
 
@@ -353,7 +375,7 @@ Next we define the parameters as usual:
 end
 ```
 
-## Working with the model
+### Working with the model
 
 For the non stochastic steady state (NSSS) to exist the constraint has to be binding (`B[0] = m * Y[0]`). This implies a wedge in the Euler equation (`λ > 0`).
 
@@ -410,7 +432,7 @@ plot_irf(borrowing_constraint, shocks = sks, periods = 50, ignore_obc = true)
 Another interesting statistic is model moments. As there are no theoretical moments we have to rely on simulated data:
 
 ```@repl howto_obc
-sims = get_irf(borrowing_constraint, periods = 100, shocks = :simulate, levels = true)
+sims = get_irf(borrowing_constraint, periods = 1000, shocks = :simulate, levels = true)
 ```
 
 Let's look at the mean and standard deviation of borrowing:
@@ -439,8 +461,3 @@ get_std(borrowing_constraint)
 ```
 
 The mean of borrowing is lower in the model with occasionally binding constraints compared to the model without and the standard deviation is higher.
-
-## Bibliography
-
-```@bibliography
-```
