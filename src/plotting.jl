@@ -1027,6 +1027,7 @@ function plot_solution(𝓂::ℳ,
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
                             parameters = parameters,
+                            variables = :all,
                             verbose = verbose)
 
     SS_and_std[1] = SS_and_std[1] isa KeyedArray ? axiskeys(SS_and_std[1],1) isa Vector{String} ? rekey(SS_and_std[1], 1 => axiskeys(SS_and_std[1],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[1] : SS_and_std[1]
