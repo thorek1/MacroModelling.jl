@@ -2,10 +2,8 @@
 
 ## High priority
 
-- [ ] implement occasionally binding constraints with shocks
 - [ ] add obc tests
 - [ ] add technical details about SS solver, obc solver, and other algorithms
-- [ ] add QUEST3 tests
 - [ ] rm obc vars from get_SS
 - [ ] cover nested case: min(50,a+b+max(c,10))
 - [ ] nonlinear estimation using unscented kalman filter / inversion filter (minimization problem: find shocks to match states with data)
@@ -71,6 +69,8 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] check if higher order effects might distort results for autocorr (problem with order deffinition) - doesnt seem to be the case; full_covar yields same result
+- [x] implement occasionally binding constraints with shocks
+- [x] add QUEST3 tests
 - [x] highlight NUTS sampler compatibility
 - [x] differentiate more vs diffstatespace
 - [x] reorder other toolboxes according to popularity
