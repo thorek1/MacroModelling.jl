@@ -7,8 +7,6 @@ import DynamicPPL: logjoint
 
 include("../models/FS2000.jl")
 
-FS2000 = m
-
 # load data
 dat = CSV.read("data/FS2000_data.csv", DataFrame)
 data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
