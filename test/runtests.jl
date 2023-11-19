@@ -13,30 +13,11 @@ println("Threads used: ", Threads.nthreads())
 
 include("functionality_tests.jl")
 
-@testset verbose = true "Code quality (Aqua.jl)" begin
-    # Aqua.test_all(MacroModelling)
-    @testset "Compare Project.toml and test/Project.toml" Aqua.test_project_extras(MacroModelling)
-    @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling)#; ignore = [:Aqua, :JET])
-    @testset "Unbound type parameters" Aqua.test_unbound_args(MacroModelling)
-    @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
-    @testset "Piracy" Aqua.test_piracies(MacroModelling)
-    @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
-    @testset "Compat" Aqua.test_deps_compat(MacroModelling)#; ignore = [:Aqua, :JET])
-    # @testset "Persistent tasks" Aqua.test_persistent_tasks(MacroModelling)
-end
-GC.gc()
-
-@testset verbose = true "Static checking (JET.jl)" begin
-    if VERSION >= v"1.9"
-        JET.test_package(MacroModelling; target_defined_modules = true, toplevel_logger = nothing)
-    end
-end
-
-
 
 # @testset verbose = true "Code formatting (JuliaFormatter.jl)" begin
 #     @test format(MacroModelling; verbose=true, overwrite=true)
 # end
+
 
 if test_env_var == "estimation"
     include("test_estimation.jl")
@@ -226,6 +207,25 @@ end
 
 if test_env_var == "basic"
     plots = false
+
+    @testset verbose = true "Code quality (Aqua.jl)" begin
+        # Aqua.test_all(MacroModelling)
+        @testset "Compare Project.toml and test/Project.toml" Aqua.test_project_extras(MacroModelling)
+        @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling)#; ignore = [:Aqua, :JET])
+        @testset "Unbound type parameters" Aqua.test_unbound_args(MacroModelling)
+        @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
+        @testset "Piracy" Aqua.test_piracies(MacroModelling)
+        @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
+        @testset "Compat" Aqua.test_deps_compat(MacroModelling)#; ignore = [:Aqua, :JET])
+        # @testset "Persistent tasks" Aqua.test_persistent_tasks(MacroModelling)
+    end
+    GC.gc()
+    
+    @testset verbose = true "Static checking (JET.jl)" begin
+        if VERSION >= v"1.9"
+            JET.test_package(MacroModelling; target_defined_modules = true, toplevel_logger = nothing)
+        end
+    end
 
     @testset verbose = true "Test various models: NSSS and 1st order solution" begin
         include("test_models.jl")
