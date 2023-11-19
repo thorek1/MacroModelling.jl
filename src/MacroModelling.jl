@@ -1425,7 +1425,7 @@ function levenberg_marquardt(f::Function,
     initial_guess::Array{T,1}, 
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
-    parameters::solver_parameters = solver_parameters(eps(), eps(), 250, 8.0,0.904,0.026,0.0,1.0,0.0,0.1,0.17,0.07,0.01,0.8,0.84,1.0,0.5,1.0,0.0128,1.0,0.9815,1.0,3,0.0,2)
+    parameters::solver_parameters = solver_parameters(eps(), eps(), 250, 2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 1, 0.0, 2)
     ) where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
@@ -2703,7 +2703,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         verbose::Bool;
                         tol::AbstractFloat = eps(),
                         # timeout = 120,
-                        starting_points::Vector{Float64} = [0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
+                        starting_points::Vector{Float64} = [0.7688, 0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
                         # fail_fast_solvers_only = true,
                         # verbose::Bool = false
                         )
@@ -2795,7 +2795,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     verbose::Bool ;
     tol::AbstractFloat = eps(),
     # timeout = 120,
-    starting_points::Vector{Float64} = [0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
+    starting_points::Vector{Float64} = [0.7688, 0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
     # fail_fast_solvers_only = true,
     # verbose::Bool = false
     ) where {Z,S,N}
