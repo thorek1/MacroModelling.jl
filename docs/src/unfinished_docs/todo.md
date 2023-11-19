@@ -2,9 +2,12 @@
 
 ## High priority
 
-- [ ] implement occasionally binding constraints with shocks
-- [ ] nonlinear estimation using unscented kalman filter
-- [ ] nonlinear conditional forecasts
+- [ ] add technical details about SS solver, obc solver, and other algorithms
+- [ ] rm obc vars from get_SS
+- [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
+- [ ] cover nested case: min(50,a+b+max(c,10))
+- [ ] nonlinear estimation using unscented kalman filter / inversion filter (minimization problem: find shocks to match states with data)
+- [ ] nonlinear conditional forecasts for higher order and obc
 - [ ] add balanced growth path handling
 - [ ] feedback: write out RBC equations, provide option for external SS guess, sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
 - [ ] higher order solutions: some kron matrix mults are later compressed. write custom compressed kron mult; check if sometimes dense mult is faster? (e.g. GNSS2010 seems dense at higher order)
@@ -66,6 +69,9 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] check if higher order effects might distort results for autocorr (problem with order deffinition) - doesnt seem to be the case; full_covar yields same result
+- [x] implement occasionally binding constraints with shocks
+- [x] add QUEST3 tests
+- [x] add obc tests
 - [x] highlight NUTS sampler compatibility
 - [x] differentiate more vs diffstatespace
 - [x] reorder other toolboxes according to popularity

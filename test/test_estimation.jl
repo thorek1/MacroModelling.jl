@@ -5,9 +5,7 @@ import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL: logjoint
 
-include("models/FS2000.jl")
-
-FS2000 = m
+include("../models/FS2000.jl")
 
 # load data
 dat = CSV.read("data/FS2000_data.csv", DataFrame)

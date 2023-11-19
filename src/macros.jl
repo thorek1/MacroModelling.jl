@@ -12,6 +12,9 @@ Parses the model equations and assigns them to an object.
 - `𝓂`: name of the object to be created containing the model information.
 - `ex`: equations
 
+# Optional arguments to be placed between `𝓂` and `ex`
+- `max_obc_horizon` [Default: `40`, Type: `Int`]: maximum length of anticipated shocks and corresponding unconditional forecast horizon over which the occasionally binding constraint is to be enforced. Increase this number if no solution is found to enforce the constraint.
+
 Variables must be defined with their time subscript in squared brackets.
 Endogenous variables can have the following:
 - present: `c[0]`
@@ -26,6 +29,8 @@ Exogenous variables (shocks) can have the following:
 - future: `eps_z[x+1]`
 
 Parameters enter the equations without squared brackets.
+
+If an equation contains a `max` or `min` operator, then the default dynamic (first order) solution of the model will enforce the occasionally binding constraint. You can choose to ignore it by setting `ignore_obc = true` in the relevant function calls.
 
 # Examples
 ```julia
@@ -52,6 +57,7 @@ macro model(𝓂,ex...)
     # parse options
     verbose = false
     precompile = false
+    max_obc_horizon = 40
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -61,6 +67,8 @@ macro model(𝓂,ex...)
                         verbose = x.args[2] :
                     x.args[1] == :precompile && x.args[2] isa Bool ?
                         precompile = x.args[2] :
+                    x.args[1] == :max_obc_horizon && x.args[2] isa Int ?
+                        max_obc_horizon = x.args[2] :
                     begin
                         @warn "Invalid options." 
                         x
@@ -106,6 +114,10 @@ macro model(𝓂,ex...)
     dyn_eq_aux_ind = Int[]
 
     model_ex = parse_for_loops(ex[end])
+
+    model_ex = parse_occasionally_binding_constraints(model_ex, max_obc_horizon = max_obc_horizon)
+    
+    # obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
 
     # write down dynamic equations and add auxilliary variables for leads and lags > 1
     for (i,arg) in enumerate(model_ex.args)
@@ -772,7 +784,7 @@ macro model(𝓂,ex...)
     #assemble data container
     model_name = string(𝓂)
     quote
-       global $𝓂 =  ℳ(
+        global $𝓂 =  ℳ(
                         $model_name,
                         # $default_optimizer,
                         sort(collect($exo)), 
@@ -847,6 +859,13 @@ macro model(𝓂,ex...)
 
                         $T,
 
+                        Expr[],
+                        # $obc_shock_bounds,
+                        $max_obc_horizon,
+                        x->x,
+
+                        solver_parameters(eps(), eps(), 250, 2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 1, 0.0, 2),
+                        
                         solution(
                             perturbation(   perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
                                             perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), x->x),
@@ -1340,6 +1359,11 @@ macro parameters(𝓂,ex...)
     return quote
         mod = @__MODULE__
 
+        if any(contains.(string.(mod.$𝓂.var), "ᵒᵇᶜ"))
+            push!($calib_parameters, :activeᵒᵇᶜshocks)
+            push!($calib_values, 0)
+        end
+
         calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
@@ -1388,6 +1412,10 @@ macro parameters(𝓂,ex...)
     
             solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 2nd argument is SS_symbolic
 
+            mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
+            
+            set_up_obc_violation_function!(mod.$𝓂)
+
             if !$silent println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
         else
             start_time = time()
@@ -1419,8 +1447,15 @@ macro parameters(𝓂,ex...)
 
         if !$precompile
             # time_SS_real_solve = @elapsed 
-            SS_and_pars, solution_error = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose)
-            if !$silent println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds") end
+            SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose, false, mod.$𝓂.solver_parameters)
+            
+            if !$silent 
+                println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds") 
+
+                if solution_error > eps()
+                    @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
+                end
+            end
 
             mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
             mod.$𝓂.solution.outdated_NSSS = false

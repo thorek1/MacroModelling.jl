@@ -137,7 +137,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         irfs_10 = get_irf(m, m.parameter_values, verbose = true, periods = 10)
         irfs_100 = get_irf(m, m.parameter_values, verbose = true, periods = 100)
         new_irfs1 = get_irf(m, m.parameter_values * 1.0001, verbose = true)
-        lvl_irfs  = get_irf(m, old_par_vals, verbose = true, levels = true)
+        lvl_irfs  = get_irf(m, old_par_vals, verbose = true, levels = true, variables = :all)
         lvlv_init_irfs  = get_irf(m, old_par_vals, verbose = true, levels = true, initial_state = collect(lvl_irfs[:,5,1]))
         lvlv_init_neg_irfs = get_irf(m, old_par_vals, verbose = true, levels = true, initial_state = collect(lvl_irfs[:,5,1]), negative_shock = true)
 
@@ -159,7 +159,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10))
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = KeyedArray(randn(1,10),Shocks = string.([m.timings.exo[1]]), Periods = 1:10))
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = :none, initial_state = collect(lvl_irfs[:,5,1]))
-        new_sub_lvl_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = :none, initial_state = collect(lvl_irfs[:,5,1]), levels = true)
+        new_sub_lvl_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = :none, initial_state = collect(lvl_irfs[:,5,1]), levels = true, variables = :all)
         # new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = string.(:none), initial_state = collect(lvl_irfs[:,5,1]))
         # new_sub_lvl_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = string.(:none), initial_state = collect(lvl_irfs[:,5,1]), levels = true)
         @test isapprox(collect(new_sub_lvl_irfs[:,1,:]), collect(lvl_irfs[:,6,1]),rtol = eps(Float32))
@@ -171,7 +171,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all)
 
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all_including_auxilliary)
+        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all_excluding_obc)
 
 
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(m.timings.var[1]))
@@ -181,7 +181,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = reshape(string.(m.timings.var),1,length(m.timings.var)))
         # new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(:all))
 
-        # new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(:all_including_auxilliary))
+        # new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(:all_excluding_obc))
         var_decomp_nv = get_variance_decomposition(m)
         var_decomp = get_variance_decomposition(m, verbose = true)
         new_var_decomp = get_variance_decomposition(m, verbose = true, parameters = m.parameter_values * 1.0001)
@@ -220,7 +220,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
 
         # test conditional forecasting
-        new_sub_irfs_all  = get_irf(m, verbose = true, variables = :all_including_auxilliary)
+        new_sub_irfs_all  = get_irf(m, verbose = true, variables = :all, shocks = :all)
         varnames = axiskeys(new_sub_irfs_all,1)
         shocknames = axiskeys(new_sub_irfs_all,3)
         sol = get_solution(m)
@@ -401,6 +401,82 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     old_sols = get_solution(m, algorithm = algorithm, verbose = true, parameters = old_par_vals)
 
     GC.gc()
+
+    if length(m.obc_violation_equations) > 0 && algorithm == :first_order
+        irfs_nv = get_irf(m, algorithm = algorithm, ignore_obc = true)
+        irfs = get_irf(m, verbose = true, algorithm = algorithm, ignore_obc = true)
+        irfs_10 = get_irf(m, verbose = true, algorithm = algorithm, periods = 10, ignore_obc = true)
+        irfs_100 = get_irf(m, verbose = true, algorithm = algorithm, periods = 100, ignore_obc = true)
+        new_irfs1 = get_irf(m, verbose = true, algorithm = algorithm, parameters = m.parameter_values * 1.0001, ignore_obc = true)
+        new_irfs2 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001), ignore_obc = true)
+        new_irfs3 = get_irf(m, verbose = true, algorithm = algorithm, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), ignore_obc = true)
+        new_irfs4 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001), ignore_obc = true)
+        lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, ignore_obc = true)
+    
+        new_irfs2 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (string.(m.parameters[1]) => m.parameter_values[1] * 1.0001), ignore_obc = true)
+        new_irfs3 = get_irf(m, verbose = true, algorithm = algorithm, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), ignore_obc = true)
+        new_irfs4 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001), ignore_obc = true)
+        lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, variables = :all)
+    
+        lvl_irfs = axiskeys(lvl_irfs,3) isa Vector{String} ? rekey(lvl_irfs,3 => axiskeys(lvl_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : lvl_irfs
+    
+        lvlv_init_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), ignore_obc = true)
+        lvlv_init_neg_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, ignore_obc = true)
+        lvlv_init_neg_gen_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true, ignore_obc = true)
+        init_neg_gen_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true, ignore_obc = true)
+    
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = m.exo[1], ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = m.exo, ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = Tuple(m.exo), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = reshape(m.exo,1,length(m.exo)), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :all, ignore_obc = true)
+    
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = string.(m.exo[1]), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = string.(m.exo), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = Tuple(string.(m.exo)), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = reshape(string.(m.exo),1,length(m.exo)), ignore_obc = true)
+        # new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = string.(:all))
+    
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = randn(m.timings.nExo,10), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = KeyedArray(randn(1,10),Shocks = string.([m.timings.exo[1]]), Periods = 1:10), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, generalised_irf = true, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, generalised_irf = true, shocks = KeyedArray(randn(1,10),Shocks = string.([m.timings.exo[1]]), Periods = 1:10), ignore_obc = true)
+    
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :simulate, ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])), ignore_obc = true)
+        new_sub_lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])), levels = true, ignore_obc = true, variables = :all)
+    
+        new_sub_lvl_irfs = axiskeys(new_sub_lvl_irfs,3) isa Vector{String} ? rekey(new_sub_lvl_irfs,3 => axiskeys(new_sub_lvl_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : new_sub_lvl_irfs
+        new_sub_irfs = axiskeys(new_sub_lvl_irfs,3) isa Vector{String} ? rekey(new_sub_irfs,3 => axiskeys(new_sub_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : new_sub_irfs
+        # new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = string.(:simulate))
+        # new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = string.(:none), initial_state = collect(lvl_irfs(:,5,m.exo[1])))
+        # new_sub_lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = string.(:none), initial_state = collect(lvl_irfs(:,5,m.exo[1])), levels = true)
+    
+        if algorithm ∈ setdiff(MacroModelling.all_available_algorithms, [:pruned_second_order,:pruned_third_order])
+            @test isapprox(collect(new_sub_lvl_irfs(:,1,:)), collect(lvl_irfs(:,6,m.exo[1])),rtol = eps(Float32))
+        end
+    
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, variables = m.timings.var[1], ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, variables = m.timings.var[end-1:end], ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, variables = m.timings.var, ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, variables = Tuple(m.timings.var), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, variables = reshape(m.timings.var,1,length(m.timings.var)), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, variables = :all, ignore_obc = true)
+    
+    
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, variables = string.(m.timings.var[1]), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, variables = string.(m.timings.var[end-1:end]), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, variables = string.(m.timings.var), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, variables = Tuple(string.(m.timings.var)), ignore_obc = true)
+        new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, variables = reshape(string.(m.timings.var),1,length(m.timings.var)), ignore_obc = true)
+        # new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, variables = string.(:all))
+    
+        sims = simulate(m, algorithm = algorithm, ignore_obc = true)
+    end
+
     # irfs
     irfs_nv = get_irf(m, algorithm = algorithm)
     irfs = get_irf(m, verbose = true, algorithm = algorithm)
@@ -415,7 +491,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     new_irfs2 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (string.(m.parameters[1]) => m.parameter_values[1] * 1.0001))
     new_irfs3 = get_irf(m, verbose = true, algorithm = algorithm, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
     new_irfs4 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
-    lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true)
+    lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, variables = :all)
 
     lvl_irfs = axiskeys(lvl_irfs,3) isa Vector{String} ? rekey(lvl_irfs,3 => axiskeys(lvl_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : lvl_irfs
 
@@ -446,7 +522,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :simulate)
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
-    new_sub_lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])), levels = true)
+    new_sub_lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])), levels = true, variables = :all)
 
     new_sub_lvl_irfs = axiskeys(new_sub_lvl_irfs,3) isa Vector{String} ? rekey(new_sub_lvl_irfs,3 => axiskeys(new_sub_lvl_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : new_sub_lvl_irfs
     new_sub_irfs = axiskeys(new_sub_lvl_irfs,3) isa Vector{String} ? rekey(new_sub_irfs,3 => axiskeys(new_sub_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : new_sub_irfs
@@ -498,6 +574,70 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
 
     if plots
+        if length(m.obc_violation_equations) > 0
+            plot_irf(m, algorithm = algorithm, show_plots = true, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = true, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, periods = 10, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, periods = 100, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = m.parameter_values * 1.0001, ignore_obc = true)
+
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001), ignore_obc = true)
+
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = (string.(m.parameters[1]) => m.parameter_values[1] * 1.0001), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001), ignore_obc = true)
+
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true, ignore_obc = true)
+
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = m.exo[1], ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = m.exo, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = Tuple(m.exo), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = reshape(m.exo,1,length(m.exo)), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = :all, ignore_obc = true)
+
+
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = string.(m.exo[1]), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = string.(m.exo), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = Tuple(string.(m.exo)), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = reshape(string.(m.exo),1,length(m.exo)), ignore_obc = true)
+            # plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = string.(:all))
+            
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = randn(m.timings.nExo,10), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = KeyedArray(randn(1,10),Shocks = string.([m.timings.exo[1]]), Periods = 1:10), ignore_obc = true)
+
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = :simulate, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = :none, initial_state = collect(lvl_irfs(:,5,m.exo[1])), ignore_obc = true)
+
+            # plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = string.(:simulate))
+            # plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = string.(:none), initial_state = collect(lvl_irfs(:,5,m.exo[1])))
+
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, variables = m.timings.var[1], ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, variables = m.timings.var[end-1:end], ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, variables = m.timings.var, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, variables = Tuple(m.timings.var), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, variables = reshape(m.timings.var,1,length(m.timings.var)), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, variables = :all, ignore_obc = true)
+
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, variables = string.(m.timings.var[1]), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, variables = string.(m.timings.var[end-1:end]), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, variables = string.(m.timings.var), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, variables = Tuple(string.(m.timings.var)), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, variables = reshape(string.(m.timings.var),1,length(m.timings.var)), ignore_obc = true)
+            # plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, variables = string.(:all))
+
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, plots_per_page = 6, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, save_plots_format = :png, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, save_plots_format = :png, plots_per_page = 4, ignore_obc = true)
+        end
+
         # plots
         plot_irf(m, algorithm = algorithm, show_plots = true)
         plot_irf(m, verbose = true, algorithm = algorithm, show_plots = true)

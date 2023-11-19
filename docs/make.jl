@@ -14,6 +14,8 @@ makedocs(
     sitename = "MacroModelling.jl",
     authors = "Thore Kockerols",
     doctest = true,
+    # doctest = false,
+    # draft = true,
     format = Documenter.HTML(size_threshold = 204800*10),
     modules = [MacroModelling],
     pages = [
@@ -27,6 +29,7 @@ makedocs(
         ],
         "How-to guides" => [
             "Programmatic model writing using for-loops" => "how-to/loops.md",
+            "Occasionally binding constraints" => "how-to/obc.md",
             # "how_to.md"
             ],
         # "Model syntax" => "dsl.md",

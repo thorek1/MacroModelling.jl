@@ -1,4 +1,4 @@
-@model Gali_2015_chapter_3_nonlinear begin
+@model Gali_2015_chapter_3_obc begin
 	W_real[0] = C[0] ^ σ * N[0] ^ φ
 
 	Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
@@ -9,7 +9,7 @@
 
 	R[0] = Pi[1] * realinterest[0]
 
-	R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])
+	R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
 
 	C[0] = Y[0]
 
@@ -48,7 +48,9 @@
 end
 
 
-@parameters Gali_2015_chapter_3_nonlinear verbose = true begin
+@parameters Gali_2015_chapter_3_obc begin
+    R̄ = 1.0
+
 	σ = 1
 
 	φ = 5
@@ -81,5 +83,5 @@ end
 
     std_nu = .0025
 
+    R > 1.000001
 end
-

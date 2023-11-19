@@ -80,7 +80,7 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 function plot_model_estimates(𝓂::ℳ,
     data::KeyedArray{Float64};
     parameters = nothing,
-    variables::Union{Symbol_input,String_input} = :all_including_auxilliary, 
+    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     shocks::Union{Symbol_input,String_input} = :all, 
     data_in_levels::Bool = true,
     shock_decomposition::Bool = false,
@@ -107,7 +107,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
-    reference_steady_state, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
     data = data(sort(axiskeys(data,1)))
     
@@ -351,8 +351,8 @@ plot_irf(RBC)
 """
 function plot_irf(𝓂::ℳ;
     periods::Int = 40, 
-    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
-    variables::Union{Symbol_input,String_input} = :all,
+    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
+    variables::Union{Symbol_input,String_input} = :all_excluding_auxilliary_and_obc,
     parameters = nothing,
     show_plots::Bool = true,
     save_plots::Bool = false,
@@ -363,6 +363,7 @@ function plot_irf(𝓂::ℳ;
     negative_shock::Bool = false,
     generalised_irf::Bool = false,
     initial_state::Vector{Float64} = [0.0],
+    ignore_obc::Bool = false,
     verbose::Bool = false)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -377,9 +378,7 @@ function plot_irf(𝓂::ℳ;
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
-    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
-
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
     full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
     full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
@@ -434,6 +433,20 @@ function plot_irf(𝓂::ℳ;
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
+    if ignore_obc
+        occasionally_binding_constraints = false
+    else
+        occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
+    end
+
+    if occasionally_binding_constraints #&& 
+        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraints only compatible with first order perturbation solutions."
+
+        solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 1, verbose = false, dynamics = true, algorithm = algorithm)
+    end
+    
+    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
+
     if generalised_irf
         Y = girf(state_update, 
                     SSS_delta, 
@@ -447,17 +460,132 @@ function plot_irf(𝓂::ℳ;
                     variables = variables, 
                     negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
     else
-        Y = irf(state_update, 
-                initial_state, 
-                zeros(𝓂.timings.nVars), 
-                pruning, 
-                unspecified_initial_state,
-                𝓂.timings; 
-                algorithm = algorithm,
-                periods = periods, 
-                shocks = shocks, 
-                variables = variables, 
-                negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        if occasionally_binding_constraints
+            function obc_state_update(present_states::Vector{R}, present_shocks::Vector{R}, state_update::Function, algorithm::Symbol, model::JuMP.Model, x::Vector{JuMP.VariableRef}) where R <: Float64
+                # this function takes the previous state and shocks, updates it and calculates the shocks enforcing the constraint for the current period
+                unconditional_forecast_horizon = 𝓂.max_obc_horizon
+
+                reference_steady_state = 𝓂.solution.non_stochastic_steady_state
+
+                obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+
+                periods_per_shock = 𝓂.max_obc_horizon + 1
+                
+                num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
+
+                constraints_violated = any(JuMP.value.(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))) .> eps(Float32))
+                
+                if constraints_violated
+                    # Now loop through obc_shock_bounds to set the bounds on these variables.
+                    # maxmin_indicators = 𝓂.obc_violation_function(x, present_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2]
+                    # for (idx, v) in enumerate(maxmin_indicators)
+                    #     idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
+                    #     if v
+                    # #         if 𝓂.obc_violation_function(x, present_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
+                    #         JuMP.set_upper_bound.(x[idxs], 0)
+                    # #             JuMP.set_lower_bound.(x[idxs], 0)
+                    #     else
+                    # #             JuMP.set_upper_bound.(x[idxs], 0)
+                    #         JuMP.set_lower_bound.(x[idxs], 0)
+                    #     end
+                    # #     # else
+                    # #     #     if 𝓂.obc_violation_function(x, present_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
+                    # #     #         JuMP.set_lower_bound.(x[idxs], 0)
+                    # #     #     else
+                    # #     #         JuMP.set_upper_bound.(x[idxs], 0)
+                    # #     #     end
+                    # #     # end
+                    # end
+
+                    JuMP.@constraint(model, con, 𝓂.obc_violation_function(x, present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks)) .<= 0)
+
+                    JuMP.optimize!(model)
+                    
+                    solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED]
+
+                    if !solved
+                        for opt in [:LD_SLSQP, :LD_MMA, :LN_COBYLA]
+                            # @info "Using $opt solver."
+
+                            JuMP.set_optimizer(model, NLopt.Optimizer)
+
+                            JuMP.set_attribute(model, "algorithm", opt)
+
+                            JuMP.optimize!(model)
+
+                            solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED] && !(any(JuMP.value.(𝓂.obc_violation_function(JuMP.value.(x), present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))) .> eps(Float32)))
+
+                            if solved break end
+                        end
+                    end
+                    
+                    present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= JuMP.value.(x)
+
+                    JuMP.delete(model, con)
+
+                    JuMP.unregister(model, :con)
+
+                    JuMP.set_optimizer(model, MadNLP.Optimizer)
+
+                    # JuMP.set_attribute(model, "tol", 1e-12)
+                else
+                    solved = true
+                end
+
+                present_states = state_update(present_states,JuMP.value.(present_shocks))
+
+                return present_states, present_shocks, solved, model, x
+            end
+
+            model = JuMP.Model()
+
+            JuMP.set_optimizer(model, MadNLP.Optimizer)
+
+            # JuMP.set_attribute(model, "tol", 1e-12)
+
+            JuMP.set_silent(model)
+
+            obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+
+            periods_per_shock = 𝓂.max_obc_horizon + 1
+
+            num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
+
+            JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
+
+            JuMP.@objective(model, Min, x' * ℒ.I * x)
+
+            Y =  irf(state_update,
+                    obc_state_update,
+                    model,
+                    x,
+                    initial_state, 
+                    zeros(𝓂.timings.nVars), 
+                    pruning,
+                    unspecified_initial_state,
+                    𝓂.timings; 
+                    algorithm = algorithm,
+                    periods = periods, 
+                    shocks = shocks, 
+                    variables = variables, 
+                    negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        else
+            Y = irf(state_update, 
+                    initial_state, 
+                    zeros(𝓂.timings.nVars), 
+                    pruning,
+                    unspecified_initial_state,
+                    𝓂.timings; 
+                    algorithm = algorithm,
+                    periods = periods, 
+                    shocks = shocks, 
+                    variables = variables, 
+                    negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        end
+    end
+
+    if occasionally_binding_constraints #&& algorithm ∈ [:pruned_second_order, :second_order, :pruned_third_order, :third_order]
+        solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
     end
 
     if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
@@ -609,6 +737,11 @@ plot_irfs = plot_irf
 Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
 """
 plot_simulations(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
+
+"""
+Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
+"""
+plot_simulation(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
 
 
 """
@@ -895,6 +1028,7 @@ function plot_solution(𝓂::ℳ,
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
                             parameters = parameters,
+                            variables = :all,
                             verbose = verbose)
 
     SS_and_std[1] = SS_and_std[1] isa KeyedArray ? axiskeys(SS_and_std[1],1) isa Vector{String} ? rekey(SS_and_std[1], 1 => axiskeys(SS_and_std[1],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[1] : SS_and_std[1]
@@ -1282,7 +1416,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     initial_state::Vector{Float64} = [0.0],
     periods::Int = 40, 
     parameters = nothing,
-    variables::Union{Symbol_input,String_input} = :all_including_auxilliary, 
+    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     conditions_in_levels::Bool = true,
     levels::Bool = false,
     show_plots::Bool = true,
@@ -1321,7 +1455,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
 
-    NSSS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (𝓂.solution.non_stochastic_steady_state, eps())
+    NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
     
     var_names = axiskeys(Y,1)   
 

@@ -1,10 +1,10 @@
 using SparseArrays
 using MacroModelling
 import MacroModelling: timings
-using ForwardDiff, FiniteDifferences, Zygote
-import Optim, LineSearches
+using ForwardDiff
 import LinearAlgebra as ℒ
-
+using FiniteDifferences, Zygote
+import Optim, LineSearches
 
 @testset verbose = true "Basic model solution and std" begin
     Random.seed!(3)
@@ -57,7 +57,7 @@ import LinearAlgebra as ℒ
 end
 
 
-SS_and_pars, _ = RBC_CME.SS_solve_func(RBC_CME.parameter_values, RBC_CME, true)
+SS_and_pars, _ = RBC_CME.SS_solve_func(RBC_CME.parameter_values, RBC_CME, true, false, RBC_CME.solver_parameters)
 
 get_irf(RBC_CME, algorithm = :third_order)
 get_irf(RBC_CME, algorithm = :pruned_third_order)
@@ -712,3 +712,13 @@ end
 end
 m = nothing
 𝓂 = nothing
+
+
+
+@testset verbose = true "Occasionally binding constraints" begin
+    include("../models/Gali_2015_chapter_3_obc.jl")
+
+    sims = simulate(Gali_2015_chapter_3_obc, variables = :R)
+
+    @test isapprox(minimum(sims), 1, atol = eps(Float32))
+end
