@@ -21,19 +21,46 @@ jobs:
           - windows-latest
         arch:
           - x64
+        test_env_var:
+          - "estimation"
+          - "higher_order"
+          - "plots"
+          - "basic"
         include:
           - os: ubuntu-latest
             prefix: xvfb-run
           - version: '1.8'
             os: ubuntu-latest
             arch: x64
+            test_env_var: "basic"
+          - version: '1.8'
+            os: ubuntu-latest
+            arch: x64
+            test_env_var: "plots"
           - version: '^1.10.0-0'
             os: ubuntu-latest
             arch: x64
+            test_env_var: "estimation"
+            allow_failure: true
+          - version: '^1.10.0-0'
+            os: ubuntu-latest
+            arch: x64
+            test_env_var: "higher_order"
+            allow_failure: true
+          - version: '^1.10.0-0'
+            os: ubuntu-latest
+            arch: x64
+            test_env_var: "plots"
+            allow_failure: true
+          - version: '^1.10.0-0'
+            os: ubuntu-latest
+            arch: x64
+            test_env_var: "basic"
             allow_failure: true
           - version: 'nightly'
             os: ubuntu-latest
             arch: x64
+            test_env_var: "basic"
             allow_failure: true
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +68,8 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
+      - name: Set Custom Test Environment Variable
+        run: echo "TEST_ENV_VAR=${{ matrix.test_env_var }}" >> $GITHUB_ENV
       - name: Set JULIA_NUM_THREADS for Julia 1.9 on Ubuntu
         if: matrix.version == '1.9' && matrix.os == 'ubuntu-latest'
         run: echo "JULIA_NUM_THREADS=2" >> $GITHUB_ENV
