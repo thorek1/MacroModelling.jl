@@ -25,6 +25,12 @@ end
 
 if test_env_var == "higher_order"
     plots = true
+    test_higher_order = true
+
+    @testset verbose = true "Test various models: NSSS and 1st order solution" begin
+        include("test_models.jl")
+    end
+    GC.gc()
 
     @testset verbose = true "FS2000 second order" begin
         include("../models/FS2000.jl")
@@ -209,6 +215,12 @@ end
 
 if test_env_var == "basic"
     plots = false
+    test_higher_order = false
+
+    @testset verbose = true "Test various models: NSSS and 1st order solution" begin
+        include("test_models.jl")
+    end
+    GC.gc()
 
     @testset verbose = true "Code quality (Aqua.jl)" begin
         # Aqua.test_all(MacroModelling)
@@ -229,10 +241,6 @@ if test_env_var == "basic"
         end
     end
 
-    @testset verbose = true "Test various models: NSSS and 1st order solution" begin
-        include("test_models.jl")
-    end
-    GC.gc()
     
     @testset verbose = true "Standalone functions" begin
         include("test_standalone_function.jl")
