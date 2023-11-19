@@ -374,7 +374,7 @@ function calculate_kalman_filter_loglikelihoods(𝓂::ℳ, data::AbstractArray{F
         end
     end
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, true, verbose)
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     if solution_error > tol || isnan(solution_error)
         return -Inf
@@ -473,7 +473,7 @@ function calculate_kalman_filter_loglikelihoods(𝓂::ℳ, data::AbstractArray{F
         end
     end
 
-    SS_and_pars, solution_error = 𝓂.SS_solve_func(parameters, 𝓂, true, verbose)
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     if solution_error > tol || isnan(solution_error)
         return -Inf
