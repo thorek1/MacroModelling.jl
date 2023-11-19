@@ -505,7 +505,7 @@ function plot_irf(𝓂::ℳ;
 
                     if !solved
                         for opt in [:LD_SLSQP, :LD_MMA, :LN_COBYLA]
-                            @info "Using $opt solver."
+                            # @info "Using $opt solver."
 
                             JuMP.set_optimizer(model, NLopt.Optimizer)
 
