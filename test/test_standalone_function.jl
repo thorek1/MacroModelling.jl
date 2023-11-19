@@ -712,3 +712,13 @@ end
 end
 m = nothing
 𝓂 = nothing
+
+
+
+@testset verbose = true "Occasionally binding constraints" begin
+    include("../models/Gali_2015_chapter_3_obc.jl")
+
+    sims = simulate(Gali_2015_chapter_3_obc, variables = :R)
+
+    @test isapprox(minimum(sims), 1, atol = eps(Float32))
+end
