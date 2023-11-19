@@ -461,7 +461,7 @@ function plot_irf(𝓂::ℳ;
                     negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
     else
         if occasionally_binding_constraints
-            function obc_state_update(past_states::Vector{R}, past_shocks::Vector{R}, present_shocks::Vector{R}, state_update::Function, algorithm::Symbol, model::JuMP.Model, x::Vector{JuMP.VariableRef}) where R <: Float64
+            function obc_state_update(present_states::Vector{R}, present_shocks::Vector{R}, state_update::Function, algorithm::Symbol, model::JuMP.Model, x::Vector{JuMP.VariableRef}) where R <: Float64
                 # this function takes the previous state and shocks, updates it and calculates the shocks enforcing the constraint for the current period
                 unconditional_forecast_horizon = 𝓂.max_obc_horizon
 
@@ -473,15 +473,15 @@ function plot_irf(𝓂::ℳ;
                 
                 num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
 
-                constraints_violated = any(JuMP.value.(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), past_states, past_shocks, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1]) .> eps(Float32))
+                constraints_violated = any(JuMP.value.(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))) .> eps(Float32))
                 
                 if constraints_violated
                     # Now loop through obc_shock_bounds to set the bounds on these variables.
-                    # maxmin_indicators = 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2]
+                    # maxmin_indicators = 𝓂.obc_violation_function(x, present_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2]
                     # for (idx, v) in enumerate(maxmin_indicators)
                     #     idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
                     #     if v
-                    # #         if 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
+                    # #         if 𝓂.obc_violation_function(x, present_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
                     #         JuMP.set_upper_bound.(x[idxs], 0)
                     # #             JuMP.set_lower_bound.(x[idxs], 0)
                     #     else
@@ -489,7 +489,7 @@ function plot_irf(𝓂::ℳ;
                     #         JuMP.set_lower_bound.(x[idxs], 0)
                     #     end
                     # #     # else
-                    # #     #     if 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
+                    # #     #     if 𝓂.obc_violation_function(x, present_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
                     # #     #         JuMP.set_lower_bound.(x[idxs], 0)
                     # #     #     else
                     # #     #         JuMP.set_upper_bound.(x[idxs], 0)
@@ -497,7 +497,7 @@ function plot_irf(𝓂::ℳ;
                     # #     # end
                     # end
 
-                    JuMP.@constraint(model, con, 𝓂.obc_violation_function(x, past_states, past_shocks, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1] .<= 0)
+                    JuMP.@constraint(model, con, 𝓂.obc_violation_function(x, present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks)) .<= 0)
 
                     JuMP.optimize!(model)
                     
@@ -513,7 +513,7 @@ function plot_irf(𝓂::ℳ;
 
                             JuMP.optimize!(model)
 
-                            solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED] && !(any(JuMP.value.(𝓂.obc_violation_function(JuMP.value.(x), past_states, past_shocks, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[1]) .> eps(Float32)))
+                            solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED] && !(any(JuMP.value.(𝓂.obc_violation_function(JuMP.value.(x), present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))) .> eps(Float32)))
 
                             if solved break end
                         end
@@ -532,7 +532,7 @@ function plot_irf(𝓂::ℳ;
                     solved = true
                 end
 
-                present_states = state_update(past_states,JuMP.value.(past_shocks))
+                present_states = state_update(present_states,JuMP.value.(present_shocks))
 
                 return present_states, present_shocks, solved, model, x
             end

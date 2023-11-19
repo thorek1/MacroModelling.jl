@@ -253,82 +253,28 @@ end
 
 
 function set_up_obc_violation_function!(𝓂)
-    future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
-    past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
-    ss_varss      = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎$")))
 
-    sort!(future_varss  ,by = x->replace(string(x),r"₍₁₎$"=>""))
     sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
-    sort!(past_varss    ,by = x->replace(string(x),r"₍₋₁₎$"=>""))
-    sort!(ss_varss      ,by = x->replace(string(x),r"₍ₛₛ₎$"=>""))
 
     # write indices in auxiliary objects
-    dyn_var_future_list  = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎")))
     dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎")))
-    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎")))
-    dyn_exo_list         = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎")))
-    dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎")))
 
-    dyn_var_future  = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_future_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
     dyn_var_present = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_present_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-    dyn_var_past    = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_past_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-    dyn_exo         = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_exo_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-    dyn_ss          = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_ss_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
 
     SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
 
-    dyn_var_future_idx  = indexin(dyn_var_future    , SS_and_pars_names)
     dyn_var_present_idx = indexin(dyn_var_present   , SS_and_pars_names)
-    dyn_var_past_idx    = indexin(dyn_var_past      , SS_and_pars_names)
-    dyn_ss_idx          = indexin(dyn_ss            , SS_and_pars_names)
 
     alll = []
-    for (i,var) in enumerate(future_varss)
-        push!(alll,:($var = Y[$(dyn_var_future_idx[i]),3:end]))
-    end
-
     for (i,var) in enumerate(present_varss)
-        push!(alll,:($var = Y[$(dyn_var_present_idx[i]),2:end-1]))
-    end
-
-    for (i,var) in enumerate(past_varss)
-        push!(alll,:($var = Y[$(dyn_var_past_idx[i]),1:end-2]))
-    end
-
-    steady_state = []
-    for (i, var) in enumerate(ss_varss)
-        push!(steady_state,:($var = reference_steady_state[$(dyn_ss_idx[i])]))
-    end
-
-    paras = []
-    for (i, parss) in enumerate(𝓂.parameters)
-        push!(paras,:($parss = 𝓂.parameter_values[$i]))
-    end
-    for (i, parss) in enumerate(𝓂.calibration_equations_parameters)
-        push!(paras,:($parss = reference_steady_state[$(𝓂.timings.nVars + i)]))
-    end
-
-    obc_idxs = Set()
-
-    mult1 = findall(x->contains(string(x), "Χᵒᵇᶜ") , 𝓂.var)
-    if length(mult1) > 0
-        push!(obc_idxs, mult1...)
-    end
-
-    mult2 = findall(x->contains(string(x), "χᵒᵇᶜ") , 𝓂.var)
-    if length(mult2) > 0
-        push!(obc_idxs, mult2...)
-    end
-    
-    steady_state_obc = []
-    for i in obc_idxs
-        push!(steady_state_obc,:($(𝓂.var[i]) = reference_steady_state[$i]))
+        if !(match(r"^χᵒᵇᶜ", string(var)) === nothing)
+            push!(alll,:($var = Y[$(dyn_var_present_idx[i]),1:end]))
+        end
     end
 
     calc_obc_violation = :(function calculate_obc_violation(x::Vector, 
-                                                                past_initial_state,
-                                                                past_shocks,
+                                                                initial_state,
                                                                 state_update, 
                                                                 reference_steady_state, 
                                                                 𝓂, 
@@ -347,34 +293,28 @@ function set_up_obc_violation_function!(𝓂)
 
         # Y = zeros(Ytype, T.nVars, periods+2)
 
-        Y = zeros(JuMP.AffExpr, T.nVars, periods+2)
+        Y = zeros(JuMP.AffExpr, T.nVars, periods+1)
 
         shock_values[contains.(string.(T.exo),"ᵒᵇᶜ")] .= x
 
         zero_shock = zero(shock_values)
 
-        Y[:,1] = state_update(past_initial_state, past_shocks)
+        Y[:,1] = state_update(initial_state, shock_values)
 
-        Y[:,2] = state_update(Y[:,1], shock_values)
-
-        for t in 2:periods+1
+        for t in 1:periods
             Y[:,t+1] = state_update(Y[:,t], zero_shock)
         end
 
         Y .+= reference_steady_state[1:T.nVars]
 
         $(alll...)
-        $(paras...)
-        $(𝓂.calibration_equations_no_var...)
-        $(steady_state...)
-        $(steady_state_obc...)
 
         constraint_values = Vector[]
-        shock_sign_indicators = Bool[]
+        # shock_sign_indicators = Bool[]
 
         $(𝓂.obc_violation_equations...)
 
-        return vcat(constraint_values...), shock_sign_indicators
+        return vcat(constraint_values...)#, shock_sign_indicators
     end)
 
     𝓂.obc_violation_function = @RuntimeGeneratedFunction(calc_obc_violation)
@@ -462,13 +402,13 @@ function write_obc_violation_equations(𝓂)
                                             # push!(cond1, :(push!(constraint_values, min.($(x.args[3].args[2]), $(x.args[3].args[3])))))
                                         end
 
-                                        if maximisation
-                                            push!(cond1, :(push!(shock_sign_indicators, true)))
-                                            # push!(cond2, :(push!(shock_sign_indicators, true)))
-                                        else
-                                            push!(cond1, :(push!(shock_sign_indicators, false)))
-                                            # push!(cond2, :(push!(shock_sign_indicators, false)))
-                                        end
+                                        # if maximisation
+                                        #     push!(cond1, :(push!(shock_sign_indicators, true)))
+                                        #     # push!(cond2, :(push!(shock_sign_indicators, true)))
+                                        # else
+                                        #     push!(cond1, :(push!(shock_sign_indicators, false)))
+                                        #     # push!(cond2, :(push!(shock_sign_indicators, false)))
+                                        # end
 
                                         # :(if isapprox($plchldr, $ineq_plchldr_1, atol = 1e-12)
                                         #     $(Expr(:block, cond1...))
@@ -4661,35 +4601,21 @@ function irf(state_update::Function,
                 end
             end
         else
-            past_states, past_shocks, solved, model, x = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1], state_update, algorithm, model, x)
+            past_states = initial_state
+            always_solved = true
+            
+            for t in 1:periods
+                past_states, past_shocks, solved, model, x  = obc_state_update(past_states, shock_history[:,t], state_update, algorithm, model, x)
 
-            always_solved = solved
-            if !solved 
-                @warn "No solution at iteration 1"
-            else
-                for t in 2:periods
-                    past_states, past_shocks, solved, model, x  = obc_state_update(past_states, past_shocks, shock_history[:,t], state_update, algorithm, model, x)
+                if !solved @warn "No solution at iteration $t" end
 
-                    if !solved @warn "No solution at iteration $t" end
+                always_solved = always_solved && solved
 
-                    always_solved = always_solved && solved
+                if !always_solved break end
 
-                    if !always_solved break end
-
-                    Y[:,t-1,1] = past_states
-                    shock_history[:,t] = past_shocks
-
-                end
+                Y[:,t,1] = past_states
+                shock_history[:,t] = past_shocks
             end
-
-            if always_solved
-                Y[:,periods,1] = state_update(past_states,past_shocks)
-            end
-        #     Y[:,1,1] = state_update(initial_state,shock_history[:,1])
-
-        #     for t in 1:periods-1
-        #         Y[:,t+1,1] = state_update(Y[:,t,1],shock_history[:,t+1])
-        #     end
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:simulate])
@@ -4717,28 +4643,19 @@ function irf(state_update::Function,
             end
         else 
             past_states = initial_state
-            past_shocks = shck 
-            
             always_solved = true
             
-            for t in 2:periods
-                past_states, past_shocks, solved, model, x  = obc_state_update(past_states, past_shocks, shck, state_update, algorithm, model, x)
+            for t in 1:periods
+                past_states, _, solved, model, x  = obc_state_update(past_states, shck, state_update, algorithm, model, x)
 
                 if !solved @warn "No solution at iteration $t" end
+
                 always_solved = always_solved && solved
+
                 if !always_solved break end
 
-                Y[:,t-1,1] = past_states
+                Y[:,t,1] = past_states
             end
-
-            if always_solved
-                Y[:,periods,1] = state_update(past_states,past_shocks)
-            end
-            # Y[:,1,1] = state_update(initial_state,shck)
-    
-            # for t in 1:periods-1
-            #     Y[:,t+1,1] = state_update(Y[:,t,1],shck)
-            # end
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
@@ -4769,36 +4686,21 @@ function irf(state_update::Function,
                     end
                 end
             else
-                past_states, past_shocks, solved, model, x = obc_state_update(initial_state, zero(shock_history[:,1]), shock_history[:,1], state_update, algorithm, model, x)
-
-                always_solved = solved
-
-                if !solved 
-                    @warn "No solution at iteration 1"
-                else
-                    for t in 2:periods
-                        past_states, past_shocks, solved, model, x  = obc_state_update(past_states, past_shocks, shock_history[:,t], state_update, algorithm, model, x)
-
-                        if !solved @warn "No solution at iteration $t" end
-
-                        always_solved = always_solved && solved
-
-                        if !always_solved break end
-
-                        Y[:,t-1,i] = past_states
-                        shock_history[:,t] = past_shocks
-
-                    end
+                past_states = initial_state
+                always_solved = true
+                
+                for t in 1:periods
+                    past_states, past_shocks, solved, model, x  = obc_state_update(past_states, shock_history[:,t], state_update, algorithm, model, x)
+    
+                    if !solved @warn "No solution at iteration $t" end
+    
+                    always_solved = always_solved && solved
+    
+                    if !always_solved break end
+    
+                    Y[:,t,1] = past_states
+                    shock_history[:,t] = past_shocks
                 end
-
-                if always_solved
-                    Y[:,periods,i] = state_update(past_states,past_shocks)
-                end
-                # Y[:,1,i] = state_update(initial_state,shock_history[:,1])
-
-                # for t in 1:periods-1
-                #     Y[:,t+1,i] = state_update(Y[:,t,i],shock_history[:,t+1])
-                # end
             end
         end
 
