@@ -2,7 +2,6 @@
 
 ## High priority
 
-- [ ] add obc tests
 - [ ] add technical details about SS solver, obc solver, and other algorithms
 - [ ] rm obc vars from get_SS
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
@@ -72,6 +71,7 @@
 - [x] check if higher order effects might distort results for autocorr (problem with order deffinition) - doesnt seem to be the case; full_covar yields same result
 - [x] implement occasionally binding constraints with shocks
 - [x] add QUEST3 tests
+- [x] add obc tests
 - [x] highlight NUTS sampler compatibility
 - [x] differentiate more vs diffstatespace
 - [x] reorder other toolboxes according to popularity
