@@ -4716,21 +4716,19 @@ function irf(state_update::Function,
                 end
             end
         else 
-            past_states, past_shocks, solved, model, x = obc_state_update(initial_state, shck, shck, state_update, algorithm, model, x)
+            past_states = initial_state
+            past_shocks = shck 
+            
+            always_solved = true
+            
+            for t in 2:periods
+                past_states, past_shocks, solved, model, x  = obc_state_update(past_states, past_shocks, shck, state_update, algorithm, model, x)
 
-            always_solved = solved
-            if !solved 
-                @warn "No solution at iteration 1"
-            else
-                for t in 2:periods
-                    past_states, past_shocks, solved, model, x  = obc_state_update(past_states, past_shocks, shck, state_update, algorithm, model, x)
+                if !solved @warn "No solution at iteration $t" end
+                always_solved = always_solved && solved
+                if !always_solved break end
 
-                    if !solved @warn "No solution at iteration $t" end
-                    always_solved = always_solved && solved
-                    if !always_solved break end
-
-                    Y[:,t-1,1] = past_states
-                end
+                Y[:,t-1,1] = past_states
             end
 
             if always_solved

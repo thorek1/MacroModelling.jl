@@ -462,6 +462,7 @@ function plot_irf(𝓂::ℳ;
     else
         if occasionally_binding_constraints
             function obc_state_update(past_states::Vector{R}, past_shocks::Vector{R}, present_shocks::Vector{R}, state_update::Function, algorithm::Symbol, model::JuMP.Model, x::Vector{JuMP.VariableRef}) where R <: Float64
+                # this function takes the previous state and shocks, updates it and calculates the shocks enforcing the constraint for the current period
                 unconditional_forecast_horizon = 𝓂.max_obc_horizon
 
                 reference_steady_state = 𝓂.solution.non_stochastic_steady_state
