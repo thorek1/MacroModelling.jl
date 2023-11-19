@@ -8,6 +8,7 @@ using JET
 
 test_env_var = ENV["TEST_ENV_VAR"]
 
+println("Running test set: $test_env_var")
 println("Threads used: ", Threads.nthreads())
 
 include("functionality_tests.jl")
