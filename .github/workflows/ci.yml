@@ -21,7 +21,7 @@ jobs:
           - windows-latest
         arch:
           - x64
-        test_env_var:
+        test_set:
           - "estimation"
           - "higher_order"
           - "plots"
@@ -32,44 +32,48 @@ jobs:
           - version: '1.8'
             os: ubuntu-latest
             arch: x64
-            test_env_var: "basic"
+            test_set: "basic"
           - version: '1.8'
             os: ubuntu-latest
             arch: x64
-            test_env_var: "plots"
+            test_set: "plots"
           - version: '^1.10.0-0'
             os: ubuntu-latest
             arch: x64
-            test_env_var: "estimation"
+            test_set: "estimation"
             allow_failure: true
           - version: '^1.10.0-0'
             os: ubuntu-latest
             arch: x64
-            test_env_var: "higher_order"
+            test_set: "higher_order"
             allow_failure: true
           - version: '^1.10.0-0'
             os: ubuntu-latest
             arch: x64
-            test_env_var: "plots"
+            test_set: "plots"
             allow_failure: true
           - version: '^1.10.0-0'
             os: ubuntu-latest
             arch: x64
-            test_env_var: "basic"
+            test_set: "basic"
             allow_failure: true
           - version: 'nightly'
             os: ubuntu-latest
             arch: x64
-            test_env_var: "basic"
+            test_set: "basic"
             allow_failure: true
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v1
         with:
           version: ${{ matrix.version }}
-          arch: ${{ matrix.arch }}
+          arch: ${{ matrix.arch }}  
       - name: Set Custom Test Environment Variable
-        run: echo "TEST_ENV_VAR=${{ matrix.test_env_var }}" >> $GITHUB_ENV
+        if: matrix.os == 'windows-latest'
+        run: echo "TEST_SET=${{ matrix.test_set }}" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+      - name: Set Custom Test Environment Variable (Unix)
+        if: matrix.os != 'windows-latest'
+        run: echo "TEST_SET=${{ matrix.test_set }}" >> $GITHUB_ENV
       - name: Set JULIA_NUM_THREADS for Julia 1.9 on Ubuntu
         if: matrix.version == '1.9' && matrix.os == 'ubuntu-latest'
         run: echo "JULIA_NUM_THREADS=2" >> $GITHUB_ENV

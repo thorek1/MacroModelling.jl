@@ -6,9 +6,9 @@ import StatsPlots, Turing # has to come before Aqua, otherwise exports are not r
 using Aqua
 using JET
 
-test_env_var = ENV["TEST_ENV_VAR"]
+test_set = ENV["TEST_SET"]
 
-println("Running test set: $test_env_var")
+println("Running test set: $test_set")
 println("Threads used: ", Threads.nthreads())
 
 include("functionality_tests.jl")
@@ -19,11 +19,11 @@ include("functionality_tests.jl")
 # end
 
 
-if test_env_var == "estimation"
+if test_set == "estimation"
     include("test_estimation.jl")
 end
 
-if test_env_var == "higher_order"
+if test_set == "higher_order"
     plots = true
     test_higher_order = true
 
@@ -121,7 +121,7 @@ end
 
 
 
-if test_env_var == "plots"
+if test_set == "plots"
     plots = true
 
     @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
@@ -213,14 +213,9 @@ end
 
 
 
-if test_env_var == "basic"
+if test_set == "basic"
     plots = false
     test_higher_order = false
-
-    @testset verbose = true "Test various models: NSSS and 1st order solution" begin
-        include("test_models.jl")
-    end
-    GC.gc()
 
     @testset verbose = true "Code quality (Aqua.jl)" begin
         # Aqua.test_all(MacroModelling)
@@ -241,7 +236,11 @@ if test_env_var == "basic"
         end
     end
 
-    
+    @testset verbose = true "Test various models: NSSS and 1st order solution" begin
+        include("test_models.jl")
+    end
+    GC.gc()
+
     @testset verbose = true "Standalone functions" begin
         include("test_standalone_function.jl")
     end
