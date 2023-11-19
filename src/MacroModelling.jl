@@ -431,22 +431,22 @@ function write_obc_violation_equations(𝓂)
     return eqs
 end
 
-function parse_obc_shock_bounds(expr::Expr)
-    # Determine the order of the shock and bound in the expression
-    shock_first = isa(expr.args[2], Symbol)
+# function parse_obc_shock_bounds(expr::Expr)
+#     # Determine the order of the shock and bound in the expression
+#     shock_first = isa(expr.args[2], Symbol)
     
-    # Extract the shock and bound from the expression
-    shock = shock_first ? expr.args[2] : expr.args[3]
-    bound_expr = shock_first ? expr.args[3] : expr.args[2]
+#     # Extract the shock and bound from the expression
+#     shock = shock_first ? expr.args[2] : expr.args[3]
+#     bound_expr = shock_first ? expr.args[3] : expr.args[2]
     
-    # Evaluate the bound expression to get a numerical value
-    bound = eval(bound_expr) |> Float64
+#     # Evaluate the bound expression to get a numerical value
+#     bound = eval(bound_expr) |> Float64
     
-    # Determine whether the bound is a lower or upper bound based on the comparison operator and order
-    is_upper_bound = (expr.args[1] in (:<, :≤) && shock_first) || (expr.args[1] in (:>, :≥) && !shock_first)
+#     # Determine whether the bound is a lower or upper bound based on the comparison operator and order
+#     is_upper_bound = (expr.args[1] in (:<, :≤) && shock_first) || (expr.args[1] in (:>, :≥) && !shock_first)
     
-    return shock, is_upper_bound, bound
-end
+#     return shock, is_upper_bound, bound
+# end
 
 
 

@@ -117,7 +117,7 @@ macro model(𝓂,ex...)
 
     model_ex = parse_occasionally_binding_constraints(model_ex, max_obc_horizon = max_obc_horizon)
     
-    obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
+    # obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
 
     # write down dynamic equations and add auxilliary variables for leads and lags > 1
     for (i,arg) in enumerate(model_ex.args)
@@ -860,7 +860,7 @@ macro model(𝓂,ex...)
                         $T,
 
                         Expr[],
-                        $obc_shock_bounds,
+                        # $obc_shock_bounds,
                         $max_obc_horizon,
                         x->x,
 
