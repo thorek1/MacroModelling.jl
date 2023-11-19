@@ -3,7 +3,7 @@ module MacroModelling
 
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 # import StatsFuns: normcdf
-import ThreadedSparseArrays
+# import ThreadedSparseArrays
 using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
@@ -5277,7 +5277,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     if length(coords) == 1
         lengthA = length(coords[1][1])
         vA = ABC[1:lengthA]
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         C = reshape(ABC[lengthA+1:end],dims[2]...)
         if solver != :doubling
             B = A'
@@ -5290,9 +5290,9 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         vB = ABC[lengthA .+ (1:lengthB)]
         vC = ABC[lengthA + lengthB + 1:end]
 
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        B = sparse(coords[2]...,vB,dims[2]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        C = sparse(coords[3]...,vC,dims[3]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
     else
         lengthA = dims[1][1] * dims[1][2]
         A = reshape(ABC[1:lengthA],dims[1]...)
@@ -5385,10 +5385,10 @@ function solve_matrix_equation_conditions(ABC::Vector{<: Real},
     if length(coords) == 1
         lengthA = length(coords[1][1])
         vA = ABC[1:lengthA]
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         C = reshape(ABC[lengthA+1:end],dims[2]...)
         if solver != :doubling
-            B = A' |> sparse |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+            B = A' |> sparse# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         end
     elseif length(coords) == 3
         lengthA = length(coords[1][1])
@@ -5398,9 +5398,9 @@ function solve_matrix_equation_conditions(ABC::Vector{<: Real},
         vB = ABC[lengthA .+ (1:lengthB)]
         vC = ABC[lengthA + lengthB + 1:end]
 
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        B = sparse(coords[2]...,vB,dims[2]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        C = sparse(coords[3]...,vC,dims[3]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
     else
         lengthA = dims[1][1] * dims[1][2]
         A = reshape(ABC[1:lengthA],dims[1]...)
@@ -5437,11 +5437,11 @@ function solve_matrix_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
         lengthA = length(coords[1][1])
 
         vA = ABC[1:lengthA]
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         # C = reshape(ABC[lengthA+1:end],dims[2]...)
         droptol!(A,eps())
 
-        B = sparse(A') |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        B = sparse(A')# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
         partials = zeros(dims[1][1] * dims[1][2] + dims[2][1] * dims[2][2], size(partial_values,2))
         partials[vcat(coords[1][1] + (coords[1][2] .- 1) * dims[1][1], dims[1][1] * dims[1][2] + 1:end),:] = partial_values
@@ -5464,9 +5464,9 @@ function solve_matrix_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
         vB = ABC[lengthA .+ (1:lengthB)]
         # vC = ABC[lengthA + lengthB + 1:end]
 
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        # C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        B = sparse(coords[2]...,vB,dims[2]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        # C = sparse(coords[3]...,vC,dims[3]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
         partials = spzeros(dims[1][1] * dims[1][2] + dims[2][1] * dims[2][2] + dims[3][1] * dims[3][2], size(partial_values,2))
         partials[vcat(
@@ -5492,7 +5492,7 @@ function solve_matrix_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
         A = reshape(ABC[1:lengthA],dims[1]...) |> sparse
         droptol!(A, eps())
         # C = reshape(ABC[lengthA+1:end],dims[2]...)
-        B = sparse(A') |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        B = sparse(A')# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
         partials = partial_values
 
