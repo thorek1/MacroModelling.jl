@@ -2610,7 +2610,9 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
     solve_exp = :(function solve_SS(parameters::Vector{Real}, 
                                     𝓂::ℳ, 
                                     # fail_fast_solvers_only::Bool, 
-                                    verbose::Bool)
+                                    verbose::Bool, 
+                                    cold_start::Union{Bool,Float64},
+                                    solver_parameters::solver_parameters)
 
                     params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                     current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
