@@ -6,6 +6,8 @@ This guide will demonstrate how to write down models containing occasionally bin
 
 Common problems that may occur are that no perturbation solution is found, or that the algorithm cannot find a combination of shocks which enforce the constraint equation. The former has to do with the fact that occasionally binding constraints can give rise to more than one steady state but only one is suitable for a perturbation solution. The latter has to do with the dynamics of the model and the fact that we use a finite amount of shocks to enforce the constraint equation.
 
+Beyond the examples outlined in this guide there is a version of Smets and Wouters (2003) with the ELB in the models folder (filename: `SW03_obc.jl`).
+
 ## Example: Effective lower bound on interest rates
 
 ### Writing a model with occasionally binding constraints
