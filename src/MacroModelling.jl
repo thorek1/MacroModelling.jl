@@ -269,7 +269,7 @@ function set_up_obc_violation_function!(𝓂)
     alll = []
     for (i,var) in enumerate(present_varss)
         if !(match(r"^χᵒᵇᶜ", string(var)) === nothing)
-            push!(alll,:($var = Y[$(dyn_var_present_idx[i]),1:end]))
+            push!(alll,:($var = Y[$(dyn_var_present_idx[i]),1:end-1]))
         end
     end
 
