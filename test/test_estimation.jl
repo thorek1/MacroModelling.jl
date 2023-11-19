@@ -5,7 +5,7 @@ import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL: logjoint
 
-include("models/FS2000.jl")
+include("../models/FS2000.jl")
 
 FS2000 = m
 
