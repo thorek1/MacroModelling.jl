@@ -141,11 +141,9 @@ Making use of this and continuing the example of the Backus, Kehoe and Kydland (
 
 ```@repl howto_loops
 @parameters Backus_Kehoe_Kydland_1992 begin
-    F_H_ratio = .9
-    K{F}[ss] / K{H}[ss] = F_H_ratio | beta{F}
-    K{H}[ss] = 11 | beta{H}
-
-    beta    =    0.99
+    K_ss = 11
+    K[ss] = K_ss | beta
+    
     mu      =    0.34
     gamma   =    -1.0
     alpha   =    1
