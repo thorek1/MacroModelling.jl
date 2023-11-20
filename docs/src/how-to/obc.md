@@ -27,7 +27,7 @@ using MacroModelling
 @model Gali_2015_chapter_3_obc begin
     W_real[0] = C[0] ^ σ * N[0] ^ φ
 
-    [0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
 
     R[0] = 1 / Q[0]
 
