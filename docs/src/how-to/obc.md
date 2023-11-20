@@ -316,13 +316,13 @@ Statistics.std(sims(:Y,:,:))
 Compare this to the theoretical mean of the model without the occasionally binding constraint:
 
 ```@repl howto_obc
-get_mean(Gali_2015_chapter_3_obc)
+get_mean(Gali_2015_chapter_3_obc)(:Y)
 ```
 
 and the theoretical standard deviation:
 
 ```@repl howto_obc
-get_std(Gali_2015_chapter_3_obc)
+get_std(Gali_2015_chapter_3_obc)(:Y)
 ```
 
 The mean of output is lower in the model with effective lower bound compared to the model without and the standard deviation is higher.
