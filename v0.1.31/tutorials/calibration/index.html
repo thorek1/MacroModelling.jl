@@ -88,10 +88,10 @@ Parameters:   16</code></pre><p>First, we load the package and then use the <a h
        
            std_nu = .0025
        
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	1.093 seconds
-Set up non stochastic steady state problem:	0.329 seconds
-Take symbolic derivatives up to first order:	0.111 seconds
-Find non stochastic steady state:	3.751 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	1.159 seconds
+Set up non stochastic steady state problem:	0.336 seconds
+Take symbolic derivatives up to first order:	0.116 seconds
+Find non stochastic steady state:	3.956 seconds
 Model:        Gali_2015
 Variables
  Total:       23
@@ -106,38 +106,38 @@ Parameters:   16</code></pre><p>The block defining the parameters above only des
 And data, <span class="sgr1">23-element Vector{Float64}</span>:
  <span class="sgr35">(:A)</span>              1.0
  <span class="sgr35">(:C)</span>              0.9505798249541407
- <span class="sgr35">(:MC)</span>             0.8888888888888891
- <span class="sgr35">(:M_real)</span>         0.9152363832868884
- <span class="sgr35">(:N)</span>              0.9346552651840673
+ <span class="sgr35">(:MC)</span>             0.8888888888888887
+ <span class="sgr35">(:M_real)</span>         0.9152363832868883
+ <span class="sgr35">(:N)</span>              0.934655265184067
  <span class="sgr35">(:Pi)</span>             1.0000000000000002
  <span class="sgr35">(:Pi_star)</span>        1.0000000000000007
  <span class="sgr35">(:Q)</span>              0.9899999999999997
   ⋮
- <span class="sgr35">(:log_y)</span>         -0.05068313851352055
+ <span class="sgr35">(:log_y)</span>         -0.050683138513520666
  <span class="sgr35">(:nu)</span>             0.0
  <span class="sgr35">(:pi_ann)</span>         8.881784197001251e-16
  <span class="sgr35">(:r_real_ann)</span>     0.0402013434140069
  <span class="sgr35">(:realinterest)</span>   1.0101010101010104
- <span class="sgr35">(:x_aux_1)</span>        3.451995685005422
+ <span class="sgr35">(:x_aux_1)</span>        3.451995685005421
  <span class="sgr35">(:x_aux_2)</span>        3.8834951456310884</code></pre><p>and the standard deviation like this:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_standard_deviation(Gali_2015)</code><code class="nohighlight hljs ansi" style="display:block;">1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 23-element Vector{Symbol}</span>
 And data, <span class="sgr1">23-element Vector{Float64}</span>:
- <span class="sgr35">(:A)</span>             0.022941573387056057
- <span class="sgr35">(:C)</span>             0.03357169677999121
- <span class="sgr35">(:MC)</span>            0.2160908504627274
- <span class="sgr35">(:M_real)</span>        0.05926619832100502
- <span class="sgr35">(:N)</span>             0.03786945958932963
- <span class="sgr35">(:Pi)</span>            0.012358762176561988
- <span class="sgr35">(:Pi_star)</span>       0.03707628652968627
- <span class="sgr35">(:Q)</span>             0.0204685322093599
+ <span class="sgr35">(:A)</span>             0.022941573387055922
+ <span class="sgr35">(:C)</span>             0.03357169677999172
+ <span class="sgr35">(:MC)</span>            0.21609085046272805
+ <span class="sgr35">(:M_real)</span>        0.05926619832101218
+ <span class="sgr35">(:N)</span>             0.03786945958932986
+ <span class="sgr35">(:Pi)</span>            0.012358762176563481
+ <span class="sgr35">(:Pi_star)</span>       0.03707628652969067
+ <span class="sgr35">(:Q)</span>             0.020468532209360978
   ⋮
- <span class="sgr35">(:log_y)</span>         0.03531707269466905
- <span class="sgr35">(:nu)</span>            0.002886751345948129
- <span class="sgr35">(:pi_ann)</span>        0.04943504870624795
- <span class="sgr35">(:r_real_ann)</span>    0.056446450663229605
- <span class="sgr35">(:realinterest)</span>  0.014254154207886267
- <span class="sgr35">(:x_aux_1)</span>       0.9515263512145848
- <span class="sgr35">(:x_aux_2)</span>       0.5166586569328759</code></pre><p>You could also simply use: <code>std</code> or <code>get_std</code> to the same effect.</p><p>Another interesting output is the autocorrelation of the model variables:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_autocorrelation(Gali_2015)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+ <span class="sgr35">(:log_y)</span>         0.03531707269466961
+ <span class="sgr35">(:nu)</span>            0.0028867513459481355
+ <span class="sgr35">(:pi_ann)</span>        0.0494350487062539
+ <span class="sgr35">(:r_real_ann)</span>    0.05644645066322939
+ <span class="sgr35">(:realinterest)</span>  0.014254154207886213
+ <span class="sgr35">(:x_aux_1)</span>       0.9515263512147794
+ <span class="sgr35">(:x_aux_2)</span>       0.5166586569330327</code></pre><p>You could also simply use: <code>std</code> or <code>get_std</code> to the same effect.</p><p>Another interesting output is the autocorrelation of the model variables:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_autocorrelation(Gali_2015)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 23-element Vector{Symbol}</span>
 →   <span class="sgr34">Autocorrelation_orders ∈ 5-element UnitRange{Int64}</span>
 And data, <span class="sgr1">23×5 Matrix{Float64}</span>:
@@ -168,7 +168,7 @@ And data, <span class="sgr1">23×23 Matrix{Float64}</span>:
   <span class="sgr35">(:Pi)</span>            -0.000159411   0.000169707      0.0115462    0.00587158
    ⋮                                           ⋱
   <span class="sgr35">(:log_y)</span>          0.000425097   0.00118565       0.00768558   0.000326461
-  <span class="sgr35">(:nu)</span>            -1.7643e-19   -8.20937e-6      -0.00016948  -5.38539e-5
+  <span class="sgr35">(:nu)</span>             2.29556e-17  -8.20937e-6      -0.00016948  -5.38539e-5
   <span class="sgr35">(:pi_ann)</span>        -0.000637646   0.000678826  …   0.0461849    0.0234863
   <span class="sgr35">(:r_real_ann)</span>    -0.000170039   0.00143464       0.0418524    0.0185996
   <span class="sgr35">(:realinterest)</span>  -4.29391e-5    0.000362283      0.0105688    0.00469687
@@ -180,7 +180,7 @@ And data, <span class="sgr1">23×2 Matrix{Float64}</span>:
                    <span class="sgr35">(:Mean)</span>       <span class="sgr35">(:σ)</span>
   <span class="sgr35">(:A)</span>              1.0           0.0
   <span class="sgr35">(:C)</span>              0.95058       0.0060223
-  <span class="sgr35">(:MC)</span>             0.888889      2.60209e-18
+  <span class="sgr35">(:MC)</span>             0.888889      2.42861e-17
   <span class="sgr35">(:M_real)</span>         0.915236      0.00579838
   <span class="sgr35">(:N)</span>              0.934655      0.00789521
   <span class="sgr35">(:Pi)</span>             1.0          -0.0
@@ -197,42 +197,42 @@ And data, <span class="sgr1">23×2 Matrix{Float64}</span>:
 And data, <span class="sgr1">23×6 Matrix{Float64}</span>:
                    <span class="sgr35">(:Mean)</span>       <span class="sgr35">(:σ)</span>          …  <span class="sgr35">(:β)</span>          <span class="sgr35">(:α)</span>
   <span class="sgr35">(:A)</span>              1.0           0.0              0.0           0.0
-  <span class="sgr35">(:C)</span>              0.95058       0.0060223       -1.10091e-15  -0.0941921
-  <span class="sgr35">(:MC)</span>             0.888889      2.60209e-18     -8.43769e-15   5.27356e-16
+  <span class="sgr35">(:C)</span>              0.95058       0.0060223       -1.43837e-15  -0.0941921
+  <span class="sgr35">(:MC)</span>             0.888889      2.42861e-17     -8.32126e-15   7.21645e-16
   <span class="sgr35">(:M_real)</span>         0.915236      0.00579838       3.48529      -0.09069
-  <span class="sgr35">(:N)</span>              0.934655      0.00789521   …  -1.47869e-15  -0.207701
+  <span class="sgr35">(:N)</span>              0.934655      0.00789521   …  -1.35625e-15  -0.207701
   <span class="sgr35">(:Pi)</span>             1.0          -0.0             -0.0          -0.0
    ⋮                                           ⋱   ⋮
-  <span class="sgr35">(:log_y)</span>         -0.0506831     0.00633539      -1.15815e-15  -0.0990891
+  <span class="sgr35">(:log_y)</span>         -0.0506831     0.00633539      -1.06906e-15  -0.0990891
   <span class="sgr35">(:nu)</span>             0.0           0.0              0.0           0.0
   <span class="sgr35">(:pi_ann)</span>         8.88178e-16  -0.0          …  -0.0          -0.0
   <span class="sgr35">(:r_real_ann)</span>     0.0402013     0.0             -4.0404        0.0
   <span class="sgr35">(:realinterest)</span>   1.0101        0.0             -1.0203        0.0
-  <span class="sgr35">(:x_aux_1)</span>        3.452         0.174958        10.0544        3.67919e-14
-  <span class="sgr35">(:x_aux_2)</span>        3.8835        0.196828        11.3112       -0.0</code></pre><p>We can do the same for standard deviation or variance, and all parameters:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015))</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+  <span class="sgr35">(:x_aux_1)</span>        3.452         0.174958        10.0544        3.67159e-14
+  <span class="sgr35">(:x_aux_2)</span>        3.8835        0.196828        11.3112       -8.54455e-17</code></pre><p>We can do the same for standard deviation or variance, and all parameters:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015))</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 23-element Vector{Symbol}</span>
 →   <span class="sgr35">Standard_deviation_and_∂standard_deviation∂parameter ∈ 17-element Vector{Symbol}</span>
 And data, <span class="sgr1">23×17 Matrix{Float64}</span>:
-                   <span class="sgr35">(:Standard_deviation)</span>  …  <span class="sgr35">(:std_z)</span>      <span class="sgr35">(:std_nu)</span>
-  <span class="sgr35">(:A)</span>              0.0229416                 1.28384e-32   7.69452e-34
-  <span class="sgr35">(:C)</span>              0.0335717                 0.48179       0.0963579
-  <span class="sgr35">(:MC)</span>             0.216091                  4.18882       0.837765
-  <span class="sgr35">(:M_real)</span>         0.0592662                 0.491332      0.254845
-  <span class="sgr35">(:N)</span>              0.0378695             …   0.734082      0.146816
-  <span class="sgr35">(:Pi)</span>             0.0123588                 0.167366      0.0334732
+                   <span class="sgr35">(:Standard_deviation)</span>  …  <span class="sgr35">(:std_z)</span>     <span class="sgr35">(:std_nu)</span>
+  <span class="sgr35">(:A)</span>              0.0229416                -7.9795e-34   1.19692e-33
+  <span class="sgr35">(:C)</span>              0.0335717                 0.48179      0.0963579
+  <span class="sgr35">(:MC)</span>             0.216091                  4.18882      0.837765
+  <span class="sgr35">(:M_real)</span>         0.0592662                 0.491332     0.254845
+  <span class="sgr35">(:N)</span>              0.0378695             …   0.734082     0.146816
+  <span class="sgr35">(:Pi)</span>             0.0123588                 0.167366     0.0334732
    ⋮                                      ⋱
-  <span class="sgr35">(:log_y)</span>          0.0353171                 0.506838      0.101368
-  <span class="sgr35">(:nu)</span>             0.00288675               -4.95663e-31   1.1547
-  <span class="sgr35">(:pi_ann)</span>         0.049435              …   0.669465      0.133893
-  <span class="sgr35">(:r_real_ann)</span>     0.0564465                 1.09678       0.253692
-  <span class="sgr35">(:realinterest)</span>   0.0142542                 0.276965      0.0640637
-  <span class="sgr35">(:x_aux_1)</span>        0.951526                  9.39926       1.44896
-  <span class="sgr35">(:x_aux_2)</span>        0.516659                  2.99988       0.269446</code></pre><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_variance(Gali_2015, parameter_derivatives = get_parameters(Gali_2015))</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+  <span class="sgr35">(:log_y)</span>          0.0353171                 0.506838     0.101368
+  <span class="sgr35">(:nu)</span>             0.00288675                0.0          1.1547
+  <span class="sgr35">(:pi_ann)</span>         0.049435              …   0.669465     0.133893
+  <span class="sgr35">(:r_real_ann)</span>     0.0564465                 1.09678      0.253692
+  <span class="sgr35">(:realinterest)</span>   0.0142542                 0.276965     0.0640637
+  <span class="sgr35">(:x_aux_1)</span>        0.951526                  9.39926      1.44896
+  <span class="sgr35">(:x_aux_2)</span>        0.516659                  2.99988      0.269446</code></pre><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_variance(Gali_2015, parameter_derivatives = get_parameters(Gali_2015))</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 23-element Vector{Symbol}</span>
 →   <span class="sgr35">Variance_and_∂variance∂parameter ∈ 17-element Vector{Symbol}</span>
 And data, <span class="sgr1">23×17 Matrix{Real}</span>:
                    <span class="sgr35">(:Variance)</span>   <span class="sgr35">(:σ)</span>          …  <span class="sgr35">(:std_z)</span>      <span class="sgr35">(:std_nu)</span>
-  <span class="sgr35">(:A)</span>              0.000526316   1.2475e-13       5.89068e-34   3.53049e-35
+  <span class="sgr35">(:A)</span>              0.000526316   2.46455e-13     -3.66124e-35   5.49187e-35
   <span class="sgr35">(:C)</span>              0.00112706   -0.00101983       0.032349      0.0064698
   <span class="sgr35">(:MC)</span>             0.0466953    -0.0394622        1.81033       0.362067
   <span class="sgr35">(:M_real)</span>         0.00351248   -0.000388635      0.0582387     0.0302074
@@ -240,7 +240,7 @@ And data, <span class="sgr1">23×17 Matrix{Real}</span>:
   <span class="sgr35">(:Pi)</span>             0.000152739  -6.64228e-5       0.00413688    0.000827376
    ⋮                                           ⋱
   <span class="sgr35">(:log_y)</span>          0.0012473    -0.00114444       0.0358        0.00716001
-  <span class="sgr35">(:nu)</span>             8.33333e-6   -3.92242e-15     -2.86171e-33   0.00666667
+  <span class="sgr35">(:nu)</span>             8.33333e-6    2.04841e-15      0.0           0.00666667
   <span class="sgr35">(:pi_ann)</span>         0.00244382   -0.00106276   …   0.06619       0.013238
   <span class="sgr35">(:r_real_ann)</span>     0.0031862    -0.00279404       0.123819      0.02864
   <span class="sgr35">(:realinterest)</span>   0.000203181  -0.000178173      0.00789579    0.00182635
@@ -258,8 +258,8 @@ And data, <span class="sgr1">2×4 Matrix{Float64}</span>:
              <span class="sgr35">(:Standard_deviation)</span>  <span class="sgr35">(:σ)</span>         <span class="sgr35">(:α)</span>        <span class="sgr35">(:std_a)</span>
   <span class="sgr35">(:Pi)</span>       0.0123588             -0.00268728  -0.0166021   0.390677
   <span class="sgr35">(:W_real)</span>   0.156462              -0.0674815    0.141894    0.0348056</code></pre><p>Looking at the sensitivity table we see that lowering the production function parameter <code>:α</code> will increase real wages, but at the same time it will increase inflation volatility. We could compensate that effect by decreasing the standard deviation of the total factor productivity shock <code>:std_a</code>.</p><h3 id="Method-of-moments"><a class="docs-heading-anchor" href="#Method-of-moments">Method of moments</a><a id="Method-of-moments-1"></a><a class="docs-heading-anchor-permalink" href="#Method-of-moments" title="Permalink"></a></h3><p>Instead of doing this by hand we can also set a target and have an optimiser find the corresponding parameter values. In order to do that we need to define targets, and set up an optimisation problem.</p><p>Our targets are:</p><ul><li>Mean of <code>W_real = 0.7</code></li><li>Standard deviation of <code>Pi = 0.01</code></li></ul><p>For the optimisation problem we use the L-BFGS algorithm implemented in <code>Optim.jl</code>. This optimisation algorithm is very efficient and gradient based. Note that all model outputs are differentiable with respect to the parameters using automatic and implicit differentiation.</p><p>The package provides functions specialised for the use with gradient based code (e.g. gradient-based optimisers or samplers). For model statistics we can use <code>get_statistics</code> to get the mean of real wages and the standard deviation of inflation like this:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_statistics(Gali_2015, Gali_2015.parameter_values, parameters = Gali_2015.parameters, mean = [:W_real], standard_deviation = [:Pi])</code><code class="nohighlight hljs ansi" style="display:block;">2-element Vector{AbstractArray{Float64}}:
- [0.6780252644037248]
- [0.012358762176561988]</code></pre><p>First we pass on the model object, followed by the parameter values and the parameter names the values correspond to. Then we define the outputs we want: for the mean we want real wages and for the standard deviation we want inflation. We can also get outputs for variance, covariance, or autocorrelation the same way as for the mean and standard deviation.</p><p>Next, let&#39;s define a function measuring how close we are to our target for given values of <code>:α</code> and <code>:std_a</code>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; function distance_to_target(parameter_value_inputs)
+ [0.6780252644037245]
+ [0.012358762176563481]</code></pre><p>First we pass on the model object, followed by the parameter values and the parameter names the values correspond to. Then we define the outputs we want: for the mean we want real wages and for the standard deviation we want inflation. We can also get outputs for variance, covariance, or autocorrelation the same way as for the mean and standard deviation.</p><p>Next, let&#39;s define a function measuring how close we are to our target for given values of <code>:α</code> and <code>:std_a</code>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; function distance_to_target(parameter_value_inputs)
            model_statistics = get_statistics(Gali_2015, parameter_value_inputs, parameters = [:α, :std_a], mean = [:W_real], standard_deviation = [:Pi])
            targets = [0.7, 0.01]
            return sum(abs2, vcat(model_statistics...) - targets)
@@ -279,7 +279,7 @@ And data, <span class="sgr1">2×4 Matrix{Float64}</span>:
       &quot;τ&quot; =&gt; 0.0
   &quot;std_a&quot; =&gt; 0.01
   &quot;std_z&quot; =&gt; 0.05
- &quot;std_nu&quot; =&gt; 0.0025</code></pre><p>with this we can test the distance function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; distance_to_target([0.25, 0.01])</code><code class="nohighlight hljs ansi" style="display:block;">0.0004884527635317822</code></pre><p>Next we can pass it on to an optimiser and find the parameters corresponding to the best fit like this:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using Optim, LineSearches</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol = Optim.optimize(distance_to_target,
+ &quot;std_nu&quot; =&gt; 0.0025</code></pre><p>with this we can test the distance function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; distance_to_target([0.25, 0.01])</code><code class="nohighlight hljs ansi" style="display:block;">0.0004884527635318039</code></pre><p>Next we can pass it on to an optimiser and find the parameters corresponding to the best fit like this:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using Optim, LineSearches</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol = Optim.optimize(distance_to_target,
                                [0,0],
                                [1,1],
                                [0.25, 0.01],
@@ -299,7 +299,7 @@ And data, <span class="sgr1">2×4 Matrix{Float64}</span>:
     |g(x)|                 = 8.73e-09 ≤ 1.0e-08
 
  * Work counters
-    Seconds run:   9  (vs limit Inf)
+    Seconds run:   10  (vs limit Inf)
     Iterations:    4
     f(x) calls:    26
     ∇f(x) calls:   24</code></pre><p>The first argument to the optimisation call is the function we defined previously, followed by lower and upper bounds, the starting values, and finally the algorithm. For the algorithm we have to add <code>Fminbox</code> because we have bounds (optional) and we set the specific line search method to speed up convergence (recommended but optional).</p><p>The output shows that we could almost perfectly match the target and the values of the parameters found by the optimiser are:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimizer</code><code class="nohighlight hljs ansi" style="display:block;">2-element Vector{Float64}:
@@ -348,12 +348,12 @@ And data, <span class="sgr1">2×4 Matrix{Float64}</span>:
  * Work counters
     Seconds run:   4  (vs limit Inf)
     Iterations:    3
-    f(x) calls:    32
+    f(x) calls:    31
     ∇f(x) calls:   30</code></pre><p>the calculations take substantially longer and we don&#39;t get as close to our target as for the linear solution case. The parameter values minimising the distance are:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimizer</code><code class="nohighlight hljs ansi" style="display:block;">2-element Vector{Float64}:
- 0.1972291831051237
- 2.9239395129722045e-9</code></pre><p>lower than for the linear solution case and the theoretical moments given these parameter are:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_statistics(Gali_2015, sol.minimizer, algorithm = :pruned_third_order, parameters = [:α, :std_a], mean = [:W_real], standard_deviation = [:Pi])</code><code class="nohighlight hljs ansi" style="display:block;">2-element Vector{AbstractArray{Float64}}:
- [0.6999560174678682]
- [0.015199050421513625]</code></pre><p>The solution does not match the standard deviation of inflation very well.</p><p>Potentially the partial derivatives change a lot for small changes in parameters and even though the partial derivatives for standard deviation of inflation were large wrt <code>std_a</code> they might be small for value returned from the optimisation. We can check this with:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_third_order, parameters = [:α, :std_a] .=&gt; sol.minimizer)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+ 0.1972291830996771
+ 2.9239402083294736e-9</code></pre><p>lower than for the linear solution case and the theoretical moments given these parameter are:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_statistics(Gali_2015, sol.minimizer, algorithm = :pruned_third_order, parameters = [:α, :std_a], mean = [:W_real], standard_deviation = [:Pi])</code><code class="nohighlight hljs ansi" style="display:block;">2-element Vector{AbstractArray{Float64}}:
+ [0.6999560174723667]
+ [0.015199050421554778]</code></pre><p>The solution does not match the standard deviation of inflation very well.</p><p>Potentially the partial derivatives change a lot for small changes in parameters and even though the partial derivatives for standard deviation of inflation were large wrt <code>std_a</code> they might be small for value returned from the optimisation. We can check this with:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_third_order, parameters = [:α, :std_a] .=&gt; sol.minimizer)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 2-element Vector{Symbol}</span>
 →   <span class="sgr35">Standard_deviation_and_∂standard_deviation∂parameter ∈ 4-element Vector{Symbol}</span>
 And data, <span class="sgr1">2×4 Matrix{Float64}</span>:
@@ -387,5 +387,5 @@ And data, <span class="sgr1">2×4 Matrix{Float64}</span>:
     Iterations:    3
     f(x) calls:    41
     ∇f(x) calls:   41</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sol.minimizer</code><code class="nohighlight hljs ansi" style="display:block;">2-element Vector{Float64}:
- 0.20874375760775354
- 2.123741771007979</code></pre><p>Given the new value for <code>std_a</code> and optimising over <code>σ</code> allows us to match the target exactly.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../sw03/">« Work with a more complex model - Smets and Wouters (2003)</a><a class="docs-footer-nextpage" href="../estimation/">Estimate a model using gradient based samplers - Schorfheide (2000) »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="auto">Automatic (OS)</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.1.2 on <span class="colophon-date" title="Monday 20 November 2023 01:46">Monday 20 November 2023</span>. Using Julia version 1.9.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ 0.20874375760768424
+ 2.12374177099355</code></pre><p>Given the new value for <code>std_a</code> and optimising over <code>σ</code> allows us to match the target exactly.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../sw03/">« Work with a more complex model - Smets and Wouters (2003)</a><a class="docs-footer-nextpage" href="../estimation/">Estimate a model using gradient based samplers - Schorfheide (2000) »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="auto">Automatic (OS)</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.1.2 on <span class="colophon-date" title="Monday 20 November 2023 10:35">Monday 20 November 2023</span>. Using Julia version 1.9.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
