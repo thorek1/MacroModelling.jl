@@ -4,6 +4,7 @@
 
 - [ ] add technical details about SS solver, obc solver, and other algorithms
 - [ ] rm obc vars from get_SS
+- [ ] fix SS solver (failed for backus in guide)
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
 - [ ] cover nested case: min(50,a+b+max(c,10))
 - [ ] nonlinear estimation using unscented kalman filter / inversion filter (minimization problem: find shocks to match states with data)
