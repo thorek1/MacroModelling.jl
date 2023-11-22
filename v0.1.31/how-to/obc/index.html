@@ -90,10 +90,10 @@ Parameters:   18</code></pre><p>In the background the system of equations is aug
        
            std_nu = .0025
        
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	1.856 seconds
-Set up non stochastic steady state problem:	0.939 seconds
-Take symbolic derivatives up to first order:	1.53 seconds
-Find non stochastic steady state:	4.246 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	1.914 seconds
+Set up non stochastic steady state problem:	1.281 seconds
+Take symbolic derivatives up to first order:	1.436 seconds
+Find non stochastic steady state:	4.105 seconds
 Model:        Gali_2015_chapter_3_obc
 Variables
  Total:       68
@@ -121,7 +121,7 @@ And data, <span class="sgr1">68-element Vector{Float64}</span>:
  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁶⁾)</span>   0.0
  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁷⁾)</span>   0.0
  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁸⁾)</span>   0.0
- <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁹⁾)</span>   0.0</code></pre><p>There are a few things to note here. First, we get the NSSS values of the auxilliary variables related to the occasionally binding constraint. Second, the NSSS value of <code>R</code> is 1, and thereby the effective lower bound is binding in the NSSS. While this is a viable NSSS it is not a viable approximation point for perturbation. We can only find a perturbation solution if the effective lower bound is not binding in NSSS. Calling <code>get_solution</code> reveals that there is no stable solution at this NSSS:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_solution(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: AssertionError: Could not find stable first order solution.</code></pre><p>In order to get the other viable NSSS we have to restrict the values of R to be larger than the effective lower bound. We can do this by adding a constraint on the variable in the <code>@parameter</code> section. Let us redefine the model:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; @model Gali_2015_chapter_3_obc begin
+ <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁹⁾)</span>   0.0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; SS(Gali_2015_chapter_3_obc)(:R)</code><code class="nohighlight hljs ansi" style="display:block;">1.0</code></pre><p>There are a few things to note here. First, we get the NSSS values of the auxilliary variables related to the occasionally binding constraint. Second, the NSSS value of <code>R</code> is 1, and thereby the effective lower bound is binding in the NSSS. While this is a viable NSSS it is not a viable approximation point for perturbation. We can only find a perturbation solution if the effective lower bound is not binding in NSSS. Calling <code>get_solution</code> reveals that there is no stable solution at this NSSS:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_solution(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: AssertionError: Could not find stable first order solution.</code></pre><p>In order to get the other viable NSSS we have to restrict the values of R to be larger than the effective lower bound. We can do this by adding a constraint on the variable in the <code>@parameter</code> section. Let us redefine the model:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; @model Gali_2015_chapter_3_obc begin
            W_real[0] = C[0] ^ σ * N[0] ^ φ
        
            Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
@@ -213,10 +213,10 @@ Parameters:   18</code><br/><code class="language-julia-repl hljs" style="displa
            std_nu = .0025
        
            R &gt; 1.000001
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	1.772 seconds
-Set up non stochastic steady state problem:	0.665 seconds
-Take symbolic derivatives up to first order:	0.251 seconds
-Find non stochastic steady state:	0.998 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	1.271 seconds
+Set up non stochastic steady state problem:	1.024 seconds
+Take symbolic derivatives up to first order:	0.211 seconds
+Find non stochastic steady state:	0.964 seconds
 Model:        Gali_2015_chapter_3_obc
 Variables
  Total:       68
@@ -244,7 +244,7 @@ And data, <span class="sgr1">68-element Vector{Float64}</span>:
  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁶⁾)</span>   0.0
  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁷⁾)</span>   0.0
  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁸⁾)</span>   0.0
- <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁹⁾)</span>   0.0</code></pre><p>Now we get <code>R &gt; R̄</code>, so that the constraint is not binding in the NSSS and we can work with a stable first order solution:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_solution(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+ <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁹⁾)</span>   0.0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; SS(Gali_2015_chapter_3_obc)(:R)</code><code class="nohighlight hljs ansi" style="display:block;">1.0101010101010102</code></pre><p>Now we get <code>R &gt; R̄</code>, so that the constraint is not binding in the NSSS and we can work with a stable first order solution:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_solution(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Steady_state__States__Shocks ∈ 89-element Vector{Symbol}</span>
 →   <span class="sgr35">Variables ∈ 68-element Vector{Symbol}</span>
 And data, <span class="sgr1">89×68 adjoint(::Matrix{Float64})</span> with eltype Float64:
@@ -302,7 +302,7 @@ And data, <span class="sgr1">23×1000×1 Array{Float64, 3}</span>:
   <span class="sgr35">(:r_real_ann)</span>      0.0304089          0.0754319        0.0538909
   <span class="sgr35">(:realinterest)</span>    1.00763            1.019            1.01356
   <span class="sgr35">(:x_aux_1)</span>         3.35995            3.01176          3.12864
-  <span class="sgr35">(:x_aux_2)</span>         3.87966            3.54757          3.65482</code></pre><p>Let&#39;s look at the mean and standard deviation of borrowing:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import Statistics</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.mean(sims(:Y,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.9441683738833061</code></pre><p>and</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.std(sims(:Y,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.042387901409275286</code></pre><p>Compare this to the theoretical mean of the model without the occasionally binding constraint:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_mean(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+  <span class="sgr35">(:x_aux_2)</span>         3.87966            3.54757          3.65482</code></pre><p>Let&#39;s look at the mean and standard deviation of borrowing:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import Statistics</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.mean(sims(:Y,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.9441684528768249</code></pre><p>and</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.std(sims(:Y,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.0423878857213485</code></pre><p>Compare this to the theoretical mean of the model without the occasionally binding constraint:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_mean(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 23-element Vector{Symbol}</span>
 And data, <span class="sgr1">23-element Vector{Float64}</span>:
  <span class="sgr35">(:A)</span>              1.0
@@ -320,7 +320,7 @@ And data, <span class="sgr1">23-element Vector{Float64}</span>:
  <span class="sgr35">(:r_real_ann)</span>     0.0402013434140069
  <span class="sgr35">(:realinterest)</span>   1.0101010101010104
  <span class="sgr35">(:x_aux_1)</span>        3.4519956850053797
- <span class="sgr35">(:x_aux_2)</span>        3.883495145631058</code></pre><p>and the theoretical standard deviation:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+ <span class="sgr35">(:x_aux_2)</span>        3.883495145631058</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_mean(Gali_2015_chapter_3_obc)(:Y)</code><code class="nohighlight hljs ansi" style="display:block;">0.9505798249541406</code></pre><p>and the theoretical standard deviation:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 23-element Vector{Symbol}</span>
 And data, <span class="sgr1">23-element Vector{Float64}</span>:
  <span class="sgr35">(:A)</span>             0.022941573387056026
@@ -338,7 +338,7 @@ And data, <span class="sgr1">23-element Vector{Float64}</span>:
  <span class="sgr35">(:r_real_ann)</span>    0.05644645066322939
  <span class="sgr35">(:realinterest)</span>  0.014254154207886198
  <span class="sgr35">(:x_aux_1)</span>       0.9515263512145696
- <span class="sgr35">(:x_aux_2)</span>       0.5166586569328726</code></pre><p>The mean of output is lower in the model with effective lower bound compared to the model without and the standard deviation is higher.</p><h2 id="Example:-Borrowing-constraint"><a class="docs-heading-anchor" href="#Example:-Borrowing-constraint">Example: Borrowing constraint</a><a id="Example:-Borrowing-constraint-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Borrowing-constraint" title="Permalink"></a></h2><h3 id="Model-definition"><a class="docs-heading-anchor" href="#Model-definition">Model definition</a><a id="Model-definition-1"></a><a class="docs-heading-anchor-permalink" href="#Model-definition" title="Permalink"></a></h3><p>Let us start with a consumption-saving model containing a borrowing constraint (see [@citet cuba2019likelihood] for details). Output is exogenously given, and households can only borrow up to a fraction of output and decide between saving and consumption. The first order conditions of the model are:</p><p class="math-container">\[\begin{align*}
+ <span class="sgr35">(:x_aux_2)</span>       0.5166586569328726</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(Gali_2015_chapter_3_obc)(:Y)</code><code class="nohighlight hljs ansi" style="display:block;">0.033571696779991556</code></pre><p>The mean of output is lower in the model with effective lower bound compared to the model without and the standard deviation is higher.</p><h2 id="Example:-Borrowing-constraint"><a class="docs-heading-anchor" href="#Example:-Borrowing-constraint">Example: Borrowing constraint</a><a id="Example:-Borrowing-constraint-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Borrowing-constraint" title="Permalink"></a></h2><h3 id="Model-definition"><a class="docs-heading-anchor" href="#Model-definition">Model definition</a><a id="Model-definition-1"></a><a class="docs-heading-anchor-permalink" href="#Model-definition" title="Permalink"></a></h3><p>Let us start with a consumption-saving model containing a borrowing constraint (see [@citet cuba2019likelihood] for details). Output is exogenously given, and households can only borrow up to a fraction of output and decide between saving and consumption. The first order conditions of the model are:</p><p class="math-container">\[\begin{align*}
 Y_t + B_t &amp;= C_t + R B_{t-1}\\
 \log(Y_t) &amp;= \rho \log(Y_{t-1}) + \sigma \varepsilon_t\\
 C_t^{-\gamma} &amp;= \beta R \mathbb{E}_t (C_{t+1}^{-\gamma}) + \lambda_t\\
@@ -367,10 +367,10 @@ Parameters:   7</code></pre><p>In the background the system of equations is augm
            σ = 0.05
            m = 1
            γ = 1
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	0.5 seconds
-Set up non stochastic steady state problem:	0.219 seconds
-Take symbolic derivatives up to first order:	0.165 seconds
-Find non stochastic steady state:	2.171 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	0.494 seconds
+Set up non stochastic steady state problem:	0.183 seconds
+Take symbolic derivatives up to first order:	0.16 seconds
+Find non stochastic steady state:	2.036 seconds
 Model:        borrowing_constraint
 Variables
  Total:       49
@@ -430,4 +430,4 @@ And data, <span class="sgr1">4-element Vector{Float64}</span>:
  <span class="sgr35">(:B)</span>  0.11470786693528097
  <span class="sgr35">(:C)</span>  0.13191404697557307
  <span class="sgr35">(:Y)</span>  0.114707866935281
- <span class="sgr35">(:λ)</span>  0.07031743997991888</code></pre><p>The mean of borrowing is lower in the model with occasionally binding constraints compared to the model without and the standard deviation is higher.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../loops/">« Programmatic model writing using for-loops</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="auto">Automatic (OS)</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.1.2 on <span class="colophon-date" title="Monday 20 November 2023 10:35">Monday 20 November 2023</span>. Using Julia version 1.9.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ <span class="sgr35">(:λ)</span>  0.07031743997991888</code></pre><p>The mean of borrowing is lower in the model with occasionally binding constraints compared to the model without and the standard deviation is higher.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../loops/">« Programmatic model writing using for-loops</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="auto">Automatic (OS)</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.1.2 on <span class="colophon-date" title="Wednesday 22 November 2023 18:23">Wednesday 22 November 2023</span>. Using Julia version 1.9.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
