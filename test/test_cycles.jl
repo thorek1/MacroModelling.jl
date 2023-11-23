@@ -7,42 +7,77 @@ import RecursiveFactorization as RF
 
     Q[0] = (1 + (1 - e[0]) * ϕ * Φ[0])
 
+    # Φ[0] = Φ̄ * exp(Φ̄² * (100 * (e[0] - e[ss]))^2 + Φ̄³ * (100 * (e[0] - e[ss]))^3)
     Φ[0] = Φ̄ * exp(Φ̄² * (100 * (e[0] - ē))^2 + Φ̄³ * (100 * (e[0] - ē))^3)
 
     λ[0] = (Y[1] + (1 - δ - γ) / (1 - δ) * X[0] - (1 - δ - ψ) / (1 - δ) * γ * Y[0])^(-ω)
 
     X[1] = (1 - δ) * X[0] + ψ * Y[1]
 
-    Y[1] = z[0] * e[0]^α
+    # Y[1] = z[0] * e[0]^α
+    Y[1] = e[0]^α
 
     log(μ[0]) = ρμ * log(μ[-1]) + σμ * ϵμ[x]
 
-    log(z[0]) = ρz * log(z[-1]) + σz * ϵz[x]
+    # log(z[0]) = ρz * log(z[-1]) + σz * ϵz[x]
 end
 
 
-@parameters cycle_prototype begin
-    ρμ  = 0.0671
-    ρz  = 0.6254
-    σμ  = 0.00014
-    σz  = 0.0027
-    α   = 0.67
-    ψ   = 0.3905
+@parameters cycle_prototype symbolic = true verbose = true begin
     δ   = 0.05
+    α   = 0.67
+    ē   = 0.943
+    # e[ss] = 0.943 | ē
+    e[ss] = 0.943 | Φ̄
+    # Φ[ss] = 0.047 | Φ̄
     ω   = 0.2736
     γ   = 0.6259
-    ē   = 0.943
-    Φ̄³  = 0.00066
-    Φ̄²  = 0.0018
-    Φ̄   = 0.047
-    ϕ   = 0.9108
+    ψ   = 0.3905
     φₑ  = 0.046
+    ϕ   = 0.9108
+    # Φ̄   = 0.047
+    Φ̄²  = 1.710280496#0.0018
+    Φ̄³  = 186.8311838#0.00066
+
+    # Φ̄²  = 0.0018
+    # Φ̄³  = 0.00066
+
+    ρz  = 0#0.6254
+    σz  = 0#0.0027
+
+    # ρz  = 0.6254
+    # σz  = 0.0027
+
+    ρμ  = 0.0671
+    σμ  = 0.00014
+
+    # .7 < e < 1
+    # Φ < 1
+    # Y < 1
+    # X > 7.5
+    # Q < .8
+    # 1 > Φ > 0
+    # 1 > ē > 0.6
+    # X > 7.0
+    # Y > 0.7
+    # Q > 0.7
+    # λ > 0.7
+    # e > 0.7
 end
+
+# ψ   = 0.3905
+# ē   = 0.943
+# α   = 0.67
+# δ   = 0.05
+
+# ψ * ē ^ α / δ
 
 
 SS(cycle_prototype)
+# SS(cycle_prototype, parameters = :Φ̄² => .92)
 # include("../models/RBC_baseline.jl")
 
+get_solution(cycle_prototype)
 
 𝓂 = cycle_prototype
 verbose = true
@@ -148,7 +183,7 @@ eigenvalue_infinite = abs.(eigenvalues) .> 1e10
 
 eigenvalue_never_include = eigenvalue_infinite .|| eigenvalue_real_greater_one
 
-ny = 𝓂.timings.nPast_not_future_and_mixed
+ny = 𝓂.timings.nFuture_not_past_and_mixed
 
 other_eigenvalues = .!(eigenvalue_inside_unit_circle .|| eigenvalue_never_include)
 
