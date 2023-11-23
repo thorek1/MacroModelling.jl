@@ -10,6 +10,7 @@ if !test_higher_order
     @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{H}") * 100, [48.66, 57.56, 47.41],rtol = 1e-3)
 
     write_to_dynare_file(Backus_Kehoe_Kydland_1992)
+    translate_dynare_file("Backus_Kehoe_Kydland_1992.mod")
     Backus_Kehoe_Kydland_1992 = nothing
 
 
@@ -25,6 +26,7 @@ if !test_higher_order
     @test isapprox(var_dec(:US_K,[:EA_EPSRP,:US_EPSR,:US_EPSZ]) * 100, [17.48, 26.83, 27.76],rtol = 1e-3)
 
     write_to_dynare_file(NAWM_EAUS_2008)
+    translate_dynare_file("NAWM_EAUS_2008.mod")
     NAWM_EAUS_2008 = nothing
 
 
@@ -41,6 +43,7 @@ if !test_higher_order
     @test isapprox(corrr(:r,:w),-0.9898,rtol = 1e-3)
     
     write_to_dynare_file(Baxter_King_1993)
+    translate_dynare_file("Baxter_King_1993.mod")
     Baxter_King_1993 = nothing
     
 
@@ -54,6 +57,7 @@ if !test_higher_order
     @test isapprox(var_dec(:π̂,:) * 100, [4.51, 0.91, 87.44, 7.14],rtol = 1e-4)
 
     write_to_dynare_file(Ireland_2004)
+    translate_dynare_file("Ireland_2004.mod")
     Ireland_2004 = nothing
 
 
@@ -69,6 +73,7 @@ if !test_higher_order
     @test isapprox(var_dec(:E_BGYN,:) * 100, [3.00, 0.23, 0.54, 0.01, 0.08, 0.38, 0.14, 0.10, 83.60, 3.28, 1.11, 3.36, 0.01, 1.56, 0.17, 0.17, 0.00, 2.24, 0.01], rtol = 1e-3)
 
     write_to_dynare_file(QUEST3_2009)
+    translate_dynare_file("QUEST3_2009.mod")
     QUEST3_2009 = nothing
 
 
@@ -84,6 +89,7 @@ if !test_higher_order
     @test isapprox(var_dec(:B,:) * 100, [42.97, 19.31, 11.70,  0.36,  4.45,  1.41,  0.70,  0.00,  0.61,  12.54, 2.85, 2.72,  0.38],rtol = 1e-3)
 
     write_to_dynare_file(GNSS_2010)
+    translate_dynare_file("GNSS_2010.mod")
     GNSS_2010 = nothing
 
 
@@ -98,6 +104,7 @@ if !test_higher_order
     @test isapprox(var_dec(:x,:) * 100, [56.22, 43.78],rtol = 1e-3)
     
     write_to_dynare_file(Gali_Monacelli_2005_CITR)
+    translate_dynare_file("Gali_Monacelli_2005_CITR.mod")
     Gali_Monacelli_2005_CITR = nothing
     
     
@@ -112,6 +119,7 @@ if !test_higher_order
     @test isapprox(var_dec(:y,:) * 100, [0.47, 99.41, 0.12],rtol = 1e-3)
     
     write_to_dynare_file(Ascari_Sbordone_2014)
+    translate_dynare_file("Ascari_Sbordone_2014.mod")
     Ascari_Sbordone_2014 = nothing
         
 end    
@@ -135,6 +143,7 @@ if test_higher_order
 end
 
 write_to_dynare_file(SGU_2003_debt_premium)
+translate_dynare_file("SGU_2003_debt_premium.mod")
 SGU_2003_debt_premium = nothing
 
 
@@ -159,6 +168,7 @@ if test_higher_order
 end
 
 write_to_dynare_file(JQ_2012_RBC)
+translate_dynare_file("JQ_2012_RBC.mod")
 JQ_2012_RBC = nothing
 
 
@@ -186,6 +196,7 @@ if test_higher_order
 end
 
 write_to_dynare_file(Ghironi_Melitz_2005)
+translate_dynare_file("Ghironi_Melitz_2005.mod")
 Ghironi_Melitz_2005 = nothing
 
 
@@ -211,6 +222,7 @@ if test_higher_order
 end
 
 write_to_dynare_file(Gali_2015_chapter_3_nonlinear)
+translate_dynare_file("Gali_2015_chapter_3_nonlinear.mod")
 Gali_2015_chapter_3_nonlinear = nothing
 
 
@@ -230,6 +242,7 @@ if test_higher_order
 end
 
 write_to_dynare_file(Caldara_et_al_2012)
+translate_dynare_file("Caldara_et_al_2012.mod")
 Caldara_et_al_2012 = nothing
 
 
@@ -255,4 +268,5 @@ if test_higher_order
 end
 
 write_to_dynare_file(Aguiar_Gopinath_2007)
+translate_dynare_file("Aguiar_Gopinath_2007.mod")
 Aguiar_Gopinath_2007 = nothing
