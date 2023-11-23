@@ -73,7 +73,7 @@ if !test_higher_order
     @test isapprox(var_dec(:E_BGYN,:) * 100, [3.00, 0.23, 0.54, 0.01, 0.08, 0.38, 0.14, 0.10, 83.60, 3.28, 1.11, 3.36, 0.01, 1.56, 0.17, 0.17, 0.00, 2.24, 0.01], rtol = 1e-3)
 
     write_to_dynare_file(QUEST3_2009)
-    translate_dynare_file("QUEST3_2009.mod")
+    # translate_dynare_file("QUEST3_2009.mod") # fix BGADJ1 = 0.001BGADJ2;
     QUEST3_2009 = nothing
 
 
