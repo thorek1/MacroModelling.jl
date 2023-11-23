@@ -123,6 +123,7 @@ Let's check out the non stochastic steady state (NSSS):
 
 ```@repl howto_obc
 SS(Gali_2015_chapter_3_obc)
+SS(Gali_2015_chapter_3_obc)(:R)
 ```
 
 There are a few things to note here. First, we get the NSSS values of the auxilliary variables related to the occasionally binding constraint. Second, the NSSS value of `R` is 1, and thereby the effective lower bound is binding in the NSSS. While this is a viable NSSS it is not a viable approximation point for perturbation. We can only find a perturbation solution if the effective lower bound is not binding in NSSS. Calling `get_solution` reveals that there is no stable solution at this NSSS:
@@ -226,6 +227,7 @@ and check the NSSS once more:
 
 ```@repl howto_obc
 SS(Gali_2015_chapter_3_obc)
+SS(Gali_2015_chapter_3_obc)(:R)
 ```
 
 Now we get `R > R̄`, so that the constraint is not binding in the NSSS and we can work with a stable first order solution:
@@ -317,12 +319,14 @@ Compare this to the theoretical mean of the model without the occasionally bindi
 
 ```@repl howto_obc
 get_mean(Gali_2015_chapter_3_obc)
+get_mean(Gali_2015_chapter_3_obc)(:Y)
 ```
 
 and the theoretical standard deviation:
 
 ```@repl howto_obc
 get_std(Gali_2015_chapter_3_obc)
+get_std(Gali_2015_chapter_3_obc)(:Y)
 ```
 
 The mean of output is lower in the model with effective lower bound compared to the model without and the standard deviation is higher.
