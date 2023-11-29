@@ -176,6 +176,7 @@
 ## Not high priority
 
 - [ ] estimation codes with missing values (adopt kalman filter)
+- [ ] add better error messages from dynare parser and dont have him change the folder even if he fails (catch the case and change the folder back)
 - [ ] whats a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
 - [ ] improve redundant calculations of SS and other parts of solution
 - [ ] restructure functions and containers so that compiler knows what types to expect
