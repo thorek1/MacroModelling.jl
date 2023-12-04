@@ -175,8 +175,12 @@ function transform_expression(expr::Expr)
     function transform_ref_fields(expr)
         if expr isa Expr && expr.head == :ref && isa(expr.args[1], Symbol)
             # Handle :ref expressions
-            if isa(expr.args[2], Number) || isa(expr.args[2], Symbol)
-                new_symbol = Symbol(expr.args[1], "_", expr.args[2])
+            if isa(expr.args[2], Number) || isa(expr.args[2], Symbol)           
+                if expr.args[2] < 0
+                    new_symbol = Symbol(expr.args[1], "__", abs(expr.args[2]))
+                else
+                    new_symbol = Symbol(expr.args[1], "_", expr.args[2])
+                end
             else
                 # Generate a unique placeholder for complex :ref
                 unique_counter[] += 1
