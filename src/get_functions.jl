@@ -841,6 +841,33 @@ function get_irf(𝓂::ℳ;
 
     @assert !(shocks == :none && generalised_irf) "Cannot compute generalised IRFs for model without shocks."
 
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
+        periods += size(shocks)[2]
+
+        shock_history = zeros(𝓂.timings.nExo, periods)
+
+        shock_history[:,1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+    elseif shocks isa KeyedArray{Float64}
+        shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
+
+        periods += size(shocks)[2]
+
+        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks which are not part of the model."
+
+        shock_history = zeros(𝓂.timings.nExo, periods + 1)
+
+        shock_history[indexin(shock_input,𝓂.timings.exo),1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+    else
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    end
+
+
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
     if algorithm == :second_order
@@ -877,7 +904,8 @@ function get_irf(𝓂::ℳ;
         occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
     end
 
-    if occasionally_binding_constraints #&& 
+
+    if occasionally_binding_constraints  || intersect(length(shock_idx) > 1 ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != []
         @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraints only compatible with first order perturbation solutions."
         
         solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 1, verbose = false, dynamics = true, algorithm = algorithm)
@@ -1021,7 +1049,7 @@ function get_irf(𝓂::ℳ;
                         negative_shock = negative_shock)
         end
 
-        if occasionally_binding_constraints #&& algorithm ∈ [:pruned_second_order, :second_order, :pruned_third_order, :third_order]
+        if occasionally_binding_constraints || intersect(length(shock_idx) > 1 ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [] #&& algorithm ∈ [:pruned_second_order, :second_order, :pruned_third_order, :third_order]
             solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
         end
 
