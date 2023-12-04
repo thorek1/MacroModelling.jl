@@ -439,7 +439,11 @@ function plot_irf(𝓂::ℳ;
         occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
     end
 
-    if occasionally_binding_constraints || intersect(length(shock_idx) > 1 ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != []
+    stochastic_model = length(𝓂.timings.exo) > 0
+
+    obc_shocks_included = stochastic_model && (length(𝓂.obc_violation_equations) > 0) && (intersect(length(shock_idx) > 0 ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
+
+    if occasionally_binding_constraints || obc_shocks_included
         @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraints only compatible with first order perturbation solutions."
 
         solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 1, verbose = false, dynamics = true, algorithm = algorithm)
@@ -584,7 +588,7 @@ function plot_irf(𝓂::ℳ;
         end
     end
 
-    if occasionally_binding_constraints || intersect(length(shock_idx) > 1 ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [] #&& algorithm ∈ [:pruned_second_order, :second_order, :pruned_third_order, :third_order]
+    if occasionally_binding_constraints || obc_shocks_included #&& algorithm ∈ [:pruned_second_order, :second_order, :pruned_third_order, :third_order]
         solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
     end
 
