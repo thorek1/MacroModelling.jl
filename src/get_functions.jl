@@ -2512,6 +2512,18 @@ get_std =  get_standard_deviation
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
+get_stdev =  get_standard_deviation
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+"""
+stdev =  get_standard_deviation
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+"""
 std =  get_standard_deviation
 
 """
