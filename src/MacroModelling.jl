@@ -9,8 +9,7 @@ import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
 import Symbolics
 import ForwardDiff as ℱ 
-import JuMP
-import MadNLP, NLopt # MadNLP doesnt support noninear constraints # StatusSwitchingQP not reliable
+import NLopt
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -255,6 +254,23 @@ function transform_obc(ex::Expr)
 end
 
 
+function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
+    𝓂 = p[4]
+
+    if length(jac) > 0
+        jac .= ℱ.jacobian(xx -> 𝓂.obc_violation_function(xx, p), X)'
+    end
+
+    res .= 𝓂.obc_violation_function(X, p)
+end
+
+function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
+    if length(grad) > 0
+        grad .= 2 .* X
+    end
+    
+    sum(abs2, X)
+end
 
 function set_up_obc_violation_function!(𝓂)
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
@@ -277,27 +293,14 @@ function set_up_obc_violation_function!(𝓂)
         end
     end
 
-    calc_obc_violation = :(function calculate_obc_violation(x::Vector, 
-                                                                initial_state,
-                                                                state_update, 
-                                                                reference_steady_state, 
-                                                                𝓂, 
-                                                                algorithm,
-                                                                periods, 
-                                                                shock_values)
+    calc_obc_violation = :(function calculate_obc_violation(x, p)
+        initial_state, state_update, reference_steady_state, 𝓂, periods, shock_values = p
+
         T = 𝓂.timings
 
-        # if algorithm ∈ [:first_order, :riccati, :linear_time_iteration, :quadratic_iteration]
-        #     Ytype = JuMP.AffExpr
-        # elseif algorithm ∈ [:pruned_second_order, :second_order]
-        #     Ytype = JuMP.QuadExpr
-        # elseif algorithm ∈ [:pruned_third_order, :third_order]
-        #     Ytype = JuMP.NonlinearExpr
-        # end
+        Y = zeros(typeof(x[1]), T.nVars, periods+1)
 
-        # Y = zeros(Ytype, T.nVars, periods+2)
-
-        Y = zeros(JuMP.AffExpr, T.nVars, periods+1)
+        shock_values = convert(typeof(x), shock_values)
 
         shock_values[contains.(string.(T.exo),"ᵒᵇᶜ")] .= x
 
@@ -314,11 +317,10 @@ function set_up_obc_violation_function!(𝓂)
         $(alll...)
 
         constraint_values = Vector[]
-        # shock_sign_indicators = Bool[]
 
         $(𝓂.obc_violation_equations...)
 
-        return vcat(constraint_values...)#, shock_sign_indicators
+        return vcat(constraint_values...)
     end)
 
     𝓂.obc_violation_function = @RuntimeGeneratedFunction(calc_obc_violation)
@@ -3125,13 +3127,17 @@ function solve!(𝓂::ℳ;
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
-            sol_mat, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+            𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
             
             @assert solved "Could not find stable first order solution."
 
-            state_update₁ = function(state::Vector{T}, shock::Vector{S}) where {T,S} sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                            shock]
+                return 𝐒₁ * aug_state # you need a return statement for forwarddiff to work
+            end
             
-            𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update₁)
+            𝓂.solution.perturbation.first_order = perturbation_solution(𝐒₁, state_update₁)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -3238,11 +3244,15 @@ function solve!(𝓂::ℳ;
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
-            sol_mat, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
+            𝐒₁, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
             
-            state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S} sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                            shock]
+                return 𝐒₁ * aug_state # you need a return statement for forwarddiff to work
+            end
             
-            𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
+            𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(𝐒₁, state_update₁ₜ)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:quadratic_iteration, :binder_pesaran])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -3259,11 +3269,15 @@ function solve!(𝓂::ℳ;
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
-            sol_mat = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
+            𝐒₁ = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
             
-            state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S} sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                            shock]
+                return 𝐒₁ * aug_state # you need a return statement for forwarddiff to work
+            end
             
-            𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
+            𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(𝐒₁, state_update₁ₜ)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:linear_time_iteration])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -4566,8 +4580,6 @@ end
 
 function irf(state_update::Function, 
     obc_state_update::Function,
-    model::JuMP.Model,
-    x::Vector{JuMP.VariableRef},
     initial_state::Vector{Float64}, 
     level::Vector{Float64},
     pruning::Bool, 
@@ -4647,7 +4659,7 @@ function irf(state_update::Function,
             always_solved = true
             
             for t in 1:periods
-                past_states, past_shocks, solved, model, x  = obc_state_update(past_states, shock_history[:,t], state_update, algorithm, model, x)
+                past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
 
                 if !solved @warn "No solution at iteration $t" end
 
@@ -4688,7 +4700,7 @@ function irf(state_update::Function,
             always_solved = true
             
             for t in 1:periods
-                past_states, _, solved, model, x  = obc_state_update(past_states, shck, state_update, algorithm, model, x)
+                past_states, _, solved  = obc_state_update(past_states, shck, state_update)
 
                 if !solved @warn "No solution at iteration $t" end
 
@@ -4732,7 +4744,7 @@ function irf(state_update::Function,
                 always_solved = true
                 
                 for t in 1:periods
-                    past_states, past_shocks, solved, model, x  = obc_state_update(past_states, shock_history[:,t], state_update, algorithm, model, x)
+                    past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
     
                     if !solved @warn "No solution at iteration $t" end
     
@@ -4740,7 +4752,7 @@ function irf(state_update::Function,
     
                     if !always_solved break end
     
-                    Y[:,t,1] = past_states
+                    Y[:,t,i] = past_states
                     shock_history[:,t] = past_shocks
                 end
             end

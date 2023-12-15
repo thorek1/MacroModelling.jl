@@ -931,7 +931,7 @@ function get_irf(𝓂::ℳ;
         return girfs
     else
         if occasionally_binding_constraints
-            function obc_state_update(present_states::Vector{R}, present_shocks::Vector{R}, state_update::Function, algorithm::Symbol, model::JuMP.Model, x::Vector{JuMP.VariableRef}) where R <: Float64
+            function obc_state_update(present_states::Vector{R}, present_shocks::Vector{R}, state_update::Function) where R <: Float64
                 unconditional_forecast_horizon = 𝓂.max_obc_horizon
 
                 reference_steady_state = 𝓂.solution.non_stochastic_steady_state
@@ -941,93 +941,46 @@ function get_irf(𝓂::ℳ;
                 periods_per_shock = 𝓂.max_obc_horizon + 1
                 
                 num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
-
-                constraints_violated = any(JuMP.value.(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))) .> eps(Float32))
                 
+                p = (present_states, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, present_shocks)
+
+                constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
+
                 if constraints_violated
-                    # Now loop through obc_shock_bounds to set the bounds on these variables.
-                    # maxmin_indicators = 𝓂.obc_violation_function(x, present_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2]
-                    # for (idx, v) in enumerate(maxmin_indicators)
-                    #     idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
-                    #     if v
-                    # #         if 𝓂.obc_violation_function(x, present_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
-                    #         JuMP.set_upper_bound.(x[idxs], 0)
-                    # #             JuMP.set_lower_bound.(x[idxs], 0)
-                    #     else
-                    # #             JuMP.set_upper_bound.(x[idxs], 0)
-                    #         JuMP.set_lower_bound.(x[idxs], 0)
-                    #     end
-                    # #     # else
-                    # #     #     if 𝓂.obc_violation_function(x, present_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
-                    # #     #         JuMP.set_lower_bound.(x[idxs], 0)
-                    # #     #     else
-                    # #     #         JuMP.set_upper_bound.(x[idxs], 0)
-                    # #     #     end
-                    # #     # end
-                    # end
+                    opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
 
-                    JuMP.@constraint(model, con, 𝓂.obc_violation_function(x, present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks)) .<= 0)
+                    opt.min_objective = obc_objective_optim_fun
 
-                    JuMP.optimize!(model)
+                    opt.xtol_rel = eps()
                     
-                    solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED]
-
-                    if !solved
-                        for opt in [:LD_SLSQP, :LD_MMA, :LN_COBYLA]
-                            # @info "Using $opt solver."
-
-                            JuMP.set_optimizer(model, NLopt.Optimizer)
-
-                            JuMP.set_attribute(model, "algorithm", opt)
-
-                            JuMP.optimize!(model)
-
-                            solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED] && !(any(JuMP.value.(𝓂.obc_violation_function(JuMP.value.(x), present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))) .> eps(Float32)))
-
-                            if solved break end
-                        end
-                    end
+                    # Adding constraints
+                    upper_bounds = zeros(1 + 2*(num_shocks*periods_per_shock-1))
                     
-                    present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= JuMP.value.(x)
+                    NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
 
-                    JuMP.delete(model, con)
+                    (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
+                    
+                    solved = ret ∈ Symbol.([
+                        NLopt.SUCCESS,
+                        NLopt.STOPVAL_REACHED,
+                        NLopt.FTOL_REACHED,
+                        NLopt.XTOL_REACHED,
+                        NLopt.ROUNDOFF_LIMITED,
+                    ])
+                    
+                    present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
 
-                    JuMP.unregister(model, :con)
-
-                    JuMP.set_optimizer(model, MadNLP.Optimizer)
-
-                    # JuMP.set_attribute(model, "tol", 1e-12)
                 else
                     solved = true
                 end
 
-                present_states = state_update(present_states,JuMP.value.(present_shocks))
+                present_states = state_update(present_states, present_shocks)
 
-                return present_states, present_shocks, solved, model, x
+                return present_states, present_shocks, solved
             end
-
-            model = JuMP.Model()
-
-            JuMP.set_optimizer(model, MadNLP.Optimizer)
-            
-            # JuMP.set_attribute(model, "tol", 1e-12)
-
-            JuMP.set_silent(model)
-
-            obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
-
-            periods_per_shock = 𝓂.max_obc_horizon + 1
-
-            num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
-
-            JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
-
-            JuMP.@objective(model, Min, x' * ℒ.I * x)
 
             irfs =  irf(state_update,
                         obc_state_update, 
-                        model,
-                        x,
                         initial_state, 
                         levels ? reference_steady_state : SSS_delta,
                         pruning,
