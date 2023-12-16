@@ -464,7 +464,7 @@ function plot_irf(𝓂::ℳ;
             function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
                 unconditional_forecast_horizon = 𝓂.max_obc_horizon
 
-                reference_steady_state = 𝓂.solution.non_stochastic_steady_state
+                reference_ss = 𝓂.solution.non_stochastic_steady_state
 
                 obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
 
@@ -472,7 +472,7 @@ function plot_irf(𝓂::ℳ;
                 
                 num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
                 
-                p = (present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
+                p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
 
                 constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
 
