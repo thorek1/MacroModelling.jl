@@ -867,7 +867,6 @@ function get_irf(𝓂::ℳ;
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
     end
 
-
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
     if algorithm == :second_order
@@ -908,13 +907,9 @@ function get_irf(𝓂::ℳ;
 
     obc_shocks_included = stochastic_model && (length(𝓂.obc_violation_equations) > 0) && (intersect(((shock_idx isa Vector) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
 
-    if occasionally_binding_constraints || obc_shocks_included
-        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraints only compatible with first order perturbation solutions."
-        
-        solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 1, verbose = false, dynamics = true, algorithm = algorithm)
-    end
-    
-    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
+    occasionally_binding_constraints = occasionally_binding_constraints || obc_shocks_included
+
+    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, occasionally_binding_constraints)
 
     if generalised_irf
         girfs =  girf(state_update,
@@ -931,7 +926,7 @@ function get_irf(𝓂::ℳ;
         return girfs
     else
         if occasionally_binding_constraints
-            function obc_state_update(present_states::Vector{R}, present_shocks::Vector{R}, state_update::Function) where R <: Float64
+            function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
                 unconditional_forecast_horizon = 𝓂.max_obc_horizon
 
                 reference_steady_state = 𝓂.solution.non_stochastic_steady_state
@@ -941,8 +936,8 @@ function get_irf(𝓂::ℳ;
                 periods_per_shock = 𝓂.max_obc_horizon + 1
                 
                 num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
-                
-                p = (present_states, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, present_shocks)
+
+                p = (present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
 
                 constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
 
@@ -1003,10 +998,6 @@ function get_irf(𝓂::ℳ;
                         shocks = shocks, 
                         variables = variables, 
                         negative_shock = negative_shock)
-        end
-
-        if occasionally_binding_constraints || obc_shocks_included #&& algorithm ∈ [:pruned_second_order, :second_order, :pruned_third_order, :third_order]
-            solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
         end
 
         return irfs

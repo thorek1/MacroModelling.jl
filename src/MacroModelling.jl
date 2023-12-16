@@ -294,7 +294,7 @@ function set_up_obc_violation_function!(𝓂)
     end
 
     calc_obc_violation = :(function calculate_obc_violation(x, p)
-        initial_state, state_update, reference_steady_state, 𝓂, periods, shock_values = p
+        state, state_update, reference_steady_state, 𝓂, algorithm, periods, shock_values = p
 
         T = 𝓂.timings
 
@@ -306,10 +306,20 @@ function set_up_obc_violation_function!(𝓂)
 
         zero_shock = zero(shock_values)
 
-        Y[:,1] = state_update(initial_state, shock_values)
+        if algorithm ∈ [:pruned_second_order, :pruned_third_order]
+            states = state_update(state, shock_values)
+            Y[:,1] = sum(states)
+        else
+            Y[:,1] = state_update(state, shock_values)
+        end
 
         for t in 1:periods
-            Y[:,t+1] = state_update(Y[:,t], zero_shock)
+            if algorithm ∈ [:pruned_second_order, :pruned_third_order]
+                states = state_update(states, shock_values)
+                Y[:,t+1] = sum(states)
+            else
+                Y[:,t+1] = state_update(Y[:,t], zero_shock)
+            end
         end
 
         Y .+= reference_steady_state[1:T.nVars]
@@ -3168,8 +3178,8 @@ function solve!(𝓂::ℳ;
         
         if (:pruned_second_order == algorithm && 
                 :pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || 
-            (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && 
-                any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+            (any([:pruned_third_order] .∈ ([algorithm],)) && 
+                any([:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
 
@@ -4630,6 +4640,8 @@ function irf(state_update::Function,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
+    always_solved = true
+
     if shocks == :simulate
         shock_history = randn(T.nExo,periods)
 
@@ -4642,21 +4654,42 @@ function irf(state_update::Function,
                 pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
                 pruned_state² = copy(initial_state)
 
+                past_states = [pruned_state¹, pruned_state²]
+
                 for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state²], shock_history[:,t])
+                    past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
+                    
+                    if !solved @warn "No solution at iteration $t" end
+
+                    always_solved = always_solved && solved
+
+                    if !always_solved break end
+
+                    Y[:,t,1] = sum(past_states)
+                    shock_history[:,t] = past_shocks
                 end
             elseif algorithm == :pruned_third_order
                 pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
                 pruned_state² = copy(initial_state)
                 pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
 
+                past_states = [pruned_state¹, pruned_state², pruned_state³]
+
                 for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state², pruned_state³], shock_history[:,t])
+                    past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
+
+                    if !solved @warn "No solution at iteration $t" end
+
+                    always_solved = always_solved && solved
+
+                    if !always_solved break end
+
+                    Y[:,t,1] = sum(past_states)
+                    shock_history[:,t] = past_shocks
                 end
             end
         else
             past_states = initial_state
-            always_solved = true
             
             for t in 1:periods
                 past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
@@ -4683,21 +4716,40 @@ function irf(state_update::Function,
                 pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
                 pruned_state² = copy(initial_state)
 
+                past_states = [pruned_state¹, pruned_state²]
+
                 for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state²], shck)
+                    past_states, past_shocks, solved  = obc_state_update(past_states, shck, state_update)
+
+                    if !solved @warn "No solution at iteration $t" end
+
+                    always_solved = always_solved && solved
+
+                    if !always_solved break end
+
+                    Y[:,t,1] = sum(past_states)
                 end
             elseif algorithm == :pruned_third_order
                 pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
                 pruned_state² = copy(initial_state)
                 pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
 
+                past_states = [pruned_state¹, pruned_state², pruned_state³]
+
                 for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state², pruned_state³], shck)
+                    past_states, past_shocks, solved  = obc_state_update(past_states, shck, state_update)
+
+                    if !solved @warn "No solution at iteration $t" end
+
+                    always_solved = always_solved && solved
+
+                    if !always_solved break end
+
+                    Y[:,t,1] = sum(past_states)
                 end
             end
         else 
             past_states = initial_state
-            always_solved = true
             
             for t in 1:periods
                 past_states, _, solved  = obc_state_update(past_states, shck, state_update)
@@ -4727,24 +4779,45 @@ function irf(state_update::Function,
                     pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
                     pruned_state² = copy(initial_state)
     
+                    past_states = [pruned_state¹, pruned_state²]
+
                     for t in 1:periods
-                        Y[:,t,i] = state_update([pruned_state¹, pruned_state²], shock_history[:,t])
+                        past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
+
+                        if !solved @warn "No solution at iteration $t" end
+
+                        always_solved = always_solved && solved
+
+                        if !always_solved break end
+
+                        Y[:,t,i] = sum(past_states)
+                        shock_history[:,t] = past_shocks
                     end
                 elseif algorithm == :pruned_third_order
                     pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
                     pruned_state² = copy(initial_state)
                     pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-    
+
+                    past_states = [pruned_state¹, pruned_state², pruned_state³]
+
                     for t in 1:periods
-                        Y[:,t,i] = state_update([pruned_state¹, pruned_state², pruned_state³], shock_history[:,t])
+                        past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
+
+                        if !solved @warn "No solution at iteration $t" end
+
+                        always_solved = always_solved && solved
+
+                        if !always_solved break end
+
+                        Y[:,t,i] = sum(past_states)
+                        shock_history[:,t] = past_shocks
                     end
                 end
             else
                 past_states = initial_state
-                always_solved = true
                 
                 for t in 1:periods
-                    past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
+                    past_states, past_shocks, solved = obc_state_update(past_states, shock_history[:,t], state_update)
     
                     if !solved @warn "No solution at iteration $t" end
     
@@ -5151,6 +5224,113 @@ end
 
 
 
+
+
+
+
+function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)
+    if !occasionally_binding_constraints
+        return parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ)
+    else
+        solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 1, verbose = false, dynamics = true, algorithm = algorithm)
+
+        if :linear_time_iteration == algorithm
+            state_update = 𝓂.solution.perturbation.linear_time_iteration.state_update
+            pruning = false
+        elseif algorithm ∈ [:riccati, :first_order]
+            state_update = 𝓂.solution.perturbation.first_order.state_update
+            pruning = false
+        elseif :second_order == algorithm
+            𝐒₁ = 𝓂.solution.perturbation.first_order.solution_matrix
+
+            𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+
+            solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
+
+            𝐒₂ = 𝓂.solution.perturbation.second_order.solution_matrix
+
+            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                            1
+                            shock]
+                return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+            end
+
+            pruning = false
+        elseif :pruned_second_order == algorithm
+            𝐒₁ = 𝓂.solution.perturbation.first_order.solution_matrix
+
+            𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+
+            solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
+            
+            𝐒₂ = 𝓂.solution.perturbation.pruned_second_order.solution_matrix
+
+            obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+
+            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+                aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+                zeroed_shock = deepcopy(shock)
+                zeroed_shock[.!(obc_shock_idx)] .= 0
+                aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zeroed_shock]
+                
+                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+                # end
+            end
+
+            pruning = true
+        elseif :third_order == algorithm
+            𝐒₁ = 𝓂.solution.perturbation.first_order.solution_matrix
+
+            𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+
+            solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
+
+            𝐒₂ = 𝓂.solution.perturbation.second_order.solution_matrix
+
+            𝐒₃ = 𝓂.solution.perturbation.third_order.solution_matrix
+            
+            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                            1
+                            shock]
+                return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+            end
+
+            pruning = false
+        elseif :pruned_third_order == algorithm
+            𝐒₁ = 𝓂.solution.perturbation.first_order.solution_matrix
+
+            𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+
+            solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
+
+            𝐒₂ = 𝓂.solution.perturbation.pruned_second_order.solution_matrix
+
+            𝐒₃ = 𝓂.solution.perturbation.pruned_third_order.solution_matrix
+            
+            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+                aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+                aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
+                zeroed_shock = deepcopy(shock)
+                zeroed_shock[.!(obc_shock_idx)] .= 0
+                aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zeroed_shock]
+                aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zeroed_shock]
+                
+                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+                
+                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6] # strictly following Andreasen et al. (2018)
+                # end
+            end
+            
+            pruning = true
+        end
+
+        solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
+
+        return state_update, pruning
+    end
+end
 
 
 
@@ -6164,79 +6344,79 @@ end
 
 
 
-@setup_workload begin
-    # Putting some things in `setup` can reduce the size of the
-    # precompile file and potentially make loading faster.
-    @model FS2000 precompile = true begin
-        dA[0] = exp(gam + z_e_a  *  e_a[x])
-        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-        W[0] = l[0] / n[0]
-        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-        P[0] * c[0] = m[0]
-        m[0] - 1 + d[0] = l[0]
-        e[0] = exp(z_e_a  *  e_a[x])
-        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-        gy_obs[0] = dA[0] * y[0] / y[-1]
-        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-        log_gy_obs[0] = log(gy_obs[0])
-        log_gp_obs[0] = log(gp_obs[0])
-    end
+# @setup_workload begin
+#     # Putting some things in `setup` can reduce the size of the
+#     # precompile file and potentially make loading faster.
+#     @model FS2000 precompile = true begin
+#         dA[0] = exp(gam + z_e_a  *  e_a[x])
+#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#         W[0] = l[0] / n[0]
+#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#         P[0] * c[0] = m[0]
+#         m[0] - 1 + d[0] = l[0]
+#         e[0] = exp(z_e_a  *  e_a[x])
+#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#         gy_obs[0] = dA[0] * y[0] / y[-1]
+#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#         log_gy_obs[0] = log(gy_obs[0])
+#         log_gp_obs[0] = log(gp_obs[0])
+#     end
 
-    @parameters FS2000 silent = true precompile = true begin  
-        alp     = 0.356
-        bet     = 0.993
-        gam     = 0.0085
-        mst     = 1.0002
-        rho     = 0.129
-        psi     = 0.65
-        del     = 0.01
-        z_e_a   = 0.035449
-        z_e_m   = 0.008862
-    end
+#     @parameters FS2000 silent = true precompile = true begin  
+#         alp     = 0.356
+#         bet     = 0.993
+#         gam     = 0.0085
+#         mst     = 1.0002
+#         rho     = 0.129
+#         psi     = 0.65
+#         del     = 0.01
+#         z_e_a   = 0.035449
+#         z_e_m   = 0.008862
+#     end
     
-    ENV["GKSwstype"] = "nul"
+#     ENV["GKSwstype"] = "nul"
 
-    @compile_workload begin
-        # all calls in this block will be precompiled, regardless of whether
-        # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC precompile = true begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
+#     @compile_workload begin
+#         # all calls in this block will be precompiled, regardless of whether
+#         # they belong to your package or not (on Julia 1.8 and higher)
+#         @model RBC precompile = true begin
+#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#         end
 
-        @parameters RBC silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
+#         @parameters RBC silent = true precompile = true begin
+#             δ = 0.02
+#             α = 0.5
+#         end
 
-        get_SS(FS2000)
-        get_SS(FS2000, parameters = :alp => 0.36)
-        get_solution(FS2000)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)
+#         get_SS(FS2000)
+#         get_SS(FS2000, parameters = :alp => 0.36)
+#         get_solution(FS2000)
+#         get_solution(FS2000, parameters = :alp => 0.35)
+#         get_standard_deviation(FS2000)
+#         get_correlation(FS2000)
+#         get_autocorrelation(FS2000)
+#         get_variance_decomposition(FS2000)
+#         get_conditional_variance_decomposition(FS2000)
+#         get_irf(FS2000)
 
-        data = simulate(FS2000)[:,:,1]
-        observables = [:c,:k]
-        calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
-        get_mean(FS2000, silent = true)
-        # get_SSS(FS2000, silent = true)
-        # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#         data = simulate(FS2000)[:,:,1]
+#         observables = [:c,:k]
+#         calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
+#         get_mean(FS2000, silent = true)
+#         # get_SSS(FS2000, silent = true)
+#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-        # import Plots, StatsPlots
-        # plot_irf(FS2000)
-        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        # plot_conditional_variance_decomposition(FS2000)
-    end
-end
+#         # import Plots, StatsPlots
+#         # plot_irf(FS2000)
+#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#         # plot_conditional_variance_decomposition(FS2000)
+#     end
+# end
 
 end
