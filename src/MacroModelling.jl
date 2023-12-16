@@ -315,7 +315,7 @@ function set_up_obc_violation_function!(𝓂)
 
         for t in 1:periods
             if algorithm ∈ [:pruned_second_order, :pruned_third_order]
-                states = state_update(states, shock_values)
+                states = state_update(states, zero_shock)
                 Y[:,t+1] = sum(states)
             else
                 Y[:,t+1] = state_update(Y[:,t], zero_shock)
@@ -5270,9 +5270,7 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
 
             state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
                 aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-                zeroed_shock = deepcopy(shock)
-                zeroed_shock[.!(obc_shock_idx)] .= 0
-                aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zeroed_shock]
+                aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
                 
                 return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
                 # end
@@ -5312,10 +5310,8 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
                 aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
                 aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
-                zeroed_shock = deepcopy(shock)
-                zeroed_shock[.!(obc_shock_idx)] .= 0
-                aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zeroed_shock]
-                aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zeroed_shock]
+                aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
                 
                 kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
                 
