@@ -943,7 +943,7 @@ function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
 end
 
 # try: run optim only if there is a violation / capture case with small shocks and set them to zero
-function parse_occasionally_binding_constraints(equations_block; max_obc_horizon::Int = 40)
+function parse_occasionally_binding_constraints(equations_block; max_obc_horizon::Int = 10)
     # precision_factor = 1e  #factor to force the optimiser to have non-relevatn shocks at zero
 
     eqs = []
@@ -5229,9 +5229,7 @@ end
 
 
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)
-    if !occasionally_binding_constraints
-        return parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ)
-    else
+    if occasionally_binding_constraints
         solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 1, verbose = false, dynamics = true, algorithm = algorithm)
 
         if :linear_time_iteration == algorithm
