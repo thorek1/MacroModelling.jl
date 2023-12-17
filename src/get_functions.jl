@@ -841,6 +841,10 @@ function get_irf(𝓂::ℳ;
 
     @assert !(shocks == :none && generalised_irf) "Cannot compute generalised IRFs for model without shocks."
 
+    stochastic_model = length(𝓂.timings.exo) > 0
+
+    obc_model = length(𝓂.obc_violation_equations) > 0
+
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
@@ -851,6 +855,8 @@ function get_irf(𝓂::ℳ;
         shock_history[:,1:size(shocks)[2]] = shocks
 
         shock_idx = 1
+
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ"),:]) > 1e-10
     elseif shocks isa KeyedArray{Float64}
         shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
 
@@ -863,8 +869,12 @@ function get_irf(𝓂::ℳ;
         shock_history[indexin(shock_input,𝓂.timings.exo),1:size(shocks)[2]] = shocks
 
         shock_idx = 1
+
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(𝓂.timings.exo,axiskeys(shocks,1)),:)) > 1e-10
     else
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+
+        obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
     end
 
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
@@ -902,10 +912,6 @@ function get_irf(𝓂::ℳ;
     else
         occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
     end
-
-    stochastic_model = length(𝓂.timings.exo) > 0
-
-    obc_shocks_included = stochastic_model && (length(𝓂.obc_violation_equations) > 0) && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
 
     if occasionally_binding_constraints
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, occasionally_binding_constraints)
@@ -950,20 +956,17 @@ function get_irf(𝓂::ℳ;
                 constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
 
                 if constraints_violated
-                    # opt = NLopt.Opt(NLopt.:AUGLAG, num_shocks*periods_per_shock)
-                    # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, num_shocks*periods_per_shock))
                     opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
-                    # opt = NLopt.Opt(NLopt.:LN_COBYLA, num_shocks*periods_per_shock)
                     
                     opt.min_objective = obc_objective_optim_fun
 
                     opt.xtol_rel = eps()
                     
                     # Adding constraints
-                    opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock)
+                    # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock)
                     # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
 
-                    upper_bounds = zeros(1 + 2*(num_shocks*periods_per_shock-1))
+                    upper_bounds = fill(eps(), 1 + 2*(num_shocks*periods_per_shock-1))
                     
                     NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
 
@@ -979,6 +982,9 @@ function get_irf(𝓂::ℳ;
                     
                     present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
 
+                    constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
+
+                    solved = solved && !constraints_violated
                 else
                     solved = true
                 end

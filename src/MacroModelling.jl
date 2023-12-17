@@ -937,6 +937,24 @@ function generateSumVectors(vectorLength::Int, totalSum::Int)
     return [[currentInt; smallerVector...]' for currentInt in totalSum:-1:0 for smallerVector in generateSumVectors(vectorLength-1, totalSum-currentInt)]
 end
 
+# function convert_superscript_to_integer(str::String)
+#     # Regular expression to match superscript numbers in brackets
+#     regex = r"⁽([⁰¹²³⁴⁵⁶⁷⁸⁹]+)⁾$"
+
+#     # Mapping of superscript characters to their integer values
+#     superscript_map = Dict('⁰'=>0, '¹'=>1, '²'=>2, '³'=>3, '⁴'=>4, '⁵'=>5, '⁶'=>6, '⁷'=>7, '⁸'=>8, '⁹'=>9)
+
+#     # Check for a match and process if found
+#     if occursin(regex, str)
+#         matched = match(regex, str).captures[1]
+#         # Convert each superscript character to a digit and concatenate
+#         digits = [superscript_map[c] for c in matched]
+#         # Convert array of digits to integer
+#         return parse(Int, join(digits))
+#     else
+#         return nothing
+#     end
+# end
 
 function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
     return filter(r -> match(pattern, string(r)) !== nothing, strings)
