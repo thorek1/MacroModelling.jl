@@ -441,7 +441,7 @@ function plot_irf(𝓂::ℳ;
 
     stochastic_model = length(𝓂.timings.exo) > 0
 
-    obc_shocks_included = stochastic_model && (length(𝓂.obc_violation_equations) > 0) && (intersect((([shock_idx...] isa Vector) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
+    obc_shocks_included = stochastic_model && (length(𝓂.obc_violation_equations) > 0) && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
 
     if occasionally_binding_constraints
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, occasionally_binding_constraints)
@@ -485,14 +485,20 @@ function plot_irf(𝓂::ℳ;
                 constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
 
                 if constraints_violated
+                    # opt = NLopt.Opt(NLopt.:AUGLAG, num_shocks*periods_per_shock)
+                    # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, num_shocks*periods_per_shock))
                     opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
-
+                    # opt = NLopt.Opt(NLopt.:LN_COBYLA, num_shocks*periods_per_shock)
+                    
                     opt.min_objective = obc_objective_optim_fun
 
                     opt.xtol_rel = eps()
                     
                     # Adding constraints
-                    upper_bounds = zeros(1 + 2*(num_shocks*periods_per_shock-1))
+                    opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock)
+                    # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
+
+                    upper_bounds = fill(eps(), 1 + 2*(num_shocks*periods_per_shock-1))
                     
                     NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
 
