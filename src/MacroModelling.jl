@@ -3155,17 +3155,17 @@ function solve!(𝓂::ℳ;
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
-            𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+            S₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
             
             @assert solved "Could not find stable first order solution."
 
             state_update₁ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                             shock]
-                return 𝐒₁ * aug_state # you need a return statement for forwarddiff to work
+                return S₁ * aug_state # you need a return statement for forwarddiff to work
             end
             
-            𝓂.solution.perturbation.first_order = perturbation_solution(𝐒₁, state_update₁)
+            𝓂.solution.perturbation.first_order = perturbation_solution(S₁, state_update₁)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -3196,8 +3196,8 @@ function solve!(𝓂::ℳ;
         
         if (:pruned_second_order == algorithm && 
                 :pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || 
-            (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && 
-                any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+            (any([:pruned_third_order] .∈ ([algorithm],)) && 
+                any([:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
 
@@ -3272,15 +3272,15 @@ function solve!(𝓂::ℳ;
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
-            𝐒₁, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
+            S₁, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
             
             state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                             shock]
-                return 𝐒₁ * aug_state # you need a return statement for forwarddiff to work
+                return S₁ * aug_state # you need a return statement for forwarddiff to work
             end
             
-            𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(𝐒₁, state_update₁ₜ)
+            𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(S₁, state_update₁ₜ)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:quadratic_iteration, :binder_pesaran])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -3297,15 +3297,15 @@ function solve!(𝓂::ℳ;
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
-            𝐒₁ = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
+            S₁ = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
             
             state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                             shock]
-                return 𝐒₁ * aug_state # you need a return statement for forwarddiff to work
+                return S₁ * aug_state # you need a return statement for forwarddiff to work
             end
             
-            𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(𝐒₁, state_update₁ₜ)
+            𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(S₁, state_update₁ₜ)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:linear_time_iteration])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
