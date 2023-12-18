@@ -3122,10 +3122,10 @@ function solve!(𝓂::ℳ;
 
     @assert algorithm ∈ all_available_algorithms
 
-    if dynamics
-        𝓂.solution.outdated_algorithms = union(intersect(𝓂.solution.algorithms,[algorithm]),𝓂.solution.outdated_algorithms)
-        𝓂.solution.algorithms = union(𝓂.solution.algorithms,[algorithm])
-    end
+    # if dynamics
+    #     𝓂.solution.outdated_algorithms = union(intersect(𝓂.solution.algorithms,[algorithm]),𝓂.solution.outdated_algorithms)
+    #     𝓂.solution.algorithms = union(𝓂.solution.algorithms,[algorithm])
+    # end
     
     write_parameters_input!(𝓂, parameters, verbose = verbose)
 
