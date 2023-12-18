@@ -13,7 +13,7 @@ Parses the model equations and assigns them to an object.
 - `ex`: equations
 
 # Optional arguments to be placed between `𝓂` and `ex`
-- `max_obc_horizon` [Default: `40`, Type: `Int`]: maximum length of anticipated shocks and corresponding unconditional forecast horizon over which the occasionally binding constraint is to be enforced. Increase this number if no solution is found to enforce the constraint.
+- `max_obc_horizon` [Default: `20`, Type: `Int`]: maximum length of anticipated shocks and corresponding unconditional forecast horizon over which the occasionally binding constraint is to be enforced. Increase this number if no solution is found to enforce the constraint.
 
 Variables must be defined with their time subscript in squared brackets.
 Endogenous variables can have the following:
@@ -57,7 +57,7 @@ macro model(𝓂,ex...)
     # parse options
     verbose = false
     precompile = false
-    max_obc_horizon = 40
+    max_obc_horizon = 20
 
     for exp in ex[1:end-1]
         postwalk(x -> 
