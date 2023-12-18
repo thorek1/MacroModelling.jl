@@ -498,10 +498,11 @@ function plot_irf(𝓂::ℳ;
                     opt.xtol_rel = eps()
                     
                     # Adding constraints
-                    # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) # upper bounds don't work because it can be that bounds can only be enforced with offsetting (previous periods negative shocks) positive shocks. also in order to enforce the bound over the length of the forecasting horizon the shocks might be in the last period. that's why an approach whereby you increase the anticipation horizon of shocks can be more costly due to repeated computations.
+                    # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) 
+                    # upper bounds don't work because it can be that bounds can only be enforced with offsetting (previous periods negative shocks) positive shocks. also in order to enforce the bound over the length of the forecasting horizon the shocks might be in the last period. that's why an approach whereby you increase the anticipation horizon of shocks can be more costly due to repeated computations.
                     # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
 
-                    upper_bounds = fill(eps(), 1 + 2*(num_shocks*periods_per_shock-1))
+                    upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
                     
                     NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
 

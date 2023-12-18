@@ -950,7 +950,7 @@ function get_irf(𝓂::ℳ;
                 periods_per_shock = 𝓂.max_obc_horizon + 1
                 
                 num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
-
+                
                 p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
 
                 constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
@@ -963,10 +963,11 @@ function get_irf(𝓂::ℳ;
                     opt.xtol_rel = eps()
                     
                     # Adding constraints
-                    # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock)
+                    # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) 
+                    # upper bounds don't work because it can be that bounds can only be enforced with offsetting (previous periods negative shocks) positive shocks. also in order to enforce the bound over the length of the forecasting horizon the shocks might be in the last period. that's why an approach whereby you increase the anticipation horizon of shocks can be more costly due to repeated computations.
                     # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
 
-                    upper_bounds = fill(eps(), 1 + 2*(num_shocks*periods_per_shock-1))
+                    upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
                     
                     NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
 
@@ -988,7 +989,7 @@ function get_irf(𝓂::ℳ;
                 else
                     solved = true
                 end
-
+                
                 present_states = state_update(present_states, present_shocks)
 
                 return present_states, present_shocks, solved
