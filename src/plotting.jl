@@ -1120,59 +1120,72 @@ function plot_solution(𝓂::ℳ,
     framestyle = :none, 
     legend = :inside)
 
-    variable_algo_list = []
-    has_impact_list = []
-    
+    has_impact_dict = Dict()
+    variable_dict = Dict()
+
+    NSSS = relevant_SS_dictionnary[:first_order]
+
+    all_states = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+    for a in algorithm
+        SSS_delta = collect(NSSS - relevant_SS_dictionnary[a])
+
+        var_state_range = []
+
+        for x in state_range
+            if a == :pruned_second_order
+                initial_state = [state_selector * x, -SSS_delta]
+            elseif a == :pruned_third_order
+                initial_state = [state_selector * x, -SSS_delta, zeros(length(all_states))]
+            else
+                initial_state = collect(relevant_SS_dictionnary[a]) .+ state_selector * x
+            end
+
+            push!(var_state_range, get_irf(𝓂, algorithm = a, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
+        end
+
+        var_state_range = hcat(var_state_range...)
+
+        variable_output = Dict()
+        impact_output   = Dict()
+
+        for k in vars_to_plot
+            idx = indexin([k], all_states)
+
+            push!(variable_output,  k => var_state_range[idx,:]) 
+            
+            push!(impact_output,    k => any(abs.(sum(var_state_range[idx,:]) / size(var_state_range, 2) .- var_state_range[idx,:]) .> eps(Float32)))
+        end
+
+        push!(variable_dict,    a => variable_output)
+        push!(has_impact_dict,  a => impact_output)
+    end
+
+    has_impact_var_dict = Dict()
+
     for k in vars_to_plot
         has_impact = false
-    
-        algo_dict = Dict{Symbol,Vector{Float64}}()
-    
+
         for a in algorithm
-            variable_output = Float64[]
-
-            NSSS = relevant_SS_dictionnary[:first_order]
-
-            SSS_delta = collect(NSSS - relevant_SS_dictionnary[a])
-
-            for x in state_range
-                if a == :pruned_second_order
-                    initial_state = [state_selector * x, -SSS_delta]
-                elseif a == :pruned_third_order
-                    initial_state = [state_selector * x, -SSS_delta, zeros(length(all_states))]
-                else
-                    initial_state = collect(relevant_SS_dictionnary[a]) .+ state_selector * x
-                end
-
-                out = get_irf(𝓂, algorithm = a, variables = k, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true)[1]
-
-                push!(variable_output, (abs(out - NSSS[indexin([k],𝓂.timings.var)][1]) > eps() ? out : NSSS[indexin([k],𝓂.timings.var)][1]))
-            end
-            
-            has_impact = has_impact || sum(abs2,variable_output .- sum(variable_output) / length(variable_output)) / (length(variable_output) - 1) > eps()
-    
-            push!(algo_dict, a => variable_output)
+            has_impact = has_impact || has_impact_dict[a][k]
         end
-    
-        push!(variable_algo_list, algo_dict)
-        push!(has_impact_list, has_impact)
-    
+
         if !has_impact
             n_subplots -= 1
         end
+
+        push!(has_impact_var_dict, k => has_impact)
     end
 
-    all_states = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-                        
-    for (i,k) in enumerate(vars_to_plot)
-        if !has_impact_list[i] continue end
+    for k in vars_to_plot
+        if !has_impact_var_dict[k] continue end
 
         push!(pp,begin
                     Pl = StatsPlots.plot() 
 
                     for a in algorithm
                         StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state],all_states)][1], 
-                            variable_algo_list[i][a], 
+                            variable_dict[a][k][1,:], 
                             ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
                             xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
                             label = "")
