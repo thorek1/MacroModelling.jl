@@ -1031,7 +1031,7 @@ function plot_solution(𝓂::ℳ,
                     framestyle = :box)
 
     state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
-    
+
     @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(𝓂.timings.past_not_future_and_mixed)
 
     @assert length(setdiff(algorithm isa Symbol ? [algorithm] : algorithm, [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order])) == 0 "Invalid algorithm. Choose any combination of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
@@ -1114,6 +1114,14 @@ function plot_solution(𝓂::ℳ,
         full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
 
         push!(relevant_SS_dictionnary, a => full_SS)
+    end
+
+    if :first_order ∉ algorithm
+        relevant_SS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false)
+
+        full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+
+        push!(relevant_SS_dictionnary, :first_order => full_SS)
     end
 
     StatsPlots.scatter!(fill(0,1,1), 
