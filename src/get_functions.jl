@@ -913,10 +913,18 @@ function get_irf(𝓂::ℳ;
         else
             initial_state = zeros(𝓂.timings.nVars) - SSS_delta
         end
-    elseif algorithm ∉ [:pruned_second_order, :pruned_third_order]
-        @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
-
-        initial_state = initial_state - reference_steady_state[1:𝓂.timings.nVars]
+    else
+        if initial_state isa Vector{Float64}
+            if algorithm == :pruned_second_order
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
+            elseif algorithm == :pruned_third_order
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+            else
+                initial_state = initial_state - reference_steady_state[1:𝓂.timings.nVars]
+            end
+        else
+            @assert algorithm ∉ [:pruned_second_order, :pruned_third_order] && initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+        end
     end
     
     if ignore_obc
