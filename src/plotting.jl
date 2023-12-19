@@ -1037,16 +1037,10 @@ function plot_solution(𝓂::ℳ,
         solve!(𝓂, verbose = verbose, algorithm = algorithm, dynamics = true, parameters = parameters)
         algorithm = [algorithm]
     else
-        if :third_order ∈ algorithm && :pruned_third_order ∈ algorithm
-            solve!(𝓂, verbose = verbose, algorithm = :third_order, dynamics = true, parameters = parameters)
-            solve!(𝓂, verbose = verbose, algorithm = :pruned_third_order, dynamics = true, parameters = parameters)
-        elseif :third_order ∈ algorithm
+        if :third_order ∈ algorithm
             solve!(𝓂, verbose = verbose, algorithm = :third_order, dynamics = true, parameters = parameters)
         elseif :pruned_third_order ∈ algorithm
             solve!(𝓂, verbose = verbose, algorithm = :pruned_third_order, dynamics = true, parameters = parameters)
-        elseif :second_order ∈ algorithm && :pruned_second_order ∈ algorithm
-            solve!(𝓂, verbose = verbose, algorithm = :second_order, dynamics = true, parameters = parameters)
-            solve!(𝓂, verbose = verbose, algorithm = :pruned_second_order, dynamics = true, parameters = parameters)
         elseif :second_order ∈ algorithm
             solve!(𝓂, verbose = verbose, algorithm = :second_order, dynamics = true, parameters = parameters)
         elseif :pruned_second_order ∈ algorithm
@@ -1087,77 +1081,42 @@ function plot_solution(𝓂::ℳ,
     plot_count = 1
     return_plots = []
 
-    
+    labels = Dict(  :first_order            => ["1st order perturbation",           "Non Stochastic Steady State"],
+                    :second_order           => ["2nd order perturbation",           "Stochastic Steady State (2nd order)"],
+                    :pruned_second_order    => ["Pruned 2nd order perturbation",    "Stochastic Steady State (Pruned 2nd order)"],
+                    :third_order            => ["3rd order perturbation",           "Stochastic Steady State (3rd order)"],
+                    :pruned_third_order     => ["Pruned 3rd order perturbation",    "Stochastic Steady State (Pruned 3rd order)"])
+
     legend_plot = StatsPlots.plot(framestyle = :none) 
 
-    if :first_order ∈ algorithm          
+    for a in algorithm
         StatsPlots.plot!(fill(0,1,1), 
         framestyle = :none, 
         legend = :inside, 
-        label = "1st order perturbation")
+        label = labels[a][1])
     end
-    if :second_order ∈ algorithm    
-        StatsPlots.plot!(fill(0,1,1), 
-        framestyle = :none, 
-        legend = :inside, 
-        label = "2nd order perturbation")
-    end
-    if :pruned_second_order ∈ algorithm    
-        StatsPlots.plot!(fill(0,1,1), 
-        framestyle = :none, 
-        legend = :inside, 
-        label = "Pruned 2nd order perturbation")
-    end
-    if :third_order ∈ algorithm    
-        StatsPlots.plot!(fill(0,1,1), 
-        framestyle = :none, 
-        legend = :inside, 
-        label = "3rd order perturbation")
-    end
-    if :pruned_third_order ∈ algorithm    
-        StatsPlots.plot!(fill(0,1,1), 
-        framestyle = :none, 
-        legend = :inside, 
-        label = "Pruned 3rd order perturbation")
-    end
-
-    if :first_order ∈ algorithm   
+    
+    for a in algorithm
         StatsPlots.scatter!(fill(0,1,1), 
         framestyle = :none, 
         legend = :inside, 
-        label = "Non Stochastic Steady State")
+        label = labels[a][2])
     end
+
     if :second_order ∈ algorithm    
         SSS2 = 𝓂.solution.perturbation.second_order.stochastic_steady_state
-
-        StatsPlots.scatter!(fill(0,1,1), 
-        framestyle = :none, 
-        legend = :inside, 
-        label = "Stochastic Steady State (2nd order)")
     end
+
     if :pruned_second_order ∈ algorithm    
         SSS2p = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
-
-        StatsPlots.scatter!(fill(0,1,1), 
-        framestyle = :none, 
-        legend = :inside, 
-        label = "Stochastic Steady State (Pruned 2nd order)")
     end
+
     if :third_order ∈ algorithm    
         SSS3 = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-
-        StatsPlots.scatter!(fill(0,1,1), 
-        framestyle = :none, 
-        legend = :inside, 
-        label = "Stochastic Steady State (3rd order)")
     end
+
     if :pruned_third_order ∈ algorithm    
         SSS3p = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
-
-        StatsPlots.scatter!(fill(0,1,1), 
-        framestyle = :none, 
-        legend = :inside, 
-        label = "Stochastic Steady State (Pruned 3rd order)")
     end
 
     StatsPlots.scatter!(fill(0,1,1), 
