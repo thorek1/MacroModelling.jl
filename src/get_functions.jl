@@ -941,10 +941,7 @@ function get_irf(𝓂::ℳ;
         girfs =  girf(state_update,
                         SSS_delta,
                         levels ? reference_steady_state : SSS_delta,
-                        pruning,
-                        unspecified_initial_state,
                         𝓂.timings; 
-                        algorithm = algorithm,
                         periods = periods, 
                         shocks = shocks, 
                         variables = variables, 

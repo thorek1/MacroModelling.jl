@@ -477,10 +477,7 @@ function plot_irf(𝓂::ℳ;
         Y = girf(state_update, 
                     SSS_delta, 
                     zeros(𝓂.timings.nVars), 
-                    pruning, 
-                    unspecified_initial_state,
                     𝓂.timings; 
-                    algorithm = algorithm,
                     periods = periods, 
                     shocks = shocks, 
                     variables = variables, 

@@ -4845,19 +4845,18 @@ end
 
 
 
-function girf(state_update::Function, 
-    initial_state::Vector{Float64}, 
+function girf(state_update::Function,
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64}, 
-    pruning::Bool, 
-    unspecified_initial_state::Bool,
     T::timings; 
-    algorithm::Symbol = :first_order,
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
     draws::Int = 50)
+
+    pruning = initial_state isa Vector{Vector{Float64}}
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -4893,26 +4892,18 @@ function girf(state_update::Function,
 
     Y = zeros(T.nVars, periods + 1, length(shock_idx))
 
-    pruned_initial_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-    pruned_initial_state² = copy(initial_state)
-    pruned_initial_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-
     for (i,ii) in enumerate(shock_idx)
         for draw in 1:draws
             for i in 1:warmup_periods
                 if pruning
-                    if algorithm == :pruned_second_order
-                        initial_state = state_update([pruned_initial_state¹, pruned_initial_state²], randn(T.nExo))
-                    elseif algorithm == :pruned_third_order
-                        initial_state = state_update([pruned_initial_state¹, pruned_initial_state², pruned_initial_state³], randn(T.nExo))
-                    end
+                    state_update(initial_state, randn(T.nExo))
                 else
                     initial_state = state_update(initial_state, randn(T.nExo))
                 end
             end
 
-            Y1 = zeros(T.nVars, periods + 1)
-            Y2 = zeros(T.nVars, periods + 1)
+            Y₁ = zeros(T.nVars, periods + 1)
+            Y₂ = zeros(T.nVars, periods + 1)
 
             baseline_noise = randn(T.nExo)
 
@@ -4922,48 +4913,29 @@ function girf(state_update::Function,
             end
 
             if pruning
-                if algorithm == :pruned_second_order
-                    Y1[:,1] = state_update([pruned_initial_state¹, pruned_initial_state²], baseline_noise)
-                    Y2[:,1] = state_update([pruned_initial_state¹, pruned_initial_state²], baseline_noise)
+                Y₁[:,1] = state_update(initial_state, baseline_noise)
+                Y₂[:,1] = state_update(initial_state, baseline_noise)
 
-                    pruned_initial_state¹₁ = copy(pruned_initial_state¹)
-                    pruned_initial_state¹₂ = copy(pruned_initial_state¹)
-                    pruned_initial_state²₁ = copy(pruned_initial_state²)
-                    pruned_initial_state²₂ = copy(pruned_initial_state²)
-                elseif algorithm == :pruned_third_order
-                    Y1[:,1] = state_update([pruned_initial_state¹, pruned_initial_state², pruned_initial_state³], baseline_noise)
-                    Y2[:,1] = state_update([pruned_initial_state¹, pruned_initial_state², pruned_initial_state³], baseline_noise)
-
-                    pruned_initial_state¹₁ = copy(pruned_initial_state¹)
-                    pruned_initial_state¹₂ = copy(pruned_initial_state¹)
-                    pruned_initial_state²₁ = copy(pruned_initial_state²)
-                    pruned_initial_state²₂ = copy(pruned_initial_state²)
-                    pruned_initial_state³₁ = copy(pruned_initial_state³)
-                    pruned_initial_state³₂ = copy(pruned_initial_state³)
-                end
+                initial_state₁ = copy(initial_state)
+                initial_state₂ = copy(initial_state)
             else
-                Y1[:,1] = state_update(initial_state, baseline_noise)
-                Y2[:,1] = state_update(initial_state, baseline_noise)
+                Y₁[:,1] = state_update(initial_state, baseline_noise)
+                Y₂[:,1] = state_update(initial_state, baseline_noise)
             end
 
             for t in 1:periods
                 baseline_noise = randn(T.nExo)
 
                 if pruning
-                    if algorithm == :pruned_second_order
-                        Y1[:,t+1] = state_update([pruned_initial_state¹₁, pruned_initial_state²₁], baseline_noise)
-                        Y2[:,t+1] = state_update([pruned_initial_state¹₂, pruned_initial_state²₂], baseline_noise + shock_history[:,t])
-                    elseif algorithm == :pruned_third_order
-                        Y1[:,t+1] = state_update([pruned_initial_state¹₁, pruned_initial_state²₁, pruned_initial_state³₁], baseline_noise)
-                        Y2[:,t+1] = state_update([pruned_initial_state¹₂, pruned_initial_state²₂, pruned_initial_state³₂], baseline_noise + shock_history[:,t])
-                    end
+                    Y₁[:,t+1] = state_update(initial_state₁, baseline_noise)
+                    Y₂[:,t+1] = state_update(initial_state₂, baseline_noise + shock_history[:,t])
                 else
-                    Y1[:,t+1] = state_update(Y1[:,t],baseline_noise)
-                    Y2[:,t+1] = state_update(Y2[:,t],baseline_noise + shock_history[:,t])
+                    Y₁[:,t+1] = state_update(Y₁[:,t],baseline_noise)
+                    Y₂[:,t+1] = state_update(Y₂[:,t],baseline_noise + shock_history[:,t])
                 end
             end
 
-            Y[:,:,i] += Y2 - Y1
+            Y[:,:,i] += Y₂ - Y₁
         end
         Y[:,:,i] /= draws
     end
