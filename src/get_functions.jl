@@ -879,16 +879,20 @@ function get_irf(𝓂::ℳ;
 
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
+    NSSS = reference_steady_state[1:length(𝓂.var)] 
+
     if algorithm == :second_order
-        SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.second_order.stochastic_steady_state
+        SSS_delta = NSSS - 𝓂.solution.perturbation.second_order.stochastic_steady_state
     elseif algorithm == :pruned_second_order
-        SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
+        SSS_delta = NSSS - 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
     elseif algorithm == :third_order
-        SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.third_order.stochastic_steady_state
+        SSS_delta = NSSS - 𝓂.solution.perturbation.third_order.stochastic_steady_state
     elseif algorithm == :pruned_third_order
-        SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
+        SSS_delta = NSSS - 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
     else
         SSS_delta = zeros(length(𝓂.var))
+
+        reference_steady_state = NSSS
     end
 
     if levels
@@ -923,7 +927,9 @@ function get_irf(𝓂::ℳ;
                 initial_state = initial_state - reference_steady_state[1:𝓂.timings.nVars]
             end
         else
-            @assert algorithm ∉ [:pruned_second_order, :pruned_third_order] && initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+            end
         end
     end
     
@@ -948,7 +954,7 @@ function get_irf(𝓂::ℳ;
     if generalised_irf
         girfs =  girf(state_update,
                         SSS_delta,
-                        levels ? reference_steady_state : SSS_delta,
+                        levels ? reference_steady_state + SSS_delta : SSS_delta,
                         𝓂.timings; 
                         periods = periods, 
                         shocks = shocks, 
@@ -1015,7 +1021,7 @@ function get_irf(𝓂::ℳ;
             irfs =  irf(state_update,
                         obc_state_update, 
                         initial_state, 
-                        levels ? reference_steady_state : SSS_delta,
+                        levels ? reference_steady_state + SSS_delta : SSS_delta,
                         𝓂.timings; 
                         periods = periods, 
                         shocks = shocks, 
@@ -1024,7 +1030,7 @@ function get_irf(𝓂::ℳ;
         else
             irfs =  irf(state_update, 
                         initial_state, 
-                        levels ? reference_steady_state : SSS_delta,
+                        levels ? reference_steady_state + SSS_delta : SSS_delta,
                         𝓂.timings; 
                         periods = periods, 
                         shocks = shocks, 

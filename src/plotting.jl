@@ -1014,6 +1014,7 @@ function plot_solution(𝓂::ℳ,
     algorithm::Union{Symbol,Vector{Symbol}} = :first_order,
     σ::Union{Int64,Float64} = 2,
     parameters = nothing,
+    ignore_obc::Bool = false,
     show_plots::Bool = true,
     save_plots::Bool = false,
     save_plots_format::Symbol = :pdf,
@@ -1034,20 +1035,11 @@ function plot_solution(𝓂::ℳ,
     @assert length(setdiff(algorithm isa Symbol ? [algorithm] : algorithm, [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order])) == 0 "Invalid algorithm. Choose any combination of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
 
     if algorithm isa Symbol
-        solve!(𝓂, verbose = verbose, algorithm = algorithm, dynamics = true, parameters = parameters)
         algorithm = [algorithm]
-    else
-        if :third_order ∈ algorithm
-            solve!(𝓂, verbose = verbose, algorithm = :third_order, dynamics = true, parameters = parameters)
-        elseif :pruned_third_order ∈ algorithm
-            solve!(𝓂, verbose = verbose, algorithm = :pruned_third_order, dynamics = true, parameters = parameters)
-        elseif :second_order ∈ algorithm
-            solve!(𝓂, verbose = verbose, algorithm = :second_order, dynamics = true, parameters = parameters)
-        elseif :pruned_second_order ∈ algorithm
-            solve!(𝓂, verbose = verbose, algorithm = :pruned_second_order, dynamics = true, parameters = parameters)
-        else 
-            solve!(𝓂, verbose = verbose, algorithm = :first_order, dynamics = true, parameters = parameters)
-        end
+    end
+
+    for a in algorithm
+        solve!(𝓂, verbose = verbose, algorithm = a, dynamics = true, parameters = parameters)
     end
 
     SS_and_std = get_moments(𝓂, 
@@ -1103,20 +1095,18 @@ function plot_solution(𝓂::ℳ,
         label = labels[a][2])
     end
 
-    if :second_order ∈ algorithm    
-        SSS2 = 𝓂.solution.perturbation.second_order.stochastic_steady_state
-    end
+    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
-    if :pruned_second_order ∈ algorithm    
-        SSS2p = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
-    end
+    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
-    if :third_order ∈ algorithm    
-        SSS3 = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-    end
+    relevant_SS_dictionnary = Dict{Symbol,Vector{Float64}}()
 
-    if :pruned_third_order ∈ algorithm    
-        SSS3p = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
+    for a in algorithm
+        relevant_SS = get_steady_state(𝓂, algorithm = a, return_variables_only = true, derivatives = false)
+
+        full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+
+        push!(relevant_SS_dictionnary, a => full_SS)
     end
 
     StatsPlots.scatter!(fill(0,1,1), 
@@ -1130,141 +1120,70 @@ function plot_solution(𝓂::ℳ,
     framestyle = :none, 
     legend = :inside)
 
-    variable_first_list = []
-    variable_second_list = []
-    variable_pruned_second_list = []
-    variable_third_list = []
-    variable_pruned_third_list = []
+    variable_algo_list = []
     has_impact_list = []
-
+    
     for k in vars_to_plot
-        kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-
         has_impact = false
+    
+        algo_dict = Dict{Symbol,Vector{Float64}}()
+    
+        for a in algorithm
+            variable_output = Float64[]
 
-        variable_first = []
-        variable_second = []
-        variable_pruned_second = []
-        variable_third = []
-        variable_pruned_third = []
+            NSSS = relevant_SS_dictionnary[:first_order]
 
-        if :first_order ∈ algorithm
-            variable_first = [𝓂.solution.perturbation.first_order.state_update(state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
+            SSS_delta = collect(NSSS - relevant_SS_dictionnary[a])
 
-            variable_first = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_first]
+            for x in state_range
+                if a == :pruned_second_order
+                    initial_state = [state_selector * x, -SSS_delta]
+                elseif a == :pruned_third_order
+                    initial_state = [state_selector * x, -SSS_delta, zeros(length(all_states))]
+                else
+                    initial_state = collect(relevant_SS_dictionnary[a]) .+ state_selector * x
+                end
 
-            has_impact = has_impact || sum(abs2,variable_first .- sum(variable_first)/length(variable_first))/(length(variable_first)-1) > eps()
+                out = get_irf(𝓂, algorithm = a, variables = k, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true)[1]
+
+                push!(variable_output, (abs(out - NSSS[indexin([k],𝓂.timings.var)][1]) > eps() ? out : NSSS[indexin([k],𝓂.timings.var)][1]))
+            end
+            
+            has_impact = has_impact || sum(abs2,variable_output .- sum(variable_output) / length(variable_output)) / (length(variable_output) - 1) > eps()
+    
+            push!(algo_dict, a => variable_output)
         end
-
-        if :second_order ∈ algorithm
-            variable_second = [𝓂.solution.perturbation.second_order.state_update(SSS2 - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
-
-            variable_second = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_second]
-
-            has_impact = has_impact || sum(abs2,variable_second .- sum(variable_second)/length(variable_second))/(length(variable_second)-1) > eps()
-        end
-        
-        if :pruned_second_order ∈ algorithm
-            variable_pruned_second = [𝓂.solution.perturbation.pruned_second_order.state_update([state_selector * x, SSS2p - full_SS], zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
-
-            variable_pruned_second = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_pruned_second]
-
-            has_impact = has_impact || sum(abs2,variable_pruned_second .- sum(variable_pruned_second)/length(variable_pruned_second))/(length(variable_pruned_second)-1) > eps()
-        end
-
-        if :third_order ∈ algorithm
-            variable_third = [𝓂.solution.perturbation.third_order.state_update(SSS3 - full_SS .+ state_selector * x, zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
-
-            variable_third = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_third]
-
-            has_impact = has_impact || sum(abs2,variable_third .- sum(variable_third)/length(variable_third))/(length(variable_third)-1) > eps()
-        end
-
-        if :pruned_third_order ∈ algorithm
-            variable_pruned_third = [𝓂.solution.perturbation.pruned_third_order.state_update([state_selector * x, SSS3p - full_SS, zero(state_selector) * x], zeros(𝓂.timings.nExo))[indexin([k],𝓂.timings.var)][1] for x in state_range]
-
-            variable_pruned_third = [(abs(x) > eps() ? x : 0.0) + SS_and_std[1](kk) for x in variable_pruned_third]
-
-            has_impact = has_impact || sum(abs2,variable_pruned_third .- sum(variable_pruned_third)/length(variable_pruned_third))/(length(variable_pruned_third)-1) > eps()
-        end
-
-        push!(variable_first_list,  variable_first)
-        push!(variable_second_list, variable_second)
-        push!(variable_pruned_second_list, variable_pruned_second)
-        push!(variable_third_list,  variable_third)
-        push!(variable_pruned_third_list,  variable_pruned_third)
-        push!(has_impact_list,      has_impact)
-
+    
+        push!(variable_algo_list, algo_dict)
+        push!(has_impact_list, has_impact)
+    
         if !has_impact
             n_subplots -= 1
         end
     end
 
+    all_states = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+                        
     for (i,k) in enumerate(vars_to_plot)
-        kk = Symbol(replace(string(k), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-
         if !has_impact_list[i] continue end
 
         push!(pp,begin
-                        Pl = StatsPlots.plot() 
-                        if :first_order ∈ algorithm
-                                StatsPlots.plot!(state_range .+ SS_and_std[1](state), 
-                                variable_first_list[i], 
-                                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
-                                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
-                                label = "")
-                        end
-                        if :second_order ∈ algorithm
-                                StatsPlots.plot!(state_range .+ SSS2[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                variable_second_list[i], 
-                                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
-                                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
-                                label = "")
-                        end
-                        if :pruned_second_order ∈ algorithm
-                                StatsPlots.plot!(state_range .+ SSS2p[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                variable_pruned_second_list[i], 
-                                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
-                                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
-                                label = "")
-                        end
-                        if :third_order ∈ algorithm
-                                StatsPlots.plot!(state_range .+ SSS3[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                variable_third_list[i], 
-                                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
-                                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
-                                label = "")
-                        end
-                        if :pruned_third_order ∈ algorithm
-                                StatsPlots.plot!(state_range .+ SSS3p[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1], 
-                                variable_pruned_third_list[i], 
-                                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
-                                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
-                                label = "")
-                        end
+                    Pl = StatsPlots.plot() 
 
-                        if :first_order ∈ algorithm
-                            StatsPlots.scatter!([SS_and_std[1](state)], [SS_and_std[1](kk)], 
+                    for a in algorithm
+                        StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state],all_states)][1], 
+                            variable_algo_list[i][a], 
+                            ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
+                            xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
                             label = "")
-                        end
-                        if :second_order ∈ algorithm
-                            StatsPlots.scatter!([SSS2[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], [SSS2[indexin([k],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], 
-                            label = "")
-                        end
-                        if :pruned_second_order ∈ algorithm
-                            StatsPlots.scatter!([SSS2p[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], [SSS2p[indexin([k],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], 
-                            label = "")
-                        end
-                        if :third_order ∈ algorithm
-                            StatsPlots.scatter!([SSS3[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], [SSS3[indexin([k],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], 
-                            label = "")
-                        end
-                        if :pruned_third_order ∈ algorithm
-                            StatsPlots.scatter!([SSS3p[indexin([state],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], [SSS3p[indexin([k],sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))][1]], 
-                            label = "")
-                        end
+                    end
 
-                        Pl
+                    for a in algorithm
+                        StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], all_states)][1]], [relevant_SS_dictionnary[a][indexin([k], all_states)][1]], 
+                        label = "")
+                    end
+
+                    Pl
         end)
 
         if !(plot_count % plots_per_page == 0)
