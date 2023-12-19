@@ -254,7 +254,8 @@ end
 
     unspecified_initial_state = true
 
-    iirrff = irf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), false, unspecified_initial_state, T)
+
+    iirrff = irf(first_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
 
     @test isapprox(iirrff[4,1,:],[ -0.00036685520477089503
     0.0021720718769730014],rtol = eps(Float32))
@@ -264,24 +265,30 @@ end
 
     SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.second_order.stochastic_steady_state
 
-    ggiirrff2 = girf(second_order_state_update, SSS_delta, zeros(T.nVars), false, unspecified_initial_state, T, draws = 1000,warmup_periods = 100, algorithm = :second_order)
+    initial_state = zeros(RBC_CME.timings.nVars) - SSS_delta
+
+    ggiirrff2 = girf(second_order_state_update, SSS_delta, zeros(T.nVars), false, unspecified_initial_state, T, draws = 1000, warmup_periods = 100, algorithm = :second_order)
     @test isapprox(ggiirrff2[4,1,:],[-0.0003668849861768406
     0.0021711333455274096],rtol = 1e-3)
 
-    iirrff2 = irf(second_order_state_update, zeros(T.nVars), zeros(T.nVars), false, unspecified_initial_state, T, algorithm = :second_order)
+    iirrff2 = irf(second_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
     @test isapprox(iirrff2[4,1,:],[-0.0004547347878067665, 0.0020831426377533636],rtol = 1e-6)
 
 
     SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.third_order.stochastic_steady_state
 
-    ggiirrff3 = girf(third_order_state_update, SSS_delta, zeros(T.nVars), false, unspecified_initial_state, T,draws = 1000,warmup_periods = 100, algorithm = :third_order)
+    initial_state = zeros(RBC_CME.timings.nVars) - SSS_delta
+
+    ggiirrff3 = girf(third_order_state_update, SSS_delta, zeros(T.nVars), false, unspecified_initial_state, T, draws = 1000, warmup_periods = 100, algorithm = :third_order)
     @test isapprox(ggiirrff3[4,1,:],[ -0.00036686142588429404
     0.002171120660323429],rtol = 1e-3)
 
-    iirrff3 = irf(third_order_state_update, zeros(T.nVars), zeros(T.nVars), false, unspecified_initial_state, T, algorithm = :third_order)
+    iirrff3 = irf(third_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
     @test isapprox(iirrff3[4,1,:],[-0.00045473149068020854, 0.002083198241302615], rtol = 1e-6)
 
     SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.pruned_second_order.stochastic_steady_state
+
+    initial_state = [zeros(RBC_CME.timings.nVars), zeros(RBC_CME.timings.nVars) - SSS_delta]
 
     pruned_second_order_state_update = function(pruned_states::Vector{Vector{Float64}}, shock::Vector{Float64})
         aug_state₁ = [pruned_states[1][RBC_CME.timings.past_not_future_and_mixed_idx]; 1; shock]
@@ -293,14 +300,16 @@ end
         return pruned_states[1] + pruned_states[2] # strictly following Andreasen et al. (2018)
     end
 
-    ggiirrffp2 = girf(pruned_second_order_state_update, SSS_delta, zeros(T.nVars), true, unspecified_initial_state, T, draws = 1000,warmup_periods = 100,algorithm = :pruned_second_order)
+    ggiirrffp2 = girf(pruned_second_order_state_update, SSS_delta, zeros(T.nVars), true, unspecified_initial_state, T, draws = 1000, warmup_periods = 100, algorithm = :pruned_second_order)
     @test isapprox(ggiirrffp2[4,1,:],[-0.00036669521972558375
     0.0021710991908610883],rtol = 1e-3)
 
-    iirrffp2 = irf(pruned_second_order_state_update, zeros(T.nVars), zeros(T.nVars), true, unspecified_initial_state, T,algorithm = :pruned_second_order)
+    iirrffp2 = irf(pruned_second_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
     @test isapprox(iirrffp2[4,1,:],[-0.00045473478780675195, 0.002083142637753389],rtol = 1e-6)
 
     SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.pruned_third_order.stochastic_steady_state
+
+    initial_state = [zeros(RBC_CME.timings.nVars), zeros(RBC_CME.timings.nVars) - SSS_delta, zeros(RBC_CME.timings.nVars)]
 
     pruned_third_order_state_update = function(pruned_states::Vector{Vector{Float64}}, shock::Vector{Float64})
         aug_state₁ = [pruned_states[1][RBC_CME.timings.past_not_future_and_mixed_idx]; 1; shock]
@@ -317,11 +326,11 @@ end
         return pruned_states[1] + pruned_states[2] + pruned_states[3]
     end
 
-    ggiirrffp3 = girf(pruned_third_order_state_update, SSS_delta, zeros(T.nVars), true, unspecified_initial_state, T, algorithm = :pruned_third_order,draws = 1000,warmup_periods = 100)
+    ggiirrffp3 = girf(pruned_third_order_state_update, SSS_delta, zeros(T.nVars), true, unspecified_initial_state, T, algorithm = :pruned_third_order, draws = 1000, warmup_periods = 100)
     @test isapprox(ggiirrffp3[4,1,:],[-0.00036669114944274343
     0.0021716050738841944],rtol = 1e-3)
 
-    iirrffp3 = irf(pruned_third_order_state_update, zeros(T.nVars), zeros(T.nVars), true, unspecified_initial_state, T,algorithm = :pruned_third_order)
+    iirrffp3 = irf(pruned_third_order_state_update, zeros(T.nVars), zeros(T.nVars), T)
     @test isapprox(iirrffp3[4,1,:],[-0.0004547315171573783, 0.0020831990353127696], rtol = 1e-6)
 end
 

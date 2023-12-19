@@ -4605,16 +4605,15 @@ end
 
 function irf(state_update::Function, 
     obc_state_update::Function,
-    initial_state::Vector{Float64}, 
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64},
-    pruning::Bool, 
-    unspecified_initial_state::Bool,
     T::timings; 
-    algorithm::Symbol = :first_order,
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     negative_shock::Bool = false)
+
+    pruning = initial_state isa Vector{Vector{Float64}}
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -4664,60 +4663,20 @@ function irf(state_update::Function,
 
         Y = zeros(T.nVars,periods,1)
 
-        if pruning
-            if algorithm == :pruned_second_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
+        past_states = initial_state
+        
+        for t in 1:periods
+            past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
 
-                past_states = [pruned_state¹, pruned_state²]
+            if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
-                for t in 1:periods
-                    past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
-                    
-                    if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
+            always_solved = always_solved && solved
 
-                    always_solved = always_solved && solved
+            if !always_solved break end
 
-                    if !always_solved break end
+            Y[:,t,1] = pruning ? sum(past_states) : past_states
 
-                    Y[:,t,1] = sum(past_states)
-                    shock_history[:,t] = past_shocks
-                end
-            elseif algorithm == :pruned_third_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
-                pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-
-                past_states = [pruned_state¹, pruned_state², pruned_state³]
-
-                for t in 1:periods
-                    past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
-
-                    if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
-
-                    always_solved = always_solved && solved
-
-                    if !always_solved break end
-
-                    Y[:,t,1] = sum(past_states)
-                    shock_history[:,t] = past_shocks
-                end
-            end
-        else
-            past_states = initial_state
-            
-            for t in 1:periods
-                past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
-
-                if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
-
-                always_solved = always_solved && solved
-
-                if !always_solved break end
-
-                Y[:,t,1] = past_states
-                shock_history[:,t] = past_shocks
-            end
+            shock_history[:,t] = past_shocks
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:simulate])
@@ -4726,57 +4685,18 @@ function irf(state_update::Function,
 
         shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
         
-        if pruning
-            if algorithm == :pruned_second_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
+        past_states = initial_state
+        
+        for t in 1:periods
+            past_states, _, solved  = obc_state_update(past_states, shck, state_update)
 
-                past_states = [pruned_state¹, pruned_state²]
+            if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
-                for t in 1:periods
-                    past_states, past_shocks, solved  = obc_state_update(past_states, shck, state_update)
+            always_solved = always_solved && solved
 
-                    if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
+            if !always_solved break end
 
-                    always_solved = always_solved && solved
-
-                    if !always_solved break end
-
-                    Y[:,t,1] = sum(past_states)
-                end
-            elseif algorithm == :pruned_third_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
-                pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-
-                past_states = [pruned_state¹, pruned_state², pruned_state³]
-
-                for t in 1:periods
-                    past_states, past_shocks, solved  = obc_state_update(past_states, shck, state_update)
-
-                    if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
-
-                    always_solved = always_solved && solved
-
-                    if !always_solved break end
-
-                    Y[:,t,1] = sum(past_states)
-                end
-            end
-        else 
-            past_states = initial_state
-            
-            for t in 1:periods
-                past_states, _, solved  = obc_state_update(past_states, shck, state_update)
-
-                if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
-
-                always_solved = always_solved && solved
-
-                if !always_solved break end
-
-                Y[:,t,1] = past_states
-            end
+            Y[:,t,1] = pruning ? sum(past_states) : past_states
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
@@ -4789,60 +4709,20 @@ function irf(state_update::Function,
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
 
-            if pruning
-                if algorithm == :pruned_second_order
-                    pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                    pruned_state² = copy(initial_state)
-    
-                    past_states = [pruned_state¹, pruned_state²]
+            past_states = initial_state
+            
+            for t in 1:periods
+                past_states, past_shocks, solved = obc_state_update(past_states, shock_history[:,t], state_update)
 
-                    for t in 1:periods
-                        past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
+                if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
-                        if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
+                always_solved = always_solved && solved
 
-                        always_solved = always_solved && solved
+                if !always_solved break end
 
-                        if !always_solved break end
+                Y[:,t,i] = pruning ? sum(past_states) : past_states
 
-                        Y[:,t,i] = sum(past_states)
-                        shock_history[:,t] = past_shocks
-                    end
-                elseif algorithm == :pruned_third_order
-                    pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                    pruned_state² = copy(initial_state)
-                    pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-
-                    past_states = [pruned_state¹, pruned_state², pruned_state³]
-
-                    for t in 1:periods
-                        past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
-
-                        if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
-
-                        always_solved = always_solved && solved
-
-                        if !always_solved break end
-
-                        Y[:,t,i] = sum(past_states)
-                        shock_history[:,t] = past_shocks
-                    end
-                end
-            else
-                past_states = initial_state
-                
-                for t in 1:periods
-                    past_states, past_shocks, solved = obc_state_update(past_states, shock_history[:,t], state_update)
-    
-                    if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
-    
-                    always_solved = always_solved && solved
-    
-                    if !always_solved break end
-    
-                    Y[:,t,i] = past_states
-                    shock_history[:,t] = past_shocks
-                end
+                shock_history[:,t] = past_shocks
             end
         end
 
@@ -4861,16 +4741,15 @@ end
 
 
 function irf(state_update::Function, 
-    initial_state::Vector{Float64}, 
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64},
-    pruning::Bool, 
-    unspecified_initial_state::Bool,
     T::timings; 
-    algorithm::Symbol = :first_order,
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     negative_shock::Bool = false)
+
+    pruning = initial_state isa Vector{Vector{Float64}}
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -4918,29 +4797,10 @@ function irf(state_update::Function,
 
         Y = zeros(T.nVars,periods,1)
 
-        if pruning
-            if algorithm == :pruned_second_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
+        Y[:,1,1] = state_update(initial_state,shock_history[:,1])
 
-                for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state²], shock_history[:,t])
-                end
-            elseif algorithm == :pruned_third_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
-                pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-
-                for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state², pruned_state³], shock_history[:,t])
-                end
-            end
-        else
-            Y[:,1,1] = state_update(initial_state,shock_history[:,1])
-
-            for t in 1:periods-1
-                Y[:,t+1,1] = state_update(Y[:,t,1],shock_history[:,t+1])
-            end
+        for t in 1:periods-1
+            Y[:,t+1,1] = state_update(pruning ? initial_state : Y[:,t,1],shock_history[:,t+1])
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:simulate])
@@ -4949,29 +4809,10 @@ function irf(state_update::Function,
 
         shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
         
-        if pruning
-            if algorithm == :pruned_second_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
+        Y[:,1,1] = state_update(initial_state,shck)
 
-                for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state²], shck)
-                end
-            elseif algorithm == :pruned_third_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
-                pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-
-                for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state², pruned_state³], shck)
-                end
-            end
-        else 
-            Y[:,1,1] = state_update(initial_state,shck)
-    
-            for t in 1:periods-1
-                Y[:,t+1,1] = state_update(Y[:,t,1],shck)
-            end
+        for t in 1:periods-1
+            Y[:,t+1,1] = state_update(pruning ? initial_state : Y[:,t,1], shck)
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
@@ -4984,29 +4825,10 @@ function irf(state_update::Function,
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
 
-            if pruning
-                if algorithm == :pruned_second_order
-                    pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                    pruned_state² = copy(initial_state)
-    
-                    for t in 1:periods
-                        Y[:,t,i] = state_update([pruned_state¹, pruned_state²], shock_history[:,t])
-                    end
-                elseif algorithm == :pruned_third_order
-                    pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                    pruned_state² = copy(initial_state)
-                    pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-    
-                    for t in 1:periods
-                        Y[:,t,i] = state_update([pruned_state¹, pruned_state², pruned_state³], shock_history[:,t])
-                    end
-                end
-            else
-                Y[:,1,i] = state_update(initial_state,shock_history[:,1])
+            Y[:,1,i] = state_update(initial_state, shock_history[:,1])
 
-                for t in 1:periods-1
-                    Y[:,t+1,i] = state_update(Y[:,t,i],shock_history[:,t+1])
-                end
+            for t in 1:periods-1
+                Y[:,t+1,i] = state_update(pruning ? initial_state : Y[:,t,i], shock_history[:,t+1])
             end
         end
 

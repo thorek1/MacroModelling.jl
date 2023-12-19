@@ -826,7 +826,7 @@ function get_irf(𝓂::ℳ;
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
     negative_shock::Bool = false, 
     generalised_irf::Bool = false,
-    initial_state::Vector{Float64} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
     levels::Bool = false,
     ignore_obc::Bool = false,
     verbose::Bool = false)
@@ -905,7 +905,19 @@ function get_irf(𝓂::ℳ;
 
     unspecified_initial_state = initial_state == [0.0]
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state - reference_steady_state[1:𝓂.timings.nVars]
+    if unspecified_initial_state
+        if algorithm == :pruned_second_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
+        elseif algorithm == :pruned_third_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+        else
+            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
+        end
+    elseif algorithm ∉ [:pruned_second_order, :pruned_third_order]
+        @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+
+        initial_state = initial_state - reference_steady_state[1:𝓂.timings.nVars]
+    end
     
     if ignore_obc
         occasionally_binding_constraints = false
@@ -999,10 +1011,7 @@ function get_irf(𝓂::ℳ;
                         obc_state_update, 
                         initial_state, 
                         levels ? reference_steady_state : SSS_delta,
-                        pruning,
-                        unspecified_initial_state,
                         𝓂.timings; 
-                        algorithm = algorithm,
                         periods = periods, 
                         shocks = shocks, 
                         variables = variables, 
@@ -1011,10 +1020,7 @@ function get_irf(𝓂::ℳ;
             irfs =  irf(state_update, 
                         initial_state, 
                         levels ? reference_steady_state : SSS_delta,
-                        pruning,
-                        unspecified_initial_state,
                         𝓂.timings; 
-                        algorithm = algorithm,
                         periods = periods, 
                         shocks = shocks, 
                         variables = variables, 

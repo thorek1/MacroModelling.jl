@@ -362,7 +362,7 @@ function plot_irf(𝓂::ℳ;
     algorithm::Symbol = :first_order,
     negative_shock::Bool = false,
     generalised_irf::Bool = false,
-    initial_state::Vector{Float64} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
     ignore_obc::Bool = false,
     verbose::Bool = false)
 
@@ -411,7 +411,19 @@ function plot_irf(𝓂::ℳ;
 
     unspecified_initial_state = initial_state == [0.0]
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state[indexin(full_SS, sort(union(𝓂.var,𝓂.exo_present)))] - reference_steady_state
+    if unspecified_initial_state
+        if algorithm == :pruned_second_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
+        elseif algorithm == :pruned_third_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+        else
+            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
+        end
+    elseif algorithm ∉ [:pruned_second_order, :pruned_third_order]
+        @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+
+        initial_state = initial_state - reference_steady_state[1:𝓂.timings.nVars]
+    end
     
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -584,11 +596,8 @@ function plot_irf(𝓂::ℳ;
             Y =  irf(state_update,
                     obc_state_update,
                     initial_state, 
-                    zeros(𝓂.timings.nVars), 
-                    pruning,
-                    unspecified_initial_state,
-                    𝓂.timings; 
-                    algorithm = algorithm,
+                    zeros(𝓂.timings.nVars),
+                    𝓂.timings;
                     periods = periods, 
                     shocks = shocks, 
                     variables = variables, 
@@ -596,11 +605,8 @@ function plot_irf(𝓂::ℳ;
         else
             Y = irf(state_update, 
                     initial_state, 
-                    zeros(𝓂.timings.nVars), 
-                    pruning,
-                    unspecified_initial_state,
-                    𝓂.timings; 
-                    algorithm = algorithm,
+                    zeros(𝓂.timings.nVars),
+                    𝓂.timings;
                     periods = periods, 
                     shocks = shocks, 
                     variables = variables, 
