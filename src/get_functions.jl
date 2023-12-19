@@ -1085,7 +1085,7 @@ get_girf(args...; kwargs...) =  get_irf(args...; kwargs..., generalised_irf = tr
 
 """
 $(SIGNATURES)
-Return the (non stochastic) steady state and derivatives with respect to model parameters.
+Return the (non stochastic) steady state, calibrated parameters, and derivatives with respect to model parameters.
 
 # Arguments
 - $MODEL
@@ -1095,9 +1095,10 @@ Return the (non stochastic) steady state and derivatives with respect to model p
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation
 - $ALGORITHM
 - $PARAMETER_DERIVATIVES
+- `return_variables_only` [Defaut: `false`, Type: `Bool`]: return only variables and not calibrated parameters
 - $VERBOSE
 
-The columns show the SS and parameters for which derivatives are taken. The rows show the variables.
+The columns show the (non stochastic) steady state and parameters for which derivatives are taken. The rows show the variables and calibrated parameters.
 # Examples
 ```jldoctest
 using MacroModelling
@@ -1136,6 +1137,7 @@ function get_steady_state(𝓂::ℳ;
     stochastic::Bool = false,
     algorithm::Symbol = :first_order,
     parameter_derivatives::Union{Symbol_input,String_input} = :all,
+    return_variables_only::Bool = false,
     verbose::Bool = false,
     silent::Bool = true,
     tol::AbstractFloat = eps())
@@ -1143,8 +1145,6 @@ function get_steady_state(𝓂::ℳ;
     if !(algorithm == :first_order) stochastic = true end
 
     solve!(𝓂, parameters = parameters, verbose = verbose)
-
-    # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
     
@@ -1191,7 +1191,7 @@ function get_steady_state(𝓂::ℳ;
 
     var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
-    calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+    calib_idx = return_variables_only ? [] : indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
     if length_par * length(var_idx) > 200 
         derivatives = false
@@ -1201,7 +1201,7 @@ function get_steady_state(𝓂::ℳ;
         derivatives = true
     end
 
-    axis1 = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...]
+    axis1 = [vars_in_ss_equations..., (return_variables_only ? [] : 𝓂.calibration_equations_parameters)...]
 
     if any(x -> contains(string(x), "◖"), axis1)
         axis1_decomposed = decompose_name.(axis1)
