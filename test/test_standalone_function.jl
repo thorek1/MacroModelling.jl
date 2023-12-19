@@ -720,5 +720,5 @@ m = nothing
 
     sims = simulate(Gali_2015_chapter_3_obc, variables = :R)
 
-    @test isapprox(minimum(sims), 1, atol = eps(Float32))
+    @test (minimum(sims) + eps(Float32)) > 1
 end

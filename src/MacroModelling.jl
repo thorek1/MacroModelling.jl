@@ -4674,7 +4674,7 @@ function irf(state_update::Function,
                 for t in 1:periods
                     past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
                     
-                    if !solved @warn "No solution in period: $t. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 20): @model <name> max_obc_horizon=40 begin ... end" end
+                    if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
                     always_solved = always_solved && solved
 
@@ -4693,7 +4693,7 @@ function irf(state_update::Function,
                 for t in 1:periods
                     past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
 
-                    if !solved @warn "No solution in period: $t. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 20): @model <name> max_obc_horizon=40 begin ... end" end
+                    if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
                     always_solved = always_solved && solved
 
@@ -4709,7 +4709,7 @@ function irf(state_update::Function,
             for t in 1:periods
                 past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
 
-                if !solved @warn "No solution in period: $t. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 20): @model <name> max_obc_horizon=40 begin ... end" end
+                if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
                 always_solved = always_solved && solved
 
@@ -4736,7 +4736,7 @@ function irf(state_update::Function,
                 for t in 1:periods
                     past_states, past_shocks, solved  = obc_state_update(past_states, shck, state_update)
 
-                    if !solved @warn "No solution in period: $t. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 20): @model <name> max_obc_horizon=40 begin ... end" end
+                    if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
                     always_solved = always_solved && solved
 
@@ -4754,7 +4754,7 @@ function irf(state_update::Function,
                 for t in 1:periods
                     past_states, past_shocks, solved  = obc_state_update(past_states, shck, state_update)
 
-                    if !solved @warn "No solution in period: $t. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 20): @model <name> max_obc_horizon=40 begin ... end" end
+                    if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
                     always_solved = always_solved && solved
 
@@ -4769,7 +4769,7 @@ function irf(state_update::Function,
             for t in 1:periods
                 past_states, _, solved  = obc_state_update(past_states, shck, state_update)
 
-                if !solved @warn "No solution in period: $t. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 20): @model <name> max_obc_horizon=40 begin ... end" end
+                if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
                 always_solved = always_solved && solved
 
@@ -4799,7 +4799,7 @@ function irf(state_update::Function,
                     for t in 1:periods
                         past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
 
-                        if !solved @warn "No solution in period: $t. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 20): @model <name> max_obc_horizon=40 begin ... end" end
+                        if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
                         always_solved = always_solved && solved
 
@@ -4818,7 +4818,7 @@ function irf(state_update::Function,
                     for t in 1:periods
                         past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
 
-                        if !solved @warn "No solution in period: $t. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 20): @model <name> max_obc_horizon=40 begin ... end" end
+                        if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
                         always_solved = always_solved && solved
 
@@ -4834,7 +4834,7 @@ function irf(state_update::Function,
                 for t in 1:periods
                     past_states, past_shocks, solved = obc_state_update(past_states, shock_history[:,t], state_update)
     
-                    if !solved @warn "No solution in period: $t. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 20): @model <name> max_obc_horizon=40 begin ... end" end
+                    if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
     
                     always_solved = always_solved && solved
     
