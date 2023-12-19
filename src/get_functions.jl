@@ -989,7 +989,7 @@ function get_irf(𝓂::ℳ;
                 else
                     solved = true
                 end
-                
+
                 present_states = state_update(present_states, present_shocks)
 
                 return present_states, present_shocks, solved
@@ -1089,7 +1089,7 @@ Return the (non stochastic) steady state and derivatives with respect to model p
 # Keyword Arguments
 - $PARAMETERS
 - $DERIVATIVES
-- `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation. No derivatives are calculated.
+- `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation
 - $ALGORITHM
 - $PARAMETER_DERIVATIVES
 - $VERBOSE
@@ -1136,6 +1136,8 @@ function get_steady_state(𝓂::ℳ;
     verbose::Bool = false,
     silent::Bool = true,
     tol::AbstractFloat = eps())
+
+    if !(algorithm == :first_order) stochastic = true end
 
     solve!(𝓂, parameters = parameters, verbose = verbose)
 

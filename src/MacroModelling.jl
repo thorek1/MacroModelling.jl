@@ -3140,12 +3140,12 @@ function solve!(𝓂::ℳ;
     end
 
     if dynamics
-        if (any([:riccati, :first_order] .∈ ([algorithm],)) && 
-                any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))) || 
-            (any([:second_order,:pruned_second_order] .∈ ([algorithm],)) && 
-                any([:second_order,:pruned_second_order] .∈ (𝓂.solution.outdated_algorithms,))) || 
-            (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && 
-                any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+        if  (:riccati             == algorithm && :riccati             ∈ 𝓂.solution.outdated_algorithms) || 
+            (:first_order         == algorithm && :first_order         ∈ 𝓂.solution.outdated_algorithms) || 
+            (:second_order        == algorithm && :second_order        ∈ 𝓂.solution.outdated_algorithms) || 
+            (:pruned_second_order == algorithm && :pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || 
+            (:third_order         == algorithm && :third_order         ∈ 𝓂.solution.outdated_algorithms) || 
+            (:pruned_third_order  == algorithm && :pruned_third_order  ∈ 𝓂.solution.outdated_algorithms)
 
             SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
@@ -3173,10 +3173,8 @@ function solve!(𝓂::ℳ;
 
         end
 
-        if (:second_order == algorithm && 
-                :second_order ∈ 𝓂.solution.outdated_algorithms) || 
-            (any([:third_order] .∈ ([algorithm],)) && 
-                any([:third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+        if  (:second_order  == algorithm && :second_order   ∈ 𝓂.solution.outdated_algorithms) || 
+            (:third_order   == algorithm && :third_order    ∈ 𝓂.solution.outdated_algorithms)
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
             
@@ -3194,10 +3192,8 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
         end
         
-        if (:pruned_second_order == algorithm && 
-                :pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || 
-            (any([:pruned_third_order] .∈ ([algorithm],)) && 
-                any([:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+        if  (:pruned_second_order   == algorithm && :pruned_second_order    ∈ 𝓂.solution.outdated_algorithms) || 
+            (:pruned_third_order    == algorithm && :pruned_third_order     ∈ 𝓂.solution.outdated_algorithms)
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
 
@@ -3262,7 +3258,8 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_third_order])
         end
         
-        if any([:quadratic_iteration, :binder_pesaran] .∈ ([algorithm],)) && any([:quadratic_iteration, :binder_pesaran] .∈ (𝓂.solution.outdated_algorithms,))
+        if  (:binder_pesaran        == algorithm && :binder_pesaran         ∈ 𝓂.solution.outdated_algorithms) ||
+            (:quadratic_iteration   == algorithm && :quadratic_iteration    ∈ 𝓂.solution.outdated_algorithms)
             
             SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
