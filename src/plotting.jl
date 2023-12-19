@@ -1009,7 +1009,7 @@ plot_solution(RBC_CME, :k)
 ```
 """
 function plot_solution(𝓂::ℳ,
-    state::Symbol;
+    state::Union{Symbol,String};
     variables::Union{Symbol_input,String_input} = :all,
     algorithm::Union{Symbol,Vector{Symbol}} = :first_order,
     σ::Union{Int64,Float64} = 2,
@@ -1030,6 +1030,8 @@ function plot_solution(𝓂::ℳ,
                     tickfontsize = 8,
                     framestyle = :box)
 
+    state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
+    
     @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(𝓂.timings.past_not_future_and_mixed)
 
     @assert length(setdiff(algorithm isa Symbol ? [algorithm] : algorithm, [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order])) == 0 "Invalid algorithm. Choose any combination of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
@@ -1098,6 +1100,11 @@ function plot_solution(𝓂::ℳ,
     full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
+    if any(x -> contains(string(x), "◖"), full_NSSS)
+        full_NSSS_decomposed = decompose_name.(full_NSSS)
+        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
+    end
 
     relevant_SS_dictionnary = Dict{Symbol,Vector{Float64}}()
 
