@@ -11,7 +11,7 @@ import Symbolics
 
 import AbstractDifferentiation as 𝒜
 import ForwardDiff as ℱ
-𝒷 = 𝒜.ForwardDiffBackend;
+𝒷 = 𝒜.ForwardDiffBackend()
 
 import NLopt
 # import Zygote
@@ -289,7 +289,7 @@ function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, 
     𝓂 = p[4]
 
     if length(jac) > 0
-        jac .= 𝒜.jacobian(𝒷, xx -> 𝓂.obc_violation_function(xx, p), X)'
+        jac .= 𝒜.jacobian(𝒷, xx -> 𝓂.obc_violation_function(xx, p), X)[1]'
     end
 
     res .= 𝓂.obc_violation_function(X, p)
@@ -1522,7 +1522,7 @@ function levenberg_marquardt(f::Function,
     p² = p̄²
 
 	for iter in 1:iterations
-        ∇ .= 𝒜.jacobian(𝒷, f̂,current_guess)
+        ∇ .= 𝒜.jacobian(𝒷, f̂,current_guess)[1]
 
         previous_guess .= current_guess
 
@@ -2870,8 +2870,8 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
         jvp = fill(0,length(val),length(inp)) * ps
     else
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = 𝒜.jacobian(𝒷, x -> ss_solve_blocks(x,val), inp)
-        A = 𝒜.jacobian(𝒷, x -> ss_solve_blocks(inp,x), val)
+        B = 𝒜.jacobian(𝒷, x -> ss_solve_blocks(x,val), inp)[1]
+        A = 𝒜.jacobian(𝒷, x -> ss_solve_blocks(inp,x), val)[1]
         # B = Zygote.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)[1]
         # A = Zygote.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)[1]
 
@@ -2943,8 +2943,8 @@ function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = 𝒜.jacobian(𝒷, x -> second_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂)
-        A = 𝒜.jacobian(𝒷, x -> second_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)
+        B = 𝒜.jacobian(𝒷, x -> second_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂)[1]
+        A = 𝒜.jacobian(𝒷, x -> second_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)[1]
 
         Â = RF.lu(A, check = false)
 
@@ -3071,8 +3071,8 @@ function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁�
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = 𝒜.jacobian(𝒷, x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂S₃)
-        A = 𝒜.jacobian(𝒷, x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)
+        B = 𝒜.jacobian(𝒷, x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂S₃)[1]
+        A = 𝒜.jacobian(𝒷, x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)[1]
         
         Â = RF.lu(A, check = false)
     
@@ -4484,8 +4484,8 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
 
     if solved
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = 𝒜.jacobian(𝒷, x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)
-        A = 𝒜.jacobian(𝒷, x -> riccati_conditions(∇̂₁, x, solved; T = T), val)
+        B = 𝒜.jacobian(𝒷, x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)[1]
+        A = 𝒜.jacobian(𝒷, x -> riccati_conditions(∇̂₁, x, solved; T = T), val)[1]
 
 
         Â = RF.lu(A, check = false)
