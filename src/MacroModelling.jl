@@ -8,7 +8,11 @@ using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
 import Symbolics
-import ForwardDiff as ℱ 
+
+import AbstractDifferentiation as 𝒜
+import ForwardDiff as ℱ
+𝒷 = 𝒜.ForwardDiffBackend;
+
 import NLopt
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
@@ -19,8 +23,7 @@ import Subscripts: super, sub
 import Krylov
 import LinearOperators
 import DataStructures: CircularBuffer
-import ImplicitDifferentiation as ID
-import AbstractDifferentiation as AD
+import ImplicitDifferentiation as ℐ
 import SpeedMapping: speedmapping
 import REPL
 import Unicode
@@ -43,8 +46,36 @@ Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, sp
 
 
 # Type definitions
-Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
-String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}}}
+const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
+const String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}}}
+const ParameterType = Union{Nothing,
+                            Pair{Symbol, Float64},
+                            Pair{String, Float64},
+                            Tuple{Pair{Symbol, Float64}, Vararg{Pair{Symbol, Float64}}},
+                            Tuple{Pair{String, Float64}, Vararg{Pair{String, Float64}}},
+                            Vector{Pair{Symbol, Float64}},
+                            Vector{Pair{String, Float64}},
+                            Pair{Symbol, Int},
+                            Pair{String, Int},
+                            Tuple{Pair{Symbol, Int}, Vararg{Pair{Symbol, Int}}},
+                            Tuple{Pair{String, Int}, Vararg{Pair{String, Int}}},
+                            Vector{Pair{Symbol, Int}},
+                            Vector{Pair{String, Int}},
+                            Pair{Symbol, Real},
+                            Pair{String, Real},
+                            Tuple{Pair{Symbol, Real}, Vararg{Pair{Symbol, Real}}},
+                            Tuple{Pair{String, Real}, Vararg{Pair{String, Real}}},
+                            Vector{Pair{Symbol, Real}},
+                            Vector{Pair{String, Real}},
+                            Dict{Symbol, Float64},
+                            Tuple{Int, Vararg{Int}},
+                            Matrix{Int},
+                            Tuple{Float64, Vararg{Float64}},
+                            Matrix{Float64},
+                            Tuple{Real, Vararg{Real}},
+                            Matrix{Real},
+                            Vector{Float64} }
+
 
 # Imports
 include("common_docstrings.jl")
@@ -258,7 +289,7 @@ function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, 
     𝓂 = p[4]
 
     if length(jac) > 0
-        jac .= ℱ.jacobian(xx -> 𝓂.obc_violation_function(xx, p), X)'
+        jac .= 𝒜.jacobian(𝒷, xx -> 𝓂.obc_violation_function(xx, p), X)'
     end
 
     res .= 𝓂.obc_violation_function(X, p)
@@ -1491,7 +1522,7 @@ function levenberg_marquardt(f::Function,
     p² = p̄²
 
 	for iter in 1:iterations
-        ∇ .= ℱ.jacobian(f̂,current_guess)
+        ∇ .= 𝒜.jacobian(𝒷, f̂,current_guess)
 
         previous_guess .= current_guess
 
@@ -2150,9 +2181,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 # push!(SS_solve_func,:(println([$(calib_pars_input...),$(other_vars_input...)])))
 
                 if VERSION >= v"1.9"
-                    push!(SS_solve_func,:(block_solver_AD = ID.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ID.DirectLinearSolver(), conditions_backend = AD.ForwardDiffBackend())))
+                    push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒜.ForwardDiffBackend())))
                 else
-                    push!(SS_solve_func,:(block_solver_AD = ID.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ID.DirectLinearSolver())))
+                    push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
                 end
 
                 push!(SS_solve_func,:(solution = block_solver_AD([$(calib_pars_input...),$(other_vars_input...)],
@@ -2536,9 +2567,9 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, closest_solution[$(n_block)]))))
 
         if VERSION >= v"1.9"
-            push!(SS_solve_func,:(block_solver_AD = ID.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ID.DirectLinearSolver(), conditions_backend = AD.ForwardDiffBackend())))
+            push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒜.ForwardDiffBackend())))
         else
-            push!(SS_solve_func,:(block_solver_AD = ID.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ID.DirectLinearSolver())))
+            push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
         end
 
         push!(SS_solve_func,:(solution = block_solver_AD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],
@@ -2839,8 +2870,8 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
         jvp = fill(0,length(val),length(inp)) * ps
     else
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> ss_solve_blocks(x,val), inp)
-        A = ℱ.jacobian(x -> ss_solve_blocks(inp,x), val)
+        B = 𝒜.jacobian(𝒷, x -> ss_solve_blocks(x,val), inp)
+        A = 𝒜.jacobian(𝒷, x -> ss_solve_blocks(inp,x), val)
         # B = Zygote.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)[1]
         # A = Zygote.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)[1]
 
@@ -2912,8 +2943,8 @@ function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂)
-        A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)
+        B = 𝒜.jacobian(𝒷, x -> second_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂)
+        A = 𝒜.jacobian(𝒷, x -> second_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)
 
         Â = RF.lu(A, check = false)
 
@@ -2938,9 +2969,9 @@ function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁
 end
 
 
-second_order_stochastic_steady_state_iterative_solution = ID.ImplicitFunction(second_order_stochastic_steady_state_iterative_solution_forward,
+second_order_stochastic_steady_state_iterative_solution = ℐ.ImplicitFunction(second_order_stochastic_steady_state_iterative_solution_forward,
                                                                                     second_order_stochastic_steady_state_iterative_solution_conditions; 
-                                                                                    linear_solver = ID.DirectLinearSolver())
+                                                                                    linear_solver = ℐ.DirectLinearSolver())
 
 
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false) where M
@@ -3028,9 +3059,9 @@ function third_order_stochastic_steady_state_iterative_solution_conditions(𝐒�
     return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6 - SSS
 end
 
-third_order_stochastic_steady_state_iterative_solution = ID.ImplicitFunction(third_order_stochastic_steady_state_iterative_solution_forward,
+third_order_stochastic_steady_state_iterative_solution = ℐ.ImplicitFunction(third_order_stochastic_steady_state_iterative_solution_forward,
                                                                                 third_order_stochastic_steady_state_iterative_solution_conditions; 
-                                                                                linear_solver = ID.DirectLinearSolver())
+                                                                                linear_solver = ℐ.DirectLinearSolver())
 
 function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps()) where {Z,S,N}
     S₁S₂S₃, ps = separate_values_and_partials_from_sparsevec_dual(𝐒₁𝐒₂𝐒₃)
@@ -3040,8 +3071,8 @@ function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁�
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂S₃)
-        A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)
+        B = 𝒜.jacobian(𝒷, x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂S₃)
+        A = 𝒜.jacobian(𝒷, x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)
         
         Â = RF.lu(A, check = false)
     
@@ -3112,7 +3143,7 @@ end
 
 
 function solve!(𝓂::ℳ; 
-    parameters = nothing, 
+    parameters::ParameterType = nothing, 
     dynamics::Bool = false, 
     algorithm::Symbol = :riccati, 
     obc::Bool = false,
@@ -4184,7 +4215,7 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::AbstractArray{N}
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    # return ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
+    # return 𝒜.jacobian(𝒷, x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
     # return Matrix(𝓂.model_jacobian(([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])))
     return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
 end
@@ -4206,7 +4237,7 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
 
     # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
         
-    # return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
+    # return sparse(reshape(𝒜.jacobian(𝒷, x -> 𝒜.jacobian(𝒷, x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
     # return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
 
     second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_hessian]
@@ -4238,7 +4269,7 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    # return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
+    # return sparse(reshape(𝒜.jacobian(𝒷, x -> 𝒜.jacobian(𝒷, x -> 𝒜.jacobian(𝒷, x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
     # return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
     
     
@@ -4453,8 +4484,8 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
 
     if solved
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)
-        A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x, solved; T = T), val)
+        B = 𝒜.jacobian(𝒷, x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)
+        A = 𝒜.jacobian(𝒷, x -> riccati_conditions(∇̂₁, x, solved; T = T), val)
 
 
         Â = RF.lu(A, check = false)
@@ -4475,11 +4506,11 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
 end
 
 
-riccati_AD_direct = ID.ImplicitFunction(riccati_forward, 
+riccati_AD_direct = ℐ.ImplicitFunction(riccati_forward, 
                                     riccati_conditions; 
-                                    linear_solver = ID.DirectLinearSolver())
+                                    linear_solver = ℐ.DirectLinearSolver())
 
-riccati_AD = ID.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt converge!?
+riccati_AD = ℐ.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt converge!?
 
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
@@ -5149,7 +5180,7 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
 end
 
 
-function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)
+function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function,Bool}
     if occasionally_binding_constraints
         if :linear_time_iteration == algorithm
             state_update = 𝓂.solution.perturbation.linear_time_iteration.state_update_obc
@@ -5566,12 +5597,12 @@ function solve_matrix_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
 end
 
 
-solve_matrix_equation_AD = ID.ImplicitFunction(solve_matrix_equation_forward, 
+solve_matrix_equation_AD = ℐ.ImplicitFunction(solve_matrix_equation_forward, 
                                                 solve_matrix_equation_conditions)
 
-solve_matrix_equation_AD_direct = ID.ImplicitFunction(solve_matrix_equation_forward, 
+solve_matrix_equation_AD_direct = ℐ.ImplicitFunction(solve_matrix_equation_forward, 
                                                 solve_matrix_equation_conditions; 
-                                                linear_solver = ID.DirectLinearSolver())
+                                                linear_solver = ℐ.DirectLinearSolver())
 
 
 
@@ -5971,7 +6002,7 @@ end
 
 
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose::Bool = false, tol::AbstractFloat = eps())
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters::Vector{Float64} = Float64[], verbose::Bool = false, tol::AbstractFloat = eps())
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
