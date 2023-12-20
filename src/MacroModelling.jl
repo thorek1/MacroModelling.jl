@@ -3135,12 +3135,13 @@ function solve!(𝓂::ℳ;
     end
 
     if dynamics
-        if  (:riccati             == algorithm && :riccati             ∈ 𝓂.solution.outdated_algorithms) || 
-            (:first_order         == algorithm && :first_order         ∈ 𝓂.solution.outdated_algorithms) || 
-            (:second_order        == algorithm && :second_order        ∈ 𝓂.solution.outdated_algorithms) || 
-            (:pruned_second_order == algorithm && :pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || 
-            (:third_order         == algorithm && :third_order         ∈ 𝓂.solution.outdated_algorithms) || 
-            (:pruned_third_order  == algorithm && :pruned_third_order  ∈ 𝓂.solution.outdated_algorithms)
+        obc_not_solved = isnothing(𝓂.solution.perturbation.first_order.state_update_obc)
+        if  ((:riccati             == algorithm) && ((:riccati             ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:first_order         == algorithm) && ((:first_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:second_order        == algorithm) && ((:second_order        ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:pruned_second_order == algorithm) && ((:pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
             SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
@@ -3175,7 +3176,7 @@ function solve!(𝓂::ℳ;
                     return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
                 end
             else
-                state_update₁̂ = x->x
+                state_update₁̂ = nothing
             end
             
             𝓂.solution.perturbation.first_order = perturbation_solution(S₁, state_update₁, state_update₁̂)
@@ -3186,8 +3187,10 @@ function solve!(𝓂::ℳ;
 
         end
 
-        if  (:second_order  == algorithm && :second_order   ∈ 𝓂.solution.outdated_algorithms) || 
-            (:third_order   == algorithm && :third_order    ∈ 𝓂.solution.outdated_algorithms)
+        obc_not_solved = isnothing(𝓂.solution.perturbation.second_order.state_update_obc)
+        if  ((:second_order  == algorithm) && ((:second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+            
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
             
@@ -3210,7 +3213,7 @@ function solve!(𝓂::ℳ;
                     return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
                 end
             else
-                state_update₂̂ = x->x
+                state_update₂̂ = nothing
             end
 
             𝓂.solution.perturbation.second_order = second_order_perturbation_solution(𝐒₂, stochastic_steady_state, state_update₂, state_update₂̂)
@@ -3218,8 +3221,9 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
         end
         
-        if  (:pruned_second_order   == algorithm && :pruned_second_order    ∈ 𝓂.solution.outdated_algorithms) || 
-            (:pruned_third_order    == algorithm && :pruned_third_order     ∈ 𝓂.solution.outdated_algorithms)
+        obc_not_solved = isnothing(𝓂.solution.perturbation.pruned_second_order.state_update_obc)
+        if  ((:pruned_second_order  == algorithm) && ((:pruned_second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
 
@@ -3245,7 +3249,7 @@ function solve!(𝓂::ℳ;
                     return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
                 end
             else
-                state_update₂̂ = x->x
+                state_update₂̂ = nothing
             end
 
             𝓂.solution.perturbation.pruned_second_order = second_order_perturbation_solution(𝐒₂, stochastic_steady_state, state_update₂, state_update₂̂)
@@ -3253,8 +3257,8 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_second_order])
         end
         
-        if :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
-
+        obc_not_solved = isnothing(𝓂.solution.perturbation.third_order.state_update_obc)
+        if  ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
@@ -3276,15 +3280,16 @@ function solve!(𝓂::ℳ;
                     return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
                 end
             else
-                state_update₃̂ = x->x
+                state_update₃̂ = nothing
             end
 
             𝓂.solution.perturbation.third_order = third_order_perturbation_solution(𝐒₃, stochastic_steady_state, state_update₃, state_update₃̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order])
         end
-        
-        if :pruned_third_order == algorithm && :pruned_third_order ∈ 𝓂.solution.outdated_algorithms
+
+        obc_not_solved = isnothing(𝓂.solution.perturbation.pruned_third_order.state_update_obc)
+        if ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
 
@@ -3319,7 +3324,7 @@ function solve!(𝓂::ℳ;
                     return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, Ŝ₁̂ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6] # strictly following Andreasen et al. (2018)
                 end
             else
-                state_update₃̂ = x->x
+                state_update₃̂ = nothing
             end
 
             𝓂.solution.perturbation.pruned_third_order = third_order_perturbation_solution(𝐒₃, stochastic_steady_state, state_update₃, state_update₃̂)
@@ -3327,8 +3332,9 @@ function solve!(𝓂::ℳ;
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_third_order])
         end
         
-        if  (:binder_pesaran        == algorithm && :binder_pesaran         ∈ 𝓂.solution.outdated_algorithms) ||
-            (:quadratic_iteration   == algorithm && :quadratic_iteration    ∈ 𝓂.solution.outdated_algorithms)
+        obc_not_solved = isnothing(𝓂.solution.perturbation.quadratic_iteration.state_update_obc)
+        if  ((:binder_pesaran  == algorithm) && ((:binder_pesaran   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:quadratic_iteration  == algorithm) && ((:quadratic_iteration   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
             
             SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
@@ -3361,7 +3367,7 @@ function solve!(𝓂::ℳ;
                     return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
                 end
             else
-                state_update₁̂ = x->x
+                state_update₁̂ = nothing
             end
 
             𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(S₁, state_update₁ₜ, state_update₁̂)
@@ -3372,7 +3378,9 @@ function solve!(𝓂::ℳ;
             
         end
 
-        if :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
+        obc_not_solved = isnothing(𝓂.solution.perturbation.linear_time_iteration.state_update_obc)
+        if  ((:linear_time_iteration  == algorithm) && ((:linear_time_iteration   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+
             SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
             if solution_error > tol
@@ -3404,7 +3412,7 @@ function solve!(𝓂::ℳ;
                     return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
                 end
             else
-                state_update₁̂ = x->x
+                state_update₁̂ = nothing
             end
 
             𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(S₁, state_update₁ₜ, state_update₁̂)
