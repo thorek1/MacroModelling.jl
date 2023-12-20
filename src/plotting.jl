@@ -376,7 +376,43 @@ function plot_irf(𝓂::ℳ;
                     tickfontsize = 8,
                     framestyle = :box)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
+
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+    
+    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
+
+    stochastic_model = length(𝓂.timings.exo) > 0
+
+    obc_model = length(𝓂.obc_violation_equations) > 0
+
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
+        shock_idx = 1
+
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ"),:]) > 1e-10
+    elseif shocks isa KeyedArray{Float64}
+        shock_idx = 1
+
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(𝓂.timings.exo,axiskeys(shocks,1)),:)) > 1e-10
+    else
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+
+        obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
+    end
+
+    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+
+    if ignore_obc
+        occasionally_binding_constraints = false
+    else
+        occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
+    end
+
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
 
     NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
@@ -433,52 +469,15 @@ function plot_irf(𝓂::ℳ;
         end
     end
     
-    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
-
-    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
-    
-    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
-
-    stochastic_model = length(𝓂.timings.exo) > 0
-
-    obc_model = length(𝓂.obc_violation_equations) > 0
-
-    if shocks isa Matrix{Float64}
-        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
-
-        shock_idx = 1
-
-        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ"),:]) > 1e-10
-    elseif shocks isa KeyedArray{Float64}
-        shock_idx = 1
-
-        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(𝓂.timings.exo,axiskeys(shocks,1)),:)) > 1e-10
-    else
-        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
-
-        obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
-    end
-
-    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
-
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
-
-    if ignore_obc
-        occasionally_binding_constraints = false
-    else
-        occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
-    end
 
     if occasionally_binding_constraints
-        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, occasionally_binding_constraints)
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     elseif obc_shocks_included
         @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks witout enforcing the constraint is only compatible with first order perturbation solutions."
 
-        solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 1, verbose = false, dynamics = true, algorithm = algorithm)
-        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
-        solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     else
-        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
     end
 
     if generalised_irf
@@ -1040,8 +1039,14 @@ function plot_solution(𝓂::ℳ,
         algorithm = [algorithm]
     end
 
+    if ignore_obc
+        occasionally_binding_constraints = false
+    else
+        occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
+    end
+
     for a in algorithm
-        solve!(𝓂, verbose = verbose, algorithm = a, dynamics = true, parameters = parameters)
+        solve!(𝓂, verbose = verbose, algorithm = a, dynamics = true, parameters = parameters, obc = occasionally_binding_constraints)
     end
 
     SS_and_std = get_moments(𝓂, 

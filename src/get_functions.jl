@@ -543,7 +543,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
-    state_update, pruning = parse_algorithm_to_state_update(:first_order, 𝓂)
+    state_update, pruning = parse_algorithm_to_state_update(:first_order, 𝓂, false)
 
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
@@ -831,8 +831,6 @@ function get_irf(𝓂::ℳ;
     ignore_obc::Bool = false,
     verbose::Bool = false)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
-    
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
@@ -877,6 +875,14 @@ function get_irf(𝓂::ℳ;
         obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
     end
 
+    if ignore_obc
+        occasionally_binding_constraints = false
+    else
+        occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
+    end
+
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+    
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
     NSSS = reference_steady_state[1:length(𝓂.var)] 
@@ -932,23 +938,15 @@ function get_irf(𝓂::ℳ;
             end
         end
     end
-    
-    if ignore_obc
-        occasionally_binding_constraints = false
-    else
-        occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
-    end
 
     if occasionally_binding_constraints
-        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, occasionally_binding_constraints)
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     elseif obc_shocks_included
         @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks witout enforcing the constraint is only compatible with first order perturbation solutions."
 
-        solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 1, verbose = false, dynamics = true, algorithm = algorithm)
-        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
-        solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     else
-        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
     end
     
     if generalised_irf
@@ -1157,7 +1155,7 @@ function get_steady_state(𝓂::ℳ;
     tol::AbstractFloat = eps())
 
     if !(algorithm == :first_order) stochastic = true end
-
+    
     solve!(𝓂, parameters = parameters, verbose = verbose)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
@@ -1189,16 +1187,16 @@ function get_steady_state(𝓂::ℳ;
 
     if stochastic
         if  algorithm == :third_order
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent)
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent, obc = length(𝓂.obc_violation_equations) > 0)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
         elseif  algorithm == :pruned_third_order
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent)
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent, obc = length(𝓂.obc_violation_equations) > 0)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
         elseif  algorithm == :pruned_second_order
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent)
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent, obc = length(𝓂.obc_violation_equations) > 0)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
         else
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order, silent = silent)
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order, silent = silent, obc = length(𝓂.obc_violation_equations) > 0)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
         end
     end

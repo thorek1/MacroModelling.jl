@@ -3115,6 +3115,7 @@ function solve!(𝓂::ℳ;
     parameters = nothing, 
     dynamics::Bool = false, 
     algorithm::Symbol = :riccati, 
+    obc::Bool = false,
     verbose::Bool = false,
     silent::Bool = false,
     tol::AbstractFloat = eps())
@@ -3159,7 +3160,25 @@ function solve!(𝓂::ℳ;
                 return S₁ * aug_state # you need a return statement for forwarddiff to work
             end
             
-            𝓂.solution.perturbation.first_order = perturbation_solution(S₁, state_update₁)
+            if obc
+                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
+
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+            
+                Ŝ₁, solved = calculate_first_order_solution(∇̂₁; T = 𝓂.timings)
+
+                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
+
+                state_update₁̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                                shock]
+                    return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
+                end
+            else
+                state_update₁̂ = x->x
+            end
+            
+            𝓂.solution.perturbation.first_order = perturbation_solution(S₁, state_update₁, state_update₁̂)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -3181,7 +3200,20 @@ function solve!(𝓂::ℳ;
                 return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
             end
 
-            𝓂.solution.perturbation.second_order = second_order_perturbation_solution(𝐒₂,stochastic_steady_state,state_update₂)
+            if obc
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+            
+                state_update₂̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                                1
+                                shock]
+                    return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+                end
+            else
+                state_update₂̂ = x->x
+            end
+
+            𝓂.solution.perturbation.second_order = second_order_perturbation_solution(𝐒₂, stochastic_steady_state, state_update₂, state_update₂̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
         end
@@ -3203,7 +3235,20 @@ function solve!(𝓂::ℳ;
                 return pruned_states[1] + pruned_states[2] # strictly following Andreasen et al. (2018)
             end
 
-            𝓂.solution.perturbation.pruned_second_order = second_order_perturbation_solution(𝐒₂,stochastic_steady_state,state_update₂)
+            if obc
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+            
+                state_update₂̂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+                    aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+                    aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    
+                    return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+                end
+            else
+                state_update₂̂ = x->x
+            end
+
+            𝓂.solution.perturbation.pruned_second_order = second_order_perturbation_solution(𝐒₂, stochastic_steady_state, state_update₂, state_update₂̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_second_order])
         end
@@ -3221,7 +3266,20 @@ function solve!(𝓂::ℳ;
                 return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
             end
 
-            𝓂.solution.perturbation.third_order = third_order_perturbation_solution(𝐒₃,stochastic_steady_state,state_update₃)
+            if obc
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+            
+                state_update₃̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                                    1
+                                    shock]
+                    return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                end
+            else
+                state_update₃̂ = x->x
+            end
+
+            𝓂.solution.perturbation.third_order = third_order_perturbation_solution(𝐒₃, stochastic_steady_state, state_update₃, state_update₃̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order])
         end
@@ -3247,7 +3305,24 @@ function solve!(𝓂::ℳ;
                 return pruned_states[1] + pruned_states[2] + pruned_states[3]
             end
 
-            𝓂.solution.perturbation.pruned_third_order = third_order_perturbation_solution(𝐒₃,stochastic_steady_state,state_update₃)
+            if obc
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+            
+                state_update₃̂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+                    aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+                    aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
+                    aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    
+                    kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+                    
+                    return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, Ŝ₁̂ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6] # strictly following Andreasen et al. (2018)
+                end
+            else
+                state_update₃̂ = x->x
+            end
+
+            𝓂.solution.perturbation.pruned_third_order = third_order_perturbation_solution(𝐒₃, stochastic_steady_state, state_update₃, state_update₃̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_third_order])
         end
@@ -3271,7 +3346,25 @@ function solve!(𝓂::ℳ;
                 return S₁ * aug_state # you need a return statement for forwarddiff to work
             end
             
-            𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(S₁, state_update₁ₜ)
+            if obc
+                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
+
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+            
+                Ŝ₁, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
+            
+                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
+
+                state_update₁̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                                shock]
+                    return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
+                end
+            else
+                state_update₁̂ = x->x
+            end
+
+            𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(S₁, state_update₁ₜ, state_update₁̂)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:quadratic_iteration, :binder_pesaran])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -3296,7 +3389,25 @@ function solve!(𝓂::ℳ;
                 return S₁ * aug_state # you need a return statement for forwarddiff to work
             end
             
-            𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(S₁, state_update₁ₜ)
+            if obc
+                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1)
+
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+            
+                Ŝ₁, converged = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
+            
+                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0)
+
+                state_update₁̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                                shock]
+                    return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
+                end
+            else
+                state_update₁̂ = x->x
+            end
+
+            𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(S₁, state_update₁ₜ, state_update₁̂)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:linear_time_iteration])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -3802,9 +3913,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
     else
         ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values),𝓂.parameters .== x)[1],collect(keys(parameters)))
         
-
-        
-        if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters)))
+        if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters))) && !(𝓂.parameters[ntrsct_idx] == [:activeᵒᵇᶜshocks])
             if verbose println("Parameter changes: ") end
             𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
         end
@@ -5032,15 +5141,28 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
 end
 
 
-
-
-
-
-
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)
     if occasionally_binding_constraints
-        solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 1, verbose = false, dynamics = true, algorithm = algorithm)
-
+        if :linear_time_iteration == algorithm
+            state_update = 𝓂.solution.perturbation.linear_time_iteration.state_update_obc
+            pruning = false
+        elseif algorithm ∈ [:riccati, :first_order]
+            state_update = 𝓂.solution.perturbation.first_order.state_update_obc
+            pruning = false
+        elseif :second_order == algorithm
+            state_update = 𝓂.solution.perturbation.second_order.state_update_obc
+            pruning = false
+        elseif :pruned_second_order == algorithm
+            state_update = 𝓂.solution.perturbation.pruned_second_order.state_update_obc
+            pruning = true
+        elseif :third_order == algorithm
+            state_update = 𝓂.solution.perturbation.third_order.state_update_obc
+            pruning = false
+        elseif :pruned_third_order == algorithm
+            state_update = 𝓂.solution.perturbation.pruned_third_order.state_update_obc
+            pruning = true
+        end
+    else
         if :linear_time_iteration == algorithm
             state_update = 𝓂.solution.perturbation.linear_time_iteration.state_update
             pruning = false
@@ -5048,114 +5170,18 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             state_update = 𝓂.solution.perturbation.first_order.state_update
             pruning = false
         elseif :second_order == algorithm
-            𝐒₁ = 𝓂.solution.perturbation.first_order.solution_matrix
-
-            𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
-
-            solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
-
-            𝐒₂ = 𝓂.solution.perturbation.second_order.solution_matrix
-
-            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                            1
-                            shock]
-                return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-            end
-
+            state_update = 𝓂.solution.perturbation.second_order.state_update
             pruning = false
         elseif :pruned_second_order == algorithm
-            𝐒₁ = 𝓂.solution.perturbation.first_order.solution_matrix
-
-            𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
-
-            solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
-            
-            𝐒₂ = 𝓂.solution.perturbation.pruned_second_order.solution_matrix
-
-            obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
-
-            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-                aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                
-                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
-                # end
-            end
-
+            state_update = 𝓂.solution.perturbation.pruned_second_order.state_update
             pruning = true
         elseif :third_order == algorithm
-            𝐒₁ = 𝓂.solution.perturbation.first_order.solution_matrix
-
-            𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
-
-            solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
-
-            𝐒₂ = 𝓂.solution.perturbation.second_order.solution_matrix
-
-            𝐒₃ = 𝓂.solution.perturbation.third_order.solution_matrix
-            
-            state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                            1
-                            shock]
-                return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-            end
-
+            state_update = 𝓂.solution.perturbation.third_order.state_update
             pruning = false
         elseif :pruned_third_order == algorithm
-            𝐒₁ = 𝓂.solution.perturbation.first_order.solution_matrix
-
-            𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
-
-            solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
-
-            𝐒₂ = 𝓂.solution.perturbation.pruned_second_order.solution_matrix
-
-            𝐒₃ = 𝓂.solution.perturbation.pruned_third_order.solution_matrix
-            
-            state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-                aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-                aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
-                aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                
-                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-                
-                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6] # strictly following Andreasen et al. (2018)
-                # end
-            end
-            
+            state_update = 𝓂.solution.perturbation.pruned_third_order.state_update
             pruning = true
         end
-
-        solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
-
-        return state_update, pruning
-    end
-end
-
-
-
-function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ)
-    if :linear_time_iteration == algorithm
-        state_update = 𝓂.solution.perturbation.linear_time_iteration.state_update
-        pruning = false
-    elseif algorithm ∈ [:riccati, :first_order]
-        state_update = 𝓂.solution.perturbation.first_order.state_update
-        pruning = false
-    elseif :second_order == algorithm
-        state_update = 𝓂.solution.perturbation.second_order.state_update
-        pruning = false
-    elseif :pruned_second_order == algorithm
-        state_update = 𝓂.solution.perturbation.pruned_second_order.state_update
-        pruning = true
-    elseif :third_order == algorithm
-        state_update = 𝓂.solution.perturbation.third_order.state_update
-        pruning = false
-    elseif :pruned_third_order == algorithm
-        state_update = 𝓂.solution.perturbation.pruned_third_order.state_update
-        pruning = true
     end
 
     return state_update, pruning
