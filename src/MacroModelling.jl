@@ -289,7 +289,7 @@ function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, 
     𝓂 = p[4]
 
     if length(jac) > 0
-        jac .= 𝒜.jacobian(𝒷, xx -> 𝓂.obc_violation_function(xx, p), X)[1]'
+        jac .= 𝒜.jacobian(𝒷(), xx -> 𝓂.obc_violation_function(xx, p), X)[1]'
     end
 
     res .= 𝓂.obc_violation_function(X, p)
