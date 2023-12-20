@@ -953,7 +953,7 @@ function get_irf(𝓂::ℳ;
     
     if generalised_irf
         girfs =  girf(state_update,
-                        SSS_delta,
+                        initial_state,
                         levels ? reference_steady_state + SSS_delta : SSS_delta,
                         𝓂.timings; 
                         periods = periods, 
