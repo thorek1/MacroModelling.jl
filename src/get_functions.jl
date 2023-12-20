@@ -1233,8 +1233,7 @@ function get_steady_state(𝓂::ℳ;
                 if algorithm == :third_order
 
                     dSSS = 𝒜.jacobian(𝒷,x->begin 
-                                SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]
-                                [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                                SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                             end, 𝓂.parameter_values[param_idx])[1]
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
@@ -1242,8 +1241,7 @@ function get_steady_state(𝓂::ℳ;
                 elseif algorithm == :pruned_third_order
 
                     dSSS = 𝒜.jacobian(𝒷,x->begin 
-                                SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)[1]
-                                [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                                SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)[collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                             end, 𝓂.parameter_values[param_idx])[1]
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
@@ -1251,8 +1249,7 @@ function get_steady_state(𝓂::ℳ;
                 elseif algorithm == :pruned_second_order
 
                     dSSS = 𝒜.jacobian(𝒷,x->begin 
-                                SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)[1]
-                                [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                                SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)[collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                             end, 𝓂.parameter_values[param_idx])[1]
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
@@ -1260,8 +1257,7 @@ function get_steady_state(𝓂::ℳ;
                 else
 
                     dSSS = 𝒜.jacobian(𝒷,x->begin 
-                                SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]
-                                [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                                SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                             end, 𝓂.parameter_values[param_idx])[1]
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
