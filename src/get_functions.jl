@@ -924,7 +924,7 @@ function get_irf(𝓂::ℳ;
             elseif algorithm == :pruned_third_order
                 initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
             else
-                initial_state = initial_state - reference_steady_state[1:𝓂.timings.nVars]
+                initial_state = initial_state - NSSS
             end
         else
             if algorithm ∉ [:pruned_second_order, :pruned_third_order]
