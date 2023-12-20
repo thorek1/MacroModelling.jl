@@ -4814,15 +4814,17 @@ function irf(state_update::Function,
         Y = zeros(T.nVars,periods,length(shock_idx))
 
         for (i,ii) in enumerate(shock_idx)
+            initial_state_copy = deepcopy(initial_state)
+            
             if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
                 shock_history = zeros(T.nExo,periods)
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
 
-            Y[:,1,i] = state_update(initial_state, shock_history[:,1])
+            Y[:,1,i] = state_update(initial_state_copy, shock_history[:,1])
 
             for t in 1:periods-1
-                Y[:,t+1,i] = state_update(pruning ? initial_state : Y[:,t,i], shock_history[:,t+1])
+                Y[:,t+1,i] = state_update(pruning ? initial_state_copy : Y[:,t,i], shock_history[:,t+1])
             end
         end
 
@@ -4887,12 +4889,16 @@ function girf(state_update::Function,
     Y = zeros(T.nVars, periods + 1, length(shock_idx))
 
     for (i,ii) in enumerate(shock_idx)
+        initial_state_copy = deepcopy(initial_state)
+
         for draw in 1:draws
+            initial_state_copy² = deepcopy(initial_state_copy)
+
             for i in 1:warmup_periods
                 if pruning
-                    state_update(initial_state, randn(T.nExo))
+                    state_update(initial_state_copy², randn(T.nExo))
                 else
-                    initial_state = state_update(initial_state, randn(T.nExo))
+                    initial_state_copy² = state_update(initial_state_copy², randn(T.nExo))
                 end
             end
 
@@ -4907,14 +4913,14 @@ function girf(state_update::Function,
             end
 
             if pruning
-                Y₁[:,1] = state_update(initial_state, baseline_noise)
-                Y₂[:,1] = state_update(initial_state, baseline_noise)
+                Y₁[:,1] = state_update(initial_state_copy², baseline_noise)
+                Y₂[:,1] = state_update(initial_state_copy², baseline_noise)
 
-                initial_state₁ = copy(initial_state)
-                initial_state₂ = copy(initial_state)
+                initial_state₁ = deepcopy(initial_state_copy²)
+                initial_state₂ = deepcopy(initial_state_copy²)
             else
-                Y₁[:,1] = state_update(initial_state, baseline_noise)
-                Y₂[:,1] = state_update(initial_state, baseline_noise)
+                Y₁[:,1] = state_update(initial_state_copy², baseline_noise)
+                Y₂[:,1] = state_update(initial_state_copy², baseline_noise)
             end
 
             for t in 1:periods
