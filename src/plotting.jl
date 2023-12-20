@@ -483,7 +483,7 @@ function plot_irf(𝓂::ℳ;
 
     if generalised_irf
         Y = girf(state_update, 
-                    SSS_delta, 
+                    initial_state, 
                     zeros(𝓂.timings.nVars), 
                     𝓂.timings; 
                     periods = periods, 
