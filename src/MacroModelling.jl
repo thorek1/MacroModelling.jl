@@ -5016,12 +5016,12 @@ function irf(state_update::Function,
 
             initial_state_copy = state_update(initial_state_copy, shock_history[:,1])
 
-            Y[:,1,1] = pruning ? sum(initial_state_copy) : initial_state_copy
+            Y[:,1,i] = pruning ? sum(initial_state_copy) : initial_state_copy
 
             for t in 1:periods-1
                 initial_state_copy = state_update(initial_state_copy, shock_history[:,t+1])
 
-                Y[:,t+1,1] = pruning ? sum(initial_state_copy) : initial_state_copy
+                Y[:,t+1,i] = pruning ? sum(initial_state_copy) : initial_state_copy
             end
         end
 
