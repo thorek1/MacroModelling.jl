@@ -539,41 +539,11 @@ function get_conditional_forecast(𝓂::ℳ,
         shocks = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
     end
 
-    # write_parameters_input!(𝓂,parameters, verbose = verbose)
-
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
     state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
 
-    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
-
-    NSSS = reference_steady_state[1:length(𝓂.var)] 
-
-    if algorithm == :second_order
-        SSS_delta = NSSS - 𝓂.solution.perturbation.second_order.stochastic_steady_state
-    elseif algorithm == :pruned_second_order
-        SSS_delta = NSSS - 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
-    elseif algorithm == :third_order
-        SSS_delta = NSSS - 𝓂.solution.perturbation.third_order.stochastic_steady_state
-    elseif algorithm == :pruned_third_order
-        SSS_delta = NSSS - 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
-    else
-        SSS_delta = zeros(length(𝓂.var))
-
-        reference_steady_state = NSSS
-    end
-
-    if levels
-        if algorithm == :second_order
-            reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
-        elseif algorithm == :pruned_second_order
-            reference_steady_state = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
-        elseif algorithm == :third_order
-            reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-        elseif algorithm == :pruned_third_order
-            reference_steady_state = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
-        end
-    end
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
 
     unspecified_initial_state = initial_state == [0.0]
 
@@ -1021,36 +991,8 @@ function get_irf(𝓂::ℳ;
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
     
-    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
-
-    NSSS = reference_steady_state[1:length(𝓂.var)] 
-
-    if algorithm == :second_order
-        SSS_delta = NSSS - 𝓂.solution.perturbation.second_order.stochastic_steady_state
-    elseif algorithm == :pruned_second_order
-        SSS_delta = NSSS - 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
-    elseif algorithm == :third_order
-        SSS_delta = NSSS - 𝓂.solution.perturbation.third_order.stochastic_steady_state
-    elseif algorithm == :pruned_third_order
-        SSS_delta = NSSS - 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
-    else
-        SSS_delta = zeros(length(𝓂.var))
-
-        reference_steady_state = NSSS
-    end
-
-    if levels
-        if algorithm == :second_order
-            reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
-        elseif algorithm == :pruned_second_order
-            reference_steady_state = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
-        elseif algorithm == :third_order
-            reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-        elseif algorithm == :pruned_third_order
-            reference_steady_state = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
-        end
-    end
-
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    
     unspecified_initial_state = initial_state == [0.0]
 
     if unspecified_initial_state

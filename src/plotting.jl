@@ -415,37 +415,8 @@ function plot_irf(𝓂::ℳ;
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
 
-    NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
-
-    full_SS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-    full_SS[indexin(𝓂.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-
-    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
-
-    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : NSSS[indexin([s],NSSS_labels)...] for s in full_SS]
-
-    if algorithm == :second_order
-        SSS_delta = reference_steady_state - 𝓂.solution.perturbation.second_order.stochastic_steady_state
-    elseif algorithm == :pruned_second_order
-        SSS_delta = reference_steady_state - 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
-    elseif algorithm == :third_order
-        SSS_delta = reference_steady_state - 𝓂.solution.perturbation.third_order.stochastic_steady_state
-    elseif algorithm == :pruned_third_order
-        SSS_delta = reference_steady_state - 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
-    else
-        SSS_delta = zeros(length(reference_steady_state))
-    end
-
-    if algorithm == :second_order
-        reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
-    elseif algorithm == :pruned_second_order
-        reference_steady_state = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
-    elseif algorithm == :third_order
-        reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-    elseif algorithm == :pruned_third_order
-        reference_steady_state = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
-    end
-
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    
     unspecified_initial_state = initial_state == [0.0]
 
     if unspecified_initial_state
@@ -1062,6 +1033,7 @@ function plot_solution(𝓂::ℳ,
     SS_and_std[2] = SS_and_std[2] isa KeyedArray ? axiskeys(SS_and_std[2],1) isa Vector{String} ? rekey(SS_and_std[2], 1 => axiskeys(SS_and_std[2],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[2] : SS_and_std[2]
 
     full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
     full_SS = [s ∈ 𝓂.exo_present ? 0 : SS_and_std[1](s) for s in full_NSSS]

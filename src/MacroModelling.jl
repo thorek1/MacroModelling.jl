@@ -4780,6 +4780,28 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 end
 
 
+function get_relevant_steady_states(𝓂::ℳ, algorithm::Symbol)
+    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
+    if any(x -> contains(string(x), "◖"), full_NSSS)
+        full_NSSS_decomposed = decompose_name.(full_NSSS)
+        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
+    end
+
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false)
+
+    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+
+    relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false)
+
+    NSSS = [s ∈ 𝓂.exo_present ? 0 : relevant_NSSS(s) for s in full_NSSS]
+
+    SSS_delta = NSSS - reference_steady_state
+
+    return reference_steady_state, NSSS, SSS_delta
+end
 
 
 function irf(state_update::Function, 
