@@ -1033,7 +1033,7 @@ function plot_solution(𝓂::ℳ,
     SS_and_std[2] = SS_and_std[2] isa KeyedArray ? axiskeys(SS_and_std[2],1) isa Vector{String} ? rekey(SS_and_std[2], 1 => axiskeys(SS_and_std[2],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[2] : SS_and_std[2]
 
     full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-    
+
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
     full_SS = [s ∈ 𝓂.exo_present ? 0 : SS_and_std[1](s) for s in full_NSSS]
@@ -1378,16 +1378,11 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     var_idx = indexin(var_names,full_SS)
 
-    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
-    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-
-    if any(x -> contains(string(x), "◖"), full_NSSS)
-        full_NSSS_decomposed = decompose_name.(full_NSSS)
-        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
-    end
+    var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false)
+
+    relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
     reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0 : relevant_SS(s) for s in var_names]
 
