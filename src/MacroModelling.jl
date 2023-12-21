@@ -6002,7 +6002,7 @@ end
 
 
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters::Union{Nothing,Vector{U}} = nothing, verbose::Bool = false, tol::AbstractFloat = eps()) where U <: Number
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters::Vector{U} = nothing, verbose::Bool = false, tol::AbstractFloat = eps()) where U <: Number
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
@@ -6010,7 +6010,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     @ignore_derivatives solve!(𝓂, verbose = verbose)
 
-    if isnothing(parameters)
+    if parameters == Float64[]
         parameters = 𝓂.parameter_values
     else
         ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters) + length(𝓂.➕_vars))
