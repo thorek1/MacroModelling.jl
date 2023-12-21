@@ -1277,21 +1277,20 @@ end
 $(SIGNATURES)
 Plot conditional forecast given restrictions on endogenous variables and shocks (optional) of the model. The algorithm finds the combinations of shocks with the smallest magnitude to match the conditions and plots both the endogenous variables and shocks.
 
-The left axis shows the level, and the right axis the deviation from the non stochastic steady state. Variable names are above the subplots, conditioned values are marked, and the title provides information about the model, and number of pages.
-
-Limited to the first order perturbation solution of the model.
+The left axis shows the level, and the right axis the deviation from the (non) stochastic steady state, depending on the solution algorithm (e.g. higher order perturbation algorithms will show the stochastic steady state). Variable names are above the subplots, conditioned values are marked, and the title provides information about the model, and number of pages.
 
 # Arguments
 - $MODEL
 - $CONDITIONS
 # Keyword Arguments
 - $SHOCK_CONDITIONS
-- $INITIAL_STATE
+- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS
 - $VARIABLES
 `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
 - $LEVELS
+- $ALGORITHM
 - `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
 - `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
 - `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
@@ -1357,11 +1356,12 @@ plot_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_le
 function plot_conditional_forecast(𝓂::ℳ,
     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-    initial_state::Vector{Float64} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
     periods::Int = 40, 
     parameters::ParameterType = nothing,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     conditions_in_levels::Bool = true,
+    algorithm::Symbol = :first_order,
     levels::Bool = false,
     show_plots::Bool = true,
     save_plots::Bool = false,
@@ -1392,6 +1392,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 parameters = parameters,
                                 variables = variables, 
                                 conditions_in_levels = conditions_in_levels,
+                                algorithm = algorithm,
                                 levels = levels,
                                 verbose = verbose)
 
@@ -1399,17 +1400,24 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
 
-    NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
-    
     var_names = axiskeys(Y,1)   
 
     var_names = var_names isa Vector{String} ? var_names .|> replace_indices : var_names
 
     var_idx = indexin(var_names,full_SS)
 
-    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
-    reference_steady_state = [s ∈ union(map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo),𝓂.exo_present) ? 0 : NSSS[indexin([Symbol(replace(string(s), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))],NSSS_labels)...] for s in var_names]
+    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
+    if any(x -> contains(string(x), "◖"), full_NSSS)
+        full_NSSS_decomposed = decompose_name.(full_NSSS)
+        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
+    end
+
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false)
+
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0 : relevant_SS(s) for s in var_names]
 
     var_length = length(full_SS) - 𝓂.timings.nExo
 

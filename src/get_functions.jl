@@ -381,7 +381,7 @@ end
 
 """
 $(SIGNATURES)
-Return the conditional forecast given restrictions on endogenous variables and shocks (optional) in a 2-dimensional array. The algorithm finds the combinations of shocks with the smallest magnitude to match the conditions.
+Return the conditional forecast given restrictions on endogenous variables and shocks (optional) in a 2-dimensional array. By default (see `levels`), the values represent deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state). A constrained minimisation problem is solved to find the combinations of shocks with the smallest magnitude to match the conditions.
 
 # Arguments
 - $MODEL
@@ -612,7 +612,9 @@ function get_conditional_forecast(𝓂::ℳ,
     shocks[free_shock_idx,1] .= 0
     
     if conditions_in_levels
-        conditions[cond_var_idx,1] .-= reference_steady_state[cond_var_idx]
+        conditions[cond_var_idx,1] .-= reference_steady_state[cond_var_idx] + SSS_delta[cond_var_idx]
+    else
+        conditions[cond_var_idx,1] .-= SSS_delta[cond_var_idx]
     end
 
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
@@ -654,7 +656,9 @@ function get_conditional_forecast(𝓂::ℳ,
             cond_var_idx = findall(conditions[:,i] .!= nothing)
             
             if conditions_in_levels
-                conditions[cond_var_idx,i] .-= reference_steady_state[cond_var_idx]
+                conditions[cond_var_idx,i] .-= reference_steady_state[cond_var_idx] + SSS_delta[cond_var_idx]
+            else
+                conditions[cond_var_idx,i] .-= SSS_delta[cond_var_idx]
             end
     
             free_shock_idx = findall(shocks[:,i] .== nothing)
@@ -749,10 +753,10 @@ function get_conditional_forecast(𝓂::ℳ,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
         axis1[end-length(𝓂.timings.exo)+1:end] = axis1[end-length(𝓂.timings.exo)+1:end] .* "₍ₓ₎"
     else
-        axis1 = [𝓂.timings.var[var_idx]; map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+        axis1 = [𝓂.timings.var[var_idx]; map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo)]
     end
 
-    return KeyedArray([levels ? (Y[var_idx,:] .+ reference_steady_state[var_idx]) : Y[var_idx,:]; convert(Matrix{Float64},shocks)];  Variables_and_shocks = axis1, Periods = 1:periods)
+    return KeyedArray([Y[var_idx,:] .+ (levels ? reference_steady_state + SSS_delta : SSS_delta)[var_idx]; convert(Matrix{Float64}, shocks)];  Variables_and_shocks = axis1, Periods = 1:periods)
 end
 
 
@@ -901,7 +905,7 @@ end
 
 """
 $(SIGNATURES)
-Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedArray. Values are returned in absolute deviations from the (non) stochastic steady state by default.
+Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedArray. By default (see `levels`), the values represent deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state).
 
 # Arguments
 - $MODEL
