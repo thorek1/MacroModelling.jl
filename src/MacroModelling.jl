@@ -8,9 +8,12 @@ using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
 import Symbolics
-import ForwardDiff as ℱ 
-import JuMP
-import MadNLP, NLopt # MadNLP doesnt support noninear constraints # StatusSwitchingQP not reliable
+
+import AbstractDifferentiation as 𝒜
+import ForwardDiff as ℱ
+𝒷 = 𝒜.ForwardDiffBackend
+
+import NLopt
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -20,8 +23,7 @@ import Subscripts: super, sub
 import Krylov
 import LinearOperators
 import DataStructures: CircularBuffer
-import ImplicitDifferentiation as ID
-import AbstractDifferentiation as AD
+import ImplicitDifferentiation as ℐ
 import SpeedMapping: speedmapping
 import REPL
 import Unicode
@@ -44,8 +46,36 @@ Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, sp
 
 
 # Type definitions
-Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
-String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}}}
+const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
+const String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}}}
+const ParameterType = Union{Nothing,
+                            Pair{Symbol, Float64},
+                            Pair{String, Float64},
+                            Tuple{Pair{Symbol, Float64}, Vararg{Pair{Symbol, Float64}}},
+                            Tuple{Pair{String, Float64}, Vararg{Pair{String, Float64}}},
+                            Vector{Pair{Symbol, Float64}},
+                            Vector{Pair{String, Float64}},
+                            Pair{Symbol, Int},
+                            Pair{String, Int},
+                            Tuple{Pair{Symbol, Int}, Vararg{Pair{Symbol, Int}}},
+                            Tuple{Pair{String, Int}, Vararg{Pair{String, Int}}},
+                            Vector{Pair{Symbol, Int}},
+                            Vector{Pair{String, Int}},
+                            Pair{Symbol, Real},
+                            Pair{String, Real},
+                            Tuple{Pair{Symbol, Real}, Vararg{Pair{Symbol, Real}}},
+                            Tuple{Pair{String, Real}, Vararg{Pair{String, Real}}},
+                            Vector{Pair{Symbol, Real}},
+                            Vector{Pair{String, Real}},
+                            Dict{Symbol, Float64},
+                            Tuple{Int, Vararg{Int}},
+                            Matrix{Int},
+                            Tuple{Float64, Vararg{Float64}},
+                            Matrix{Float64},
+                            Tuple{Real, Vararg{Real}},
+                            Matrix{Real},
+                            Vector{Float64} }
+
 
 # Imports
 include("common_docstrings.jl")
@@ -255,6 +285,23 @@ function transform_obc(ex::Expr)
 end
 
 
+function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
+    𝓂 = p[4]
+
+    if length(jac) > 0
+        jac .= 𝒜.jacobian(𝒷(), xx -> 𝓂.obc_violation_function(xx, p), X)[1]'
+    end
+
+    res .= 𝓂.obc_violation_function(X, p)
+end
+
+function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
+    if length(grad) > 0
+        grad .= 2 .* X
+    end
+    
+    sum(abs2, X)
+end
 
 function set_up_obc_violation_function!(𝓂)
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
@@ -273,40 +320,37 @@ function set_up_obc_violation_function!(𝓂)
     alll = []
     for (i,var) in enumerate(present_varss)
         if !(match(r"^χᵒᵇᶜ", string(var)) === nothing)
-            push!(alll,:($var = Y[$(dyn_var_present_idx[i]),1:end-1]))
+            push!(alll,:($var = Y[$(dyn_var_present_idx[i]),1:max(periods, 1)]))
         end
     end
 
-    calc_obc_violation = :(function calculate_obc_violation(x::Vector, 
-                                                                initial_state,
-                                                                state_update, 
-                                                                reference_steady_state, 
-                                                                𝓂, 
-                                                                algorithm,
-                                                                periods, 
-                                                                shock_values)
+    calc_obc_violation = :(function calculate_obc_violation(x, p)
+        state, state_update, reference_steady_state, 𝓂, algorithm, periods, shock_values = p
+
         T = 𝓂.timings
 
-        # if algorithm ∈ [:first_order, :riccati, :linear_time_iteration, :quadratic_iteration]
-        #     Ytype = JuMP.AffExpr
-        # elseif algorithm ∈ [:pruned_second_order, :second_order]
-        #     Ytype = JuMP.QuadExpr
-        # elseif algorithm ∈ [:pruned_third_order, :third_order]
-        #     Ytype = JuMP.NonlinearExpr
-        # end
+        Y = zeros(typeof(x[1]), T.nVars, periods+1)
 
-        # Y = zeros(Ytype, T.nVars, periods+2)
-
-        Y = zeros(JuMP.AffExpr, T.nVars, periods+1)
+        shock_values = convert(typeof(x), shock_values)
 
         shock_values[contains.(string.(T.exo),"ᵒᵇᶜ")] .= x
 
         zero_shock = zero(shock_values)
 
-        Y[:,1] = state_update(initial_state, shock_values)
+        if algorithm ∈ [:pruned_second_order, :pruned_third_order]
+            states = state_update(state, shock_values)
+            Y[:,1] = sum(states)
+        else
+            Y[:,1] = state_update(state, shock_values)
+        end
 
         for t in 1:periods
-            Y[:,t+1] = state_update(Y[:,t], zero_shock)
+            if algorithm ∈ [:pruned_second_order, :pruned_third_order]
+                states = state_update(states, zero_shock)
+                Y[:,t+1] = sum(states)
+            else
+                Y[:,t+1] = state_update(Y[:,t], zero_shock)
+            end
         end
 
         Y .+= reference_steady_state[1:T.nVars]
@@ -314,11 +358,10 @@ function set_up_obc_violation_function!(𝓂)
         $(alll...)
 
         constraint_values = Vector[]
-        # shock_sign_indicators = Bool[]
 
         $(𝓂.obc_violation_equations...)
 
-        return vcat(constraint_values...)#, shock_sign_indicators
+        return vcat(constraint_values...)
     end)
 
     𝓂.obc_violation_function = @RuntimeGeneratedFunction(calc_obc_violation)
@@ -925,6 +968,24 @@ function generateSumVectors(vectorLength::Int, totalSum::Int)
     return [[currentInt; smallerVector...]' for currentInt in totalSum:-1:0 for smallerVector in generateSumVectors(vectorLength-1, totalSum-currentInt)]
 end
 
+# function convert_superscript_to_integer(str::String)
+#     # Regular expression to match superscript numbers in brackets
+#     regex = r"⁽([⁰¹²³⁴⁵⁶⁷⁸⁹]+)⁾$"
+
+#     # Mapping of superscript characters to their integer values
+#     superscript_map = Dict('⁰'=>0, '¹'=>1, '²'=>2, '³'=>3, '⁴'=>4, '⁵'=>5, '⁶'=>6, '⁷'=>7, '⁸'=>8, '⁹'=>9)
+
+#     # Check for a match and process if found
+#     if occursin(regex, str)
+#         matched = match(regex, str).captures[1]
+#         # Convert each superscript character to a digit and concatenate
+#         digits = [superscript_map[c] for c in matched]
+#         # Convert array of digits to integer
+#         return parse(Int, join(digits))
+#     else
+#         return nothing
+#     end
+# end
 
 function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
     return filter(r -> match(pattern, string(r)) !== nothing, strings)
@@ -1461,7 +1522,7 @@ function levenberg_marquardt(f::Function,
     p² = p̄²
 
 	for iter in 1:iterations
-        ∇ .= ℱ.jacobian(f̂,current_guess)
+        ∇ .= 𝒜.jacobian(𝒷(), f̂,current_guess)[1]
 
         previous_guess .= current_guess
 
@@ -2120,9 +2181,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 # push!(SS_solve_func,:(println([$(calib_pars_input...),$(other_vars_input...)])))
 
                 if VERSION >= v"1.9"
-                    push!(SS_solve_func,:(block_solver_AD = ID.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ID.DirectLinearSolver(), conditions_backend = AD.ForwardDiffBackend())))
+                    push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒜.ForwardDiffBackend())))
                 else
-                    push!(SS_solve_func,:(block_solver_AD = ID.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ID.DirectLinearSolver())))
+                    push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
                 end
 
                 push!(SS_solve_func,:(solution = block_solver_AD([$(calib_pars_input...),$(other_vars_input...)],
@@ -2506,9 +2567,9 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, closest_solution[$(n_block)]))))
 
         if VERSION >= v"1.9"
-            push!(SS_solve_func,:(block_solver_AD = ID.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ID.DirectLinearSolver(), conditions_backend = AD.ForwardDiffBackend())))
+            push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒜.ForwardDiffBackend())))
         else
-            push!(SS_solve_func,:(block_solver_AD = ID.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ID.DirectLinearSolver())))
+            push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
         end
 
         push!(SS_solve_func,:(solution = block_solver_AD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],
@@ -2809,8 +2870,8 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
         jvp = fill(0,length(val),length(inp)) * ps
     else
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> ss_solve_blocks(x,val), inp)
-        A = ℱ.jacobian(x -> ss_solve_blocks(inp,x), val)
+        B = 𝒜.jacobian(𝒷(), x -> ss_solve_blocks(x,val), inp)[1]
+        A = 𝒜.jacobian(𝒷(), x -> ss_solve_blocks(inp,x), val)[1]
         # B = Zygote.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)[1]
         # A = Zygote.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)[1]
 
@@ -2882,8 +2943,8 @@ function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂)
-        A = ℱ.jacobian(x -> second_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)
+        B = 𝒜.jacobian(𝒷(), x -> second_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂)[1]
+        A = 𝒜.jacobian(𝒷(), x -> second_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)[1]
 
         Â = RF.lu(A, check = false)
 
@@ -2908,9 +2969,9 @@ function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁
 end
 
 
-second_order_stochastic_steady_state_iterative_solution = ID.ImplicitFunction(second_order_stochastic_steady_state_iterative_solution_forward,
+second_order_stochastic_steady_state_iterative_solution = ℐ.ImplicitFunction(second_order_stochastic_steady_state_iterative_solution_forward,
                                                                                     second_order_stochastic_steady_state_iterative_solution_conditions; 
-                                                                                    linear_solver = ID.DirectLinearSolver())
+                                                                                    linear_solver = ℐ.DirectLinearSolver())
 
 
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false) where M
@@ -2998,9 +3059,9 @@ function third_order_stochastic_steady_state_iterative_solution_conditions(𝐒�
     return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6 - SSS
 end
 
-third_order_stochastic_steady_state_iterative_solution = ID.ImplicitFunction(third_order_stochastic_steady_state_iterative_solution_forward,
+third_order_stochastic_steady_state_iterative_solution = ℐ.ImplicitFunction(third_order_stochastic_steady_state_iterative_solution_forward,
                                                                                 third_order_stochastic_steady_state_iterative_solution_conditions; 
-                                                                                linear_solver = ID.DirectLinearSolver())
+                                                                                linear_solver = ℐ.DirectLinearSolver())
 
 function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps()) where {Z,S,N}
     S₁S₂S₃, ps = separate_values_and_partials_from_sparsevec_dual(𝐒₁𝐒₂𝐒₃)
@@ -3010,8 +3071,8 @@ function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁�
 
     if converged
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂S₃)
-        A = ℱ.jacobian(x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)
+        B = 𝒜.jacobian(𝒷(), x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂S₃)[1]
+        A = 𝒜.jacobian(𝒷(), x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)[1]
         
         Â = RF.lu(A, check = false)
     
@@ -3082,20 +3143,15 @@ end
 
 
 function solve!(𝓂::ℳ; 
-    parameters = nothing, 
+    parameters::ParameterType = nothing, 
     dynamics::Bool = false, 
     algorithm::Symbol = :riccati, 
-    symbolic_SS::Bool = false,
+    obc::Bool = false,
     verbose::Bool = false,
     silent::Bool = false,
     tol::AbstractFloat = eps())
 
     @assert algorithm ∈ all_available_algorithms
-
-    if dynamics
-        𝓂.solution.outdated_algorithms = union(intersect(𝓂.solution.algorithms,[algorithm]),𝓂.solution.outdated_algorithms)
-        𝓂.solution.algorithms = union(𝓂.solution.algorithms,[algorithm])
-    end
     
     write_parameters_input!(𝓂, parameters, verbose = verbose)
 
@@ -3110,12 +3166,13 @@ function solve!(𝓂::ℳ;
     end
 
     if dynamics
-        if (any([:riccati, :first_order] .∈ ([algorithm],)) && 
-                any([:riccati, :first_order] .∈ (𝓂.solution.outdated_algorithms,))) || 
-            (any([:second_order,:pruned_second_order] .∈ ([algorithm],)) && 
-                any([:second_order,:pruned_second_order] .∈ (𝓂.solution.outdated_algorithms,))) || 
-            (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && 
-                any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+        obc_not_solved = isnothing(𝓂.solution.perturbation.first_order.state_update_obc)
+        if  ((:riccati             == algorithm) && ((:riccati             ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:first_order         == algorithm) && ((:first_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:second_order        == algorithm) && ((:second_order        ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:pruned_second_order == algorithm) && ((:pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
             SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
@@ -3125,13 +3182,35 @@ function solve!(𝓂::ℳ;
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
-            sol_mat, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+            S₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
             
             @assert solved "Could not find stable first order solution."
 
-            state_update₁ = function(state::Vector{T}, shock::Vector{S}) where {T,S} sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                            shock]
+                return S₁ * aug_state # you need a return statement for forwarddiff to work
+            end
             
-            𝓂.solution.perturbation.first_order = perturbation_solution(sol_mat, state_update₁)
+            if obc
+                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
+
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+            
+                Ŝ₁, solved = calculate_first_order_solution(∇̂₁; T = 𝓂.timings)
+
+                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
+
+                state_update₁̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                                shock]
+                    return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
+                end
+            else
+                state_update₁̂ = nothing
+            end
+            
+            𝓂.solution.perturbation.first_order = perturbation_solution(S₁, state_update₁, state_update₁̂)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -3139,10 +3218,10 @@ function solve!(𝓂::ℳ;
 
         end
 
-        if (:second_order == algorithm && 
-                :second_order ∈ 𝓂.solution.outdated_algorithms) || 
-            (any([:third_order] .∈ ([algorithm],)) && 
-                any([:third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+        obc_not_solved = isnothing(𝓂.solution.perturbation.second_order.state_update_obc)
+        if  ((:second_order  == algorithm) && ((:second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+            
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
             
@@ -3155,15 +3234,27 @@ function solve!(𝓂::ℳ;
                 return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
             end
 
-            𝓂.solution.perturbation.second_order = second_order_perturbation_solution(𝐒₂,stochastic_steady_state,state_update₂)
+            if obc
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+            
+                state_update₂̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                                1
+                                shock]
+                    return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+                end
+            else
+                state_update₂̂ = nothing
+            end
+
+            𝓂.solution.perturbation.second_order = second_order_perturbation_solution(𝐒₂, stochastic_steady_state, state_update₂, state_update₂̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
         end
         
-        if (:pruned_second_order == algorithm && 
-                :pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || 
-            (any([:third_order,:pruned_third_order] .∈ ([algorithm],)) && 
-                any([:third_order,:pruned_third_order] .∈ (𝓂.solution.outdated_algorithms,)))
+        obc_not_solved = isnothing(𝓂.solution.perturbation.pruned_second_order.state_update_obc)
+        if  ((:pruned_second_order  == algorithm) && ((:pruned_second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
 
@@ -3179,13 +3270,26 @@ function solve!(𝓂::ℳ;
                 return pruned_states[1] + pruned_states[2] # strictly following Andreasen et al. (2018)
             end
 
-            𝓂.solution.perturbation.pruned_second_order = second_order_perturbation_solution(𝐒₂,stochastic_steady_state,state_update₂)
+            if obc
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+            
+                state_update₂̂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+                    aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+                    aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    
+                    return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+                end
+            else
+                state_update₂̂ = nothing
+            end
+
+            𝓂.solution.perturbation.pruned_second_order = second_order_perturbation_solution(𝐒₂, stochastic_steady_state, state_update₂, state_update₂̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_second_order])
         end
         
-        if :third_order == algorithm && :third_order ∈ 𝓂.solution.outdated_algorithms
-
+        obc_not_solved = isnothing(𝓂.solution.perturbation.third_order.state_update_obc)
+        if  ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
 
             @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
@@ -3197,12 +3301,26 @@ function solve!(𝓂::ℳ;
                 return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
             end
 
-            𝓂.solution.perturbation.third_order = third_order_perturbation_solution(𝐒₃,stochastic_steady_state,state_update₃)
+            if obc
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+            
+                state_update₃̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                                    1
+                                    shock]
+                    return Ŝ₁̂ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                end
+            else
+                state_update₃̂ = nothing
+            end
+
+            𝓂.solution.perturbation.third_order = third_order_perturbation_solution(𝐒₃, stochastic_steady_state, state_update₃, state_update₃̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order])
         end
-        
-        if :pruned_third_order == algorithm && :pruned_third_order ∈ 𝓂.solution.outdated_algorithms
+
+        obc_not_solved = isnothing(𝓂.solution.perturbation.pruned_third_order.state_update_obc)
+        if ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
 
@@ -3223,12 +3341,31 @@ function solve!(𝓂::ℳ;
                 return pruned_states[1] + pruned_states[2] + pruned_states[3]
             end
 
-            𝓂.solution.perturbation.pruned_third_order = third_order_perturbation_solution(𝐒₃,stochastic_steady_state,state_update₃)
+            if obc
+                Ŝ₁̂ = [Ŝ₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) Ŝ₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+            
+                state_update₃̂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+                    aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+                    aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
+                    aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    
+                    kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+                    
+                    return [Ŝ₁̂ * aug_state₁, Ŝ₁̂ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, Ŝ₁̂ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6] # strictly following Andreasen et al. (2018)
+                end
+            else
+                state_update₃̂ = nothing
+            end
+
+            𝓂.solution.perturbation.pruned_third_order = third_order_perturbation_solution(𝐒₃, stochastic_steady_state, state_update₃, state_update₃̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_third_order])
         end
         
-        if any([:quadratic_iteration, :binder_pesaran] .∈ ([algorithm],)) && any([:quadratic_iteration, :binder_pesaran] .∈ (𝓂.solution.outdated_algorithms,))
+        obc_not_solved = isnothing(𝓂.solution.perturbation.quadratic_iteration.state_update_obc)
+        if  ((:binder_pesaran  == algorithm) && ((:binder_pesaran   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:quadratic_iteration  == algorithm) && ((:quadratic_iteration   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
             
             SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
@@ -3238,11 +3375,33 @@ function solve!(𝓂::ℳ;
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
-            sol_mat, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
+            S₁, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
             
-            state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S} sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                            shock]
+                return S₁ * aug_state # you need a return statement for forwarddiff to work
+            end
             
-            𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
+            if obc
+                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
+
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+            
+                Ŝ₁, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
+            
+                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
+
+                state_update₁̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                                shock]
+                    return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
+                end
+            else
+                state_update₁̂ = nothing
+            end
+
+            𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(S₁, state_update₁ₜ, state_update₁̂)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:quadratic_iteration, :binder_pesaran])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -3250,7 +3409,9 @@ function solve!(𝓂::ℳ;
             
         end
 
-        if :linear_time_iteration == algorithm && :linear_time_iteration ∈ 𝓂.solution.outdated_algorithms
+        obc_not_solved = isnothing(𝓂.solution.perturbation.linear_time_iteration.state_update_obc)
+        if  ((:linear_time_iteration  == algorithm) && ((:linear_time_iteration   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+
             SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
             if solution_error > tol
@@ -3259,11 +3420,33 @@ function solve!(𝓂::ℳ;
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
             
-            sol_mat = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
+            S₁ = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
             
-            state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S} sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
+            state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                            shock]
+                return S₁ * aug_state # you need a return statement for forwarddiff to work
+            end
             
-            𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(sol_mat, state_update₁ₜ)
+            if obc
+                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1)
+
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+            
+                Ŝ₁, converged = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
+            
+                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0)
+
+                state_update₁̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                                shock]
+                    return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
+                end
+            else
+                state_update₁̂ = nothing
+            end
+
+            𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(S₁, state_update₁ₜ, state_update₁̂)
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:linear_time_iteration])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -3769,9 +3952,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
     else
         ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values),𝓂.parameters .== x)[1],collect(keys(parameters)))
         
-
-        
-        if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters)))
+        if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters))) && !(𝓂.parameters[ntrsct_idx] == [:activeᵒᵇᶜshocks])
             if verbose println("Parameter changes: ") end
             𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
         end
@@ -4034,7 +4215,7 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::AbstractArray{N}
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    # return ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
+    # return 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
     # return Matrix(𝓂.model_jacobian(([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])))
     return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
 end
@@ -4056,7 +4237,7 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
 
     # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
         
-    # return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
+    # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
     # return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
 
     second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_hessian]
@@ -4088,7 +4269,7 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    # return sparse(reshape(ℱ.jacobian(x -> ℱ.jacobian(x -> ℱ.jacobian(x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
+    # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
     # return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
     
     
@@ -4303,8 +4484,8 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
 
     if solved
         # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = ℱ.jacobian(x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)
-        A = ℱ.jacobian(x -> riccati_conditions(∇̂₁, x, solved; T = T), val)
+        B = 𝒜.jacobian(𝒷(), x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)[1]
+        A = 𝒜.jacobian(𝒷(), x -> riccati_conditions(∇̂₁, x, solved; T = T), val)[1]
 
 
         Â = RF.lu(A, check = false)
@@ -4325,11 +4506,11 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
 end
 
 
-riccati_AD_direct = ID.ImplicitFunction(riccati_forward, 
+riccati_AD_direct = ℐ.ImplicitFunction(riccati_forward, 
                                     riccati_conditions; 
-                                    linear_solver = ID.DirectLinearSolver())
+                                    linear_solver = ℐ.DirectLinearSolver())
 
-riccati_AD = ID.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt converge!?
+riccati_AD = ℐ.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt converge!?
 
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
@@ -4566,18 +4747,15 @@ end
 
 function irf(state_update::Function, 
     obc_state_update::Function,
-    model::JuMP.Model,
-    x::Vector{JuMP.VariableRef},
-    initial_state::Vector{Float64}, 
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64},
-    pruning::Bool, 
-    unspecified_initial_state::Bool,
     T::timings; 
-    algorithm::Symbol = :first_order,
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     negative_shock::Bool = false)
+
+    pruning = initial_state isa Vector{Vector{Float64}}
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -4618,6 +4796,8 @@ function irf(state_update::Function,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
+    always_solved = true
+
     if shocks == :simulate
         shock_history = randn(T.nExo,periods)
 
@@ -4625,39 +4805,20 @@ function irf(state_update::Function,
 
         Y = zeros(T.nVars,periods,1)
 
-        if pruning
-            if algorithm == :pruned_second_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
+        past_states = initial_state
+        
+        for t in 1:periods
+            past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
 
-                for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state²], shock_history[:,t])
-                end
-            elseif algorithm == :pruned_third_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
-                pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+            if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
-                for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state², pruned_state³], shock_history[:,t])
-                end
-            end
-        else
-            past_states = initial_state
-            always_solved = true
-            
-            for t in 1:periods
-                past_states, past_shocks, solved, model, x  = obc_state_update(past_states, shock_history[:,t], state_update, algorithm, model, x)
+            always_solved = always_solved && solved
 
-                if !solved @warn "No solution at iteration $t" end
+            if !always_solved break end
 
-                always_solved = always_solved && solved
+            Y[:,t,1] = pruning ? sum(past_states) : past_states
 
-                if !always_solved break end
-
-                Y[:,t,1] = past_states
-                shock_history[:,t] = past_shocks
-            end
+            shock_history[:,t] = past_shocks
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:simulate])
@@ -4666,38 +4827,18 @@ function irf(state_update::Function,
 
         shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
         
-        if pruning
-            if algorithm == :pruned_second_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
+        past_states = initial_state
+        
+        for t in 1:periods
+            past_states, _, solved  = obc_state_update(past_states, shck, state_update)
 
-                for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state²], shck)
-                end
-            elseif algorithm == :pruned_third_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
-                pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
+            if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
-                for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state², pruned_state³], shck)
-                end
-            end
-        else 
-            past_states = initial_state
-            always_solved = true
-            
-            for t in 1:periods
-                past_states, _, solved, model, x  = obc_state_update(past_states, shck, state_update, algorithm, model, x)
+            always_solved = always_solved && solved
 
-                if !solved @warn "No solution at iteration $t" end
+            if !always_solved break end
 
-                always_solved = always_solved && solved
-
-                if !always_solved break end
-
-                Y[:,t,1] = past_states
-            end
+            Y[:,t,1] = pruning ? sum(past_states) : past_states
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
@@ -4710,39 +4851,20 @@ function irf(state_update::Function,
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
 
-            if pruning
-                if algorithm == :pruned_second_order
-                    pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                    pruned_state² = copy(initial_state)
-    
-                    for t in 1:periods
-                        Y[:,t,i] = state_update([pruned_state¹, pruned_state²], shock_history[:,t])
-                    end
-                elseif algorithm == :pruned_third_order
-                    pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                    pruned_state² = copy(initial_state)
-                    pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-    
-                    for t in 1:periods
-                        Y[:,t,i] = state_update([pruned_state¹, pruned_state², pruned_state³], shock_history[:,t])
-                    end
-                end
-            else
-                past_states = initial_state
-                always_solved = true
-                
-                for t in 1:periods
-                    past_states, past_shocks, solved, model, x  = obc_state_update(past_states, shock_history[:,t], state_update, algorithm, model, x)
-    
-                    if !solved @warn "No solution at iteration $t" end
-    
-                    always_solved = always_solved && solved
-    
-                    if !always_solved break end
-    
-                    Y[:,t,1] = past_states
-                    shock_history[:,t] = past_shocks
-                end
+            past_states = initial_state
+            
+            for t in 1:periods
+                past_states, past_shocks, solved = obc_state_update(past_states, shock_history[:,t], state_update)
+
+                if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
+
+                always_solved = always_solved && solved
+
+                if !always_solved break end
+
+                Y[:,t,i] = pruning ? sum(past_states) : past_states
+
+                shock_history[:,t] = past_shocks
             end
         end
 
@@ -4761,16 +4883,15 @@ end
 
 
 function irf(state_update::Function, 
-    initial_state::Vector{Float64}, 
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64},
-    pruning::Bool, 
-    unspecified_initial_state::Bool,
     T::timings; 
-    algorithm::Symbol = :first_order,
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     negative_shock::Bool = false)
+
+    pruning = initial_state isa Vector{Vector{Float64}}
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -4818,29 +4939,10 @@ function irf(state_update::Function,
 
         Y = zeros(T.nVars,periods,1)
 
-        if pruning
-            if algorithm == :pruned_second_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
+        Y[:,1,1] = state_update(initial_state,shock_history[:,1])
 
-                for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state²], shock_history[:,t])
-                end
-            elseif algorithm == :pruned_third_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
-                pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-
-                for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state², pruned_state³], shock_history[:,t])
-                end
-            end
-        else
-            Y[:,1,1] = state_update(initial_state,shock_history[:,1])
-
-            for t in 1:periods-1
-                Y[:,t+1,1] = state_update(Y[:,t,1],shock_history[:,t+1])
-            end
+        for t in 1:periods-1
+            Y[:,t+1,1] = state_update(pruning ? initial_state : Y[:,t,1],shock_history[:,t+1])
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:simulate])
@@ -4849,29 +4951,10 @@ function irf(state_update::Function,
 
         shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
         
-        if pruning
-            if algorithm == :pruned_second_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
+        Y[:,1,1] = state_update(initial_state,shck)
 
-                for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state²], shck)
-                end
-            elseif algorithm == :pruned_third_order
-                pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                pruned_state² = copy(initial_state)
-                pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-
-                for t in 1:periods
-                    Y[:,t,1] = state_update([pruned_state¹, pruned_state², pruned_state³], shck)
-                end
-            end
-        else 
-            Y[:,1,1] = state_update(initial_state,shck)
-    
-            for t in 1:periods-1
-                Y[:,t+1,1] = state_update(Y[:,t,1],shck)
-            end
+        for t in 1:periods-1
+            Y[:,t+1,1] = state_update(pruning ? initial_state : Y[:,t,1], shck)
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
@@ -4879,34 +4962,17 @@ function irf(state_update::Function,
         Y = zeros(T.nVars,periods,length(shock_idx))
 
         for (i,ii) in enumerate(shock_idx)
+            initial_state_copy = deepcopy(initial_state)
+            
             if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
                 shock_history = zeros(T.nExo,periods)
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
 
-            if pruning
-                if algorithm == :pruned_second_order
-                    pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                    pruned_state² = copy(initial_state)
-    
-                    for t in 1:periods
-                        Y[:,t,i] = state_update([pruned_state¹, pruned_state²], shock_history[:,t])
-                    end
-                elseif algorithm == :pruned_third_order
-                    pruned_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-                    pruned_state² = copy(initial_state)
-                    pruned_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-    
-                    for t in 1:periods
-                        Y[:,t,i] = state_update([pruned_state¹, pruned_state², pruned_state³], shock_history[:,t])
-                    end
-                end
-            else
-                Y[:,1,i] = state_update(initial_state,shock_history[:,1])
+            Y[:,1,i] = state_update(initial_state_copy, shock_history[:,1])
 
-                for t in 1:periods-1
-                    Y[:,t+1,i] = state_update(Y[:,t,i],shock_history[:,t+1])
-                end
+            for t in 1:periods-1
+                Y[:,t+1,i] = state_update(pruning ? initial_state_copy : Y[:,t,i], shock_history[:,t+1])
             end
         end
 
@@ -4923,19 +4989,18 @@ end
 
 
 
-function girf(state_update::Function, 
-    initial_state::Vector{Float64}, 
+function girf(state_update::Function,
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64}, 
-    pruning::Bool, 
-    unspecified_initial_state::Bool,
     T::timings; 
-    algorithm::Symbol = :first_order,
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
     draws::Int = 50)
+
+    pruning = initial_state isa Vector{Vector{Float64}}
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -4971,26 +5036,22 @@ function girf(state_update::Function,
 
     Y = zeros(T.nVars, periods + 1, length(shock_idx))
 
-    pruned_initial_state¹ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-    pruned_initial_state² = copy(initial_state)
-    pruned_initial_state³ = unspecified_initial_state ? zero(initial_state) : copy(initial_state)
-
     for (i,ii) in enumerate(shock_idx)
+        initial_state_copy = deepcopy(initial_state)
+
         for draw in 1:draws
+            initial_state_copy² = deepcopy(initial_state_copy)
+
             for i in 1:warmup_periods
                 if pruning
-                    if algorithm == :pruned_second_order
-                        initial_state = state_update([pruned_initial_state¹, pruned_initial_state²], randn(T.nExo))
-                    elseif algorithm == :pruned_third_order
-                        initial_state = state_update([pruned_initial_state¹, pruned_initial_state², pruned_initial_state³], randn(T.nExo))
-                    end
+                    state_update(initial_state_copy², randn(T.nExo))
                 else
-                    initial_state = state_update(initial_state, randn(T.nExo))
+                    initial_state_copy² = state_update(initial_state_copy², randn(T.nExo))
                 end
             end
 
-            Y1 = zeros(T.nVars, periods + 1)
-            Y2 = zeros(T.nVars, periods + 1)
+            Y₁ = zeros(T.nVars, periods + 1)
+            Y₂ = zeros(T.nVars, periods + 1)
 
             baseline_noise = randn(T.nExo)
 
@@ -5000,48 +5061,29 @@ function girf(state_update::Function,
             end
 
             if pruning
-                if algorithm == :pruned_second_order
-                    Y1[:,1] = state_update([pruned_initial_state¹, pruned_initial_state²], baseline_noise)
-                    Y2[:,1] = state_update([pruned_initial_state¹, pruned_initial_state²], baseline_noise)
+                Y₁[:,1] = state_update(initial_state_copy², baseline_noise)
+                Y₂[:,1] = state_update(initial_state_copy², baseline_noise)
 
-                    pruned_initial_state¹₁ = copy(pruned_initial_state¹)
-                    pruned_initial_state¹₂ = copy(pruned_initial_state¹)
-                    pruned_initial_state²₁ = copy(pruned_initial_state²)
-                    pruned_initial_state²₂ = copy(pruned_initial_state²)
-                elseif algorithm == :pruned_third_order
-                    Y1[:,1] = state_update([pruned_initial_state¹, pruned_initial_state², pruned_initial_state³], baseline_noise)
-                    Y2[:,1] = state_update([pruned_initial_state¹, pruned_initial_state², pruned_initial_state³], baseline_noise)
-
-                    pruned_initial_state¹₁ = copy(pruned_initial_state¹)
-                    pruned_initial_state¹₂ = copy(pruned_initial_state¹)
-                    pruned_initial_state²₁ = copy(pruned_initial_state²)
-                    pruned_initial_state²₂ = copy(pruned_initial_state²)
-                    pruned_initial_state³₁ = copy(pruned_initial_state³)
-                    pruned_initial_state³₂ = copy(pruned_initial_state³)
-                end
+                initial_state₁ = deepcopy(initial_state_copy²)
+                initial_state₂ = deepcopy(initial_state_copy²)
             else
-                Y1[:,1] = state_update(initial_state, baseline_noise)
-                Y2[:,1] = state_update(initial_state, baseline_noise)
+                Y₁[:,1] = state_update(initial_state_copy², baseline_noise)
+                Y₂[:,1] = state_update(initial_state_copy², baseline_noise)
             end
 
             for t in 1:periods
                 baseline_noise = randn(T.nExo)
 
                 if pruning
-                    if algorithm == :pruned_second_order
-                        Y1[:,t+1] = state_update([pruned_initial_state¹₁, pruned_initial_state²₁], baseline_noise)
-                        Y2[:,t+1] = state_update([pruned_initial_state¹₂, pruned_initial_state²₂], baseline_noise + shock_history[:,t])
-                    elseif algorithm == :pruned_third_order
-                        Y1[:,t+1] = state_update([pruned_initial_state¹₁, pruned_initial_state²₁, pruned_initial_state³₁], baseline_noise)
-                        Y2[:,t+1] = state_update([pruned_initial_state¹₂, pruned_initial_state²₂, pruned_initial_state³₂], baseline_noise + shock_history[:,t])
-                    end
+                    Y₁[:,t+1] = state_update(initial_state₁, baseline_noise)
+                    Y₂[:,t+1] = state_update(initial_state₂, baseline_noise + shock_history[:,t])
                 else
-                    Y1[:,t+1] = state_update(Y1[:,t],baseline_noise)
-                    Y2[:,t+1] = state_update(Y2[:,t],baseline_noise + shock_history[:,t])
+                    Y₁[:,t+1] = state_update(Y₁[:,t],baseline_noise)
+                    Y₂[:,t+1] = state_update(Y₂[:,t],baseline_noise + shock_history[:,t])
                 end
             end
 
-            Y[:,:,i] += Y2 - Y1
+            Y[:,:,i] += Y₂ - Y₁
         end
         Y[:,:,i] /= draws
     end
@@ -5138,29 +5180,47 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
 end
 
 
-
-
-
-
-function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ)
-    if :linear_time_iteration == algorithm
-        state_update = 𝓂.solution.perturbation.linear_time_iteration.state_update
-        pruning = false
-    elseif algorithm ∈ [:riccati, :first_order]
-        state_update = 𝓂.solution.perturbation.first_order.state_update
-        pruning = false
-    elseif :second_order == algorithm
-        state_update = 𝓂.solution.perturbation.second_order.state_update
-        pruning = false
-    elseif :pruned_second_order == algorithm
-        state_update = 𝓂.solution.perturbation.pruned_second_order.state_update
-        pruning = true
-    elseif :third_order == algorithm
-        state_update = 𝓂.solution.perturbation.third_order.state_update
-        pruning = false
-    elseif :pruned_third_order == algorithm
-        state_update = 𝓂.solution.perturbation.pruned_third_order.state_update
-        pruning = true
+function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function,Bool}
+    if occasionally_binding_constraints
+        if :linear_time_iteration == algorithm
+            state_update = 𝓂.solution.perturbation.linear_time_iteration.state_update_obc
+            pruning = false
+        elseif algorithm ∈ [:riccati, :first_order]
+            state_update = 𝓂.solution.perturbation.first_order.state_update_obc
+            pruning = false
+        elseif :second_order == algorithm
+            state_update = 𝓂.solution.perturbation.second_order.state_update_obc
+            pruning = false
+        elseif :pruned_second_order == algorithm
+            state_update = 𝓂.solution.perturbation.pruned_second_order.state_update_obc
+            pruning = true
+        elseif :third_order == algorithm
+            state_update = 𝓂.solution.perturbation.third_order.state_update_obc
+            pruning = false
+        elseif :pruned_third_order == algorithm
+            state_update = 𝓂.solution.perturbation.pruned_third_order.state_update_obc
+            pruning = true
+        end
+    else
+        if :linear_time_iteration == algorithm
+            state_update = 𝓂.solution.perturbation.linear_time_iteration.state_update
+            pruning = false
+        elseif algorithm ∈ [:riccati, :first_order]
+            state_update = 𝓂.solution.perturbation.first_order.state_update
+            pruning = false
+        elseif :second_order == algorithm
+            state_update = 𝓂.solution.perturbation.second_order.state_update
+            pruning = false
+        elseif :pruned_second_order == algorithm
+            state_update = 𝓂.solution.perturbation.pruned_second_order.state_update
+            pruning = true
+        elseif :third_order == algorithm
+            state_update = 𝓂.solution.perturbation.third_order.state_update
+            pruning = false
+        elseif :pruned_third_order == algorithm
+            state_update = 𝓂.solution.perturbation.pruned_third_order.state_update
+            pruning = true
+        end
     end
 
     return state_update, pruning
@@ -5537,12 +5597,12 @@ function solve_matrix_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
 end
 
 
-solve_matrix_equation_AD = ID.ImplicitFunction(solve_matrix_equation_forward, 
+solve_matrix_equation_AD = ℐ.ImplicitFunction(solve_matrix_equation_forward, 
                                                 solve_matrix_equation_conditions)
 
-solve_matrix_equation_AD_direct = ID.ImplicitFunction(solve_matrix_equation_forward, 
+solve_matrix_equation_AD_direct = ℐ.ImplicitFunction(solve_matrix_equation_forward, 
                                                 solve_matrix_equation_conditions; 
-                                                linear_solver = ID.DirectLinearSolver())
+                                                linear_solver = ℐ.DirectLinearSolver())
 
 
 
@@ -5942,7 +6002,7 @@ end
 
 
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters = nothing, verbose::Bool = false, tol::AbstractFloat = eps())
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters::Vector{U} = Float64[], verbose::Bool = false, tol::AbstractFloat = eps()) where U <: Number
     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
@@ -5950,7 +6010,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Fl
 
     @ignore_derivatives solve!(𝓂, verbose = verbose)
 
-    if isnothing(parameters)
+    if parameters == Float64[]
         parameters = 𝓂.parameter_values
     else
         ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters) + length(𝓂.➕_vars))
@@ -6152,79 +6212,79 @@ end
 
 
 
-@setup_workload begin
-    # Putting some things in `setup` can reduce the size of the
-    # precompile file and potentially make loading faster.
-    @model FS2000 precompile = true begin
-        dA[0] = exp(gam + z_e_a  *  e_a[x])
-        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-        W[0] = l[0] / n[0]
-        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-        P[0] * c[0] = m[0]
-        m[0] - 1 + d[0] = l[0]
-        e[0] = exp(z_e_a  *  e_a[x])
-        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-        gy_obs[0] = dA[0] * y[0] / y[-1]
-        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-        log_gy_obs[0] = log(gy_obs[0])
-        log_gp_obs[0] = log(gp_obs[0])
-    end
+# @setup_workload begin
+#     # Putting some things in `setup` can reduce the size of the
+#     # precompile file and potentially make loading faster.
+#     @model FS2000 precompile = true begin
+#         dA[0] = exp(gam + z_e_a  *  e_a[x])
+#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#         W[0] = l[0] / n[0]
+#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#         P[0] * c[0] = m[0]
+#         m[0] - 1 + d[0] = l[0]
+#         e[0] = exp(z_e_a  *  e_a[x])
+#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#         gy_obs[0] = dA[0] * y[0] / y[-1]
+#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#         log_gy_obs[0] = log(gy_obs[0])
+#         log_gp_obs[0] = log(gp_obs[0])
+#     end
 
-    @parameters FS2000 silent = true precompile = true begin  
-        alp     = 0.356
-        bet     = 0.993
-        gam     = 0.0085
-        mst     = 1.0002
-        rho     = 0.129
-        psi     = 0.65
-        del     = 0.01
-        z_e_a   = 0.035449
-        z_e_m   = 0.008862
-    end
+#     @parameters FS2000 silent = true precompile = true begin  
+#         alp     = 0.356
+#         bet     = 0.993
+#         gam     = 0.0085
+#         mst     = 1.0002
+#         rho     = 0.129
+#         psi     = 0.65
+#         del     = 0.01
+#         z_e_a   = 0.035449
+#         z_e_m   = 0.008862
+#     end
     
-    ENV["GKSwstype"] = "nul"
+#     ENV["GKSwstype"] = "nul"
 
-    @compile_workload begin
-        # all calls in this block will be precompiled, regardless of whether
-        # they belong to your package or not (on Julia 1.8 and higher)
-        @model RBC precompile = true begin
-            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-        end
+#     @compile_workload begin
+#         # all calls in this block will be precompiled, regardless of whether
+#         # they belong to your package or not (on Julia 1.8 and higher)
+#         @model RBC precompile = true begin
+#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#         end
 
-        @parameters RBC silent = true precompile = true begin
-            δ = 0.02
-            α = 0.5
-        end
+#         @parameters RBC silent = true precompile = true begin
+#             δ = 0.02
+#             α = 0.5
+#         end
 
-        get_SS(FS2000)
-        get_SS(FS2000, parameters = :alp => 0.36)
-        get_solution(FS2000)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)
+#         get_SS(FS2000)
+#         get_SS(FS2000, parameters = :alp => 0.36)
+#         get_solution(FS2000)
+#         get_solution(FS2000, parameters = :alp => 0.35)
+#         get_standard_deviation(FS2000)
+#         get_correlation(FS2000)
+#         get_autocorrelation(FS2000)
+#         get_variance_decomposition(FS2000)
+#         get_conditional_variance_decomposition(FS2000)
+#         get_irf(FS2000)
 
-        data = simulate(FS2000)[:,:,1]
-        observables = [:c,:k]
-        calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
-        get_mean(FS2000, silent = true)
-        # get_SSS(FS2000, silent = true)
-        # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#         data = simulate(FS2000)[:,:,1]
+#         observables = [:c,:k]
+#         calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables)
+#         get_mean(FS2000, silent = true)
+#         # get_SSS(FS2000, silent = true)
+#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-        # import Plots, StatsPlots
-        # plot_irf(FS2000)
-        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-        # plot_conditional_variance_decomposition(FS2000)
-    end
-end
+#         # import Plots, StatsPlots
+#         # plot_irf(FS2000)
+#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#         # plot_conditional_variance_decomposition(FS2000)
+#     end
+# end
 
 end

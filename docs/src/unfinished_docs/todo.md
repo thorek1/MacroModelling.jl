@@ -176,6 +176,7 @@
 ## Not high priority
 
 - [ ] estimation codes with missing values (adopt kalman filter)
+- [ ] decide on whether levels = false means deviations from NSSS or relevant SS
 - [ ] whats a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
 - [ ] improve redundant calculations of SS and other parts of solution
 - [ ] restructure functions and containers so that compiler knows what types to expect
