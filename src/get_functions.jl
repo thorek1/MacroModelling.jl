@@ -481,7 +481,7 @@ function get_conditional_forecast(𝓂::ℳ,
     levels::Bool = false,
     verbose::Bool = false)
 
-    periods += max(size(conditions,2), shocks isa Nothing ? 1 : size(shocks,2))
+    periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
 
     if conditions isa SparseMatrixCSC{Float64}
         @assert length(𝓂.var) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(𝓂.var)) * " variables (including auxilliary variables): " * repr(𝓂.var)
@@ -513,7 +513,7 @@ function get_conditional_forecast(𝓂::ℳ,
     if shocks isa SparseMatrixCSC{Float64}
         @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Number}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
         nzs = findnz(shocks)
         for i in 1:length(nzs[1])
             shocks_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
