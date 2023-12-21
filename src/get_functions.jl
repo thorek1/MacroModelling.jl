@@ -473,11 +473,12 @@ And data, 9×42 Matrix{Float64}:
 function get_conditional_forecast(𝓂::ℳ,
     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-    initial_state::Vector{Float64} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
     periods::Int = 40, 
     parameters::ParameterType = nothing,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     conditions_in_levels::Bool = true,
+    algorithm::Symbol = :first_order,
     levels::Bool = false,
     verbose::Bool = false)
 
@@ -513,7 +514,7 @@ function get_conditional_forecast(𝓂::ℳ,
     if shocks isa SparseMatrixCSC{Float64}
         @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Number}}(undef,length(𝓂.exo),periods)
         nzs = findnz(shocks)
         for i in 1:length(nzs[1])
             shocks_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
@@ -522,7 +523,7 @@ function get_conditional_forecast(𝓂::ℳ,
     elseif shocks isa Matrix{Union{Nothing,Float64}}
         @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
         shocks_tmp[:,axes(shocks,2)] = shocks
         shocks = shocks_tmp
     elseif shocks isa KeyedArray{Union{Nothing,Float64}} || shocks isa KeyedArray{Float64}
@@ -532,81 +533,214 @@ function get_conditional_forecast(𝓂::ℳ,
 
         @assert length(setdiff(shocks_symbols,𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(shocks_symbols, 𝓂.exo))
         
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
         shocks_tmp[indexin(sort(shocks_symbols), 𝓂.exo), axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
         shocks = shocks_tmp
     elseif isnothing(shocks)
-        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
     end
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
-    state_update, pruning = parse_algorithm_to_state_update(:first_order, 𝓂, false)
+    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
 
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - reference_steady_state[1:length(𝓂.var)]
+    NSSS = reference_steady_state[1:length(𝓂.var)] 
+
+    if algorithm == :second_order
+        SSS_delta = NSSS - 𝓂.solution.perturbation.second_order.stochastic_steady_state
+    elseif algorithm == :pruned_second_order
+        SSS_delta = NSSS - 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
+    elseif algorithm == :third_order
+        SSS_delta = NSSS - 𝓂.solution.perturbation.third_order.stochastic_steady_state
+    elseif algorithm == :pruned_third_order
+        SSS_delta = NSSS - 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
+    else
+        SSS_delta = zeros(length(𝓂.var))
+
+        reference_steady_state = NSSS
+    end
+
+    if levels
+        if algorithm == :second_order
+            reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
+        elseif algorithm == :pruned_second_order
+            reference_steady_state = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
+        elseif algorithm == :third_order
+            reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+        elseif algorithm == :pruned_third_order
+            reference_steady_state = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
+        end
+    end
+
+    unspecified_initial_state = initial_state == [0.0]
+
+    if unspecified_initial_state
+        if algorithm == :pruned_second_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
+        elseif algorithm == :pruned_third_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+        else
+            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
+        end
+    else
+        if initial_state isa Vector{Float64}
+            if algorithm == :pruned_second_order
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
+            elseif algorithm == :pruned_third_order
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+            else
+                initial_state = initial_state - NSSS
+            end
+        else
+            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+            end
+        end
+    end
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
-    C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
-
-    Y = zeros(size(C,1),periods)
+    Y = zeros(size(𝓂.solution.perturbation.first_order.solution_matrix,1),periods)
 
     cond_var_idx = findall(conditions[:,1] .!= nothing)
     
     free_shock_idx = findall(shocks[:,1] .== nothing)
 
+    shocks[free_shock_idx,1] .= 0
+    
     if conditions_in_levels
         conditions[cond_var_idx,1] .-= reference_steady_state[cond_var_idx]
     end
 
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
-    CC = C[cond_var_idx,free_shock_idx]
+    if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
+        initial_state_copy = deepcopy(initial_state)
 
-    if length(cond_var_idx) == 1
-        @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period 1."
-    elseif length(free_shock_idx) == length(cond_var_idx)
-        CC = RF.lu(CC, check = false)
+        p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state_copy, pruning, 𝒷)
 
-        @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period 1."
-    end
+        opt = NLopt.Opt(NLopt.:LD_SLSQP, length(free_shock_idx))
 
-    shocks[free_shock_idx,1] .= 0
-
-    shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(initial_state, Float64[shocks[:,1]...])[cond_var_idx])
-
-    Y[:,1] = state_update(initial_state, Float64[shocks[:,1]...])
-
-    for i in 2:size(conditions,2)
-        cond_var_idx = findall(conditions[:,i] .!= nothing)
+        opt.min_objective = obc_objective_optim_fun
         
-        if conditions_in_levels
-            conditions[cond_var_idx,i] .-= reference_steady_state[cond_var_idx]
+        opt.xtol_rel = eps()
+        
+        NLopt.equality_constraint!(opt, (res,x,jac) -> match_conditions(res,x,jac,p), zeros(length(cond_var_idx)))
+        
+        (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
+        
+        solved = ret ∈ Symbol.([
+            NLopt.SUCCESS,
+            NLopt.STOPVAL_REACHED,
+            NLopt.FTOL_REACHED,
+            NLopt.XTOL_REACHED,
+            NLopt.ROUNDOFF_LIMITED,
+        ])
+
+        shocks[free_shock_idx,1] .= x
+        
+        initial_state = state_update(initial_state, Float64[shocks[:,1]...])
+
+        Y[:,1] = pruning ? sum(initial_state) : initial_state
+
+        matched = sum(abs, (conditions[cond_var_idx,1] - Y[:,1][cond_var_idx])) < eps(Float32)
+
+        @assert solved && matched "Numerical stabiltiy issues for restrictions in period 1."
+
+        for i in 2:size(conditions,2)
+            cond_var_idx = findall(conditions[:,i] .!= nothing)
+            
+            if conditions_in_levels
+                conditions[cond_var_idx,i] .-= reference_steady_state[cond_var_idx]
+            end
+    
+            free_shock_idx = findall(shocks[:,i] .== nothing)
+
+            shocks[free_shock_idx,i] .= 0
+    
+            @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
+    
+            p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, 𝒷)
+
+            opt = NLopt.Opt(NLopt.:LD_SLSQP, length(free_shock_idx))
+
+            opt.min_objective = obc_objective_optim_fun
+            
+            opt.xtol_rel = eps()
+
+            NLopt.equality_constraint!(opt, (x,y,z) -> match_conditions(x,y,z,p), zeros(length(cond_var_idx)))
+            
+            (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
+            
+            solved = ret ∈ Symbol.([
+                NLopt.SUCCESS,
+                NLopt.STOPVAL_REACHED,
+                NLopt.FTOL_REACHED,
+                NLopt.XTOL_REACHED,
+                NLopt.ROUNDOFF_LIMITED,
+            ])
+
+            shocks[free_shock_idx,i] .= x
+
+            initial_state = state_update(initial_state, Float64[shocks[:,i]...])
+
+            Y[:,i] = pruning ? sum(initial_state) : initial_state
+            
+            matched = sum(abs, (conditions[cond_var_idx,i] - Y[:,i][cond_var_idx])) < eps(Float32)
+
+            @assert solved && matched "Numerical stabiltiy issues for restrictions in period $i."
         end
-
-        free_shock_idx = findall(shocks[:,i] .== nothing)
-        shocks[free_shock_idx,i] .= 0
-
-        @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
-
-	    CC = C[cond_var_idx,free_shock_idx]
+    elseif algorithm ∈ [:first_order, :riccati, :quadratic_iteration, :linear_time_iteration]
+        C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
+    
+        CC = C[cond_var_idx,free_shock_idx]
 
         if length(cond_var_idx) == 1
-            @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
+            @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period 1."
         elseif length(free_shock_idx) == length(cond_var_idx)
+            CC = RF.lu(CC, check = false)
+    
+            @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period 1."
+        end
+    
+        shocks[free_shock_idx,1] .= 0
+    
+        shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(initial_state, Float64[shocks[:,1]...])[cond_var_idx])
+    
+        Y[:,1] = state_update(initial_state, Float64[shocks[:,1]...])
 
-	    CC = RF.lu(CC, check = false)
-
-	    @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
+        for i in 2:size(conditions,2)
+            cond_var_idx = findall(conditions[:,i] .!= nothing)
+            
+            if conditions_in_levels
+                conditions[cond_var_idx,i] .-= reference_steady_state[cond_var_idx]
+            end
+    
+            free_shock_idx = findall(shocks[:,i] .== nothing)
+            shocks[free_shock_idx,i] .= 0
+    
+            @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
+    
+            CC = C[cond_var_idx,free_shock_idx]
+    
+            if length(cond_var_idx) == 1
+                @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
+            elseif length(free_shock_idx) == length(cond_var_idx)
+    
+            CC = RF.lu(CC, check = false)
+    
+            @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
+            end
+    
+            shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
+    
+            Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
         end
 
-        shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
-
-        Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
     end
 
     axis1 = [𝓂.timings.var[var_idx]; 𝓂.timings.exo]
