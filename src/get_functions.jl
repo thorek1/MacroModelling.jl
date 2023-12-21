@@ -481,7 +481,7 @@ function get_conditional_forecast(𝓂::ℳ,
     levels::Bool = false,
     verbose::Bool = false)
 
-    periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
+    periods += max(size(conditions,2), shocks isa Nothing ? 1 : size(shocks,2)) # isa Nothing needed otherwise JET tests fail
 
     if conditions isa SparseMatrixCSC{Float64}
         @assert length(𝓂.var) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(𝓂.var)) * " variables (including auxilliary variables): " * repr(𝓂.var)
