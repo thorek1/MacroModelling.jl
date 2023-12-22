@@ -1132,6 +1132,30 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_horizon
 end
 
 
+
+function get_relevant_steady_states(𝓂::ℳ, algorithm::Symbol)::Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}
+    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
+    if any(x -> contains(string(x), "◖"), full_NSSS)
+        full_NSSS_decomposed = decompose_name.(full_NSSS)
+        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
+    end
+
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false)
+
+    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+
+    relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false)
+
+    NSSS = [s ∈ 𝓂.exo_present ? 0 : relevant_NSSS(s) for s in full_NSSS]
+
+    SSS_delta = NSSS - reference_steady_state
+
+    return reference_steady_state, NSSS, SSS_delta
+end
+
 # compatibility with SymPy
 Max = max
 Min = min
@@ -4780,30 +4804,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 end
 
 
-function get_relevant_steady_states(𝓂::ℳ, algorithm::Symbol)::Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}
-    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
-    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-
-    if any(x -> contains(string(x), "◖"), full_NSSS)
-        full_NSSS_decomposed = decompose_name.(full_NSSS)
-        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
-    end
-
-    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false)
-
-    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
-
-    relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false)
-
-    NSSS = [s ∈ 𝓂.exo_present ? 0 : relevant_NSSS(s) for s in full_NSSS]
-
-    SSS_delta = NSSS - reference_steady_state
-
-    return reference_steady_state, NSSS, SSS_delta
-end
-
-
 function irf(state_update::Function, 
     obc_state_update::Function,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
@@ -6231,7 +6231,7 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
         PCiF         = P[:, :, t] * C' * iF[:, :, t]
         L[:, :, t]  .= A - A * PCiF * C
         P[:, :, t+1].= A * P[:, :, t] * L[:, :, t]' + 𝐁
-        σ[:, t]     .= sqrt.(abs.(ℒ.diag(P[:, :, t+1]))) # small numerica errors in this computation
+        σ[:, t]     .= sqrt.(abs.(ℒ.diag(P[:, :, t+1]))) # small numerical errors in this computation
         μ[:, t+1]   .= A * (μ[:, t] + PCiF * v[:, t])
         ϵ[:, t]     .= B' * C' * iF[:, :, t] * v[:, t]
     end
