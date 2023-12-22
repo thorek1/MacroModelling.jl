@@ -5,6 +5,7 @@
 - [ ] add technical details about SS solver, obc solver, and other algorithms
 - [ ] fix translate dynare mod file from file written using write to dynare file (see test models)
 - [ ] rm obc vars from get_SS
+- [ ] write tests/docs for nonlinear obc and forecasting
 - [ ] fix SS solver (failed for backus in guide)
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
 - [ ] cover nested case: min(50,a+b+max(c,10))

@@ -303,6 +303,50 @@ function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
     sum(abs2, X)
 end
 
+
+
+function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
+    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, 𝒷 = p
+
+    if length(jac) > 0
+        jac .= 𝒜.jacobian(𝒷(), xx -> begin
+                                        Shocks[Free_shock_idx] .= xx
+
+                                        new_State = State_update(State, convert(typeof(xx), Shocks))
+
+                                        cond_vars = Pruning ? sum(new_State) : new_State
+                                        
+                                        return abs2.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+                                    end, X)[1]'
+    end
+
+    Shocks[Free_shock_idx] .= X
+
+    new_State = State_update(State, convert(typeof(X), Shocks))
+
+    cond_vars = Pruning ? sum(new_State) : new_State
+
+    res .= abs2.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+end
+
+
+
+# function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
+#     conditions, state_update, shocks, cond_var_idx, free_shock_idx, state, 𝒷 = p
+    
+#     if length(jac) > 0
+#         jac .= 𝒜.jacobian(𝒷(), xx -> begin
+#                                         shocks[free_shock_idx] .= xx
+#                                         return abs2.(conditions[cond_var_idx] - state_update(state, convert(typeof(xx), shocks))[cond_var_idx])
+#                                     end, X)[1]'
+#     end
+
+#     shocks[free_shock_idx] .= X
+
+#     res .= abs2.(conditions[cond_var_idx] - state_update(state, convert(typeof(X), shocks))[cond_var_idx])
+# end
+
+
 function set_up_obc_violation_function!(𝓂)
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
 
@@ -1087,6 +1131,30 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_horizon
     return Expr(:block, eqs...)
 end
 
+
+
+function get_relevant_steady_states(𝓂::ℳ, algorithm::Symbol)::Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}
+    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
+    if any(x -> contains(string(x), "◖"), full_NSSS)
+        full_NSSS_decomposed = decompose_name.(full_NSSS)
+        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
+    end
+
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false)
+
+    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+
+    relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false)
+
+    NSSS = [s ∈ 𝓂.exo_present ? 0 : relevant_NSSS(s) for s in full_NSSS]
+
+    SSS_delta = NSSS - reference_steady_state
+
+    return reference_steady_state, NSSS, SSS_delta
+end
 
 # compatibility with SymPy
 Max = max
@@ -3264,10 +3332,7 @@ function solve!(𝓂::ℳ;
                 aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
                 aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
                 
-                pruned_states[1] .= 𝐒₁ * aug_state₁
-                pruned_states[2] .= 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
-
-                return pruned_states[1] + pruned_states[2] # strictly following Andreasen et al. (2018)
+                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
             end
 
             if obc
@@ -3334,11 +3399,7 @@ function solve!(𝓂::ℳ;
                 
                 kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
                 
-                pruned_states[1] .= 𝐒₁ * aug_state₁
-                pruned_states[2] .= 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2
-                pruned_states[3] .= 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6
-
-                return pruned_states[1] + pruned_states[2] + pruned_states[3]
+                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
             end
 
             if obc
@@ -4743,8 +4804,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 end
 
 
-
-
 function irf(state_update::Function, 
     obc_state_update::Function,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
@@ -4939,10 +4998,14 @@ function irf(state_update::Function,
 
         Y = zeros(T.nVars,periods,1)
 
-        Y[:,1,1] = state_update(initial_state,shock_history[:,1])
+        initial_state = state_update(initial_state,shock_history[:,1])
+
+        Y[:,1,1] = pruning ? sum(initial_state) : initial_state
 
         for t in 1:periods-1
-            Y[:,t+1,1] = state_update(pruning ? initial_state : Y[:,t,1],shock_history[:,t+1])
+            initial_state = state_update(initial_state,shock_history[:,t+1])
+
+            Y[:,t+1,1] = pruning ? sum(initial_state) : initial_state
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:simulate])
@@ -4950,11 +5013,15 @@ function irf(state_update::Function,
         Y = zeros(T.nVars,periods,1)
 
         shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
-        
-        Y[:,1,1] = state_update(initial_state,shck)
+
+        initial_state = state_update(initial_state, shck)
+
+        Y[:,1,1] = pruning ? sum(initial_state) : initial_state
 
         for t in 1:periods-1
-            Y[:,t+1,1] = state_update(pruning ? initial_state : Y[:,t,1], shck)
+            initial_state = state_update(initial_state, shck)
+
+            Y[:,t+1,1] = pruning ? sum(initial_state) : initial_state
         end
 
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
@@ -4969,10 +5036,14 @@ function irf(state_update::Function,
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
 
-            Y[:,1,i] = state_update(initial_state_copy, shock_history[:,1])
+            initial_state_copy = state_update(initial_state_copy, shock_history[:,1])
+
+            Y[:,1,i] = pruning ? sum(initial_state_copy) : initial_state_copy
 
             for t in 1:periods-1
-                Y[:,t+1,i] = state_update(pruning ? initial_state_copy : Y[:,t,i], shock_history[:,t+1])
+                initial_state_copy = state_update(initial_state_copy, shock_history[:,t+1])
+
+                Y[:,t+1,i] = pruning ? sum(initial_state_copy) : initial_state_copy
             end
         end
 
@@ -5043,11 +5114,7 @@ function girf(state_update::Function,
             initial_state_copy² = deepcopy(initial_state_copy)
 
             for i in 1:warmup_periods
-                if pruning
-                    state_update(initial_state_copy², randn(T.nExo))
-                else
-                    initial_state_copy² = state_update(initial_state_copy², randn(T.nExo))
-                end
+                initial_state_copy² = state_update(initial_state_copy², randn(T.nExo))
             end
 
             Y₁ = zeros(T.nVars, periods + 1)
@@ -5061,11 +5128,13 @@ function girf(state_update::Function,
             end
 
             if pruning
-                Y₁[:,1] = state_update(initial_state_copy², baseline_noise)
-                Y₂[:,1] = state_update(initial_state_copy², baseline_noise)
+                initial_state_copy² = state_update(initial_state_copy², baseline_noise)
 
                 initial_state₁ = deepcopy(initial_state_copy²)
                 initial_state₂ = deepcopy(initial_state_copy²)
+
+                Y₁[:,1] = initial_state_copy² |> sum
+                Y₂[:,1] = initial_state_copy² |> sum
             else
                 Y₁[:,1] = state_update(initial_state_copy², baseline_noise)
                 Y₂[:,1] = state_update(initial_state_copy², baseline_noise)
@@ -5075,8 +5144,11 @@ function girf(state_update::Function,
                 baseline_noise = randn(T.nExo)
 
                 if pruning
-                    Y₁[:,t+1] = state_update(initial_state₁, baseline_noise)
-                    Y₂[:,t+1] = state_update(initial_state₂, baseline_noise + shock_history[:,t])
+                    initial_state₁ = state_update(initial_state₁, baseline_noise)
+                    initial_state₂ = state_update(initial_state₂, baseline_noise + shock_history[:,t])
+
+                    Y₁[:,t+1] = initial_state₁ |> sum
+                    Y₂[:,t+1] = initial_state₂ |> sum
                 else
                     Y₁[:,t+1] = state_update(Y₁[:,t],baseline_noise)
                     Y₂[:,t+1] = state_update(Y₂[:,t],baseline_noise + shock_history[:,t])
@@ -6159,7 +6231,7 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
         PCiF         = P[:, :, t] * C' * iF[:, :, t]
         L[:, :, t]  .= A - A * PCiF * C
         P[:, :, t+1].= A * P[:, :, t] * L[:, :, t]' + 𝐁
-        σ[:, t]     .= sqrt.(abs.(ℒ.diag(P[:, :, t+1]))) # small numerica errors in this computation
+        σ[:, t]     .= sqrt.(abs.(ℒ.diag(P[:, :, t+1]))) # small numerical errors in this computation
         μ[:, t+1]   .= A * (μ[:, t] + PCiF * v[:, t])
         ϵ[:, t]     .= B' * C' * iF[:, :, t] * v[:, t]
     end

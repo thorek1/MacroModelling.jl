@@ -249,10 +249,7 @@ end
         aug_state₁ = [pruned_states[1][RBC_CME.timings.past_not_future_and_mixed_idx]; 1; shock]
         aug_state₂ = [pruned_states[2][RBC_CME.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
         
-        pruned_states[1] .= Tz * aug_state₁
-        pruned_states[2] .= Tz * aug_state₂ + second_order_solution * ℒ.kron(aug_state₁, aug_state₁) / 2
-
-        return pruned_states[1] + pruned_states[2] # strictly following Andreasen et al. (2018)
+        return [Tz * aug_state₁, Tz * aug_state₂ + second_order_solution * ℒ.kron(aug_state₁, aug_state₁) / 2]
     end
 
     third_order_state_update = function(state::Vector{Float64}, shock::Vector{Float64})
@@ -270,12 +267,8 @@ end
         aug_state₃ = [pruned_states[3][RBC_CME.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
         
         kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-        
-        pruned_states[1] .= Tz * aug_state₁
-        pruned_states[2] .= Tz * aug_state₂ + second_order_solution * kron_aug_state₁ / 2
-        pruned_states[3] .= Tz * aug_state₃ + second_order_solution * ℒ.kron(aug_state₁̂, aug_state₂) + third_order_solution * ℒ.kron(kron_aug_state₁,aug_state₁) / 6
 
-        return pruned_states[1] + pruned_states[2] + pruned_states[3]
+        return [Tz * aug_state₁, Tz * aug_state₂ + second_order_solution * kron_aug_state₁ / 2, Tz * aug_state₃ + second_order_solution * ℒ.kron(aug_state₁̂, aug_state₂) + third_order_solution * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
     end
 
 
