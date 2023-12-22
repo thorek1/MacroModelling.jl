@@ -316,7 +316,7 @@ function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where
 
                                         cond_vars = Pruning ? sum(new_State) : new_State
                                         
-                                        return abs2.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+                                        return abs.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
                                     end, X)[1]'
     end
 
@@ -326,7 +326,7 @@ function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where
 
     cond_vars = Pruning ? sum(new_State) : new_State
 
-    res .= abs2.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+    res .= abs.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
 end
 
 
