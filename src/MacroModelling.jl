@@ -4780,7 +4780,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 end
 
 
-function get_relevant_steady_states(𝓂::ℳ, algorithm::Symbol)
+function get_relevant_steady_states(𝓂::ℳ, algorithm::Symbol)::Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}
     full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
