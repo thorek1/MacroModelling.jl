@@ -4452,8 +4452,12 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
     E = vcat(hcat(-Ã₋,-Ã₀₊), hcat(Z₋, I₊))
     # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
-    schdcmp = ℒ.schur(D,E)
-
+    schdcmp = try
+        ℒ.schur(D, E)
+    catch
+        return zeros(T.nVars,T.nPast_not_future_and_mixed), false
+    end
+    
     if explosive # returns false for NaN gen. eigenvalue which is correct here bc they are > 1
         eigenselect = abs.(schdcmp.β ./ schdcmp.α) .>= 1
 
