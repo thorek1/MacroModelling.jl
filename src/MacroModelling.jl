@@ -25,6 +25,7 @@ import LinearOperators
 import DataStructures: CircularBuffer
 import ImplicitDifferentiation as ℐ
 import SpeedMapping: speedmapping
+import Suppressor: @suppress
 import REPL
 import Unicode
 import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mpcsc/benner/talks/Benner-Melbourne2019.pdf
@@ -2973,16 +2974,18 @@ function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁
     1
     shock]
 
-    sol = speedmapping(state; 
-                m! = (SSS, sss) -> begin 
-                                    aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
-                                                1
-                                                shock]
+    @suppress begin
+        sol = speedmapping(state; 
+                    m! = (SSS, sss) -> begin 
+                                        aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
+                                                    1
+                                                    shock]
 
-                                    SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-                end, 
-    tol = tol, maps_limit = 10000)
-    
+                                        SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+                    end, 
+        tol = tol, maps_limit = 10000)
+    end
+
     return sol.minimizer, sol.converged
 end
 
@@ -3096,15 +3099,17 @@ function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁�
     1
     shock]
 
-    sol = speedmapping(state; 
-                m! = (SSS, sss) -> begin 
-                                    aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
-                                                1
-                                                shock]
+    @suppress begin
+        sol = speedmapping(state; 
+                    m! = (SSS, sss) -> begin 
+                                        aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
+                                                    1
+                                                    shock]
 
-                                    SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-                end, 
-    tol = tol, maps_limit = 10000)
+                                        SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+                    end, 
+        tol = tol, maps_limit = 10000)
+    end
 
     return sol.minimizer, sol.converged
 end
@@ -4413,7 +4418,9 @@ function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64};
     C = similar(A)
     C̄ = similar(A)
 
-    sol = speedmapping(zero(A); m! = (C̄, C) -> C̄ .=  A + B * C^2, tol = tol, maps_limit = 10000)
+    @suppress begin
+        sol = speedmapping(zero(A); m! = (C̄, C) -> C̄ .=  A + B * C^2, tol = tol, maps_limit = 10000)
+    end
 
     C = -sol.minimizer
 
@@ -5500,8 +5507,9 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         𝐂 = MatrixEquations.lyapd(collect(A),-C)
         solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = eps(Float32))
     elseif solver == :speedmapping
-        soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
-
+        @suppress begin
+            soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
+        end
         𝐂 = soll.minimizer
 
         solved = soll.converged
