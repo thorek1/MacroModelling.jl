@@ -2974,8 +2974,8 @@ function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁
     1
     shock]
 
-    @suppress begin
-        sol = speedmapping(state; 
+    sol = @suppress begin
+        speedmapping(state; 
                     m! = (SSS, sss) -> begin 
                                         aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
                                                     1
@@ -3099,8 +3099,8 @@ function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁�
     1
     shock]
 
-    @suppress begin
-        sol = speedmapping(state; 
+    sol = @suppress begin
+        speedmapping(state; 
                     m! = (SSS, sss) -> begin 
                                         aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
                                                     1
@@ -4418,8 +4418,8 @@ function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64};
     C = similar(A)
     C̄ = similar(A)
 
-    @suppress begin
-        sol = speedmapping(zero(A); m! = (C̄, C) -> C̄ .=  A + B * C^2, tol = tol, maps_limit = 10000)
+    sol = @suppress begin
+        speedmapping(zero(A); m! = (C̄, C) -> C̄ .=  A + B * C^2, tol = tol, maps_limit = 10000)
     end
 
     C = -sol.minimizer
@@ -5507,8 +5507,9 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         𝐂 = MatrixEquations.lyapd(collect(A),-C)
         solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = eps(Float32))
     elseif solver == :speedmapping
-        @suppress begin
-            soll = speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
+        
+        soll = @suppress begin
+            speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
         end
         𝐂 = soll.minimizer
 
