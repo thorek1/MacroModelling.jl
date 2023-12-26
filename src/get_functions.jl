@@ -2794,3 +2794,293 @@ function get_statistics(𝓂,
 
     return ret
 end
+
+
+
+
+function get_loglikelihood(𝓂::ℳ, parameters::Vector{S}, data::KeyedArray{Float64}; algorithm::Symbol = :first_order, filter::Symbol = :kalman, shocks::Symbol = :all_excluding_obc, warmup_iterations::Int = 0, tol::Float64 = eps(), verbose::Bool = false)::S where S
+    # checks to avoid errors further down the line and inform the user
+    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
+
+    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        filter = :inversion
+    end
+
+    shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+
+    @assert size(data)[1] <= sum(shock_idx) "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+
+    if filter == :inversion
+        @assert !(size(data)[1] == sum(shock_idx)) "The inversion filter only works when there are as many shocks as there are observables."
+    end
+
+    observables = collect(axiskeys(data,1))
+
+    @assert observables isa Vector{String} || observables isa Vector{Symbol} "Make sure that the data has variables names as rows. They can be either Strings or Symbols."
+
+    @ignore_derivatives sort!(observables)
+
+    @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
+
+    # keep the parameters wihtin bounds
+    # if parameters == Float64[]
+    #     parameters = 𝓂.parameter_values
+    # else
+    ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters) + length(𝓂.➕_vars))
+    lb = @ignore_derivatives -ub
+
+    for (i,v) in enumerate(𝓂.bounded_vars)
+        if v ∈ 𝓂.parameters
+            @ignore_derivatives lb[i] = 𝓂.lower_bounds[i]
+            @ignore_derivatives ub[i] = 𝓂.upper_bounds[i]
+        end
+    end
+
+    if min(max(parameters,lb),ub) != parameters 
+        return -Inf
+    end
+    # end
+
+    # solve model given the parameters
+    if algorithm == :second_order
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂)
+
+        all_SS = expand_steady_state(SS_and_pars,𝓂)
+
+        state = collect(sss) - all_SS
+
+        state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                        1
+                        shock]
+            return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+        end
+    elseif algorithm == :pruned_second_order
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
+
+        all_SS = expand_steady_state(SS_and_pars,𝓂)
+
+        state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
+
+        state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+            aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+            aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+            
+            return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+        end
+    elseif algorithm == :third_order
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂)
+
+        all_SS = expand_steady_state(SS_and_pars,𝓂)
+
+        state = collect(sss) - all_SS
+
+        state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                            1
+                            shock]
+            return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+        end
+    elseif algorithm == :pruned_third_order
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
+
+        all_SS = expand_steady_state(SS_and_pars,𝓂)
+
+        state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
+
+        state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+            aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+            aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
+            aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+            aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+            
+            kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+            
+            return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+        end
+    else
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
+
+        state = zeros(𝓂.timings.nVars)
+
+        if solution_error > tol || isnan(solution_error)
+            return -Inf
+        end
+
+        ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
+
+        𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+        
+        if !solved
+            return -Inf
+        end
+
+        state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                        shock]
+            return 𝐒₁ * aug_state # you need a return statement for forwarddiff to work
+        end
+    end
+
+    # prepare data
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
+
+    data_in_deviations = collect(data) .- SS_and_pars[obs_indices]
+
+
+    if filter == :kalman
+        observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
+
+        A = @views 𝐒₁[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
+        B = @views 𝐒₁[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+    
+        C = @views ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states)),:]
+    
+        𝐁 = B * B'
+    
+        # Gaussian Prior
+        coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+        
+        dimensions = [size(A),size(𝐁)]
+        
+        values = vcat(vec(A), vec(collect(-𝐁)))
+    
+        P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+        # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+    
+        u = zeros(length(observables_and_states))
+        # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
+        z = C * u
+        
+        loglik = 0.0
+    
+        for t in 1:size(data)[2]
+            v = data_in_deviations[:,t] - z
+    
+            F = C * P * C'
+    
+            # F = (F + F') / 2
+    
+            # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
+            # K = P * C' * ℒ.pinv(F)
+    
+            # loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
+            Fdet = ℒ.det(F)
+    
+            if Fdet < eps() return -Inf end
+    
+            F̄ = ℒ.lu(F, check = false)
+    
+            if !ℒ.issuccess(F̄) return -Inf end
+    
+            invF = inv(F̄)
+    
+            loglik += log(Fdet) + v' * invF  * v
+            
+            K = P * C' * invF
+    
+            P = A * (P - K * C * P) * A' + 𝐁
+    
+            u = A * (u + K * v)
+            
+            z = C * u 
+        end
+    
+        return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
+
+    elseif filter == :inversion
+
+        n_obs = size(data_in_deviations,2)
+    
+        cond_var_idx = indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))
+    
+        shocks² = 0.0
+        logabsdets = 0.0
+    
+        if warmup_iterations > 0
+            opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
+            # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo * warmup_iterations)
+    
+            opt.min_objective = obc_objective_optim_fun
+    
+            opt.xtol_rel = eps()
+    
+            opt.maxeval = 5000
+    
+            NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
+    
+            (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
+    
+            solved = ret ∈ Symbol.([
+                NLopt.SUCCESS,
+                NLopt.STOPVAL_REACHED,
+                NLopt.FTOL_REACHED,
+                NLopt.XTOL_REACHED,
+                NLopt.ROUNDOFF_LIMITED,
+            ])
+    
+            if !solved return -Inf end
+
+            jacc = zeros(length(observables) * warmup_iterations, length(observables))
+
+            match_initial_data!(Float64[], x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
+            
+            for i in 1:warmup_iterations
+                logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:])[1]
+            end
+    
+            shocks² += sum(abs2,x)
+    
+            warmup_shocks = reshape(x,𝓂.timings.nExo, warmup_iterations)
+    
+            # state = zeros(𝓂.timings.nVars)
+    
+            for i in 1:warmup_iterations-1
+                state = state_update(state, warmup_shocks[:,i])
+            end
+    
+            # states[:,1] = state
+        end
+
+        for i in axes(data_in_deviations,2)
+            opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
+            # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo)
+    
+            opt.min_objective = obc_objective_optim_fun
+    
+            opt.xtol_rel = eps()
+    
+            opt.maxeval = 5000
+    
+            NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
+    
+            (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
+    
+            solved = ret ∈ Symbol.([
+                NLopt.SUCCESS,
+                NLopt.STOPVAL_REACHED,
+                NLopt.FTOL_REACHED,
+                NLopt.XTOL_REACHED,
+                NLopt.ROUNDOFF_LIMITED,
+            ])
+    
+            if !solved return -Inf end
+    
+            jacc = zeros(length(observables), length(observables))
+
+            match_data_sequence!(Float64[], x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
+
+            logabsdets += ℒ.logabsdet(jacc)[1]
+    
+            shocks² += sum(abs2,x)
+    
+            state = state_update(state, x)
+    
+            # shocks[:,i] = x
+        end
+        
+        return -(logabsdets + shocks² + (𝓂.timings.nExo * (warmup_iterations + n_obs)) * log(2 * 3.141592653589793)) / 2
+    end
+end

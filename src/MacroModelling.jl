@@ -104,7 +104,7 @@ export get_autocorrelation, get_correlation, get_variance_decomposition, get_cor
 export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution#, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
-export calculate_kalman_filter_loglikelihood, get_shock_decomposition, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations
+export calculate_kalman_filter_loglikelihood, get_shock_decomposition, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations, get_loglikelihood
 export plotlyjs_backend, gr_backend
 export Beta, InverseGamma, Gamma, Normal
 
@@ -6293,6 +6293,65 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
     end
 
     return μ̄, σ̄, ϵ̄, smooth_decomposition, μ[:, 2:end], σ, ϵ, filter_decomposition
+end
+
+
+
+
+
+
+function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}) where {S, T}
+    if state isa Vector{T}
+        pruning = false
+    else
+        pruning = true
+    end
+
+    if length(jac) > 0
+        jac .= 𝒜.jacobian(𝒷(), xx -> begin
+                                        state_copy = deepcopy(state)
+
+                                        XX = reshape(xx, 𝓂.timings.nExo, warmup_iters)
+
+                                        for i in 1:warmup_iters
+                                            state_copy = state_update(state_copy, XX[:,i])
+                                        end
+
+                                        return abs.(data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+                                    end, X)[1]'
+    end
+
+    if length(res) > 0
+        state_copy = deepcopy(state)
+
+        XX = reshape(X, 𝓂.timings.nExo, warmup_iters)
+
+        for i in 1:warmup_iters
+            state_copy = state_update(state_copy, XX[:,i])
+        end
+
+        res .= abs.(data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+    end
+end
+
+
+
+
+
+function match_data_sequence!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}) where {S, T}
+    if state isa Vector{T}
+        pruning = false
+    else
+        pruning = true
+    end
+    
+    if length(jac) > 0
+        jac .= 𝒜.jacobian(𝒷(), xx -> abs.(data - (pruning ? sum(state_update(state, xx)) : state_update(state, xx))[cond_var_idx]), X)[1]'
+    end
+
+    if length(res) > 0
+        res .= abs.(data - (pruning ? sum(state_update(state, X)) : state_update(state, X))[cond_var_idx])
+    end
 end
 
 
