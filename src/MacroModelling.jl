@@ -6311,7 +6311,7 @@ function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data:
         jac .= 𝒜.jacobian(𝒷(), xx -> begin
                                         state_copy = deepcopy(state)
 
-                                        XX = reshape(xx, 𝓂.timings.nExo, warmup_iters)
+                                        XX = reshape(xx, length(X) ÷ warmup_iters, warmup_iters)
 
                                         for i in 1:warmup_iters
                                             state_copy = state_update(state_copy, XX[:,i])
@@ -6324,7 +6324,7 @@ function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data:
     if length(res) > 0
         state_copy = deepcopy(state)
 
-        XX = reshape(X, 𝓂.timings.nExo, warmup_iters)
+        XX = reshape(X, length(X) ÷ warmup_iters, warmup_iters)
 
         for i in 1:warmup_iters
             state_copy = state_update(state_copy, XX[:,i])
