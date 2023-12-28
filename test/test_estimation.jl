@@ -1,5 +1,5 @@
 using MacroModelling
-import Turing
+import Turing, Pigeons
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
@@ -41,9 +41,20 @@ n_samples = 1000
 
 # using Zygote
 # Turing.setadbackend(:zygote)
-samps = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
+samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
-# println(mean(samps).nt.mean)
+println(mean(samps).nt.mean)
+
+
+pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000)),
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 1,
+            n_rounds = 9,
+            multithreaded = true)
+
+sampss = MCMCChains.Chains(Pigeons.get_sample(pt))
+
+println(mean(sampss).nt.mean)
 
 Random.seed!(30)
 
