@@ -23,6 +23,7 @@ jobs:
           - x64
         test_set:
           - "estimation"
+          - "higher_order_estimation"
           - "higher_order"
           - "plots"
           - "basic"

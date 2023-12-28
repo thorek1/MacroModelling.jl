@@ -19,6 +19,10 @@ include("functionality_tests.jl")
 # end
 
 
+if test_set == "higher_order_estimation"
+    include("test_higher_order_estimation.jl")
+end
+
 if test_set == "estimation"
     include("test_estimation.jl")
 end
