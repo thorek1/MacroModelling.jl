@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         version:
-          - '1.9' #^1-0 and ^1.9-0 are not recognised
+          - '1.10' #^1-0 and ^1.9-0 are not recognised
         os:
           - ubuntu-latest
           - macOS-latest
@@ -37,22 +37,22 @@ jobs:
             os: ubuntu-latest
             arch: x64
             test_set: "plots"
-          - version: '^1.10.0-0'
+          - version: '1.9'
             os: ubuntu-latest
             arch: x64
             test_set: "estimation"
             allow_failure: true
-          - version: '^1.10.0-0'
+          - version: '1.9'
             os: ubuntu-latest
             arch: x64
             test_set: "higher_order"
             allow_failure: true
-          - version: '^1.10.0-0'
+          - version: '1.9'
             os: ubuntu-latest
             arch: x64
             test_set: "plots"
             allow_failure: true
-          - version: '^1.10.0-0'
+          - version: '1.9'
             os: ubuntu-latest
             arch: x64
             test_set: "basic"
