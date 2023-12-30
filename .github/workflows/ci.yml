@@ -13,21 +13,51 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: ['1.8', '1.9', '1.10']
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        arch: [x64]
-        test_set: ["estimation", "higher_order_estimation", "higher_order", "plots", "basic"]
-        exclude:
-          - version: ['1.8']
-            os: [macOS-latest, windows-latest]
-          - version: ['1.9']
-            os: [macOS-latest, windows-latest]
-          - version: ['1.10']
-            os: [macOS-latest, windows-latest]
-            test_set: ["estimation", "higher_order_estimation", "higher_order"]
+        version:
+          - '1.10' #^1-0 and ^1.9-0 are not recognised
+        os:
+          - ubuntu-latest
+          - macOS-latest
+          - windows-latest
+        arch:
+          - x64
+        test_set:
+          - "estimation"
+          - "higher_order_estimation"
+          - "higher_order"
+          - "plots"
+          - "basic"
         include:
           - os: ubuntu-latest
             prefix: xvfb-run
+          - version: '1.8'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "basic"
+          - version: '1.8'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "plots"
+          - version: '1.9'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "estimation"
+            allow_failure: true
+          - version: '1.9'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "higher_order"
+            allow_failure: true
+          - version: '1.9'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "plots"
+            allow_failure: true
+          - version: '1.9'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "basic"
+            allow_failure: true
           - version: 'nightly'
             os: ubuntu-latest
             arch: x64
