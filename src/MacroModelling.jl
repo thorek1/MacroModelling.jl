@@ -5556,7 +5556,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     elseif solver == :sylvester
         𝐂 = try MatrixEquations.sylvd(collect(-A),collect(B),-C)
         catch
-            return sparse_output ? sprand(0,0,0.1) : zeros(0,0), false
+            return sparse_output ? spzeros(0,0) : zeros(0,0), false
         end
         
         solved = isapprox(𝐂, A * 𝐂 * B - C, rtol = eps(Float32))
