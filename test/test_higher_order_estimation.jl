@@ -81,7 +81,7 @@ Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
     ζ   ~ Beta(0.33, 0.05, μσ = true)
     δ   ~ Beta(0.02, 0.01, μσ = true)
     λ   ~ Beta(0.75, 0.01, μσ = true)
-    ψ   ~ Normal(0.5, 0.3)
+    ψ   ~ Normal(1, .25)#, μσ = true)
     σ̄   ~ InverseGamma(0.021, Inf, μσ = true)
     η   ~ InverseGamma(0.1, Inf, μσ = true)
     ρ   ~ Beta(0.75, 0.02, μσ = true)
@@ -90,7 +90,7 @@ Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
 end
 
 
-Random.seed!(30)
+Random.seed!(3)
 
 pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)),
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
@@ -119,7 +119,7 @@ println(mean(samps).nt.mean)
 #             log_lik -= logpdf(Beta(0.356, 0.05, μσ = true),ζ)
 #             log_lik -= logpdf(Beta(0.02, 0.01, μσ = true),δ)
 #             log_lik -= logpdf(Beta(0.5, 0.25, μσ = true),λ)
-#             log_lik -= logpdf(Normal(0.5, 0.3),ψ)
+#             log_lik -= logpdf(Normal(1, .25),ψ)
 #             # log_lik -= logpdf(Normal(40, 10),γ)
 #             log_lik -= logpdf(InverseGamma(0.021, Inf, μσ = true),σ̄)
 #             log_lik -= logpdf(InverseGamma(0.1, Inf, μσ = true),η)
@@ -138,7 +138,7 @@ println(mean(samps).nt.mean)
 #     log_lik -= logpdf(Beta(0.33, 0.05, μσ = true),ζ)
 #     log_lik -= logpdf(Beta(0.02, 0.01, μσ = true),δ)
 #     log_lik -= logpdf(Beta(0.75, 0.01, μσ = true),λ)
-#     log_lik -= logpdf(Normal(0.5, 0.3),ψ)
+#     log_lik -= logpdf(Normal(1, .25),ψ)
 #     # log_lik -= logpdf(Normal(40, 10),γ)
 #     log_lik -= logpdf(InverseGamma(0.021, Inf, μσ = true),σ̄)
 #     log_lik -= logpdf(InverseGamma(0.1, Inf, μσ = true),η)
@@ -159,21 +159,23 @@ println(mean(samps).nt.mean)
 # opt = NLopt.Opt(NLopt.:LN_NELDERMEAD, length(get_parameters(Caldara_et_al_2012_estim)))
 # opt = NLopt.Opt(NLopt.:LN_SBPLX, length(get_parameters(Caldara_et_al_2012_estim)))
 # opt = NLopt.Opt(NLopt.:LN_PRAXIS, length(get_parameters(Caldara_et_al_2012_estim)))
+# opt = NLopt.Opt(NLopt.:LN_COBYLA, length(get_parameters(Caldara_et_al_2012_estim)))
+# opt = NLopt.Opt(NLopt.:LN_BOBYQA, length(get_parameters(Caldara_et_al_2012_estim)))
 # opt = NLopt.Opt(NLopt.:LD_LBFGS, length(get_parameters(Caldara_et_al_2012_estim)))
 # opt = NLopt.Opt(NLopt.:LD_SLSQP, length(get_parameters(Caldara_et_al_2012_estim)))
+# opt = NLopt.Opt(NLopt.:LD_MMA, length(get_parameters(Caldara_et_al_2012_estim)))
 # opt = NLopt.Opt(NLopt.:LD_VAR2, length(get_parameters(Caldara_et_al_2012_estim)))
-# # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo * warmup_iterations)
+
+# opt = NLopt.Opt(NLopt.:GN_CRS2_LM, length(get_parameters(Caldara_et_al_2012_estim)))
 
 # opt.min_objective = calculate_posterior_llkh
 
 # opt.upper_bounds = [5,5,1,1,1,1,100,100,100,1]
-# opt.lower_bounds = [-3,-3,0,0,0,0,-10,0,0,0]
+# opt.lower_bounds = [-3,-3,0,0,0,0,0,0,0,0]
 
 # opt.xtol_rel = eps()
 
-# opt.maxeval = 5000
-
-# # NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
+# opt.maxeval = 50000
 
 # (minf,x,ret) = NLopt.optimize(opt, Caldara_et_al_2012_estim.parameter_values)
 
@@ -181,7 +183,11 @@ println(mean(samps).nt.mean)
 
 # using StatsPlots
 
-# plot_irf(Caldara_et_al_2012_estim, parameters = x, algorithm = :pruned_third_order)
+# plot_irf(Caldara_et_al_2012_estim, parameters = x, algorithm = :pruned_third_order, periods = 1000)
+# plot_irf(Caldara_et_al_2012_estim, parameters = :ψ => .05, algorithm = :pruned_third_order, periods = 1000)
+
+
+# get_irf(Caldara_et_al_2012_estim, parameters = x, algorithm = :pruned_third_order)
 
 # get_parameters(Caldara_et_al_2012_estim, values= true)
 
@@ -258,3 +264,4 @@ println(mean(samps).nt.mean)
 #             alpha = 0.5);
 
 # p
+
