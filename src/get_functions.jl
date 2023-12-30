@@ -2798,7 +2798,7 @@ end
 
 
 
-function get_loglikelihood(𝓂::ℳ, parameters::Vector{S}, data::KeyedArray{Float64}; algorithm::Symbol = :first_order, filter::Symbol = :kalman, shocks::Symbol = :all_excluding_obc, warmup_iterations::Int = 0, tol::Float64 = eps(), verbose::Bool = false)::S where S
+function get_loglikelihood(𝓂::ℳ, parameters::Vector{S}, data::KeyedArray{Float64}; algorithm::Symbol = :first_order, filter::Symbol = :kalman, shocks::Symbol = :all_excluding_obc, warmup_iterations::Int = 0, tol::AbstractFloat = eps(), verbose::Bool = false)::S where S
     # checks to avoid errors further down the line and inform the user
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
@@ -2823,9 +2823,6 @@ function get_loglikelihood(𝓂::ℳ, parameters::Vector{S}, data::KeyedArray{Fl
     @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
 
     # keep the parameters wihtin bounds
-    # if parameters == Float64[]
-    #     parameters = 𝓂.parameter_values
-    # else
     ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters) + length(𝓂.➕_vars))
     lb = @ignore_derivatives -ub
 
@@ -2839,11 +2836,12 @@ function get_loglikelihood(𝓂::ℳ, parameters::Vector{S}, data::KeyedArray{Fl
     if min(max(parameters,lb),ub) != parameters 
         return -Inf
     end
-    # end
 
     # solve model given the parameters
     if algorithm == :second_order
         sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂)
+
+        if !converged return -Inf end
 
         all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -2858,6 +2856,8 @@ function get_loglikelihood(𝓂::ℳ, parameters::Vector{S}, data::KeyedArray{Fl
     elseif algorithm == :pruned_second_order
         sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
 
+        if !converged return -Inf end
+
         all_SS = expand_steady_state(SS_and_pars,𝓂)
 
         state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
@@ -2871,6 +2871,8 @@ function get_loglikelihood(𝓂::ℳ, parameters::Vector{S}, data::KeyedArray{Fl
     elseif algorithm == :third_order
         sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂)
 
+        if !converged return -Inf end
+
         all_SS = expand_steady_state(SS_and_pars,𝓂)
 
         state = collect(sss) - all_SS
@@ -2883,6 +2885,8 @@ function get_loglikelihood(𝓂::ℳ, parameters::Vector{S}, data::KeyedArray{Fl
         end
     elseif algorithm == :pruned_third_order
         sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
+
+        if !converged return -Inf end
 
         all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -2901,19 +2905,17 @@ function get_loglikelihood(𝓂::ℳ, parameters::Vector{S}, data::KeyedArray{Fl
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
 
-        state = zeros(𝓂.timings.nVars)
-
         if solution_error > tol || isnan(solution_error)
             return -Inf
         end
+
+        state = zeros(𝓂.timings.nVars)
 
         ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
 
         𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
         
-        if !solved
-            return -Inf
-        end
+        if !solved return -Inf end
 
         state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
             aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
@@ -2928,7 +2930,6 @@ function get_loglikelihood(𝓂::ℳ, parameters::Vector{S}, data::KeyedArray{Fl
     obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
 
     data_in_deviations = collect(data) .- SS_and_pars[obs_indices]
-
 
     if filter == :kalman
         observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
@@ -2988,8 +2989,8 @@ function get_loglikelihood(𝓂::ℳ, parameters::Vector{S}, data::KeyedArray{Fl
             z = C * u 
         end
     
-        return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
-
+        return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2
+        
     elseif filter == :inversion
 
         n_obs = size(data_in_deviations,2)
