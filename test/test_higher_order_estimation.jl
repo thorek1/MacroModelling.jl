@@ -39,7 +39,7 @@ end
 pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000)),
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
-            n_rounds = 9,
+            n_rounds = 7,
             multithreaded = true)
 
 samps = MCMCChains.Chains(Pigeons.get_sample(pt))
@@ -56,7 +56,7 @@ dat = CSV.read("data/usmodel.csv", DataFrame)
 data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
 
 # declare observables
-observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs]
+observables = [:dy, :dc]#, :dinve, :labobs, :pinfobs, :dw, :robs]
 
 # Subsample from 1966Q1 - 2004Q4
 # subset observables in data
@@ -66,29 +66,34 @@ data = data(observables,75:230)
 include("models/Caldara_et_al_2012_estim.jl")
 
 
-get_parameters(Caldara_et_al_2012_estim)
+# get_loglikelihood(Caldara_et_al_2012_estim, Caldara_et_al_2012_estim.parameter_values, data, algorithm = :pruned_third_order)
+
+# get_loglikelihood(Caldara_et_al_2012_estim, Caldara_et_al_2012_estim.parameter_values*0.99, data, algorithm = :pruned_third_order)
+
+
+# get_parameters(Caldara_et_al_2012_estim, values = true)
+
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
-    ζ       ~ Beta(0.356, 0.02, μσ = true)
-    β       ~ Beta(0.993, 0.002, μσ = true)
-    ψ       ~ Normal(0.5, 0.3)
-    γ       ~ Normal(40, 1)
-    dȳ      ~ Normal(0, 1)
-    dc̄      ~ Normal(0, 1)
-    ρ       ~ Beta(0.5, 0.25, μσ = true)
-    λ       ~ Beta(0.5, 0.25, μσ = true)
-    δ       ~ Beta(0.01, 0.005, μσ = true)
-    η       ~ InverseGamma(0.1, Inf, μσ = true)
-    σ̄       ~ InverseGamma(0.021, Inf, μσ = true)
-    # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
-    Turing.@addlogprob! get_loglikelihood(m, [dȳ, dc̄, β, ζ, δ, λ, ψ, γ, σ̄, η, ρ], data, algorithm = :pruned_third_order)
+    dȳ  ~ Normal(0, 1)
+    dc̄  ~ Normal(0, 1)
+    β   ~ Beta(0.95, 0.005, μσ = true)
+    ζ   ~ Beta(0.33, 0.05, μσ = true)
+    δ   ~ Beta(0.02, 0.01, μσ = true)
+    λ   ~ Beta(0.75, 0.01, μσ = true)
+    ψ   ~ Normal(0.5, 0.3)
+    σ̄   ~ InverseGamma(0.021, Inf, μσ = true)
+    η   ~ InverseGamma(0.1, Inf, μσ = true)
+    ρ   ~ Beta(0.75, 0.02, μσ = true)
+
+    Turing.@addlogprob! get_loglikelihood(m, [dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ], data, algorithm = :pruned_third_order)
 end
 
 
 pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)),
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
-            n_rounds = 2,
-            multithreaded = false)
+            n_rounds = 6,
+            multithreaded = true)
 
 samps = MCMCChains.Chains(Pigeons.get_sample(pt))
 
@@ -98,26 +103,98 @@ println(mean(samps).nt.mean)
 
 # Random.seed!(30)
 
-# function calculate_posterior_loglikelihood(parameters)
-#     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
+# function calculate_posterior_llkh(parameters, grad)
+#     if length(grad)>0
+#         grad .= ForwardDiff.gradient(x->begin
+#             dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ = x
+#             # println(parameters)
+#             log_lik = 0
+#             log_lik -= get_loglikelihood(Caldara_et_al_2012_estim, x, data, algorithm = :pruned_third_order)
+#             log_lik -= logpdf(Normal(0, 1),dȳ)
+#             log_lik -= logpdf(Normal(0, 1),dc̄)
+#             log_lik -= logpdf(Beta(0.993, 0.05, μσ = true),β)
+#             log_lik -= logpdf(Beta(0.356, 0.05, μσ = true),ζ)
+#             log_lik -= logpdf(Beta(0.02, 0.01, μσ = true),δ)
+#             log_lik -= logpdf(Beta(0.5, 0.25, μσ = true),λ)
+#             log_lik -= logpdf(Normal(0.5, 0.3),ψ)
+#             # log_lik -= logpdf(Normal(40, 10),γ)
+#             log_lik -= logpdf(InverseGamma(0.021, Inf, μσ = true),σ̄)
+#             log_lik -= logpdf(InverseGamma(0.1, Inf, μσ = true),η)
+#             log_lik -= logpdf(Beta(0.5, 0.25, μσ = true),ρ)
+        
+#             return log_lik
+#         end, parameters)
+#     end
+#     dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ = parameters
+#     # println(parameters)
 #     log_lik = 0
-#     log_lik -= get_loglikelihood(FS2000, parameters, data)
-#     log_lik -= logpdf(Beta(0.356, 0.02, μσ = true),alp)
-#     log_lik -= logpdf(Beta(0.993, 0.002, μσ = true),bet)
-#     log_lik -= logpdf(Normal(0.0085, 0.003),gam)
-#     log_lik -= logpdf(Normal(1.0002, 0.007),mst)
-#     log_lik -= logpdf(Beta(0.129, 0.223, μσ = true),rho)
-#     log_lik -= logpdf(Beta(0.65, 0.05, μσ = true),psi)
-#     log_lik -= logpdf(Beta(0.01, 0.005, μσ = true),del)
-#     log_lik -= logpdf(InverseGamma(0.035449, Inf, μσ = true),z_e_a)
-#     log_lik -= logpdf(InverseGamma(0.008862, Inf, μσ = true),z_e_m)
+#     log_lik -= get_loglikelihood(Caldara_et_al_2012_estim, parameters, data, algorithm = :pruned_third_order)
+#     log_lik -= logpdf(Normal(0, 1),dȳ)
+#     log_lik -= logpdf(Normal(0, 1),dc̄)
+#     log_lik -= logpdf(Beta(0.95, 0.005, μσ = true),β)
+#     log_lik -= logpdf(Beta(0.33, 0.05, μσ = true),ζ)
+#     log_lik -= logpdf(Beta(0.02, 0.01, μσ = true),δ)
+#     log_lik -= logpdf(Beta(0.75, 0.01, μσ = true),λ)
+#     log_lik -= logpdf(Normal(0.5, 0.3),ψ)
+#     # log_lik -= logpdf(Normal(40, 10),γ)
+#     log_lik -= logpdf(InverseGamma(0.021, Inf, μσ = true),σ̄)
+#     log_lik -= logpdf(InverseGamma(0.1, Inf, μσ = true),η)
+#     log_lik -= logpdf(Beta(0.75, 0.02, μσ = true),ρ)
+#     println(log_lik)
 #     return log_lik
 # end
 
+# init_params = deepcopy(Caldara_et_al_2012_estim.parameter_values)
+# using NLopt, ForwardDiff
+# grad = zeros(0)
+# calculate_posterior_llkh(Caldara_et_al_2012_estim.parameter_values, grad)
+
+# grad = zeros(length(Caldara_et_al_2012_estim.parameter_values))
+# calculate_posterior_llkh(Caldara_et_al_2012_estim.parameter_values, grad)
+
+
+# opt = NLopt.Opt(NLopt.:LN_NELDERMEAD, length(get_parameters(Caldara_et_al_2012_estim)))
+# opt = NLopt.Opt(NLopt.:LN_SBPLX, length(get_parameters(Caldara_et_al_2012_estim)))
+# opt = NLopt.Opt(NLopt.:LN_PRAXIS, length(get_parameters(Caldara_et_al_2012_estim)))
+# opt = NLopt.Opt(NLopt.:LD_LBFGS, length(get_parameters(Caldara_et_al_2012_estim)))
+# opt = NLopt.Opt(NLopt.:LD_SLSQP, length(get_parameters(Caldara_et_al_2012_estim)))
+# opt = NLopt.Opt(NLopt.:LD_VAR2, length(get_parameters(Caldara_et_al_2012_estim)))
+# # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo * warmup_iterations)
+
+# opt.min_objective = calculate_posterior_llkh
+
+# opt.upper_bounds = [5,5,1,1,1,1,100,100,100,1]
+# opt.lower_bounds = [-3,-3,0,0,0,0,-10,0,0,0]
+
+# opt.xtol_rel = eps()
+
+# opt.maxeval = 5000
+
+# # NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
+
+# (minf,x,ret) = NLopt.optimize(opt, Caldara_et_al_2012_estim.parameter_values)
+
+# opt.numevals
+
+# using StatsPlots
+
+# plot_irf(Caldara_et_al_2012_estim, parameters = x, algorithm = :pruned_third_order)
+
+# get_parameters(Caldara_et_al_2012_estim, values= true)
+
+# calculate_posterior_loglikelihood(Caldara_et_al_2012_estim.parameter_values)
+
 # sol = Optim.optimize(calculate_posterior_loglikelihood, 
-# [0,0,-10,-10,0,0,0,0,0], [1,1,10,10,1,1,1,100,100] ,FS2000.parameter_values, 
+# [-3,-3,0,0,0,0,-10,-10,0,0,0], [5,5,1,1,1,1,100,100,100,100,1] ,Caldara_et_al_2012_estim.parameter_values, 
 # Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
+
+# sol = Optim.optimize(calculate_posterior_loglikelihood, 
+# [-3,-3,0,0,0,0,-10,-10,0,0,0], [5,5,1,1,1,1,100,100,100,100,1] ,Caldara_et_al_2012_estim.parameter_values, 
+# Optim.Fminbox(Optim.NelderMead()))
+
+
+# 1
 # @testset "Estimation results" begin
 #     @test isapprox(sol.minimum, -1343.7491257498598, rtol = eps(Float32))
 #     @test isapprox(mean(samps).nt.mean, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
