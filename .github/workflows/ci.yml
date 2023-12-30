@@ -18,11 +18,11 @@ jobs:
         arch: [x64]
         test_set: ["estimation", "higher_order_estimation", "higher_order", "plots", "basic"]
         exclude:
-          - version: '1.8'
+          - version: ['1.8']
             os: [macOS-latest, windows-latest]
-          - version: '1.9'
+          - version: ['1.9']
             os: [macOS-latest, windows-latest]
-          - version: '1.10'
+          - version: ['1.10']
             os: [macOS-latest, windows-latest]
             test_set: ["estimation", "higher_order_estimation", "higher_order"]
         include:

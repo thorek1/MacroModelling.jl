@@ -4746,6 +4746,10 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
 
     𝐒₂, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = solver, sparse_output = true)
 
+    if !solved
+        𝐒₂, solved
+    end
+
     𝐒₂ *= M₂.𝐔₂
 
     return 𝐒₂, solved
@@ -4854,6 +4858,10 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     𝐒₃, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres, sparse_output = true)
 
+    if !solved
+        𝐒₂, solved
+    end
+    
     𝐒₃ *= M₃.𝐔₃
 
     return 𝐒₃, solved
@@ -5546,7 +5554,11 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         end
         solved = change < eps(Float32)
     elseif solver == :sylvester
-        𝐂 = MatrixEquations.sylvd(collect(-A),collect(B),-C)
+        𝐂 = try MatrixEquations.sylvd(collect(-A),collect(B),-C)
+        catch
+            return sparse_output ? sprand(0,0,0.1) : zeros(0,0), false
+        end
+        
         solved = isapprox(𝐂, A * 𝐂 * B - C, rtol = eps(Float32))
     elseif solver == :lyapunov
         𝐂 = MatrixEquations.lyapd(collect(A),-C)
