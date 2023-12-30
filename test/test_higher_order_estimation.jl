@@ -35,6 +35,7 @@ Turing.@model function FS2000_loglikelihood_function(data, m)
 end
 
 
+Random.seed!(30)
 
 pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000)),
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
@@ -88,6 +89,8 @@ Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
     Turing.@addlogprob! get_loglikelihood(m, [dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ], data, algorithm = :pruned_third_order)
 end
 
+
+Random.seed!(30)
 
 pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)),
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
