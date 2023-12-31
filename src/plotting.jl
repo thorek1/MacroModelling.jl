@@ -80,6 +80,8 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 function plot_model_estimates(𝓂::ℳ,
     data::KeyedArray{Float64};
     parameters::ParameterType = nothing,
+    algorithm::Symbol = :first_order, 
+    filter::Symbol = :kalman, 
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     shocks::Union{Symbol_input,String_input} = :all, 
     data_in_levels::Bool = true,
@@ -105,7 +107,17 @@ function plot_model_estimates(𝓂::ℳ,
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
+    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
+
+    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        filter = :inversion
+    end
+
+    if filter == :inversion
+        shock_decomposition = false
+    end
+
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
 
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
@@ -134,6 +146,16 @@ function plot_model_estimates(𝓂::ℳ,
     variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
     shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
     decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
+
+
+    if filter == :kalman
+        filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+        variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
+        shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
+        decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
+    elseif filter == :inversion
+        variables_to_plot, shocks_to_plot = inversion_filter(𝓂, data_in_deviations, algorithm)
+    end
 
     return_plots = []
 
