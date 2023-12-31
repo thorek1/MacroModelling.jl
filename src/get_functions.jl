@@ -2806,7 +2806,7 @@ function get_loglikelihood(𝓂::ℳ, parameters::Vector{S}, data::KeyedArray{Fl
         filter = :inversion
     end
 
-    shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    shock_idx = @ignore_derivatives parse_shocks_input_to_index(shocks,𝓂.timings)
 
     @assert size(data)[1] <= sum(shock_idx) "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 

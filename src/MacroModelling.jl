@@ -4576,18 +4576,18 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     return @view(A[T.reorder,:]), true
 end
 
-function riccati_conditions(∇₁::AbstractMatrix{<: Real}, sol_d::AbstractMatrix{<: Real}, solved::Bool; T::timings, explosive::Bool = false) 
-    expand = @ignore_derivatives @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+function riccati_conditions(∇₁::AbstractMatrix{M}, sol_d::AbstractMatrix{N}, solved::Bool; T::timings, explosive::Bool = false) where {M,N}
+    expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
-    A = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    B = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    C = @views ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+    A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    B = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    C = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
 
     sol_buf = sol_d * expand[2]
 
     err1 = A * sol_buf * sol_buf + B * sol_buf + C
 
-    @view err1[:,T.past_not_future_and_mixed_idx]
+    err1[:,T.past_not_future_and_mixed_idx]
 end
 
 
@@ -4631,7 +4631,7 @@ riccati_AD = ℐ.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt 
 
 
 function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
-    A, solved = riccati_AD(∇₁; T = T, explosive = explosive)
+    A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
 
     if !solved
         return hcat(A, zeros(size(A,1),T.nExo)), solved
@@ -4861,7 +4861,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     if !solved
         𝐒₂, solved
     end
-    
+
     𝐒₃ *= M₃.𝐔₃
 
     return 𝐒₃, solved
