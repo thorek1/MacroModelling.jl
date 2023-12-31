@@ -265,17 +265,25 @@ And data, 4×40 Matrix{Float64}:
 function get_estimated_variables(𝓂::ℳ,
     data::KeyedArray{Float64};
     parameters::ParameterType = nothing,
+    algorithm::Symbol = :first_order, 
+    filter::Symbol = :kalman, 
     data_in_levels::Bool = true,
     levels::Bool = true,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
+    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
+    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        filter = :inversion
+    end
+
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
+    
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
     data = data(sort(axiskeys(data,1)))
-
+    
     obs_axis = collect(axiskeys(data,1))
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
@@ -288,7 +296,12 @@ function get_estimated_variables(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+    if filter == :kalman
+        filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+        states = filtered_and_smoothed[smooth ? 1 : 5]
+    elseif filter == :inversion
+        states, shocks = inversion_filter(𝓂, data_in_deviations, algorithm)
+    end
 
     axis1 = 𝓂.timings.var
 
@@ -297,7 +310,7 @@ function get_estimated_variables(𝓂::ℳ,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    return KeyedArray(levels ? filtered_and_smoothed[smooth ? 1 : 5] .+ reference_steady_state[1:length(𝓂.var)] : filtered_and_smoothed[smooth ? 1 : 5];  Variables = axis1, Periods = 1:size(data,2))
+    return KeyedArray(levels ? states .+ reference_steady_state[1:length(𝓂.var)] : states;  Variables = axis1, Periods = 1:size(data,2))
 end
 
 
