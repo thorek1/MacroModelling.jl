@@ -4889,7 +4889,7 @@ function irf(state_update::Function,
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
-        periods += size(shocks)[2]
+        # periods += size(shocks)[2]
 
         shock_history = zeros(T.nExo, periods)
 
@@ -4899,7 +4899,7 @@ function irf(state_update::Function,
     elseif shocks isa KeyedArray{Float64}
         shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
 
-        periods += size(shocks)[2]
+        # periods += size(shocks)[2]
 
         @assert length(setdiff(shock_input, T.exo)) == 0 "Provided shocks which are not part of the model."
         
@@ -5025,7 +5025,7 @@ function irf(state_update::Function,
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
-        periods += size(shocks)[2]
+        # periods += size(shocks)[2]
 
         shock_history = zeros(T.nExo, periods)
 
@@ -5035,7 +5035,7 @@ function irf(state_update::Function,
     elseif shocks isa KeyedArray{Float64}
         shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
 
-        periods += size(shocks)[2]
+        # periods += size(shocks)[2]
 
         @assert length(setdiff(shock_input, T.exo)) == 0 "Provided shocks which are not part of the model."
         
@@ -5146,7 +5146,7 @@ function girf(state_update::Function,
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
-        periods += size(shocks)[2]
+        # periods += size(shocks)[2]
 
         shock_history = zeros(T.nExo, periods)
 
@@ -5156,7 +5156,7 @@ function girf(state_update::Function,
     elseif shocks isa KeyedArray{Float64}
         shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
 
-        periods += size(shocks)[2]
+        # periods += size(shocks)[2]
 
         @assert length(setdiff(shock_input, T.exo)) == 0 "Provided shocks which are not part of the model."
 
