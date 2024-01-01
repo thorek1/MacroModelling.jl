@@ -427,12 +427,12 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
     shocks = randn(m.timings.nExo, 40)
     
-    data = get_irf(𝓂, shocks = shocks, levels = true, periods = 0, algorithm = algorithm)[:,:,1]
+    data = get_irf(m, shocks = shocks, levels = true, periods = 0, algorithm = algorithm)[:,:,1]
     
     obs = m.var[var_idxs]
     datA = data(obs,:)
    
-    fshocks = get_estimated_shocks(𝓂, datA, algorithm = algorithm, filter = :inversion)
+    fshocks = get_estimated_shocks(m, datA, algorithm = algorithm, filter = :inversion)
     
     # @test sum(abs, shocks - fshocks) < eps(Float32)
 
