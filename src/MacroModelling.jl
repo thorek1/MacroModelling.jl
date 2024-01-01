@@ -4585,7 +4585,9 @@ function riccati_conditions(∇₁::AbstractMatrix{M}, sol_d::AbstractMatrix{N},
 
     sol_buf = sol_d * expand[2]
 
-    err1 = A * sol_buf * sol_buf + B * sol_buf + C
+    sol_buf2 = sol_buf * sol_buf
+
+    err1 = A * sol_buf2 + B * sol_buf + C
 
     err1[:,T.past_not_future_and_mixed_idx]
 end
@@ -4859,7 +4861,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     𝐒₃, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres, sparse_output = true)
 
     if !solved
-        𝐒₂, solved
+        𝐒₃, solved
     end
 
     𝐒₃ *= M₃.𝐔₃
@@ -6279,7 +6281,7 @@ function inversion_filter(𝓂::ℳ,
         sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂)
 
         if !converged 
-            @error "No solution for these parameters." 
+            @error "No solution for these parameters."
         end
 
         all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -6296,7 +6298,7 @@ function inversion_filter(𝓂::ℳ,
         sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)
 
         if !converged 
-            @error "No solution for these parameters." 
+            @error "No solution for these parameters."
         end
 
         all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -6313,7 +6315,7 @@ function inversion_filter(𝓂::ℳ,
         sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂)
 
         if !converged 
-            @error "No solution for these parameters." 
+            @error "No solution for these parameters."
         end
 
         all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -6330,7 +6332,7 @@ function inversion_filter(𝓂::ℳ,
         sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)
 
         if !converged 
-            @error "No solution for these parameters." 
+            @error "No solution for these parameters."
         end
 
         all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -6351,7 +6353,7 @@ function inversion_filter(𝓂::ℳ,
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
 
         if solution_error > tol || isnan(solution_error)
-            @error "No solution for these parameters." 
+            @error "No solution for these parameters."
         end
 
         state = zeros(𝓂.timings.nVars)
@@ -6361,7 +6363,7 @@ function inversion_filter(𝓂::ℳ,
         𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
         
         if !solved 
-            @error "No solution for these parameters." 
+            @error "No solution for these parameters."
         end
 
         state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
@@ -6388,7 +6390,7 @@ function inversion_filter(𝓂::ℳ,
     # logabsdets = 0.0
 
     states = zeros(𝓂.timings.nVars, n_obs)
-    shocks = zeros(length(observables), n_obs)
+    shocks = zeros(𝓂.timings.nExo, n_obs)
 
     if warmup_iterations > 0
         opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
@@ -6396,6 +6398,7 @@ function inversion_filter(𝓂::ℳ,
 
         opt.min_objective = obc_objective_optim_fun
 
+        opt.ftol_rel = eps()
         opt.xtol_rel = eps()
 
         opt.maxeval = 5000
@@ -6413,16 +6416,16 @@ function inversion_filter(𝓂::ℳ,
         ])
 
         if !solved 
-            @error "No solution for these parameters." 
+            @error "No solution for these parameters."
         end
 
         jacc = zeros(0, 0)
 
         match_initial_data!(Float64[], x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
         
-        for i in 1:warmup_iterations
-            logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:])[1]
-        end
+        # for i in 1:warmup_iterations
+        #     logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:])[1]
+        # end
 
         # shocks² += sum(abs2,x)
 
@@ -6443,6 +6446,7 @@ function inversion_filter(𝓂::ℳ,
 
         opt.min_objective = obc_objective_optim_fun
 
+        opt.ftol_rel = eps()
         opt.xtol_rel = eps()
 
         opt.maxeval = 5000
@@ -6460,7 +6464,7 @@ function inversion_filter(𝓂::ℳ,
         ])
 
         if !solved 
-            @error "No solution for these parameters." 
+            @error "No solution for these parameters."
         end
 
         jacc = zeros(0, 0)
