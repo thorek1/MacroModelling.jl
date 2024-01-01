@@ -161,6 +161,7 @@ function get_estimated_shocks(𝓂::ℳ,
     parameters::ParameterType = nothing,
     algorithm::Symbol = :first_order, 
     filter::Symbol = :kalman, 
+    warmup_iterations::Int = 0,
     data_in_levels::Bool = true,
     smooth::Bool = true,
     verbose::Bool = false)
@@ -193,7 +194,7 @@ function get_estimated_shocks(𝓂::ℳ,
         filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
         shocks = filtered_and_smoothed[smooth ? 3 : 7]
     elseif filter == :inversion
-        states, shocks = inversion_filter(𝓂, data_in_deviations, algorithm)
+        states, shocks = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
     end
 
     axis1 = 𝓂.timings.exo
@@ -267,6 +268,7 @@ function get_estimated_variables(𝓂::ℳ,
     parameters::ParameterType = nothing,
     algorithm::Symbol = :first_order, 
     filter::Symbol = :kalman, 
+    warmup_iterations::Int = 0,
     data_in_levels::Bool = true,
     levels::Bool = true,
     smooth::Bool = true,
@@ -300,7 +302,7 @@ function get_estimated_variables(𝓂::ℳ,
         filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
         states = filtered_and_smoothed[smooth ? 1 : 5]
     elseif filter == :inversion
-        states, shocks = inversion_filter(𝓂, data_in_deviations, algorithm)
+        states, shocks = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
     end
 
     axis1 = 𝓂.timings.var

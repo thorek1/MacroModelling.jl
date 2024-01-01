@@ -82,6 +82,7 @@ function plot_model_estimates(𝓂::ℳ,
     parameters::ParameterType = nothing,
     algorithm::Symbol = :first_order, 
     filter::Symbol = :kalman, 
+    warmup_iterations::Int = 0,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     shocks::Union{Symbol_input,String_input} = :all, 
     data_in_levels::Bool = true,
@@ -141,20 +142,21 @@ function plot_model_estimates(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+    # filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
 
-    variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
-    shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
-    decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
+    # variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
+    # shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
+    # decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
 
 
     if filter == :kalman
         filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+
         variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
         shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
         decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
     elseif filter == :inversion
-        variables_to_plot, shocks_to_plot = inversion_filter(𝓂, data_in_deviations, algorithm)
+        variables_to_plot, shocks_to_plot = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
     end
 
     return_plots = []
