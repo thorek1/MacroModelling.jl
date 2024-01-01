@@ -218,102 +218,6 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         old_cond_var_decomp = get_conditional_variance_decomposition(m, verbose = true, parameters = old_par_vals)
 
 
-
-        # test conditional forecasting
-        new_sub_irfs_all  = get_irf(m, verbose = true, variables = :all, shocks = :all)
-        varnames = axiskeys(new_sub_irfs_all,1)
-        shocknames = axiskeys(new_sub_irfs_all,3)
-        sol = get_solution(m)
-        var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[1:2]
-
-        conditions = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
-        conditions[var_idxs[1],1] = .01
-        conditions[var_idxs[2],2] = .02
-        
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false)
-
-        if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
-            shocks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
-            shocks[1,1] = .1
-            cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, shocks = shocks)
-        end
-
-        conditions = spzeros(size(new_sub_irfs_all,1),2)
-        conditions[var_idxs[1],1] = .01
-        conditions[var_idxs[2],2] = .02
-        
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false)
-
-        if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
-            shocks = spzeros(size(new_sub_irfs_all,3),1)
-            shocks[1,1] = .1
-            cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, shocks = shocks)
-        end
-
-        conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs[1:2]]), Periods = 1:2)
-        conditions[var_idxs[1],1] = .01
-        conditions[var_idxs[2],2] = .02
-
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false)
-
-        conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[1:2]], Periods = 1:2)
-        conditions[var_idxs[1],1] = .01
-        conditions[var_idxs[2],2] = .02
-
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false)
-
-        if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
-            shocks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
-            shocks[1,1] = .1
-            cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, shocks = shocks)
-        end
-
-        if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
-            shocks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
-            shocks[1,1] = .1
-            cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, shocks = shocks)
-        end
-
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false)
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, verbose = true)
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), verbose = true)
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), variables = string.(varnames[1]), verbose = true)
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
-
-
-        if plots
-            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = false, show_plots = true)
-            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, verbose = true)
-            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
-            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), verbose = true)
-            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
-            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
-            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), variables = string.(varnames[1]), verbose = true)
-            plot_conditional_forecast(m, conditions, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
-        end
-
-        NSSS = get_SS(m,derivatives = false)
-        full_SS = sort(union(m.var,m.aux,m.exo_present))
-        full_SS[indexin(m.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  m.aux)
-        reference_steady_state = [s ∈ m.exo_present ? 0 : NSSS(axiskeys(NSSS,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol(s) : s) for s in full_SS]
-
-        conditions_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[1:2]], Periods = 1:2)
-        conditions_lvl[var_idxs[1],1] = .01 + reference_steady_state[var_idxs[1]]
-        conditions_lvl[var_idxs[2],2] = .02 + reference_steady_state[var_idxs[2]]
-
-        cond_fcst = get_conditional_forecast(m, conditions_lvl, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
-
-        conditions_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs[1:2]]), Periods = 1:2)
-        conditions_lvl[var_idxs[1],1] = .01 + reference_steady_state[var_idxs[1]]
-        conditions_lvl[var_idxs[2],2] = .02 + reference_steady_state[var_idxs[2]]
-
-        cond_fcst = get_conditional_forecast(m, conditions_lvl, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
-
-        cond_fcst = get_conditional_forecast(m, conditions, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = varnames[1], levels = true, verbose = true)
-
         # Test filtering and smoothing
         sol = get_solution(m)
 
@@ -327,32 +231,6 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
         data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
         data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
-
-        estim_vars1 = get_estimated_variables(m, data, data_in_levels = false, verbose = true)
-        estim_vars2 = get_estimated_variables(m, data_in_levels, verbose = true)
-        @test isapprox(estim_vars1,estim_vars2)
-
-        estim_vars1 = get_estimated_variables(m, data, data_in_levels = false, smooth = false, verbose = true)
-        estim_vars2 = get_estimated_variables(m, data_in_levels, smooth = false, verbose = true)
-        @test isapprox(estim_vars1,estim_vars2)
-
-        estim_vars1 = get_estimated_variables(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
-        estim_vars1 = get_estimated_variables(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
-        estim_vars2 = get_estimated_variables(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
-
-
-        estim_shocks1 = get_estimated_shocks(m, data, data_in_levels = false, verbose = true)
-        estim_shocks2 = get_estimated_shocks(m, data_in_levels, verbose = true)
-        @test isapprox(estim_shocks1,estim_shocks2)
-
-        estim_shocks1 = get_estimated_shocks(m, data, data_in_levels = false, smooth = false, verbose = true)
-        estim_shocks2 = get_estimated_shocks(m, data_in_levels, smooth = false, verbose = true)
-        @test isapprox(estim_shocks1,estim_shocks2)
-
-        estim_shocks1 = get_estimated_shocks(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
-        estim_shocks1 = get_estimated_shocks(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
-        estim_shocks2 = get_estimated_shocks(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
-
 
         estim_stds1 = get_estimated_variable_standard_deviations(m, data, data_in_levels = false, verbose = true)
         estim_stds2 = get_estimated_variable_standard_deviations(m, data_in_levels, verbose = true)
@@ -383,6 +261,182 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     if algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order]
         SSS = get_stochastic_steady_state(m, algorithm = algorithm)
     end
+    
+
+
+    # test conditional forecasting
+    new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = true, variables = :all, shocks = :all)
+    varnames = axiskeys(new_sub_irfs_all,1)
+    shocknames = axiskeys(new_sub_irfs_all,3)
+    sol = get_solution(m)
+    var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[1:2]
+
+    conditions = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
+    conditions[var_idxs[1],1] = .01
+    conditions[var_idxs[2],2] = .02
+    
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false)
+
+    if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
+        shocks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
+        shocks[1,1] = .1
+        cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, shocks = shocks)
+    end
+
+    conditions = spzeros(size(new_sub_irfs_all,1),2)
+    conditions[var_idxs[1],1] = .01
+    conditions[var_idxs[2],2] = .02
+    
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false)
+
+    if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
+        shocks = spzeros(size(new_sub_irfs_all,3),1)
+        shocks[1,1] = .1
+        cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, shocks = shocks)
+    end
+
+    conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs[1:2]]), Periods = 1:2)
+    conditions[var_idxs[1],1] = .01
+    conditions[var_idxs[2],2] = .02
+
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false)
+
+    conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[1:2]], Periods = 1:2)
+    conditions[var_idxs[1],1] = .01
+    conditions[var_idxs[2],2] = .02
+
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false)
+
+    if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
+        shocks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
+        shocks[1,1] = .1
+        cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, shocks = shocks)
+    end
+
+    if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
+        shocks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
+        shocks[1,1] = .1
+        cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, shocks = shocks)
+    end
+
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false)
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, verbose = true)
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), verbose = true)
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), variables = string.(varnames[1]), verbose = true)
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
+
+
+    if plots
+        plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = false, show_plots = true)
+        plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, verbose = true)
+        plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
+        plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), verbose = true)
+        plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
+        plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
+        plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), variables = string.(varnames[1]), verbose = true)
+        plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
+    end
+
+    NSSS = get_SS(m,derivatives = false)
+    full_SS = sort(union(m.var,m.aux,m.exo_present))
+    full_SS[indexin(m.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  m.aux)
+    reference_steady_state = [s ∈ m.exo_present ? 0 : NSSS(axiskeys(NSSS,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol(s) : s) for s in full_SS]
+
+    conditions_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[1:2]], Periods = 1:2)
+    conditions_lvl[var_idxs[1],1] = .01 + reference_steady_state[var_idxs[1]]
+    conditions_lvl[var_idxs[2],2] = .02 + reference_steady_state[var_idxs[2]]
+
+    cond_fcst = get_conditional_forecast(m, conditions_lvl, algorithm = algorithm, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
+
+    conditions_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs[1:2]]), Periods = 1:2)
+    conditions_lvl[var_idxs[1],1] = .01 + reference_steady_state[var_idxs[1]]
+    conditions_lvl[var_idxs[2],2] = .02 + reference_steady_state[var_idxs[2]]
+
+    cond_fcst = get_conditional_forecast(m, conditions_lvl, algorithm = algorithm, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
+
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = varnames[1], levels = true, verbose = true)
+
+    # Test filtering and smoothing
+    sol = get_solution(m)
+
+    if length(m.exo) > 1
+        var_idxs = findall(vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> 1e-10,dims = 1)) .> 1)[1:2]
+    else
+        var_idxs = [1]
+    end
+    
+    simulation = simulate(m, algorithm = algorithm)
+
+    data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
+    data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
+
+    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, verbose = true)
+    estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, verbose = true)
+    @test isapprox(estim_vars1,estim_vars2)
+
+    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, verbose = true)
+    estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, filter = :inversion, verbose = true)
+    @test isapprox(estim_vars1,estim_vars2)
+
+    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, warmup_iterations = 10, verbose = true)
+    estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, filter = :inversion, warmup_iterations = 10, verbose = true)
+    @test isapprox(estim_vars1,estim_vars2)
+
+    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, filter = :kalman, verbose = true)
+    estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, filter = :kalman, verbose = true)
+    @test isapprox(estim_vars1,estim_vars2)
+
+    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true)
+    estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, smooth = false, verbose = true)
+    @test isapprox(estim_vars1,estim_vars2)
+
+    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
+    estim_vars2 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
+
+
+    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, verbose = true)
+    estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, verbose = true)
+    @test isapprox(estim_shocks1,estim_shocks2)
+
+    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, filter = :kalman, verbose = true)
+    estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, filter = :kalman, verbose = true)
+    @test isapprox(estim_shocks1,estim_shocks2)
+
+    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, verbose = true)
+    estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, filter = :inversion, verbose = true)
+    @test isapprox(estim_shocks1,estim_shocks2)
+
+    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, warmup_iterations = 10, verbose = true)
+    estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, filter = :inversion, warmup_iterations = 10, verbose = true)
+    @test isapprox(estim_shocks1,estim_shocks2)
+
+    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true)
+    estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, smooth = false, verbose = true)
+    @test isapprox(estim_shocks1,estim_shocks2)
+
+    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
+    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+    estim_shocks2 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
+
+
+    Random.seed!(3)
+
+    shocks = randn(m.timings.nExo, 40)
+    
+    data = get_irf(𝓂, shocks = shocks, levels = true, periods = 0, algorithm = algorithm)[:,:,1]
+    
+    obs = m.var[var_idxs]
+    datA = data(obs,:)
+   
+    fshocks = get_estimated_shocks(𝓂, datA, algorithm = algorithm, filter = :inversion)
+    
+    # @test sum(abs, shocks - fshocks) < eps(Float32)
+
+
     
 
     # get_solution
