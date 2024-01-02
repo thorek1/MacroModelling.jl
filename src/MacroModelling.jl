@@ -6396,7 +6396,7 @@ function inversion_filter(𝓂::ℳ,
             opt.ftol_rel = eps()
             opt.xtol_rel = eps()
 
-            opt.maxeval = 5000
+            opt.maxeval = 500
 
             NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
 
@@ -6615,7 +6615,7 @@ function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data:
     end
 end
 
-
+global eval_count = 0
 
 
 
@@ -6626,6 +6626,9 @@ function match_data_sequence!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data
         pruning = true
     end
     
+    global eval_count
+    eval_count += 1
+
     if length(jac) > 0
         jac .= 𝒜.jacobian(𝒷(), xx -> abs.(data - (pruning ? sum(state_update(state, xx)) : state_update(state, xx))[cond_var_idx]), X)[1]'
     end

@@ -3080,7 +3080,7 @@ function get_loglikelihood(𝓂::ℳ,
         
                 opt.xtol_rel = eps()
         
-                opt.maxeval = 5000
+                opt.maxeval = 500
         
                 NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state_cp, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
         
@@ -3133,7 +3133,7 @@ function get_loglikelihood(𝓂::ℳ,
         
                 opt.xtol_rel = eps()
         
-                opt.maxeval = 5000
+                opt.maxeval = 500
         
                 NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
         
