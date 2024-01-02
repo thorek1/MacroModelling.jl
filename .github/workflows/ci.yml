@@ -28,10 +28,10 @@ jobs:
             os: windows-latest
           - version: '1.9'
             os: ubuntu-latest
-            test-set: "higher_order_estimation"
+            test_set: "higher_order_estimation"
           - version: '1.8'
             os: ubuntu-latest
-            test-set: "higher_order_estimation"
+            test_set: "higher_order_estimation"
         include:
           - os: ubuntu-latest
             prefix: xvfb-run
