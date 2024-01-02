@@ -700,7 +700,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
                 new_initial_state = state_update(initial_state, Float64[shocks[:,i]...])
 
-                Y[:,i] = pruning ? sum(initial_state) : initial_state
+                Y[:,i] = pruning ? sum(new_initial_state) : new_initial_state
                 
                 matched = sum(abs, (conditions[cond_var_idx,i] - Y[:,i][cond_var_idx])) < eps(Float32)
 
