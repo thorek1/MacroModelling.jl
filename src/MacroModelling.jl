@@ -6406,7 +6406,7 @@ function inversion_filter(𝓂::ℳ,
             state = state_update(state, warmup_shocks[:,i])
         end
 
-        matched = sum(abs, state[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
+        matched = sum(abs, state_update(state, warmup_shocks[:,end])[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
 
         @assert solved && matched "Numerical stabiltiy issues for restrictions in warmup iterations."
 
