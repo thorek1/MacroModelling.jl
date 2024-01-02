@@ -6269,6 +6269,8 @@ function inversion_filter(𝓂::ℳ,
 
     sort!(observables)
 
+    observables = observables isa String_input ? observables .|> Meta.parse .|> replace_indices : observables
+
     # solve model given the parameters
     if algorithm == :second_order
         sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂)
