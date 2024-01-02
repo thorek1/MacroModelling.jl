@@ -11,7 +11,9 @@ import Symbolics
 
 import AbstractDifferentiation as 𝒜
 import ForwardDiff as ℱ
+# import Diffractor: DiffractorForwardBackend
 𝒷 = 𝒜.ForwardDiffBackend
+# 𝒷 = Diffractor.DiffractorForwardBackend
 
 import NLopt
 # import Zygote
@@ -6415,8 +6417,8 @@ function inversion_filter(𝓂::ℳ,
     end
 
     for i in axes(data_in_deviations,2)
-        # opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
-        opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo)
+        opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
+        # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo)
 
         opt.min_objective = obc_objective_optim_fun
 
