@@ -18,12 +18,18 @@ jobs:
         arch: [x64]
         test_set: ["estimation", "higher_order_estimation", "higher_order", "plots", "basic"]
         exclude:
-          - version: ['1.8']
-            os: [macOS-latest, windows-latest]
-          - version: ['1.9']
-            os: [macOS-latest, windows-latest]
-          - version: ['1.10']
-            os: [macOS-latest, windows-latest]
+          - version: '1.8'
+            os: macOS-latest
+          - version: '1.8'
+            os: windows-latest
+          - version: '1.9'
+            os: macOS-latest
+          - version: '1.9'
+            os: windows-latest
+          - version: '1.10'
+            os: macOS-latest
+          - version: '1.10'
+            os: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v1
