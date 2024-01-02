@@ -6370,6 +6370,12 @@ function inversion_filter(𝓂::ℳ,
         end
     end
 
+    if state isa Vector{Float64}
+        pruning = false
+    else
+        pruning = true
+    end
+
     n_obs = size(data_in_deviations,2)
 
     cond_var_idx = indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))
@@ -6410,10 +6416,11 @@ function inversion_filter(𝓂::ℳ,
             state = state_update(state, warmup_shocks[:,i])
         end
 
-        matched = sum(abs, state_update(state, warmup_shocks[:,end])[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
+        matched_state = state_update(state, warmup_shocks[:,end])
+
+        matched = sum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
 
         @assert solved && matched "Numerical stabiltiy issues for restrictions in warmup iterations."
-
     end
 
     for i in axes(data_in_deviations,2)
@@ -6441,11 +6448,11 @@ function inversion_filter(𝓂::ℳ,
 
         state = state_update(state, x)
 
-        matched = sum(abs, state[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
+        matched = sum(abs, (pruning ? sum(state) : state)[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
 
         @assert solved && matched "Numerical stabiltiy issues for restrictions in period $i."
 
-        states[:,i] = state isa Vector{Float64} ? state : sum(state)
+        states[:,i] = pruning ? sum(state) : state
         shocks[:,i] = x
     end
         
