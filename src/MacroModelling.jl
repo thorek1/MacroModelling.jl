@@ -6400,21 +6400,16 @@ function inversion_filter(𝓂::ℳ,
             @error "No solution for these parameters."
         end
 
-        jacc = zeros(0, 0)
-
-        res = zeros(size(data_in_deviations,1))
-
-        match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
-
-        matched = sum(abs, res) < eps(Float32)
-
-        @assert solved && matched "Numerical stabiltiy issues for restrictions in warmup iterations."
-
         warmup_shocks = reshape(x,𝓂.timings.nExo, warmup_iterations)
 
         for i in 1:warmup_iterations-1
             state = state_update(state, warmup_shocks[:,i])
         end
+
+        matched = sum(abs, state[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
+
+        @assert solved && matched "Numerical stabiltiy issues for restrictions in warmup iterations."
+
     end
 
     for i in axes(data_in_deviations,2)
@@ -6440,17 +6435,11 @@ function inversion_filter(𝓂::ℳ,
             NLopt.ROUNDOFF_LIMITED,
         ])
 
-        jacc = zeros(0, 0)
+        state = state_update(state, x)
 
-        res = zeros(size(data_in_deviations,1))
-
-        match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
-
-        matched = sum(abs, res) < eps(Float32)
+        matched = sum(abs, state[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
 
         @assert solved && matched "Numerical stabiltiy issues for restrictions in period $i."
-
-        state = state_update(state, x)
 
         states[:,i] = state isa Vector{Float64} ? state : sum(state)
         shocks[:,i] = x
