@@ -44,7 +44,7 @@ n_samples = 1000
 samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
 println(mean(samps).nt.mean)
-
+sample_nuts = mean(samps).nt.mean
 
 pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000)),
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
@@ -55,6 +55,10 @@ pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelih
 sampss = MCMCChains.Chains(Pigeons.get_sample(pt))
 
 println(mean(sampss).nt.mean)
+
+sample_pigeons = mean(sampss).nt.mean
+
+@test isapprox(sample_pigeons, sample_nuts, rtol = 1e-3)
 
 Random.seed!(30)
 
