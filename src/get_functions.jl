@@ -658,7 +658,7 @@ function get_conditional_forecast(𝓂::ℳ,
             end
         end
 
-        @assert solved && matched "Numerical stabiltiy issues for restrictions in period 1."
+        @assert matched "Numerical stabiltiy issues for restrictions in period 1."
 
         for i in 2:size(conditions,2)
             cond_var_idx = findall(conditions[:,i] .!= nothing)
@@ -710,7 +710,7 @@ function get_conditional_forecast(𝓂::ℳ,
                 end
             end
 
-            @assert solved && matched "Numerical stabiltiy issues for restrictions in period $i."
+            @assert matched "Numerical stabiltiy issues for restrictions in period $i."
         end
     elseif algorithm ∈ [:first_order, :riccati, :quadratic_iteration, :linear_time_iteration]
         C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]

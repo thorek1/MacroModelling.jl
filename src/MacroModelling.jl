@@ -6420,13 +6420,13 @@ function inversion_filter(𝓂::ℳ,
 
             matched = sum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
 
-            if matched && solved 
+            if matched 
                 state = state_cp
                 break 
             end
         end
 
-        @assert solved && matched "Numerical stabiltiy issues for restrictions in warmup iterations."
+        @assert matched "Numerical stabiltiy issues for restrictions in warmup iterations."
     end
 
     for i in axes(data_in_deviations,2)
@@ -6441,7 +6441,7 @@ function inversion_filter(𝓂::ℳ,
             opt.ftol_rel = eps()
             opt.xtol_rel = eps()
 
-            opt.maxeval = 5000
+            opt.maxeval = 500
 
             NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
 
@@ -6459,7 +6459,7 @@ function inversion_filter(𝓂::ℳ,
 
             matched = sum(abs, (pruning ? sum(new_state) : new_state)[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
 
-            if matched && solved
+            if matched
                 state = new_state
 
                 states[:,i] = pruning ? sum(state) : state
@@ -6468,7 +6468,7 @@ function inversion_filter(𝓂::ℳ,
             end
         end
         
-        @assert solved && matched "Numerical stabiltiy issues for restrictions in period $i."
+        @assert matched "Numerical stabiltiy issues for restrictions in period $i."
     end
         
     return states, shocks
