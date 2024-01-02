@@ -6384,76 +6384,91 @@ function inversion_filter(𝓂::ℳ,
     shocks = zeros(𝓂.timings.nExo, n_obs)
 
     if warmup_iterations > 0
-        opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
-        # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo * warmup_iterations)
+        state_cp = state
+        matched = false
+        solved = false
 
-        opt.min_objective = obc_objective_optim_fun
+        for algo in [NLopt.:LD_SLSQP, NLopt.:LN_COBYLA]
+            opt = NLopt.Opt(algo, 𝓂.timings.nExo * warmup_iterations)
 
-        opt.ftol_rel = eps()
-        opt.xtol_rel = eps()
+            opt.min_objective = obc_objective_optim_fun
 
-        opt.maxeval = 5000
+            opt.ftol_rel = eps()
+            opt.xtol_rel = eps()
 
-        NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
+            opt.maxeval = 5000
 
-        (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
+            NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
 
-        solved = ret ∈ Symbol.([
-            NLopt.SUCCESS,
-            NLopt.STOPVAL_REACHED,
-            NLopt.FTOL_REACHED,
-            NLopt.XTOL_REACHED,
-            NLopt.ROUNDOFF_LIMITED,
-        ])
+            (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
 
-        if !solved 
-            @error "No solution for these parameters."
+            solved = ret ∈ Symbol.([
+                NLopt.SUCCESS,
+                NLopt.STOPVAL_REACHED,
+                NLopt.FTOL_REACHED,
+                NLopt.XTOL_REACHED,
+                NLopt.ROUNDOFF_LIMITED,
+            ])
+
+            warmup_shocks = reshape(x,𝓂.timings.nExo, warmup_iterations)
+
+            for i in 1:warmup_iterations-1
+                state_cp = state_update(state_cp, warmup_shocks[:,i])
+            end
+
+            matched_state = state_update(state_cp, warmup_shocks[:,end])
+
+            matched = sum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
+
+            if matched && solved 
+                state = state_cp
+                break 
+            end
         end
-
-        warmup_shocks = reshape(x,𝓂.timings.nExo, warmup_iterations)
-
-        for i in 1:warmup_iterations-1
-            state = state_update(state, warmup_shocks[:,i])
-        end
-
-        matched_state = state_update(state, warmup_shocks[:,end])
-
-        matched = sum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
 
         @assert solved && matched "Numerical stabiltiy issues for restrictions in warmup iterations."
     end
 
     for i in axes(data_in_deviations,2)
-        opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
-        # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo)
+        matched = false
+        solved = false
 
-        opt.min_objective = obc_objective_optim_fun
+        for algo in [NLopt.:LD_SLSQP, NLopt.:LN_COBYLA]
+            opt = NLopt.Opt(algo, 𝓂.timings.nExo)
 
-        opt.ftol_rel = eps()
-        opt.xtol_rel = eps()
+            opt.min_objective = obc_objective_optim_fun
 
-        opt.maxeval = 5000
+            opt.ftol_rel = eps()
+            opt.xtol_rel = eps()
 
-        NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
+            opt.maxeval = 5000
 
-        (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
+            NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
 
-        solved = ret ∈ Symbol.([
-            NLopt.SUCCESS,
-            NLopt.STOPVAL_REACHED,
-            NLopt.FTOL_REACHED,
-            NLopt.XTOL_REACHED,
-            NLopt.ROUNDOFF_LIMITED,
-        ])
+            (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
 
-        state = state_update(state, x)
+            solved = ret ∈ Symbol.([
+                NLopt.SUCCESS,
+                NLopt.STOPVAL_REACHED,
+                NLopt.FTOL_REACHED,
+                NLopt.XTOL_REACHED,
+                NLopt.ROUNDOFF_LIMITED,
+            ])
 
-        matched = sum(abs, (pruning ? sum(state) : state)[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
+            new_state = state_update(state, x)
 
+            matched = sum(abs, (pruning ? sum(new_state) : new_state)[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
+
+            if matched && solved
+                state = new_state
+
+                states[:,i] = pruning ? sum(state) : state
+                shocks[:,i] = x
+                break 
+            end
+        end
+        
         @assert solved && matched "Numerical stabiltiy issues for restrictions in period $i."
-
-        states[:,i] = pruning ? sum(state) : state
-        shocks[:,i] = x
     end
         
     return states, shocks
