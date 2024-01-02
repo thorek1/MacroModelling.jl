@@ -22,14 +22,14 @@ jobs:
             os: macOS-latest
           - version: '1.8'
             os: windows-latest
+          - version: '1.8'
+            os: ubuntu-latest
+            test_set: "higher_order_estimation"
           - version: '1.9'
             os: macOS-latest
           - version: '1.9'
             os: windows-latest
           - version: '1.9'
-            os: ubuntu-latest
-            test_set: "higher_order_estimation"
-          - version: '1.8'
             os: ubuntu-latest
             test_set: "higher_order_estimation"
         include:
