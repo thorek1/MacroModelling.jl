@@ -6261,20 +6261,13 @@ function inversion_filter(𝓂::ℳ,
     verbose::Bool = false, 
     tol::AbstractFloat = eps())
     
-
-    # @assert length(observables) == size(data_in_deviations)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
-
-    # @assert !(size(data)[1] == sum(shock_idx)) "The inversion filter only works when there are as many shocks as there are observables."
-
-    # shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
-
     observables = collect(axiskeys(data_in_deviations,1))
 
+    data_in_deviations = collect(data_in_deviations)
+    
     @assert observables isa Vector{String} || observables isa Vector{Symbol} "Make sure that the data has variables names as rows. They can be either Strings or Symbols."
 
     sort!(observables)
-
-    # solve!(𝓂, verbose = verbose, algorithm = algorithm)
 
     # solve model given the parameters
     if algorithm == :second_order
@@ -6373,21 +6366,9 @@ function inversion_filter(𝓂::ℳ,
         end
     end
 
-    # prepare data
-    # NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
-
-    # obs_indices = indexin(observables,NSSS_labels)
-
-    # data_in_deviations = collect(data) .- SS_and_pars[obs_indices]
-
-    data_in_deviations = collect(data_in_deviations)
-    
     n_obs = size(data_in_deviations,2)
 
     cond_var_idx = indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))
-
-    # shocks² = 0.0
-    # logabsdets = 0.0
 
     states = zeros(𝓂.timings.nVars, n_obs)
     shocks = zeros(𝓂.timings.nExo, n_obs)
@@ -6421,28 +6402,24 @@ function inversion_filter(𝓂::ℳ,
 
         jacc = zeros(0, 0)
 
-        match_initial_data!(Float64[], x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
-        
-        # for i in 1:warmup_iterations
-        #     logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:])[1]
-        # end
+        res = zeros(size(data_in_deviations,1))
 
-        # shocks² += sum(abs2,x)
+        match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
+
+        matched = sum(abs, res) < eps(Float32)
+
+        @assert solved && matched "Numerical stabiltiy issues for restrictions in warmup iterations."
 
         warmup_shocks = reshape(x,𝓂.timings.nExo, warmup_iterations)
-
-        # state = zeros(𝓂.timings.nVars)
 
         for i in 1:warmup_iterations-1
             state = state_update(state, warmup_shocks[:,i])
         end
-
-        # states[:,1] = state
     end
 
     for i in axes(data_in_deviations,2)
-        opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
-        # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo)
+        # opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
+        opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo)
 
         opt.min_objective = obc_objective_optim_fun
 
@@ -6463,17 +6440,15 @@ function inversion_filter(𝓂::ℳ,
             NLopt.ROUNDOFF_LIMITED,
         ])
 
-        if !solved 
-            @error "No solution for these parameters."
-        end
-
         jacc = zeros(0, 0)
 
-        match_data_sequence!(Float64[], x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
+        res = zeros(size(data_in_deviations,1))
 
-        # logabsdets += ℒ.logabsdet(jacc)[1]
+        match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
 
-        # shocks² += sum(abs2,x)
+        matched = sum(abs, res) < eps(Float32)
+
+        @assert solved && matched "Numerical stabiltiy issues for restrictions in period $i."
 
         state = state_update(state, x)
 
