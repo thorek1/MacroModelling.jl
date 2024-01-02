@@ -6521,7 +6521,12 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
     # Kalman Filter
     for t in axes(data_in_deviations,2)
         v[:, t]     .= data_in_deviations[:, t] - C * μ[:, t]
-        iF[:, :, t] .= inv(C * P[:, :, t] * C')
+        
+        F̄ = RF.lu(C * P[:, :, t] * C', check = false)
+
+        @assert ℒ.issuccess(F̄) "Numerical stability issues in Kalman filter in period $t."
+
+        iF[:, :, t] .= inv(F̄)
         PCiF         = P[:, :, t] * C' * iF[:, :, t]
         L[:, :, t]  .= A - A * PCiF * C
         P[:, :, t+1].= A * P[:, :, t] * L[:, :, t]' + 𝐁
