@@ -6391,7 +6391,6 @@ function inversion_filter(𝓂::ℳ,
         opt.min_objective = obc_objective_optim_fun
 
         opt.ftol_rel = eps()
-        opt.xtol_rel = eps()
 
         opt.maxeval = 5000
 
@@ -6407,7 +6406,7 @@ function inversion_filter(𝓂::ℳ,
 
         matched_state = state_update(state, warmup_shocks[:,end])
 
-        matched = sum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
+        matched = maximum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
 
         @assert matched "Numerical stabiltiy issues for restrictions in warmup iterations."
     end
@@ -6420,7 +6419,6 @@ function inversion_filter(𝓂::ℳ,
         opt.min_objective = obc_objective_optim_fun
 
         opt.ftol_rel = eps()
-        opt.xtol_rel = eps()
 
         opt.maxeval = 5000
 
@@ -6430,7 +6428,7 @@ function inversion_filter(𝓂::ℳ,
 
         state = state_update(state, x)
 
-        matched = sum(abs, (pruning ? sum(state) : state)[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
+        matched = maximum(abs, (pruning ? sum(state) : state)[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
 
         states[:,i] = pruning ? sum(state) : state
         shocks[:,i] = x

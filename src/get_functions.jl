@@ -640,8 +640,8 @@ function get_conditional_forecast(𝓂::ℳ,
 
         Y[:,1] = pruning ? sum(initial_state) : initial_state
 
-        matched = sum(abs, (conditions[cond_var_idx,1] - Y[:,1][cond_var_idx])) < eps(Float32)
-
+        matched = maximum(abs, conditions[cond_var_idx,1] - Y[:,1][cond_var_idx]) < eps(Float32)
+        
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
 
         for i in 2:size(conditions,2)
@@ -679,7 +679,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
             Y[:,i] = pruning ? sum(initial_state) : initial_state
             
-            matched = sum(abs, (conditions[cond_var_idx,i] - Y[:,i][cond_var_idx])) < eps(Float32)
+            matched = maximum(abs, conditions[cond_var_idx,i] - Y[:,i][cond_var_idx]) < eps(Float32)
 
             @assert matched "Numerical stabiltiy issues for restrictions in period $i."
         end
@@ -3049,7 +3049,6 @@ function get_loglikelihood(𝓂::ℳ,
             opt.min_objective = obc_objective_optim_fun
     
             opt.ftol_rel = eps()
-            # opt.xtol_rel = eps()
     
             opt.maxeval = 5000
     
@@ -3057,26 +3056,20 @@ function get_loglikelihood(𝓂::ℳ,
     
             (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
     
+            res = zeros(size(data_in_deviations, 1))
+
             jacc = zeros(length(observables) * warmup_iterations, length(observables))
 
-            match_initial_data!(Float64[], x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
+            match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
             
+            matched = maximum(abs, res) < eps(Float32)
+
+            if !matched return -Inf end
+
             for i in 1:warmup_iterations
                 logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:])[1]
             end
 
-            warmup_shocks = reshape(x,𝓂.timings.nExo, warmup_iterations)
-    
-            for i in 1:warmup_iterations-1
-                state = state_update(state, warmup_shocks[:,i])
-            end
-
-            matched_state = state_update(state, warmup_shocks[:,end])
-
-            matched = sum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
-
-            if !matched return -Inf end
-    
             shocks² += sum(abs2,x)
         end
 
@@ -3087,7 +3080,7 @@ function get_loglikelihood(𝓂::ℳ,
     
             opt.min_objective = obc_objective_optim_fun
     
-            opt.xtol_rel = eps()
+            opt.ftol_rel = eps()
     
             opt.maxeval = 5000
     
@@ -3095,18 +3088,21 @@ function get_loglikelihood(𝓂::ℳ,
     
             (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
 
+            res  = zeros(length(observables))
+
             jacc = zeros(length(observables), length(observables))
 
-            match_data_sequence!(Float64[], x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
+            match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
 
-            logabsdets += ℒ.logabsdet(jacc)[1]
-            state = state_update(state, x)
-        
-            matched = sum(abs, (pruning ? sum(state) : state)[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
+            matched = maximum(abs, res) < eps(Float32)
 
             if !matched return -Inf end
-    
+
+            logabsdets += ℒ.logabsdet(jacc)[1]
+        
             shocks² += sum(abs2,x)
+
+            state = state_update(state, x)
         end
         
         return -(logabsdets + shocks² + (𝓂.timings.nExo * (warmup_iterations + n_obs)) * log(2 * 3.141592653589793)) / 2
