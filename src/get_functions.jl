@@ -652,7 +652,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
             matched = sum(abs, (conditions[cond_var_idx,1] - Y[:,1][cond_var_idx])) < eps(Float32)
 
-            if matched && solved 
+            if matched 
                 initial_state = new_initial_state
                 break
             end
@@ -704,7 +704,7 @@ function get_conditional_forecast(𝓂::ℳ,
                 
                 matched = sum(abs, (conditions[cond_var_idx,i] - Y[:,i][cond_var_idx])) < eps(Float32)
 
-                if matched && solved 
+                if matched 
                     initial_state = new_initial_state
                     break
                 end
@@ -3104,7 +3104,7 @@ function get_loglikelihood(𝓂::ℳ,
 
                 matched = sum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
 
-                if matched && solved
+                if matched
                     jacc = zeros(length(observables) * warmup_iterations, length(observables))
 
                     match_initial_data!(Float64[], x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
@@ -3121,7 +3121,7 @@ function get_loglikelihood(𝓂::ℳ,
                 end
             end
 
-            if !(solved && matched) return -Inf end
+            if !matched return -Inf end
     
         end
 
@@ -3151,7 +3151,7 @@ function get_loglikelihood(𝓂::ℳ,
             
                 matched = sum(abs, (pruning ? sum(new_state) : new_state)[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
 
-                if matched && solved
+                if matched
                     jacc = zeros(length(observables), length(observables))
 
                     match_data_sequence!(Float64[], x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
@@ -3166,7 +3166,7 @@ function get_loglikelihood(𝓂::ℳ,
                 end
             end
 
-            if !(solved && matched) return -Inf end
+            if !matched return -Inf end
         end
         
         return -(logabsdets + shocks² + (𝓂.timings.nExo * (warmup_iterations + n_obs)) * log(2 * 3.141592653589793)) / 2
