@@ -6431,11 +6431,11 @@ function inversion_filter(𝓂::ℳ,
 
         for algo in [NLopt.:LD_TNEWTON, NLopt.:LD_LBFGS, NLopt.:LN_COBYLA]
             if algo == NLopt.:LN_COBYLA
-                opt = NLopt.Opt(algo, 𝓂.timings.nExo * warmup_iterations)
+                opt = NLopt.Opt(algo, 𝓂.timings.nExo)
             else
-                opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo * warmup_iterations)
+                opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo)
 
-                NLopt.local_optimizer!(opt, NLopt.Opt(algo, 𝓂.timings.nExo * warmup_iterations))
+                NLopt.local_optimizer!(opt, NLopt.Opt(algo, 𝓂.timings.nExo))
             end
 
             opt.min_objective = obc_objective_optim_fun
