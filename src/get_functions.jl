@@ -3058,6 +3058,7 @@ function get_loglikelihood(𝓂::ℳ,
         return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2
         
     elseif filter == :inversion
+        SQP_shock_threshold = 5
 
         n_obs = size(data_in_deviations,2)
     
@@ -3067,68 +3068,107 @@ function get_loglikelihood(𝓂::ℳ,
         logabsdets = 0.0
     
         if warmup_iterations > 0
+            matched = false
 
-            opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo * warmup_iterations)
+            for algo in [NLopt.:LD_SLSQP, NLopt.:LD_TNEWTON, NLopt.:LD_LBFGS, NLopt.:LN_COBYLA]
+                if algo == NLopt.:LD_SLSQP
+                    opt = NLopt.Opt(algo, 𝓂.timings.nExo * warmup_iterations)
 
-            NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_TNEWTON, 𝓂.timings.nExo * warmup_iterations))    
+                    opt.maxeval = 500
+                elseif algo == NLopt.:LN_COBYLA
+                    opt = NLopt.Opt(algo, 𝓂.timings.nExo * warmup_iterations)
 
-            opt.min_objective = obc_objective_optim_fun
+                    opt.maxeval = 5000
+                else
+                    opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo * warmup_iterations)
     
-            opt.ftol_rel = eps()
-    
-            opt.maxeval = 5000
-    
-            NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
-    
-            (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
-    
-            res = zeros(size(data_in_deviations, 1))
+                    NLopt.local_optimizer!(opt, NLopt.Opt(algo, 𝓂.timings.nExo * warmup_iterations))
 
-            jacc = zeros(length(observables) * warmup_iterations, length(observables))
+                    opt.maxeval = 1000
+                end
 
-            match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
-            
-            matched = maximum(abs, res) < eps(Float32)
+                opt.min_objective = obc_objective_optim_fun
+        
+                opt.ftol_rel = eps()
+        
+                opt.maxeval = 5000
+        
+                NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
+        
+                (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
+        
+                res = zeros(size(data_in_deviations, 1))
+
+                jacc = zeros(length(observables) * warmup_iterations, length(observables))
+
+                match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
+                
+                matched = maximum(abs, res) < eps(Float32)
+
+                if matched && !(algo == NLopt.:LD_SLSQP && maximum(abs, x) > SQP_shock_threshold)
+                    for i in 1:warmup_iterations
+                        logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:])[1]
+                    end
+
+                    shocks² += sum(abs2,x)
+
+                    break 
+                end
+            end
 
             if !matched return -Inf end
 
-            for i in 1:warmup_iterations
-                logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:])[1]
-            end
-
-            shocks² += sum(abs2,x)
         end
 
         for i in axes(data_in_deviations,2)
-            opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo)
+            matched = false
 
-            NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_TNEWTON, 𝓂.timings.nExo))   
-    
-            opt.min_objective = obc_objective_optim_fun
-    
-            opt.ftol_rel = eps()
-    
-            opt.maxeval = 5000
-    
-            NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
-    
-            (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
+            for algo in [NLopt.:LD_SLSQP, NLopt.:LN_COBYLA, NLopt.:LD_TNEWTON, NLopt.:LD_LBFGS]
+                if algo == NLopt.:LD_SLSQP
+                    opt = NLopt.Opt(algo, 𝓂.timings.nExo)
 
-            res  = zeros(length(observables))
+                    opt.maxeval = 500
+                elseif algo == NLopt.:LN_COBYLA
+                    opt = NLopt.Opt(algo, 𝓂.timings.nExo)
 
-            jacc = zeros(length(observables), length(observables))
+                    opt.maxeval = 5000
+                else
+                    opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo)
+    
+                    NLopt.local_optimizer!(opt, NLopt.Opt(algo, 𝓂.timings.nExo))
 
-            match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
+                    opt.maxeval = 1000
+                end
 
-            matched = maximum(abs, res) < eps(Float32)
+                opt.min_objective = obc_objective_optim_fun
+        
+                opt.ftol_rel = eps()
+        
+                NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
+        
+                (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
+
+                res  = zeros(length(observables))
+
+                jacc = zeros(length(observables), length(observables))
+
+                match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
+
+                matched = maximum(abs, res) < eps(Float32)
+
+                if matched && !(algo == NLopt.:LD_SLSQP && maximum(abs, x) > SQP_shock_threshold)
+                    logabsdets += ℒ.logabsdet(jacc)[1]
+                
+                    shocks² += sum(abs2,x)
+
+                    state = state_update(state, x)
+
+                    break 
+                end
+            end
 
             if !matched return -Inf end
 
-            logabsdets += ℒ.logabsdet(jacc)[1]
-        
-            shocks² += sum(abs2,x)
-
-            state = state_update(state, x)
         end
         
         return -(logabsdets + shocks² + (𝓂.timings.nExo * (warmup_iterations + n_obs)) * log(2 * 3.141592653589793)) / 2
