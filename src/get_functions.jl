@@ -621,42 +621,26 @@ function get_conditional_forecast(𝓂::ℳ,
         initial_state_copy = deepcopy(initial_state)
 
         p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state_copy, pruning, 𝒷)
+    
+        opt = NLopt.Opt(NLopt.:AUGLAG, length(free_shock_idx))
+
+        NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_TNEWTON, length(free_shock_idx)))
+
+        opt.min_objective = obc_objective_optim_fun
         
-        solved = false
-        matched = false
+        opt.xtol_rel = eps()
+        
+        NLopt.equality_constraint!(opt, (res,x,jac) -> match_conditions(res,x,jac,p), zeros(length(cond_var_idx)))
+        
+        (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
+        
+        shocks[free_shock_idx,1] .= x
+        
+        initial_state = state_update(initial_state, Float64[shocks[:,1]...])
 
-        for algo ∈ [NLopt.:LD_SLSQP, NLopt.:LN_COBYLA] 
-            opt = NLopt.Opt(algo, length(free_shock_idx))
+        Y[:,1] = pruning ? sum(initial_state) : initial_state
 
-            opt.min_objective = obc_objective_optim_fun
-            
-            opt.xtol_rel = eps()
-            
-            NLopt.equality_constraint!(opt, (res,x,jac) -> match_conditions(res,x,jac,p), zeros(length(cond_var_idx)))
-            
-            (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
-            
-            solved = ret ∈ Symbol.([
-                NLopt.SUCCESS,
-                NLopt.STOPVAL_REACHED,
-                NLopt.FTOL_REACHED,
-                NLopt.XTOL_REACHED,
-                NLopt.ROUNDOFF_LIMITED,
-            ])
-
-            shocks[free_shock_idx,1] .= x
-            
-            new_initial_state = state_update(initial_state, Float64[shocks[:,1]...])
-
-            Y[:,1] = pruning ? sum(new_initial_state) : new_initial_state
-
-            matched = sum(abs, (conditions[cond_var_idx,1] - Y[:,1][cond_var_idx])) < eps(Float32)
-
-            if matched 
-                initial_state = new_initial_state
-                break
-            end
-        end
+        matched = sum(abs, (conditions[cond_var_idx,1] - Y[:,1][cond_var_idx])) < eps(Float32)
 
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
 
@@ -676,39 +660,26 @@ function get_conditional_forecast(𝓂::ℳ,
             @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
     
             p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, 𝒷)
+    
+            opt = NLopt.Opt(NLopt.:AUGLAG, length(free_shock_idx))
 
-            for algo ∈ [NLopt.:LD_SLSQP, NLopt.:LN_COBYLA] 
-                opt = NLopt.Opt(algo, length(free_shock_idx))
+            NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_TNEWTON, length(free_shock_idx)))    
 
-                opt.min_objective = obc_objective_optim_fun
-                
-                opt.xtol_rel = eps()
+            opt.min_objective = obc_objective_optim_fun
+            
+            opt.xtol_rel = eps()
 
-                NLopt.equality_constraint!(opt, (x,y,z) -> match_conditions(x,y,z,p), zeros(length(cond_var_idx)))
-                
-                (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
-                
-                solved = ret ∈ Symbol.([
-                    NLopt.SUCCESS,
-                    NLopt.STOPVAL_REACHED,
-                    NLopt.FTOL_REACHED,
-                    NLopt.XTOL_REACHED,
-                    NLopt.ROUNDOFF_LIMITED,
-                ])
+            NLopt.equality_constraint!(opt, (x,y,z) -> match_conditions(x,y,z,p), zeros(length(cond_var_idx)))
+            
+            (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
+            
+            shocks[free_shock_idx,i] .= x
 
-                shocks[free_shock_idx,i] .= x
+            initial_state = state_update(initial_state, Float64[shocks[:,i]...])
 
-                new_initial_state = state_update(initial_state, Float64[shocks[:,i]...])
-
-                Y[:,i] = pruning ? sum(new_initial_state) : new_initial_state
-                
-                matched = sum(abs, (conditions[cond_var_idx,i] - Y[:,i][cond_var_idx])) < eps(Float32)
-
-                if matched 
-                    initial_state = new_initial_state
-                    break
-                end
-            end
+            Y[:,i] = pruning ? sum(initial_state) : initial_state
+            
+            matched = sum(abs, (conditions[cond_var_idx,i] - Y[:,i][cond_var_idx])) < eps(Float32)
 
             @assert matched "Numerical stabiltiy issues for restrictions in period $i."
         end
@@ -1105,6 +1076,7 @@ function get_irf(𝓂::ℳ;
                     solved = false
 
                     for algo ∈ [NLopt.:LD_SLSQP, NLopt.:LN_COBYLA] 
+                        # check whether auglag is more reliable here (as in gives smaller shock size)
                         opt = NLopt.Opt(algo, num_shocks*periods_per_shock)
                     
                         opt.min_objective = obc_objective_optim_fun
@@ -3069,104 +3041,72 @@ function get_loglikelihood(𝓂::ℳ,
         logabsdets = 0.0
     
         if warmup_iterations > 0
-            solved = false
-            matched = false
-            state_cp = deepcopy(state)
 
-            for algo ∈ [NLopt.:LD_SLSQP, NLopt.:LN_COBYLA] 
-                opt = NLopt.Opt(algo, 𝓂.timings.nExo * warmup_iterations)
-        
-                opt.min_objective = obc_objective_optim_fun
-        
-                opt.xtol_rel = eps()
-        
-                opt.maxeval = 500
-        
-                NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state_cp, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
-        
-                (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
-        
-                solved = ret ∈ Symbol.([
-                    NLopt.SUCCESS,
-                    NLopt.STOPVAL_REACHED,
-                    NLopt.FTOL_REACHED,
-                    NLopt.XTOL_REACHED,
-                    NLopt.ROUNDOFF_LIMITED,
-                ])
-        
-                warmup_shocks = reshape(x,𝓂.timings.nExo, warmup_iterations)
-        
-                for i in 1:warmup_iterations-1
-                    state_cp = state_update(state_cp, warmup_shocks[:,i])
-                end
+            opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo * warmup_iterations)
 
-                matched_state = state_update(state_cp, warmup_shocks[:,end])
+            NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_TNEWTON, 𝓂.timings.nExo * warmup_iterations))    
 
-                matched = sum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
+            opt.min_objective = obc_objective_optim_fun
+    
+            opt.ftol_rel = eps()
+            # opt.xtol_rel = eps()
+    
+            opt.maxeval = 5000
+    
+            NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
+    
+            (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
+    
+            jacc = zeros(length(observables) * warmup_iterations, length(observables))
 
-                if matched
-                    jacc = zeros(length(observables) * warmup_iterations, length(observables))
-
-                    match_initial_data!(Float64[], x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
-                    
-                    for i in 1:warmup_iterations
-                        logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:])[1]
-                    end
+            match_initial_data!(Float64[], x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
             
-                    shocks² += sum(abs2,x)
-
-                    state = state_cp
-
-                    break
-                end
+            for i in 1:warmup_iterations
+                logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:])[1]
             end
+
+            warmup_shocks = reshape(x,𝓂.timings.nExo, warmup_iterations)
+    
+            for i in 1:warmup_iterations-1
+                state = state_update(state, warmup_shocks[:,i])
+            end
+
+            matched_state = state_update(state, warmup_shocks[:,end])
+
+            matched = sum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < eps(Float32)
 
             if !matched return -Inf end
     
+            shocks² += sum(abs2,x)
         end
 
         for i in axes(data_in_deviations,2)
-            for algo ∈ [NLopt.:LD_SLSQP, NLopt.:LN_COBYLA] 
-                opt = NLopt.Opt(algo, 𝓂.timings.nExo)
+            opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo)
+
+            NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_TNEWTON, 𝓂.timings.nExo))   
     
-                opt.min_objective = obc_objective_optim_fun
-        
-                opt.xtol_rel = eps()
-        
-                opt.maxeval = 500
-        
-                NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
-        
-                (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
-        
-                solved = ret ∈ Symbol.([
-                    NLopt.SUCCESS,
-                    NLopt.STOPVAL_REACHED,
-                    NLopt.FTOL_REACHED,
-                    NLopt.XTOL_REACHED,
-                    NLopt.ROUNDOFF_LIMITED,
-                ])
-        
-                new_state = state_update(state, x)
-            
-                matched = sum(abs, (pruning ? sum(new_state) : new_state)[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
+            opt.min_objective = obc_objective_optim_fun
+    
+            opt.xtol_rel = eps()
+    
+            opt.maxeval = 5000
+    
+            NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
+    
+            (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
 
-                if matched
-                    jacc = zeros(length(observables), length(observables))
+            jacc = zeros(length(observables), length(observables))
 
-                    match_data_sequence!(Float64[], x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
+            match_data_sequence!(Float64[], x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
 
-                    logabsdets += ℒ.logabsdet(jacc)[1]
-            
-                    shocks² += sum(abs2,x)
-
-                    state = new_state
-
-                    break
-                end
-            end
+            logabsdets += ℒ.logabsdet(jacc)[1]
+            state = state_update(state, x)
+        
+            matched = sum(abs, (pruning ? sum(state) : state)[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
 
             if !matched return -Inf end
+    
+            shocks² += sum(abs2,x)
         end
         
         return -(logabsdets + shocks² + (𝓂.timings.nExo * (warmup_iterations + n_obs)) * log(2 * 3.141592653589793)) / 2

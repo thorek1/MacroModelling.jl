@@ -504,7 +504,7 @@ function plot_irf(𝓂::ℳ;
 
                 if constraints_violated
                     opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
-                    
+                    # check whether auglag is more reliable and efficient here
                     opt.min_objective = obc_objective_optim_fun
 
                     opt.xtol_rel = eps()
