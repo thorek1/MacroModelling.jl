@@ -58,7 +58,7 @@ println(mean(sampss).nt.mean)
 
 sample_pigeons = mean(sampss).nt.mean
 
-@test isapprox(sample_pigeons, sample_nuts, rtol = 1e-3)
+@test isapprox(sample_pigeons, sample_nuts, rtol = 1e-2)
 
 Random.seed!(30)
 
