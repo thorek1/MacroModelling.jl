@@ -6512,7 +6512,7 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
     μ = zeros(size(A,1), n_obs+1) # filtered_states
     P = zeros(size(A,1), size(A,1), n_obs+1) # filtered_covariances
     σ = zeros(size(A,1), n_obs) # filtered_standard_deviations
-    F= zeros(size(C,1), size(C,1), n_obs)
+    iF= zeros(size(C,1), size(C,1), n_obs)
     L = zeros(size(A,1), size(A,1), n_obs)
     ϵ = zeros(size(B,2), n_obs) # filtered_shocks
 
@@ -6521,13 +6521,17 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
     # Kalman Filter
     for t in axes(data_in_deviations,2)
         v[:, t]     .= data_in_deviations[:, t] - C * μ[:, t]
-        F[:, :, t] .= C * P[:, :, t] * C'
-        PCiF         = P[:, :, t] * C' / F[:, :, t]
+
+        F̄ = ℒ.lu(C * P[:, :, t] * C', check = false)
+        @assert ℒ.issuccess(F̄) "Numerical stabiltiy issues in Kalman filter period $t."
+
+        iF[:, :, t] .= inv(F̄)
+        PCiF         = P[:, :, t] * C' * iF[:, :, t]
         L[:, :, t]  .= A - A * PCiF * C
         P[:, :, t+1].= A * P[:, :, t] * L[:, :, t]' + 𝐁
         σ[:, t]     .= sqrt.(abs.(ℒ.diag(P[:, :, t+1]))) # small numerical errors in this computation
         μ[:, t+1]   .= A * (μ[:, t] + PCiF * v[:, t])
-        ϵ[:, t]     .= B' * C' / F[:, :, t] * v[:, t]
+        ϵ[:, t]     .= B' * C' * iF[:, :, t] * v[:, t]
     end
 
 
@@ -6553,9 +6557,9 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
 
     # Kalman Smoother
     for t in n_obs:-1:1
-        r       .= C' / F[:, :, t] * v[:, t] + L[:, :, t]' * r
+        r       .= C' * iF[:, :, t] * v[:, t] + L[:, :, t]' * r
         μ̄[:, t] .= μ[:, t] + P[:, :, t] * r
-        N       .= C' / F[:, :, t] * C + L[:, :, t]' * N * L[:, :, t]
+        N       .= C' * iF[:, :, t] * C + L[:, :, t]' * N * L[:, :, t]
         σ̄[:, t] .= sqrt.(abs.(ℒ.diag(P[:, :, t] - P[:, :, t] * N * P[:, :, t]'))) # can go negative
         ϵ̄[:, t] .= B' * r
     end
@@ -6615,7 +6619,7 @@ function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data:
     end
 end
 
-global eval_count = 0
+
 
 
 
@@ -6626,9 +6630,6 @@ function match_data_sequence!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data
         pruning = true
     end
     
-    global eval_count
-    eval_count += 1
-
     if length(jac) > 0
         jac .= 𝒜.jacobian(𝒷(), xx -> abs.(data - (pruning ? sum(state_update(state, xx)) : state_update(state, xx))[cond_var_idx]), X)[1]'
     end
