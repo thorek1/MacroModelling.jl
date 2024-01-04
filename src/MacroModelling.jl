@@ -6424,15 +6424,7 @@ function inversion_filter(𝓂::ℳ,
 
         matched_state = state_update(state, warmup_shocks[:,end])
 
-        matched = maximum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < 1e-6
-
-        if (sum(abs2, x_init) < minf) && matched_init
-            matched = matched_init
-
-            match_initial_data!(res, x_init, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
-        
-            x = x_init
-        end      
+        matched = maximum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < 1e-6  
 
         if sum(abs2, x_init) < minf && matched_init
             x = x_init
