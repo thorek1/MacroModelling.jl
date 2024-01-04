@@ -6435,7 +6435,21 @@ function inversion_filter(𝓂::ℳ,
     for i in axes(data_in_deviations,2)
         matched = false
 
-        for algo in [NLopt.:LD_TNEWTON, NLopt.:LD_LBFGS, NLopt.:LN_COBYLA, NLopt.:LD_SLSQP]
+        for algo in [NLopt.:LD_SLSQP]#, NLopt.:LD_TNEWTON, NLopt.:LD_LBFGS, NLopt.:LN_COBYLA]
+            # first minimize the constraint disregarding the least squares condition (should get you close or to the exact east squares solution - to be checked)
+            opt = NLopt.Opt(NLopt.:LD_TNEWTON, 𝓂.timings.nExo)
+        
+            opt.maxeval = 1000
+        
+            opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx)
+        
+            (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
+
+            minf_init = minf
+            x_init = x
+
+            # then check with SLSQP (and other algos) whether this point is accepted
+
             if algo == NLopt.:LN_COBYLA
                 opt = NLopt.Opt(algo, 𝓂.timings.nExo)
 
@@ -6465,6 +6479,11 @@ function inversion_filter(𝓂::ℳ,
             matched = maximum(abs, (pruning ? sum(new_state) : new_state)[cond_var_idx] - data_in_deviations[:,i]) < eps(Float32)
 
             if matched
+                if minf_init < minf
+                    new_state = state_update(state, x_init)
+                    x = x_init
+                end
+
                 state = new_state
                 states[:,i] = pruning ? sum(state) : state
                 shocks[:,i] = x
@@ -6624,6 +6643,23 @@ function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data:
 end
 
 
+
+
+
+
+function minimize_distance_to_data!(X::Vector{S}, grad::Vector{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}) where {S, T}
+    if State isa Vector{T}
+        pruning = false
+    else
+        pruning = true
+    end
+    
+    if length(grad) > 0
+        grad .= 𝒜.gradient(𝒷(), xx -> sum(abs2, Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]
+    end
+
+    return sum(abs2, Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
+end
 
 
 
