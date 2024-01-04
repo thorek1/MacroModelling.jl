@@ -375,23 +375,23 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
     estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, verbose = true)
     estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, verbose = true)
-    @test isapprox(estim_vars1,estim_vars2)
+    @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
 
     estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, verbose = true)
     estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, filter = :inversion, verbose = true)
-    @test isapprox(estim_vars1,estim_vars2)
+    @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
 
     estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, warmup_iterations = 10, verbose = true)
     estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, filter = :inversion, warmup_iterations = 10, verbose = true)
-    @test isapprox(estim_vars1,estim_vars2)
+    @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
 
     estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, filter = :kalman, verbose = true)
     estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, filter = :kalman, verbose = true)
-    @test isapprox(estim_vars1,estim_vars2)
+    @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
 
     estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true)
     estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, smooth = false, verbose = true)
-    @test isapprox(estim_vars1,estim_vars2)
+    @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
 
     estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
     estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
@@ -400,23 +400,23 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
     estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, verbose = true)
     estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, verbose = true)
-    @test isapprox(estim_shocks1,estim_shocks2)
+    @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
 
     estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, filter = :kalman, verbose = true)
     estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, filter = :kalman, verbose = true)
-    @test isapprox(estim_shocks1,estim_shocks2)
+    @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
 
     estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, verbose = true)
     estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, filter = :inversion, verbose = true)
-    @test isapprox(estim_shocks1,estim_shocks2)
+    @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
 
     estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, warmup_iterations = 10, verbose = true)
     estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, filter = :inversion, warmup_iterations = 10, verbose = true)
-    @test isapprox(estim_shocks1,estim_shocks2)
+    @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
 
     estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true)
     estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, smooth = false, verbose = true)
-    @test isapprox(estim_shocks1,estim_shocks2)
+    @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
 
     estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
     estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
