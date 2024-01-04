@@ -6521,7 +6521,7 @@ function inversion_filter(𝓂::ℳ,
     if warmup_iterations > 0
         state_copy = deepcopy(state)
 
-        # first minimize the constraint disregarding the least squares condition (should get you close or to the exact east squares solution - to be checked)
+        # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
         opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations)
     
         opt.maxeval = 500
@@ -6535,9 +6535,25 @@ function inversion_filter(𝓂::ℳ,
 
         matched_init = minf < 1e-12
 
+        if !matched_init
+            opt = NLopt.Opt(NLopt.:LN_PRAXIS, 𝓂.timings.nExo * warmup_iterations)
+    
+            opt.maxeval = 500
+    
+            opt.ftol_abs = eps()
+            opt.ftol_rel = eps()
+    
+            opt.min_objective = (x,grad) -> minimize_distance_to_initial_data!(x,grad, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx)
+        
+            (minf,x,ret) = NLopt.optimize(opt, x)
+    
+
+            matched_init = minf < 1e-12
+        end
+
         x_init = deepcopy(x)
 
-        # then check with SLSQP (and other algos) whether this point is accepted
+        # then check with SLSQP whether this point is optimal
         opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
 
         opt.maxeval = 500
@@ -6579,7 +6595,7 @@ function inversion_filter(𝓂::ℳ,
     end
 
     for i in axes(data_in_deviations,2)
-        # first minimize the constraint disregarding the least squares condition (should get you close or to the exact east squares solution - to be checked)
+        # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
         opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo)
     
         opt.maxeval = 500
@@ -6593,9 +6609,24 @@ function inversion_filter(𝓂::ℳ,
 
         matched_init = minf < 1e-12
 
+        if !matched_init
+            opt = NLopt.Opt(NLopt.:LN_PRAXIS, 𝓂.timings.nExo)
+    
+            opt.maxeval = 500
+    
+            opt.ftol_abs = eps()
+            opt.ftol_rel = eps()
+    
+            opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx)
+    
+            (minf,x,ret) = NLopt.optimize(opt, x)
+
+            matched_init = minf < 1e-12
+        end
+
         x_init = deepcopy(x)
 
-        # then check with SLSQP (and other algos) whether this point is accepted
+        # then check with SLSQP whether this point is optimal
         opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
 
         opt.maxeval = 500

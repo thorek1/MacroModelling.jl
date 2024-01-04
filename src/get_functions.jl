@@ -622,7 +622,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
         p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state_copy, pruning, 𝒷)
 
-        # first minimize the constraint disregarding the least squares condition (should get you close or to the exact east squares solution - to be checked)
+        # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
         opt = NLopt.Opt(NLopt.:LD_LBFGS, length(free_shock_idx))
     
         opt.maxeval = 500
@@ -638,7 +638,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
         x_init = deepcopy(x)
 
-        # then check with SLSQP (and other algos) whether this point is accepted
+        # then check with SLSQP whether this point is optimal
         opt = NLopt.Opt(NLopt.:LD_SLSQP, length(free_shock_idx))
 
         opt.maxeval = 500
@@ -679,7 +679,7 @@ function get_conditional_forecast(𝓂::ℳ,
     
             p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, 𝒷)
 
-            # first minimize the constraint disregarding the least squares condition (should get you close or to the exact east squares solution - to be checked)
+            # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
             opt = NLopt.Opt(NLopt.:LD_LBFGS, length(free_shock_idx))
         
             opt.maxeval = 500
@@ -695,7 +695,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
             x_init = deepcopy(x)
 
-            # then check with SLSQP (and other algos) whether this point is accepted
+            # then check with SLSQP whether this point is optimal
             opt = NLopt.Opt(NLopt.:LD_SLSQP, length(free_shock_idx))
 
             opt.maxeval = 500
@@ -3078,7 +3078,7 @@ function get_loglikelihood(𝓂::ℳ,
         logabsdets = 0.0
     
         if warmup_iterations > 0
-            # first minimize the constraint disregarding the least squares condition (should get you close or to the exact east squares solution - to be checked)
+            # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
             opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations)
         
             opt.maxeval = 500
@@ -3094,7 +3094,7 @@ function get_loglikelihood(𝓂::ℳ,
 
             x_init = deepcopy(x)
 
-            # then check with SLSQP (and other algos) whether this point is accepted
+            # then check with SLSQP whether this point is optimal
             opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
 
             opt.maxeval = 500
@@ -3137,7 +3137,7 @@ function get_loglikelihood(𝓂::ℳ,
         end
 
         for i in axes(data_in_deviations,2)
-            # first minimize the constraint disregarding the least squares condition (should get you close or to the exact east squares solution - to be checked)
+            # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
             opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo)
         
             opt.maxeval = 500
@@ -3153,7 +3153,7 @@ function get_loglikelihood(𝓂::ℳ,
 
             x_init = deepcopy(x)
 
-            # then check with SLSQP (and other algos) whether this point is accepted
+            # then check with SLSQP whether this point is optimal
             opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
 
             opt.maxeval = 500
