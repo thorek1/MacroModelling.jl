@@ -3072,189 +3072,117 @@ function get_loglikelihood(𝓂::ℳ,
             # first minimize the constraint disregarding the least squares condition (should get you close or to the exact east squares solution - to be checked)
             opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations)
         
-            opt.maxeval = 1000
+            opt.maxeval = 500
         
+            opt.ftol_abs = 1e-12
+            opt.ftol_rel = 1e-12
+            
             opt.min_objective = (x,grad) -> minimize_distance_to_initial_data!(x,grad, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx)
             
             (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
 
-            matched_init = maximum(abs, res) < eps(Float32)
+            matched_init = minf < 1e-12
 
+            x_init = deepcopy(x)
+
+            # then check with SLSQP (and other algos) whether this point is accepted
+            opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
+
+            opt.maxeval = 500
+
+            opt.ftol_abs = 1e-12
+            opt.ftol_rel = 1e-12
+
+            opt.min_objective = obc_objective_optim_fun
+    
+            NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
+    
+            (minf,x,ret) = NLopt.optimize(opt, x_init)
+    
             res = zeros(size(data_in_deviations, 1))
 
             jacc = zeros(length(observables) * warmup_iterations, length(observables))
 
             match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
             
-            matched_init = maximum(abs, res) < eps(Float32)
-
-            jacc_init = jacc
+            matched = maximum(abs, res) < 1e-6
             
-            x_init = x
+            if (sum(abs2, x_init) < minf) && matched_init
+                matched = matched_init
 
-            numevals_init = opt.numevals
+                match_initial_data!(res, x_init, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
+            
+                x = x_init
+            end
 
-            # println("Naive sol iters: $(opt.numevals)")
-            # for algo in [NLopt.:LD_SLSQP] #, NLopt.:LD_TNEWTON, NLopt.:LD_LBFGS, NLopt.:LN_COBYLA]
-            #     if algo == NLopt.:LD_SLSQP
-                    opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
-
-                    opt.maxeval = 500
-                # elseif algo == NLopt.:LN_COBYLA
-                #     opt = NLopt.Opt(algo, 𝓂.timings.nExo * warmup_iterations)
-
-                #     opt.maxeval = 5000
-                # else
-                #     opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo * warmup_iterations)
-    
-                #     NLopt.local_optimizer!(opt, NLopt.Opt(algo, 𝓂.timings.nExo * warmup_iterations))
-
-                #     opt.maxeval = 1000
-                # end
-
-                opt.min_objective = obc_objective_optim_fun
-        
-                opt.ftol_rel = eps()
-        
-                opt.maxeval = 5000
-        
-                NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
-        
-                (minf,x,ret) = NLopt.optimize(opt, x_init)
-        
-                match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
-                
-                numevals = opt.numevals
-
-                matched = maximum(abs, res) < eps(Float32)
-                # println("Refined sol iters: $(opt.numevals)")
-                if (sum(abs2, x_init) < minf) && matched_init
-                    # println("naive sol taken.")
-                    matched = matched_init
-
-                    x = x_init
-
-                    jacc = jacc_init
+            if matched
+                for i in 1:warmup_iterations
+                    logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:])[1]
                 end
 
-                if matched
-                    for i in 1:warmup_iterations
-                        logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:])[1]
-                    end
-
-                    shocks² += sum(abs2,x)
-
-                    # break 
-                end
-            # end
+                shocks² += sum(abs2,x)
+            end
 
             if !matched return -Inf end
 
         end
 
         for i in axes(data_in_deviations,2)
-            matched = false
             # first minimize the constraint disregarding the least squares condition (should get you close or to the exact east squares solution - to be checked)
-            # opt = NLopt.Opt(NLopt.:LD_TNEWTON, 𝓂.timings.nExo)
             opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo)
-            # opt = NLopt.Opt(NLopt.:LN_PRAXIS, 𝓂.timings.nExo)
         
             opt.maxeval = 500
 
-            opt.ftol_abs = eps()
+            opt.ftol_abs = 1e-12
+            opt.ftol_rel = 1e-12
 
             opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx)
 
             (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
 
-            if ret == NLopt.FAILURE
-                opt = NLopt.Opt(NLopt.:LN_PRAXIS, 𝓂.timings.nExo)
+            matched_init = minf < 1e-12
+
+            x_init = deepcopy(x)
+
+            # then check with SLSQP (and other algos) whether this point is accepted
+            opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
+
+            opt.maxeval = 500
+
+            opt.ftol_abs = 1e-12
+            opt.ftol_rel = 1e-12
+
+            opt.min_objective = obc_objective_optim_fun
+    
+            NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
+    
+            (minf,x,ret) = NLopt.optimize(opt, x_init)
             
-                opt.maxeval = 500
-
-                opt.ftol_abs = eps()
-
-                opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx)
-
-                (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
-            end
-
             res  = zeros(length(observables))
 
             jacc = zeros(length(observables), length(observables))
 
             match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
 
-            matched_init = maximum(abs, res) < 1e-6
-            ret_init = ret
-            res_init = deepcopy(res)
+            matched = maximum(abs, res) < 1e-6
+            
+            if (sum(abs2, x_init) < minf) && matched_init
+                matched = matched_init
+            
+                match_data_sequence!(res, x_init, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
 
-            jacc_init = jacc
-
-            x_init = deepcopy(x)
-
-            numevals_init = opt.numevals
-
-            # println("Naive sol iters: $(opt.numevals)")
-
-            # then check with SLSQP (and other algos) whether this point is accepted
-            # for algo in [NLopt.:LD_SLSQP]#, NLopt.:LD_TNEWTON, NLopt.:LD_LBFGS, NLopt.:LN_COBYLA]
-            #     if algo == NLopt.:LD_SLSQP
-                    opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
-
-                    opt.maxeval = 500
-                # elseif algo == NLopt.:LN_COBYLA
-                #     opt = NLopt.Opt(algo, 𝓂.timings.nExo)
-
-                #     opt.maxeval = 5000
-                # else
-                #     opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo)
-    
-                #     NLopt.local_optimizer!(opt, NLopt.Opt(algo, 𝓂.timings.nExo))
-
-                #     opt.maxeval = 1000
-                # end
-
-                opt.min_objective = obc_objective_optim_fun
-        
-                # opt.ftol_rel = eps()
-        
-                NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
-        
-                (minf,x,ret) = NLopt.optimize(opt, x_init)
-                # println("Refined sol iters: $(opt.numevals)")
-                match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
-
-                matched = maximum(abs, res) < 1e-6
-                
-                numevals = opt.numevals
-
-                if (sum(abs2, x_init) < minf) && matched_init
-                    # println("naive sol taken.")
-                    matched = matched_init
-
-                    x = x_init
-
-                    jacc = jacc_init
-                end
-
-                if matched
-                    logabsdets += ℒ.logabsdet(jacc)[1]
-                
-                    shocks² += sum(abs2,x)
-
-                    state = state_update(state, x)
-
-                    # break 
-                end
-            # end
-
-            if !matched 
-                println("Failed with numevals: $numevals_init, $ret_init, $numevals, $ret, $(sum(abs2,x_init)), $minf, $(maximum(abs, res_init)), $(maximum(abs, res))")
-                println("Step $i. Parameters: $parameters")
-                return -Inf 
+                x = x_init
             end
 
+            if matched
+                logabsdets += ℒ.logabsdet(jacc)[1]
+            
+                shocks² += sum(abs2,x)
+
+                state = state_update(state, x)
+            end
+
+            if !matched return -Inf end
         end
         
         return -(logabsdets + shocks² + (𝓂.timings.nExo * (warmup_iterations + n_obs)) * log(2 * 3.141592653589793)) / 2
