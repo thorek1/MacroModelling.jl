@@ -6537,20 +6537,20 @@ function inversion_filter(𝓂::ℳ,
 
         matched_init = minf < 1e-12
 
-        # if !matched_init
-        #     opt = NLopt.Opt(NLopt.:LN_SBPLX, 𝓂.timings.nExo * warmup_iterations)
+        if !matched_init
+            opt = NLopt.Opt(NLopt.:LN_SBPLX, 𝓂.timings.nExo * warmup_iterations)
     
-        #     opt.maxeval = 500
+            opt.maxeval = 500
     
-        #     opt.ftol_abs = eps()
-        #     opt.ftol_rel = eps()
+            opt.ftol_abs = eps()
+            opt.ftol_rel = eps()
     
-        #     opt.min_objective = (x,grad) -> minimize_distance_to_initial_data!(x,grad, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx)
+            opt.min_objective = (x,grad) -> minimize_distance_to_initial_data!(x,grad, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor)
         
-        #     (minf,x,ret) = NLopt.optimize(opt, x)
+            (minf,x,ret) = NLopt.optimize(opt, x)
     
-        #     matched_init = minf < 1e-12
-        # end
+            matched_init = minf < 1e-12
+        end
 
         if !matched_init
             x_init = deepcopy(x)
@@ -6637,6 +6637,7 @@ function inversion_filter(𝓂::ℳ,
 
         #     matched_init = minf < 1e-12
         # end
+        
         if !matched_init
             x_init = deepcopy(x)
 
