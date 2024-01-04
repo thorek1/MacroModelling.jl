@@ -309,7 +309,7 @@ end
 
 
 function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
-    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, 𝒷 = p
+    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, 𝒷, precision_factor = p
 
     if length(jac) > 0
         jac .= 𝒜.jacobian(𝒷(), xx -> begin
@@ -319,7 +319,7 @@ function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where
 
                                         cond_vars = Pruning ? sum(new_State) : new_State
                                         
-                                        return abs.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+                                        return precision_factor .* abs.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
                                     end, X)[1]'
     end
 
@@ -329,13 +329,13 @@ function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where
 
     cond_vars = Pruning ? sum(new_State) : new_State
 
-    res .= abs.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+    res .= precision_factor .* abs.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
 end
 
 
 
 function minimize_distance_to_conditions(X::Vector{S}, grad::Vector{S}, p) where S
-    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, 𝒷 = p
+    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, 𝒷, precision_factor = p
 
     if length(grad) > 0
         grad .= 𝒜.gradient(𝒷(), xx -> begin
@@ -345,7 +345,7 @@ function minimize_distance_to_conditions(X::Vector{S}, grad::Vector{S}, p) where
 
                                         cond_vars = Pruning ? sum(new_State) : new_State
                                         
-                                        return sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+                                        return precision_factor * sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
                                     end, X)[1]
     end
 
@@ -355,7 +355,7 @@ function minimize_distance_to_conditions(X::Vector{S}, grad::Vector{S}, p) where
 
     cond_vars = Pruning ? sum(new_State) : new_State
 
-    return sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+    return precision_factor * sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
 end
 
 
@@ -378,7 +378,7 @@ end
 
 
 
-function minimize_distance_to_initial_data!(X::Vector{S}, grad::Vector{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}) where {S, T}
+function minimize_distance_to_initial_data!(X::Vector{S}, grad::Vector{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
     if state isa Vector{T}
         pruning = false
     else
@@ -395,7 +395,7 @@ function minimize_distance_to_initial_data!(X::Vector{S}, grad::Vector{S}, data:
                                             state_copy = state_update(state_copy, XX[:,i])
                                         end
 
-                                        return sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+                                        return precision_factor .* sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
                                     end, X)[1]
     end
 
@@ -407,13 +407,13 @@ function minimize_distance_to_initial_data!(X::Vector{S}, grad::Vector{S}, data:
         state_copy = state_update(state_copy, XX[:,i])
     end
 
-    return sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+    return precision_factor .* sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
 end
 
 
 
 
-function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}) where {S, T}
+function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
     if state isa Vector{T}
         pruning = false
     else
@@ -430,7 +430,7 @@ function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data:
                                             state_copy = state_update(state_copy, XX[:,i])
                                         end
 
-                                        return abs.(data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+                                        return precision_factor .* abs.(data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
                                     end, X)[1]'
     end
 
@@ -452,7 +452,7 @@ end
 
 
 
-function minimize_distance_to_data!(X::Vector{S}, grad::Vector{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}) where {S, T}
+function minimize_distance_to_data!(X::Vector{S}, grad::Vector{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
     if State isa Vector{T}
         pruning = false
     else
@@ -460,15 +460,15 @@ function minimize_distance_to_data!(X::Vector{S}, grad::Vector{S}, Data::Vector{
     end
     
     if length(grad) > 0
-        grad .= 𝒜.gradient(𝒷(), xx -> sum(abs2, Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]
+        grad .= 𝒜.gradient(𝒷(), xx -> precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]
     end
 
-    return sum(abs2, Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
+    return precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
 end
 
 
 
-function match_data_sequence!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}) where {S, T}
+function match_data_sequence!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
     if State isa Vector{T}
         pruning = false
     else
@@ -476,11 +476,11 @@ function match_data_sequence!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, Data
     end
     
     if length(jac) > 0
-        jac .= 𝒜.jacobian(𝒷(), xx -> abs.(Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]'
+        jac .= 𝒜.jacobian(𝒷(), xx -> precision_factor .* abs.(Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]'
     end
 
     if length(res) > 0
-        res .= abs.(Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
+        res .= precision_factor .* abs.(Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
     end
 end
 
@@ -6518,22 +6518,24 @@ function inversion_filter(𝓂::ℳ,
     states = zeros(𝓂.timings.nVars, n_obs)
     shocks = zeros(𝓂.timings.nExo, n_obs)
 
+    precision_factor = 1e6
+
     if warmup_iterations > 0
         state_copy = deepcopy(state)
 
         # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
-        # opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations)
+        opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations)
     
-        # opt.maxeval = 500
+        opt.maxeval = 500
     
-        # opt.ftol_abs = 1e-12
-        # opt.ftol_rel = 1e-12
+        opt.ftol_abs = 1e-12
+        opt.ftol_rel = 1e-12
         
-        # opt.min_objective = (x,grad) -> minimize_distance_to_initial_data!(x,grad, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx)
+        opt.min_objective = (x,grad) -> minimize_distance_to_initial_data!(x,grad, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor)
         
-        # (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
+        (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
 
-        # matched_init = minf < 1e-12
+        matched_init = minf < 1e-12
 
         # if !matched_init
         #     opt = NLopt.Opt(NLopt.:LN_SBPLX, 𝓂.timings.nExo * warmup_iterations)
@@ -6550,74 +6552,84 @@ function inversion_filter(𝓂::ℳ,
         #     matched_init = minf < 1e-12
         # end
 
-        # x_init = deepcopy(x)
+        if !matched_init
+            x_init = deepcopy(x)
 
-        # then check with SLSQP whether this point is optimal
-        # opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
-        # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo * warmup_iterations)
-        opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo * warmup_iterations)
-        NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations))  
+            # then check with SLSQP whether this point is optimal
+            opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
+            # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo * warmup_iterations)
+            # opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo * warmup_iterations)
+            # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations))  
 
-        opt.maxeval = 500
+            opt.maxeval = 500
 
-        opt.ftol_abs = 1e-12
-        opt.ftol_rel = 1e-12
+            opt.ftol_abs = 1e-12
+            opt.ftol_rel = 1e-12
 
-        opt.min_objective = obc_objective_optim_fun
+            opt.min_objective = obc_objective_optim_fun
 
-        NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
+            NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1)))
 
-        (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
-    
-        warmup_shocks = reshape(x,𝓂.timings.nExo, warmup_iterations)
+            (minf,x,ret) = NLopt.optimize(opt, x_init)
+        
+            warmup_shocks = reshape(x,𝓂.timings.nExo, warmup_iterations)
 
-        for i in 1:warmup_iterations-1
-            state = state_update(state, warmup_shocks[:,i])
+            for i in 1:warmup_iterations-1
+                state = state_update(state, warmup_shocks[:,i])
+            end
+
+            matched_state = state_update(state, warmup_shocks[:,end])
+
+            matched = maximum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < 1e-6  
+
+            if sum(abs2, x_init) < minf && matched_init
+                x = x_init
+
+                matched = matched_init
+
+                warmup_shocks = reshape(x, 𝓂.timings.nExo, warmup_iterations)
+
+                for i in 1:warmup_iterations-1
+                    state_copy = state_update(state_copy, warmup_shocks[:,i])
+                end
+
+                state = state_copy
+            end
+        else
+            matched = matched_init
+
+            warmup_shocks = reshape(x, 𝓂.timings.nExo, warmup_iterations)
+
+            for i in 1:warmup_iterations-1
+                state = state_update(state, warmup_shocks[:,i])
+            end
         end
-
-        matched_state = state_update(state, warmup_shocks[:,end])
-
-        matched = maximum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < 1e-6  
-
-        # if sum(abs2, x_init) < minf && matched_init
-        #     x = x_init
-
-        #     matched = matched_init
-
-        #     warmup_shocks = reshape(x, 𝓂.timings.nExo, warmup_iterations)
-
-        #     for i in 1:warmup_iterations-1
-        #         state_copy = state_update(state_copy, warmup_shocks[:,i])
-        #     end
-
-        #     state = state_copy
-        # end
 
         @assert matched "Numerical stabiltiy issues for restrictions in warmup iterations."
     end
 
     for i in axes(data_in_deviations,2)
         # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
-        # opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo)
+        opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo)
     
-        # opt.maxeval = 500
+        opt.maxeval = 500
 
-        # opt.ftol_abs = 1e-12
-        # opt.ftol_rel = 1e-12
+        opt.ftol_abs = 1e-12
+        opt.ftol_rel = 1e-12
 
-        # opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx)
+        opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
 
-        # (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
+        (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
 
-        # matched_init = minf < 1e-12
+        matched_init = minf < 1e-12
 
         # if !matched_init
-        #     opt = NLopt.Opt(NLopt.:LN_SBPLX, 𝓂.timings.nExo)
+        #     opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo)
     
         #     opt.maxeval = 500
     
-        #     opt.ftol_abs = eps()
-        #     opt.ftol_rel = eps()
+        #     # opt.xtol_abs = eps()
+        #     # opt.xtol_rel = eps()
     
         #     opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx)
     
@@ -6625,37 +6637,42 @@ function inversion_filter(𝓂::ℳ,
 
         #     matched_init = minf < 1e-12
         # end
+        if !matched_init
+            x_init = deepcopy(x)
 
-        # x_init = deepcopy(x)
+            # then check with SLSQP whether this point is optimal
+            opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
+            # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo)
+            # opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo)
+            # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo))  
 
-        # then check with SLSQP whether this point is optimal
-        # opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
-        # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo)
-        opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo)
-        NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo))  
+            opt.maxeval = 500
 
-        opt.maxeval = 500
+            opt.ftol_abs = 1e-12
+            opt.ftol_rel = 1e-12
 
-        opt.ftol_abs = 1e-12
-        opt.ftol_rel = 1e-12
+            opt.min_objective = obc_objective_optim_fun
 
-        opt.min_objective = obc_objective_optim_fun
+            NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor), zeros(size(data_in_deviations,1)))
 
-        NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
+            (minf,x,ret) = NLopt.optimize(opt, x_init)
+            
+            new_state = state_update(state, x)
 
-        (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
-        
-        new_state = state_update(state, x)
+            matched = maximum(abs, (pruning ? sum(new_state) : new_state)[cond_var_idx] - data_in_deviations[:,i]) < 1e-6
 
-        matched = maximum(abs, (pruning ? sum(new_state) : new_state)[cond_var_idx] - data_in_deviations[:,i]) < 1e-6
+            if sum(abs2, x_init) < minf && matched_init
+                new_state = state_update(state, x_init)
 
-        # if sum(abs2, x_init) < minf && matched_init
-        #     new_state = state_update(state, x_init)
+                x = x_init
 
-        #     x = x_init
+                matched = matched_init
+            end
+        else
+            new_state = state_update(state, x)
 
-        #     matched = matched_init
-        # end
+            matched = matched_init
+        end
 
         if matched
             state = new_state

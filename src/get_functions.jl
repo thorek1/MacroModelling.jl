@@ -618,9 +618,11 @@ function get_conditional_forecast(𝓂::ℳ,
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
     if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
+        precision_factor = 1e6
+
         initial_state_copy = deepcopy(initial_state)
 
-        p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state_copy, pruning, 𝒷)
+        p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state_copy, pruning, 𝒷, precision_factor)
 
         # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
         opt = NLopt.Opt(NLopt.:LD_LBFGS, length(free_shock_idx))
@@ -636,29 +638,41 @@ function get_conditional_forecast(𝓂::ℳ,
 
         matched_init = minf < 1e-12
 
-        x_init = deepcopy(x)
+        if !matched_init
+            x_init = deepcopy(x)
 
-        # then check with SLSQP whether this point is optimal
-        opt = NLopt.Opt(NLopt.:LD_SLSQP, length(free_shock_idx))
+            # then check with SLSQP whether this point is optimal
+            opt = NLopt.Opt(NLopt.:LD_SLSQP, length(free_shock_idx))
+            # opt = NLopt.Opt(NLopt.:AUGLAG, length(free_shock_idx))
+            # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, length(free_shock_idx)))  
 
-        opt.maxeval = 500
+            opt.maxeval = 500
 
-        opt.ftol_abs = 1e-12
-        opt.ftol_rel = 1e-12
+            opt.ftol_abs = 1e-12
+            opt.ftol_rel = 1e-12
 
-        opt.min_objective = obc_objective_optim_fun
-        
-        NLopt.equality_constraint!(opt, (res,x,jac) -> match_conditions(res,x,jac,p), zeros(length(cond_var_idx)))
+            opt.min_objective = obc_objective_optim_fun
             
-        (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
-            
-        shocks[free_shock_idx,1] .= x
-            
-        initial_state = state_update(initial_state, Float64[shocks[:,1]...])
+            NLopt.equality_constraint!(opt, (res,x,jac) -> match_conditions(res,x,jac,p), zeros(length(cond_var_idx)))
+                
+            (minf,x,ret) = NLopt.optimize(opt, x_init)
+                
+            shocks[free_shock_idx,1] .= x
+                
+            initial_state = state_update(initial_state, Float64[shocks[:,1]...])
 
-        Y[:,1] = pruning ? sum(initial_state) : initial_state
+            Y[:,1] = pruning ? sum(initial_state) : initial_state
 
-        matched = maximum(abs, conditions[cond_var_idx,1] - Y[:,1][cond_var_idx]) < 1e-6
+            matched = maximum(abs, conditions[cond_var_idx,1] - Y[:,1][cond_var_idx]) < 1e-6
+        else
+            shocks[free_shock_idx,1] .= x
+                
+            initial_state = state_update(initial_state, Float64[shocks[:,1]...])
+
+            Y[:,1] = pruning ? sum(initial_state) : initial_state
+
+            matched = matched_init
+        end
 
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
 
@@ -677,7 +691,7 @@ function get_conditional_forecast(𝓂::ℳ,
     
             @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
     
-            p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, 𝒷)
+            p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, 𝒷, precision_factor)
 
             # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
             opt = NLopt.Opt(NLopt.:LD_LBFGS, length(free_shock_idx))
@@ -693,29 +707,41 @@ function get_conditional_forecast(𝓂::ℳ,
 
             matched_init = minf < 1e-12
 
-            x_init = deepcopy(x)
+            if !matched_init
+                x_init = deepcopy(x)
 
-            # then check with SLSQP whether this point is optimal
-            opt = NLopt.Opt(NLopt.:LD_SLSQP, length(free_shock_idx))
+                # then check with SLSQP whether this point is optimal
+                opt = NLopt.Opt(NLopt.:LD_SLSQP, length(free_shock_idx))
+                # opt = NLopt.Opt(NLopt.:AUGLAG, length(free_shock_idx))
+                # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, length(free_shock_idx)))  
 
-            opt.maxeval = 500
+                opt.maxeval = 500
 
-            opt.ftol_abs = 1e-12
-            opt.ftol_rel = 1e-12
+                opt.ftol_abs = 1e-12
+                opt.ftol_rel = 1e-12
 
-            opt.min_objective = obc_objective_optim_fun
-            
-            NLopt.equality_constraint!(opt, (res,x,jac) -> match_conditions(res,x,jac,p), zeros(length(cond_var_idx)))
+                opt.min_objective = obc_objective_optim_fun
                 
-            (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
-                
-            shocks[free_shock_idx,i] .= x
-                
-            initial_state = state_update(initial_state, Float64[shocks[:,i]...])
+                NLopt.equality_constraint!(opt, (res,x,jac) -> match_conditions(res,x,jac,p), zeros(length(cond_var_idx)))
+                    
+                (minf,x,ret) = NLopt.optimize(opt, x_init)
+                    
+                shocks[free_shock_idx,i] .= x
+                    
+                initial_state = state_update(initial_state, Float64[shocks[:,i]...])
 
-            Y[:,i] = pruning ? sum(initial_state) : initial_state
+                Y[:,i] = pruning ? sum(initial_state) : initial_state
 
-            matched = maximum(abs, conditions[cond_var_idx,i] - Y[:,i][cond_var_idx]) < 1e-6
+                matched = maximum(abs, conditions[cond_var_idx,i] - Y[:,i][cond_var_idx]) < 1e-6
+            else
+                shocks[free_shock_idx,i] .= x
+                    
+                initial_state = state_update(initial_state, Float64[shocks[:,i]...])
+
+                Y[:,i] = pruning ? sum(initial_state) : initial_state
+
+                matched = matched_init
+            end
 
             @assert matched "Numerical stabiltiy issues for restrictions in period $i."
         end
@@ -3068,7 +3094,7 @@ function get_loglikelihood(𝓂::ℳ,
         return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2
         
     elseif filter == :inversion
-        SQP_shock_threshold = 5
+        precision_factor = 1e6
 
         n_obs = size(data_in_deviations,2)
     
@@ -3086,47 +3112,59 @@ function get_loglikelihood(𝓂::ℳ,
             opt.ftol_abs = 1e-12
             opt.ftol_rel = 1e-12
             
-            opt.min_objective = (x,grad) -> minimize_distance_to_initial_data!(x,grad, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx)
+            opt.min_objective = (x,grad) -> minimize_distance_to_initial_data!(x,grad, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor)
             
             (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
 
             matched_init = minf < 1e-12
 
-            x_init = deepcopy(x)
+            if !matched_init
+                x_init = deepcopy(x)
 
-            # then check with SLSQP whether this point is optimal
-            opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
+                # then check with SLSQP whether this point is optimal
+                opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
+                # opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo * warmup_iterations)
+                # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations))  
 
-            opt.maxeval = 500
+                opt.maxeval = 500
 
-            opt.ftol_abs = 1e-12
-            opt.ftol_rel = 1e-12
+                opt.ftol_abs = 1e-12
+                opt.ftol_rel = 1e-12
 
-            opt.min_objective = obc_objective_optim_fun
-    
-            NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1)))
-    
-            (minf,x,ret) = NLopt.optimize(opt, x_init)
-    
-            res = zeros(size(data_in_deviations, 1))
+                opt.min_objective = obc_objective_optim_fun
+        
+                NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1)))
+        
+                (minf,x,ret) = NLopt.optimize(opt, x_init)
+        
+                res = zeros(size(data_in_deviations, 1))
 
-            jacc = zeros(length(observables) * warmup_iterations, length(observables))
+                jacc = zeros(length(observables) * warmup_iterations, length(observables))
 
-            match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
-            
-            matched = maximum(abs, res) < 1e-6
-            
-            if (sum(abs2, x_init) < minf) && matched_init
+                match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
+                
+                matched = maximum(abs, res) < 1e-6
+                
+                if (sum(abs2, x_init) < minf) && matched_init
+                    matched = matched_init
+
+                    match_initial_data!(res, x_init, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
+                
+                    x = x_init
+                end
+            else
+                res = zeros(size(data_in_deviations, 1))
+
+                jacc = zeros(length(observables) * warmup_iterations, length(observables))
+
                 matched = matched_init
 
-                match_initial_data!(res, x_init, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx), zeros(size(data_in_deviations, 1))
-            
-                x = x_init
+                match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
             end
 
             if matched
                 for i in 1:warmup_iterations
-                    logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:])[1]
+                    logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:] ./ precision_factor)[1]
                 end
 
                 shocks² += sum(abs2,x)
@@ -3145,46 +3183,73 @@ function get_loglikelihood(𝓂::ℳ,
             opt.ftol_abs = 1e-12
             opt.ftol_rel = 1e-12
 
-            opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx)
+            opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor) # multiplied with 1e6 (substract from tols)
 
             (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
 
-            matched_init = minf < 1e-12
+            matched_init = minf < 1e-12 * 1e6
 
-            x_init = deepcopy(x)
-
-            # then check with SLSQP whether this point is optimal
-            opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
-
-            opt.maxeval = 500
-
-            opt.ftol_abs = 1e-12
-            opt.ftol_rel = 1e-12
-
-            opt.min_objective = obc_objective_optim_fun
-    
-            NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx), zeros(size(data_in_deviations,1)))
-    
-            (minf,x,ret) = NLopt.optimize(opt, x_init)
+            # if !matched_init
+            #     opt = NLopt.Opt(NLopt.:LD_TNEWTON_PRECOND, 𝓂.timings.nExo)
             
-            res  = zeros(length(observables))
+            #     opt.maxeval = 500
 
-            jacc = zeros(length(observables), length(observables))
+            #     opt.ftol_abs = 1e-12
+            #     opt.ftol_rel = 1e-12
 
-            match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
+            #     opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx) # multiplied with 1e6 (substract from tols)
 
-            matched = maximum(abs, res) < 1e-6
+            #     (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
 
-            if (sum(abs2, x_init) < minf) && matched_init
+            #     matched_init = minf < 1e-12 * 1e6
+            # end
+
+            if !matched_init
+                x_init = deepcopy(x)
+
+                # then check with SLSQP whether this point is optimal
+                opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
+                # opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo)
+                # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo))  
+
+                opt.maxeval = 500
+
+                opt.ftol_abs = 1e-12
+                opt.ftol_rel = 1e-12
+
+                opt.min_objective = obc_objective_optim_fun
+        
+                NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor), zeros(size(data_in_deviations,1)))
+        
+                (minf,x,ret) = NLopt.optimize(opt, x_init)
+                
+                res  = zeros(length(observables))
+
+                jacc = zeros(length(observables), length(observables))
+
+                match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
+
+                matched = maximum(abs, res) < 1e-6
+
+                if (sum(abs2, x_init) < minf) && matched_init
+                    matched = matched_init
+                
+                    match_data_sequence!(res, x_init, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
+
+                    x = x_init
+                end
+            else
+                res  = zeros(length(observables))
+
+                jacc = zeros(length(observables), length(observables))
+
                 matched = matched_init
-            
-                match_data_sequence!(res, x_init, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
-
-                x = x_init
+                
+                match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
             end
 
             if matched
-                logabsdets += ℒ.logabsdet(jacc)[1]
+                logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
             
                 shocks² += sum(abs2,x)
 
