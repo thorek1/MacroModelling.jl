@@ -3068,7 +3068,6 @@ function get_loglikelihood(𝓂::ℳ,
         logabsdets = 0.0
     
         if warmup_iterations > 0
-            matched = false
             # first minimize the constraint disregarding the least squares condition (should get you close or to the exact east squares solution - to be checked)
             opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations)
         
@@ -3165,7 +3164,7 @@ function get_loglikelihood(𝓂::ℳ,
             match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx)
 
             matched = maximum(abs, res) < 1e-6
-            
+
             if (sum(abs2, x_init) < minf) && matched_init
                 matched = matched_init
             
