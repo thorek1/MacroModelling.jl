@@ -4886,7 +4886,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     𝐒₂, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = solver, sparse_output = true)
 
     if !solved
-        𝐒₂, solved
+        return 𝐒₂, solved
     end
 
     𝐒₂ *= M₂.𝐔₂
@@ -4998,7 +4998,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     𝐒₃, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres, sparse_output = true)
 
     if !solved
-        𝐒₃, solved
+        return 𝐒₃, solved
     end
 
     𝐒₃ *= M₃.𝐔₃
