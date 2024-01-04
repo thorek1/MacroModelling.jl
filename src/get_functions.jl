@@ -621,39 +621,44 @@ function get_conditional_forecast(𝓂::ℳ,
         initial_state_copy = deepcopy(initial_state)
 
         p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state_copy, pruning, 𝒷)
+
+        # first minimize the constraint disregarding the least squares condition (should get you close or to the exact east squares solution - to be checked)
+        opt = NLopt.Opt(NLopt.:LD_LBFGS, length(free_shock_idx))
     
-        matched = false
+        opt.maxeval = 500
+    
+        opt.ftol_abs = 1e-12
+        opt.ftol_rel = 1e-12
+        
+        opt.min_objective = (x, grad) -> minimize_distance_to_conditions(x, grad, p)
+        
+        (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
 
-        for algo in [NLopt.:LD_TNEWTON, NLopt.:LD_LBFGS, NLopt.:LN_COBYLA]
-            if algo == NLopt.:LN_COBYLA
-                opt = NLopt.Opt(algo, length(free_shock_idx))
-            else
-                opt = NLopt.Opt(NLopt.:AUGLAG, length(free_shock_idx))
+        matched_init = minf < 1e-12
 
-                NLopt.local_optimizer!(opt, NLopt.Opt(algo, length(free_shock_idx)))
-            end
+        x_init = deepcopy(x)
 
-            opt.min_objective = obc_objective_optim_fun
+        # then check with SLSQP (and other algos) whether this point is accepted
+        opt = NLopt.Opt(NLopt.:LD_SLSQP, length(free_shock_idx))
+
+        opt.maxeval = 500
+
+        opt.ftol_abs = 1e-12
+        opt.ftol_rel = 1e-12
+
+        opt.min_objective = obc_objective_optim_fun
+        
+        NLopt.equality_constraint!(opt, (res,x,jac) -> match_conditions(res,x,jac,p), zeros(length(cond_var_idx)))
             
-            opt.xtol_rel = eps()
+        (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
             
-            NLopt.equality_constraint!(opt, (res,x,jac) -> match_conditions(res,x,jac,p), zeros(length(cond_var_idx)))
+        shocks[free_shock_idx,1] .= x
             
-            (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
-            
-            shocks[free_shock_idx,1] .= x
-            
-            new_state = state_update(initial_state, Float64[shocks[:,1]...])
+        initial_state = state_update(initial_state, Float64[shocks[:,1]...])
 
-            Y[:,1] = pruning ? sum(new_state) : new_state
+        Y[:,1] = pruning ? sum(initial_state) : initial_state
 
-            matched = maximum(abs, conditions[cond_var_idx,1] - Y[:,1][cond_var_idx]) < eps(Float32)
-
-            if matched
-                initial_state = new_state
-                break 
-            end
-        end
+        matched = maximum(abs, conditions[cond_var_idx,1] - Y[:,1][cond_var_idx]) < 1e-6
 
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
 
@@ -673,40 +678,45 @@ function get_conditional_forecast(𝓂::ℳ,
             @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
     
             p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, 𝒷)
-    
-            matched = false
 
-            for algo in [NLopt.:LD_TNEWTON, NLopt.:LD_LBFGS, NLopt.:LN_COBYLA]
-                if algo == NLopt.:LN_COBYLA
-                    opt = NLopt.Opt(algo, length(free_shock_idx))
-                else
-                    opt = NLopt.Opt(NLopt.:AUGLAG, length(free_shock_idx))
-
-                    NLopt.local_optimizer!(opt, NLopt.Opt(algo, length(free_shock_idx)))
-                end
-                
-                opt.min_objective = obc_objective_optim_fun
-                
-                opt.xtol_rel = eps()
-
-                NLopt.equality_constraint!(opt, (x,y,z) -> match_conditions(x,y,z,p), zeros(length(cond_var_idx)))
-                
-                (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
-                
-                shocks[free_shock_idx,i] .= x
-
-                new_state = state_update(initial_state, Float64[shocks[:,i]...])
-
-                Y[:,i] = pruning ? sum(new_state) : new_state
-                
-                matched = maximum(abs, conditions[cond_var_idx,i] - Y[:,i][cond_var_idx]) < eps(Float32)
-
-                if matched
-                    initial_state = new_state
-                    break 
-                end
-            end
+            # first minimize the constraint disregarding the least squares condition (should get you close or to the exact east squares solution - to be checked)
+            opt = NLopt.Opt(NLopt.:LD_LBFGS, length(free_shock_idx))
+        
+            opt.maxeval = 500
+        
+            opt.ftol_abs = 1e-12
+            opt.ftol_rel = 1e-12
             
+            opt.min_objective = (x, grad) -> minimize_distance_to_conditions(x, grad, p)
+            
+            (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
+
+            matched_init = minf < 1e-12
+
+            x_init = deepcopy(x)
+
+            # then check with SLSQP (and other algos) whether this point is accepted
+            opt = NLopt.Opt(NLopt.:LD_SLSQP, length(free_shock_idx))
+
+            opt.maxeval = 500
+
+            opt.ftol_abs = 1e-12
+            opt.ftol_rel = 1e-12
+
+            opt.min_objective = obc_objective_optim_fun
+            
+            NLopt.equality_constraint!(opt, (res,x,jac) -> match_conditions(res,x,jac,p), zeros(length(cond_var_idx)))
+                
+            (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
+                
+            shocks[free_shock_idx,i] .= x
+                
+            initial_state = state_update(initial_state, Float64[shocks[:,i]...])
+
+            Y[:,i] = pruning ? sum(initial_state) : initial_state
+
+            matched = maximum(abs, conditions[cond_var_idx,i] - Y[:,i][cond_var_idx]) < 1e-6
+
             @assert matched "Numerical stabiltiy issues for restrictions in period $i."
         end
     elseif algorithm ∈ [:first_order, :riccati, :quadratic_iteration, :linear_time_iteration]
