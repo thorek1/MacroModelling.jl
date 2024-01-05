@@ -6824,8 +6824,9 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
 
         F̄ = ℒ.lu(C * P[:, :, t] * C', check = false)
 
-        if !ℒ.issuccess(F̄)
-            F̄ = ℒ.svd(C * P[:, :, t] * C')
+        if !ℒ.issuccess(F̄) 
+            @warn "Kalman filter stopped in period $t due to numerical stabiltiy issues."
+            break
         end
 
         iF[:, :, t] .= inv(F̄)
