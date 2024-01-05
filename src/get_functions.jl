@@ -630,6 +630,16 @@ function get_conditional_forecast(𝓂::ℳ,
 
         matched = Optim.minimum(res) < 1e-12
 
+        if !matched
+            res = Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                                zero(free_shock_idx), 
+                                Optim.LBFGS(), 
+                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                                autodiff = :forward)
+
+            matched = Optim.minimum(res) < 1e-12
+        end
+
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
     
         x = Optim.minimizer(res)
@@ -664,6 +674,16 @@ function get_conditional_forecast(𝓂::ℳ,
                                 autodiff = :forward)
 
             matched = Optim.minimum(res) < 1e-12
+
+            if !matched
+                res = Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                                zero(free_shock_idx), 
+                                Optim.LBFGS(), 
+                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                                autodiff = :forward)
+
+                matched = Optim.minimum(res) < 1e-12
+            end
 
             @assert matched "Numerical stabiltiy issues for restrictions in period $i."
 
@@ -3024,7 +3044,7 @@ function get_loglikelihood(𝓂::ℳ,
         return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2
         
     elseif filter == :inversion
-        precision_factor = 1e6
+        precision_factor = 1.0
 
         n_obs = size(data_in_deviations,2)
     
@@ -3034,159 +3054,81 @@ function get_loglikelihood(𝓂::ℳ,
         logabsdets = 0.0
     
         if warmup_iterations > 0
-            # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
-            opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations)
+            res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+                                zeros(𝓂.timings.nExo * warmup_iterations), 
+                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                                Optim.Options(f_abstol = eps(), f_tol = eps(), g_tol= 1e-30); 
+                                autodiff = :forward)
         
-            opt.maxeval = 500
+            matched = Optim.minimum(res) < 1e-12
         
-            opt.ftol_abs = 1e-12
-            opt.ftol_rel = 1e-12
-            
-            opt.min_objective = (x,grad) -> minimize_distance_to_initial_data!(x,grad, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor)
-            
-            (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
-
-            matched_init = minf < 1e-12
-
-            if !matched_init
-                x_init = deepcopy(x)
-
-                # then check with SLSQP whether this point is optimal
-                opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
-                # opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo * warmup_iterations)
-                # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations))  
-
-                opt.maxeval = 500
-
-                opt.ftol_abs = 1e-12
-                opt.ftol_rel = 1e-12
-
-                opt.min_objective = obc_objective_optim_fun
-        
-                NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1)))
-        
-                (minf,x,ret) = NLopt.optimize(opt, x_init)
-        
-                res = zeros(size(data_in_deviations, 1))
-
-                jacc = zeros(length(observables) * warmup_iterations, length(observables))
-
-                match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
+            if !matched # for robustness try other linesearch
+                res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+                                zeros(𝓂.timings.nExo * warmup_iterations), 
+                                Optim.LBFGS(), 
+                                Optim.Options(f_abstol = eps(), f_tol = eps(), g_tol= 1e-30); 
+                                autodiff = :forward)
                 
-                matched = maximum(abs, res) < 1e-6
-                
-                if (sum(abs2, x_init) < minf) && matched_init
-                    matched = matched_init
-
-                    match_initial_data!(res, x_init, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
-                
-                    x = x_init
-                end
-            else
-                res = zeros(size(data_in_deviations, 1))
-
-                jacc = zeros(length(observables) * warmup_iterations, length(observables))
-
-                matched = matched_init
-
-                match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
-            end
-
-            if matched
-                for i in 1:warmup_iterations
-                    logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:] ./ precision_factor)[1]
-                end
-
-                shocks² += sum(abs2,x)
+                matched = Optim.minimum(res) < 1e-12
             end
 
             if !matched return -Inf end
+        
+            x = Optim.minimizer(res)
+        
+            warmup_shocks = reshape(x, 𝓂.timings.nExo, warmup_iterations)
+        
+            for i in 1:warmup_iterations-1
+                state = state_update(state, warmup_shocks[:,i])
+            end
+                
+            res = zeros(0)
 
+            jacc = zeros(length(observables) * warmup_iterations, length(observables))
+
+            match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
+            
+            for i in 1:warmup_iterations
+                logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:] ./ precision_factor)[1]
+            end
+
+            shocks² += sum(abs2,x)
         end
 
         for i in axes(data_in_deviations,2)
-            # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
-            opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo)
+            res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
+                            zeros(𝓂.timings.nExo), 
+                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                            Optim.Options(f_abstol = eps(), f_tol = eps(), g_tol= 1e-30); 
+                            autodiff = :forward)
+    
+            matched = Optim.minimum(res) < 1e-12
         
-            opt.maxeval = 500
-
-            opt.ftol_abs = 1e-12
-            opt.ftol_rel = 1e-12
-
-            opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor) # multiplied with 1e6 (substract from tols)
-
-            (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
-
-            matched_init = minf < 1e-12 * 1e6
-
-            # if !matched_init
-            #     opt = NLopt.Opt(NLopt.:LD_TNEWTON_PRECOND, 𝓂.timings.nExo)
-            
-            #     opt.maxeval = 500
-
-            #     opt.ftol_abs = 1e-12
-            #     opt.ftol_rel = 1e-12
-
-            #     opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx) # multiplied with 1e6 (substract from tols)
-
-            #     (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
-
-            #     matched_init = minf < 1e-12 * 1e6
-            # end
-
-            if !matched_init
-                x_init = deepcopy(x)
-
-                # then check with SLSQP whether this point is optimal
-                opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
-                # opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo)
-                # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo))  
-
-                opt.maxeval = 500
-
-                opt.ftol_abs = 1e-12
-                opt.ftol_rel = 1e-12
-
-                opt.min_objective = obc_objective_optim_fun
-        
-                NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor), zeros(size(data_in_deviations,1)))
-        
-                (minf,x,ret) = NLopt.optimize(opt, x_init)
+            if !matched # for robustness try other linesearch
+                res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
+                                zeros(𝓂.timings.nExo), 
+                                Optim.LBFGS(), 
+                                Optim.Options(f_abstol = eps(), f_tol = eps(), g_tol= 1e-30); 
+                                autodiff = :forward)
                 
-                res  = zeros(length(observables))
-
-                jacc = zeros(length(observables), length(observables))
-
-                match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
-
-                matched = maximum(abs, res) < 1e-6
-
-                if (sum(abs2, x_init) < minf) && matched_init
-                    matched = matched_init
-                
-                    match_data_sequence!(res, x_init, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
-
-                    x = x_init
-                end
-            else
-                res  = zeros(length(observables))
-
-                jacc = zeros(length(observables), length(observables))
-
-                matched = matched_init
-                
-                match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
-            end
-
-            if matched
-                logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
-            
-                shocks² += sum(abs2,x)
-
-                state = state_update(state, x)
+                matched = Optim.minimum(res) < 1e-12
             end
 
             if !matched return -Inf end
+
+            x = Optim.minimizer(res)
+        
+            res  = zeros(0)
+
+            jacc = zeros(length(observables), length(observables))
+
+            match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
+
+            logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
+        
+            shocks² += sum(abs2,x)
+
+            state = state_update(state, x)
         end
         
         return -(logabsdets + shocks² + (𝓂.timings.nExo * (warmup_iterations + n_obs)) * log(2 * 3.141592653589793)) / 2
