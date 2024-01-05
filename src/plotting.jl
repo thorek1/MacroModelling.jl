@@ -507,7 +507,9 @@ function plot_irf(𝓂::ℳ;
                     # check whether auglag is more reliable and efficient here
                     opt.min_objective = obc_objective_optim_fun
 
-                    opt.xtol_rel = eps()
+                    opt.xtol_abs = eps(Float32)
+                    opt.ftol_abs = eps(Float32)
+                    opt.maxeval = 500
                     
                     # Adding constraints
                     # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) 
@@ -520,19 +522,19 @@ function plot_irf(𝓂::ℳ;
 
                     (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
                     
-                    solved = ret ∈ Symbol.([
-                        NLopt.SUCCESS,
-                        NLopt.STOPVAL_REACHED,
-                        NLopt.FTOL_REACHED,
-                        NLopt.XTOL_REACHED,
-                        NLopt.ROUNDOFF_LIMITED,
-                    ])
+                    # solved = ret ∈ Symbol.([
+                    #     NLopt.SUCCESS,
+                    #     NLopt.STOPVAL_REACHED,
+                    #     NLopt.FTOL_REACHED,
+                    #     NLopt.XTOL_REACHED,
+                    #     NLopt.ROUNDOFF_LIMITED,
+                    # ])
                     
                     present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
 
                     constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
 
-                    solved = solved && !constraints_violated
+                    solved = !constraints_violated
                 else
                     solved = true
                 end
