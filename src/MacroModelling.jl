@@ -6823,8 +6823,11 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
         v[:, t]     .= data_in_deviations[:, t] - C * μ[:, t]
 
         F̄ = ℒ.lu(C * P[:, :, t] * C', check = false)
-        @assert ℒ.issuccess(F̄) "Numerical stabiltiy issues in Kalman filter period $t."
 
+        if !ℒ.issuccess(F̄)
+            F̄ = ℒ.svd(C * P[:, :, t] * C')
+        end
+        
         iF[:, :, t] .= inv(F̄)
         PCiF         = P[:, :, t] * C' * iF[:, :, t]
         L[:, :, t]  .= A - A * PCiF * C
