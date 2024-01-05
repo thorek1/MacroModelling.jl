@@ -6553,20 +6553,20 @@ function inversion_filter(𝓂::ℳ,
     precision_factor = 1.0
 
     if warmup_iterations > 0
-        res = @suppress Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+        res = @suppress begin Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
                             zeros(𝓂.timings.nExo * warmup_iterations), 
                             Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                             Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward)
+                            autodiff = :forward) end
     
         matched = Optim.minimum(res) < 1e-12
     
         if !matched
-            res = @suppress Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+            res = @suppress begin Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
                                 zeros(𝓂.timings.nExo * warmup_iterations), 
                                 Optim.LBFGS(), 
                                 Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward)
+                                autodiff = :forward) end
 
             matched = Optim.minimum(res) < 1e-12
         end
@@ -6583,20 +6583,20 @@ function inversion_filter(𝓂::ℳ,
     end
     
     for i in axes(data_in_deviations,2)
-        res = @suppress Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
+        res = @suppress begin Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
                             zeros(𝓂.timings.nExo), 
                             Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                             Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward)
+                            autodiff = :forward) end
     
         matched = Optim.minimum(res) < 1e-12
     
         if !matched
-            res = @suppress Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
+            res = @suppress begin Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
                             zeros(𝓂.timings.nExo), 
                             Optim.LBFGS(), 
                             Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward)
+                            autodiff = :forward) end
 
             matched = Optim.minimum(res) < 1e-12
         end
