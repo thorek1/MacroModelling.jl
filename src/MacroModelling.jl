@@ -6422,7 +6422,7 @@ end
 # end
 
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}) where S
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Union{Vector{String}, Vector{Symbol}}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}) where S
     observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
 
     A = @views 𝐒₁[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
@@ -6485,7 +6485,7 @@ end
 
 
 
-function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Vector{Float64}, state_update::Function, data_in_deviations::Matrix{Float64}, observables::Vector{Symbol}, warmup_iterations::Int)
+function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Vector{Float64}, state_update::Function, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, warmup_iterations::Int)
     if state isa Vector{Float64}
         pruning = false
     else
