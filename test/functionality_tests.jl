@@ -369,13 +369,13 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         var_idxs = [1]
     end
     
-    simulation = simulate(m, algorithm = algorithm)
+    simulation = simulate(m, algorithm = algorithm, ignore_obc = true)
 
     data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
     data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
 
     data_in_levels_kalman = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs_kalman]) : m.var[var_idxs_kalman],:,:simulate)
-    data_kalman = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs_kalman]
+    data_kalman = data_in_levels_kalman .- m.solution.non_stochastic_steady_state[var_idxs_kalman]
 
     estim_vars1 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, verbose = true)
     estim_vars2 = get_estimated_variables(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, verbose = true)
