@@ -622,7 +622,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
         p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state_copy, pruning, 𝒷, precision_factor)
 
-        res = Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+        res = @suppres Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
                             zero(free_shock_idx), 
                             Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                             Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
@@ -631,7 +631,7 @@ function get_conditional_forecast(𝓂::ℳ,
         matched = Optim.minimum(res) < 1e-12
 
         if !matched
-            res = Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+            res = @suppres Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
                                 zero(free_shock_idx), 
                                 Optim.LBFGS(), 
                                 Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
@@ -667,7 +667,7 @@ function get_conditional_forecast(𝓂::ℳ,
     
             p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, 𝒷, precision_factor)
 
-            res = Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+            res = @suppres Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
                                 zero(free_shock_idx), 
                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                                 Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
@@ -676,7 +676,7 @@ function get_conditional_forecast(𝓂::ℳ,
             matched = Optim.minimum(res) < 1e-12
 
             if !matched
-                res = Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                res = @suppres Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
                                 zero(free_shock_idx), 
                                 Optim.LBFGS(), 
                                 Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
@@ -3054,19 +3054,19 @@ function get_loglikelihood(𝓂::ℳ,
         logabsdets = 0.0
     
         if warmup_iterations > 0
-            res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+            res = @suppres Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
                                 zeros(𝓂.timings.nExo * warmup_iterations), 
                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                                Optim.Options(f_abstol = eps(), f_tol = eps(), g_tol= 1e-30); 
+                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
                                 autodiff = :forward)
         
             matched = Optim.minimum(res) < 1e-12
         
             if !matched # for robustness try other linesearch
-                res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+                res = @suppres Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
                                 zeros(𝓂.timings.nExo * warmup_iterations), 
                                 Optim.LBFGS(), 
-                                Optim.Options(f_abstol = eps(), f_tol = eps(), g_tol= 1e-30); 
+                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
                                 autodiff = :forward)
                 
                 matched = Optim.minimum(res) < 1e-12
@@ -3096,19 +3096,19 @@ function get_loglikelihood(𝓂::ℳ,
         end
 
         for i in axes(data_in_deviations,2)
-            res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
+            res = @suppres Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
                             zeros(𝓂.timings.nExo), 
                             Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                            Optim.Options(f_abstol = eps(), f_tol = eps(), g_tol= 1e-30); 
+                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
                             autodiff = :forward)
     
             matched = Optim.minimum(res) < 1e-12
         
             if !matched # for robustness try other linesearch
-                res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
+                res = @suppres Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
                                 zeros(𝓂.timings.nExo), 
                                 Optim.LBFGS(), 
-                                Optim.Options(f_abstol = eps(), f_tol = eps(), g_tol= 1e-30); 
+                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
                                 autodiff = :forward)
                 
                 matched = Optim.minimum(res) < 1e-12
