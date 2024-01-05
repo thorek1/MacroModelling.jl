@@ -623,7 +623,7 @@ function get_conditional_forecast(𝓂::ℳ,
         p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state, pruning, 𝒷, precision_factor)
 
         res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                            zero(free_shock_idx), 
+                            zeros(length(free_shock_idx)), 
                             Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                             Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
                             autodiff = :forward) end
@@ -632,7 +632,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
         if !matched
             res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                                zero(free_shock_idx), 
+                                zeros(length(free_shock_idx)), 
                                 Optim.LBFGS(), 
                                 Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
                                 autodiff = :forward) end
@@ -668,7 +668,7 @@ function get_conditional_forecast(𝓂::ℳ,
             p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, 𝒷, precision_factor)
 
             res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                                zero(free_shock_idx), 
+                                zeros(length(free_shock_idx)), 
                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                                 Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
                                 autodiff = :forward) end
@@ -677,7 +677,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
             if !matched
                 res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                                zero(free_shock_idx), 
+                                zeros(length(free_shock_idx)), 
                                 Optim.LBFGS(), 
                                 Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
                                 autodiff = :forward) end
