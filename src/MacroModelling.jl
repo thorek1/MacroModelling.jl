@@ -16,6 +16,7 @@ import ForwardDiff as ℱ
 # 𝒷 = Diffractor.DiffractorForwardBackend
 
 import NLopt
+import Optim, LineSearches
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -449,7 +450,25 @@ end
 
 
 
+function minimize_distance_to_initial_data(X::Vector{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64, pruning::Bool)::S where {S, T}
+    state_copy = deepcopy(state)
 
+    XX = reshape(X, length(X) ÷ warmup_iters, warmup_iters)
+
+    for i in 1:warmup_iters
+        state_copy = state_update(state_copy, XX[:,i])
+    end
+
+    return precision_factor .* sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+end
+
+
+
+
+
+function minimize_distance_to_data(X::Vector{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64, pruning::Bool)::S where {S, T}
+    return precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
+end
 
 
 function minimize_distance_to_data!(X::Vector{S}, grad::Vector{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
@@ -6518,170 +6537,45 @@ function inversion_filter(𝓂::ℳ,
     states = zeros(𝓂.timings.nVars, n_obs)
     shocks = zeros(𝓂.timings.nExo, n_obs)
 
-    precision_factor = 1e6
+    precision_factor = 1.0
 
     if warmup_iterations > 0
-        state_copy = deepcopy(state)
-
-        # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
-        opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations)
+        res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+                            zeros(𝓂.timings.nExo * warmup_iterations), 
+                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                            autodiff = :forward)
     
-        opt.maxeval = 500
+        matched = Optim.minimum(res) < 1e-12
     
-        opt.ftol_abs = 1e-12
-        opt.ftol_rel = 1e-12
-        
-        opt.min_objective = (x,grad) -> minimize_distance_to_initial_data!(x,grad, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor)
-        
-        (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo * warmup_iterations))
-
-        matched_init = minf < 1e-12
-
-        if !matched_init
-            opt = NLopt.Opt(NLopt.:LN_SBPLX, 𝓂.timings.nExo * warmup_iterations)
-    
-            opt.maxeval = 500
-    
-            opt.ftol_abs = eps()
-            opt.ftol_rel = eps()
-    
-            opt.min_objective = (x,grad) -> minimize_distance_to_initial_data!(x,grad, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor)
-        
-            (minf,x,ret) = NLopt.optimize(opt, x)
-    
-            matched_init = minf < 1e-12
-        end
-
-        if !matched_init
-            x_init = deepcopy(x)
-
-            # then check with SLSQP whether this point is optimal
-            opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo * warmup_iterations)
-            # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo * warmup_iterations)
-            # opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo * warmup_iterations)
-            # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo * warmup_iterations))  
-
-            opt.maxeval = 500
-
-            opt.ftol_abs = 1e-12
-            opt.ftol_rel = 1e-12
-
-            opt.min_objective = obc_objective_optim_fun
-
-            NLopt.equality_constraint!(opt, (res,x,jac) -> match_initial_data!(res,x,jac, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1)))
-
-            (minf,x,ret) = NLopt.optimize(opt, x_init)
-        
-            warmup_shocks = reshape(x,𝓂.timings.nExo, warmup_iterations)
-
-            for i in 1:warmup_iterations-1
-                state = state_update(state, warmup_shocks[:,i])
-            end
-
-            matched_state = state_update(state, warmup_shocks[:,end])
-
-            matched = maximum(abs, (pruning ? sum(matched_state) : matched_state)[cond_var_idx] - data_in_deviations[:,1]) < 1e-6  
-
-            if sum(abs2, x_init) < minf && matched_init
-                x = x_init
-
-                matched = matched_init
-
-                warmup_shocks = reshape(x, 𝓂.timings.nExo, warmup_iterations)
-
-                for i in 1:warmup_iterations-1
-                    state_copy = state_update(state_copy, warmup_shocks[:,i])
-                end
-
-                state = state_copy
-            end
-        else
-            matched = matched_init
-
-            warmup_shocks = reshape(x, 𝓂.timings.nExo, warmup_iterations)
-
-            for i in 1:warmup_iterations-1
-                state = state_update(state, warmup_shocks[:,i])
-            end
-        end
-
         @assert matched "Numerical stabiltiy issues for restrictions in warmup iterations."
+    
+        x = Optim.minimizer(res)
+    
+        warmup_shocks = reshape(x, 𝓂.timings.nExo, warmup_iterations)
+    
+        for i in 1:warmup_iterations-1
+            state = state_update(state, warmup_shocks[:,i])
+        end
     end
-
+    
     for i in axes(data_in_deviations,2)
-        # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
-        opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo)
+        res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
+                            zeros(𝓂.timings.nExo), 
+                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                            autodiff = :forward)
     
-        opt.maxeval = 500
-
-        opt.ftol_abs = 1e-12
-        opt.ftol_rel = 1e-12
-
-        opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
-
-        (minf,x,ret) = NLopt.optimize(opt, zeros(𝓂.timings.nExo))
-
-        matched_init = minf < 1e-12
-
-        # if !matched_init
-        #     opt = NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo)
+        matched = Optim.minimum(res) < 1e-12
     
-        #     opt.maxeval = 500
-    
-        #     # opt.xtol_abs = eps()
-        #     # opt.xtol_rel = eps()
-    
-        #     opt.min_objective = (x,grad) -> minimize_distance_to_data!(x,grad, data_in_deviations[:,i], state, state_update, cond_var_idx)
-    
-        #     (minf,x,ret) = NLopt.optimize(opt, x)
-
-        #     matched_init = minf < 1e-12
-        # end
-        
-        if !matched_init
-            x_init = deepcopy(x)
-
-            # then check with SLSQP whether this point is optimal
-            opt = NLopt.Opt(NLopt.:LD_SLSQP, 𝓂.timings.nExo)
-            # opt = NLopt.Opt(NLopt.:LN_COBYLA, 𝓂.timings.nExo)
-            # opt = NLopt.Opt(NLopt.:AUGLAG, 𝓂.timings.nExo)
-            # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, 𝓂.timings.nExo))  
-
-            opt.maxeval = 500
-
-            opt.ftol_abs = 1e-12
-            opt.ftol_rel = 1e-12
-
-            opt.min_objective = obc_objective_optim_fun
-
-            NLopt.equality_constraint!(opt, (res,x,jac) -> match_data_sequence!(res,x,jac, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor), zeros(size(data_in_deviations,1)))
-
-            (minf,x,ret) = NLopt.optimize(opt, x_init)
-            
-            new_state = state_update(state, x)
-
-            matched = maximum(abs, (pruning ? sum(new_state) : new_state)[cond_var_idx] - data_in_deviations[:,i]) < 1e-6
-
-            if sum(abs2, x_init) < minf && matched_init
-                new_state = state_update(state, x_init)
-
-                x = x_init
-
-                matched = matched_init
-            end
-        else
-            new_state = state_update(state, x)
-
-            matched = matched_init
-        end
-
-        if matched
-            state = new_state
-            states[:,i] = pruning ? sum(state) : state
-            shocks[:,i] = x
-        end
-
         @assert matched "Numerical stabiltiy issues for restrictions in period $i."
+    
+        x = Optim.minimizer(res)
+    
+        state = state_update(state, x)
+
+        states[:,i] = pruning ? sum(state) : state
+        shocks[:,i] = x
     end
         
     return states, shocks
