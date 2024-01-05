@@ -6485,7 +6485,7 @@ end
 
 
 
-function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Vector{Float64}, state_update::Function, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, warmup_iterations::Int)
+function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector{Float64},Vector{Vector{Float64}}}, state_update::Function, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, warmup_iterations::Int)
     if state isa Vector{Float64}
         pruning = false
     else
@@ -6827,7 +6827,7 @@ function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}
         if !ℒ.issuccess(F̄)
             F̄ = ℒ.svd(C * P[:, :, t] * C')
         end
-        
+
         iF[:, :, t] .= inv(F̄)
         PCiF         = P[:, :, t] * C' * iF[:, :, t]
         L[:, :, t]  .= A - A * PCiF * C
