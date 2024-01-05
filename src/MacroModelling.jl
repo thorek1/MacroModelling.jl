@@ -334,8 +334,21 @@ function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where
 end
 
 
+function minimize_distance_to_conditions(X::Vector{S}, p)::S where S
+    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, 𝒷, precision_factor = p
 
-function minimize_distance_to_conditions(X::Vector{S}, grad::Vector{S}, p) where S
+    Shocks[Free_shock_idx] .= X
+
+    new_State = State_update(State, convert(typeof(X), Shocks))
+
+    cond_vars = Pruning ? sum(new_State) : new_State
+
+    return precision_factor * sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+end
+
+
+
+function minimize_distance_to_conditions!(X::Vector{S}, grad::Vector{S}, p) where S
     Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, 𝒷, precision_factor = p
 
     if length(grad) > 0

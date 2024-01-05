@@ -618,63 +618,27 @@ function get_conditional_forecast(𝓂::ℳ,
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
     if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
-        precision_factor = 1e6
-
-        initial_state_copy = deepcopy(initial_state)
+        precision_factor = 1.0
 
         p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state_copy, pruning, 𝒷, precision_factor)
 
-        # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
-        opt = NLopt.Opt(NLopt.:LD_LBFGS, length(free_shock_idx))
-    
-        opt.maxeval = 500
-    
-        opt.ftol_abs = 1e-12
-        opt.ftol_rel = 1e-12
-        
-        opt.min_objective = (x, grad) -> minimize_distance_to_conditions(x, grad, p)
-        
-        (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
+        res = Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                            zero(free_shock_idx), 
+                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                            autodiff = :forward)
 
-        matched_init = minf < 1e-12
-
-        if !matched_init
-            x_init = deepcopy(x)
-
-            # then check with SLSQP whether this point is optimal
-            opt = NLopt.Opt(NLopt.:LD_SLSQP, length(free_shock_idx))
-            # opt = NLopt.Opt(NLopt.:AUGLAG, length(free_shock_idx))
-            # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, length(free_shock_idx)))  
-
-            opt.maxeval = 500
-
-            opt.ftol_abs = 1e-12
-            opt.ftol_rel = 1e-12
-
-            opt.min_objective = obc_objective_optim_fun
-            
-            NLopt.equality_constraint!(opt, (res,x,jac) -> match_conditions(res,x,jac,p), zeros(length(cond_var_idx)))
-                
-            (minf,x,ret) = NLopt.optimize(opt, x_init)
-                
-            shocks[free_shock_idx,1] .= x
-                
-            initial_state = state_update(initial_state, Float64[shocks[:,1]...])
-
-            Y[:,1] = pruning ? sum(initial_state) : initial_state
-
-            matched = maximum(abs, conditions[cond_var_idx,1] - Y[:,1][cond_var_idx]) < 1e-6
-        else
-            shocks[free_shock_idx,1] .= x
-                
-            initial_state = state_update(initial_state, Float64[shocks[:,1]...])
-
-            Y[:,1] = pruning ? sum(initial_state) : initial_state
-
-            matched = matched_init
-        end
+        matched = Optim.minimum(res) < 1e-12
 
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
+    
+        x = Optim.minimizer(res)
+
+        shocks[free_shock_idx,1] .= x
+                
+        initial_state = state_update(initial_state, Float64[shocks[:,1]...])
+
+        Y[:,1] = pruning ? sum(initial_state) : initial_state
 
         for i in 2:size(conditions,2)
             cond_var_idx = findall(conditions[:,i] .!= nothing)
@@ -693,57 +657,23 @@ function get_conditional_forecast(𝓂::ℳ,
     
             p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, 𝒷, precision_factor)
 
-            # first minimize the constraint disregarding the least squares condition (should get you close or to the exact least squares solution - to be checked)
-            opt = NLopt.Opt(NLopt.:LD_LBFGS, length(free_shock_idx))
-        
-            opt.maxeval = 500
-        
-            opt.ftol_abs = 1e-12
-            opt.ftol_rel = 1e-12
-            
-            opt.min_objective = (x, grad) -> minimize_distance_to_conditions(x, grad, p)
-            
-            (minf,x,ret) = NLopt.optimize(opt, zero(free_shock_idx))
+            res = Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                                zero(free_shock_idx), 
+                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                                autodiff = :forward)
 
-            matched_init = minf < 1e-12
-
-            if !matched_init
-                x_init = deepcopy(x)
-
-                # then check with SLSQP whether this point is optimal
-                opt = NLopt.Opt(NLopt.:LD_SLSQP, length(free_shock_idx))
-                # opt = NLopt.Opt(NLopt.:AUGLAG, length(free_shock_idx))
-                # NLopt.local_optimizer!(opt, NLopt.Opt(NLopt.:LD_LBFGS, length(free_shock_idx)))  
-
-                opt.maxeval = 500
-
-                opt.ftol_abs = 1e-12
-                opt.ftol_rel = 1e-12
-
-                opt.min_objective = obc_objective_optim_fun
-                
-                NLopt.equality_constraint!(opt, (res,x,jac) -> match_conditions(res,x,jac,p), zeros(length(cond_var_idx)))
-                    
-                (minf,x,ret) = NLopt.optimize(opt, x_init)
-                    
-                shocks[free_shock_idx,i] .= x
-                    
-                initial_state = state_update(initial_state, Float64[shocks[:,i]...])
-
-                Y[:,i] = pruning ? sum(initial_state) : initial_state
-
-                matched = maximum(abs, conditions[cond_var_idx,i] - Y[:,i][cond_var_idx]) < 1e-6
-            else
-                shocks[free_shock_idx,i] .= x
-                    
-                initial_state = state_update(initial_state, Float64[shocks[:,i]...])
-
-                Y[:,i] = pruning ? sum(initial_state) : initial_state
-
-                matched = matched_init
-            end
+            matched = Optim.minimum(res) < 1e-12
 
             @assert matched "Numerical stabiltiy issues for restrictions in period $i."
+
+            x = Optim.minimizer(res)
+
+            shocks[free_shock_idx,i] .= x
+
+            initial_state = state_update(initial_state, Float64[shocks[:,i]...])
+
+            Y[:,i] = pruning ? sum(initial_state) : initial_state
         end
     elseif algorithm ∈ [:first_order, :riccati, :quadratic_iteration, :linear_time_iteration]
         C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
