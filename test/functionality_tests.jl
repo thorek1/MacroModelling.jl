@@ -364,6 +364,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
     if length(m.exo) > 1
         var_idxs = findall(vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> 1e-10,dims = 1)) .> 1)[1:2]
+        var_idxs_kalman = findall(vec(sum(sol[end-length(m.exo)+1:end,:] .!= 0,dims = 1)) .> 0)[1:2]
     else
         var_idxs = [1]
     end
@@ -373,8 +374,11 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
     data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
 
-    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, verbose = true)
-    estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, verbose = true)
+    data_in_levels_kalman = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs_kalman]) : m.var[var_idxs_kalman],:,:simulate)
+    data_kalman = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs_kalman]
+
+    estim_vars1 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, verbose = true)
+    estim_vars2 = get_estimated_variables(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, verbose = true)
     @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
 
     estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, verbose = true)
@@ -385,25 +389,25 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, filter = :inversion, warmup_iterations = 10, verbose = true)
     @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
 
-    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, filter = :kalman, verbose = true)
-    estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, filter = :kalman, verbose = true)
+    estim_vars1 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, filter = :kalman, verbose = true)
+    estim_vars2 = get_estimated_variables(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, filter = :kalman, verbose = true)
     @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
 
-    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true)
-    estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, smooth = false, verbose = true)
+    estim_vars1 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true)
+    estim_vars2 = get_estimated_variables(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, smooth = false, verbose = true)
     @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
 
-    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
-    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
-    estim_vars2 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
+    estim_vars1 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+    estim_vars1 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
+    estim_vars2 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
 
 
-    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, verbose = true)
-    estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, verbose = true)
+    estim_shocks1 = get_estimated_shocks(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, verbose = true)
+    estim_shocks2 = get_estimated_shocks(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, verbose = true)
     @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
 
-    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, filter = :kalman, verbose = true)
-    estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, filter = :kalman, verbose = true)
+    estim_shocks1 = get_estimated_shocks(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, filter = :kalman, verbose = true)
+    estim_shocks2 = get_estimated_shocks(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, filter = :kalman, verbose = true)
     @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
 
     estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, verbose = true)
@@ -414,13 +418,13 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, filter = :inversion, warmup_iterations = 10, verbose = true)
     @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
 
-    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true)
-    estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, smooth = false, verbose = true)
+    estim_shocks1 = get_estimated_shocks(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true)
+    estim_shocks2 = get_estimated_shocks(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, smooth = false, verbose = true)
     @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
 
-    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
-    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
-    estim_shocks2 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
+    estim_shocks1 = get_estimated_shocks(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
+    estim_shocks1 = get_estimated_shocks(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
+    estim_shocks2 = get_estimated_shocks(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
 
 
     Random.seed!(3)
