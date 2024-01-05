@@ -6422,6 +6422,166 @@ end
 # end
 
 
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}) where S
+    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
+
+    A = @views 𝐒₁[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
+    B = @views 𝐒₁[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+
+    C = @views ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states)),:]
+
+    𝐁 = B * B'
+
+    # Gaussian Prior
+    coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    
+    dimensions = [size(A),size(𝐁)]
+    
+    values = vcat(vec(A), vec(collect(-𝐁)))
+
+    P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+
+    u = zeros(length(observables_and_states))
+    # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
+    z = C * u
+    
+    loglik = 0.0
+
+    for t in 1:size(data_in_deviations)[2]
+        v = data_in_deviations[:,t] - z
+
+        F = C * P * C'
+
+        # F = (F + F') / 2
+
+        # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
+        # K = P * C' * ℒ.pinv(F)
+
+        # loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
+        Fdet = ℒ.det(F)
+
+        if Fdet < eps() return -Inf end
+
+        F̄ = ℒ.lu(F, check = false)
+
+        if !ℒ.issuccess(F̄) return -Inf end
+
+        invF = inv(F̄)
+
+        loglik += log(Fdet) + v' * invF  * v
+        
+        K = P * C' * invF
+
+        P = A * (P - K * C * P) * A' + 𝐁
+
+        u = A * (u + K * v)
+        
+        z = C * u 
+    end
+
+    return -(loglik + length(data_in_deviations) * log(2 * 3.141592653589793)) / 2 
+end
+
+
+
+function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Vector{Float64}, state_update::Function, data_in_deviations::Matrix{Float64}, observables::Vector{Symbol}, warmup_iterations::Int)
+    if state isa Vector{Float64}
+        pruning = false
+    else
+        pruning = true
+    end
+
+    precision_factor = 1.0
+
+    n_obs = size(data_in_deviations,2)
+
+    cond_var_idx = indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))
+
+    shocks² = 0.0
+    logabsdets = 0.0
+
+    if warmup_iterations > 0
+        res = @suppress begin Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+                            zeros(𝓂.timings.nExo * warmup_iterations), 
+                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                            autodiff = :forward) end
+
+        matched = Optim.minimum(res) < 1e-12
+
+        if !matched # for robustness try other linesearch
+            res = @suppress begin Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+                            zeros(𝓂.timings.nExo * warmup_iterations), 
+                            Optim.LBFGS(), 
+                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                            autodiff = :forward) end
+        
+            matched = Optim.minimum(res) < 1e-12
+        end
+
+        if !matched return -Inf end
+
+        x = Optim.minimizer(res)
+
+        warmup_shocks = reshape(x, 𝓂.timings.nExo, warmup_iterations)
+
+        for i in 1:warmup_iterations-1
+            state = state_update(state, warmup_shocks[:,i])
+        end
+        
+        res = zeros(0)
+
+        jacc = zeros(length(observables) * warmup_iterations, length(observables))
+
+        match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
+
+        for i in 1:warmup_iterations
+            logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:] ./ precision_factor)[1]
+        end
+
+        shocks² += sum(abs2,x)
+    end
+
+    for i in axes(data_in_deviations,2)
+        res = @suppress begin Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
+                        zeros(𝓂.timings.nExo), 
+                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                        Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                        autodiff = :forward) end
+
+        matched = Optim.minimum(res) < 1e-12
+
+        if !matched # for robustness try other linesearch
+            res = @suppress begin Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
+                            zeros(𝓂.timings.nExo), 
+                            Optim.LBFGS(), 
+                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                            autodiff = :forward) end
+        
+            matched = Optim.minimum(res) < 1e-12
+        end
+
+        if !matched return -Inf end
+
+        x = Optim.minimizer(res)
+
+        res  = zeros(0)
+
+        jacc = zeros(length(observables), length(observables))
+
+        match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
+
+        logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
+
+        shocks² += sum(abs2,x)
+
+        state = state_update(state, x)
+    end
+
+    return -(logabsdets + shocks² + (𝓂.timings.nExo * (warmup_iterations + n_obs)) * log(2 * 3.141592653589793)) / 2
+end
+
 
 function inversion_filter(𝓂::ℳ, 
     data_in_deviations::AbstractArray{Float64},

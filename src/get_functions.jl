@@ -2857,10 +2857,10 @@ function get_loglikelihood(𝓂::ℳ,
     @assert size(data)[1] <= sum(shock_idx) "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
     if filter == :inversion
-        @assert !(size(data)[1] == sum(shock_idx)) "The inversion filter only works when there are as many shocks as there are observables."
+    @assert !(size(data)[1] == sum(shock_idx)) "The inversion filter only works when there are as many shocks as there are observables."
     end
 
-    observables = collect(axiskeys(data,1))
+    observables = @ignore_derivatives collect(axiskeys(data,1))
 
     @assert observables isa Vector{String} || observables isa Vector{Symbol} "Make sure that the data has variables names as rows. They can be either Strings or Symbols."
 
@@ -2885,69 +2885,69 @@ function get_loglikelihood(𝓂::ℳ,
 
     # solve model given the parameters
     if algorithm == :second_order
-        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂)
 
-        if !converged return -Inf end
+    if !converged return -Inf end
 
-        all_SS = expand_steady_state(SS_and_pars,𝓂)
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-        state = collect(sss) - all_SS
+    state = collect(sss) - all_SS
 
-        state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                        1
+    state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+    1
                         shock]
-            return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-        end
+    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+    end
     elseif algorithm == :pruned_second_order
-        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
 
-        if !converged return -Inf end
+    if !converged return -Inf end
 
-        all_SS = expand_steady_state(SS_and_pars,𝓂)
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-        state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
+    state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
 
-        state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-            aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-            aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+    state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+    aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+    aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
             
-            return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
-        end
+    return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+    end
     elseif algorithm == :third_order
-        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂)
 
-        if !converged return -Inf end
+    if !converged return -Inf end
 
-        all_SS = expand_steady_state(SS_and_pars,𝓂)
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-        state = collect(sss) - all_SS
+    state = collect(sss) - all_SS
 
-        state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                            1
+    state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+    1
                             shock]
-            return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-        end
+    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+    end
     elseif algorithm == :pruned_third_order
-        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
 
-        if !converged return -Inf end
+    if !converged return -Inf end
 
-        all_SS = expand_steady_state(SS_and_pars,𝓂)
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-        state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
+    state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
 
-        state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-            aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-            aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
-            aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-            aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+    state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+    aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+    aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
+    aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+    aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
             
-            kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+    kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
             
-            return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
-        end
+    return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+    end
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
 
@@ -2977,160 +2977,11 @@ function get_loglikelihood(𝓂::ℳ,
 
     data_in_deviations = collect(data) .- SS_and_pars[obs_indices]
 
-    if state isa Vector{Float64}
-        pruning = false
-    else
-        pruning = true
-    end
-
     if filter == :kalman
-        observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
-
-        A = @views 𝐒₁[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
-        B = @views 𝐒₁[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
-    
-        C = @views ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states)),:]
-    
-        𝐁 = B * B'
-    
-        # Gaussian Prior
-        coordinates = Tuple{Vector{Int}, Vector{Int}}[]
-        
-        dimensions = [size(A),size(𝐁)]
-        
-        values = vcat(vec(A), vec(collect(-𝐁)))
-    
-        P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-        # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
-    
-        u = zeros(length(observables_and_states))
-        # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
-        z = C * u
-        
-        loglik = 0.0
-    
-        for t in 1:size(data)[2]
-            v = data_in_deviations[:,t] - z
-    
-            F = C * P * C'
-    
-            # F = (F + F') / 2
-    
-            # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
-            # K = P * C' * ℒ.pinv(F)
-    
-            # loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
-            Fdet = ℒ.det(F)
-    
-            if Fdet < eps() return -Inf end
-    
-            F̄ = ℒ.lu(F, check = false)
-    
-            if !ℒ.issuccess(F̄) return -Inf end
-    
-            invF = inv(F̄)
-    
-            loglik += log(Fdet) + v' * invF  * v
-            
-            K = P * C' * invF
-    
-            P = A * (P - K * C * P) * A' + 𝐁
-    
-            u = A * (u + K * v)
-            
-            z = C * u 
-        end
-    
-        return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2
-        
+        loglikelihood = calculate_kalman_filter_loglikelihood(𝓂, observables, 𝐒₁, data_in_deviations)
     elseif filter == :inversion
-        precision_factor = 1.0
-
-        n_obs = size(data_in_deviations,2)
-    
-        cond_var_idx = indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))
-    
-        shocks² = 0.0
-        logabsdets = 0.0
-    
-        if warmup_iterations > 0
-            res = @suppress begin Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
-                                zeros(𝓂.timings.nExo * warmup_iterations), 
-                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward) end
-        
-            matched = Optim.minimum(res) < 1e-12
-        
-            if !matched # for robustness try other linesearch
-                res = @suppress begin Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
-                                zeros(𝓂.timings.nExo * warmup_iterations), 
-                                Optim.LBFGS(), 
-                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward) end
-                
-                matched = Optim.minimum(res) < 1e-12
-            end
-
-            if !matched return -Inf end
-        
-            x = Optim.minimizer(res)
-        
-            warmup_shocks = reshape(x, 𝓂.timings.nExo, warmup_iterations)
-        
-            for i in 1:warmup_iterations-1
-                state = state_update(state, warmup_shocks[:,i])
-            end
-                
-            res = zeros(0)
-
-            jacc = zeros(length(observables) * warmup_iterations, length(observables))
-
-            match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
-            
-            for i in 1:warmup_iterations
-                logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:] ./ precision_factor)[1]
-            end
-
-            shocks² += sum(abs2,x)
-        end
-
-        for i in axes(data_in_deviations,2)
-            res = @suppress begin Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
-                            zeros(𝓂.timings.nExo), 
-                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward) end
-    
-            matched = Optim.minimum(res) < 1e-12
-        
-            if !matched # for robustness try other linesearch
-                res = @suppress begin Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
-                                zeros(𝓂.timings.nExo), 
-                                Optim.LBFGS(), 
-                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward) end
-                
-                matched = Optim.minimum(res) < 1e-12
-            end
-
-            if !matched return -Inf end
-
-            x = Optim.minimizer(res)
-        
-            res  = zeros(0)
-
-            jacc = zeros(length(observables), length(observables))
-
-            match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
-
-            logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
-        
-            shocks² += sum(abs2,x)
-
-            state = state_update(state, x)
-        end
-        
-        return -(logabsdets + shocks² + (𝓂.timings.nExo * (warmup_iterations + n_obs)) * log(2 * 3.141592653589793)) / 2
+        loglikelihood = @ignore_derivatives calculate_inversion_filter_loglikelihood(𝓂, state, state_update, data_in_deviations, observables, warmup_iterations)
     end
+
+    return loglikelihood
 end
