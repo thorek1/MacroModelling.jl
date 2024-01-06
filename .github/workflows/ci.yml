@@ -14,9 +14,9 @@ jobs:
       fail-fast: false
       matrix:
         version: ['1.8', '1.9', '1.10']
+        test_set: ["basic", "plots", "higher_order", "hmc_estimation", "tempering_estimation"]
         os: [ubuntu-latest, macOS-latest, windows-latest]
         arch: [x64]
-        test_set: ["hmc_estimation", "tempering_estimation", "higher_order", "plots", "basic"]
         exclude:
           - version: '1.8'
             os: macOS-latest
