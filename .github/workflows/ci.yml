@@ -7,7 +7,7 @@ jobs:
     env: 
       GKS_ENCODING: "utf8"
       GKSwstype: "nul"
-    name: $${{ matrix.test_set }} - {{ matrix.version }} - ${{ matrix.os }}
+    name: ${{ matrix.test_set }} - ${{ matrix.version }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.version == 'nightly' || matrix.version == '^1.11.0-0' }}
     strategy:
