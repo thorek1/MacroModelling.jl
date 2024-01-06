@@ -4,6 +4,8 @@
 
 - [ ] add technical details about SS solver, obc solver, and other algorithms
 - [ ] check why warmup_iterations = 0 makes estimated shocks larger
+- [ ] make inversion filter suitable for HMC and higher order
+- [ ] use analytical derivatives also for shocks matching optim (and HMC - implicit diff)
 - [ ] fix translate dynare mod file from file written using write to dynare file (see test models)
 - [ ] rm obc vars from get_SS
 - [ ] write tests/docs for nonlinear obc and forecasting
