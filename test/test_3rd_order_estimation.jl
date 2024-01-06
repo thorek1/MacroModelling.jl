@@ -50,7 +50,7 @@ Random.seed!(3)
 
 pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)),
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 2,
+            n_chains = 1,
             n_rounds = 6,
             multithreaded = true)
 
