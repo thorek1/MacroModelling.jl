@@ -38,7 +38,7 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000)
 
 pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000)),
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 4,
+            n_chains = 3,
             n_rounds = 7,
             multithreaded = true)
 
