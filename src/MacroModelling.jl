@@ -4702,7 +4702,11 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     else
         eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
 
-        ℒ.ordschur!(schdcmp, eigenselect)
+        try
+            ℒ.ordschur!(schdcmp, eigenselect)
+        catch
+            return zeros(T.nVars,T.nPast_not_future_and_mixed), false
+        end
 
         Z₂₁ = @view schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
         Z₁₁ = @view schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
