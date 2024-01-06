@@ -13,19 +13,26 @@ println("Threads used: ", Threads.nthreads())
 
 include("functionality_tests.jl")
 
-
 # @testset verbose = true "Code formatting (JuliaFormatter.jl)" begin
 #     @test format(MacroModelling; verbose=true, overwrite=true)
 # end
 
-
-if test_set == "higher_order_estimation"
-    include("test_higher_order_estimation.jl")
+if test_set == "estimation_hmc"
+    include("test_estimation_hmc.jl")
 end
 
-if test_set == "estimation"
-    include("test_estimation.jl")
+if test_set == "estimation_tempering"
+    include("test_estimation_tempering.jl")
 end
+
+if test_set == "2nd_order_estimation"
+    include("test_2nd_order_estimation.jl")
+end
+
+if test_set == "3rd_order_estimation"
+    include("test_3rd_order_estimation.jl")
+end
+
 
 if test_set == "higher_order"
     plots = true

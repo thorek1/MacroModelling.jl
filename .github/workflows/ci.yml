@@ -7,7 +7,7 @@ jobs:
     env: 
       GKS_ENCODING: "utf8"
       GKSwstype: "nul"
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.test_set }}
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.version == 'nightly' || matrix.version == '^1.11.0-0' }}
     strategy:

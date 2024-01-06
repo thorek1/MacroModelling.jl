@@ -39,62 +39,7 @@ Random.seed!(30)
 
 pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000)),
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 1,
-            n_rounds = 7,
-            multithreaded = true)
-
-samps = MCMCChains.Chains(Pigeons.get_sample(pt))
-
-
-println(mean(samps).nt.mean)
-
-
-# estimate highly nonlinear model
-
-
-# load data
-dat = CSV.read("data/usmodel.csv", DataFrame)
-data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
-
-# declare observables
-observables = [:dy, :dc]#, :dinve, :labobs, :pinfobs, :dw, :robs]
-
-# Subsample from 1966Q1 - 2004Q4
-# subset observables in data
-data = data(observables,75:230)
-
-
-include("models/Caldara_et_al_2012_estim.jl")
-
-
-# get_loglikelihood(Caldara_et_al_2012_estim, Caldara_et_al_2012_estim.parameter_values, data, algorithm = :pruned_third_order)
-
-# get_loglikelihood(Caldara_et_al_2012_estim, Caldara_et_al_2012_estim.parameter_values*0.99, data, algorithm = :pruned_third_order)
-
-
-# get_parameters(Caldara_et_al_2012_estim, values = true)
-
-Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
-    dȳ  ~ Normal(0, 1)
-    dc̄  ~ Normal(0, 1)
-    β   ~ Beta(0.95, 0.005, μσ = true)
-    ζ   ~ Beta(0.33, 0.05, μσ = true)
-    δ   ~ Beta(0.02, 0.01, μσ = true)
-    λ   ~ Beta(0.75, 0.01, μσ = true)
-    ψ   ~ Normal(1, .25)#, μσ = true)
-    σ̄   ~ InverseGamma(0.021, Inf, μσ = true)
-    η   ~ InverseGamma(0.1, Inf, μσ = true)
-    ρ   ~ Beta(0.75, 0.02, μσ = true)
-
-    Turing.@addlogprob! get_loglikelihood(m, [dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ], data, algorithm = :pruned_third_order)
-end
-
-
-Random.seed!(3)
-
-pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)),
-            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 1,
+            n_chains = 2,
             n_rounds = 6,
             multithreaded = true)
 
@@ -102,6 +47,61 @@ samps = MCMCChains.Chains(Pigeons.get_sample(pt))
 
 
 println(mean(samps).nt.mean)
+
+
+# # estimate highly nonlinear model
+
+
+# # load data
+# dat = CSV.read("data/usmodel.csv", DataFrame)
+# data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+
+# # declare observables
+# observables = [:dy, :dc]#, :dinve, :labobs, :pinfobs, :dw, :robs]
+
+# # Subsample from 1966Q1 - 2004Q4
+# # subset observables in data
+# data = data(observables,75:230)
+
+
+# include("models/Caldara_et_al_2012_estim.jl")
+
+
+# # get_loglikelihood(Caldara_et_al_2012_estim, Caldara_et_al_2012_estim.parameter_values, data, algorithm = :pruned_third_order)
+
+# # get_loglikelihood(Caldara_et_al_2012_estim, Caldara_et_al_2012_estim.parameter_values*0.99, data, algorithm = :pruned_third_order)
+
+
+# # get_parameters(Caldara_et_al_2012_estim, values = true)
+
+# Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
+#     dȳ  ~ Normal(0, 1)
+#     dc̄  ~ Normal(0, 1)
+#     β   ~ Beta(0.95, 0.005, μσ = true)
+#     ζ   ~ Beta(0.33, 0.05, μσ = true)
+#     δ   ~ Beta(0.02, 0.01, μσ = true)
+#     λ   ~ Beta(0.75, 0.01, μσ = true)
+#     ψ   ~ Normal(1, .25)#, μσ = true)
+#     σ̄   ~ InverseGamma(0.021, Inf, μσ = true)
+#     η   ~ InverseGamma(0.1, Inf, μσ = true)
+#     ρ   ~ Beta(0.75, 0.02, μσ = true)
+
+#     Turing.@addlogprob! get_loglikelihood(m, [dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ], data, algorithm = :pruned_third_order)
+# end
+
+
+# Random.seed!(3)
+
+# pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)),
+#             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+#             n_chains = 1,
+#             n_rounds = 6,
+#             multithreaded = true)
+
+# samps = MCMCChains.Chains(Pigeons.get_sample(pt))
+
+
+# println(mean(samps).nt.mean)
 
 
 # Random.seed!(30)
