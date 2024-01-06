@@ -6506,20 +6506,20 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector
     logabsdets = 0.0
 
     if warmup_iterations > 0
-        res = @suppress begin Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+        res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
                             zeros(𝓂.timings.nExo * warmup_iterations), 
                             Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                             Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward) end
+                            autodiff = :forward)
 
         matched = Optim.minimum(res) < 1e-12
 
         if !matched # for robustness try other linesearch
-            res = @suppress begin Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+            res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
                             zeros(𝓂.timings.nExo * warmup_iterations), 
                             Optim.LBFGS(), 
                             Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward) end
+                            autodiff = :forward)
         
             matched = Optim.minimum(res) < 1e-12
         end
@@ -6548,20 +6548,20 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector
     end
 
     for i in axes(data_in_deviations,2)
-        res = @suppress begin Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
+        res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
                         zeros(𝓂.timings.nExo), 
                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                         Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                        autodiff = :forward) end
+                        autodiff = :forward)
 
         matched = Optim.minimum(res) < 1e-12
 
         if !matched # for robustness try other linesearch
-            res = @suppress begin Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
+            res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
                             zeros(𝓂.timings.nExo), 
                             Optim.LBFGS(), 
                             Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward) end
+                            autodiff = :forward)
         
             matched = Optim.minimum(res) < 1e-12
         end
