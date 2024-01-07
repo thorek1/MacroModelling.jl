@@ -2856,7 +2856,7 @@ function get_loglikelihood(𝓂::ℳ,
     shock_idx = @ignore_derivatives parse_shocks_input_to_index(shocks,𝓂.timings)
 
     @assert size(data)[1] <= sum(shock_idx) "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
-
+    # check whether you can relax this assumption and estimate models with less shocks than observables. as in you match them the best you can but i guess the issue is with the weighting between the matches because you only care about MSE not taking into accound the disribution of the individual variables.
     # if filter == :inversion
     # @assert !(size(data)[1] == sum(shock_idx)) "The inversion filter only works when there are as many shocks as there are observables."
     # end
