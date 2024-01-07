@@ -4,6 +4,7 @@
 
 - [ ] add technical details about SS solver, obc solver, and other algorithms
 - [ ] make SS calc faster (func and optim, maybe inplace ops)
+- [ ] add nonlinear shock decomposition
 - [ ] check why warmup_iterations = 0 makes estimated shocks larger
 - [ ] make inversion filter / higher order sols suitable for HMC (forward and reverse diff, currently only analytical pushforward, no implicitdiff)
 - [ ] use analytical derivatives also for shocks matching optim (and HMC - implicit diff)

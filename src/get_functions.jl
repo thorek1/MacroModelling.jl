@@ -7,8 +7,8 @@ Return the shock decomposition in absolute deviations from the non stochastic st
 - $DATA
 # Keyword Arguments
 - $PARAMETERS
-- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
-- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
+- $DATA_IN_LEVELS
+- $SMOOTH
 - $VERBOSE
 
 # Examples
@@ -114,15 +114,18 @@ end
 
 """
 $(SIGNATURES)
-Return the estimated shocks based on the Kalman smoother or filter (depending on the `smooth` keyword argument) using the provided data and first order solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+Return the estimated shocks based on the inversion filter (depending on the `filter` keyword argument), or Kalman filter or smoother (depending on the `smooth` keyword argument) using the provided data and (non-)linear solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 # Arguments
 - $MODEL
 - $DATA
 # Keyword Arguments
 - $PARAMETERS
-- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
-- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
+- $ALGORITHM
+- $FILTER
+- `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
+- $DATA_IN_LEVELS
+- $SMOOTH
 - $VERBOSE
 
 # Examples
@@ -217,16 +220,19 @@ end
 
 """
 $(SIGNATURES)
-Return the estimated variables based on the Kalman smoother or filter (depending on the `smooth` keyword argument) using the provided data and first order solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+Return the estimated variables based on the inversion filter (depending on the `filter` keyword argument), or Kalman filter or smoother (depending on the `smooth` keyword argument) using the provided data and (non-)linear solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 # Arguments
 - $MODEL
 - $DATA
 # Keyword Arguments
 - $PARAMETERS
-- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- $ALGORITHM
+- $FILTER
+- `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
+- $DATA_IN_LEVELS
 - $LEVELS
-- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
+- $SMOOTH
 - $VERBOSE
 
 # Examples
@@ -328,8 +334,8 @@ Return the standard deviations of the Kalman smoother or filter (depending on th
 - $DATA
 # Keyword Arguments
 - $PARAMETERS
-- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
-- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
+- $DATA_IN_LEVELS
+- $SMOOTH
 - $VERBOSE
 
 # Examples
@@ -1479,7 +1485,7 @@ Return the solution of the model. In the linear case it returns the linearised s
 - $MODEL
 # Keyword Arguments
 - $PARAMETERS
-- `algorithm` [Default: `:first_order`, Type: `Symbol`]: algorithm to solve for the dynamics of the model. Only linear algorithms allowed.
+- $ALGORITHM
 - $VERBOSE
 
 The returned `KeyedArray` shows as columns the endogenous variables inlcuding the auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows and other dimensions (depending on the chosen perturbation order) include the SS for the linear case only, followed by the states, and exogenous shocks. 
@@ -1520,10 +1526,6 @@ function get_solution(𝓂::ℳ;
     parameters::ParameterType = nothing,
     algorithm::Symbol = :first_order, 
     verbose::Bool = false)
-
-    # write_parameters_input!(𝓂,parameters, verbose = verbose)
-    
-    # @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran] "This function only works for linear solutions. Choose a respective algorithm."
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
@@ -2315,9 +2317,6 @@ function get_moments(𝓂::ℳ;
     end
 
 
-
-
-
     if derivatives
         if non_stochastic_steady_state
             axis1 = [𝓂.var[var_idx]...,𝓂.calibration_equations_parameters...]
@@ -2836,9 +2835,51 @@ end
 
 
 
+"""
+$(SIGNATURES)
+Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is either calculated based on the inversion or the Kalman filter (depending on the `filter` keyword argument). In case of a nonlinear solution algorithm the inversion filter will be used. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns.
+
+This function is differentiable (so far for the Kalman filter only) and can be used in gradient based sampling or optimisation.
+
+# Arguments
+- $MODEL
+- $DATA
+- `parameter_values` [Type: `Vector`]: Parameter values.
+# Keyword Arguments
+- $ALGORITHM
+- $FILTER
+- `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
+- $VERBOSE
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+simulated_data = simulate(RBC)
+
+get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
+# output
+58.24780188977981
+```
+"""
 function get_loglikelihood(𝓂::ℳ, 
     data::KeyedArray{Float64}, 
-    parameters::Vector{S}; 
+    parameter_values::Vector{S}; 
     algorithm::Symbol = :first_order, 
     filter::Symbol = :kalman, 
     warmup_iterations::Int = 0, 
@@ -2873,13 +2914,13 @@ function get_loglikelihood(𝓂::ℳ,
         end
     end
 
-    if min(max(parameters,lb),ub) != parameters 
+    if min(max(parameter_values,lb),ub) != parameter_values 
         return -Inf
     end
 
     # solve model given the parameters
     if algorithm == :second_order
-        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂)
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂)
 
         if !converged return -Inf end
 
@@ -2894,7 +2935,7 @@ function get_loglikelihood(𝓂::ℳ,
             return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
         end
     elseif algorithm == :pruned_second_order
-        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
 
         if !converged return -Inf end
 
@@ -2909,7 +2950,7 @@ function get_loglikelihood(𝓂::ℳ,
             return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
         end
     elseif algorithm == :third_order
-        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂)
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂)
 
         if !converged return -Inf end
 
@@ -2924,7 +2965,7 @@ function get_loglikelihood(𝓂::ℳ,
             return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
         end
     elseif algorithm == :pruned_third_order
-        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
 
         if !converged return -Inf end
 
@@ -2943,7 +2984,7 @@ function get_loglikelihood(𝓂::ℳ,
             return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
         end
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
 
         if solution_error > tol || isnan(solution_error)
             return -Inf
@@ -2951,7 +2992,7 @@ function get_loglikelihood(𝓂::ℳ,
 
         state = zeros(𝓂.timings.nVars)
 
-        ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
+        ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) |> Matrix
 
         𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
         
