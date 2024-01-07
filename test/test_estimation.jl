@@ -45,6 +45,20 @@ samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#,
 println(mean(samps).nt.mean)
 sample_nuts = mean(samps).nt.mean
 
+
+pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000)),
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 1,
+            n_rounds = 10,
+            multithreaded = true)
+
+samps = MCMCChains.Chains(Pigeons.get_sample(pt))
+
+println(mean(samps).nt.mean)
+
+sample_pigeons = mean(samps).nt.mean
+
+
 Random.seed!(30)
 
 function calculate_posterior_loglikelihood(parameters)
@@ -69,7 +83,8 @@ Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); a
 
 @testset "Estimation results" begin
     @test isapprox(sol.minimum, -1343.7491257498598, rtol = eps(Float32))
-    @test isapprox(mean(samps).nt.mean, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
+    @test isapprox(sample_nuts, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
+    @test isapprox(sample_pigeons, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
 end
 
 

@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test_set: ["basic", "plots", "higher_order", "hmc_estimation", "tempering_estimation"]
+        test_set: ["basic", "plots", "higher_order", "estimation"]
         version: ['1.8', '1.9', '1.10']
         os: [ubuntu-latest, macOS-latest, windows-latest]
         arch: [x64]

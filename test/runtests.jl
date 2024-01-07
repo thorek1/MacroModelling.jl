@@ -17,12 +17,8 @@ include("functionality_tests.jl")
 #     @test format(MacroModelling; verbose=true, overwrite=true)
 # end
 
-if test_set == "hmc_estimation"
-    include("test_estimation_hmc.jl")
-end
-
-if test_set == "tempering_estimation"
-    include("test_estimation_tempering.jl")
+if test_set == "estimation"
+    include("test_estimation.jl")
 end
 
 if test_set == "1st_order_inversion_estimation"

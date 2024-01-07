@@ -6849,9 +6849,8 @@ if VERSION >= v"1.9"
             get_conditional_variance_decomposition(FS2000)
             get_irf(FS2000)
 
-            data = simulate(FS2000)[:,:,1]
-            observables = [:c,:k]
-            get_loglikelihood(FS2000, data(observables), FS2000.parameter_values)
+            data = simulate(FS2000)([:c,:k],:,:simulate)
+            get_loglikelihood(FS2000, data, FS2000.parameter_values)
             get_mean(FS2000, silent = true)
             # get_SSS(FS2000, silent = true)
             # get_SSS(FS2000, algorithm = :third_order, silent = true)
