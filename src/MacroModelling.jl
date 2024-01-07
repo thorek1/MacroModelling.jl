@@ -6541,7 +6541,8 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector
         match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
 
         for i in 1:warmup_iterations
-            logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:] ./ precision_factor)[1]
+            # logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:] ./ precision_factor)[1]
+            logabsdets += sum(x -> log(abs(x)), svd(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:] ./ precision_factor).S)
         end
 
         shocks² += sum(abs2,x)
@@ -6576,7 +6577,8 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector
 
         match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
 
-        logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
+        # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
+        logabsdets += sum(x -> log(abs(x)), svd(jacc ./ precision_factor).S)
 
         shocks² += sum(abs2,x)
 
