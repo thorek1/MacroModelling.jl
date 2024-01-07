@@ -2897,7 +2897,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     observables = @ignore_derivatives collect(axiskeys(data,1))
 
-    @assert observables isa String_input "Make sure that the data has variables names as rows. They can be either Strings or Symbols."
+    @assert typeof(observables) <: Union{Vector{String},Vector{Symbol}} "Make sure that the data has variables names as rows. They can be either Strings or Symbols."
 
     observables_symbols = @ignore_derivatives observables isa String_input ? observables .|> Meta.parse .|> replace_indices : observables
 
