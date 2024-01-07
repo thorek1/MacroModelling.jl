@@ -741,7 +741,6 @@ function get_conditional_forecast(𝓂::ℳ,
     
             Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
         end
-
     end
 
     axis1 = [𝓂.timings.var[var_idx]; 𝓂.timings.exo]
@@ -2858,9 +2857,9 @@ function get_loglikelihood(𝓂::ℳ,
 
     @assert size(data)[1] <= sum(shock_idx) "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
-    if filter == :inversion
-    @assert !(size(data)[1] == sum(shock_idx)) "The inversion filter only works when there are as many shocks as there are observables."
-    end
+    # if filter == :inversion
+    # @assert !(size(data)[1] == sum(shock_idx)) "The inversion filter only works when there are as many shocks as there are observables."
+    # end
 
     observables = @ignore_derivatives collect(axiskeys(data,1))
 
