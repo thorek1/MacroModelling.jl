@@ -25,6 +25,10 @@ if test_set == "tempering_estimation"
     include("test_estimation_tempering.jl")
 end
 
+if test_set == "1st_order_inversion_estimation"
+    include("test_1st_order_inversion_filter_estimation.jl")
+end
+
 if test_set == "2nd_order_estimation"
     include("test_2nd_order_estimation.jl")
 end
