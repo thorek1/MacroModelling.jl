@@ -4,13 +4,14 @@
 
 - [ ] add technical details about SS solver, obc solver, and other algorithms
 - [ ] make SS calc faster (func and optim, maybe inplace ops)
+- [ ] try preallocation tools for forwarddiff
 - [ ] add nonlinear shock decomposition
+- [ ] check obc once more
 - [ ] check why warmup_iterations = 0 makes estimated shocks larger
-- [ ] make inversion filter / higher order sols suitable for HMC (forward and reverse diff, currently only analytical pushforward, no implicitdiff)
+- [ ] make inversion filter / higher order sols suitable for HMC (forward and reverse diff!!, currently only analytical pushforward, no implicitdiff)
 - [ ] use analytical derivatives also for shocks matching optim (and HMC - implicit diff)
 - [ ] info on when what filter is used and chosen options are overridden
-- [ ] check warnings, errors thorughout. check suppress not interfering with pigeons
-- [ ] fix translate dynare mod file from file written using write to dynare file (see test models)
+- [ ] check warnings, errors throughout. check suppress not interfering with pigeons
 - [ ] rm obc vars from get_SS
 - [ ] write tests/docs for nonlinear obc and forecasting
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
@@ -70,6 +71,7 @@
 - [ ] weed out SS solver and saved objects
 
 
+- [x] fix translate dynare mod file from file written using write to dynare file (see test models): added retranslation to test
 - [x] use packages for kalman filter: nope sticking to own implementation
 - [x] check that there is an error if he cant find SS
 - [x] bring solution error into an object of the model so we dont have to pass it on as output: errors get returned by functions and are thrown where appropriate
