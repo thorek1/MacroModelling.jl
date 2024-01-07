@@ -225,7 +225,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
 
     parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhols,crhoqs,crhoas,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
 
-    kalman_prob = get_loglikelihood(m, parameters_combined, data(observables))
+    kalman_prob = get_loglikelihood(m, data(observables), parameters_combined)
 
     # println(kalman_prob)
     
@@ -265,7 +265,7 @@ function calculate_posterior_loglikelihoods(parameters, u)
     parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhols,crhoqs,crhoas,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
 
     log_lik = 0
-    log_lik -= get_loglikelihood(SW07, parameters_combined, data(observables), filter = :kalman)
+    log_lik -= get_loglikelihood(SW07, data(observables), parameters_combined, filter = :kalman)
     log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_ea)
     log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.025,5), z_eb)
     log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_eg)

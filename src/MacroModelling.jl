@@ -6961,7 +6961,7 @@ end
 
 #         data = simulate(FS2000)[:,:,1]
 #         observables = [:c,:k]
-#         get_loglikelihood(FS2000, FS2000.parameter_values, data(observables))
+#         get_loglikelihood(FS2000, data(observables), FS2000.parameter_values)
 #         get_mean(FS2000, silent = true)
 #         # get_SSS(FS2000, silent = true)
 #         # get_SSS(FS2000, algorithm = :third_order, silent = true)

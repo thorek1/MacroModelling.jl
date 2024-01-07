@@ -2837,8 +2837,8 @@ end
 
 
 function get_loglikelihood(𝓂::ℳ, 
-    parameters::Vector{S}, 
-    data::KeyedArray{Float64}; 
+    data::KeyedArray{Float64}, 
+    parameters::Vector{S}; 
     algorithm::Symbol = :first_order, 
     filter::Symbol = :kalman, 
     shocks::Symbol = :all_excluding_obc, 

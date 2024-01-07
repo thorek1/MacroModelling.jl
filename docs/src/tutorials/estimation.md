@@ -96,7 +96,7 @@ data = data(observables,:)
 
 ## Define bayesian model
 
-Next we define the parameter priors using the Turing package. The `@model` macro of the Turing package allows us to define the prior distributions over the parameters and combine it with the loglikelihood of the model and parameters given the data with the help of the `calculate_kalman_filter_loglikelihood` function. Inside the macro we first define the prior distribution and their mean and standard deviation. Note that the `μσ` parameter allows us to hand over the moments (`μ` and `σ`) of the distribution as parameters in case of the non-normal distributions (Gamma, Beta, InverseGamma). Last but not least, we define the loglikelihood and add it to the posterior loglikelihood with the help of the `@addlogprob!` macro.
+Next we define the parameter priors using the Turing package. The `@model` macro of the Turing package allows us to define the prior distributions over the parameters and combine it with the (Kalman filter) loglikelihood of the model and parameters given the data with the help of the `get_loglikelihood` function. Inside the macro we first define the prior distribution and their mean and standard deviation. Note that the `μσ` parameter allows us to hand over the moments (`μ` and `σ`) of the distribution as parameters in case of the non-normal distributions (Gamma, Beta, InverseGamma). Last but not least, we define the loglikelihood and add it to the posterior loglikelihood with the help of the `@addlogprob!` macro.
 
 ```@repl tutorial_2
 import Turing
@@ -113,7 +113,7 @@ Turing.@model function FS2000_loglikelihood_function(data, m, observables)
     z_e_a   ~ InverseGamma(0.035449, Inf, μσ = true)
     z_e_m   ~ InverseGamma(0.008862, Inf, μσ = true)
     # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
-    Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
+    Turing.@addlogprob! get_loglikelihood(m, data(observables), [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
 end
 ```
 
@@ -201,7 +201,7 @@ First, we define the posterior loglikelihood function, similar to how we defined
 function calculate_posterior_loglikelihood(parameters)
     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
     log_lik = 0
-    log_lik -= calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables; parameters = parameters)
+    log_lik -= get_loglikelihood(FS2000, data(observables), parameters)
     log_lik -= logpdf(Beta(0.356, 0.02, μσ = true),alp)
     log_lik -= logpdf(Beta(0.993, 0.002, μσ = true),bet)
     log_lik -= logpdf(Normal(0.0085, 0.003),gam)

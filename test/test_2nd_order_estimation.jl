@@ -31,7 +31,7 @@ Turing.@model function FS2000_loglikelihood_function(data, m)
     z_e_a   ~ InverseGamma(0.035449, Inf, μσ = true)
     z_e_m   ~ InverseGamma(0.008862, Inf, μσ = true)
     # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
-    Turing.@addlogprob! get_loglikelihood(m, [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m], data, algorithm = :pruned_second_order)
+    Turing.@addlogprob! get_loglikelihood(m, data, [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m], algorithm = :pruned_second_order)
 end
 
 
@@ -67,9 +67,9 @@ println(mean(samps).nt.mean)
 # include("models/Caldara_et_al_2012_estim.jl")
 
 
-# # get_loglikelihood(Caldara_et_al_2012_estim, Caldara_et_al_2012_estim.parameter_values, data, algorithm = :pruned_third_order)
+# # get_loglikelihood(Caldara_et_al_2012_estim, data, Caldara_et_al_2012_estim.parameter_values, algorithm = :pruned_third_order)
 
-# # get_loglikelihood(Caldara_et_al_2012_estim, Caldara_et_al_2012_estim.parameter_values*0.99, data, algorithm = :pruned_third_order)
+# # get_loglikelihood(Caldara_et_al_2012_estim, data, Caldara_et_al_2012_estim.parameter_values*0.99, algorithm = :pruned_third_order)
 
 
 # # get_parameters(Caldara_et_al_2012_estim, values = true)
@@ -86,7 +86,7 @@ println(mean(samps).nt.mean)
 #     η   ~ InverseGamma(0.1, Inf, μσ = true)
 #     ρ   ~ Beta(0.75, 0.02, μσ = true)
 
-#     Turing.@addlogprob! get_loglikelihood(m, [dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ], data, algorithm = :pruned_third_order)
+#     Turing.@addlogprob! get_loglikelihood(m, data, [dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ], algorithm = :pruned_third_order)
 # end
 
 
@@ -112,7 +112,7 @@ println(mean(samps).nt.mean)
 #             dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ = x
 #             # println(parameters)
 #             log_lik = 0
-#             log_lik -= get_loglikelihood(Caldara_et_al_2012_estim, x, data, algorithm = :pruned_third_order)
+#             log_lik -= get_loglikelihood(Caldara_et_al_2012_estim, data, x, algorithm = :pruned_third_order)
 #             log_lik -= logpdf(Normal(0, 1),dȳ)
 #             log_lik -= logpdf(Normal(0, 1),dc̄)
 #             log_lik -= logpdf(Beta(0.993, 0.05, μσ = true),β)
@@ -131,7 +131,7 @@ println(mean(samps).nt.mean)
 #     dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ = parameters
 #     # println(parameters)
 #     log_lik = 0
-#     log_lik -= get_loglikelihood(Caldara_et_al_2012_estim, parameters, data, algorithm = :pruned_third_order)
+#     log_lik -= get_loglikelihood(Caldara_et_al_2012_estim, data, parameters, algorithm = :pruned_third_order)
 #     log_lik -= logpdf(Normal(0, 1),dȳ)
 #     log_lik -= logpdf(Normal(0, 1),dc̄)
 #     log_lik -= logpdf(Beta(0.95, 0.005, μσ = true),β)
