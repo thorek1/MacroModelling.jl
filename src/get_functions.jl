@@ -2841,7 +2841,6 @@ function get_loglikelihood(𝓂::ℳ,
     parameters::Vector{S}; 
     algorithm::Symbol = :first_order, 
     filter::Symbol = :kalman, 
-    shocks::Symbol = :all_excluding_obc, 
     warmup_iterations::Int = 0, 
     tol::AbstractFloat = eps(), 
     verbose::Bool = false)::S where S
@@ -2853,13 +2852,7 @@ function get_loglikelihood(𝓂::ℳ,
         filter = :inversion
     end
 
-    shock_idx = @ignore_derivatives parse_shocks_input_to_index(shocks,𝓂.timings)
-
-    @assert size(data)[1] <= sum(shock_idx) "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
-    # check whether you can relax this assumption and estimate models with less shocks than observables. as in you match them the best you can but i guess the issue is with the weighting between the matches because you only care about MSE not taking into accound the disribution of the individual variables.
-    # if filter == :inversion
-    # @assert !(size(data)[1] == sum(shock_idx)) "The inversion filter only works when there are as many shocks as there are observables."
-    # end
+    @assert size(data)[1] <= sum(𝓂.timings.nExo) "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
     observables = @ignore_derivatives collect(axiskeys(data,1))
 
@@ -2886,69 +2879,69 @@ function get_loglikelihood(𝓂::ℳ,
 
     # solve model given the parameters
     if algorithm == :second_order
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂)
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂)
 
-    if !converged return -Inf end
+        if !converged return -Inf end
 
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+        all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    state = collect(sss) - all_SS
+        state = collect(sss) - all_SS
 
-    state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-    1
-                        shock]
-    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-    end
+        state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+            1
+                                shock]
+            return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+        end
     elseif algorithm == :pruned_second_order
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
 
-    if !converged return -Inf end
+        if !converged return -Inf end
 
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+        all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
+        state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
 
-    state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-    aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-    aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-            
-    return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
-    end
+        state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+            aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+            aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    
+            return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+        end
     elseif algorithm == :third_order
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂)
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂)
 
-    if !converged return -Inf end
+        if !converged return -Inf end
 
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+        all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    state = collect(sss) - all_SS
+        state = collect(sss) - all_SS
 
-    state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-    1
-                            shock]
-    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    end
+        state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+            1
+                                    shock]
+            return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+        end
     elseif algorithm == :pruned_third_order
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameters, 𝓂, pruning = true)
 
-    if !converged return -Inf end
+        if !converged return -Inf end
 
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
+        all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
+        state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
 
-    state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-    aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-    aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
-    aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-    aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-            
-    kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-            
-    return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
-    end
+        state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+            aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+            aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
+            aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+            aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    
+            kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+                    
+            return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+        end
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
 
