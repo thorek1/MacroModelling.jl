@@ -6316,116 +6316,6 @@ function calculate_third_order_moments(parameters::Vector{T},
 end
 
 
-
-
-
-# function calculate_kalman_filter_loglikelihood(𝓂::ℳ, data::AbstractArray{Float64}, observables::Vector{Symbol}; parameters::Vector{U} = Float64[], verbose::Bool = false, tol::AbstractFloat = eps()) where U <: Number
-#     @assert length(observables) == size(data)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
-#     @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
-
-#     @ignore_derivatives sort!(observables)
-
-#     @ignore_derivatives solve!(𝓂, verbose = verbose)
-
-#     if parameters == Float64[]
-#         parameters = 𝓂.parameter_values
-#     else
-#         ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters) + length(𝓂.➕_vars))
-#         lb = @ignore_derivatives -ub
-
-#         for (i,v) in enumerate(𝓂.bounded_vars)
-#             if v ∈ 𝓂.parameters
-#                 @ignore_derivatives lb[i] = 𝓂.lower_bounds[i]
-#                 @ignore_derivatives ub[i] = 𝓂.upper_bounds[i]
-#             end
-#         end
-
-#         if min(max(parameters,lb),ub) != parameters 
-#             return -Inf
-#         end
-#     end
-
-#     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
-    
-#     if solution_error > tol || isnan(solution_error)
-#         return -Inf
-#     end
-
-#     NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
-
-#     obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
-
-#     data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
-
-# 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
-
-#     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
-
-#     if !solved
-#         return -Inf
-#     end
-
-#     observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
-
-#     A = @views sol[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
-#     B = @views sol[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
-
-#     C = @views ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states)),:]
-
-#     𝐁 = B * B'
-
-#     # Gaussian Prior
-#     coordinates = Tuple{Vector{Int}, Vector{Int}}[]
-    
-#     dimensions = [size(A),size(𝐁)]
-    
-#     values = vcat(vec(A), vec(collect(-𝐁)))
-
-#     P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-#     # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
-
-#     u = zeros(length(observables_and_states))
-#     # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
-#     z = C * u
-    
-#     loglik = 0.0
-
-#     for t in 1:size(data)[2]
-#         v = data_in_deviations[:,t] - z
-
-#         F = C * P * C'
-
-#         # F = (F + F') / 2
-
-#         # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
-#         # K = P * C' * ℒ.pinv(F)
-
-#         # loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
-#         Fdet = ℒ.det(F)
-
-#         if Fdet < eps() return -Inf end
-
-#         F̄ = ℒ.lu(F, check = false)
-
-#         if !ℒ.issuccess(F̄) return -Inf end
-
-#         invF = inv(F̄)
-
-#         loglik += log(Fdet) + v' * invF  * v
-        
-#         K = P * C' * invF
-
-#         P = A * (P - K * C * P) * A' + 𝐁
-
-#         u = A * (u + K * v)
-        
-#         z = C * u 
-#     end
-
-#     return -(loglik + length(data) * log(2 * 3.141592653589793)) / 2 # otherwise conflicts with model parameters assignment
-# end
-
-
 function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Union{Vector{String}, Vector{Symbol}}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}) where S
     observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
 
@@ -6898,79 +6788,79 @@ end
 
 
 
-# @setup_workload begin
-#     # Putting some things in `setup` can reduce the size of the
-#     # precompile file and potentially make loading faster.
-#     @model FS2000 precompile = true begin
-#         dA[0] = exp(gam + z_e_a  *  e_a[x])
-#         log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-#         - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-#         W[0] = l[0] / n[0]
-#         - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-#         R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-#         1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-#         c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-#         P[0] * c[0] = m[0]
-#         m[0] - 1 + d[0] = l[0]
-#         e[0] = exp(z_e_a  *  e_a[x])
-#         y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-#         gy_obs[0] = dA[0] * y[0] / y[-1]
-#         gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-#         log_gy_obs[0] = log(gy_obs[0])
-#         log_gp_obs[0] = log(gp_obs[0])
-#     end
+@setup_workload begin
+    # Putting some things in `setup` can reduce the size of the
+    # precompile file and potentially make loading faster.
+    @model FS2000 precompile = true begin
+        dA[0] = exp(gam + z_e_a  *  e_a[x])
+        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+        W[0] = l[0] / n[0]
+        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+        P[0] * c[0] = m[0]
+        m[0] - 1 + d[0] = l[0]
+        e[0] = exp(z_e_a  *  e_a[x])
+        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+        gy_obs[0] = dA[0] * y[0] / y[-1]
+        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+        log_gy_obs[0] = log(gy_obs[0])
+        log_gp_obs[0] = log(gp_obs[0])
+    end
 
-#     @parameters FS2000 silent = true precompile = true begin  
-#         alp     = 0.356
-#         bet     = 0.993
-#         gam     = 0.0085
-#         mst     = 1.0002
-#         rho     = 0.129
-#         psi     = 0.65
-#         del     = 0.01
-#         z_e_a   = 0.035449
-#         z_e_m   = 0.008862
-#     end
+    @parameters FS2000 silent = true precompile = true begin  
+        alp     = 0.356
+        bet     = 0.993
+        gam     = 0.0085
+        mst     = 1.0002
+        rho     = 0.129
+        psi     = 0.65
+        del     = 0.01
+        z_e_a   = 0.035449
+        z_e_m   = 0.008862
+    end
     
-#     ENV["GKSwstype"] = "nul"
+    ENV["GKSwstype"] = "nul"
 
-#     @compile_workload begin
-#         # all calls in this block will be precompiled, regardless of whether
-#         # they belong to your package or not (on Julia 1.8 and higher)
-#         @model RBC precompile = true begin
-#             1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-#             c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-#             z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-#         end
+    @compile_workload begin
+        # all calls in this block will be precompiled, regardless of whether
+        # they belong to your package or not (on Julia 1.8 and higher)
+        @model RBC precompile = true begin
+            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+        end
 
-#         @parameters RBC silent = true precompile = true begin
-#             δ = 0.02
-#             α = 0.5
-#         end
+        @parameters RBC silent = true precompile = true begin
+            δ = 0.02
+            α = 0.5
+        end
 
-#         get_SS(FS2000)
-#         get_SS(FS2000, parameters = :alp => 0.36)
-#         get_solution(FS2000)
-#         get_solution(FS2000, parameters = :alp => 0.35)
-#         get_standard_deviation(FS2000)
-#         get_correlation(FS2000)
-#         get_autocorrelation(FS2000)
-#         get_variance_decomposition(FS2000)
-#         get_conditional_variance_decomposition(FS2000)
-#         get_irf(FS2000)
+        get_SS(FS2000)
+        get_SS(FS2000, parameters = :alp => 0.36)
+        get_solution(FS2000)
+        get_solution(FS2000, parameters = :alp => 0.35)
+        get_standard_deviation(FS2000)
+        get_correlation(FS2000)
+        get_autocorrelation(FS2000)
+        get_variance_decomposition(FS2000)
+        get_conditional_variance_decomposition(FS2000)
+        get_irf(FS2000)
 
-#         data = simulate(FS2000)[:,:,1]
-#         observables = [:c,:k]
-#         get_loglikelihood(FS2000, data(observables), FS2000.parameter_values)
-#         get_mean(FS2000, silent = true)
-#         # get_SSS(FS2000, silent = true)
-#         # get_SSS(FS2000, algorithm = :third_order, silent = true)
+        data = simulate(FS2000)[:,:,1]
+        observables = [:c,:k]
+        get_loglikelihood(FS2000, data(observables), FS2000.parameter_values)
+        get_mean(FS2000, silent = true)
+        # get_SSS(FS2000, silent = true)
+        # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-#         # import Plots, StatsPlots
-#         # plot_irf(FS2000)
-#         # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-#         # plot_conditional_variance_decomposition(FS2000)
-#     end
-# end
+        # import Plots, StatsPlots
+        # plot_irf(FS2000)
+        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+        # plot_conditional_variance_decomposition(FS2000)
+    end
+end
 
 end
