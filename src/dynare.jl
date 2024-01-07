@@ -159,6 +159,7 @@ function write_mod_file(m::ℳ)
         [
             println(io, "\t" * replace(
                     string(translate_expression_to_ascii(e)),
+                    r"\b(\d+(\.\d+)?)([_\p{L}]\w*)\b" => s"\1*\3",
                     r"norminv(?=\()" => s"norminvcdf",
                     r"qnorm(?=\()" => s"norminvcdf",
                     r"pnorm(?=\()" => s"normcdf",

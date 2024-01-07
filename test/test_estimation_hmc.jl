@@ -1,5 +1,5 @@
 using MacroModelling
-import Turing
+import Turing#, Pigeons
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
@@ -19,7 +19,7 @@ observables = sort(Symbol.("log_".*names(dat)))
 data = data(observables,:)
 
 
-Turing.@model function FS2000_loglikelihood_function(data, m, observables)
+Turing.@model function FS2000_loglikelihood_function(data, m)
     alp     ~ Beta(0.356, 0.02, μσ = true)
     bet     ~ Beta(0.993, 0.002, μσ = true)
     gam     ~ Normal(0.0085, 0.003)
@@ -30,27 +30,27 @@ Turing.@model function FS2000_loglikelihood_function(data, m, observables)
     z_e_a   ~ InverseGamma(0.035449, Inf, μσ = true)
     z_e_m   ~ InverseGamma(0.008862, Inf, μσ = true)
     # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
-    Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
+    Turing.@addlogprob! get_loglikelihood(m, data, [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
 end
 
-FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, observables)
-
+FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000)
 
 
 n_samples = 1000
 
 # using Zygote
 # Turing.setadbackend(:zygote)
-samps = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
+samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
-# println(mean(samps).nt.mean)
+println(mean(samps).nt.mean)
+sample_nuts = mean(samps).nt.mean
 
 Random.seed!(30)
 
 function calculate_posterior_loglikelihood(parameters)
     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
     log_lik = 0
-    log_lik -= calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables; parameters = parameters)
+    log_lik -= get_loglikelihood(FS2000, data, parameters)
     log_lik -= logpdf(Beta(0.356, 0.02, μσ = true),alp)
     log_lik -= logpdf(Beta(0.993, 0.002, μσ = true),bet)
     log_lik -= logpdf(Normal(0.0085, 0.003),gam)

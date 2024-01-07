@@ -34,9 +34,9 @@ In case `shock_decomposition = true`, then the plot shows the variables, shocks,
 - $PARAMETERS
 - $VARIABLES
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` (e.g. `:y`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}`, or `Vector{Symbol}`.
-- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- $DATA_IN_LEVELS
 - `shock_decomposition` [Default: `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks
-- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) values for the variables, shocks, and decomposition.
+- $SMOOTH
 - `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
 - `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
 - `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
@@ -80,6 +80,9 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 function plot_model_estimates(𝓂::ℳ,
     data::KeyedArray{Float64};
     parameters::ParameterType = nothing,
+    algorithm::Symbol = :first_order, 
+    filter::Symbol = :kalman, 
+    warmup_iterations::Int = 0,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     shocks::Union{Symbol_input,String_input} = :all, 
     data_in_levels::Bool = true,
@@ -105,7 +108,17 @@ function plot_model_estimates(𝓂::ℳ,
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
+    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
+
+    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        filter = :inversion
+    end
+
+    if filter == :inversion
+        shock_decomposition = false
+    end
+
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
 
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
@@ -129,11 +142,22 @@ function plot_model_estimates(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+    # filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
 
-    variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
-    shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
-    decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
+    # variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
+    # shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
+    # decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
+
+
+    if filter == :kalman
+        filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+
+        variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
+        shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
+        decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
+    elseif filter == :inversion
+        variables_to_plot, shocks_to_plot = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
+    end
 
     return_plots = []
 
@@ -480,10 +504,12 @@ function plot_irf(𝓂::ℳ;
 
                 if constraints_violated
                     opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
-                    
+                    # check whether auglag is more reliable and efficient here
                     opt.min_objective = obc_objective_optim_fun
 
-                    opt.xtol_rel = eps()
+                    opt.xtol_abs = eps(Float32)
+                    opt.ftol_abs = eps(Float32)
+                    opt.maxeval = 500
                     
                     # Adding constraints
                     # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) 
@@ -496,19 +522,19 @@ function plot_irf(𝓂::ℳ;
 
                     (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
                     
-                    solved = ret ∈ Symbol.([
-                        NLopt.SUCCESS,
-                        NLopt.STOPVAL_REACHED,
-                        NLopt.FTOL_REACHED,
-                        NLopt.XTOL_REACHED,
-                        NLopt.ROUNDOFF_LIMITED,
-                    ])
+                    # solved = ret ∈ Symbol.([
+                    #     NLopt.SUCCESS,
+                    #     NLopt.STOPVAL_REACHED,
+                    #     NLopt.FTOL_REACHED,
+                    #     NLopt.XTOL_REACHED,
+                    #     NLopt.ROUNDOFF_LIMITED,
+                    # ])
                     
                     present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
 
                     constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
 
-                    solved = solved && !constraints_violated
+                    solved = !constraints_violated
                 else
                     solved = true
                 end

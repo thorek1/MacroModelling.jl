@@ -1,7 +1,8 @@
 using MacroModelling
 import Turing
-import Turing: Normal, Beta, Gamma, InverseGamma, NUTS, sample, logpdf, Truncated
-using Random, CSV, DataFrames, Zygote, AxisKeys, ComponentArrays, Optimization, OptimizationNLopt, OptimizationOptimisers, MCMCChains
+import Turing: NUTS, sample, logpdf, Truncated#, Normal, Beta, Gamma, InverseGamma,
+using Random, CSV, DataFrames, Zygote, AxisKeys, MCMCChains
+# using ComponentArrays, Optimization, OptimizationNLopt, OptimizationOptimisers
 import DynamicPPL: logjoint
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
 
@@ -179,60 +180,42 @@ observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs]
 data = data(observables,75:230)
 
 # functions to map mean and standard deviations to distribution parameters
-function beta_map(μ, σ) 
-    α = ((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2
-    β = α * (1 / μ - 1)
-    return α, β
-end
-
-function inv_gamma_map(μ, σ)
-    α = (μ / σ) ^ 2 + 2
-    β = μ * ((μ / σ) ^ 2 + 1)
-    return α, β
-end
-
-function gamma_map(μ, σ)
-    k = μ^2/σ^2 
-    θ = σ^2 / μ
-    return k, θ
-end
-
 
 
 
 Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_parameters)
-    z_ea    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
-    z_eb    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.025,5)
-    z_eg    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
-    z_eqs   ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
-    z_em    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
-    z_epinf ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
-    z_ew    ~   Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3)
-    crhoa   ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
-    crhob   ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
-    crhog   ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
-    crhoqs  ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
-    crhoms  ~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
-    crhopinf~   Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999)
-    crhow   ~   Truncated(Beta(beta_map(0.5,0.20)...),.001,.9999)
-    cmap    ~   Truncated(Beta(beta_map(0.5,0.2)...),0.01,.9999)
-    cmaw    ~   Truncated(Beta(beta_map(0.5,0.2)...),0.01,.9999)
+    z_ea    ~   Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3)
+    z_eb    ~   Truncated(InverseGamma(0.1, 2.0, μσ = true),0.025,5)
+    z_eg    ~   Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3)
+    z_eqs   ~   Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3)
+    z_em    ~   Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3)
+    z_epinf ~   Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3)
+    z_ew    ~   Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3)
+    crhoa   ~   Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999)
+    crhob   ~   Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999)
+    crhog   ~   Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999)
+    crhoqs  ~   Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999)
+    crhoms  ~   Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999)
+    crhopinf~   Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999)
+    crhow   ~   Truncated(Beta(0.5, 0.20, μσ = true),.001,.9999)
+    cmap    ~   Truncated(Beta(0.5, 0.2, μσ = true),0.01,.9999)
+    cmaw    ~   Truncated(Beta(0.5, 0.2, μσ = true),0.01,.9999)
     csadjcost~  Truncated(Normal(4,1.5),2,15)
     csigma  ~   Truncated(Normal(1.50,0.375),0.25,3)
-    chabb   ~   Truncated(Beta(beta_map(0.7,0.1)...),0.001,0.99)
-    cprobw  ~   Truncated(Beta(beta_map(0.5,0.1)...),0.3,0.95)
+    chabb   ~   Truncated(Beta(0.7, 0.1, μσ = true),0.001,0.99)
+    cprobw  ~   Truncated(Beta(0.5, 0.1, μσ = true),0.3,0.95)
     csigl   ~   Truncated(Normal(2,0.75),0.25,10)
-    cprobp  ~   Truncated(Beta(beta_map(0.5,0.10)...),0.5,0.95)
-    cindw   ~   Truncated(Beta(beta_map(0.5,0.15)...),0.01,0.99)
-    cindp   ~   Truncated(Beta(beta_map(0.5,0.15)...),0.01,0.99)
-    czcap   ~   Truncated(Beta(beta_map(0.5,0.15)...),0.01,1)
+    cprobp  ~   Truncated(Beta(0.5, 0.10, μσ = true),0.5,0.95)
+    cindw   ~   Truncated(Beta(0.5, 0.15, μσ = true),0.01,0.99)
+    cindp   ~   Truncated(Beta(0.5, 0.15, μσ = true),0.01,0.99)
+    czcap   ~   Truncated(Beta(0.5, 0.15, μσ = true),0.01,1)
     cfc     ~   Truncated(Normal(1.25,0.125),1.0,3)
     crpi    ~   Truncated(Normal(1.5,0.25),1.0,3)
-    crr     ~   Truncated(Beta(beta_map(0.75,0.10)...),0.5,0.975)
+    crr     ~   Truncated(Beta(0.75, 0.10, μσ = true),0.5,0.975)
     cry     ~   Truncated(Normal(0.125,0.05),0.001,0.5)
     crdy    ~   Truncated(Normal(0.125,0.05),0.001,0.5)
-    constepinf~ Truncated(Gamma(gamma_map(0.625,0.1)...),0.1,2.0)
-    constebeta~ Truncated(Gamma(gamma_map(0.25,0.1)...),0.01,2.0)
+    constepinf~ Truncated(Gamma(0.625,0.1, μσ = true),0.1,2.0)
+    constebeta~ Truncated(Gamma(0.25,0.1, μσ = true),0.01,2.0)
     constelab ~ Truncated(Normal(0.0,2.0),-10.0,10.0)
     ctrend  ~   Truncated(Normal(0.4,0.10),0.1,0.8)
     cgy     ~   Truncated(Normal(0.5,0.25),0.01,2.0)
@@ -242,7 +225,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
 
     parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhols,crhoqs,crhoas,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
 
-    kalman_prob = calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = parameters_combined)
+    kalman_prob = get_loglikelihood(m, data(observables), parameters_combined)
 
     # println(kalman_prob)
     
@@ -260,8 +243,8 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, SW07, observables, fixed_
 
 n_samples = 1000
 
-# Turing.setadbackend(:zygote)
-samps = sample(SW07_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
+Turing.setadbackend(:zygote)
+samps = Turing.sample(SW07_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
 
 serialize("chain-file.jls", samps)
@@ -282,49 +265,50 @@ function calculate_posterior_loglikelihoods(parameters, u)
     parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhols,crhoqs,crhoas,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
 
     log_lik = 0
-    log_lik -= calculate_kalman_filter_loglikelihoods(SW07, data(observables), observables; parameters = parameters_combined)
-    log_lik -= logpdf(Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3),z_ea)
-    log_lik -= logpdf(Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.025,5),z_eb)
-    log_lik -= logpdf(Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3),z_eg)
-    log_lik -= logpdf(Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3),z_eqs)
-    log_lik -= logpdf(Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3),z_em)
-    log_lik -= logpdf(Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3),z_epinf)
-    log_lik -= logpdf(Truncated(InverseGamma(inv_gamma_map(0.1,2)...),0.01,3),z_ew)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999),crhoa)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999),crhob)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999),crhog)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999),crhoqs)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999),crhoms)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.20)...),.01,.9999),crhopinf)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.20)...),.001,.9999),crhow)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.2)...),0.01,.9999),cmap)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.2)...),0.01,.9999),cmaw)
-    log_lik -= logpdf(Truncated(Normal(4,1.5),2,15),csadjcost)
-    log_lik -= logpdf(Truncated(Normal(1.50,0.375),0.25,3),csigma)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.7,0.1)...),0.001,0.99),chabb)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.1)...),0.05,0.95),cprobw)
-    # log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.1)...),0.3,0.95),cprobw)
-    log_lik -= logpdf(Truncated(Normal(2,0.75),0.25,10),csigl)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.10)...),0.05,0.95),cprobp)
-    # log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.10)...),0.5,0.95),cprobp)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.15)...),0.01,0.99),cindw)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.15)...),0.01,0.99),cindp)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.5,0.15)...),0.01,1),czcap)
-    log_lik -= logpdf(Truncated(Normal(1.25,0.125),1.0,3),cfc)
-    log_lik -= logpdf(Truncated(Normal(1.5,0.25),1.0,3),crpi)
-    log_lik -= logpdf(Truncated(Beta(beta_map(0.75,0.10)...),0.05,0.975),crr)
-    # log_lik -= logpdf(Truncated(Beta(beta_map(0.75,0.10)...),0.5,0.975),crr)
-    log_lik -= logpdf(Truncated(Normal(0.125,0.05),0.001,0.5),cry)
-    log_lik -= logpdf(Truncated(Normal(0.125,0.05),0.001,0.5),crdy)
-    log_lik -= logpdf(Truncated(Gamma(gamma_map(0.625,0.1)...),0.1,2.0),constepinf)
-    log_lik -= logpdf(Truncated(Gamma(gamma_map(0.25,0.1)...),0.01,2.0),constebeta)
-    log_lik -= logpdf(Truncated(Normal(0.0,2.0),-10.0,10.0),constelab)
-    log_lik -= logpdf(Truncated(Normal(0.4,0.10),0.1,0.8),ctrend)
-    log_lik -= logpdf(Truncated(Normal(0.5,0.25),0.01,2.0),cgy)
-    log_lik -= logpdf(Truncated(Normal(0.3,0.05),0.01,1.0),calfa)
+    log_lik -= get_loglikelihood(SW07, data(observables), parameters_combined, filter = :kalman)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_ea)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.025,5), z_eb)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_eg)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_eqs)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_em)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_epinf)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_ew)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999), crhoa)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999), crhob)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999), crhog)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999), crhoqs)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999), crhoms)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999), crhopinf)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.001,.9999), crhow)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.2, μσ = true),0.01,.9999), cmap)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.2, μσ = true),0.01,.9999), cmaw)
+    log_lik -= logpdf(Truncated(Normal(4,1.5),2,15), csadjcost)
+    log_lik -= logpdf(Truncated(Normal(1.50,0.375),0.25,3), csigma)
+    log_lik -= logpdf(Truncated(Beta(0.7, 0.1, μσ = true),0.001,0.99), chabb)
+    log_lik -= logpdf(Beta(0.5, 0.1, μσ = true), cprobw)
+    # log_lik -= logpdf(Truncated(Beta(0.5, 0.1, μσ = true),0.3,0.95), cprobw)
+    log_lik -= logpdf(Truncated(Normal(2,0.75),0.25,10), csigl)
+    log_lik -= logpdf(Beta(0.5, 0.10, μσ = true), cprobp)
+    # log_lik -= logpdf(Truncated(Beta(0.5, 0.10, μσ = true),0.5,0.95), cprobp)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.15, μσ = true),0.01,0.99), cindw)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.15, μσ = true),0.01,0.99), cindp)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.15, μσ = true),0.01,1), czcap)
+    log_lik -= logpdf(Truncated(Normal(1.25,0.125),1.0,3), cfc)
+    log_lik -= logpdf(Truncated(Normal(1.5,0.25),1.0,3), crpi)
+    # log_lik -= logpdf(Truncated(Beta(0.75, 0.10, μσ = true),0.5,0.975), crr)
+    log_lik -= logpdf(Beta(0.75, 0.10, μσ = true), crr)
+    log_lik -= logpdf(Truncated(Normal(0.125,0.05),0.001,0.5), cry)
+    log_lik -= logpdf(Truncated(Normal(0.125,0.05),0.001,0.5), crdy)
+    log_lik -= logpdf(Truncated(Gamma(0.625,0.1, μσ = true),0.1,2.0), constepinf)
+    log_lik -= logpdf(Truncated(Gamma(0.25,0.1, μσ = true),0.01,2.0), constebeta)
+    log_lik -= logpdf(Truncated(Normal(0.0,2.0),-10.0,10.0), constelab)
+    log_lik -= logpdf(Truncated(Normal(0.4,0.10),0.1,0.8), ctrend)
+    log_lik -= logpdf(Truncated(Normal(0.5,0.25),0.01,2.0), cgy)
+    log_lik -= logpdf(Truncated(Normal(0.3,0.05),0.01,1.0), calfa)
 
     return log_lik
 end
+
 
 SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))]
 
@@ -332,7 +316,40 @@ SW07.parameter_values[indexin([:cprobw,:cprobp,:crr],SW07.parameters)]
 
 SW07.parameter_values[indexin([:crhoms, :crhopinf, :crhow, :cmap, :cmaw],SW07.parameters)] .= 0.02
 
-calculate_posterior_loglikelihood(SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))],[])
+calculate_posterior_loglikelihoods(SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))],[])
+
+
+using ForwardDiff, BenchmarkTools, FiniteDifferences
+
+
+
+@benchmark calculate_posterior_loglikelihoods(SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))],[])
+
+@profview for i in 1:100 calculate_posterior_loglikelihoods(SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))],[]) end
+
+
+forw_grad = ForwardDiff.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])
+
+reverse_grad = Zygote.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1]
+
+fin_grad = FiniteDifferences.grad(central_fdm(4,1),x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1]
+
+
+
+
+@benchmark ForwardDiff.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])
+
+@benchmark Zygote.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1]
+
+@benchmark FiniteDifferences.grad(central_fdm(4,1),x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1]
+
+
+
+@profview ForwardDiff.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])
+
+@profview for i in 1:30 Zygote.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1] end
+
+@profview for i in 1:10 FiniteDifferences.grad(central_fdm(4,1),x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1] end
 
 
 𝓂 = SW07
