@@ -6,6 +6,8 @@
 - [ ] check why warmup_iterations = 0 makes estimated shocks larger
 - [ ] make inversion filter suitable for HMC and higher order
 - [ ] use analytical derivatives also for shocks matching optim (and HMC - implicit diff)
+- [ ] info on when what filter is used and chosen options are overridden
+- [ ] check warnings, errors thorughout. check suppress not interfering with pigeons
 - [ ] fix translate dynare mod file from file written using write to dynare file (see test models)
 - [ ] rm obc vars from get_SS
 - [ ] write tests/docs for nonlinear obc and forecasting
