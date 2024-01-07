@@ -16,7 +16,6 @@
 - [ ] write tests/docs for nonlinear obc and forecasting
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
 - [ ] cover nested case: min(50,a+b+max(c,10))
-- [ ] nonlinear conditional forecasts for higher order and obc
 - [ ] add balanced growth path handling
 - [ ] feedback: provide option for external SS guess, sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
 - [ ] higher order solutions: some kron matrix mults are later compressed. write custom compressed kron mult; check if sometimes dense mult is faster? (e.g. GNSS2010 seems dense at higher order)
@@ -70,6 +69,7 @@
 - [ ] weed out SS solver and saved objects
 
 
+- [x] nonlinear conditional forecasts for higher order and obc
 - [x] for cond forecasting and kalman, get rid of observables input and use axis key of data input
 - [x] fix translate dynare mod file from file written using write to dynare file (see test models): added retranslation to test
 - [x] use packages for kalman filter: nope sticking to own implementation
@@ -191,7 +191,6 @@
 - [ ] restructure functions and containers so that compiler knows what types to expect
 - [ ] use RecursiveFactorization and TriangularSolve to solve, instead of MKL or OpenBLAS
 - [ ] fix SnoopCompile with generated functions
-- [ ] rewrite first order with riccati equation MatrixEquations.jl
 - [ ] exploit variable incidence and compression for higher order derivatives
 - [ ] for estimation use CUDA with st order: linear time iteration starting from last 1st order solution and then LinearSolveCUDA solvers for higher orders. this should bring benefits for large models and HANK models
 - [ ] pull request in StatsFuns to have norminv... accept type numbers and add translation from matlab: norminv to StatsFuns norminvcdf
@@ -203,6 +202,7 @@
 - [ ] print legend for algorithm in last subplot of plot only
 - [ ] select variables for moments
 
+- [x] rewrite first order with riccati equation MatrixEquations.jl: not necessary/feasable see dynare package
 - [x] test on highly [nonlinear model](https://www.sciencedirect.com/science/article/pii/S0165188917300970) # caldara et al is actually epstein zin wiht stochastic vol
 - [x] conditional forecasting
 - [x] find way to recover from failed SS solution which is written to init guess
