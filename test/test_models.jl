@@ -117,8 +117,8 @@ if !test_higher_order
     
     write_to_dynare_file(Gali_Monacelli_2005_CITR)
     translate_dynare_file("Gali_Monacelli_2005_CITR.mod")
-    include("Gali_Monacelli_2005_CITR.jl")
-    get_solution(Gali_Monacelli_2005_CITR)
+    # include("Gali_Monacelli_2005_CITR.jl") # cannot do this because the model contains Gamma
+    # get_solution(Gali_Monacelli_2005_CITR)
     Gali_Monacelli_2005_CITR = nothing
     
     
