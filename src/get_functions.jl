@@ -2885,7 +2885,7 @@ function get_loglikelihood(𝓂::ℳ,
     warmup_iterations::Int = 0, 
     tol::AbstractFloat = eps(), 
     verbose::Bool = false)::S where S
-
+    
     # checks to avoid errors further down the line and inform the user
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
@@ -2897,7 +2897,11 @@ function get_loglikelihood(𝓂::ℳ,
 
     observables = @ignore_derivatives collect(axiskeys(data,1))
 
-    @assert observables isa Vector{String} || observables isa Vector{Symbol} "Make sure that the data has variables names as rows. They can be either Strings or Symbols."
+    @assert observables isa String_input "Make sure that the data has variables names as rows. They can be either Strings or Symbols."
+
+    observables_symbols = @ignore_derivatives observables isa String_input ? observables .|> Meta.parse .|> replace_indices : observables
+
+    @assert length(setdiff(observables_symbols, 𝓂.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(conditions_symbols,𝓂.var))
 
     @ignore_derivatives sort!(observables)
 

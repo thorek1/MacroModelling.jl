@@ -33,7 +33,6 @@
 - [ ] speed benchmarking (focus on ImplicitDiff part)
 - [ ] write docs for (non-linear) solution algorithms
 - [ ] have initial_state accept SS and SSS as arguments
-- [ ] for cond forecasting and kalman, get rid of observables input and use axis key of data input
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
 - [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
 - [ ] when doing calibration with optimiser have better return values when he doesnt find a solution (probably NaN)
@@ -71,6 +70,7 @@
 - [ ] weed out SS solver and saved objects
 
 
+- [x] for cond forecasting and kalman, get rid of observables input and use axis key of data input
 - [x] fix translate dynare mod file from file written using write to dynare file (see test models): added retranslation to test
 - [x] use packages for kalman filter: nope sticking to own implementation
 - [x] check that there is an error if he cant find SS
