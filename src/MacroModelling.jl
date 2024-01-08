@@ -6869,7 +6869,7 @@ if VERSION >= v"1.9"
             # get_SSS(FS2000, silent = true)
             # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-            # import Plots, StatsPlots
+            # import StatsPlots
             # plot_irf(FS2000)
             # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
             # plot_conditional_variance_decomposition(FS2000)
