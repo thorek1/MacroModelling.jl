@@ -9,7 +9,7 @@ The first step is always to name the model and write down the equations. For the
 ```@setup tutorial_2
 ENV["GKSwstype"] = "100"
 using Random
-Random.seed!(30)
+Random.seed!(3)
 ```
 
 ```@repl tutorial_2
@@ -124,7 +124,7 @@ We use the NUTS sampler to retrieve the posterior distribution of the parameters
 First we define the loglikelihood model with the specific data, and model. Next, we draw 1000 samples from the model:
 
 ```@repl tutorial_2
-FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000)
+FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000);
 
 n_samples = 1000
 
@@ -171,7 +171,7 @@ p = surface(par_range1, par_range2,
             color=:inferno);
 
 
-joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray(reduce(hcat, get(chain_NUTS, FS2000.parameters)[FS2000.parameters])[s,:], Axis(FS2000.parameters))) for s in 1:length(chain_NUTS)]
+joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray(reduce(hcat, get(chain_NUTS, FS2000.parameters)[FS2000.parameters])[s,:], Axis(FS2000.parameters))) for s in 1:length(chain_NUTS)];
 
 scatter3d!(vec(collect(chain_NUTS[par1])),
            vec(collect(chain_NUTS[par2])),
