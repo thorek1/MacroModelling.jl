@@ -2904,7 +2904,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     observables_symbols = @ignore_derivatives observables isa String_input ? observables .|> Meta.parse .|> replace_indices : observables
 
-    @assert @ignore_derivatives length(setdiff(observables_symbols, 𝓂.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(observables_symbols,𝓂.var))
+    @assert length(setdiff(observables_symbols, 𝓂.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(observables_symbols,𝓂.var))
 
     @ignore_derivatives sort!(observables)
 
