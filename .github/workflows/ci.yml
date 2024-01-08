@@ -7,57 +7,46 @@ jobs:
     env: 
       GKS_ENCODING: "utf8"
       GKSwstype: "nul"
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
+    name: ${{ matrix.test_set }} - ${{ matrix.version }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.version == 'nightly' || matrix.version == '^1.10.0-0' }}
+    continue-on-error: ${{ matrix.version == 'nightly' || matrix.version == '^1.11.0-0' }}
     strategy:
       fail-fast: false
       matrix:
-        version:
-          - '1.9' #^1-0 and ^1.9-0 are not recognised
-        os:
-          - ubuntu-latest
-          - macOS-latest
-          - windows-latest
-        arch:
-          - x64
-        test_set:
-          - "estimation"
-          - "higher_order"
-          - "plots"
-          - "basic"
+        test_set: ["basic", "plots", "higher_order", "estimation"]
+        version: ['1.8', '1.9', '1.10']
+        os: [ubuntu-latest, macOS-latest, windows-latest]
+        arch: [x64]
+        exclude:
+          - version: '1.8'
+            os: macOS-latest
+          - version: '1.8'
+            os: windows-latest
+          - version: '1.9'
+            os: macOS-latest
+          - version: '1.9'
+            os: windows-latest
         include:
           - os: ubuntu-latest
             prefix: xvfb-run
-          - version: '1.8'
+          - version: '1.10'
             os: ubuntu-latest
             arch: x64
-            test_set: "basic"
-          - version: '1.8'
+            test_set: "1st_order_inversion_estimation"
+          - version: '1.10'
             os: ubuntu-latest
             arch: x64
-            test_set: "plots"
-          - version: '^1.10.0-0'
+            test_set: "2nd_order_estimation"
+          - version: '1.10'
             os: ubuntu-latest
             arch: x64
-            test_set: "estimation"
-            allow_failure: true
-          - version: '^1.10.0-0'
-            os: ubuntu-latest
-            arch: x64
-            test_set: "higher_order"
-            allow_failure: true
-          - version: '^1.10.0-0'
-            os: ubuntu-latest
-            arch: x64
-            test_set: "plots"
-            allow_failure: true
-          - version: '^1.10.0-0'
-            os: ubuntu-latest
-            arch: x64
-            test_set: "basic"
-            allow_failure: true
+            test_set: "3rd_order_estimation"
           - version: 'nightly'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "basic"
+            allow_failure: true
+          - version: '^1.11.0-0'
             os: ubuntu-latest
             arch: x64
             test_set: "basic"
@@ -74,9 +63,9 @@ jobs:
       - name: Set Custom Test Environment Variable (Unix)
         if: matrix.os != 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" >> $GITHUB_ENV
-      - name: Set JULIA_NUM_THREADS for Julia 1.9 on Ubuntu
-        if: matrix.version == '1.9' && matrix.os == 'ubuntu-latest'
-        run: echo "JULIA_NUM_THREADS=2" >> $GITHUB_ENV
+      - name: Set JULIA_NUM_THREADS for Julia 1.10 on Ubuntu
+        if: matrix.version == '1.10' && matrix.os == 'ubuntu-latest' && (matrix.test_set == 'hmc_estimation' || matrix.test_set == 'tempering_estimation' || matrix.test_set == '2nd_order_estimation' || matrix.test_set == '3rd_order_estimation')
+        run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
       - uses: actions/cache@v3
         env:
           cache-name: cache-artifacts

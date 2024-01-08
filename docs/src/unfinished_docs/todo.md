@@ -3,15 +3,21 @@
 ## High priority
 
 - [ ] add technical details about SS solver, obc solver, and other algorithms
-- [ ] fix translate dynare mod file from file written using write to dynare file (see test models)
+- [ ] make SS calc faster (func and optim, maybe inplace ops)
+- [ ] try preallocation tools for forwarddiff
+- [ ] add nonlinear shock decomposition
+- [ ] check obc once more
+- [ ] check why warmup_iterations = 0 makes estimated shocks larger
+- [ ] make inversion filter / higher order sols suitable for HMC (forward and reverse diff!!, currently only analytical pushforward, no implicitdiff)
+- [ ] use analytical derivatives also for shocks matching optim (and HMC - implicit diff)
+- [ ] info on when what filter is used and chosen options are overridden
+- [ ] check warnings, errors throughout. check suppress not interfering with pigeons
 - [ ] rm obc vars from get_SS
-- [ ] fix SS solver (failed for backus in guide)
+- [ ] write tests/docs for nonlinear obc and forecasting
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
 - [ ] cover nested case: min(50,a+b+max(c,10))
-- [ ] nonlinear estimation using unscented kalman filter / inversion filter (minimization problem: find shocks to match states with data)
-- [ ] nonlinear conditional forecasts for higher order and obc
 - [ ] add balanced growth path handling
-- [ ] feedback: write out RBC equations, provide option for external SS guess, sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
+- [ ] feedback: provide option for external SS guess, sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
 - [ ] higher order solutions: some kron matrix mults are later compressed. write custom compressed kron mult; check if sometimes dense mult is faster? (e.g. GNSS2010 seems dense at higher order)
 - [ ] recheck function examples and docs (include output description)
 - [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
@@ -19,17 +25,13 @@
 - [ ] autocorr and covariance with derivatives. return 3d array
 - [ ] Docs: document outputs and associated functions to work with function
 - [ ] use ID for sparse output sylvester solvers (filed issue)
-- [ ] make higher order usable with zygote (currently only analytical pushforward, no implicitdiff)
 - [ ] add pydsge and econpizza to overview
-- [ ] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation)
 - [ ] add for loop parser in @parameters
-- [ ] include option to provide pruned states for irfs
 - [ ] compressed higher order derivatives and sparsity of jacobian
 - [ ] implement more multi country models
 - [ ] speed benchmarking (focus on ImplicitDiff part)
 - [ ] write docs for (non-linear) solution algorithms
 - [ ] have initial_state accept SS and SSS as arguments
-- [ ] for cond forecasting and kalman, get rid of observables input and use axis key of data input
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
 - [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
 - [ ] when doing calibration with optimiser have better return values when he doesnt find a solution (probably NaN)
@@ -39,12 +41,9 @@
 - [ ] have get_std take variables as an input
 - [ ] more informative errors when something goes wrong when writing a model
 - [ ] initial state accept keyed array
-- [ ] bring solution error into an object of the model so we dont have to pass it on as output
-- [ ] check that there is an error if he cant find SS
 - [ ] plot_model_estimates with unconditional forecast at the end
 - [ ] check if you can do analytic derivatives for higher order derivatives
 - [ ] kick out unused parameters from m.parameters
-- [ ] higher order solution derivs with Zygote
 - [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
 - [ ] speed up sparse matrix calcs in implicit diff of higher order funcs
 - [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
@@ -62,7 +61,6 @@
 - [ ] use strings instead of symbols internally
 - [ ] write how-to for calibration equations
 - [ ] make the nonnegativity trick optional or use nanmath?
-- [ ] use packages for kalman filter
 - [ ] clean up different parameter types
 - [ ] clean up printouts/reporting
 - [ ] clean up function inputs and harmonise AD and standard commands
@@ -70,6 +68,17 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
+
+- [x] nonlinear conditional forecasts for higher order and obc
+- [x] for cond forecasting and kalman, get rid of observables input and use axis key of data input
+- [x] fix translate dynare mod file from file written using write to dynare file (see test models): added retranslation to test
+- [x] use packages for kalman filter: nope sticking to own implementation
+- [x] check that there is an error if he cant find SS
+- [x] bring solution error into an object of the model so we dont have to pass it on as output: errors get returned by functions and are thrown where appropriate
+- [x] include option to provide pruned states for irfs
+- [x] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation): used try catch, schur is still fastest
+- [x] fix SS solver (failed for backus in guide): works now
+- [x] nonlinear estimation using unscented kalman filter / inversion filter (minimization problem: find shocks to match states with data): used inversion filter with gradient optim
 - [x] check if higher order effects might distort results for autocorr (problem with order deffinition) - doesnt seem to be the case; full_covar yields same result
 - [x] implement occasionally binding constraints with shocks
 - [x] add QUEST3 tests
@@ -177,12 +186,12 @@
 
 - [ ] estimation codes with missing values (adopt kalman filter)
 - [ ] add better error messages from dynare parser and dont have him change the folder even if he fails (catch the case and change the folder back)
+- [ ] decide on whether levels = false means deviations from NSSS or relevant SS
 - [ ] whats a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
 - [ ] improve redundant calculations of SS and other parts of solution
 - [ ] restructure functions and containers so that compiler knows what types to expect
 - [ ] use RecursiveFactorization and TriangularSolve to solve, instead of MKL or OpenBLAS
 - [ ] fix SnoopCompile with generated functions
-- [ ] rewrite first order with riccati equation MatrixEquations.jl
 - [ ] exploit variable incidence and compression for higher order derivatives
 - [ ] for estimation use CUDA with st order: linear time iteration starting from last 1st order solution and then LinearSolveCUDA solvers for higher orders. this should bring benefits for large models and HANK models
 - [ ] pull request in StatsFuns to have norminv... accept type numbers and add translation from matlab: norminv to StatsFuns norminvcdf
@@ -194,6 +203,7 @@
 - [ ] print legend for algorithm in last subplot of plot only
 - [ ] select variables for moments
 
+- [x] rewrite first order with riccati equation MatrixEquations.jl: not necessary/feasable see dynare package
 - [x] test on highly [nonlinear model](https://www.sciencedirect.com/science/article/pii/S0165188917300970) # caldara et al is actually epstein zin wiht stochastic vol
 - [x] conditional forecasting
 - [x] find way to recover from failed SS solution which is written to init guess

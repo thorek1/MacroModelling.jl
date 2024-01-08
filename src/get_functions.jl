@@ -7,8 +7,8 @@ Return the shock decomposition in absolute deviations from the non stochastic st
 - $DATA
 # Keyword Arguments
 - $PARAMETERS
-- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
-- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
+- $DATA_IN_LEVELS
+- $SMOOTH
 - $VERBOSE
 
 # Examples
@@ -64,7 +64,7 @@ And data, 4×2×40 Array{Float64, 3}:
 """
 function get_shock_decomposition(𝓂::ℳ,
     data::KeyedArray{Float64};
-    parameters = nothing,
+    parameters::ParameterType = nothing,
     data_in_levels::Bool = true,
     smooth::Bool = true,
     verbose::Bool = false)
@@ -114,15 +114,18 @@ end
 
 """
 $(SIGNATURES)
-Return the estimated shocks based on the Kalman smoother or filter (depending on the `smooth` keyword argument) using the provided data and first order solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+Return the estimated shocks based on the inversion filter (depending on the `filter` keyword argument), or Kalman filter or smoother (depending on the `smooth` keyword argument) using the provided data and (non-)linear solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 # Arguments
 - $MODEL
 - $DATA
 # Keyword Arguments
 - $PARAMETERS
-- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
-- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
+- $ALGORITHM
+- $FILTER
+- `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
+- $DATA_IN_LEVELS
+- $SMOOTH
 - $VERBOSE
 
 # Examples
@@ -158,13 +161,22 @@ And data, 1×40 Matrix{Float64}:
 """
 function get_estimated_shocks(𝓂::ℳ,
     data::KeyedArray{Float64};
-    parameters = nothing,
+    parameters::ParameterType = nothing,
+    algorithm::Symbol = :first_order, 
+    filter::Symbol = :kalman, 
+    warmup_iterations::Int = 0,
     data_in_levels::Bool = true,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
+    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
+    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        filter = :inversion
+    end
+
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
+    
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
     data = data(sort(axiskeys(data,1)))
@@ -181,7 +193,12 @@ function get_estimated_shocks(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+    if filter == :kalman
+        filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+        shocks = filtered_and_smoothed[smooth ? 3 : 7]
+    elseif filter == :inversion
+        states, shocks = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
+    end
 
     axis1 = 𝓂.timings.exo
 
@@ -193,7 +210,7 @@ function get_estimated_shocks(𝓂::ℳ,
         axis1 = map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)
     end
 
-    return KeyedArray(filtered_and_smoothed[smooth ? 3 : 7];  Shocks = axis1, Periods = 1:size(data,2))
+    return KeyedArray(shocks;  Shocks = axis1, Periods = 1:size(data,2))
 end
 
 
@@ -203,16 +220,19 @@ end
 
 """
 $(SIGNATURES)
-Return the estimated variables based on the Kalman smoother or filter (depending on the `smooth` keyword argument) using the provided data and first order solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+Return the estimated variables based on the inversion filter (depending on the `filter` keyword argument), or Kalman filter or smoother (depending on the `smooth` keyword argument) using the provided data and (non-)linear solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 # Arguments
 - $MODEL
 - $DATA
 # Keyword Arguments
 - $PARAMETERS
-- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
+- $ALGORITHM
+- $FILTER
+- `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
+- $DATA_IN_LEVELS
 - $LEVELS
-- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
+- $SMOOTH
 - $VERBOSE
 
 # Examples
@@ -251,18 +271,27 @@ And data, 4×40 Matrix{Float64}:
 """
 function get_estimated_variables(𝓂::ℳ,
     data::KeyedArray{Float64};
-    parameters = nothing,
+    parameters::ParameterType = nothing,
+    algorithm::Symbol = :first_order, 
+    filter::Symbol = :kalman, 
+    warmup_iterations::Int = 0,
     data_in_levels::Bool = true,
     levels::Bool = true,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
+    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
+    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        filter = :inversion
+    end
+
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
+    
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
     data = data(sort(axiskeys(data,1)))
-
+    
     obs_axis = collect(axiskeys(data,1))
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
@@ -275,7 +304,12 @@ function get_estimated_variables(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+    if filter == :kalman
+        filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+        states = filtered_and_smoothed[smooth ? 1 : 5]
+    elseif filter == :inversion
+        states, shocks = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
+    end
 
     axis1 = 𝓂.timings.var
 
@@ -284,7 +318,7 @@ function get_estimated_variables(𝓂::ℳ,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    return KeyedArray(levels ? filtered_and_smoothed[smooth ? 1 : 5] .+ reference_steady_state[1:length(𝓂.var)] : filtered_and_smoothed[smooth ? 1 : 5];  Variables = axis1, Periods = 1:size(data,2))
+    return KeyedArray(levels ? states .+ reference_steady_state[1:length(𝓂.var)] : states;  Variables = axis1, Periods = 1:size(data,2))
 end
 
 
@@ -300,8 +334,8 @@ Return the standard deviations of the Kalman smoother or filter (depending on th
 - $DATA
 # Keyword Arguments
 - $PARAMETERS
-- `data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted.
-- `smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks.
+- $DATA_IN_LEVELS
+- $SMOOTH
 - $VERBOSE
 
 # Examples
@@ -340,7 +374,7 @@ And data, 4×40 Matrix{Float64}:
 """
 function get_estimated_variable_standard_deviations(𝓂::ℳ,
     data::KeyedArray{Float64};
-    parameters = nothing,
+    parameters::ParameterType = nothing,
     data_in_levels::Bool = true,
     smooth::Bool = true,
     verbose::Bool = false)
@@ -381,20 +415,19 @@ end
 
 """
 $(SIGNATURES)
-Return the conditional forecast given restrictions on endogenous variables and shocks (optional) in a 2-dimensional array. The algorithm finds the combinations of shocks with the smallest magnitude to match the conditions.
-
-Limited to the first order perturbation solution of the model.
+Return the conditional forecast given restrictions on endogenous variables and shocks (optional) in a 2-dimensional array. By default (see `levels`), the values represent absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state). A constrained minimisation problem is solved to find the combinations of shocks with the smallest magnitude to match the conditions.
 
 # Arguments
 - $MODEL
 - $CONDITIONS
 # Keyword Arguments
 - $SHOCK_CONDITIONS
-- $INITIAL_STATE
+- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS
 - $VARIABLES
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
+- $ALGORITHM
 - $LEVELS
 - $VERBOSE
 
@@ -473,15 +506,16 @@ And data, 9×42 Matrix{Float64}:
 function get_conditional_forecast(𝓂::ℳ,
     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-    initial_state::Vector{Float64} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
     periods::Int = 40, 
-    parameters = nothing,
+    parameters::ParameterType = nothing,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     conditions_in_levels::Bool = true,
+    algorithm::Symbol = :first_order,
     levels::Bool = false,
     verbose::Bool = false)
 
-    periods += max(size(conditions,2), shocks isa Nothing ? 1 : size(shocks,2))
+    periods += max(size(conditions,2), shocks isa Nothing ? 1 : size(shocks,2)) # isa Nothing needed otherwise JET tests fail
 
     if conditions isa SparseMatrixCSC{Float64}
         @assert length(𝓂.var) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(𝓂.var)) * " variables (including auxilliary variables): " * repr(𝓂.var)
@@ -513,7 +547,7 @@ function get_conditional_forecast(𝓂::ℳ,
     if shocks isa SparseMatrixCSC{Float64}
         @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
         nzs = findnz(shocks)
         for i in 1:length(nzs[1])
             shocks_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
@@ -522,7 +556,7 @@ function get_conditional_forecast(𝓂::ℳ,
     elseif shocks isa Matrix{Union{Nothing,Float64}}
         @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
 
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
         shocks_tmp[:,axes(shocks,2)] = shocks
         shocks = shocks_tmp
     elseif shocks isa KeyedArray{Union{Nothing,Float64}} || shocks isa KeyedArray{Float64}
@@ -532,81 +566,187 @@ function get_conditional_forecast(𝓂::ℳ,
 
         @assert length(setdiff(shocks_symbols,𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(shocks_symbols, 𝓂.exo))
         
-        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
         shocks_tmp[indexin(sort(shocks_symbols), 𝓂.exo), axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
         shocks = shocks_tmp
     elseif isnothing(shocks)
-        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
     end
 
-    # write_parameters_input!(𝓂,parameters, verbose = verbose)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
+    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
 
-    state_update, pruning = parse_algorithm_to_state_update(:first_order, 𝓂)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
 
-    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
+    unspecified_initial_state = initial_state == [0.0]
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - reference_steady_state[1:length(𝓂.var)]
+    if unspecified_initial_state
+        if algorithm == :pruned_second_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
+        elseif algorithm == :pruned_third_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+        else
+            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
+        end
+    else
+        if initial_state isa Vector{Float64}
+            if algorithm == :pruned_second_order
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
+            elseif algorithm == :pruned_third_order
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+            else
+                initial_state = initial_state - NSSS
+            end
+        else
+            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+            end
+        end
+    end
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
-    C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
-
-    Y = zeros(size(C,1),periods)
+    Y = zeros(size(𝓂.solution.perturbation.first_order.solution_matrix,1),periods)
 
     cond_var_idx = findall(conditions[:,1] .!= nothing)
     
     free_shock_idx = findall(shocks[:,1] .== nothing)
 
-    if conditions_in_levels
-        conditions[cond_var_idx,1] .-= reference_steady_state[cond_var_idx]
-    end
-
-    @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
-
-    CC = C[cond_var_idx,free_shock_idx]
-
-    if length(cond_var_idx) == 1
-        @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period 1."
-    elseif length(free_shock_idx) == length(cond_var_idx)
-        CC = RF.lu(CC, check = false)
-
-        @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period 1."
-    end
-
     shocks[free_shock_idx,1] .= 0
+    
+    if conditions_in_levels
+        conditions[cond_var_idx,1] .-= reference_steady_state[cond_var_idx] + SSS_delta[cond_var_idx]
+    else
+        conditions[cond_var_idx,1] .-= SSS_delta[cond_var_idx]
+    end
 
-    shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(initial_state, Float64[shocks[:,1]...])[cond_var_idx])
+    @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
-    Y[:,1] = state_update(initial_state, Float64[shocks[:,1]...])
+    if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
+        precision_factor = 1.0
 
-    for i in 2:size(conditions,2)
-        cond_var_idx = findall(conditions[:,i] .!= nothing)
-        
-        if conditions_in_levels
-            conditions[cond_var_idx,i] .-= reference_steady_state[cond_var_idx]
+        p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state, pruning, 𝒷, precision_factor)
+
+        res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                            zeros(length(free_shock_idx)), 
+                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                            autodiff = :forward) end
+
+        matched = Optim.minimum(res) < 1e-12
+
+        if !matched
+            res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                                zeros(length(free_shock_idx)), 
+                                Optim.LBFGS(), 
+                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                                autodiff = :forward) end
+
+            matched = Optim.minimum(res) < 1e-12
         end
 
-        free_shock_idx = findall(shocks[:,i] .== nothing)
-        shocks[free_shock_idx,i] .= 0
+        @assert matched "Numerical stabiltiy issues for restrictions in period 1."
+    
+        x = Optim.minimizer(res)
 
-        @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
+        shocks[free_shock_idx,1] .= x
+                
+        initial_state = state_update(initial_state, Float64[shocks[:,1]...])
 
-	    CC = C[cond_var_idx,free_shock_idx]
+        Y[:,1] = pruning ? sum(initial_state) : initial_state
+
+        for i in 2:size(conditions,2)
+            cond_var_idx = findall(conditions[:,i] .!= nothing)
+            
+            if conditions_in_levels
+                conditions[cond_var_idx,i] .-= reference_steady_state[cond_var_idx] + SSS_delta[cond_var_idx]
+            else
+                conditions[cond_var_idx,i] .-= SSS_delta[cond_var_idx]
+            end
+    
+            free_shock_idx = findall(shocks[:,i] .== nothing)
+
+            shocks[free_shock_idx,i] .= 0
+    
+            @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
+    
+            p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, 𝒷, precision_factor)
+
+            res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                                zeros(length(free_shock_idx)), 
+                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                                autodiff = :forward) end
+
+            matched = Optim.minimum(res) < 1e-12
+
+            if !matched
+                res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                                zeros(length(free_shock_idx)), 
+                                Optim.LBFGS(), 
+                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                                autodiff = :forward) end
+
+                matched = Optim.minimum(res) < 1e-12
+            end
+
+            @assert matched "Numerical stabiltiy issues for restrictions in period $i."
+
+            x = Optim.minimizer(res)
+
+            shocks[free_shock_idx,i] .= x
+
+            initial_state = state_update(initial_state, Float64[shocks[:,i]...])
+
+            Y[:,i] = pruning ? sum(initial_state) : initial_state
+        end
+    elseif algorithm ∈ [:first_order, :riccati, :quadratic_iteration, :linear_time_iteration]
+        C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
+    
+        CC = C[cond_var_idx,free_shock_idx]
 
         if length(cond_var_idx) == 1
-            @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
+            @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period 1."
         elseif length(free_shock_idx) == length(cond_var_idx)
-
-	    CC = RF.lu(CC, check = false)
-
-	    @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
+            CC = RF.lu(CC, check = false)
+    
+            @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period 1."
         end
+    
+        shocks[free_shock_idx,1] .= 0
+    
+        shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(initial_state, Float64[shocks[:,1]...])[cond_var_idx])
+    
+        Y[:,1] = state_update(initial_state, Float64[shocks[:,1]...])
 
-        shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
-
-        Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
+        for i in 2:size(conditions,2)
+            cond_var_idx = findall(conditions[:,i] .!= nothing)
+            
+            if conditions_in_levels
+                conditions[cond_var_idx,i] .-= reference_steady_state[cond_var_idx]
+            end
+    
+            free_shock_idx = findall(shocks[:,i] .== nothing)
+            shocks[free_shock_idx,i] .= 0
+    
+            @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with more free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
+    
+            CC = C[cond_var_idx,free_shock_idx]
+    
+            if length(cond_var_idx) == 1
+                @assert any(CC .!= 0) "Free shocks have no impact on conditioned variable in period " * repr(i) * "."
+            elseif length(free_shock_idx) == length(cond_var_idx)
+    
+            CC = RF.lu(CC, check = false)
+    
+            @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
+            end
+    
+            shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
+    
+            Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
+        end
     end
 
     axis1 = [𝓂.timings.var[var_idx]; 𝓂.timings.exo]
@@ -616,10 +756,10 @@ function get_conditional_forecast(𝓂::ℳ,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
         axis1[end-length(𝓂.timings.exo)+1:end] = axis1[end-length(𝓂.timings.exo)+1:end] .* "₍ₓ₎"
     else
-        axis1 = [𝓂.timings.var[var_idx]; map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+        axis1 = [𝓂.timings.var[var_idx]; map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo)]
     end
 
-    return KeyedArray([levels ? (Y[var_idx,:] .+ reference_steady_state[var_idx]) : Y[var_idx,:]; convert(Matrix{Float64},shocks)];  Variables_and_shocks = axis1, Periods = 1:periods)
+    return KeyedArray([Y[var_idx,:] .+ (levels ? reference_steady_state + SSS_delta : SSS_delta)[var_idx]; convert(Matrix{Float64}, shocks)];  Variables_and_shocks = axis1, Periods = 1:periods)
 end
 
 
@@ -768,7 +908,7 @@ end
 
 """
 $(SIGNATURES)
-Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedArray. Values are returned in absolute deviations from the (non) stochastic steady state by default.
+Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedArray. By default (see `levels`), the values represent absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state).
 
 # Arguments
 - $MODEL
@@ -780,8 +920,9 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedAr
 - $SHOCKS
 - $NEGATIVE_SHOCK
 - $GENERALISED_IRF
-- $INITIAL_STATE
+- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
 - $LEVELS
+- `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
 - $VERBOSE
 
 # Examples
@@ -821,18 +962,16 @@ And data, 4×40×1 Array{Float64, 3}:
 function get_irf(𝓂::ℳ; 
     periods::Int = 40, 
     algorithm::Symbol = :first_order, 
-    parameters = nothing,
+    parameters::ParameterType = nothing,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
     negative_shock::Bool = false, 
     generalised_irf::Bool = false,
-    initial_state::Vector{Float64} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
     levels::Bool = false,
     ignore_obc::Bool = false,
     verbose::Bool = false)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
-    
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
@@ -841,58 +980,93 @@ function get_irf(𝓂::ℳ;
 
     @assert !(shocks == :none && generalised_irf) "Cannot compute generalised IRFs for model without shocks."
 
-    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
+    stochastic_model = length(𝓂.timings.exo) > 0
 
-    if algorithm == :second_order
-        SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.second_order.stochastic_steady_state
-    elseif algorithm == :pruned_second_order
-        SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
-    elseif algorithm == :third_order
-        SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.third_order.stochastic_steady_state
-    elseif algorithm == :pruned_third_order
-        SSS_delta = reference_steady_state[1:length(𝓂.var)] - 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
+    obc_model = length(𝓂.obc_violation_equations) > 0
+
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
+        periods += size(shocks)[2]
+
+        shock_history = zeros(𝓂.timings.nExo, periods)
+
+        shock_history[:,1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ"),:]) > 1e-10
+    elseif shocks isa KeyedArray{Float64}
+        shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
+
+        periods += size(shocks)[2]
+
+        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks which are not part of the model."
+
+        shock_history = zeros(𝓂.timings.nExo, periods + 1)
+
+        shock_history[indexin(shock_input,𝓂.timings.exo),1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(𝓂.timings.exo,axiskeys(shocks,1)),:)) > 1e-10
     else
-        SSS_delta = zeros(length(𝓂.var))
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+
+        obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
     end
 
-    if levels
-        if algorithm == :second_order
-            reference_steady_state = 𝓂.solution.perturbation.second_order.stochastic_steady_state
-        elseif algorithm == :pruned_second_order
-            reference_steady_state = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
-        elseif algorithm == :third_order
-            reference_steady_state = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-        elseif algorithm == :pruned_third_order
-            reference_steady_state = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
-        end
-    end
-
-    unspecified_initial_state = initial_state == [0.0]
-
-    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) - SSS_delta : initial_state - reference_steady_state[1:𝓂.timings.nVars]
-    
     if ignore_obc
         occasionally_binding_constraints = false
     else
         occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
     end
 
-    if occasionally_binding_constraints #&& 
-        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraints only compatible with first order perturbation solutions."
-        
-        solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 1, verbose = false, dynamics = true, algorithm = algorithm)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+    
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    
+    unspecified_initial_state = initial_state == [0.0]
+
+    if unspecified_initial_state
+        if algorithm == :pruned_second_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
+        elseif algorithm == :pruned_third_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+        else
+            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
+        end
+    else
+        if initial_state isa Vector{Float64}
+            if algorithm == :pruned_second_order
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
+            elseif algorithm == :pruned_third_order
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+            else
+                initial_state = initial_state - NSSS
+            end
+        else
+            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+            end
+        end
+    end
+
+    if occasionally_binding_constraints
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
+    elseif obc_shocks_included
+        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks witout enforcing the constraint is only compatible with first order perturbation solutions."
+
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
+    else
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
     end
     
-    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂)
-
     if generalised_irf
         girfs =  girf(state_update,
-                        SSS_delta,
-                        levels ? reference_steady_state : SSS_delta,
-                        pruning,
-                        unspecified_initial_state,
+                        initial_state,
+                        levels ? reference_steady_state + SSS_delta : SSS_delta,
                         𝓂.timings; 
-                        algorithm = algorithm,
                         periods = periods, 
                         shocks = shocks, 
                         variables = variables, 
@@ -900,109 +1074,77 @@ function get_irf(𝓂::ℳ;
         return girfs
     else
         if occasionally_binding_constraints
-            function obc_state_update(present_states::Vector{R}, present_shocks::Vector{R}, state_update::Function, algorithm::Symbol, model::JuMP.Model, x::Vector{JuMP.VariableRef}) where R <: Float64
+            function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
                 unconditional_forecast_horizon = 𝓂.max_obc_horizon
 
-                reference_steady_state = 𝓂.solution.non_stochastic_steady_state
+                reference_ss = 𝓂.solution.non_stochastic_steady_state
 
                 obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
 
                 periods_per_shock = 𝓂.max_obc_horizon + 1
                 
                 num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
-
-                constraints_violated = any(JuMP.value.(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))) .> eps(Float32))
                 
+                p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
+
+                constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
+
                 if constraints_violated
-                    # Now loop through obc_shock_bounds to set the bounds on these variables.
-                    # maxmin_indicators = 𝓂.obc_violation_function(x, present_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2]
-                    # for (idx, v) in enumerate(maxmin_indicators)
-                    #     idxs = (idx - 1) * periods_per_shock + 1:idx * periods_per_shock
-                    #     if v
-                    # #         if 𝓂.obc_violation_function(x, present_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
-                    #         JuMP.set_upper_bound.(x[idxs], 0)
-                    # #             JuMP.set_lower_bound.(x[idxs], 0)
-                    #     else
-                    # #             JuMP.set_upper_bound.(x[idxs], 0)
-                    #         JuMP.set_lower_bound.(x[idxs], 0)
-                    #     end
-                    # #     # else
-                    # #     #     if 𝓂.obc_violation_function(x, present_states, past_shocks, state_update, reference_steady_state, 𝓂, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))[2][idx]
-                    # #     #         JuMP.set_lower_bound.(x[idxs], 0)
-                    # #     #     else
-                    # #     #         JuMP.set_upper_bound.(x[idxs], 0)
-                    # #     #     end
-                    # #     # end
-                    # end
+                    # solved = false
 
-                    JuMP.@constraint(model, con, 𝓂.obc_violation_function(x, present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks)) .<= 0)
-
-                    JuMP.optimize!(model)
+                    for algo ∈ [NLopt.:LD_SLSQP, NLopt.:LN_COBYLA] 
+                        # check whether auglag is more reliable here (as in gives smaller shock size)
+                        opt = NLopt.Opt(algo, num_shocks*periods_per_shock)
                     
-                    solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED]
+                        opt.min_objective = obc_objective_optim_fun
 
-                    if !solved
-                        for opt in [:LD_SLSQP, :LD_MMA, :LN_COBYLA]
-                            # @info "Using $opt solver."
+                        opt.xtol_abs = eps(Float32)
+                        opt.ftol_abs = eps(Float32)
+                        opt.maxeval = 500
+                        
+                        # Adding constraints
+                        # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) 
+                        # upper bounds don't work because it can be that bounds can only be enforced with offsetting (previous periods negative shocks) positive shocks. also in order to enforce the bound over the length of the forecasting horizon the shocks might be in the last period. that's why an approach whereby you increase the anticipation horizon of shocks can be more costly due to repeated computations.
+                        # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
 
-                            JuMP.set_optimizer(model, NLopt.Optimizer)
+                        upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
+                        
+                        NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
 
-                            JuMP.set_attribute(model, "algorithm", opt)
+                        (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
+                        
+                        # solved = ret ∈ Symbol.([
+                        #     NLopt.SUCCESS,
+                        #     NLopt.STOPVAL_REACHED,
+                        #     NLopt.FTOL_REACHED,
+                        #     NLopt.XTOL_REACHED,
+                        #     NLopt.ROUNDOFF_LIMITED,
+                        # ])
+                        
+                        present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
 
-                            JuMP.optimize!(model)
+                        constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
 
-                            solved = JuMP.termination_status(model) ∈ [JuMP.OPTIMAL,JuMP.LOCALLY_SOLVED] && !(any(JuMP.value.(𝓂.obc_violation_function(JuMP.value.(x), present_states, state_update, reference_steady_state, 𝓂, algorithm, unconditional_forecast_horizon, JuMP.AffExpr.(present_shocks))) .> eps(Float32)))
-
-                            if solved break end
+                        if !constraints_violated
+                            break
                         end
                     end
-                    
-                    present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= JuMP.value.(x)
 
-                    JuMP.delete(model, con)
-
-                    JuMP.unregister(model, :con)
-
-                    JuMP.set_optimizer(model, MadNLP.Optimizer)
-
-                    # JuMP.set_attribute(model, "tol", 1e-12)
+                    solved = !constraints_violated
                 else
                     solved = true
                 end
 
-                present_states = state_update(present_states,JuMP.value.(present_shocks))
+                present_states = state_update(present_states, present_shocks)
 
-                return present_states, present_shocks, solved, model, x
+                return present_states, present_shocks, solved
             end
-
-            model = JuMP.Model()
-
-            JuMP.set_optimizer(model, MadNLP.Optimizer)
-            
-            # JuMP.set_attribute(model, "tol", 1e-12)
-
-            JuMP.set_silent(model)
-
-            obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
-
-            periods_per_shock = 𝓂.max_obc_horizon + 1
-
-            num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
-
-            JuMP.@variable(model, x[1:num_shocks*periods_per_shock])
-
-            JuMP.@objective(model, Min, x' * ℒ.I * x)
 
             irfs =  irf(state_update,
                         obc_state_update, 
-                        model,
-                        x,
                         initial_state, 
-                        levels ? reference_steady_state : SSS_delta,
-                        pruning,
-                        unspecified_initial_state,
+                        levels ? reference_steady_state + SSS_delta : SSS_delta,
                         𝓂.timings; 
-                        algorithm = algorithm,
                         periods = periods, 
                         shocks = shocks, 
                         variables = variables, 
@@ -1010,19 +1152,12 @@ function get_irf(𝓂::ℳ;
         else
             irfs =  irf(state_update, 
                         initial_state, 
-                        levels ? reference_steady_state : SSS_delta,
-                        pruning,
-                        unspecified_initial_state,
+                        levels ? reference_steady_state + SSS_delta : SSS_delta,
                         𝓂.timings; 
-                        algorithm = algorithm,
                         periods = periods, 
                         shocks = shocks, 
                         variables = variables, 
                         negative_shock = negative_shock)
-        end
-
-        if occasionally_binding_constraints #&& algorithm ∈ [:pruned_second_order, :second_order, :pruned_third_order, :third_order]
-            solve!(𝓂, parameters = :activeᵒᵇᶜshocks => 0, verbose = false, dynamics = true, algorithm = algorithm)
         end
 
         return irfs
@@ -1086,19 +1221,20 @@ get_girf(args...; kwargs...) =  get_irf(args...; kwargs..., generalised_irf = tr
 
 """
 $(SIGNATURES)
-Return the (non stochastic) steady state and derivatives with respect to model parameters.
+Return the (non stochastic) steady state, calibrated parameters, and derivatives with respect to model parameters.
 
 # Arguments
 - $MODEL
 # Keyword Arguments
 - $PARAMETERS
 - $DERIVATIVES
-- `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation. No derivatives are calculated.
+- `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation
 - $ALGORITHM
 - $PARAMETER_DERIVATIVES
+- `return_variables_only` [Defaut: `false`, Type: `Bool`]: return only variables and not calibrated parameters
 - $VERBOSE
 
-The columns show the SS and parameters for which derivatives are taken. The rows show the variables.
+The columns show the (non stochastic) steady state and parameters for which derivatives are taken. The rows show the variables and calibrated parameters.
 # Examples
 ```jldoctest
 using MacroModelling
@@ -1132,18 +1268,19 @@ And data, 4×6 Matrix{Float64}:
 ```
 """
 function get_steady_state(𝓂::ℳ; 
-    parameters = nothing, 
+    parameters::ParameterType = nothing, 
     derivatives::Bool = true, 
     stochastic::Bool = false,
     algorithm::Symbol = :first_order,
     parameter_derivatives::Union{Symbol_input,String_input} = :all,
+    return_variables_only::Bool = false,
     verbose::Bool = false,
     silent::Bool = true,
     tol::AbstractFloat = eps())
 
+    if !(algorithm == :first_order) stochastic = true end
+    
     solve!(𝓂, parameters = parameters, verbose = verbose)
-
-    # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
     
@@ -1174,23 +1311,23 @@ function get_steady_state(𝓂::ℳ;
 
     if stochastic
         if  algorithm == :third_order
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent)
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent, obc = length(𝓂.obc_violation_equations) > 0)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
         elseif  algorithm == :pruned_third_order
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent)
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent, obc = length(𝓂.obc_violation_equations) > 0)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
         elseif  algorithm == :pruned_second_order
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent)
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent, obc = length(𝓂.obc_violation_equations) > 0)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
         else
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order, silent = silent)
+            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order, silent = silent, obc = length(𝓂.obc_violation_equations) > 0)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
         end
     end
 
     var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
-    calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+    calib_idx = return_variables_only ? [] : indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
     if length_par * length(var_idx) > 200 
         derivatives = false
@@ -1200,7 +1337,7 @@ function get_steady_state(𝓂::ℳ;
         derivatives = true
     end
 
-    axis1 = [vars_in_ss_equations...,𝓂.calibration_equations_parameters...]
+    axis1 = [vars_in_ss_equations..., (return_variables_only ? [] : 𝓂.calibration_equations_parameters)...]
 
     if any(x -> contains(string(x), "◖"), axis1)
         axis1_decomposed = decompose_name.(axis1)
@@ -1218,44 +1355,44 @@ function get_steady_state(𝓂::ℳ;
         if stochastic
                 if algorithm == :third_order
 
-                    dSSS = ℱ.jacobian(x->begin 
+                    dSSS = 𝒜.jacobian(𝒷(), x->begin 
                                 SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
                                 [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                            end, 𝓂.parameter_values[param_idx])
+                            end, 𝓂.parameter_values[param_idx])[1]
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
 
                 elseif algorithm == :pruned_third_order
 
-                    dSSS = ℱ.jacobian(x->begin 
+                    dSSS = 𝒜.jacobian(𝒷(), x->begin 
                                 SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
                                 [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                            end, 𝓂.parameter_values[param_idx])
+                            end, 𝓂.parameter_values[param_idx])[1]
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
                 
                 elseif algorithm == :pruned_second_order
 
-                    dSSS = ℱ.jacobian(x->begin 
+                    dSSS = 𝒜.jacobian(𝒷(), x->begin 
                                 SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
                                 [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                            end, 𝓂.parameter_values[param_idx])
+                            end, 𝓂.parameter_values[param_idx])[1]
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
 
                 else
 
-                    dSSS = ℱ.jacobian(x->begin 
+                    dSSS = 𝒜.jacobian(𝒷(), x->begin 
                                 SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
                                 [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                            end, 𝓂.parameter_values[param_idx])
+                            end, 𝓂.parameter_values[param_idx])[1]
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
 
                 end
         else
-            # dSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
-            dSS = ℱ.jacobian(x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[[var_idx...,calib_idx...]], 𝓂.parameter_values[param_idx])
+            # dSS = 𝒜.jacobian(𝒷(), x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
+            dSS = 𝒜.jacobian(𝒷(), x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[[var_idx...,calib_idx...]], 𝓂.parameter_values[param_idx])[1]
 
             # if length(𝓂.calibration_equations_parameters) == 0        
             #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters))
@@ -1342,17 +1479,20 @@ ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 $(SIGNATURES)
-Return the solution of the model. In the linear case it returns the linearised solution and the non stochastic steady state (SS) of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables and shocks as the other dimensions.
+Return the solution of the model. In the linear case it returns the linearised solution and the non stochastic steady state (NSSS) of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables, shocks, and perturbation parameter (:Volatility) in the case of higher order solutions as the other dimensions.
+
+The values of the output represent the NSSS in the case of a linear solution and below it the effect that deviations from the NSSS of the respective past states, shocks, and perturbation parameter have (perturbation parameter = 1) on the present value (NSSS deviation) of the model variables.
 
 # Arguments
 - $MODEL
 # Keyword Arguments
 - $PARAMETERS
-- `algorithm` [Default: `:first_order`, Type: `Symbol`]: algorithm to solve for the dynamics of the model. Only linear algorithms allowed.
+- $ALGORITHM
 - $VERBOSE
 
-The returned `KeyedArray` shows as columns the endogenous variables inlcuding the auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows and other dimensions (depending on the chosen perturbation order) include the SS for the linear case only, followed by the states, and exogenous shocks. 
+The returned `KeyedArray` shows as columns the endogenous variables inlcuding the auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows and other dimensions (depending on the chosen perturbation order) include the NSSS for the linear case only, followed by the states, and exogenous shocks. 
 Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
+
 # Examples
 ```jldoctest
 using MacroModelling
@@ -1386,13 +1526,9 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
 ```
 """
 function get_solution(𝓂::ℳ; 
-    parameters = nothing,
+    parameters::ParameterType = nothing,
     algorithm::Symbol = :first_order, 
     verbose::Bool = false)
-
-    # write_parameters_input!(𝓂,parameters, verbose = verbose)
-    
-    # @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran] "This function only works for linear solutions. Choose a respective algorithm."
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
@@ -1656,7 +1792,7 @@ And data, 7×2×21 Array{Float64, 3}:
 """
 function get_conditional_variance_decomposition(𝓂::ℳ; 
     periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}} = [1:20...,Inf],
-    parameters = nothing,  
+    parameters::ParameterType = nothing,  
     verbose::Bool = false)
 
     solve!(𝓂, parameters = parameters, verbose = verbose)
@@ -1800,7 +1936,7 @@ And data, 7×2 Matrix{Float64}:
 ```
 """
 function get_variance_decomposition(𝓂::ℳ; 
-    parameters = nothing,  
+    parameters::ParameterType = nothing,  
     verbose::Bool = false)
     
     solve!(𝓂, parameters = parameters, verbose = verbose)
@@ -1906,7 +2042,7 @@ And data, 4×4 Matrix{Float64}:
 ```
 """
 function get_correlation(𝓂::ℳ; 
-    parameters = nothing,  
+    parameters::ParameterType = nothing,  
     algorithm::Symbol = :first_order,
     verbose::Bool = false)
     
@@ -1996,7 +2132,7 @@ And data, 4×5 Matrix{Float64}:
 """
 function get_autocorrelation(𝓂::ℳ; 
     autocorrelation_periods = 1:5,
-    parameters = nothing,  
+    parameters::ParameterType = nothing,  
     algorithm::Symbol = :first_order,
     verbose::Bool = false)
     
@@ -2120,7 +2256,7 @@ And data, 4×6 Matrix{Float64}:
 ```
 """
 function get_moments(𝓂::ℳ; 
-    parameters = nothing,  
+    parameters::ParameterType = nothing,  
     non_stochastic_steady_state::Bool = true, 
     mean::Bool = false,
     standard_deviation::Bool = true, 
@@ -2184,9 +2320,6 @@ function get_moments(𝓂::ℳ;
     end
 
 
-
-
-
     if derivatives
         if non_stochastic_steady_state
             axis1 = [𝓂.var[var_idx]...,𝓂.calibration_equations_parameters...]
@@ -2203,7 +2336,7 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            dNSSS = ℱ.jacobian(x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), 𝓂.parameter_values[param_idx])
+            dNSSS = 𝒜.jacobian(𝒷(), x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), 𝓂.parameter_values[param_idx])[1]
             
             if length(𝓂.calibration_equations_parameters) > 0
                 var_idx_ext = vcat(var_idx, 𝓂.timings.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
@@ -2211,7 +2344,7 @@ function get_moments(𝓂::ℳ;
                 var_idx_ext = var_idx
             end
 
-            # dNSSS = ℱ.jacobian(x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
+            # dNSSS = 𝒜.jacobian(𝒷(), x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
             SS =  KeyedArray(hcat(collect(NSSS[var_idx_ext]),dNSSS[var_idx_ext,:]);  Variables = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
         end
         
@@ -2233,7 +2366,7 @@ function get_moments(𝓂::ℳ;
             if algorithm == :pruned_second_order
                 covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
 
-                dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
+                dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
@@ -2241,7 +2374,7 @@ function get_moments(𝓂::ℳ;
             elseif algorithm == :pruned_third_order
                 covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
 
-                dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose), 𝓂.parameter_values[param_idx])
+                dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
@@ -2249,12 +2382,12 @@ function get_moments(𝓂::ℳ;
             else
                 covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
 
-                dvariance = ℱ.jacobian(x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])
+                dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
             end
 
             vari = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
 
-            # dvariance = ℱ.jacobian(x-> convert(Vector{Number},max.(ℒ.diag(calculate_covariance(x, 𝓂)),eps(Float64))), Float64.(𝓂.parameter_values))
+            # dvariance = 𝒜.jacobian(𝒷(), x-> convert(Vector{Number},max.(ℒ.diag(calculate_covariance(x, 𝓂)),eps(Float64))), Float64.(𝓂.parameter_values))
             
             
             varrs =  KeyedArray(hcat(vari[var_idx],dvariance[var_idx,:]);  Variables = axis1, Variance_and_∂variance∂parameter = axis2)
@@ -2270,11 +2403,11 @@ function get_moments(𝓂::ℳ;
                 standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
 
                 if algorithm == :pruned_second_order
-                    dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                    dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
                 elseif algorithm == :pruned_third_order
-                    dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                    dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
                 else
-                    dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                    dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
                 end
 
                 st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
@@ -2292,7 +2425,7 @@ function get_moments(𝓂::ℳ;
             if algorithm == :pruned_second_order
                 covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, verbose = verbose)
 
-                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
@@ -2300,7 +2433,7 @@ function get_moments(𝓂::ℳ;
             elseif algorithm == :pruned_third_order
                 covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, verbose = verbose)
 
-                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
@@ -2308,7 +2441,7 @@ function get_moments(𝓂::ℳ;
             else
                 covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)
                 
-                dst_dev = ℱ.jacobian(x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])
+                dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
             end
 
             standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
@@ -2327,7 +2460,7 @@ function get_moments(𝓂::ℳ;
 
             state_μ, ___ = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose)
 
-            state_μ_dev = ℱ.jacobian(x -> mean_parameter_derivatives(x, param_idx, 𝓂, algorithm = algorithm, verbose = verbose), 𝓂.parameter_values[param_idx])
+            state_μ_dev = 𝒜.jacobian(𝒷(), x -> mean_parameter_derivatives(x, param_idx, 𝓂, algorithm = algorithm, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
             
             var_means =  KeyedArray(hcat(state_μ[var_idx], state_μ_dev[var_idx, :]);  Variables = axis1, Mean_and_∂mean∂parameter = axis2)
         end
@@ -2477,6 +2610,18 @@ get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., va
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
 get_std =  get_standard_deviation
+
+"""
+Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+"""
+get_stdev =  get_standard_deviation
+
+
+"""
+Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+"""
+stdev =  get_standard_deviation
+
 
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
@@ -2688,4 +2833,187 @@ function get_statistics(𝓂,
     end
 
     return ret
+end
+
+
+
+
+"""
+$(SIGNATURES)
+Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is either calculated based on the inversion or the Kalman filter (depending on the `filter` keyword argument). In case of a nonlinear solution algorithm the inversion filter will be used. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns.
+
+This function is differentiable (so far for the Kalman filter only) and can be used in gradient based sampling or optimisation.
+
+# Arguments
+- $MODEL
+- $DATA
+- `parameter_values` [Type: `Vector`]: Parameter values.
+# Keyword Arguments
+- $ALGORITHM
+- $FILTER
+- `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
+- $VERBOSE
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+simulated_data = simulate(RBC)
+
+get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
+# output
+58.24780188977981
+```
+"""
+function get_loglikelihood(𝓂::ℳ, 
+    data::KeyedArray{Float64}, 
+    parameter_values::Vector{S}; 
+    algorithm::Symbol = :first_order, 
+    filter::Symbol = :kalman, 
+    warmup_iterations::Int = 0, 
+    tol::AbstractFloat = eps(), 
+    verbose::Bool = false)::S where S
+    
+    # checks to avoid errors further down the line and inform the user
+    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
+
+    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        filter = :inversion
+    end
+
+    observables = @ignore_derivatives get_and_check_observables(𝓂, data)
+
+    @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
+
+    # keep the parameters wihtin bounds
+    ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters) + length(𝓂.➕_vars))
+    lb = @ignore_derivatives -ub
+
+    for (i,v) in enumerate(𝓂.bounded_vars)
+        if v ∈ 𝓂.parameters
+            @ignore_derivatives lb[i] = 𝓂.lower_bounds[i]
+            @ignore_derivatives ub[i] = 𝓂.upper_bounds[i]
+        end
+    end
+
+    if min(max(parameter_values,lb),ub) != parameter_values 
+        return -Inf
+    end
+
+    # solve model given the parameters
+    if algorithm == :second_order
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂)
+
+        if !converged return -Inf end
+
+        all_SS = expand_steady_state(SS_and_pars,𝓂)
+
+        state = collect(sss) - all_SS
+
+        state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+            1
+                                shock]
+            return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+        end
+    elseif algorithm == :pruned_second_order
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
+
+        if !converged return -Inf end
+
+        all_SS = expand_steady_state(SS_and_pars,𝓂)
+
+        state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
+
+        state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+            aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+            aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    
+            return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+        end
+    elseif algorithm == :third_order
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂)
+
+        if !converged return -Inf end
+
+        all_SS = expand_steady_state(SS_and_pars,𝓂)
+
+        state = collect(sss) - all_SS
+
+        state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+            1
+                                    shock]
+            return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+        end
+    elseif algorithm == :pruned_third_order
+        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
+
+        if !converged return -Inf end
+
+        all_SS = expand_steady_state(SS_and_pars,𝓂)
+
+        state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
+
+        state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+            aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+            aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
+            aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+            aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    
+            kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+                    
+            return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+        end
+    else
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+
+        if solution_error > tol || isnan(solution_error)
+            return -Inf
+        end
+
+        state = zeros(𝓂.timings.nVars)
+
+        ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) |> Matrix
+
+        𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+        
+        if !solved return -Inf end
+
+        state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                        shock]
+            return 𝐒₁ * aug_state # you need a return statement for forwarddiff to work
+        end
+    end
+
+    # prepare data
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
+
+    data_in_deviations = collect(data) .- SS_and_pars[obs_indices]
+
+    if filter == :kalman
+        loglikelihood = calculate_kalman_filter_loglikelihood(𝓂, observables, 𝐒₁, data_in_deviations)
+    elseif filter == :inversion
+        loglikelihood = @ignore_derivatives calculate_inversion_filter_loglikelihood(𝓂, state, state_update, data_in_deviations, observables, warmup_iterations)
+    end
+
+    return loglikelihood
 end

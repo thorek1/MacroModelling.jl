@@ -1,5 +1,5 @@
 using MacroModelling
-import Turing
+import Turing, Pigeons
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
@@ -19,7 +19,7 @@ observables = sort(Symbol.("log_".*names(dat)))
 data = data(observables,:)
 
 
-Turing.@model function FS2000_loglikelihood_function(data, m, observables)
+Turing.@model function FS2000_loglikelihood_function(data, m)
     alp     ~ Beta(0.356, 0.02, μσ = true)
     bet     ~ Beta(0.993, 0.002, μσ = true)
     gam     ~ Normal(0.0085, 0.003)
@@ -30,27 +30,41 @@ Turing.@model function FS2000_loglikelihood_function(data, m, observables)
     z_e_a   ~ InverseGamma(0.035449, Inf, μσ = true)
     z_e_m   ~ InverseGamma(0.008862, Inf, μσ = true)
     # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
-    Turing.@addlogprob! calculate_kalman_filter_loglikelihood(m, data(observables), observables; parameters = [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
+    Turing.@addlogprob! get_loglikelihood(m, data, [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
 end
 
-FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, observables)
-
+FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000)
 
 
 n_samples = 1000
 
 # using Zygote
 # Turing.setadbackend(:zygote)
-samps = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
+samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
-# println(mean(samps).nt.mean)
+println(mean(samps).nt.mean)
+sample_nuts = mean(samps).nt.mean
+
+
+pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000)),
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 1,
+            n_rounds = 10,
+            multithreaded = true)
+
+samps = MCMCChains.Chains(Pigeons.get_sample(pt))
+
+println(mean(samps).nt.mean)
+
+sample_pigeons = mean(samps).nt.mean
+
 
 Random.seed!(30)
 
 function calculate_posterior_loglikelihood(parameters)
     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
     log_lik = 0
-    log_lik -= calculate_kalman_filter_loglikelihood(FS2000, data(observables), observables; parameters = parameters)
+    log_lik -= get_loglikelihood(FS2000, data, parameters)
     log_lik -= logpdf(Beta(0.356, 0.02, μσ = true),alp)
     log_lik -= logpdf(Beta(0.993, 0.002, μσ = true),bet)
     log_lik -= logpdf(Normal(0.0085, 0.003),gam)
@@ -69,7 +83,8 @@ Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); a
 
 @testset "Estimation results" begin
     @test isapprox(sol.minimum, -1343.7491257498598, rtol = eps(Float32))
-    @test isapprox(mean(samps).nt.mean, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
+    @test isapprox(sample_nuts, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
+    @test isapprox(sample_pigeons, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
 end
 
 

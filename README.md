@@ -21,13 +21,13 @@ As of now the package can:
 
 - parse a model written with user friendly syntax (variables are followed by time indices `...[2], [1], [0], [-1], [-2]...`, or `[x]` for shocks)
 - (tries to) solve the model only knowing the model equations and parameter values (no steady state file needed)
-- calculate first, second, and third order (pruned) perturbation solutions using (forward or reverse-mode) automatic differentiation (AD)
-- handle occasionally binding constraints
-- calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts
+- calculate **first, second, and third order (pruned) perturbation** solutions using symbolic derivatives
+- handle **occasionally binding constraints** for linear and nonlinear solutions
+- calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts for linear and nonlinear solutions
 - calibrate parameters using (non stochastic) steady state relationships
-- match model moments (also for pruned higher order solutions)
-- estimate the model on data (Kalman filter using first order perturbation) with gradient based samplers (e.g. NUTS, HMC)
-- **differentiate** (forward AD) the model solution, Kalman filter loglikelihood (reverse-mode AD), model moments, steady state, **with respect to the parameters**
+- **match model moments** (also for pruned **higher order** solutions)
+- estimate the model on data (Kalman filter using first order perturbation) with **gradient based samplers** (e.g. NUTS, HMC) or **estimate nonlinear models** using the inversion filter
+- **differentiate** (forward AD) the model solution, Kalman filter loglikelihood (forward and reverse-mode AD), model moments, steady state, **with respect to the parameters**
 
 The package is not:
 

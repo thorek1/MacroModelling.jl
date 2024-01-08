@@ -11,6 +11,8 @@ if !test_higher_order
 
     write_to_dynare_file(Backus_Kehoe_Kydland_1992)
     translate_dynare_file("Backus_Kehoe_Kydland_1992.mod")
+    include("Backus_Kehoe_Kydland_1992.jl")
+    get_solution(Backus_Kehoe_Kydland_1992)
     Backus_Kehoe_Kydland_1992 = nothing
 
 
@@ -27,6 +29,8 @@ if !test_higher_order
 
     write_to_dynare_file(NAWM_EAUS_2008)
     translate_dynare_file("NAWM_EAUS_2008.mod")
+    include("NAWM_EAUS_2008.jl")
+    get_solution(NAWM_EAUS_2008)
     NAWM_EAUS_2008 = nothing
 
 
@@ -44,6 +48,8 @@ if !test_higher_order
     
     write_to_dynare_file(Baxter_King_1993)
     translate_dynare_file("Baxter_King_1993.mod")
+    include("Baxter_King_1993.jl")
+    get_solution(Baxter_King_1993)
     Baxter_King_1993 = nothing
     
 
@@ -58,6 +64,8 @@ if !test_higher_order
 
     write_to_dynare_file(Ireland_2004)
     translate_dynare_file("Ireland_2004.mod")
+    include("Ireland_2004.jl")
+    get_solution(Ireland_2004)
     Ireland_2004 = nothing
 
 
@@ -73,7 +81,9 @@ if !test_higher_order
     @test isapprox(var_dec(:E_BGYN,:) * 100, [3.00, 0.23, 0.54, 0.01, 0.08, 0.38, 0.14, 0.10, 83.60, 3.28, 1.11, 3.36, 0.01, 1.56, 0.17, 0.17, 0.00, 2.24, 0.01], rtol = 1e-3)
 
     write_to_dynare_file(QUEST3_2009)
-    # translate_dynare_file("QUEST3_2009.mod") # fix BGADJ1 = 0.001BGADJ2;
+    translate_dynare_file("QUEST3_2009.mod") # fix BGADJ1 = 0.001BGADJ2;
+    include("QUEST3_2009.jl")
+    get_solution(QUEST3_2009)
     QUEST3_2009 = nothing
 
 
@@ -90,6 +100,8 @@ if !test_higher_order
 
     write_to_dynare_file(GNSS_2010)
     translate_dynare_file("GNSS_2010.mod")
+    include("GNSS_2010.jl")
+    get_solution(GNSS_2010)
     GNSS_2010 = nothing
 
 
@@ -105,6 +117,8 @@ if !test_higher_order
     
     write_to_dynare_file(Gali_Monacelli_2005_CITR)
     translate_dynare_file("Gali_Monacelli_2005_CITR.mod")
+    # include("Gali_Monacelli_2005_CITR.jl") # cannot do this because the model contains Gamma
+    # get_solution(Gali_Monacelli_2005_CITR)
     Gali_Monacelli_2005_CITR = nothing
     
     
@@ -120,9 +134,11 @@ if !test_higher_order
     
     write_to_dynare_file(Ascari_Sbordone_2014)
     translate_dynare_file("Ascari_Sbordone_2014.mod")
+    include("Ascari_Sbordone_2014.jl")
+    get_solution(Ascari_Sbordone_2014)
     Ascari_Sbordone_2014 = nothing
         
-end    
+end
 
 include("../models/SGU_2003_debt_premium.jl")
 moments = get_moments(SGU_2003_debt_premium, derivatives = false)
@@ -144,6 +160,8 @@ end
 
 write_to_dynare_file(SGU_2003_debt_premium)
 translate_dynare_file("SGU_2003_debt_premium.mod")
+include("SGU_2003_debt_premium.jl")
+get_solution(SGU_2003_debt_premium)
 SGU_2003_debt_premium = nothing
 
 
@@ -169,6 +187,8 @@ end
 
 write_to_dynare_file(JQ_2012_RBC)
 translate_dynare_file("JQ_2012_RBC.mod")
+include("JQ_2012_RBC.jl")
+get_solution(JQ_2012_RBC)
 JQ_2012_RBC = nothing
 
 
@@ -197,6 +217,8 @@ end
 
 write_to_dynare_file(Ghironi_Melitz_2005)
 translate_dynare_file("Ghironi_Melitz_2005.mod")
+include("Ghironi_Melitz_2005.jl")
+get_solution(Ghironi_Melitz_2005)
 Ghironi_Melitz_2005 = nothing
 
 
@@ -223,6 +245,8 @@ end
 
 write_to_dynare_file(Gali_2015_chapter_3_nonlinear)
 translate_dynare_file("Gali_2015_chapter_3_nonlinear.mod")
+include("Gali_2015_chapter_3_nonlinear.jl")
+get_solution(Gali_2015_chapter_3_nonlinear)
 Gali_2015_chapter_3_nonlinear = nothing
 
 
@@ -243,6 +267,8 @@ end
 
 write_to_dynare_file(Caldara_et_al_2012)
 translate_dynare_file("Caldara_et_al_2012.mod")
+include("Caldara_et_al_2012.jl")
+get_solution(Caldara_et_al_2012)
 Caldara_et_al_2012 = nothing
 
 
@@ -269,4 +295,6 @@ end
 
 write_to_dynare_file(Aguiar_Gopinath_2007)
 translate_dynare_file("Aguiar_Gopinath_2007.mod")
+include("Aguiar_Gopinath_2007.jl")
+get_solution(Aguiar_Gopinath_2007)
 Aguiar_Gopinath_2007 = nothing
