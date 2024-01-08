@@ -2880,10 +2880,6 @@ get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
 58.24780188977981
 ```
 """
-
-
-
-
 function get_loglikelihood(𝓂::ℳ, 
     data::KeyedArray{Float64}, 
     parameter_values::Vector{S}; 
