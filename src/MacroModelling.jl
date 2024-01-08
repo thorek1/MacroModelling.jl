@@ -1054,8 +1054,7 @@ end
 # end
 
 function get_and_check_observables(𝓂::ℳ, data::KeyedArray{Float64})::Vector{Symbol}
-    observables = get_and_check_observables(𝓂, data)
-    @assert size(data)[1] <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+    @assert size(data,1) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
     observables = collect(axiskeys(data,1))
 
