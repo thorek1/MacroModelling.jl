@@ -2880,6 +2880,10 @@ get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
 58.24780188977981
 ```
 """
+
+
+
+
 function get_loglikelihood(𝓂::ℳ, 
     data::KeyedArray{Float64}, 
     parameter_values::Vector{S}; 
@@ -2896,17 +2900,7 @@ function get_loglikelihood(𝓂::ℳ,
         filter = :inversion
     end
 
-    @assert size(data)[1] <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
-
-    observables = @ignore_derivatives collect(axiskeys(data,1))
-
-    @assert observables isa Vector{String} || observables isa Vector{Symbol}  "Make sure that the data has variables names as rows. They can be either Strings or Symbols."
-
-    observables_symbols = @ignore_derivatives observables isa String_input ? observables .|> Meta.parse .|> replace_indices : observables
-
-    @assert length(setdiff(observables_symbols, 𝓂.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(observables_symbols,𝓂.var))
-
-    @ignore_derivatives sort!(observables)
+    observables = @ignore_derivatives get_and_check_observables(𝓂, data)
 
     @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
 

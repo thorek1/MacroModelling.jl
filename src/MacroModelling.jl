@@ -1053,7 +1053,22 @@ end
 #     return solve_order .=> corresponding_dependencies
 # end
 
+function get_and_check_observables(𝓂::ℳ, data::KeyedArray{Float64})::Vector{Symbol}
+    observables = get_and_check_observables(𝓂, data)
+    @assert size(data)[1] <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
+    observables = collect(axiskeys(data,1))
+
+    @assert observables isa Vector{String} || observables isa Vector{Symbol}  "Make sure that the data has variables names as rows. They can be either Strings or Symbols."
+
+    observables_symbols = observables isa String_input ? observables .|> Meta.parse .|> replace_indices : observables
+
+    @assert length(setdiff(observables_symbols, 𝓂.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(observables_symbols,𝓂.var))
+
+    sort!(observables)
+    
+    return observables
+end
 
 function bivariate_moment(moment::Vector{Int}, rho::Int)::Int
     if (moment[1] + moment[2]) % 2 == 1
