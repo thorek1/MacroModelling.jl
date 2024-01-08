@@ -74,10 +74,10 @@ The block defining the parameters above only describes the simple parameter defi
 
 Note that we have to write one parameter definition per line.
 
-## Load data and declare observables
+## Load data
 
-Given the equations and parameters, we only need the data and define the observables to be able to estimate the model.
-First, we load in the data from a CSV file (using the CSV and DataFrames packages) and convert it to a `KeyedArray` (using the AxisKeys package). Furthermore, we log transform the data provided in levels, and define the observables of the model. Last but not least we select only those variables in the data which are declared observables in the model.
+Given the equations and parameters, we only need the entries in the data which correspond to the observables in the model (need to have the exact same name) to estimate the model.
+First, we load in the data from a CSV file (using the CSV and DataFrames packages) and convert it to a `KeyedArray` (using the AxisKeys package). Furthermore, we log transform the data provided in levels, and last but not least we select only those variables in the data which are observables in the model.
 
 ```@repl tutorial_2
 using CSV, DataFrames, AxisKeys
@@ -102,7 +102,7 @@ Next we define the parameter priors using the Turing package. The `@model` macro
 import Turing
 import Turing: NUTS, sample, logpdf
 
-Turing.@model function FS2000_loglikelihood_function(data, m, observables)
+Turing.@model function FS2000_loglikelihood_function(data, m)
     alp     ~ Beta(0.356, 0.02, μσ = true)
     bet     ~ Beta(0.993, 0.002, μσ = true)
     gam     ~ Normal(0.0085, 0.003)
@@ -113,7 +113,7 @@ Turing.@model function FS2000_loglikelihood_function(data, m, observables)
     z_e_a   ~ InverseGamma(0.035449, Inf, μσ = true)
     z_e_m   ~ InverseGamma(0.008862, Inf, μσ = true)
     # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
-    Turing.@addlogprob! get_loglikelihood(m, data(observables), [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
+    Turing.@addlogprob! get_loglikelihood(m, data, [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
 end
 ```
 
@@ -121,10 +121,10 @@ end
 
 We use the NUTS sampler to retrieve the posterior distribution of the parameters. This sampler uses the gradient of the posterior loglikelihood with respect to the model parameters to navigate the parameter space. The NUTS sampler is considered robust, fast, and user-friendly (auto-tuning of hyper-parameters).
 
-First we define the loglikelihood model with the specific data, observables, and model. Next, we draw 1000 samples from the model:
+First we define the loglikelihood model with the specific data, and model. Next, we draw 1000 samples from the model:
 
 ```@repl tutorial_2
-FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, observables)
+FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000)
 
 n_samples = 1000
 
@@ -201,7 +201,7 @@ First, we define the posterior loglikelihood function, similar to how we defined
 function calculate_posterior_loglikelihood(parameters)
     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
     log_lik = 0
-    log_lik -= get_loglikelihood(FS2000, data(observables), parameters)
+    log_lik -= get_loglikelihood(FS2000, data, parameters)
     log_lik -= logpdf(Beta(0.356, 0.02, μσ = true),alp)
     log_lik -= logpdf(Beta(0.993, 0.002, μσ = true),bet)
     log_lik -= logpdf(Normal(0.0085, 0.003),gam)
