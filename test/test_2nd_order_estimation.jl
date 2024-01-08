@@ -40,7 +40,7 @@ Random.seed!(30)
 pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000)),
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 2,
-            n_rounds = 8,
+            n_rounds = 9,
             multithreaded = true)
 
 samps = MCMCChains.Chains(Pigeons.get_sample(pt))
