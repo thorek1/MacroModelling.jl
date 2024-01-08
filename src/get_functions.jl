@@ -1215,6 +1215,53 @@ get_girf(args...; kwargs...) =  get_irf(args...; kwargs..., generalised_irf = tr
 
 
 
+function get_eigenvalues(𝓂::ℳ;
+                        parameters::ParameterType = nothing,
+                        verbose::Bool = false,
+                        tol::AbstractFloat = eps())
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
+
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+
+    if solution_error > tol
+    @warn "Could not find non-stochastic steady state."
+    end
+
+    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+
+    T = 𝓂.timings
+
+    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
+    ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
+    ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
+
+    Q    = ℒ.qr(collect(∇₀[:,T.present_only_idx]))
+    Qinv = Q.Q'
+
+    A₊ = Qinv * ∇₊
+    A₀ = Qinv * ∇₀
+    A₋ = Qinv * ∇₋
+
+    dynIndex = T.nPresent_only+1:T.nVars
+
+    Ã₊  = @view A₊[dynIndex,:]
+    Ã₋  = @view A₋[dynIndex,:]
+    Ã₀₊ = @view A₀[dynIndex, T.future_not_past_and_mixed_idx]
+    Ã₀₋ = @views A₀[dynIndex, T.past_not_future_idx] * ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.not_mixed_in_past_idx,:]
+
+    Z₊ = zeros(T.nMixed,T.nFuture_not_past_and_mixed)
+    I₊ = @view ℒ.diagm(ones(T.nFuture_not_past_and_mixed))[T.mixed_in_future_idx,:]
+
+    Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
+    I₋ = @view ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.mixed_in_past_idx,:]
+
+    D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
+    E = vcat(hcat(-Ã₋,-Ã₀₊), hcat(Z₋, I₊))
+
+    eigvals = ℒ.eigen(E,D).values
+
+    return KeyedArray(hcat(reim(eigvals)...); Eigenvalue = 1:length(eigs[1]), Parts = [:Real,:Imaginary])
+end
 
 
 
