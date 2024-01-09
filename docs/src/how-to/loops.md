@@ -52,7 +52,7 @@ Putting these these elements together we can write the multi-country model equat
 ```@setup howto_loops
 ENV["GKSwstype"] = "100"
 using Random
-Random.seed!(30)
+Random.seed!(3)
 ```
 
 ```@repl howto_loops
