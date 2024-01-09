@@ -2696,16 +2696,18 @@ function get_moments(𝓂::ℳ;
 end
 
 """
-Wrapper for [`get_moments`](@ref) which overrides and sets `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
+Wrapper for [`get_moments`](@ref) which overrides and sets `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = false`.
 """
 function get_variance(args...; kwargs...)
     # Check if 'shocks' is manually set
+    if haskey(kwargs, :mean) @warn "Warning: `mean` keyword is overridden in `get_moments`. Defaulting to `mean = false`." end
     if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = true`." end
     if haskey(kwargs, :non_stochastic_steady_state) @warn "Warning: `non_stochastic_steady_state` keyword is overridden in `get_moments`. Defaulting to `non_stochastic_steady_state = false`." end
     if haskey(kwargs, :standard_deviation) @warn "Warning: `standard_deviation` keyword is overridden in `get_moments`. Defaulting to `standard_deviation = false`." end
     if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = false`." end
 
     # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:mean => false))
     kwargs = Base.merge(kwargs, Dict(:variance => true))
     kwargs = Base.merge(kwargs, Dict(:non_stochastic_steady_state => false))
     kwargs = Base.merge(kwargs, Dict(:standard_deviation => false))
@@ -2728,16 +2730,18 @@ var = get_variance
 
 
 """
-Wrapper for [`get_moments`](@ref) which overrides and sets `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+Wrapper for [`get_moments`](@ref) which overrides and sets `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false, mean = false`.
 """
 function get_standard_deviation(args...; kwargs...)
     # Check if 'shocks' is manually set
+    if haskey(kwargs, :variance) @warn "Warning: `mean` keyword is overridden in `get_moments`. Defaulting to `mean = false`." end
     if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = false`." end
     if haskey(kwargs, :non_stochastic_steady_state) @warn "Warning: `non_stochastic_steady_state` keyword is overridden in `get_moments`. Defaulting to `non_stochastic_steady_state = false`." end
     if haskey(kwargs, :standard_deviation) @warn "Warning: `standard_deviation` keyword is overridden in `get_moments`. Defaulting to `standard_deviation = true`." end
     if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = false`." end
 
     # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:mean => false))
     kwargs = Base.merge(kwargs, Dict(:variance => false))
     kwargs = Base.merge(kwargs, Dict(:non_stochastic_steady_state => false))
     kwargs = Base.merge(kwargs, Dict(:standard_deviation => true))
@@ -2771,16 +2775,18 @@ std =  get_standard_deviation
 
 
 """
-Wrapper for [`get_moments`](@ref) which overrides and sets `covariance = true` and `non_stochastic_steady_state = false, standard_deviation = false, variance = false`.
+Wrapper for [`get_moments`](@ref) which overrides and sets `covariance = true` and `non_stochastic_steady_state = false, standard_deviation = false, variance = false, mean = false`.
 """
 function get_covariance(args...; kwargs...)
     # Check if 'shocks' is manually set
+    if haskey(kwargs, :variance) @warn "Warning: `mean` keyword is overridden in `get_moments`. Defaulting to `mean = false`." end
     if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = false`." end
     if haskey(kwargs, :non_stochastic_steady_state) @warn "Warning: `non_stochastic_steady_state` keyword is overridden in `get_moments`. Defaulting to `non_stochastic_steady_state = false`." end
     if haskey(kwargs, :standard_deviation) @warn "Warning: `standard_deviation` keyword is overridden in `get_moments`. Defaulting to `standard_deviation = fa;lse`." end
     if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = true`." end
 
     # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:mean => false))
     kwargs = Base.merge(kwargs, Dict(:variance => false))
     kwargs = Base.merge(kwargs, Dict(:non_stochastic_steady_state => false))
     kwargs = Base.merge(kwargs, Dict(:standard_deviation => false))
