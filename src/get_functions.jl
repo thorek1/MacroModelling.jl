@@ -1190,26 +1190,47 @@ get_IRF = get_irf
 # See [`get_irf`](@ref)
 # """
 # IRF = get_irf
+"""
+Wrapper for [`get_irf`](@ref) which overrides and sets `shocks = :simulate` and sets the default `levels = true`.
+"""
+function get_simulations(args...; levels::Bool = true, kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :shocks)
+        @warn "Warning: `shocks` keyword is overridden in `plot_simulations`. Defaulting to `shocks = :simulate`."
+    end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:shocks => :simulate))
+
+    # Call plot_irf with the modified arguments
+    get_irf(args...; levels=levels, kwargs...)
+end 
 
 """
-Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
+Wrapper for [`get_irf`](@ref) which overrides and sets `shocks = :simulate` and sets the default `levels = true`.
 """
-simulate(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
+simulate = get_simulations
 
 """
-Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
+Wrapper for [`get_irf`](@ref) which overrides and sets `shocks = :simulate` and sets the default `levels = true`.
 """
-get_simulation(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
+get_simulation = get_simulations
 
 """
-Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
+Wrapper for [`get_irf`](@ref) which overrides and sets `generalised_irf = true`.
 """
-get_simulations(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
+function get_girf(args...; kwargs...)
+    # Check if 'generalised_irf' is manually set
+    if haskey(kwargs, :generalised_irf)
+        @warn "Warning: `generalised_irf` keyword is overridden in `plot_girf`. Defaulting to `generalised_irf = true`."
+    end
 
-"""
-Wrapper for [`get_irf`](@ref) with `shocks = :simulate`.
-"""
-get_girf(args...; kwargs...) =  get_irf(args...; kwargs..., generalised_irf = true)
+    # Set 'generalised_irf' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:generalised_irf => true))
+
+    # Call plot_irf with the modified arguments
+    get_irf(args...; kwargs...)
+end
 
 
 
@@ -1466,33 +1487,49 @@ end
 
 
 """
-Wrapper for [`get_steady_state`](@ref) with `stochastic = false`.
+Wrapper for [`get_steady_state`](@ref) which overrides and sets `stochastic = false`.
 """
-get_non_stochastic_steady_state(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = false)
+function get_non_stochastic_steady_state(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :stochastic) @warn "Warning: `stochastic` keyword is overridden in `get_steady_state`. Defaulting to `stochastic = false`." end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:stochastic => false))
+
+    # Call plot_irf with the modified arguments
+    get_steady_state(args...; kwargs...)
+end
+
+"""
+Wrapper for [`get_steady_state`](@ref) which overrides and sets `stochastic = true`.
+"""
+function get_stochastic_steady_state(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :stochastic) @warn "Warning: `stochastic` keyword is overridden in `get_steady_state`. Defaulting to `stochastic = true`." end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:stochastic => true))
+
+    # Call plot_irf with the modified arguments
+    get_steady_state(args...; kwargs...)
+end
+
+"""
+Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
+"""
+get_SSS = get_stochastic_steady_state
 
 
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
-get_stochastic_steady_state(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
+SSS = get_stochastic_steady_state
 
 
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
-get_SSS(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
-
-
-"""
-Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
-"""
-SSS(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
-
-
-"""
-Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
-"""
-sss(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
+sss = get_stochastic_steady_state
 
 
 
@@ -1519,7 +1556,7 @@ get_ss = get_steady_state
 """
 See [`get_steady_state`](@ref)
 """
-ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
+ss = get_steady_state
 
 
 
@@ -1665,24 +1702,53 @@ end
 
 
 """
-Wrapper for [`get_solution`](@ref) with `algorithm = :first_order`.
+Wrapper for [`get_solution`](@ref) which overrides and sets `algorithm = :first_order`.
 """
-get_first_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :first_order)
+function get_first_order_solution(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :algorithm) @warn "Warning: `algorithm` keyword is overridden in `get_solution`. Defaulting to `algorithm = :first_order`." end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:algorithm => :first_order))
+
+    # Call plot_irf with the modified arguments
+    get_solution(args...; kwargs...)
+end
+
 
 """
-Wrapper for [`get_solution`](@ref) with `algorithm = :second_order`.
+Wrapper for [`get_solution`](@ref) which overrides and sets `algorithm = :second_order`.
 """
-get_second_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :second_order)
+function get_second_order_solution(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :algorithm) @warn "Warning: `algorithm` keyword is overridden in `get_solution`. Defaulting to `algorithm = :second_order`." end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:algorithm => :second_order))
+
+    # Call plot_irf with the modified arguments
+    get_solution(args...; kwargs...)
+end
+
 
 """
-Wrapper for [`get_solution`](@ref) with `algorithm = :third_order`.
+Wrapper for [`get_solution`](@ref) which overrides and sets `algorithm = :third_order`.
 """
-get_third_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :third_order)
+function get_third_order_solution(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :algorithm) @warn "Warning: `algorithm` keyword is overridden in `get_solution`. Defaulting to `algorithm = :third_order`." end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:algorithm => :third_order))
+
+    # Call plot_irf with the modified arguments
+    get_solution(args...; kwargs...)
+end
 
 """
 See [`get_solution`](@ref)
 """
-get_perturbation_solution(args...; kwargs...) = get_solution(args...; kwargs...)
+get_perturbation_solution = get_solution
 
 
 
@@ -2630,10 +2696,24 @@ function get_moments(𝓂::ℳ;
 end
 
 """
-Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
+Wrapper for [`get_moments`](@ref) which overrides and sets `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
 """
-get_variance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false)[1]
+function get_variance(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = true`." end
+    if haskey(kwargs, :non_stochastic_steady_state) @warn "Warning: `non_stochastic_steady_state` keyword is overridden in `get_moments`. Defaulting to `non_stochastic_steady_state = false`." end
+    if haskey(kwargs, :standard_deviation) @warn "Warning: `standard_deviation` keyword is overridden in `get_moments`. Defaulting to `standard_deviation = false`." end
+    if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = false`." end
 
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:variance => true))
+    kwargs = Base.merge(kwargs, Dict(:non_stochastic_steady_state => false))
+    kwargs = Base.merge(kwargs, Dict(:standard_deviation => false))
+    kwargs = Base.merge(kwargs, Dict(:covariance => false))
+
+    # Call plot_irf with the modified arguments
+    get_moments(args...; kwargs...)[1]
+end
 
 """
 Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
@@ -2648,10 +2728,24 @@ var = get_variance
 
 
 """
-Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+Wrapper for [`get_moments`](@ref) which overrides and sets `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false)[1]
+function get_standard_deviation(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = false`." end
+    if haskey(kwargs, :non_stochastic_steady_state) @warn "Warning: `non_stochastic_steady_state` keyword is overridden in `get_moments`. Defaulting to `non_stochastic_steady_state = false`." end
+    if haskey(kwargs, :standard_deviation) @warn "Warning: `standard_deviation` keyword is overridden in `get_moments`. Defaulting to `standard_deviation = true`." end
+    if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = false`." end
 
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:variance => false))
+    kwargs = Base.merge(kwargs, Dict(:non_stochastic_steady_state => false))
+    kwargs = Base.merge(kwargs, Dict(:standard_deviation => true))
+    kwargs = Base.merge(kwargs, Dict(:covariance => false))
+
+    # Call plot_irf with the modified arguments
+    get_moments(args...; kwargs...)[1]
+end
 
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
@@ -2675,11 +2769,26 @@ Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stoc
 """
 std =  get_standard_deviation
 
-"""
-Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
-"""
-get_covariance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true)[1]
 
+"""
+Wrapper for [`get_moments`](@ref) which overrides and sets `covariance = true` and `non_stochastic_steady_state = false, standard_deviation = false, variance = false`.
+"""
+function get_standard_deviation(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = false`." end
+    if haskey(kwargs, :non_stochastic_steady_state) @warn "Warning: `non_stochastic_steady_state` keyword is overridden in `get_moments`. Defaulting to `non_stochastic_steady_state = false`." end
+    if haskey(kwargs, :standard_deviation) @warn "Warning: `standard_deviation` keyword is overridden in `get_moments`. Defaulting to `standard_deviation = fa;lse`." end
+    if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = true`." end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:variance => false))
+    kwargs = Base.merge(kwargs, Dict(:non_stochastic_steady_state => false))
+    kwargs = Base.merge(kwargs, Dict(:standard_deviation => false))
+    kwargs = Base.merge(kwargs, Dict(:covariance => true))
+
+    # Call plot_irf with the modified arguments
+    get_moments(args...; kwargs...)[1]
+end
 
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
@@ -2694,10 +2803,26 @@ cov = get_covariance
 
 
 """
-Wrapper for [`get_moments`](@ref) with `mean = true`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
+Wrapper for [`get_moments`](@ref) which overrides and sets `mean = true` and `non_stochastic_steady_state = false, standard_deviation = false, variance = false, covariance = false`.
 """
-get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[1]
+function get_standard_deviation(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :mean) @warn "Warning: `mean` keyword is overridden in `get_moments`. Defaulting to `mean = true`." end
+    if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = false`." end
+    if haskey(kwargs, :non_stochastic_steady_state) @warn "Warning: `non_stochastic_steady_state` keyword is overridden in `get_moments`. Defaulting to `non_stochastic_steady_state = false`." end
+    if haskey(kwargs, :standard_deviation) @warn "Warning: `standard_deviation` keyword is overridden in `get_moments`. Defaulting to `standard_deviation = fa;lse`." end
+    if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = false`." end
 
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:variance => false))
+    kwargs = Base.merge(kwargs, Dict(:non_stochastic_steady_state => false))
+    kwargs = Base.merge(kwargs, Dict(:standard_deviation => false))
+    kwargs = Base.merge(kwargs, Dict(:covariance => false))
+    kwargs = Base.merge(kwargs, Dict(:mean => false))
+
+    # Call plot_irf with the modified arguments
+    get_moments(args...; kwargs...)[1]
+end
 
 # """
 # Wrapper for [`get_moments`](@ref) with `mean = true`, the default algorithm being `:pruned_second_order`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`

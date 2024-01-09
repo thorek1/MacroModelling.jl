@@ -762,20 +762,43 @@ plot_irfs = plot_irf
 
 
 """
-Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
+Wrapper for [`plot_irf`](@ref) which overrides and sets `shocks = :simulate` and sets the default `periods = 100`.
 """
-plot_simulations(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
+function plot_simulations(args...; periods::Int = 100, kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :shocks)
+        @warn "Warning: `shocks` keyword is overridden in `plot_simulations`. Defaulting to `shocks = :simulate`."
+    end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:shocks => :simulate))
+
+    # Call plot_irf with the modified arguments
+    plot_irf(args...; periods=periods, kwargs...)
+end
+
 
 """
-Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
+Wrapper for [`plot_irf`](@ref) which overrides and sets `shocks = :simulate` and sets the default `periods = 100`.
 """
-plot_simulation(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
+plot_simulation =  plot_simulation
 
 
 """
-Wrapper for [`plot_irf`](@ref) with `generalised_irf = true`.
+Wrapper for [`plot_irf`](@ref) which overrides and sets `generalised_irf = true`.
 """
-plot_girf(args...; kwargs...) =  plot_irf(args...; kwargs..., generalised_irf = true)
+function plot_girf(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :generalised_irf)
+        @warn "Warning: `generalised_irf` keyword is overridden in `plot_girf`. Defaulting to `generalised_irf = true`."
+    end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:generalised_irf => true))
+
+    # Call plot_irf with the modified arguments
+    plot_irf(args...; kwargs...)
+end
 
 
 
