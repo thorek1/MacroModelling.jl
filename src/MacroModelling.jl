@@ -100,7 +100,7 @@ export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simu
 export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
 export get_irfs, get_irf, get_IRF, simulate, get_simulation, get_simulations
 export get_conditional_forecast, plot_conditional_forecast
-export get_solution, get_first_order_solution, get_perturbation_solution, get_second_order_solution, get_third_order_solution
+export get_solution, get_first_order_solution, get_perturbation_solution, get_second_order_solution, get_third_order_solution, get_eigenvalues
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS, ss, sss
 export get_moments, get_statistics, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_stdev, get_cov, var, std, stdev, cov, get_mean#, mean
 export get_autocorrelation, get_correlation, get_variance_decomposition, get_corr, get_autocorr, get_var_decomp, corr, autocorr
