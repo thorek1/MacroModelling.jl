@@ -2749,11 +2749,7 @@ function get_variance(args...; kwargs...)
     if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = false`." end
 
     # Set 'shocks' to :simulate
-    kwargs = Base.merge(kwargs, Dict(:mean => false))
-    kwargs = Base.merge(kwargs, Dict(:variance => true))
-    kwargs = Base.merge(kwargs, Dict(:non_stochastic_steady_state => false))
-    kwargs = Base.merge(kwargs, Dict(:standard_deviation => false))
-    kwargs = Base.merge(kwargs, Dict(:covariance => false))
+    kwargs = Base.merge(kwargs, Dict(:mean => false, :variance => true, :non_stochastic_steady_state => false, :standard_deviation => false, :covariance => false))
 
     # Call plot_irf with the modified arguments
     get_moments(args...; kwargs...)[1]
@@ -2783,11 +2779,7 @@ function get_standard_deviation(args...; kwargs...)
     if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = false`." end
 
     # Set 'shocks' to :simulate
-    kwargs = Base.merge(kwargs, Dict(:mean => false))
-    kwargs = Base.merge(kwargs, Dict(:variance => false))
-    kwargs = Base.merge(kwargs, Dict(:non_stochastic_steady_state => false))
-    kwargs = Base.merge(kwargs, Dict(:standard_deviation => true))
-    kwargs = Base.merge(kwargs, Dict(:covariance => false))
+    kwargs = Base.merge(kwargs, Dict(:mean => false, :variance => false, :non_stochastic_steady_state => false, :standard_deviation => true, :covariance => false))
 
     # Call plot_irf with the modified arguments
     get_moments(args...; kwargs...)[1]
@@ -2828,11 +2820,7 @@ function get_covariance(args...; kwargs...)
     if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = true`." end
 
     # Set 'shocks' to :simulate
-    kwargs = Base.merge(kwargs, Dict(:mean => false))
-    kwargs = Base.merge(kwargs, Dict(:variance => false))
-    kwargs = Base.merge(kwargs, Dict(:non_stochastic_steady_state => false))
-    kwargs = Base.merge(kwargs, Dict(:standard_deviation => false))
-    kwargs = Base.merge(kwargs, Dict(:covariance => true))
+    kwargs = Base.merge(kwargs, Dict(:mean => false, :variance => false, :non_stochastic_steady_state => false, :standard_deviation => false, :covariance => true))
 
     # Call plot_irf with the modified arguments
     get_moments(args...; kwargs...)[1]
@@ -2862,11 +2850,7 @@ function get_mean(args...; kwargs...)
     if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = false`." end
 
     # Set 'shocks' to :simulate
-    kwargs = Base.merge(kwargs, Dict(:variance => false))
-    kwargs = Base.merge(kwargs, Dict(:non_stochastic_steady_state => false))
-    kwargs = Base.merge(kwargs, Dict(:standard_deviation => false))
-    kwargs = Base.merge(kwargs, Dict(:covariance => false))
-    kwargs = Base.merge(kwargs, Dict(:mean => true))
+    kwargs = Base.merge(kwargs, Dict(:variance => false, :non_stochastic_steady_state => false, :standard_deviation => false, :covariance => false, :mean => true))
 
     # Call plot_irf with the modified arguments
     get_moments(args...; kwargs...)[1]
