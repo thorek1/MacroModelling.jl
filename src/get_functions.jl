@@ -1236,6 +1236,50 @@ end
 
 
 
+"""
+$(SIGNATURES)
+Return the sorted modulus (absoulte), real, and imaginary part if the eigenvalues of the first order problem of the model in a 2-dimensional KeyedArray.
+
+# Arguments
+- $MODEL
+# Keyword Arguments
+- $PARAMETERS
+- $VERBOSE
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+get_eigenvalues(RBC)
+# output
+3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables ∈ 4-element Vector{Symbol}
+→   Periods ∈ 40-element UnitRange{Int64}
+◪   Shocks ∈ 1-element Vector{Symbol}
+And data, 4×40×1 Array{Float64, 3}:
+[:, :, 1] ~ (:, :, :eps_z):
+        (1)           (2)           …  (39)            (40)
+  (:c)    0.00674687    0.00729773        0.00146962      0.00140619
+  (:k)    0.0620937     0.0718322         0.0146789       0.0140453
+  (:q)    0.0688406     0.0182781         0.00111425      0.00106615
+  (:z)    0.01          0.002             2.74878e-29     5.49756e-30
+```
+"""
 function get_eigenvalues(𝓂::ℳ;
                         parameters::ParameterType = nothing,
                         verbose::Bool = false,
@@ -1279,9 +1323,9 @@ function get_eigenvalues(𝓂::ℳ;
     D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
     E = vcat(hcat(-Ã₋,-Ã₀₊), hcat(Z₋, I₊))
 
-    eigvals = ℒ.eigen(E,D).values
+    eigvals = ℒ.eigen(E,D, sortby = x-> -abs(x)).values
 
-    return KeyedArray(hcat(reim(eigvals)...); Eigenvalue = 1:length(eigvals[1]), Parts = [:Real,:Imaginary])
+    return KeyedArray(hcat(abs.(eigvals), real.(eigvals), imag.(eigvals)); Eigenvalue = 1:length(eigvals), Parts = [:Modulus, :Real, :Imaginary])
 end
 
 
