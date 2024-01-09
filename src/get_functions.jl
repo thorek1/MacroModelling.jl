@@ -2818,7 +2818,7 @@ function get_mean(args...; kwargs...)
     kwargs = Base.merge(kwargs, Dict(:non_stochastic_steady_state => false))
     kwargs = Base.merge(kwargs, Dict(:standard_deviation => false))
     kwargs = Base.merge(kwargs, Dict(:covariance => false))
-    kwargs = Base.merge(kwargs, Dict(:mean => false))
+    kwargs = Base.merge(kwargs, Dict(:mean => true))
 
     # Call plot_irf with the modified arguments
     get_moments(args...; kwargs...)[1]
