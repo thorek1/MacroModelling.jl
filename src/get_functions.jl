@@ -1281,7 +1281,7 @@ function get_eigenvalues(𝓂::ℳ;
 
     eigvals = ℒ.eigen(E,D).values
 
-    return KeyedArray(hcat(reim(eigvals)...); Eigenvalue = 1:length(eigs[1]), Parts = [:Real,:Imaginary])
+    return KeyedArray(hcat(reim(eigvals)...); Eigenvalue = 1:length(eigvals[1]), Parts = [:Real,:Imaginary])
 end
 
 
