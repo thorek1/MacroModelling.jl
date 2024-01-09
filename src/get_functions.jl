@@ -422,7 +422,7 @@ Return the conditional forecast given restrictions on endogenous variables and s
 - $CONDITIONS
 # Keyword Arguments
 - $SHOCK_CONDITIONS
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
+- $INITIAL_STATE
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS
 - $VARIABLES
@@ -506,7 +506,7 @@ And data, 9×42 Matrix{Float64}:
 function get_conditional_forecast(𝓂::ℳ,
     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-    initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol} = :relevant_ss,
     periods::Int = 40, 
     parameters::ParameterType = nothing,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
@@ -752,7 +752,7 @@ Function to use when differentiating IRFs with repect to parameters.
 - $VARIABLES
 - $SHOCKS
 - $NEGATIVE_SHOCK
-- $INITIAL_STATE
+- "`initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs. The state includes all variables as well as exogenous variables in leads or lags if present."
 - $LEVELS
 - $VERBOSE
 
@@ -896,7 +896,7 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedAr
 - $SHOCKS
 - $NEGATIVE_SHOCK
 - $GENERALISED_IRF
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
+- $INITIAL_STATE
 - $LEVELS
 - `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
 - $VERBOSE
@@ -943,7 +943,7 @@ function get_irf(𝓂::ℳ;
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
     negative_shock::Bool = false, 
     generalised_irf::Bool = false,
-    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol} = :relevant_ss,
     levels::Bool = false,
     ignore_obc::Bool = false,
     verbose::Bool = false)

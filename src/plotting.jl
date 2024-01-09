@@ -348,7 +348,7 @@ The left axis shows the level, and the right the deviation from the reference st
 - $ALGORITHM
 - $NEGATIVE_SHOCK
 - $GENERALISED_IRF
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
+- $INITIAL_STATE
 - `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
 - $VERBOSE
 
@@ -387,7 +387,7 @@ function plot_irf(𝓂::ℳ;
     algorithm::Symbol = :first_order,
     negative_shock::Bool = false,
     generalised_irf::Bool = false,
-    initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol} = :relevant_ss,
     ignore_obc::Bool = false,
     verbose::Bool = false)
 

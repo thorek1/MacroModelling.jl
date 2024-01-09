@@ -1640,10 +1640,8 @@ function expand_indices(compressed_inputs::Vector{Symbol}, compressed_values::Ve
 end
 
 
-function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol}, reference_steady_state::Vector{Float64}, NSSS::Vector{Float64}, SSS_delta::Vector{Float64}, algorithm::Symbol)
-    unspecified_initial_state = initial_state == [0.0]
-
-    if unspecified_initial_state
+function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol}, reference_steady_state::Vector{Float64}, NSSS::Vector{Float64}, SSS_delta::Vector{Float64}, algorithm::Symbol)::Union{Vector{Vector{Float64}}, Vector{Float64}}
+    if initial_state ∈ [:relevant_SS, :relevant_ss, :relevant_steady_state]
         if algorithm == :pruned_second_order
             initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
         elseif algorithm == :pruned_third_order
@@ -1651,19 +1649,32 @@ function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vect
         else
             initial_state = zeros(𝓂.timings.nVars) - SSS_delta
         end
-    else
-        if initial_state isa Vector{Float64}
-            if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
-            elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
-            else
-                initial_state = initial_state - NSSS
-            end
+    end
+
+    if initial_state ∈ [:SSS, :stochastic_steady_state]
+        if algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order] 
+            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
         else
-            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
-                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
-            end
+            @warn "Algorithm: $algorithm has no stochastic steady state. Continuing with the non stochastic steady state as the initial state."
+            initial_state = zeros(𝓂.timings.nVars)
+        end
+    end
+
+    if initial_state ∈ [:NSSS, :non_stochastic_steady_state]
+        initial_state = zeros(𝓂.timings.nVars)
+    end
+
+    if initial_state isa Vector{Float64}
+        if algorithm == :pruned_second_order
+            initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
+        elseif algorithm == :pruned_third_order
+            initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+        else
+            initial_state = initial_state - NSSS
+        end
+    else
+        if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+            @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
         end
     end
     
@@ -1675,7 +1686,6 @@ function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})
         x[i] = max(lb[i], min(x[i], ub[i]))
     end
 end
-
 
 
 # transformation of NSSS problem
