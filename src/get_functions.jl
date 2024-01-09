@@ -1267,17 +1267,15 @@ end
 
 get_eigenvalues(RBC)
 # output
-3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
-↓   Variables ∈ 4-element Vector{Symbol}
-→   Periods ∈ 40-element UnitRange{Int64}
-◪   Shocks ∈ 1-element Vector{Symbol}
-And data, 4×40×1 Array{Float64, 3}:
-[:, :, 1] ~ (:, :, :eps_z):
-        (1)           (2)           …  (39)            (40)
-  (:c)    0.00674687    0.00729773        0.00146962      0.00140619
-  (:k)    0.0620937     0.0718322         0.0146789       0.0140453
-  (:q)    0.0688406     0.0182781         0.00111425      0.00106615
-  (:z)    0.01          0.002             2.74878e-29     5.49756e-30
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Eigenvalue ∈ 4-element UnitRange{Int64}
+→   Part ∈ 3-element Vector{Symbol}
+And data, 4×3 Matrix{Float64}:
+      (:Modulus)  (:Real)    (:Imaginary)
+ (1)  Inf         Inf         0.0
+ (2)   1.10012     1.10012    0.0
+ (3)   0.956835    0.956835   0.0
+ (4)   0.2         0.2        0.0
 ```
 """
 function get_eigenvalues(𝓂::ℳ;
@@ -1325,7 +1323,7 @@ function get_eigenvalues(𝓂::ℳ;
 
     eigvals = ℒ.eigen(E,D, sortby = x-> -abs(x)).values
 
-    return KeyedArray(hcat(abs.(eigvals), real.(eigvals), imag.(eigvals)); Eigenvalue = 1:length(eigvals), Parts = [:Modulus, :Real, :Imaginary])
+    return KeyedArray(hcat(abs.(eigvals), real.(eigvals), imag.(eigvals)); Eigenvalue = 1:length(eigvals), Part = [:Modulus, :Real, :Imaginary])
 end
 
 
