@@ -781,7 +781,7 @@ end
 """
 Wrapper for [`plot_irf`](@ref) which overrides and sets `shocks = :simulate` and sets the default `periods = 100`.
 """
-plot_simulation =  plot_simulation
+plot_simulation =  plot_simulations
 
 
 """
