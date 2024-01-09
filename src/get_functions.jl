@@ -2773,7 +2773,7 @@ std =  get_standard_deviation
 """
 Wrapper for [`get_moments`](@ref) which overrides and sets `covariance = true` and `non_stochastic_steady_state = false, standard_deviation = false, variance = false`.
 """
-function get_standard_deviation(args...; kwargs...)
+function get_covariance(args...; kwargs...)
     # Check if 'shocks' is manually set
     if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = false`." end
     if haskey(kwargs, :non_stochastic_steady_state) @warn "Warning: `non_stochastic_steady_state` keyword is overridden in `get_moments`. Defaulting to `non_stochastic_steady_state = false`." end
@@ -2805,7 +2805,7 @@ cov = get_covariance
 """
 Wrapper for [`get_moments`](@ref) which overrides and sets `mean = true` and `non_stochastic_steady_state = false, standard_deviation = false, variance = false, covariance = false`.
 """
-function get_standard_deviation(args...; kwargs...)
+function get_mean(args...; kwargs...)
     # Check if 'shocks' is manually set
     if haskey(kwargs, :mean) @warn "Warning: `mean` keyword is overridden in `get_moments`. Defaulting to `mean = true`." end
     if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = false`." end
