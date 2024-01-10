@@ -1641,30 +1641,36 @@ end
 
 
 function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol}, reference_steady_state::Vector{Float64}, NSSS::Vector{Float64}, SSS_delta::Vector{Float64}, algorithm::Symbol)::Union{Vector{Vector{Float64}}, Vector{Float64}}
-    if initial_state ∈ [:relevant_SS, :relevant_ss, :relevant_steady_state]
+    if initial_state isa Symbol
+		if initial_state ∈ [:relevant_SS, :relevant_ss, :relevant_steady_state]
+			if algorithm == :pruned_second_order
+			    init_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
+			elseif algorithm == :pruned_third_order
+			    init_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+			else
+			    init_state = zeros(𝓂.timings.nVars) - SSS_delta
+			end
+		elseif initial_state ∈ [:SSS, :sss, :stochastic_steady_state]
+		    if algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order] 
+		        init_state = zeros(𝓂.timings.nVars) - SSS_delta
+			else
+				@warn "Algorithm: $algorithm has no stochastic steady state. Continuing with the non stochastic steady state as the initial state."
+				init_state = zeros(𝓂.timings.nVars)
+			end
+		elseif initial_state ∈ [:NSSS, :nsss, :non_stochastic_steady_state]
+		    init_state = zeros(𝓂.timings.nVars)
+		else
+			@assert initial_state ∈ [:NSSS, :nsss, :non_stochastic_steady_state, :SSS, :sss, :stochastic_steady_state, :relevant_SS, :relevant_ss, :relevant_steady_state] "No valid input of type Symbol."
+		end
+	end
+	
+    if initial_state isa Vector{Float64}
         if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
+            init_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
         elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+            init_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
         else
-            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
-        end
-    elseif initial_state ∈ [:SSS, :sss, :stochastic_steady_state]
-        if algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order] 
-            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
-        else
-            @warn "Algorithm: $algorithm has no stochastic steady state. Continuing with the non stochastic steady state as the initial state."
-            initial_state = zeros(𝓂.timings.nVars)
-        end
-    elseif initial_state ∈ [:NSSS, :nsss, :non_stochastic_steady_state]
-        initial_state = zeros(𝓂.timings.nVars)
-    elseif initial_state isa Vector{Float64}
-        if algorithm == :pruned_second_order
-            initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
-        elseif algorithm == :pruned_third_order
-            initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
-        else
-            initial_state = initial_state - NSSS
+            init_state = initial_state - NSSS
         end
     elseif initial_state isa Vector{Vector{Float64}}
         if algorithm ∉ [:pruned_second_order, :pruned_third_order]
@@ -1672,7 +1678,7 @@ function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vect
         end
     end
     
-    return initial_state
+    return init_state
 end
 
 function minmax!(x::Vector{Float64},lb::Vector{Float64},ub::Vector{Float64})
