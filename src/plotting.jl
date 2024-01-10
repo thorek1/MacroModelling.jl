@@ -1354,7 +1354,7 @@ plot_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_le
 function plot_conditional_forecast(𝓂::ℳ,
     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol} = :relevant_steady_state,
     periods::Int = 40, 
     parameters::ParameterType = nothing,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
