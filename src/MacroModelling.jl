@@ -1641,7 +1641,7 @@ end
 
 
 function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol}, reference_steady_state::Vector{Float64}, NSSS::Vector{Float64}, SSS_delta::Vector{Float64}, algorithm::Symbol)::Union{Vector{Vector{Float64}}, Vector{Float64}}
-    if initial_state isa Symbol
+	if initial_state isa Symbol
 		if initial_state ∈ [:relevant_SS, :relevant_ss, :relevant_steady_state]
 			if algorithm == :pruned_second_order
 			    init_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
@@ -1675,6 +1675,8 @@ function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vect
     elseif initial_state isa Vector{Vector{Float64}}
         if algorithm ∉ [:pruned_second_order, :pruned_third_order]
             @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+		else
+			init_state = initial_state
         end
     end
     
