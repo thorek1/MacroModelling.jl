@@ -1649,22 +1649,16 @@ function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vect
         else
             initial_state = zeros(𝓂.timings.nVars) - SSS_delta
         end
-    end
-
-    if initial_state ∈ [:SSS, :stochastic_steady_state]
+    elseif initial_state ∈ [:SSS, :stochastic_steady_state]
         if algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order] 
             initial_state = zeros(𝓂.timings.nVars) - SSS_delta
         else
             @warn "Algorithm: $algorithm has no stochastic steady state. Continuing with the non stochastic steady state as the initial state."
             initial_state = zeros(𝓂.timings.nVars)
         end
-    end
-
-    if initial_state ∈ [:NSSS, :non_stochastic_steady_state]
+    elseif initial_state ∈ [:NSSS, :non_stochastic_steady_state]
         initial_state = zeros(𝓂.timings.nVars)
-    end
-
-    if initial_state isa Vector{Float64}
+    elseif initial_state isa Vector{Float64}
         if algorithm == :pruned_second_order
             initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
         elseif algorithm == :pruned_third_order
@@ -1672,7 +1666,7 @@ function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vect
         else
             initial_state = initial_state - NSSS
         end
-    else
+    elseif initial_state isa Vector{Vector{Float64}}
         if algorithm ∉ [:pruned_second_order, :pruned_third_order]
             @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
         end
