@@ -3526,7 +3526,7 @@ function solve!(𝓂::ℳ;
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
             
-            @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
+            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
             state_update₂ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
@@ -3559,7 +3559,7 @@ function solve!(𝓂::ℳ;
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
 
-            @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
+            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
             state_update₂ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
                 aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
@@ -3590,7 +3590,7 @@ function solve!(𝓂::ℳ;
         if  ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
 
-            @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
+            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
             state_update₃ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
@@ -3622,7 +3622,7 @@ function solve!(𝓂::ℳ;
 
             stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
 
-            @assert converged "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
+            if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
             state_update₃ = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
                 aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
@@ -4348,7 +4348,7 @@ function SSS_third_order_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N
     params[parameters_idx] = parameters
     SSS = calculate_third_order_stochastic_steady_state(params, 𝓂, verbose = verbose, pruning = pruning)
 
-    @assert SSS[2] "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
+    if !SSS[2] @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
     return SSS
 end
@@ -4361,7 +4361,7 @@ function SSS_third_order_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, para
     params[parameters_idx] = parameters
     SSS = calculate_third_order_stochastic_steady_state(params, 𝓂, verbose = verbose, pruning = pruning)
 
-    @assert SSS[2] "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
+    if !SSS[2] @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
     return SSS
 end
@@ -4374,7 +4374,7 @@ function SSS_second_order_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,
     params[parameters_idx] = parameters
     SSS = calculate_second_order_stochastic_steady_state(params, 𝓂, verbose = verbose, pruning = pruning)
 
-    @assert SSS[2] "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
+    if !SSS[2] @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
     return SSS
 end
@@ -4387,7 +4387,7 @@ function SSS_second_order_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, par
     params[parameters_idx] = parameters
     SSS = calculate_second_order_stochastic_steady_state(params, 𝓂, verbose = verbose, pruning = pruning)
 
-    @assert SSS[2] "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1."
+    if !SSS[2] @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
     return SSS
 end
