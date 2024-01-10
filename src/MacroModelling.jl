@@ -1649,14 +1649,14 @@ function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vect
         else
             initial_state = zeros(𝓂.timings.nVars) - SSS_delta
         end
-    elseif initial_state ∈ [:SSS, :stochastic_steady_state]
+    elseif initial_state ∈ [:SSS, :sss, :stochastic_steady_state]
         if algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order] 
             initial_state = zeros(𝓂.timings.nVars) - SSS_delta
         else
             @warn "Algorithm: $algorithm has no stochastic steady state. Continuing with the non stochastic steady state as the initial state."
             initial_state = zeros(𝓂.timings.nVars)
         end
-    elseif initial_state ∈ [:NSSS, :non_stochastic_steady_state]
+    elseif initial_state ∈ [:NSSS, :nsss, :non_stochastic_steady_state]
         initial_state = zeros(𝓂.timings.nVars)
     elseif initial_state isa Vector{Float64}
         if algorithm == :pruned_second_order
