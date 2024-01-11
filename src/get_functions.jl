@@ -1238,9 +1238,7 @@ function get_eigenvalues(𝓂::ℳ;
 
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
 
-    if solution_error > tol
-    @warn "Could not find non-stochastic steady state."
-    end
+    @assert solution_error < tol "Could not find non-stochastic steady state."
 
     ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
 
@@ -1367,9 +1365,7 @@ function get_steady_state(𝓂::ℳ;
     SS, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters, false, 𝓂.solver_parameters)
     # SS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
-    if solution_error > tol
-        @warn "Could not find non-stochastic steady state."
-    end
+    @assert solution_error < tol "Could not find non-stochastic steady state."
 
     if stochastic
         if  algorithm == :third_order
