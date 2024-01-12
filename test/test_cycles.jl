@@ -1,6 +1,171 @@
 using MacroModelling, StatsPlots
-import LinearAlgebra as ℒ
-import RecursiveFactorization as RF
+# import LinearAlgebra as ℒ
+# import RecursiveFactorization as RF
+# import MacroModelling: ParameterType, ℳ
+
+include("models/RBC_CME.jl")
+
+@model RBC_habit_invest_adjust begin
+	λ²[0] = β * ((1 - δ) * λ²[1] + λ¹[1] * r[1])
+
+	λ¹[0] * W[0] + (-1 + μ) * (1 - L[0])^(-μ) * (C[0] - h * C[-1])^μ * ((1 - L[0])^(1 - μ) * (C[0] - h * C[-1])^μ)^(-η) = 0
+
+	-λ¹[0] + λ²[0] * (1 - 0.5 * φ * (-1 + I[-1]^-1 * I[0])^2 - φ * I[-1]^-1 * I[0] * (-1 + I[-1]^-1 * I[0])) + β * φ * I[0]^-2 * λ²[1] * I[1]^2 * (-1 + I[0]^-1 * I[1]) = 0
+
+	-λ¹[0] - β * μ * h * (1 - L[1])^(1 - μ) * (C[1] - h * C[0])^(-1 + μ) * ((1 - L[1])^(1 - μ) * (C[1] - h * C[0])^μ)^(-η) + μ * (1 - L[0])^(1 - μ) * (C[0] - h * C[-1])^(-1 + μ) * ((1 - L[0])^(1 - μ) * (C[0] - h * C[-1])^μ)^(-η) = 0
+
+	r[0] = α * Z[0] * K[-1]^(-1 + α) * L[0]^(1 - α)
+
+	W[0] = Z[0] * (1 - α) * K[-1]^α * L[0]^(-α)
+
+	Y[0] = Z[0] * K[-1]^α * L[0]^(1 - α)
+
+	C[0] + I[0] = Y[0]
+
+	K[0] = K[-1] * (1 - δ) + I[0] * (1 - φ / 2 * (1 - I[0] / I[-1])^2)
+
+	Z[0] = exp(ϵᶻ[x] + σᶻ * log(Z[-1]))
+
+	U[0] = β * U[1] + (1 - η)^-1 * ((1 - L[0])^(1 - μ) * (C[0] - h * C[-1])^μ)^(1 - η)
+end
+
+@parameters RBC_habit_invest_adjust begin
+	σᶻ = 0.066
+	0.36 * Y[ss] = r[ss] * K[ss] | α
+	β = 0.99
+	δ = 0.025
+	η = 2
+	# μ = 0.3
+	h = 0.57
+	ϕ = 0.95
+	φ = 6.771
+
+	# σᵍ
+	# ḡ | ḡ = g_y * y[ss]
+
+    # δ = i_y / k_y
+
+    # β = 1 / (α / k_y + (1 - δ))
+
+	μ | L[ss] = 1/3
+end
+
+SS(RBC_habit_invest_adjust)
+
+get_eigenvalues(RBC_habit_invest_adjust)
+
+using StatsPlots
+plot_irf(RBC_habit_invest_adjust, parameters = :φ => 5, algorithm = :second_order)
+plot_solution(RBC_habit_invest_adjust, :I, parameters = :φ => 4.2, algorithm = :second_order)
+plot_solution(RBC_habit_invest_adjust, :I, parameters = (:φ => 5., :h => .6), algorithm = :second_order)
+
+plot_irf(RBC_habit_invest_adjust, parameters = (:φ => 5.2, :h => .6), algorithm = :second_order)
+
+
+get_eigenvalues(RBC_habit_invest_adjust, parameters = (:φ => 100., :h => .9900))
+
+
+
+# plot_solution(m, :k, algorithm = :pruned_second_order, σ = 10)
+# mn = get_mean(m, derivatives = false)
+# SS(m, derivatives = false)
+# SSS(m, derivatives = false, algorithm = :pruned_second_order)
+mn = get_mean(m, derivatives = false, algorithm = :pruned_second_order)
+# plot_solution(m, :k, algorithm = :pruned_second_order, σ = 1, initial_state = :nsss, parameters = :std_eps => .1)
+# plot_solution(m, :k, algorithm = :pruned_second_order, σ = 1, initial_state = :sss, parameters = :std_eps => .1)
+# plot_solution(m, :k, algorithm = :pruned_second_order, σ = 1, initial_state = :mean, parameters = :std_eps => .1)
+plot_solution(m, :k, algorithm = :pruned_second_order, σ = 1, initial_state = collect(mn), parameters = :std_eps => .1)
+
+
+plot_solution(m, :k, algorithm = :pruned_second_order, σ = 1, initial_state = collect(.9*mn), parameters = :std_eps => .1)
+
+plot_solution(m, :k, algorithm = [:pruned_second_order, :pruned_third_order])#, initial_state = :NSSS)
+plot_irf(m, algorithm = :pruned_second_order, shocks = :eps_z)
+plot_irf(m, algorithm = :pruned_second_order, shocks = :eps_z, initial_state = :NSSS)
+plot_irf(m, algorithm = :pruned_second_order, shocks = :eps_z, initial_state = :mean)
+
+get_irf(m, shocks = :none)
+get_irf(m)
+get_irf(m, levels = false)
+
+
+plot_irf(m)
+plot_irf(m, algorithm = :second_order, initial_state = :NSSS, parameters = :std_eps => .1)
+plot_irf(m, algorithm = :second_order, initial_state = :SSS, parameters = :std_eps => .1)
+get_irf(m, shocks = :none)
+get_irf(m, algorithm = :second_order)
+get_irf(m, algorithm = :second_order, initial_state = :NSSS)
+get_irf(m, algorithm = :second_order, initial_state = :SSS)
+SS(m)
+SSS(m)
+1
+
+# 𝑺₁ = RBC.solution.perturbation.first_order.solution_matrix
+# T = RBC.timings
+# 𝑺₁[:,1:T.nPast_not_future_and_mixed]
+
+# S1 = zeros(T.nVars,T.nVars)
+
+# S1[:,T.past_not_future_and_mixed_idx] = 𝑺₁[:,1:T.nPast_not_future_and_mixed]
+# import LinearAlgebra as ℒ
+# eigen(S1)
+
+
+# get_eigenvalues(RBC)
+# 𝓂 = RBC
+
+# function get_eigenvalues(𝓂::ℳ;
+#                         parameters::ParameterType = nothing,
+#                         verbose::Bool = false,
+#                         tol::AbstractFloat = eps())
+#     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
+
+#     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+        
+#     if solution_error > tol
+#         @warn "Could not find non-stochastic steady state."
+#     end
+
+#     ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+
+#     T = 𝓂.timings
+
+#     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
+#     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
+#     ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
+
+#     Q    = ℒ.qr(collect(∇₀[:,T.present_only_idx]))
+#     Qinv = Q.Q'
+
+#     A₊ = Qinv * ∇₊
+#     A₀ = Qinv * ∇₀
+#     A₋ = Qinv * ∇₋
+
+#     dynIndex = T.nPresent_only+1:T.nVars
+
+#     Ã₊  = @view A₊[dynIndex,:]
+#     Ã₋  = @view A₋[dynIndex,:]
+#     Ã₀₊ = @view A₀[dynIndex, T.future_not_past_and_mixed_idx]
+#     Ã₀₋ = @views A₀[dynIndex, T.past_not_future_idx] * ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.not_mixed_in_past_idx,:]
+
+#     Z₊ = zeros(T.nMixed,T.nFuture_not_past_and_mixed)
+#     I₊ = @view ℒ.diagm(ones(T.nFuture_not_past_and_mixed))[T.mixed_in_future_idx,:]
+
+#     Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
+#     I₋ = @view ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.mixed_in_past_idx,:]
+
+#     D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
+#     E = vcat(hcat(-Ã₋,-Ã₀₊), hcat(Z₋, I₊))
+
+#     eigvals = ℒ.eigen(E,D).values
+    
+#     return KeyedArray(hcat(reim(eigvals)...); Eigenvalue = 1:length(eigs[1]), Parts = [:Real,:Imaginary])
+# end
+
+eigs = get_eigenvalues(m)
+
+
+KeyedArray(hcat(eigs...); Eigenvalue = 1:length(eigs[1]), Parts = [:Real,:Imaginary])
 
 @model reduced_form begin
     K[0] = (1 - δ) * K[-1] + I[-1]
