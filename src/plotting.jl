@@ -1010,7 +1010,7 @@ function plot_solution(𝓂::ℳ,
     state::Union{Symbol,String};
     variables::Union{Symbol_input,String_input} = :all,
     algorithm::Union{Symbol,Vector{Symbol}} = :first_order,
-    σ::Union{Int64,Float64} = 2,
+    σ::Union{Int64,Float64,KeyedArray{Float64}} = 2,
     initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol} = :relevant_steady_state,
     parameters::ParameterType = nothing,
     ignore_obc::Bool = false,
@@ -1071,7 +1071,11 @@ function plot_solution(𝓂::ℳ,
 
     vars_to_plot = intersect(axiskeys(SS_and_std[1])[1],𝓂.timings.var[var_idx])
 
-    state_range = collect(range(-SS_and_std[2](state), SS_and_std[2](state), 100)) * σ
+    if typeof(σ) in [Int, Float64]
+        state_range = collect(range(-SS_and_std[2](state), SS_and_std[2](state), 100)) * σ
+    else
+        state_range = collect(range(-σ(state), σ(state), 100))
+    end
 
     state_selector = state .== 𝓂.timings.var
 
