@@ -1651,14 +1651,36 @@ function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vect
 			    init_state = zeros(𝓂.timings.nVars) - SSS_delta
 			end
 		elseif initial_state ∈ [:SSS, :sss, :stochastic_steady_state]
-		    if algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order] 
+		    if algorithm ∈ [:second_order, :third_order] 
 		        init_state = zeros(𝓂.timings.nVars) - SSS_delta
-			else
+			elseif algorithm == :pruned_second_order
+                init_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
+            elseif algorithm == :pruned_third_order
+                init_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+            else
 				@warn "Algorithm: $algorithm has no stochastic steady state. Continuing with the non stochastic steady state as the initial state."
 				init_state = zeros(𝓂.timings.nVars)
 			end
 		elseif initial_state ∈ [:NSSS, :nsss, :non_stochastic_steady_state]
-		    init_state = zeros(𝓂.timings.nVars)
+			if algorithm == :pruned_second_order
+			    init_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)]
+			elseif algorithm == :pruned_third_order
+			    init_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)]
+			else
+			    init_state = zeros(𝓂.timings.nVars)
+			end
+		elseif initial_state == :mean
+			if algorithm == :pruned_second_order
+                mean = calculate_second_order_moments(𝓂.parameter_values, 𝓂; covariance = false)[1]
+			    init_state = [zeros(𝓂.timings.nVars), mean - NSSS]
+			elseif algorithm == :pruned_third_order
+                mean = calculate_second_order_moments(𝓂.parameter_values, 𝓂; covariance = false)[1]
+			    init_state = [zeros(𝓂.timings.nVars), mean - NSSS, zeros(𝓂.timings.nVars)]
+            elseif algorithm == :first_order
+			    init_state = zeros(𝓂.timings.nVars)
+            else
+                @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Mean only available for first order, pruned second order, or pruned third order solution."
+			end
 		else
 			@assert initial_state ∈ [:NSSS, :nsss, :non_stochastic_steady_state, :SSS, :sss, :stochastic_steady_state, :relevant_SS, :relevant_ss, :relevant_steady_state] "No valid input of type Symbol."
 		end
@@ -1666,9 +1688,9 @@ function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vect
 	
     if initial_state isa Vector{Float64}
         if algorithm == :pruned_second_order
-            init_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
+            init_state = [initial_state - NSSS, zeros(𝓂.timings.nVars) - SSS_delta]
         elseif algorithm == :pruned_third_order
-            init_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+            init_state = [initial_state - NSSS, zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
         else
             init_state = initial_state - NSSS
         end
