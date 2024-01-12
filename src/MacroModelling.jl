@@ -1654,7 +1654,7 @@ function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vect
 		elseif initial_state ∈ [:NSSS, :nsss, :non_stochastic_steady_state]
 			init_state = zeros(𝓂.timings.nVars)
 		elseif initial_state == :mean
-            elseif algorithm == :first_order
+            if algorithm == :first_order
 			    init_state = zeros(𝓂.timings.nVars)
             else
                 @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Mean only available for first order, pruned second order, or pruned third order solution."
