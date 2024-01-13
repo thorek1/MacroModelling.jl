@@ -1675,9 +1675,9 @@ function get_and_check_initial_state(𝓂::ℳ, initial_state::Union{Vector{Vect
     end
     
     if algorithm == :pruned_second_order
-        init_state = [zeros(𝓂.timings.nVars), init_state]
+        init_state = init_state isa Vector{Float64} ? [zeros(𝓂.timings.nVars), init_state] : init_state
     elseif algorithm == :pruned_third_order
-        init_state = [zeros(𝓂.timings.nVars), init_state, zeros(𝓂.timings.nVars)]
+        init_state = init_state isa Vector{Float64} ? [zeros(𝓂.timings.nVars), init_state, zeros(𝓂.timings.nVars)] : init_state
     end
 
     return init_state
