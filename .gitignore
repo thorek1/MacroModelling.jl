@@ -53,3 +53,4 @@ conditional_fcst*.png
 estimation__*
 
 .micromamba/
+results
