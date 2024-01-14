@@ -1,5 +1,3 @@
-using MacroModelling
-
 @model RBC_baseline begin
 	c[0] ^ (-σ) = β * c[1] ^ (-σ) * (α * z[1] * (k[0] / l[1]) ^ (α - 1) + 1 - δ)
 
