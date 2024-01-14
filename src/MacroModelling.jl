@@ -6440,7 +6440,7 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector
         
         res = zeros(0)
 
-        jacc = zeros(length(observables) * warmup_iterations, length(observables))
+        jacc = zeros(𝓂.timings.nExo * warmup_iterations, length(observables))
 
         match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
 
@@ -6480,7 +6480,7 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector
 
         res  = zeros(0)
 
-        jacc = zeros(length(observables), length(observables))
+        jacc = zeros(𝓂.timings.nExo, length(observables))
 
         match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
 
