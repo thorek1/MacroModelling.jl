@@ -644,7 +644,9 @@ macro model(𝓂,ex...)
     dyn_var_future  =  sort(collect(reduce(union,dyn_var_future_list)))
     dyn_var_present =  sort(collect(reduce(union,dyn_var_present_list)))
     dyn_var_past    =  sort(collect(reduce(union,dyn_var_past_list)))
+    dyn_var_ss      =  sort(collect(reduce(union,dyn_ss_list)))
 
+    all_vars        = union(dyn_var_future, dyn_var_present, dyn_var_past, dyn_var_ss)
 
     present_only              = sort(setdiff(dyn_var_present,union(dyn_var_past,dyn_var_future)))
     future_not_past           = sort(setdiff(dyn_var_future, dyn_var_past))
@@ -669,7 +671,7 @@ macro model(𝓂,ex...)
     nFuture_not_past_and_mixed = length(future_not_past_and_mixed)
     nPast_not_future_and_mixed = length(past_not_future_and_mixed)
     nPresent_but_not_only      = length(present_but_not_only)
-    nVars                      = length(dyn_var_present)
+    nVars                      = length(all_vars)
     nExo                       = length(collect(exo))
 
     present_only_idx              = indexin(present_only,var)
