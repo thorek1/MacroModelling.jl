@@ -646,7 +646,11 @@ macro model(𝓂,ex...)
     dyn_var_past    =  sort(collect(reduce(union,dyn_var_past_list)))
     dyn_var_ss      =  sort(collect(reduce(union,dyn_ss_list)))
 
-    all_vars        = union(dyn_var_future, dyn_var_present, dyn_var_past, dyn_var_ss)
+    all_dyn_vars        = union(dyn_var_future, dyn_var_present, dyn_var_past)
+
+    @assert length(setdiff(dyn_var_ss, all_dyn_vars)) == 0 "The following variables are (and cannot be) defined only in steady state (`[ss]`): $(setdiff(dyn_var_ss, all_dyn_vars))"
+
+    all_vars = union(all_dyn_vars, dyn_var_ss)
 
     present_only              = sort(setdiff(dyn_var_present,union(dyn_var_past,dyn_var_future)))
     future_not_past           = sort(setdiff(dyn_var_future, dyn_var_past))
