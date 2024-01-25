@@ -420,7 +420,7 @@ function plot_irf(𝓂::ℳ;
     elseif shocks isa KeyedArray{Float64}
         shock_idx = 1
 
-        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(𝓂.timings.exo,axiskeys(shocks,1)),:)) > 1e-10
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")],axiskeys(shocks,1)),:)) > 1e-10
     else
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
 
@@ -469,7 +469,7 @@ function plot_irf(𝓂::ℳ;
     if occasionally_binding_constraints
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     elseif obc_shocks_included
-        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks witout enforcing the constraint is only compatible with first order perturbation solutions."
+        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks without enforcing the constraint is only compatible with first order perturbation solutions."
 
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     else
