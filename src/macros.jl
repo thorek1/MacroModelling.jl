@@ -781,8 +781,17 @@ macro model(𝓂,ex...)
             push!(unique_bounded_vars,i)
         end
     end
-
-
+    
+    duplicate_equations = []
+    for item in unique(dyn_equations)
+        indices = findall(x -> x == item, dyn_equations)
+        if length(indices) > 1
+            push!(duplicate_equations, indices)
+        end
+    end
+    
+    @assert length(duplicate_equations) == 0 "The following equations appear more than once (and should only appear once): \n" * join(["$(original_equations[eq_idxs[1]])" for eq_idxs in duplicate_equations], "\n")
+    
     # default_optimizer = nlboxsolve
     # default_optimizer = Optimisers.Adam
     # default_optimizer = NLopt.LN_BOBYQA
