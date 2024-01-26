@@ -3,6 +3,8 @@
 ## High priority
 
 - [ ] add technical details about SS solver, obc solver, and other algorithms
+- [ ] throw error when equations appear more than once
+- [ ] plot multiple solutions or models - multioptions in one graph
 - [ ] make SS calc faster (func and optim, maybe inplace ops)
 - [ ] try preallocation tools for forwarddiff
 - [ ] add nonlinear shock decomposition
@@ -53,7 +55,6 @@
 - [ ] model compression (speed up 2nd moment calc (derivatives) for large models; gradient loglikelihood is very slow due to large matmuls) -> model setup as maximisation problem (gEcon) -> HANK models
 - [ ] implement global solution methods
 - [ ] add more models
-- [ ] plot multiple solutions or models - multioptions in one graph
 - [ ] write documentation/docstrings
 
 - [ ] use @assert for errors and @test_throws

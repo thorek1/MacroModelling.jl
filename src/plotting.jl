@@ -420,11 +420,17 @@ function plot_irf(𝓂::ℳ;
     elseif shocks isa KeyedArray{Float64}
         shock_idx = 1
 
-        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")],axiskeys(shocks,1)),:)) > 1e-10
+        obc_shocks = 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]
+
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(obc_shocks, axiskeys(shocks,1)),:)) > 1e-10
     else
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
 
         obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
+    end
+
+    if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
+        periods = max(periods, size(shocks)[2])
     end
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
@@ -614,10 +620,6 @@ function plot_irf(𝓂::ℳ;
                     variables = variables, 
                     negative_shock = negative_shock) .+ SSS_delta[var_idx]
         end
-    end
-
-    if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
-            periods += size(shocks)[2]
     end
 
     shock_dir = negative_shock ? "Shock⁻" : "Shock⁺"
