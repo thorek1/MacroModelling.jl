@@ -2429,7 +2429,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 # push!(SS_solve_func,:(inits = max.(lbs,min.(ubs,𝓂.SS_init_guess[$([findfirst(x->x==y,union(𝓂.var,𝓂.calibration_equations_parameters)) for y in sorted_vars])]))))
                 # push!(SS_solve_func,:(closest_solution = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]))
                 # push!(SS_solve_func,:(inits = [transformer(max.(lbs,min.(ubs, closest_solution[$(n_block)] ))),closest_solution[end]]))
-                push!(SS_solve_func,:(inits = max.(lbs[1:length(closest_solution[$(n_block)])], min.(ubs[1:length(closest_solution[$(n_block)])], closest_solution[$(n_block)]))))
+                # push!(SS_solve_func,:(inits = max.(lbs[1:length(closest_solution[$(n_block)])], min.(ubs[1:length(closest_solution[$(n_block)])], closest_solution[$(n_block)]))))                    
+                push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(n_block)])], min.(ubs[1:length(closest_solution[$(n_block)])], closest_solution[$(n_block)])), closest_solution[end]]))
 
                 # push!(SS_solve_func,:(println([$(calib_pars_input...),$(other_vars_input...)])))
 
@@ -2571,15 +2572,15 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                     solver_parameters::solver_parameters)
 
                     params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
-                    current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
-                    closest_solution_init = 𝓂.NSSS_solver_cache[end]
-                    for pars in 𝓂.NSSS_solver_cache
-                        latest = sum(abs2,pars[end] - params_flt)
-                        if latest <= current_best
-                            current_best = latest
-                            closest_solution_init = pars
-                        end
-                    end
+                    # current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
+                    # closest_solution_init = 𝓂.NSSS_solver_cache[end]
+                    # for pars in 𝓂.NSSS_solver_cache
+                    #     latest = sum(abs2,pars[end] - params_flt)
+                    #     if latest <= current_best
+                    #         current_best = latest
+                    #         closest_solution_init = pars
+                    #     end
+                    # end
                     # solved_scale = 0
                     # range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
                     # for r in range_length
@@ -2821,7 +2822,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         push!(SS_solve_func,:(lbs = [$(lbs...)]))
         push!(SS_solve_func,:(ubs = [$(ubs...)]))
         
-        push!(SS_solve_func,:(inits = max.(lbs[1:length(closest_solution[$(n_block)])], min.(ubs[1:length(closest_solution[$(n_block)])], closest_solution[$(n_block)]))))
+        push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(n_block)])], min.(ubs[1:length(closest_solution[$(n_block)])], closest_solution[$(n_block)])), closest_solution[end]]))
 
         if VERSION >= v"1.9"
             push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒷())))
@@ -2998,7 +2999,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         ss_solve_blocks::Function, 
                         # SS_optimizer, 
                         # f::OptimizationFunction, 
-                        guess::Vector{Float64}, 
+                        guess_and_pars_solved_vars::Vector{Vector{Float64}}, 
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64},
                         parameters::solver_parameters,
@@ -3010,7 +3011,10 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         # fail_fast_solvers_only = true,
                         # verbose::Bool = false
                         )
-    
+
+    guess = guess_and_pars_solved_vars[1]
+    closest_parameters_and_solved_vars = guess_and_pars_solved_vars[2]
+
     if cold_start isa Float64
         sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(cold_start,length(guess))))
         sol_minimum = 1
@@ -3087,18 +3091,18 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
         SS_optimizer = levenberg_marquardt
 
-        previous_sol_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_values))
+        previous_sol_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], guess))
         
         function ss_solve_blocks_incl_params(guesses)
-            guess = guesses[1:length(guess)]
+            gss = guesses[1:length(guess)]
             parameters_and_solved_vars_guess = guesses[length(guess)+1:end]
-            res = ss_solve_blocks(parameters_and_solved_vars, guess)
+            res = ss_solve_blocks(parameters_and_solved_vars, gss)
             return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
         end
 
         sol_new, info = SS_optimizer(
             ss_solve_blocks_incl_params,
-            vcat(previous_sol_init,parameters_and_solved_vars),
+            vcat(previous_sol_init,closest_parameters_and_solved_vars),
             lbs,
             ubs,
             parameters = parameters
@@ -3157,7 +3161,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     ss_solve_blocks::Function, 
     # SS_optimizer, 
     # f::OptimizationFunction, 
-    guess::Vector{Float64}, 
+    guess::Vector{Vector{Float64}}, 
     lbs::Vector{Float64}, 
     ubs::Vector{Float64},
     parameters::solver_parameters,
