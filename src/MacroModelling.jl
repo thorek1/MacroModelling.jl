@@ -2412,7 +2412,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 
                 limit_boundaries = 1e12
 
-                for i in sorted_vars
+                for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
                     if i ∈ 𝓂.bounded_vars
                         push!(lbs,𝓂.lower_bounds[i .== 𝓂.bounded_vars][1] == -Inf ? -limit_boundaries+rand() : 𝓂.lower_bounds[i .== 𝓂.bounded_vars][1])
                         push!(ubs,𝓂.upper_bounds[i .== 𝓂.bounded_vars][1] ==  Inf ?  limit_boundaries-rand() : 𝓂.upper_bounds[i .== 𝓂.bounded_vars][1])
@@ -2423,12 +2423,13 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 end
                 push!(SS_solve_func,:(lbs = [$(lbs...)]))
                 push!(SS_solve_func,:(ubs = [$(ubs...)]))
+                
                 # push!(SS_solve_func,:(𝓂.SS_init_guess = initial_guess))
                 # push!(SS_solve_func,:(f = OptimizationFunction(𝓂.ss_solve_blocks_optim[$(n_block)], Optimization.AutoForwardDiff())))
                 # push!(SS_solve_func,:(inits = max.(lbs,min.(ubs,𝓂.SS_init_guess[$([findfirst(x->x==y,union(𝓂.var,𝓂.calibration_equations_parameters)) for y in sorted_vars])]))))
                 # push!(SS_solve_func,:(closest_solution = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]))
                 # push!(SS_solve_func,:(inits = [transformer(max.(lbs,min.(ubs, closest_solution[$(n_block)] ))),closest_solution[end]]))
-                push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, closest_solution[$(n_block)]))))
+                push!(SS_solve_func,:(inits = max.(lbs[1:length(closest_solution[$(n_block)])], min.(ubs[1:length(closest_solution[$(n_block)])], closest_solution[$(n_block)]))))
 
                 # push!(SS_solve_func,:(println([$(calib_pars_input...),$(other_vars_input...)])))
 
@@ -2773,7 +2774,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
                                             sort(𝓂.solved_vars[end]) ),
                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
-                  
+
         for var in other_vrs
             # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
             push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
@@ -2804,7 +2805,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         
         limit_boundaries = 1e12
 
-        for i in sorted_vars
+        for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
             if i ∈ 𝓂.bounded_vars
                 push!(lbs,𝓂.lower_bounds[i .== 𝓂.bounded_vars][1] == -Inf ? -limit_boundaries+rand() : 𝓂.lower_bounds[i .== 𝓂.bounded_vars][1])
                 push!(ubs,𝓂.upper_bounds[i .== 𝓂.bounded_vars][1] ==  Inf ?  limit_boundaries-rand() : 𝓂.upper_bounds[i .== 𝓂.bounded_vars][1])
@@ -2816,7 +2817,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         push!(SS_solve_func,:(lbs = [$(lbs...)]))
         push!(SS_solve_func,:(ubs = [$(ubs...)]))
         
-        push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, closest_solution[$(n_block)]))))
+        push!(SS_solve_func,:(inits = max.(lbs[1:length(closest_solution[$(n_block)])], min.(ubs[1:length(closest_solution[$(n_block)])], closest_solution[$(n_block)]))))
 
         if VERSION >= v"1.9"
             push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒷())))
@@ -3004,15 +3005,15 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         )
     
     if cold_start isa Float64
-        sol_values = max.(lbs,min.(ubs, fill(cold_start,length(guess))))
+        sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(cold_start,length(guess))))
         sol_minimum = 1
     elseif cold_start isa Bool 
         if cold_start
-            sol_values = max.(lbs,min.(ubs, fill(0.0,length(guess))))
-            sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,sol_values))
+            sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(0.0,length(guess))))
+            sol_minimum  = sum(abs2, ss_solve_blocks(parameters_and_solved_vars, sol_values))
         else
             sol_values = guess
-            sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,sol_values))
+            sol_minimum  = sum(abs2, ss_solve_blocks(parameters_and_solved_vars, sol_values))
             iters = 0
 
             if verbose && sol_minimum < tol
@@ -3025,18 +3026,18 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
         SS_optimizer = levenberg_marquardt
 
-        previous_sol_init = max.(lbs,min.(ubs, sol_values))
+        previous_sol_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_values))
         
         sol_new, info = SS_optimizer(
                                         x->ss_solve_blocks(parameters_and_solved_vars, x),
                                         previous_sol_init,
-                                        lbs,
-                                        ubs,
+                                        lbs[1:length(guess)],
+                                        ubs[1:length(guess)],
                                         parameters = parameters
                                     ) # alternatively use .001)#, μ = μ, p = p)# catch e end
 
         sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
-        sol_values = max.(lbs,min.(ubs, sol_new ))
+        sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
         iters = info[1]
 
         if sol_minimum < tol
@@ -3047,20 +3048,20 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             # if the previous non-converged best guess as a starting point does not work, try the standard starting points
             for starting_point in starting_points
                 if sol_minimum > tol
-                    standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
-                    standard_inits[ubs .<= 1] .= .1 # capture cases where part of values is small
+                    standard_inits = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_point,length(guess))))
+                    standard_inits[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
 
                     sol_new, info = SS_optimizer(
                         x->ss_solve_blocks(parameters_and_solved_vars, x),
                         standard_inits,
-                        lbs,
-                        ubs,
+                        lbs[1:length(guess)],
+                        ubs[1:length(guess)],
                         parameters = parameters
                         )# catch e end
                 
                     sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
 
-                    sol_values = max.(lbs,min.(ubs, sol_new))
+                    sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
                     iters = info[1]
 
                     if sol_minimum < tol && verbose
@@ -3079,7 +3080,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
         SS_optimizer = levenberg_marquardt
 
-        previous_sol_init = max.(lbs,min.(ubs, sol_values))
+        previous_sol_init = max.(lbs, min.(ubs, sol_values))
         
         function ss_solve_blocks_incl_params(guesses)
             guess = guesses[1:length(guess)]
@@ -3091,8 +3092,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         sol_new, info = SS_optimizer(
             ss_solve_blocks_incl_params,
             vcat(previous_sol_init,parameters_and_solved_vars),
-            vcat(lbs,fill(-1e12,length(parameters_and_solved_vars))), 
-            vcat(ubs,fill(1e12,length(parameters_and_solved_vars))), 
+            lbs,
+            ubs,
             parameters = parameters
         ) # alternatively use .001)#, μ = μ, p = p)# catch e end
 
@@ -3100,7 +3101,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
 
-        sol_values = max.(lbs,min.(ubs, sol_new ))
+        sol_values = max.(lbs, min.(ubs, sol_new ))
         iters = info[1]
 
         if sol_minimum < tol
@@ -3117,8 +3118,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     sol_new, info = SS_optimizer(
                         ss_solve_blocks_incl_params,
                         vcat(standard_inits,parameters_and_solved_vars),
-                        vcat(lbs,fill(-1e12,length(parameters_and_solved_vars))), 
-                        vcat(ubs,fill(1e12,length(parameters_and_solved_vars))), 
+                        lbs,
+                        ubs,
                         parameters = parameters
                     ) # alternatively use .001)#, μ = μ, p = p)# catch e end
 
