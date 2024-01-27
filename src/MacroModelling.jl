@@ -2543,7 +2543,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < eps(Float64))
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
-                                solved_scale = scale
+                                # solved_scale = scale
                             end))
     # push!(SS_solve_func,:(if length(𝓂.NSSS_solver_cache) > 100 popfirst!(𝓂.NSSS_solver_cache) end))
     
@@ -2917,7 +2917,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
 
     push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < eps(Float64))
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
-                                solved_scale = scale
+                                # solved_scale = scale
                             end))
 
     # fix parameter bounds
@@ -3087,7 +3087,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
         SS_optimizer = levenberg_marquardt
 
-        previous_sol_init = max.(lbs, min.(ubs, sol_values))
+        previous_sol_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_values))
         
         function ss_solve_blocks_incl_params(guesses)
             guess = guesses[1:length(guess)]
@@ -3108,7 +3108,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
 
-        sol_values = max.(lbs, min.(ubs, sol_new ))
+        sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
         iters = info[1]
 
         if sol_minimum < tol
@@ -3119,8 +3119,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             # if the previous non-converged best guess as a starting point does not work, try the standard starting points
             for starting_point in starting_points
                 if sol_minimum > tol
-                    standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
-                    standard_inits[ubs .<= 1] .= .1 # capture cases where part of values is small
+                    standard_inits = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_point,length(guess))))
+                    standard_inits[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
 
                     sol_new, info = SS_optimizer(
                         ss_solve_blocks_incl_params,
@@ -3134,7 +3134,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
                     sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
 
-                    sol_values = max.(lbs,min.(ubs, sol_new))
+                    sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
                     iters = info[1]
 
                     if sol_minimum < tol && verbose
