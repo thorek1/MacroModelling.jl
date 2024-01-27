@@ -3036,28 +3036,6 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                                     ) # alternatively use .001)#, μ = μ, p = p)# catch e end
 
         sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
-
-        if sol_minimum > tol
-            function ss_solve_blocks_incl_params(guesses)
-                guess = guesses[1:length(guess)]
-                parameters_and_solved_vars_guess = guesses[length(guess)+1:end]
-                res = ss_solve_blocks(parameters_and_solved_vars, guess)
-                return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
-            end
-
-            sol_new, info = SS_optimizer(
-                ss_solve_blocks_incl_params,
-                vcat(previous_sol_init,parameters_and_solved_vars),
-                vcat(lbs,fill(-1e12,length(parameters_and_solved_vars))), 
-                vcat(ubs,fill(1e12,length(parameters_and_solved_vars))), 
-                parameters = parameters
-            ) # alternatively use .001)#, μ = μ, p = p)# catch e end
-
-            sol_new = sol_new[1:length(guess)]
-
-            sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
-        end
-
         sol_values = max.(lbs,min.(ubs, sol_new ))
         iters = info[1]
 
@@ -3082,19 +3060,71 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 
                     sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
 
-                    if sol_minimum > tol
-                        sol_new, info = SS_optimizer(
-                            ss_solve_blocks_incl_params,
-                            vcat(standard_inits,parameters_and_solved_vars),
-                            vcat(lbs,fill(-1e12,length(parameters_and_solved_vars))), 
-                            vcat(ubs,fill(1e12,length(parameters_and_solved_vars))), 
-                            parameters = parameters
-                        ) # alternatively use .001)#, μ = μ, p = p)# catch e end
+                    sol_values = max.(lbs,min.(ubs, sol_new))
+                    iters = info[1]
 
-                        sol_new = sol_new[1:length(guess)]
-
-                        sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
+                    if sol_minimum < tol && verbose
+                        println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
                     end
+
+                else 
+                    break
+                end
+            end
+        end
+    end
+
+
+    # if the previous one failed try with letting the parameters and solved vars vary as well
+    if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
+        SS_optimizer = levenberg_marquardt
+
+        previous_sol_init = max.(lbs,min.(ubs, sol_values))
+        
+        function ss_solve_blocks_incl_params(guesses)
+            guess = guesses[1:length(guess)]
+            parameters_and_solved_vars_guess = guesses[length(guess)+1:end]
+            res = ss_solve_blocks(parameters_and_solved_vars, guess)
+            return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
+        end
+
+        sol_new, info = SS_optimizer(
+            ss_solve_blocks_incl_params,
+            vcat(previous_sol_init,parameters_and_solved_vars),
+            vcat(lbs,fill(-1e12,length(parameters_and_solved_vars))), 
+            vcat(ubs,fill(1e12,length(parameters_and_solved_vars))), 
+            parameters = parameters
+        ) # alternatively use .001)#, μ = μ, p = p)# catch e end
+
+        sol_new = sol_new[1:length(guess)]
+
+        sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
+
+        sol_values = max.(lbs,min.(ubs, sol_new ))
+        iters = info[1]
+
+        if sol_minimum < tol
+            if verbose
+                println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+            end
+        elseif cold_start isa Bool && !cold_start
+            # if the previous non-converged best guess as a starting point does not work, try the standard starting points
+            for starting_point in starting_points
+                if sol_minimum > tol
+                    standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
+                    standard_inits[ubs .<= 1] .= .1 # capture cases where part of values is small
+
+                    sol_new, info = SS_optimizer(
+                        ss_solve_blocks_incl_params,
+                        vcat(standard_inits,parameters_and_solved_vars),
+                        vcat(lbs,fill(-1e12,length(parameters_and_solved_vars))), 
+                        vcat(ubs,fill(1e12,length(parameters_and_solved_vars))), 
+                        parameters = parameters
+                    ) # alternatively use .001)#, μ = μ, p = p)# catch e end
+
+                    sol_new = sol_new[1:length(guess)]
+
+                    sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
 
                     sol_values = max.(lbs,min.(ubs, sol_new))
                     iters = info[1]
