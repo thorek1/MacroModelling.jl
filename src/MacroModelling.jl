@@ -3100,7 +3100,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
         end
 
-        sol_new, info = SS_optimizer(
+        sol_new_tmp, info = SS_optimizer(
             ss_solve_blocks_incl_params,
             vcat(previous_sol_init,closest_parameters_and_solved_vars),
             lbs,
@@ -3108,7 +3108,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             parameters = parameters
         ) # alternatively use .001)#, μ = μ, p = p)# catch e end
 
-        sol_new = sol_new[1:length(guess)]
+        sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
 
         sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
 
@@ -3126,7 +3126,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     standard_inits = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_point,length(guess))))
                     standard_inits[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
 
-                    sol_new, info = SS_optimizer(
+                    sol_new_tmp, info = SS_optimizer(
                         ss_solve_blocks_incl_params,
                         vcat(standard_inits,parameters_and_solved_vars),
                         lbs,
@@ -3134,7 +3134,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         parameters = parameters
                     ) # alternatively use .001)#, μ = μ, p = p)# catch e end
 
-                    sol_new = sol_new[1:length(guess)]
+                    sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
 
                     sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
 
