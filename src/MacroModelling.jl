@@ -2580,12 +2580,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             closest_solution_init = pars
                         end
                     end
-                    solved_scale = 0
-                    range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
-                    for r in range_length
-                        rangee = ignore_derivatives(range(0,1,r+1))
-                        for scale in rangee[2:end]
-                            if scale <= solved_scale continue end
+                    # solved_scale = 0
+                    # range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
+                    # for r in range_length
+                        # rangee = ignore_derivatives(range(0,1,r+1))
+                        # for scale in rangee[2:end]
+                            # if scale <= solved_scale continue end
                             current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
                             closest_solution = 𝓂.NSSS_solver_cache[end]
                             for pars in 𝓂.NSSS_solver_cache
@@ -2595,7 +2595,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                     closest_solution = pars
                                 end
                             end
-                            params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
+
+                            # params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
+
+                            params = parameters
+
                             params_scaled_flt = typeof(params) == Vector{Float64} ? params : ℱ.value.(params)
                             $(parameters_in_equations...)
                             $(par_bounds...)
@@ -2604,14 +2608,14 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             solution_error = 0.0
                             iters = 0
                             $(SS_solve_func...)
-                            if scale == 1
+                            # if scale == 1
                                 # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
                                 # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
                                 # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesnt work with Zygote
                                 return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
-                            end
-                        end
-                    end
+                            # end
+                        # end
+                    # end
                 end)
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
@@ -2942,12 +2946,12 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                             closest_solution_init = pars
                         end
                     end
-                    solved_scale = 0
-                    range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
-                    for r in range_length
-                        rangee = ignore_derivatives(range(0,1,r+1))
-                        for scale in rangee[2:end]
-                            if scale <= solved_scale continue end
+                    # solved_scale = 0
+                    # range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
+                    # for r in range_length
+                    #     rangee = ignore_derivatives(range(0,1,r+1))
+                    #     for scale in rangee[2:end]
+                    #         if scale <= solved_scale continue end
                             current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
                             closest_solution = 𝓂.NSSS_solver_cache[end]
                             for pars in 𝓂.NSSS_solver_cache
@@ -2957,7 +2961,10 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                                     closest_solution = pars
                                 end
                             end
-                            params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
+                            # params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
+
+                            params = parameters
+
                             params_scaled_flt = typeof(params) == Vector{Float64} ? params : ℱ.value.(params)
                             $(parameters_in_equations...)
                             $(par_bounds...)
@@ -2966,12 +2973,12 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                             iters = 0
                             solution_error = 0.0
                             $(SS_solve_func...)
-                            if scale == 1
+                            # if scale == 1
                                 # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
                                 return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)] , (solution_error, iters)
-                            end
-                        end
-                    end
+                            # end
+                    #     end
+                    # end
                 end)
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
