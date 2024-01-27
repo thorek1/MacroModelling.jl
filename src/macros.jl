@@ -439,16 +439,20 @@ macro model(𝓂,ex...)
                             x.args[2] isa Symbol ? # nonnegative parameters 
                                 begin
                                     push!(bounded_vars,x.args[2])
-                                    push!(lower_bounds,-1e12+rand())
-                                    push!(upper_bounds,700)
+                                    # push!(lower_bounds,-1e12+rand())
+                                    # push!(upper_bounds,700)
+                                    push!(lower_bounds,eps())
+                                    push!(upper_bounds,1e12+rand())
                                     x
                                 end :
                             x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
                                         push!(bounded_vars,x.args[2].args[1])
-                                        push!(lower_bounds,-1e12+rand())
-                                        push!(upper_bounds,700)
+                                        # push!(lower_bounds,-1e12+rand())
+                                        # push!(upper_bounds,700)
+                                        push!(lower_bounds,eps())
+                                        push!(upper_bounds,1e12+rand())
                                         x
                                     end :
                                 x :
@@ -468,8 +472,10 @@ macro model(𝓂,ex...)
                                         else
                                             push!(unique_➕_vars,x.args[2])
                                             push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                            push!(lower_bounds,-1e12+rand())
-                                            push!(upper_bounds,700)
+                                            # push!(lower_bounds,-1e12+rand())
+                                            # push!(upper_bounds,700)
+                                            push!(lower_bounds,eps())
+                                            push!(upper_bounds,1e12+rand())
 
                                             push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
                                             push!(ss_eq_aux_ind,length(ss_and_aux_equations))
