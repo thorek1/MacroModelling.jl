@@ -2828,7 +2828,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         push!(SS_solve_func,:(lbs = [$(lbs...)]))
         push!(SS_solve_func,:(ubs = [$(ubs...)]))
         
-        push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(n_block)])], min.(ubs[1:length(closest_solution[$(n_block)])], closest_solution[$(n_block)])), closest_solution[end]]))
+        push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
 
         if VERSION >= v"1.9"
             push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒷())))
