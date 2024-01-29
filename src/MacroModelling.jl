@@ -3057,11 +3057,13 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
         iters = info[1]
 
-        if sol_minimum < tol
-            if verbose
-                println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
-            end
-        elseif cold_start isa Bool && !cold_start
+        if sol_minimum < tol && verbose
+            println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+        end
+    end
+
+    if (sol_minimum > tol)
+        if cold_start isa Bool && !cold_start
             # if the previous non-converged best guess as a starting point does not work, try the standard starting points
             for starting_point in starting_points
                 if sol_minimum > tol
@@ -3121,11 +3123,13 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
         iters = info[1]
 
-        if sol_minimum < tol
-            if verbose
-                println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
-            end
-        elseif cold_start isa Bool && !cold_start
+        if sol_minimum < tol && verbose
+            println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+        end
+    end
+
+    if (sol_minimum > tol)
+        if cold_start isa Bool && !cold_start
             # if the previous non-converged best guess as a starting point does not work, try the standard starting points
             for starting_point in starting_points
                 if sol_minimum > tol
