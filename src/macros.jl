@@ -1462,7 +1462,7 @@ macro parameters(𝓂,ex...)
 
         if !$precompile
             # time_SS_real_solve = @elapsed 
-            SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose, false, mod.$𝓂.solver_parameters)
+            SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose, true, mod.$𝓂.solver_parameters)
             
             if !$silent 
                 println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds") 
