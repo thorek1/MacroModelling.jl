@@ -3028,7 +3028,9 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         sol_minimum = 1
     elseif cold_start isa Bool 
         if cold_start
-            starting_points = [0.7688, 0.897, 1.2, 0.9, 0.75, 1.5, -0.5, 2.0, 0.25]
+            for iii in [1.2, 0.9, 0.75, 1.5, -0.5, 2.0, 0.25] 
+                push!(starting_points, iii) 
+            end
 
             sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_points[1],length(guess))))
             sol_minimum  = sum(abs2, ss_solve_blocks(parameters_and_solved_vars, sol_values))
