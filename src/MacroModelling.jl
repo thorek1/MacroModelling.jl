@@ -3013,7 +3013,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         verbose::Bool;
                         tol::AbstractFloat = eps(),
                         # timeout = 120,
-                        starting_points::Vector{Float64} = [0.7688, 0.897, 1.2]#, 
+                        starting_points::Vector{Float64} = [0.7688, 0.897]#, 
                         # 1.2, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
                         # fail_fast_solvers_only = true,
                         # verbose::Bool = false
@@ -3022,18 +3022,23 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     guess = guess_and_pars_solved_vars[1]
     closest_parameters_and_solved_vars = guess_and_pars_solved_vars[2]
 
+    total_iters = 0
+
     if cold_start isa Float64
         sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(cold_start,length(guess))))
         sol_minimum = 1
     elseif cold_start isa Bool 
         if cold_start
-            sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_points[1],length(guess))))
+            for iii in [1.2, 0.9, 0.75, 1.5, -0.5, 2.0, 0.25] 
+                push!(starting_points, iii) 
+            end
+
+            sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_points[1],length(guess)))) 
             sol_values[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
             sol_minimum  = sum(abs2, ss_solve_blocks(parameters_and_solved_vars, sol_values))
         else
             sol_values = guess
             sol_minimum  = sum(abs2, ss_solve_blocks(parameters_and_solved_vars, sol_values))
-            iters = 0
 
             if verbose && sol_minimum < tol
                 println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
@@ -3057,7 +3062,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
         sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
-        iters = info[1]
+        total_iters += info[1]
 
         if sol_minimum < tol && verbose
             println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
@@ -3065,7 +3070,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     end
 
     if (sol_minimum > tol)
-        if cold_start isa Bool && !cold_start
+        if cold_start isa Bool# && !cold_start
             # if the previous non-converged best guess as a starting point does not work, try the standard starting points
             for starting_point in starting_points
                 if sol_minimum > tol
@@ -3083,7 +3088,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
 
                     sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
-                    iters = info[1]
+                    
+                    total_iters += info[1]
 
                     if sol_minimum < tol && verbose
                         println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
@@ -3126,7 +3132,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
 
-        iters = info[1]
+        total_iters += info[1]
 
         if sol_minimum < tol && verbose
             println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
@@ -3170,7 +3176,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     #     end
     # end
 
-    return sol_values, (sol_minimum, iters)
+    return sol_values, (sol_minimum, total_iters)
 end
 
 # needed for Julia 1.8
