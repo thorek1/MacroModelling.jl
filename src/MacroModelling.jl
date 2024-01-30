@@ -3068,7 +3068,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     end
 
     if (sol_minimum > tol)
-        if cold_start isa Bool && !cold_start
+        if cold_start isa Bool# && !cold_start
             # if the previous non-converged best guess as a starting point does not work, try the standard starting points
             for starting_point in starting_points
                 if sol_minimum > tol
