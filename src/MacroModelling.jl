@@ -1710,7 +1710,7 @@ function levenberg_marquardt(f::Function,
     initial_guess::Array{T,1}, 
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
-    parameters::solver_parameters = solver_parameters(eps(), eps(), 250, 2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 1, 0.0, 2)
+    parameters::solver_parameters = solver_parameters(eps(), eps(), 100, 2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 1, 0.0, 2)
     ) where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
@@ -3013,8 +3013,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         verbose::Bool;
                         tol::AbstractFloat = eps(),
                         # timeout = 120,
-                        starting_points::Vector{Float64} = [0.7688, 0.897]#, 
-                        # 1.2, 0.9, 0.75, 1.5, -0.5, 2.0, 0.25]
+                        starting_points::Vector{Float64} = [0.7688, 0.897, 1.2]#, 
+                        # 1.2, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
                         # fail_fast_solvers_only = true,
                         # verbose::Bool = false
                         )
@@ -3027,7 +3027,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         sol_minimum = 1
     elseif cold_start isa Bool 
         if cold_start
-            sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(0.0,length(guess))))
+            sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_points[1],length(guess))))
+            sol_values[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
             sol_minimum  = sum(abs2, ss_solve_blocks(parameters_and_solved_vars, sol_values))
         else
             sol_values = guess
@@ -3102,6 +3103,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         previous_sol_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], guess))
         
+        closest_parameters_and_solved_vars = sum(closest_parameters_and_solved_vars) == Inf ? parameters_and_solved_vars : closest_parameters_and_solved_vars
+
         function ss_solve_blocks_incl_params(guesses)
             gss = guesses[1:length(guess)]
             parameters_and_solved_vars_guess = guesses[length(guess)+1:end]
