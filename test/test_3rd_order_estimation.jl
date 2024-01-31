@@ -54,7 +54,7 @@ pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(Caldara_et_al_201
             n_rounds = 6,
             multithreaded = true)
 
-samps = MCMCChains.Chains(Pigeons.get_sample(pt))
+samps = MCMCChains.Chains(pt)
 
 
 println(mean(samps).nt.mean)

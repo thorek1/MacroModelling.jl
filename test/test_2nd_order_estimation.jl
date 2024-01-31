@@ -43,7 +43,7 @@ pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelih
             n_rounds = 9,
             multithreaded = true)
 
-samps = MCMCChains.Chains(Pigeons.get_sample(pt))
+samps = MCMCChains.Chains(pt)
 
 
 println(mean(samps).nt.mean)
