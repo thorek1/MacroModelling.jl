@@ -74,7 +74,7 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" >> $GITHUB_ENV
       - name: Set JULIA_NUM_THREADS for Julia 1.10 on Ubuntu
-        if: matrix.version == '1.10' && matrix.os == 'ubuntu-latest' && (matrix.test_set == 'estimation' || matrix.test_set == '1st_order_inversion_estimation' || matrix.test_set == '2nd_order_estimation' || matrix.test_set == '3rd_order_estimation')
+        if: matrix.test_set == 'estimation' || matrix.test_set == '1st_order_inversion_estimation' || matrix.test_set == '2nd_order_estimation' || matrix.test_set == '3rd_order_estimation'
         run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
       - uses: actions/cache@v4
         env:
