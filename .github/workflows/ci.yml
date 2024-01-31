@@ -19,11 +19,11 @@ jobs:
         arch: [x64, arm64]
         exclude:
           - version: '1.8'
-            os: macOS-latest
+            os: macos-14
           - version: '1.8'
             os: windows-latest
           - version: '1.9'
-            os: macOS-latest
+            os: macos-14
           - version: '1.9'
             os: windows-latest
           - arch: arm64
