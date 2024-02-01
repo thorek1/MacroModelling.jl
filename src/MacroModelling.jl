@@ -2545,10 +2545,10 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
             # try symbolically and use numerical if it does not work
             if numerical_sol || !symbolic_SS
-                solved_system = partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset)
-                write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                # solved_system = partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset)
+                # write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
                 
-                # write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
 
                 if !symbolic_SS && verbose
                     println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " numerically.")
