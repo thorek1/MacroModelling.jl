@@ -21,6 +21,7 @@ import Optim, LineSearches
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 # import ComponentArrays as 𝒞
+import Combinatorics: combinations
 import BlockTriangularForm
 import Subscripts: super, sub
 import Krylov
@@ -2197,6 +2198,203 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
 end
 
 
+
+
+function partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset)
+    for n in length(eqs_to_solve)-1:-1:2
+        for eq_combo in combinations(1:length(eqs_to_solve), n)
+            var_indices_to_select_from = findall([sum(incidence_matrix_subset[:,eq_combo],dims = 2)...] .> 0)
+
+            var_indices_in_remaining_eqs = findall([sum(incidence_matrix_subset[:,setdiff(1:length(eqs_to_solve),eq_combo)],dims = 2)...] .> 0) 
+
+            for var_combo in combinations(var_indices_to_select_from, n)
+                remaining_vars_in_remaining_eqs = setdiff(var_indices_in_remaining_eqs, var_combo)
+                # println("Solving for: ",vars_to_solve[var_combo]," in: ",eqs_to_solve[eq_combo])
+                if length(remaining_vars_in_remaining_eqs) == length(eqs_to_solve) - n # not sure whether this condition needs to be there. could be because if the last remaining vars not solved for in the block is not present in the remaining block he will not be able to solve it for the same reasons he wasnt able to solve the unpartitioned block
+                    soll = try SPyPyC.solve(eqs_to_solve[eq_combo], vars_to_solve[var_combo])
+                    catch
+                    end
+                    
+                    if !(isnothing(soll) || length(soll) == 0)
+                        soll_collected = soll isa Dict ? collect(values(soll)) : collect(soll[1])
+                        
+                        return (vars_to_solve[setdiff(1:length(eqs_to_solve),var_combo)],
+                                vars_to_solve[var_combo],
+                                eqs_to_solve[setdiff(1:length(eqs_to_solve),eq_combo)],
+                                soll_collected)
+                    end
+                end
+            end
+        end
+    end
+end
+
+
+
+function write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+    push!(𝓂.solved_vars,Symbol.(vcat(solved_system[1],solved_system[2])))
+    push!(𝓂.solved_vals,Meta.parse.(string.(vcat(solved_system[3],solved_system[4]))))
+
+    syms_in_eqs = Set()
+
+    for i in eqs_to_solve
+        push!(syms_in_eqs, Symbol.(SPyPyC.:↓(SPyPyC.free_symbols(i)))...)
+    end
+
+    push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
+
+    calib_pars = []
+    calib_pars_input = []
+    relevant_pars = reduce(union,vcat(𝓂.par_list_aux_SS,𝓂.par_calib_list)[eq_idx_in_block_to_solve])
+    union!(relevant_pars_across,relevant_pars)
+    
+    iii = 1
+    for parss in union(𝓂.parameters,𝓂.parameters_as_function_of_parameters)
+        if :($parss) ∈ relevant_pars
+            push!(calib_pars,:($parss = parameters_and_solved_vars[$iii]))
+            push!(calib_pars_input,:($parss))
+            iii += 1
+        end
+    end
+
+    guess = []
+    result = []
+    sorted_vars = sort(Symbol.(solved_system[1]))
+    for (i, parss) in enumerate(sorted_vars) 
+        push!(guess,:($parss = guess[$i]))
+        push!(result,:($parss = sol[$i]))
+    end
+    
+    # separate out auxilliary variables (nonnegativity)
+    nnaux = []
+    nnaux_linear = []
+    nnaux_error = []
+    push!(nnaux_error, :(aux_error = 0))
+    solved_vals = []
+    partially_solved_block = []
+
+    other_vrs_eliminated_by_sympy = Set()
+
+    for (i,val) in enumerate(𝓂.solved_vals[end])
+        if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
+            val = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
+            push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
+            push!(other_vrs_eliminated_by_sympy, val.args[2])
+            push!(nnaux_linear,:($val))
+            push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
+        end
+    end
+
+    for (var,val) in Dict(Symbol.(solved_system[2]) .=> Meta.parse.(string.(solved_system[4])))
+        push!(partially_solved_block,:($var = $(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))))
+    end
+
+    for (i,val) in enumerate(Meta.parse.(string.(solved_system[3])))
+        push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+    end
+
+    if length(nnaux) > 1
+        all_symbols = map(x->x.args[1],nnaux) #relevant symbols come first in respective equations
+
+        nn_symbols = map(x->intersect(all_symbols,x), get_symbols.(nnaux))
+        
+        inc_matrix = fill(0,length(all_symbols),length(all_symbols))
+
+        for i in 1:length(all_symbols)
+            for k in 1:length(nn_symbols)
+                inc_matrix[i,k] = collect(all_symbols)[i] ∈ collect(nn_symbols)[k]
+            end
+        end
+
+        QQ, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(inc_matrix))
+
+        nnaux = nnaux[QQ]
+        nnaux_linear = nnaux_linear[QQ]
+    end
+
+    other_vars = []
+    other_vars_input = []
+    other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
+                                        sort(𝓂.solved_vars[end]) ),
+                            union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
+
+    for var in other_vrs
+        push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
+        push!(other_vars_input,:($(var)))
+        iii += 1
+    end
+
+    funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)
+            $(guess...) 
+            $(calib_pars...) # add those variables which were previously solved and are used in the equations
+            $(other_vars...) # take only those that appear in equations - DONE
+
+            $(partially_solved_block...) # add those variables which were previously solved and are used in the equations
+
+            return [$(solved_vals...),$(nnaux_linear...)]
+        end)
+
+    push!(NSSS_solver_cache_init_tmp,fill(0.897,length(sorted_vars)))
+    push!(NSSS_solver_cache_init_tmp,[Inf])
+
+    # WARNING: infinite bounds are transformed to 1e12
+    lbs = []
+    ubs = []
+    
+    limit_boundaries = 1e12
+
+    for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
+        if i ∈ 𝓂.bounded_vars
+            push!(lbs,𝓂.lower_bounds[i .== 𝓂.bounded_vars][1] == -Inf ? -limit_boundaries+rand() : 𝓂.lower_bounds[i .== 𝓂.bounded_vars][1])
+            push!(ubs,𝓂.upper_bounds[i .== 𝓂.bounded_vars][1] ==  Inf ?  limit_boundaries-rand() : 𝓂.upper_bounds[i .== 𝓂.bounded_vars][1])
+        else
+            push!(lbs,-limit_boundaries+rand())
+            push!(ubs,limit_boundaries+rand())
+        end
+    end
+
+    push!(SS_solve_func,:(params_and_solved_vars = [$(calib_pars_input...),$(other_vars_input...)]))
+
+    push!(SS_solve_func,:(lbs = [$(lbs...)]))
+    push!(SS_solve_func,:(ubs = [$(ubs...)]))
+
+    n_block = length(𝓂.ss_solve_blocks) + 1
+
+    push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
+
+    if VERSION >= v"1.9"
+        push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒷())))
+    else
+        push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
+    end
+
+    push!(SS_solve_func,:(solution = block_solver_AD(params_and_solved_vars,
+                                                            $(n_block), 
+                                                            𝓂.ss_solve_blocks[$(n_block)], 
+                                                            # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
+                                                            # f, 
+                                                            inits,
+                                                            lbs, 
+                                                            ubs,
+                                                            solver_parameters,
+                                                            # fail_fast_solvers_only = fail_fast_solvers_only,
+                                                            cold_start,
+                                                            verbose)))
+                                                            
+    push!(SS_solve_func,:(iters += solution[2][2])) 
+    push!(SS_solve_func,:(solution_error += solution[2][1])) 
+    push!(SS_solve_func,:(sol = solution[1]))
+    
+    push!(SS_solve_func,:($(result...)))   
+    push!(SS_solve_func,:($(partially_solved_block...)))  
+    
+    push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
+    push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
+
+    push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
+end
+
+
 function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false)
     unknowns = union(Symbolics.vars_in_ss_equations,Symbolics.calibration_equations_parameters)
 
@@ -2245,8 +2443,6 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     min_max_errors = []
 
-    n_block = 1
-
     while n > 0 
         if length(eqs[:,eqs[2,:] .== n]) == 2
             var_to_solve_for = collect(unknowns)[vars[:,vars[2,:] .== n][1]]
@@ -2281,14 +2477,10 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             end
             
             if isnothing(soll)
-                # println("Could not solve single variables case symbolically.")
                 println("Failed finding solution symbolically for: ",var_to_solve_for," in: ",eq_to_solve)
                 # solve numerically
                 continue
-            # elseif PythonCall.pyconvert(Bool,soll[1].is_number)
-
             elseif soll[1].is_number == true
-                # ss_equations = ss_equations.subs(var_to_solve,soll[1])
                 ss_equations = [eq.subs(var_to_solve_for,soll[1]) for eq in ss_equations]
                 
                 push!(𝓂.solved_vars,Symbol(var_to_solve_for))
@@ -2302,17 +2494,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 push!(atoms_in_equations_list,[])
             else
-
                 push!(𝓂.solved_vars,Symbol(var_to_solve_for))
                 push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
                 
-                # atoms = reduce(union,soll[1].atoms())
-
                 [push!(atoms_in_equations, Symbol(a)) for a in soll[1].atoms()]
                 push!(atoms_in_equations_list, Set(union(setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs)),Symbol.(soll[1].atoms()))))
-
-                # println(atoms_in_equations)
-                # push!(atoms_in_equations, soll[1].atoms())
 
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.lower_bounds[indexin([𝓂.solved_vars[end]],𝓂.bounded_vars)][1]),$(𝓂.solved_vals[end])),$(𝓂.upper_bounds[indexin([𝓂.solved_vars[end]],𝓂.bounded_vars)][1]))))
@@ -2320,11 +2506,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
                 end
             end
-
-            # push!(single_eqs,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
-            # solve symbolically
         else
-
             vars_to_solve = collect(unknowns)[vars[:,vars[2,:] .== n][1,:]]
 
             eqs_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1,:]]
@@ -2333,60 +2515,40 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             
             if symbolic_SS
                 soll = try SPyPyC.solve(eqs_to_solve,vars_to_solve)
-                # soll = try solve(SPyPyC.Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
                 catch
                 end
 
-                if isnothing(soll)
-                    if verbose
-                        println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
-                    end
+                if isnothing(soll) || length(soll) == 0 || length(intersect((union(SPyPyC.free_symbols.(soll[1])...) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
+                    if verbose println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.") end
+
                     numerical_sol = true
-                    # continue
-                elseif length(soll) == 0
-                    if verbose
-                        println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
-                    end
-                    numerical_sol = true
-                    # continue
-                # elseif length(intersect(vars_to_solve,reduce(union,map(x->x.atoms(),collect(soll[1]))))) > 0
-                elseif length(intersect((union(SPyPyC.free_symbols.(soll[1])...) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
-                # elseif length(intersect(union(SPyPyC.free_symbols.(soll[1])...),vars_to_solve)) > 0
-                    if verbose
-                        println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
-                    end
-                    numerical_sol = true
-                    # println("Could not solve for: ",intersect(var_list,reduce(union,map(x->x.atoms(),solll)))...)
-                    # break_ind = true
-                    # break
                 else
-                    if verbose
-                        println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " symbolically.")
-                    end
-                    # relevant_pars = reduce(union,vcat(𝓂.par_list,𝓂.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
-                    # relevant_pars = reduce(union,map(x->x.atoms(),collect(soll[1])))
+                    if verbose println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " symbolically.") end
+                    
                     atoms = reduce(union,map(x->x.atoms(),collect(soll[1])))
-                    # println(atoms)
-                    [push!(atoms_in_equations, Symbol(a)) for a in atoms]
+
+                    for a in atoms push!(atoms_in_equations, Symbol(a)) end
                     
                     for (k, vars) in enumerate(vars_to_solve)
                         push!(𝓂.solved_vars,Symbol(vars))
                         push!(𝓂.solved_vals,Meta.parse(string(soll[1][k]))) #using convert(Expr,x) leads to ugly expressions
 
                         push!(atoms_in_equations_list, Set(Symbol.(soll[1][k].atoms())))
-                        # push!(atoms_in_equations_list, Set(Symbol.(soll[vars].atoms()))) # to be fixed
                         push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
                     end
                 end
-
-
             end
 
             eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
+            incidence_matrix_subset = incidence_matrix[vars[:,vars[2,:] .== n][1,:], eq_idx_in_block_to_solve]
+
             # try symbolically and use numerical if it does not work
             if numerical_sol || !symbolic_SS
-                write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                solved_system = partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset)
+                write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                
+                # write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
 
                 if !symbolic_SS && verbose
                     println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " numerically.")
