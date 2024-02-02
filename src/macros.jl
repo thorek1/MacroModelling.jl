@@ -297,235 +297,235 @@ macro model(𝓂,ex...)
                                     x :
                                 Expr(:call, :*, x.args[3:end]..., x.args[2]) : # 2beta => beta * 2 
                             x :
-                        x.args[1] ∈ [:^] ?
-                            !(x.args[3] isa Int) ?
-                                x.args[2] isa Symbol ? # nonnegative parameters 
-                                        begin
-                                            push!(bounded_vars,x.args[2])
-                                            push!(lower_bounds,eps(Float32))
-                                            push!(upper_bounds,1e12+rand())
-                                            x
-                                        end :
-                                x.args[2].head == :ref ?
-                                    x.args[2].args[1] isa Symbol ? # nonnegative variables 
-                                        begin
-                                            push!(bounded_vars,x.args[2].args[1])
-                                            push!(lower_bounds,eps(Float32))
-                                            push!(upper_bounds,1e12+rand())
-                                            x
-                                        end :
-                                    x :
-                                x.args[2].head == :call ? # nonnegative expressions
-                                    begin
-                                        if precompile
-                                            replacement = x.args[2]
-                                        else
-                                            replacement = simplify(x.args[2])
-                                        end
+                        # x.args[1] ∈ [:^] ?
+                        #     !(x.args[3] isa Int) ?
+                        #         x.args[2] isa Symbol ? # nonnegative parameters 
+                        #                 begin
+                        #                     push!(bounded_vars,x.args[2])
+                        #                     push!(lower_bounds,eps(Float32))
+                        #                     push!(upper_bounds,1e12+rand())
+                        #                     x
+                        #                 end :
+                        #         x.args[2].head == :ref ?
+                        #             x.args[2].args[1] isa Symbol ? # nonnegative variables 
+                        #                 begin
+                        #                     push!(bounded_vars,x.args[2].args[1])
+                        #                     push!(lower_bounds,eps(Float32))
+                        #                     push!(upper_bounds,1e12+rand())
+                        #                     x
+                        #                 end :
+                        #             x :
+                        #         x.args[2].head == :call ? # nonnegative expressions
+                        #             begin
+                        #                 if precompile
+                        #                     replacement = x.args[2]
+                        #                 else
+                        #                     replacement = simplify(x.args[2])
+                        #                 end
 
-                                        if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                            if x.args[2] ∈ unique_➕_vars
-                                                ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                                replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
-                                            else
-                                                push!(unique_➕_vars,x.args[2])
-                                                push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                                push!(lower_bounds,eps(Float32))
-                                                push!(upper_bounds,1e12+rand())
-                                                push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the cond_var_decomp
-                                                push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                        #                 if !(replacement isa Int) # check if the nonnegative term is just a constant
+                        #                     if x.args[2] ∈ unique_➕_vars
+                        #                         ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
+                        #                         replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
+                        #                     else
+                        #                         push!(unique_➕_vars,x.args[2])
+                        #                         push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
+                        #                         push!(lower_bounds,eps(Float32))
+                        #                         push!(upper_bounds,1e12+rand())
+                        #                         push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the cond_var_decomp
+                        #                         push!(ss_eq_aux_ind,length(ss_and_aux_equations))
 
-                                                push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                                replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
-                                            end
-                                        end
+                        #                         push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                        #                         replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+                        #                     end
+                        #                 end
 
-                                        :($(replacement) ^ $(x.args[3]))
-                                    end :
-                                x :
-                            x :
-                        x.args[2] isa Float64 ?
-                            x :
-                        x.args[1] ∈ [:log] ?
-                            x.args[2] isa Symbol ? # nonnegative parameters 
-                                begin
-                                    push!(bounded_vars,x.args[2])
-                                    push!(lower_bounds,eps(Float32))
-                                    push!(upper_bounds,1e12+rand())
-                                    x
-                                end :
-                            x.args[2].head == :ref ?
-                                x.args[2].args[1] isa Symbol ? # nonnegative variables 
-                                    begin
-                                        push!(bounded_vars,x.args[2].args[1])
-                                        push!(lower_bounds,eps(Float32))
-                                        push!(upper_bounds,1e12+rand())
-                                        x
-                                    end :
-                                x :
-                            x.args[2].head == :call ? # nonnegative expressions
-                                begin
-                                    if precompile
-                                        replacement = x.args[2]
-                                    else
-                                        replacement = simplify(x.args[2])
-                                    end
+                        #                 :($(replacement) ^ $(x.args[3]))
+                        #             end :
+                        #         x :
+                        #     x :
+                        # x.args[2] isa Float64 ?
+                        #     x :
+                        # x.args[1] ∈ [:log] ?
+                        #     x.args[2] isa Symbol ? # nonnegative parameters 
+                        #         begin
+                        #             push!(bounded_vars,x.args[2])
+                        #             push!(lower_bounds,eps(Float32))
+                        #             push!(upper_bounds,1e12+rand())
+                        #             x
+                        #         end :
+                        #     x.args[2].head == :ref ?
+                        #         x.args[2].args[1] isa Symbol ? # nonnegative variables 
+                        #             begin
+                        #                 push!(bounded_vars,x.args[2].args[1])
+                        #                 push!(lower_bounds,eps(Float32))
+                        #                 push!(upper_bounds,1e12+rand())
+                        #                 x
+                        #             end :
+                        #         x :
+                        #     x.args[2].head == :call ? # nonnegative expressions
+                        #         begin
+                        #             if precompile
+                        #                 replacement = x.args[2]
+                        #             else
+                        #                 replacement = simplify(x.args[2])
+                        #             end
 
-                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
-                                        else
-                                            push!(unique_➕_vars,x.args[2])
-                                            push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                            push!(lower_bounds,eps(Float32))
-                                            push!(upper_bounds,1e12+rand())
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
-                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                        #             if !(replacement isa Int) # check if the nonnegative term is just a constant
+                        #                 if x.args[2] ∈ unique_➕_vars
+                        #                     ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
+                        #                     replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
+                        #                 else
+                        #                     push!(unique_➕_vars,x.args[2])
+                        #                     push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
+                        #                     push!(lower_bounds,eps(Float32))
+                        #                     push!(upper_bounds,1e12+rand())
+                        #                     push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
+                        #                     push!(ss_eq_aux_ind,length(ss_and_aux_equations))
                                             
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
-                                        end
-                                    end
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x :
-                        x.args[1] ∈ [:norminvcdf, :norminv, :qnorm] ?
-                            x.args[2] isa Symbol ? # nonnegative parameters 
-                                begin
-                                    push!(bounded_vars,x.args[2])
-                                    push!(lower_bounds,eps())
-                                    push!(upper_bounds,1-eps())
-                                    x
-                                end :
-                            x.args[2].head == :ref ?
-                                x.args[2].args[1] isa Symbol ? # nonnegative variables 
-                                    begin
-                                        push!(bounded_vars,x.args[2].args[1])
-                                        push!(lower_bounds,eps())
-                                        push!(upper_bounds,1-eps())
-                                        x
-                                    end :
-                                x :
-                            x.args[2].head == :call ? # nonnegative expressions
-                                begin
-                                    if precompile
-                                        replacement = x.args[2]
-                                    else
-                                        replacement = simplify(x.args[2])
-                                    end
+                        #                     push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                        #                     replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+                        #                 end
+                        #             end
+                        #             :($(Expr(:call, x.args[1], replacement)))
+                        #         end :
+                        #     x :
+                        # x.args[1] ∈ [:norminvcdf, :norminv, :qnorm] ?
+                        #     x.args[2] isa Symbol ? # nonnegative parameters 
+                        #         begin
+                        #             push!(bounded_vars,x.args[2])
+                        #             push!(lower_bounds,eps())
+                        #             push!(upper_bounds,1-eps())
+                        #             x
+                        #         end :
+                        #     x.args[2].head == :ref ?
+                        #         x.args[2].args[1] isa Symbol ? # nonnegative variables 
+                        #             begin
+                        #                 push!(bounded_vars,x.args[2].args[1])
+                        #                 push!(lower_bounds,eps())
+                        #                 push!(upper_bounds,1-eps())
+                        #                 x
+                        #             end :
+                        #         x :
+                        #     x.args[2].head == :call ? # nonnegative expressions
+                        #         begin
+                        #             if precompile
+                        #                 replacement = x.args[2]
+                        #             else
+                        #                 replacement = simplify(x.args[2])
+                        #             end
 
-                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
-                                        else
-                                            push!(unique_➕_vars,x.args[2])
-                                            push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                            push!(lower_bounds,eps())
-                                            push!(upper_bounds,1-eps())
+                        #             if !(replacement isa Int) # check if the nonnegative term is just a constant
+                        #                 if x.args[2] ∈ unique_➕_vars
+                        #                     ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
+                        #                     replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
+                        #                 else
+                        #                     push!(unique_➕_vars,x.args[2])
+                        #                     push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
+                        #                     push!(lower_bounds,eps())
+                        #                     push!(upper_bounds,1-eps())
 
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
-                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                        #                     push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
+                        #                     push!(ss_eq_aux_ind,length(ss_and_aux_equations))
                                             
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
-                                        end
-                                    end
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x :
-                        x.args[1] ∈ [:exp] ?
-                            x.args[2] isa Symbol ? # have exp terms bound so they dont go to Inf
-                                begin
-                                    push!(bounded_vars,x.args[2])
-                                    push!(lower_bounds,-1e12+rand())
-                                    push!(upper_bounds,700)
-                                    x
-                                end :
-                            x.args[2].head == :ref ?
-                                x.args[2].args[1] isa Symbol ? # have exp terms bound so they dont go to Inf
-                                    begin
-                                        push!(bounded_vars,x.args[2].args[1])
-                                        push!(lower_bounds,-1e12+rand())
-                                        push!(upper_bounds,700)
-                                        x
-                                    end :
-                                x :
-                            x.args[2].head == :call ? # have exp terms bound so they dont go to Inf
-                                begin
-                                    if precompile
-                                        replacement = x.args[2]
-                                    else
-                                        replacement = simplify(x.args[2])
-                                    end
+                        #                     push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                        #                     replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+                        #                 end
+                        #             end
+                        #             :($(Expr(:call, x.args[1], replacement)))
+                        #         end :
+                        #     x :
+                        # x.args[1] ∈ [:exp] ?
+                        #     x.args[2] isa Symbol ? # have exp terms bound so they dont go to Inf
+                        #         begin
+                        #             push!(bounded_vars,x.args[2])
+                        #             push!(lower_bounds,-1e12+rand())
+                        #             push!(upper_bounds,700)
+                        #             x
+                        #         end :
+                        #     x.args[2].head == :ref ?
+                        #         x.args[2].args[1] isa Symbol ? # have exp terms bound so they dont go to Inf
+                        #             begin
+                        #                 push!(bounded_vars,x.args[2].args[1])
+                        #                 push!(lower_bounds,-1e12+rand())
+                        #                 push!(upper_bounds,700)
+                        #                 x
+                        #             end :
+                        #         x :
+                        #     x.args[2].head == :call ? # have exp terms bound so they dont go to Inf
+                        #         begin
+                        #             if precompile
+                        #                 replacement = x.args[2]
+                        #             else
+                        #                 replacement = simplify(x.args[2])
+                        #             end
 
-                                    # println(replacement)
-                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
-                                        else
-                                            push!(unique_➕_vars,x.args[2])
-                                            push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                            push!(lower_bounds,-1e12+rand())
-                                            push!(upper_bounds,700)
+                        #             # println(replacement)
+                        #             if !(replacement isa Int) # check if the nonnegative term is just a constant
+                        #                 if x.args[2] ∈ unique_➕_vars
+                        #                     ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
+                        #                     replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
+                        #                 else
+                        #                     push!(unique_➕_vars,x.args[2])
+                        #                     push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
+                        #                     push!(lower_bounds,-1e12+rand())
+                        #                     push!(upper_bounds,700)
                                             
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
-                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                        #                     push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
+                        #                     push!(ss_eq_aux_ind,length(ss_and_aux_equations))
                                             
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
-                                        end
-                                    end
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x :
-                        x.args[1] ∈ [:erfcinv] ?
-                            x.args[2] isa Symbol ? # nonnegative parameters 
-                                begin
-                                    push!(bounded_vars,x.args[2])
-                                    push!(lower_bounds,eps())
-                                    push!(upper_bounds,2-eps())
-                                    x
-                                end :
-                            x.args[2].head == :ref ?
-                                x.args[2].args[1] isa Symbol ? # nonnegative variables 
-                                    begin
-                                        push!(bounded_vars,x.args[2].args[1])
-                                        push!(lower_bounds,eps())
-                                        push!(upper_bounds,2-eps())
-                                        x
-                                    end :
-                                x :
-                            x.args[2].head == :call ? # nonnegative expressions
-                                begin
-                                    if precompile
-                                        replacement = x.args[2]
-                                    else
-                                        replacement = simplify(x.args[2])
-                                    end
+                        #                     push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                        #                     replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+                        #                 end
+                        #             end
+                        #             :($(Expr(:call, x.args[1], replacement)))
+                        #         end :
+                        #     x :
+                        # x.args[1] ∈ [:erfcinv] ?
+                        #     x.args[2] isa Symbol ? # nonnegative parameters 
+                        #         begin
+                        #             push!(bounded_vars,x.args[2])
+                        #             push!(lower_bounds,eps())
+                        #             push!(upper_bounds,2-eps())
+                        #             x
+                        #         end :
+                        #     x.args[2].head == :ref ?
+                        #         x.args[2].args[1] isa Symbol ? # nonnegative variables 
+                        #             begin
+                        #                 push!(bounded_vars,x.args[2].args[1])
+                        #                 push!(lower_bounds,eps())
+                        #                 push!(upper_bounds,2-eps())
+                        #                 x
+                        #             end :
+                        #         x :
+                        #     x.args[2].head == :call ? # nonnegative expressions
+                        #         begin
+                        #             if precompile
+                        #                 replacement = x.args[2]
+                        #             else
+                        #                 replacement = simplify(x.args[2])
+                        #             end
 
-                                    # println(replacement)
-                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
-                                        else
-                                            push!(unique_➕_vars,x.args[2])
-                                            push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                            push!(lower_bounds,eps())
-                                            push!(upper_bounds,2-eps())
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
-                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+                        #             # println(replacement)
+                        #             if !(replacement isa Int) # check if the nonnegative term is just a constant
+                        #                 if x.args[2] ∈ unique_➕_vars
+                        #                     ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
+                        #                     replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
+                        #                 else
+                        #                     push!(unique_➕_vars,x.args[2])
+                        #                     push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
+                        #                     push!(lower_bounds,eps())
+                        #                     push!(upper_bounds,2-eps())
+                        #                     push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
+                        #                     push!(ss_eq_aux_ind,length(ss_and_aux_equations))
                                             
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
-                                        end
-                                    end
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x :
+                        #                     push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                        #                     replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+                        #                 end
+                        #             end
+                        #             :($(Expr(:call, x.args[1], replacement)))
+                        #         end :
+                        #     x :
                         x :
                     x :
                 x,
