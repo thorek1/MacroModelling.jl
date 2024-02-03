@@ -2245,7 +2245,7 @@ function partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset)
                 remaining_vars_in_remaining_eqs = setdiff(var_indices_in_remaining_eqs, var_combo)
                 # println("Solving for: ",vars_to_solve[var_combo]," in: ",eqs_to_solve[eq_combo])
                 if length(remaining_vars_in_remaining_eqs) == length(eqs_to_solve) - n # not sure whether this condition needs to be there. could be because if the last remaining vars not solved for in the block is not present in the remaining block he will not be able to solve it for the same reasons he wasnt able to solve the unpartitioned block
-                    soll = try SPyPyC.solve(eqs_to_solve[eq_combo], vars_to_solve[var_combo], quick = true)
+                    soll = try SPyPyC.solve(eqs_to_solve[eq_combo], vars_to_solve[var_combo])
                     catch
                     end
                     
@@ -2986,11 +2986,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
             # try symbolically and use numerical if it does not work
             if numerical_sol || !symbolic_SS
-                sort!(vars_to_solve, by = Symbol)
-                sort!(eqs_to_solve, by = string)
+                pv = sortperm(vars_to_solve, by = Symbol)
+                pe = sortperm(eqs_to_solve, by = string)
 
-                solved_system = partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset)
-
+                solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe])
+                
                 if !isnothing(solved_system) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "LambertW"))
                     write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve)  
                 else
