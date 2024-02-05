@@ -2050,7 +2050,7 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
 
     syms_in_eqs = Set{Symbol}()
 
-    for i in vcat(ss_and_aux_equations_dep,rewritten_eqs)
+    for i in vcat(ss_and_aux_equations_dep, ss_and_aux_equations, rewritten_eqs)
         push!(syms_in_eqs, get_symbols(i)...)
     end
 
@@ -2643,7 +2643,7 @@ function write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relev
 
     syms_in_eqs = Set{Symbol}()
 
-    for i in vcat(rewritten_eqs, rewritten_eqs2, ss_and_aux_equations_dep, ss_and_aux_equations_dep2)
+    for i in vcat(rewritten_eqs, rewritten_eqs2, ss_and_aux_equations_dep, ss_and_aux_equations_dep2, ss_and_aux_equations, ss_and_aux_equations2)
         push!(syms_in_eqs, get_symbols(i)...)
     end
 
