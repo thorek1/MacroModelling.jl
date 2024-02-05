@@ -1913,18 +1913,15 @@ function create_symbols_eqs!(𝓂::ℳ)
 
     symbols_in_equation = union(𝓂.parameters_in_equations,𝓂.parameters,𝓂.parameters_as_function_of_parameters,symbols_in_dynamic_equations,symbols_in_dynamic_equations_wo_subscripts,symbols_in_ss_equations)#,𝓂.dynamic_variables_future)
 
-    l_bnds = Dict(𝓂.bounded_vars .=> 𝓂.lower_bounds)
-    u_bnds = Dict(𝓂.bounded_vars .=> 𝓂.upper_bounds)
-
     symbols_pos = []
     symbols_neg = []
     symbols_none = []
 
     for symb in symbols_in_equation
-        if symb in 𝓂.bounded_vars
-            if l_bnds[symb] >= 0
+        if haskey(𝓂.bounds, symb)
+            if 𝓂.bounds[symb][1] >= 0
                 push!(symbols_pos, symb)
-            elseif u_bnds[symb] <= 0
+            elseif 𝓂.bounds[symb][2] <= 0
                 push!(symbols_neg, symb)
             else 
                 push!(symbols_none, symb)
@@ -2039,13 +2036,12 @@ end
 
 
 function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
-    bounds = Dict{Symbol,Tuple{Float64,Float64}}()
     ➕_vars = Symbol[]
     unique_➕_vars = Union{Symbol,Expr}[]
 
     vars_to_exclude = [Symbol.(vars_to_solve),Symbol[]]
 
-    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, bounds, ➕_vars, unique_➕_vars)
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
 
 
     push!(𝓂.solved_vars, Symbol.(vars_to_solve))
@@ -2175,9 +2171,9 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
     limit_boundaries = 1e12
 
     for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
-        if haskey(bounds,i)
-            push!(lbs,bounds[i][1])
-            push!(ubs,bounds[i][2])
+        if haskey(𝓂.bounds,i)
+            push!(lbs,𝓂.bounds[i][1])
+            push!(ubs,𝓂.bounds[i][2])
         else
             push!(lbs,-limit_boundaries)
             push!(ubs, limit_boundaries)
@@ -2631,17 +2627,16 @@ end
 
 
 function write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve)
-    bounds = Dict{Symbol,Tuple{Float64,Float64}}()
     ➕_vars = Symbol[]
     unique_➕_vars = Union{Symbol,Expr}[]
 
     vars_to_exclude = [Symbol.(solved_system[1]),Symbol.(solved_system[2])]
 
-    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(solved_system[3])), vars_to_exclude, bounds, ➕_vars, unique_➕_vars)
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(solved_system[3])), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
 
     vars_to_exclude = [Symbol.(vcat(solved_system[1])),Symbol[]]
 
-    rewritten_eqs2, ss_and_aux_equations2, ss_and_aux_equations_dep2, ss_and_aux_equations_error2, ss_and_aux_equations_error_dep2 = make_equation_rebust_to_domain_errors(Meta.parse.(string.(solved_system[4])), vars_to_exclude, bounds, ➕_vars, unique_➕_vars)
+    rewritten_eqs2, ss_and_aux_equations2, ss_and_aux_equations_dep2, ss_and_aux_equations_error2, ss_and_aux_equations_error_dep2 = make_equation_rebust_to_domain_errors(Meta.parse.(string.(solved_system[4])), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
 
     push!(𝓂.solved_vars, Symbol.(vcat(solved_system[1], solved_system[2])))
     push!(𝓂.solved_vals, vcat(rewritten_eqs, rewritten_eqs2))
@@ -2775,9 +2770,9 @@ function write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relev
     limit_boundaries = 1e12
 
     for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
-        if haskey(bounds,i)
-            push!(lbs,bounds[i][1])
-            push!(ubs,bounds[i][2])
+        if haskey(𝓂.bounds,i)
+            push!(lbs,𝓂.bounds[i][1])
+            push!(ubs,𝓂.bounds[i][2])
         else
             push!(lbs,-limit_boundaries)
             push!(ubs, limit_boundaries)
@@ -2941,8 +2936,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 [push!(atoms_in_equations, Symbol(a)) for a in soll[1].atoms()]
                 push!(atoms_in_equations_list, Set(union(setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs)),Symbol.(soll[1].atoms()))))
 
-                if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.lower_bounds[indexin([𝓂.solved_vars[end]],𝓂.bounded_vars)][1]),$(𝓂.solved_vals[end])),$(𝓂.upper_bounds[indexin([𝓂.solved_vars[end]],𝓂.bounded_vars)][1]))))
+                if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
+                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
                 else
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
                 end
@@ -3077,12 +3072,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     # fix parameter bounds
     par_bounds = []
-    
-    for varpar in intersect(𝓂.bounded_vars, intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across)))
-        i = indexin([varpar],𝓂.bounded_vars)
-        push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.lower_bounds[i...])),$(𝓂.upper_bounds[i...]))))
-    end
 
+    for varpar in intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across))
+        if haskey(𝓂.bounds, varpar)
+            push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.bounds[varpar][1])),$(𝓂.bounds[varpar][2]))))
+        end
+    end
 
     solve_exp = :(function solve_SS(parameters::Vector{Real}, 
                                     𝓂::ℳ,
@@ -3330,9 +3325,9 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         limit_boundaries = 1e12
 
         for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
-            if i ∈ 𝓂.bounded_vars
-                push!(lbs,𝓂.lower_bounds[i .== 𝓂.bounded_vars][1] == -Inf ? -limit_boundaries+rand() : 𝓂.lower_bounds[i .== 𝓂.bounded_vars][1])
-                push!(ubs,𝓂.upper_bounds[i .== 𝓂.bounded_vars][1] ==  Inf ?  limit_boundaries-rand() : 𝓂.upper_bounds[i .== 𝓂.bounded_vars][1])
+            if haskey(𝓂.bounds, i)
+                push!(lbs,𝓂.bounds[i][1] == -Inf ? -limit_boundaries+rand() : 𝓂.bounds[i][1])
+                push!(ubs,𝓂.bounds[i][2] ==  Inf ?  limit_boundaries-rand() : 𝓂.bounds[i][2])
             else
                 push!(lbs,-limit_boundaries+rand())
                 push!(ubs,limit_boundaries+rand())
@@ -3448,11 +3443,11 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
     # fix parameter bounds
     par_bounds = []
     
-    for varpar in intersect(𝓂.bounded_vars, intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across)))
-        i = indexin([varpar],𝓂.bounded_vars)
-        push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.lower_bounds[i...])),$(𝓂.upper_bounds[i...]))))
+    for varpar in intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across))
+        if haskey(𝓂.bounds, varpar)
+            push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.bounds[varpar][1])),$(𝓂.bounds[varpar][2]))))
+        end
     end
-
 
     solve_exp = :(function solve_SS(parameters::Vector{Real}, 
                                     𝓂::ℳ, 
@@ -4842,18 +4837,15 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
 
     bounds_broken = false
 
-    for i in 1:length(parameters)
-        bnd_idx = findfirst(x->x==collect(keys(parameters))[i],𝓂.bounded_vars)
-        if !isnothing(bnd_idx)
-            if collect(values(parameters))[i] > 𝓂.upper_bounds[bnd_idx]
-                # println("Calibration is out of bounds for ",collect(keys(parameters))[i],":\t",collect(values(parameters))[i]," > ",𝓂.upper_bounds[bnd_idx] + eps())
-                println("Bounds error for ",collect(keys(parameters))[i]," < ",𝓂.upper_bounds[bnd_idx] + eps(),"\tparameter value: ",collect(values(parameters))[i])
+    for (par,val) in parameters
+        if haskey(𝓂.bounds,par)
+            if val > 𝓂.bounds[par][2]
+                println("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
-            if collect(values(parameters))[i] < 𝓂.lower_bounds[bnd_idx]
-                # println("Calibration is out of bounds for ",collect(keys(parameters))[i],":\t",collect(values(parameters))[i]," < ",𝓂.lower_bounds[bnd_idx] - eps())
-                println("Bounds error for ",collect(keys(parameters))[i]," > ",𝓂.lower_bounds[bnd_idx] + eps(),"\tparameter value: ",collect(values(parameters))[i])
+            if val < 𝓂.bounds[par][1]
+                println("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
@@ -4907,16 +4899,15 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
 
     bounds_broken = false
 
-    for i in 1:length(parameters)
-        bnd_idx = findfirst(x -> x == 𝓂.parameters[i], 𝓂.bounded_vars)
-        if !isnothing(bnd_idx)
-            if collect(values(parameters))[i] > 𝓂.upper_bounds[bnd_idx]
-                println("Bounds error for ",𝓂.parameters[i]," < ",𝓂.upper_bounds[bnd_idx] + eps(),"\tparameter value: ",𝓂.parameter_values[i])
+    for (par,val) in parameters
+        if haskey(𝓂.bounds,par)
+            if val > 𝓂.bounds[par][2]
+                println("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
-            if collect(values(parameters))[i] < 𝓂.lower_bounds[bnd_idx]
-                println("Bounds error for ",𝓂.parameters[i]," > ",𝓂.lower_bounds[bnd_idx] + eps(),"\tparameter value: ",𝓂.parameter_values[i])
+            if val < 𝓂.bounds[par][1]
+                println("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end

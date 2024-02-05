@@ -370,9 +370,7 @@ mutable struct ℳ
     calibration_equations::Vector{Expr}
     calibration_equations_parameters::Vector{Symbol}
 
-    bounded_vars::Vector{Symbol}
-    lower_bounds::Vector{Float64}
-    upper_bounds::Vector{Float64}
+    bounds::Dict{Symbol,Tuple{Float64,Float64}}
 
     model_jacobian::Function
     # model_jacobian::FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}#{typeof(model_jacobian)}
