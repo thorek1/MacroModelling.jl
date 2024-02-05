@@ -99,9 +99,6 @@ macro model(𝓂,ex...)
     calibration_equations_parameters = []
 
     bounds = Dict{Symbol,Tuple{Float64,Float64}}()
-    # bounded_vars = []
-    # lower_bounds = []
-    # upper_bounds = []
 
     dyn_equations = []
 
