@@ -4899,7 +4899,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
 
     bounds_broken = false
 
-    for (par,val) in parameters
+    for (par,val) in Dict(𝓂.parameter .=> parameters)
         if haskey(𝓂.bounds,par)
             if val > 𝓂.bounds[par][2]
                 println("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
