@@ -1647,18 +1647,13 @@ function get_solution(𝓂::ℳ,
                         tol::AbstractFloat = eps())
     @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
 
-    ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters))
-    lb = @ignore_derivatives -ub
-
-    for (i,v) in enumerate(𝓂.bounded_vars)
-        if v ∈ 𝓂.parameters
-            @ignore_derivatives lb[i] = 𝓂.lower_bounds[i]
-            @ignore_derivatives ub[i] = 𝓂.upper_bounds[i]
+    
+    for (k,v) in 𝓂.bounds
+        if k ∈ 𝓂.parameters
+            if @ignore_derivatives min(max(parameter_values[indexin(k, 𝓂.parameters)], v[1]), v[2]) != parameter_values[indexin(k, 𝓂.parameters)]
+                return -Inf
+            end
         end
-    end
-
-    if min(max(parameters,lb),ub) != parameters 
-        return -Inf
     end
 
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
@@ -2900,19 +2895,13 @@ function get_loglikelihood(𝓂::ℳ,
 
     @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
 
-    # keep the parameters wihtin bounds
-    ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters) + length(𝓂.➕_vars))
-    lb = @ignore_derivatives -ub
-
-    for (i,v) in enumerate(𝓂.bounded_vars)
-        if v ∈ 𝓂.parameters
-            @ignore_derivatives lb[i] = 𝓂.lower_bounds[i]
-            @ignore_derivatives ub[i] = 𝓂.upper_bounds[i]
+    # keep the parameters within bounds
+    for (k,v) in 𝓂.bounds
+        if k ∈ 𝓂.parameters
+            if @ignore_derivatives min(max(parameter_values[indexin(k, 𝓂.parameters)], v[1]), v[2]) != parameter_values[indexin(k, 𝓂.parameters)]
+                return -Inf
+            end
         end
-    end
-
-    if min(max(parameter_values,lb),ub) != parameter_values 
-        return -Inf
     end
 
     # solve model given the parameters
