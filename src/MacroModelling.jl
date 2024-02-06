@@ -2632,11 +2632,11 @@ function write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relev
 
     vars_to_exclude = [Symbol.(solved_system[1]),Symbol.(solved_system[2])]
 
-    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(solved_system[3])), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Expr[Meta.parse.(string.(solved_system[3]))...], vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
 
     vars_to_exclude = [Symbol.(vcat(solved_system[1])),Symbol[]]
 
-    rewritten_eqs2, ss_and_aux_equations2, ss_and_aux_equations_dep2, ss_and_aux_equations_error2, ss_and_aux_equations_error_dep2 = make_equation_rebust_to_domain_errors(Meta.parse.(string.(solved_system[4])), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
+    rewritten_eqs2, ss_and_aux_equations2, ss_and_aux_equations_dep2, ss_and_aux_equations_error2, ss_and_aux_equations_error_dep2 = make_equation_rebust_to_domain_errors(Expr[Meta.parse.(string.(solved_system[4]))...], vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
 
     push!(𝓂.solved_vars, Symbol.(vcat(solved_system[1], solved_system[2])))
     push!(𝓂.solved_vals, vcat(rewritten_eqs, rewritten_eqs2))
