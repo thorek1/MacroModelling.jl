@@ -2916,7 +2916,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             catch
             end
             
-            if isnothing(soll)
+            if isnothing(soll) || isempty(soll)
                 println("Failed finding solution symbolically for: ",var_to_solve_for," in: ",eq_to_solve)
                 
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
