@@ -1120,7 +1120,7 @@ macro parameters(𝓂,ex...)
                 x.args[1] == :(<) ?
                     x.args[2] isa Symbol ? 
                         begin
-                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], x.args[3]-eps(Float32)), min(bounds[x.args[2]][2], -1e12+rand())) : (x.args[3]-eps(Float32), -1e12+rand())
+                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12+rand()), min(bounds[x.args[2]][2], x.args[3]-eps(Float32))) : (-1e12+rand(), x.args[3]-eps(Float32))
                         end :
                     x.args[3] isa Symbol ? 
                         begin
@@ -1134,7 +1134,7 @@ macro parameters(𝓂,ex...)
                         end :
                     x.args[3] isa Symbol ? 
                         begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[2]-eps(Float32)), min(bounds[x.args[3]][2],-1e12+rand())) : (x.args[2]-eps(Float32),-1e12+rand())
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], -1e12+rand()), min(bounds[x.args[3]][2], x.args[2]-eps(Float32))) : (-1e12+rand(), x.args[2]-eps(Float32))
                         end :
                     x :
                 x.args[1] == :(>=) ?
@@ -1144,13 +1144,13 @@ macro parameters(𝓂,ex...)
                         end :
                     x.args[3] isa Symbol ? 
                         begin
-                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[2]), min(bounds[x.args[3]][2],-1e12+rand())) : (x.args[2],-1e12+rand())
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], -1e12+rand()), min(bounds[x.args[3]][2], x.args[2])) : (-1e12+rand(), x.args[2])
                         end :
                     x :
                 x.args[1] == :(<=) ?
                     x.args[2] isa Symbol ? 
                         begin
-                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], x.args[3]), min(bounds[x.args[2]][2], -1e12+rand())) : (x.args[3], -1e12+rand())
+                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12+rand()), min(bounds[x.args[2]][2], x.args[3])) : (-1e12+rand(), x.args[3])
                         end :
                     x.args[3] isa Symbol ? 
                         begin
@@ -1176,11 +1176,12 @@ macro parameters(𝓂,ex...)
         calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
 
         @assert length(setdiff(setdiff(setdiff(union(reduce(union, par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)...])
-        
+        println(mod.$𝓂.bounds)
+        println($bounds)
         for (k,v) in $bounds
             mod.$𝓂.bounds[k] = haskey(mod.$𝓂.bounds, k) ? (max(mod.$𝓂.bounds[k][1], v[1]), min(mod.$𝓂.bounds[k][2], v[2])) : (v[1], v[2])
         end
-        
+        println(mod.$𝓂.bounds)        
         invalid_bounds = Symbol[]
 
         for (k,v) in mod.$𝓂.bounds

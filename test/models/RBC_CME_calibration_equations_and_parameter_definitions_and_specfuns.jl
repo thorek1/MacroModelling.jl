@@ -45,7 +45,7 @@ end
     gamma = .99
     eta = 0.01
     
-    1 => eta > -1
+    1 >= eta > -1
     -1 < gamma <= 1
     -1 <= std_z_delta < 1
     -1 <= rhoz <= 1
