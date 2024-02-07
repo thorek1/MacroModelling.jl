@@ -1,7 +1,7 @@
 # Todo list
 
 ## High priority
-
+- [ ] ss transition by entering new prameters at given periods
 - [ ] add technical details about SS solver, obc solver, and other algorithms
 - [ ] throw error when equations appear more than once
 - [ ] plot multiple solutions or models - multioptions in one graph
