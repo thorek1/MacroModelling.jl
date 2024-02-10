@@ -1711,7 +1711,9 @@ function levenberg_marquardt(f::Function,
     initial_guess::Array{T,1}, 
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1}; 
-    parameters::solver_parameters = solver_parameters(eps(), eps(), 100, 2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 1, 0.0, 2)
+    parameters::solver_parameters = solver_parameters(eps(), eps(), 100, 0.05814042582751475, 0.5702698789719975, 0.03382138395057475, 0.25918626012845364, 0.0662319740503987, 0.5410119412506177, 0.007144810254743735, 0.0001168046575260888, 2.533725769443645, 0.057032046814132036, 0.0006327913349402587, 1.0203442179517896, 4.2821007772214585, 0.47159930190547333, 1.4590336864534836, 4.152260483639792, 0.6262547631061216, 0.015607557534252964, 5.912077792686559, 4, 0.0, 2)
+    # 1.7941563957370525
+    # 2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 1, 0.0, 2)
     ) where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
@@ -3530,7 +3532,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         verbose::Bool;
                         tol::AbstractFloat = 1e-12,#eps(),
                         # timeout = 120,
-                        starting_points::Vector{Float64} = [0.7688, 0.897]#, 
+                        starting_points::Vector{Float64} = [1.7941563957370525, 0.897]#, 
                         # 1.2, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
                         # fail_fast_solvers_only = true,
                         # verbose::Bool = false
@@ -3710,7 +3712,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     verbose::Bool ;
     tol::AbstractFloat = eps(),
     # timeout = 120,
-    starting_points::Vector{Float64} = [0.7688, 0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
+    starting_points::Vector{Float64} = [1.7941563957370525, 0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
     # fail_fast_solvers_only = true,
     # verbose::Bool = false
     ) where {Z,S,N}
