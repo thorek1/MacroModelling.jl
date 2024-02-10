@@ -1276,7 +1276,7 @@ function get_steady_state(𝓂::ℳ;
     return_variables_only::Bool = false,
     verbose::Bool = false,
     silent::Bool = true,
-    tol::AbstractFloat = eps())
+    tol::AbstractFloat = 1e-12)
 
     if !(algorithm == :first_order) stochastic = true end
     
@@ -1644,7 +1644,7 @@ function get_solution(𝓂::ℳ,
                         parameters::Vector{<: Real}; 
                         algorithm::Symbol = :first_order, 
                         verbose::Bool = false, 
-                        tol::AbstractFloat = eps())
+                        tol::AbstractFloat = 1e-12)
     @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
 
     
@@ -2881,7 +2881,7 @@ function get_loglikelihood(𝓂::ℳ,
     algorithm::Symbol = :first_order, 
     filter::Symbol = :kalman, 
     warmup_iterations::Int = 0, 
-    tol::AbstractFloat = eps(), 
+    tol::AbstractFloat = 1e-12, 
     verbose::Bool = false)::S where S
     
     # checks to avoid errors further down the line and inform the user

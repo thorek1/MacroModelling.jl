@@ -3063,7 +3063,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     #                             end
     #                         end))
 
-    push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < eps(Float64))
+    push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < 1e-12)
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
                                 # solved_scale = scale
                             end))
@@ -3441,7 +3441,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                                 end
                             end))
 
-    push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < eps(Float64))
+    push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < 1e-12)
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
                                 # solved_scale = scale
                             end))
@@ -3528,7 +3528,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         parameters::solver_parameters,
                         cold_start::Union{Bool,Float64},
                         verbose::Bool;
-                        tol::AbstractFloat = eps(),
+                        tol::AbstractFloat = 1e-12,#eps(),
                         # timeout = 120,
                         starting_points::Vector{Float64} = [0.7688, 0.897]#, 
                         # 1.2, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
@@ -3552,10 +3552,10 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
             sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_points[1],length(guess)))) 
             sol_values[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
-            sol_minimum  = sum(abs2, ss_solve_blocks(parameters_and_solved_vars, sol_values))
+            sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, sol_values))
         else
             sol_values = guess
-            sol_minimum  = sum(abs2, ss_solve_blocks(parameters_and_solved_vars, sol_values))
+            sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, sol_values))
 
             if verbose && sol_minimum < tol
                 println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
@@ -3577,7 +3577,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                                         parameters = parameters
                                     ) # alternatively use .001)#, μ = μ, p = p)# catch e end
 
-        sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
+        sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
         sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
         total_iters += info[1]
 
@@ -3602,7 +3602,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         parameters = parameters
                         )# catch e end
                 
-                    sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
+                    sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
 
                     sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
                     
@@ -3645,7 +3645,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
 
-        sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
+        sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
 
         sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
 
@@ -3674,7 +3674,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     #                 sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
 
-    #                 sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
+    #                 sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
 
     #                 sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
 
@@ -3848,7 +3848,7 @@ second_order_stochastic_steady_state_iterative_solution = ℐ.ImplicitFunction(s
                                                                                     linear_solver = ℐ.DirectLinearSolver())
 
 
-function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = eps())::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
+function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     if solution_error > tol || isnan(solution_error)
@@ -3994,7 +3994,7 @@ function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁�
 end
 
 
-function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = eps())::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
+function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     if solution_error > tol || isnan(solution_error)
@@ -4070,7 +4070,7 @@ function solve!(𝓂::ℳ;
     obc::Bool = false,
     verbose::Bool = false,
     silent::Bool = false,
-    tol::AbstractFloat = eps())
+    tol::AbstractFloat = 1e-12)
 
     @assert algorithm ∈ all_available_algorithms
     
@@ -7120,7 +7120,7 @@ function inversion_filter(𝓂::ℳ,
     algorithm::Symbol; 
     warmup_iterations::Int = 0,
     verbose::Bool = false, 
-    tol::AbstractFloat = eps())
+    tol::AbstractFloat = 1e-12)
     
     observables = collect(axiskeys(data_in_deviations,1))
 
@@ -7307,7 +7307,7 @@ function inversion_filter(𝓂::ℳ,
 end
 
 
-function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}, observables::Vector{Symbol}; verbose::Bool = false, tol::AbstractFloat = eps())
+function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}, observables::Vector{Symbol}; verbose::Bool = false, tol::AbstractFloat = 1e-12)
     # Based on Durbin and Koopman (2012)
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
 
