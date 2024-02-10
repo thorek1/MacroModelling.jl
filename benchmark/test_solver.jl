@@ -18,44 +18,150 @@ include("../models/Aguiar_Gopinath_2007.jl")
 include("../models/Ascari_Sbordone_2014.jl") # stands out
 include("../models/FS2000.jl")
 include("../models/SW07.jl")
-include("../models/RBC_baseline.jl")
+# include("../models/RBC_baseline.jl") # no solver block / everything analytical
 include("../models/Guerrieri_Iacoviello_2017.jl") # stands out
 
 
 all_models = [
-    m, 
-    Backus_Kehoe_Kydland_1992, 
-    Baxter_King_1993, 
-    SW03, 
+    Guerrieri_Iacoviello_2017,
+    NAWM_EAUS_2008, 
     GNSS_2010, 
+    Ascari_Sbordone_2014, 
+    SW03, 
+    Backus_Kehoe_Kydland_1992, 
+    m, 
+    Baxter_King_1993, 
     Ghironi_Melitz_2005, 
     SGU_2003_debt_premium, 
-    NAWM_EAUS_2008, 
     JQ_2012_RBC, 
     Ireland_2004, 
     Caldara_et_al_2012, 
     Gali_Monacelli_2005_CITR, 
     Gali_2015_chapter_3_nonlinear, 
     Aguiar_Gopinath_2007, 
-    Ascari_Sbordone_2014, 
     FS2000, 
-    SW07, 
-    Guerrieri_Iacoviello_2017
+    SW07
+    # RBC_baseline,
 ];
-
 
 
 function calc_total_iters(model, par_inputs, starting_point)
     outmodel = try model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs) catch end
-    # outmodel = model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs)
-    
+
     outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
-        (outmodel[2][1] > eps(Float64)) || !isfinite(outmodel[2][1]) ? 
-            1000000 : 
+        (outmodel[2][1] > 1e-12) || !isfinite(outmodel[2][1]) ? 
+            Inf : 
         outmodel[2][2] : 
-    1000000
+    Inf
 end
 
+# SW07.SS_solve_func(SW07.parameter_values, SW07, false, xsol[end], par_inputssol)
+
+
+using Turing, StatsPlots
+
+# Define your model
+Turing.@model function evaluate_pars(all_models)
+    x = Vector{Float64}(undef, 22)  # Define the variable x
+
+    # Assuming x has 22 parameters plus the last one for `x[end]` manipulation
+    # Here we define some example priors for each parameter in `x`
+    # Adjust these priors based on your knowledge of the parameters
+    # x[1:11] ~ filldist(MacroModelling.Gamma(1.0, 2.0, μσ = true), 11) # For parameters that need to be sorted and are positive
+    # x[12:19] ~ filldist(MacroModelling.Beta(.75, .25, μσ = true), 8) # For parameters that need to be sorted and are positive
+    
+    x[1:19] ~ filldist(MacroModelling.Gamma(1.0, 2.0, μσ = true), 19) # For parameters that need to be sorted and are positive
+
+    x[20] ~ Turing.DiscreteUniform(0, 4) 
+    x[21] ~ Turing.DiscreteUniform(2, 3) 
+    x[22] ~ MacroModelling.Normal(0.0, 2.0)
+
+    x[1:2] = sort(x[1:2], rev = true)
+
+    # Translate your function's logic here
+    # This part will depend on how you can simulate or calculate the total_iters and total_iters_pars 
+    # based on the parameters `x`. You'll need to replace this with the actual logic.
+    par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], x[19], x[20], 0.0, x[21])
+    
+    for model in all_models
+        out = calc_total_iters(model, par_inputs, x[22])
+        if out == Inf
+            Turing.@addlogprob! -Inf
+            break
+        else
+            Turing.@addlogprob! -1e2 * calc_total_iters(model, par_inputs, x[22])
+        end
+    end
+end
+
+# sample_function(all_models)
+# samps = sample(evaluate_pars(all_models), PG(20), 100)
+# samps = sample(evaluate_pars(all_models), SMC(), 100)
+samps = sample(evaluate_pars(all_models), PG(50), 500)
+# samps = sample(evaluate_pars(all_models), IS(), 1000) # doesnt cover the relevant region
+
+
+# using Pigeons
+
+# pt = Pigeons.pigeons(target = Pigeons.TuringLogPotential(evaluate_pars(all_models)),
+#             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+#             n_chains = 1,
+#             n_rounds = 1,
+#             multithreaded = false)
+
+
+
+plot(samps)
+
+
+filtered_chains = MCMCChains.Chains(samps.value[vec(samps[:lp] .> -Inf), : , :], names(samps))
+
+plot(filtered_chains)
+
+candidate = samps.value[indexin([maximum(samps[:lp])], vec(samps[:lp])),:,:][1,1:end-2,1]
+# candidate = samps.value[vec(samps[:lp] .> -Inf),:,:][1,:,:]
+# candidate[:,23,:]|>maximum 
+
+# 1218/19
+candidate = mean(filtered_chains).nt.mean[1:end-2]
+
+xsol = candidate
+par_inputssol = MacroModelling.solver_parameters(   
+    eps(),eps(),250,  xsol[1], xsol[2], xsol[3], xsol[4], xsol[5], xsol[6], xsol[7], xsol[8], xsol[9], xsol[10], xsol[11], xsol[12], xsol[13], xsol[14], xsol[15], xsol[16], xsol[17], xsol[18], xsol[19], Int(abs(round(xsol[20]))), 
+    0.0, # xsol[21], 
+    Int(abs(round(xsol[21])))
+)
+
+
+
+log_lik = 0
+
+for model in all_models
+    log_lik -= -1e0 * sqrt(calc_total_iters(model, par_inputssol, xsol[22]))
+end
+log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 1.0, μσ = true), 11),candidate[1:11])
+log_lik -= logpdf(filldist(MacroModelling.Beta(.75, .25, μσ = true), 8),candidate[12:19])
+log_lik -= logpdf(Turing.DiscreteUniform(0, 4),candidate[20])
+log_lik -= logpdf(Turing.DiscreteUniform(2, 3),candidate[21])
+log_lik -= logpdf(MacroModelling.Normal(0.0, 10.0),candidate[22])
+
+
+logpdf(MacroModelling.Normal(0.0, 10.0),0000)
+calc_total_iters(SW07, par_inputssol, xsol[22])
+
+# total_iters = 0
+for model in all_models
+    iter = sqrt(calc_total_iters(model, par_inputssol, xsol[end]))
+    println(iter, "\t ", model.model_name)
+    # total_iters += iter
+end
+# total_iters
+
+
+
+
+
+m = NAWM_EAUS_2008
 par_inputs = m.solver_parameters
 
 calc_total_iters(m, par_inputs, 0.897)
@@ -204,10 +310,12 @@ prob = OptimizationProblem(f, innit, false, lb = lbs, ub = ubs)
 f(innit,true)
 # using BenchmarkTools
 
-# max_minutes = 1 * 60
-max_hours = 24 * 60 ^ 2
+max_minutes = 1 * 60
 # Start 1200 (PT time)
 
+sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes); sol_ESCH.minimum
+
+max_hours = 8 * 60 ^ 2
 sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_hours); sol_ESCH.minimum
 
 innit2 = deepcopy(sol_ESCH.u)
@@ -223,6 +331,37 @@ x = innit2
 
 
 
+
+
+
+# using Pigeons
+
+# pt = Pigeons.pigeons(target = Pigeons.TuringLogPotential(sample_function(all_models)),
+#             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+#             n_chains = 1,
+#             n_rounds = 1,
+#             multithreaded = false)
+
+
+
+samps = MCMCChains.Chains(pt)
+
+println(mean(samps).nt.mean)
+            
+xsol = mean(samps).nt.mean
+
+par_inputssol = MacroModelling.solver_parameters(   
+    eps(),eps(),100,  xsol[1], xsol[2], xsol[3], xsol[4], xsol[5], xsol[6], xsol[7], xsol[8], xsol[9], xsol[10], xsol[11], xsol[12], xsol[13], xsol[14], xsol[15], xsol[16], xsol[17], xsol[18], xsol[19], Int(abs(round(xsol[20]))), 
+    0.0, # xsol[21], 
+    Int(abs(round(xsol[21])))
+)
+
+total_iters = 0
+for model in all_models
+    total_iters += calc_total_iters(model, par_inputssol, xsol[22])
+end
+
+
 x[1:2] = sort(x[1:2], rev = true)
 
 par_inputs = MacroModelling.solver_parameters(   
@@ -231,7 +370,7 @@ par_inputs = MacroModelling.solver_parameters(
 
 total_iters = 0
 for model in all_models
-    iter = calc_total_iters(model, par_inputs, x[end])
+    iter = calc_total_iters(model, par_inputssol, xsol[end])
     println(iter, "\t ", model.model_name)
     total_iters += iter
 end
