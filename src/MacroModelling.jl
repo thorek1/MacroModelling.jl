@@ -2231,12 +2231,12 @@ end
 
 
 function write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
-    ➕_vars = Symbol[]
-    unique_➕_vars = Union{Symbol,Expr}[]
+    # ➕_vars = Symbol[]
+    # unique_➕_vars = Union{Symbol,Expr}[]
     
     vars_to_exclude = [Symbol.(vars_to_solve),Symbol[]]
     
-    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, Union{Symbol,Expr}[unique(𝓂.➕_vars)...])
     
     
     push!(𝓂.solved_vars, Symbol.(vars_to_solve))
@@ -2249,7 +2249,7 @@ function write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, e
         push!(syms_in_eqs, get_symbols(i)...)
     end
     
-    setdiff!(syms_in_eqs,➕_vars)
+    setdiff!(syms_in_eqs,𝓂.➕_vars)
     
     syms_in_eqs2 = Set{Symbol}()
     
@@ -2257,13 +2257,13 @@ function write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, e
         push!(syms_in_eqs2, get_symbols(i)...)
     end
     
-    union!(syms_in_eqs, intersect(syms_in_eqs2, ➕_vars))
+    union!(syms_in_eqs, intersect(syms_in_eqs2, 𝓂.➕_vars))
     
     push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
     
     calib_pars = Expr[]
     calib_pars_input = Symbol[]
-    relevant_pars = union(intersect(reduce(union, vcat(𝓂.par_list_aux_SS, 𝓂.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, ➕_vars))
+    relevant_pars = union(intersect(reduce(union, vcat(𝓂.par_list_aux_SS, 𝓂.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.➕_vars))
     
     union!(relevant_pars_across, relevant_pars)
     
@@ -2338,7 +2338,7 @@ function write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, e
     
     other_vars = Expr[]
     other_vars_input = Symbol[]
-    other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, ➕_vars),
+    other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
                                         sort(𝓂.solved_vars[end]) ),
                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
                                 # union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
@@ -3162,7 +3162,16 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
                 else
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                    vars_to_exclude = [[Symbol.(var_to_solve_for)],Symbol[]]
+
+                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors([𝓂.solved_vals[end]], vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, Union{Symbol,Expr}[unique(𝓂.➕_vars)...])
+    
+                    if length(ss_and_aux_equations) > 0
+                        push!(SS_solve_func,ss_and_aux_equations...)
+                        push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error...))))
+                    end
+                    
+                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
                 end
             end
         else
