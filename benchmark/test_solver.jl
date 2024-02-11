@@ -1,5 +1,13 @@
 using MacroModelling
 
+# logic to implement
+
+# when finding the NSSS the first time: use the system with aux variables as unknowns, parameters and solved vars as unknowns, separate the system into smaller blocks if possible
+# do redundant var reduction only if the vars to reduce are not part of nonlinear expressions
+# search for optim parameters that solve any of the models with a side condition of having the least necessary iterations
+# for estimation use the small system (no aux, pars and solved vars) and again look for optim parameters that solve the system with the least necessary iterations during estimation
+
+
 include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
 # include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
 include("../models/Backus_Kehoe_Kydland_1992.jl")
@@ -23,24 +31,24 @@ include("../models/Guerrieri_Iacoviello_2017.jl") # stands out
 
 
 all_models = [
-    Guerrieri_Iacoviello_2017,
+    # Guerrieri_Iacoviello_2017,
     NAWM_EAUS_2008, 
-    GNSS_2010, 
-    Ascari_Sbordone_2014, 
-    SW03, 
-    Backus_Kehoe_Kydland_1992, 
-    m, 
-    Baxter_King_1993, 
-    Ghironi_Melitz_2005, 
-    SGU_2003_debt_premium, 
-    JQ_2012_RBC, 
-    Ireland_2004, 
-    Caldara_et_al_2012, 
-    Gali_Monacelli_2005_CITR, 
-    Gali_2015_chapter_3_nonlinear, 
-    Aguiar_Gopinath_2007, 
-    FS2000, 
-    SW07
+    # GNSS_2010, 
+    # Ascari_Sbordone_2014, 
+    # SW03, 
+    # Backus_Kehoe_Kydland_1992, 
+    # m, 
+    # Baxter_King_1993, 
+    # Ghironi_Melitz_2005, 
+    # SGU_2003_debt_premium, 
+    # JQ_2012_RBC, 
+    # Ireland_2004, 
+    # Caldara_et_al_2012, 
+    # Gali_Monacelli_2005_CITR, 
+    # Gali_2015_chapter_3_nonlinear, 
+    # Aguiar_Gopinath_2007, 
+    # FS2000, 
+    # SW07
     # RBC_baseline,
 ];
 
@@ -50,7 +58,7 @@ function calc_total_iters(model, par_inputs, starting_point)
 
     outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
         (outmodel[2][1] > 1e-12) || !isfinite(outmodel[2][1]) ? 
-            Inf : 
+            10000 : 
         outmodel[2][2] : 
     Inf
 end
@@ -74,7 +82,7 @@ Turing.@model function evaluate_pars(all_models)
 
     x[20] ~ Turing.DiscreteUniform(0, 4) 
     x[21] ~ Turing.DiscreteUniform(2, 3) 
-    x[22] ~ MacroModelling.Normal(0.0, 2.0)
+    x[22] ~ MacroModelling.Normal(0.0, 10.0)
 
     x[1:2] = sort(x[1:2], rev = true)
 
@@ -84,21 +92,21 @@ Turing.@model function evaluate_pars(all_models)
     par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], x[19], x[20], 0.0, x[21])
     
     for model in all_models
-        out = calc_total_iters(model, par_inputs, x[22])
-        if out == Inf
-            Turing.@addlogprob! -Inf
-            break
-        else
-            Turing.@addlogprob! -1e2 * calc_total_iters(model, par_inputs, x[22])
-        end
+        Turing.@addlogprob! -1e2 *  calc_total_iters(model, par_inputs, x[22])
+        # if out == Inf
+        #     Turing.@addlogprob! -Inf
+        #     break
+        # else
+        #     Turing.@addlogprob! -1e2 * calc_total_iters(model, par_inputs, x[22])
+        # end
     end
 end
 
 # sample_function(all_models)
-# samps = sample(evaluate_pars(all_models), PG(20), 100)
+# samps = sample(evaluate_pars(all_models), PG(100), 10)
 # samps = sample(evaluate_pars(all_models), SMC(), 100)
-samps = sample(evaluate_pars(all_models), PG(50), 500)
-# samps = sample(evaluate_pars(all_models), IS(), 1000) # doesnt cover the relevant region
+samps = sample(evaluate_pars(all_models), PG(10), 200)
+samps = sample(evaluate_pars(all_models), IS(), 10000) # doesnt cover the relevant region
 
 
 # using Pigeons
@@ -113,14 +121,37 @@ samps = sample(evaluate_pars(all_models), PG(50), 500)
 
 plot(samps)
 
-
-filtered_chains = MCMCChains.Chains(samps.value[vec(samps[:lp] .> -Inf), : , :], names(samps))
+samps[:lp]|> unique
+filtered_chains = MCMCChains.Chains(samps.value[vec(samps[:lp] .> -1000000), : , :], names(samps))
 
 plot(filtered_chains)
 
 candidate = samps.value[indexin([maximum(samps[:lp])], vec(samps[:lp])),:,:][1,1:end-2,1]
 # candidate = samps.value[vec(samps[:lp] .> -Inf),:,:][1,:,:]
 # candidate[:,23,:]|>maximum 
+candidate = [0.05814042582751475
+0.5702698789719975
+0.03382138395057475
+0.25918626012845364
+0.0662319740503987
+0.5410119412506177
+0.007144810254743735
+0.0001168046575260888
+2.533725769443645
+0.057032046814132036
+0.0006327913349402587
+1.0203442179517896
+4.2821007772214585
+0.47159930190547333
+1.4590336864534836
+4.152260483639792
+0.6262547631061216
+0.015607557534252964
+5.912077792686559
+4.0
+2.0
+1.7941563957370525]
+
 
 # 1218/19
 candidate = mean(filtered_chains).nt.mean[1:end-2]
@@ -133,11 +164,10 @@ par_inputssol = MacroModelling.solver_parameters(
 )
 
 
-
 log_lik = 0
 
 for model in all_models
-    log_lik -= -1e0 * sqrt(calc_total_iters(model, par_inputssol, xsol[22]))
+    log_lik -= -1e0 * (calc_total_iters(model, par_inputssol, xsol[22]))
 end
 log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 1.0, μσ = true), 11),candidate[1:11])
 log_lik -= logpdf(filldist(MacroModelling.Beta(.75, .25, μσ = true), 8),candidate[12:19])
@@ -146,12 +176,16 @@ log_lik -= logpdf(Turing.DiscreteUniform(2, 3),candidate[21])
 log_lik -= logpdf(MacroModelling.Normal(0.0, 10.0),candidate[22])
 
 
+SS(SW03, verbose = true)
+SW03.SS_solve_func(SW03.parameter_values, SW03, false, xsol[22], par_inputssol)
+
+
 logpdf(MacroModelling.Normal(0.0, 10.0),0000)
 calc_total_iters(SW07, par_inputssol, xsol[22])
 
 # total_iters = 0
 for model in all_models
-    iter = sqrt(calc_total_iters(model, par_inputssol, xsol[end]))
+    iter = (calc_total_iters(model, par_inputssol, xsol[end]))
     println(iter, "\t ", model.model_name)
     # total_iters += iter
 end
