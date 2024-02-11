@@ -1,8 +1,10 @@
 using MacroModelling
-# include("../models/FS2000.jl")
+include("../models/FS2000.jl")
 # include("../models/Caldara_et_al_2012.jl")
+FS2000.SS_solve_func
 include("../models/Ascari_Sbordone_2014.jl")
-
+# include("../models/NAWM_EAUS_2008.jl")
+Ascari_Sbordone_2014.SS_solve_func
 # include("../test/models/RBC_CME.jl")
 
 # Backus_Kehoe_Kydland_1992
@@ -11,6 +13,8 @@ include("../models/Ascari_Sbordone_2014.jl")
 
 FS2000.SS_solve_func
 FS2000.ss_solve_blocks
+
+
 
 # l = (m * n * psi) / ((n - 1.0) * (psi - 1.0))
 # P = (m ^ 2 * n ^ alp * psi * exp(➕₇)) / (bet * ((-alp - n * psi * (alp - 1.0)) + n * (alp - 1.0) + psi * (alp - 1.0) + 1.0) * ➕₉ ^ alp)
@@ -109,11 +113,11 @@ min_max_errors = []
 
 nb = n_blocks
 
-while nb > 0 
+# while nb > 0 
     if length(eqs[:,eqs[2,:] .== nb]) == 2
-        var_to_solve_for = collect(unknowns)[vars[:,vars[2,:] .== nb][1]]
+        var_to_solve_for = collect(unknowns)[vars[:,vars[2,:] .== n][1]]
 
-        eq_to_solve = ss_equations[eqs[:,eqs[2,:] .== nb][1]]
+        eq_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1]]
 
         # eliminate min/max from equations if solving for variables inside min/max. set to the variable we solve for automatically
         parsed_eq_to_solve_for = eq_to_solve |> string |> Meta.parse
@@ -142,15 +146,14 @@ while nb > 0
         catch
         end
         
-        if isnothing(soll)
-            # println("Could not solve single variables case symbolically.")
+        if isnothing(soll) || isempty(soll)
             println("Failed finding solution symbolically for: ",var_to_solve_for," in: ",eq_to_solve)
-            # solve numerically
-            continue
-        # elseif PythonCall.pyconvert(Bool,soll[1].is_number)
+            
+            eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
+            # write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+            MacroModelling.write_domain_safe_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
         elseif soll[1].is_number == true
-            # ss_equations = ss_equations.subs(var_to_solve,soll[1])
             ss_equations = [eq.subs(var_to_solve_for,soll[1]) for eq in ss_equations]
             
             push!(𝓂.solved_vars,Symbol(var_to_solve_for))
@@ -164,27 +167,34 @@ while nb > 0
 
             push!(atoms_in_equations_list,[])
         else
-
             push!(𝓂.solved_vars,Symbol(var_to_solve_for))
             push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
             
-            # atoms = reduce(union,soll[1].atoms())
-
             [push!(atoms_in_equations, Symbol(a)) for a in soll[1].atoms()]
             push!(atoms_in_equations_list, Set(union(setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs)),Symbol.(soll[1].atoms()))))
 
-            # println(atoms_in_equations)
-            # push!(atoms_in_equations, soll[1].atoms())
-
-            if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
-                push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.lower_bounds[indexin([𝓂.solved_vars[end]],𝓂.bounded_vars)][1]),$(𝓂.solved_vals[end])),$(𝓂.upper_bounds[indexin([𝓂.solved_vars[end]],𝓂.bounded_vars)][1]))))
+            if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
+                push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
             else
-                push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                vars_to_exclude = [[Symbol.(var_to_solve_for)],Symbol[]]
+
+                ➕_vars = Symbol[]
+                unique_➕_vars = Union{Symbol,Expr}[]
+
+                rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors([𝓂.solved_vals[end]], vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
+
+                if length(ss_and_aux_equations) > 0
+                    push!(SS_solve_func,ss_and_aux_equations...)
+                end
+                
+                push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
+                
+                push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error...))))
             end
         end
-        nb -= 1
-    else 
-        break
+        n -= 1
+    # else 
+    #     break
     end
 end
 
@@ -259,7 +269,12 @@ result = Expr[]
 
 sorted_vars = sort(Symbol.(vars_to_solve))
 
-for (i, parss) in enumerate(sorted_vars) 
+# ss_and_aux_equations_dep[1]|>dump
+# ss_and_aux_equations_dep[1].args[1]
+# [i.args[1] for i in ss_and_aux_equations_dep]
+aux_vars = sort([i.args[1] for i in ss_and_aux_equations_dep])
+
+for (i, parss) in enumerate(vcat(sorted_vars, aux_vars))
     push!(guess,:($parss = guess[$i]))
     push!(result,:($parss = sol[$i]))
 end
@@ -324,14 +339,16 @@ end
 
 # solved_vals[end] = Expr(:call, :+, solved_vals[end], ss_and_aux_equations_error_dep...)
 
+aux_equations = [:($(i.args[1]) - $(i.args[2].args[3].args[3])) for i in ss_and_aux_equations_dep]
+
 funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)
         $(guess...) 
         $(calib_pars...) # add those variables which were previously solved and are used in the equations
         $(other_vars...) # take only those that appear in equations - DONE
 
-        $(ss_and_aux_equations_dep...)
+        # $(ss_and_aux_equations_dep...)
         # return [$(solved_vals...),$(nnaux_linear...)]
-        return [$(solved_vals...)]
+        return [$(solved_vals...), $(aux_equations...)]
     end)
 
 push!(NSSS_solver_cache_init_tmp,fill(0.897,length(sorted_vars)))
@@ -343,7 +360,7 @@ ubs = Float64[]
 
 limit_boundaries = 1e12
 
-for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
+for i in vcat(sorted_vars, aux_vars, calib_pars_input, other_vars_input)
     if haskey(𝓂.bounds,i)
         push!(lbs,𝓂.bounds[i][1])
         push!(ubs,𝓂.bounds[i][2])
@@ -393,6 +410,10 @@ end
 push!(SS_solve_func,:(sol = solution[1]))
 
 push!(SS_solve_func,:($(result...)))   
+
+if length(ss_and_aux_equations_error_dep) > 0
+    push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error_dep...))))
+end
 
 push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
 push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
