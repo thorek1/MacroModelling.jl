@@ -2230,6 +2230,212 @@ end
 
 
 
+function write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+    ➕_vars = Symbol[]
+    unique_➕_vars = Union{Symbol,Expr}[]
+    
+    vars_to_exclude = [Symbol.(vars_to_solve),Symbol[]]
+    
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
+    
+    
+    push!(𝓂.solved_vars, Symbol.(vars_to_solve))
+    push!(𝓂.solved_vals, rewritten_eqs)
+    
+    
+    syms_in_eqs = Set{Symbol}()
+    
+    for i in vcat(ss_and_aux_equations_dep, ss_and_aux_equations, rewritten_eqs)
+        push!(syms_in_eqs, get_symbols(i)...)
+    end
+    
+    setdiff!(syms_in_eqs,➕_vars)
+    
+    syms_in_eqs2 = Set{Symbol}()
+    
+    for i in ss_and_aux_equations
+        push!(syms_in_eqs2, get_symbols(i)...)
+    end
+    
+    union!(syms_in_eqs, intersect(syms_in_eqs2, ➕_vars))
+    
+    push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
+    
+    calib_pars = Expr[]
+    calib_pars_input = Symbol[]
+    relevant_pars = union(intersect(reduce(union, vcat(𝓂.par_list_aux_SS, 𝓂.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, ➕_vars))
+    
+    union!(relevant_pars_across, relevant_pars)
+    
+    iii = 1
+    for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters)
+        if :($parss) ∈ relevant_pars
+            push!(calib_pars, :($parss = parameters_and_solved_vars[$iii]))
+            push!(calib_pars_input, :($parss))
+            iii += 1
+        end
+    end
+    
+    guess = Expr[]
+    result = Expr[]
+    
+    sorted_vars = sort(Symbol.(vars_to_solve))
+    
+    # ss_and_aux_equations_dep[1]|>dump
+    # ss_and_aux_equations_dep[1].args[1]
+    # [i.args[1] for i in ss_and_aux_equations_dep]
+    aux_vars = sort([i.args[1] for i in ss_and_aux_equations_dep])
+    
+    for (i, parss) in enumerate(vcat(sorted_vars, aux_vars))
+        push!(guess,:($parss = guess[$i]))
+        push!(result,:($parss = sol[$i]))
+    end
+    
+    # separate out auxilliary variables (nonnegativity)
+    # nnaux = []
+    # nnaux_linear = []
+    # nnaux_error = []
+    # push!(nnaux_error, :(aux_error = 0))
+    solved_vals = Expr[]
+    partially_solved_block = Expr[]
+    
+    other_vrs_eliminated_by_sympy = Set{Symbol}()
+    
+    for (i,val) in enumerate(𝓂.solved_vals[end])
+        if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
+            val = vcat(𝓂.ss_aux_equations, 𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
+            # push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
+            push!(other_vrs_eliminated_by_sympy, val.args[2])
+            # push!(nnaux_linear,:($val))
+            # push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
+        end
+    end
+    
+    
+    
+    for (i,val) in enumerate(rewritten_eqs)
+        push!(solved_vals, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+    end
+    
+    # if length(nnaux) > 1
+    #     all_symbols = map(x->x.args[1],nnaux) #relevant symbols come first in respective equations
+    
+    #     nn_symbols = map(x->intersect(all_symbols,x), get_symbols.(nnaux))
+        
+    #     inc_matrix = fill(0,length(all_symbols),length(all_symbols))
+    
+    #     for i in 1:length(all_symbols)
+    #         for k in 1:length(nn_symbols)
+    #             inc_matrix[i,k] = collect(all_symbols)[i] ∈ collect(nn_symbols)[k]
+    #         end
+    #     end
+    
+    #     QQ, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(inc_matrix))
+    
+    #     nnaux = nnaux[QQ]
+    #     nnaux_linear = nnaux_linear[QQ]
+    # end
+    
+    other_vars = Expr[]
+    other_vars_input = Symbol[]
+    other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, ➕_vars),
+                                        sort(𝓂.solved_vars[end]) ),
+                                union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
+                                # union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
+    
+    for var in other_vrs
+        push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
+        push!(other_vars_input,:($(var)))
+        iii += 1
+    end
+    
+    # solved_vals[end] = Expr(:call, :+, solved_vals[end], ss_and_aux_equations_error_dep...)
+    
+    aux_equations = [:($(i.args[1]) - $(i.args[2].args[3].args[3])) for i in ss_and_aux_equations_dep]
+    
+    funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)
+            $(guess...) 
+            $(calib_pars...) # add those variables which were previously solved and are used in the equations
+            $(other_vars...) # take only those that appear in equations - DONE
+    
+            # $(ss_and_aux_equations_dep...)
+            # return [$(solved_vals...),$(nnaux_linear...)]
+            return [$(solved_vals...), $(aux_equations...)]
+        end)
+    
+    push!(NSSS_solver_cache_init_tmp,fill(0.897,length(vcat(sorted_vars,aux_vars))))
+    push!(NSSS_solver_cache_init_tmp,[Inf])
+    
+    # WARNING: infinite bounds are transformed to 1e12
+    lbs = Float64[]
+    ubs = Float64[]
+    
+    limit_boundaries = 1e12
+    
+    for i in vcat(sorted_vars, aux_vars, calib_pars_input, other_vars_input)
+        if haskey(𝓂.bounds,i)
+            push!(lbs,𝓂.bounds[i][1])
+            push!(ubs,𝓂.bounds[i][2])
+        else
+            push!(lbs,-limit_boundaries)
+            push!(ubs, limit_boundaries)
+        end
+    end
+    
+    push!(SS_solve_func,ss_and_aux_equations...)
+    
+    push!(SS_solve_func,:(params_and_solved_vars = [$(calib_pars_input...), $(other_vars_input...)]))
+    
+    push!(SS_solve_func,:(lbs = [$(lbs...)]))
+    push!(SS_solve_func,:(ubs = [$(ubs...)]))
+            
+    n_block = length(𝓂.ss_solve_blocks) + 1   
+        
+    push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
+    
+    if VERSION >= v"1.9"
+        push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒷())))
+    else
+        push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
+    end
+    
+    push!(SS_solve_func,:(solution = block_solver_AD(params_and_solved_vars,
+                                                            $(n_block), 
+                                                            𝓂.ss_solve_blocks[$(n_block)], 
+                                                            # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
+                                                            # f, 
+                                                            inits,
+                                                            lbs, 
+                                                            ubs,
+                                                            solver_parameters,
+                                                            # fail_fast_solvers_only = fail_fast_solvers_only,
+                                                            cold_start,
+                                                            verbose)))
+                                                            
+    push!(SS_solve_func,:(iters += solution[2][2])) 
+    push!(SS_solve_func,:(solution_error += solution[2][1])) 
+    
+    if length(ss_and_aux_equations_error) > 0
+        push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error...))))
+    end
+    
+    push!(SS_solve_func,:(sol = solution[1]))
+    
+    push!(SS_solve_func,:($(result...)))   
+    
+    if length(ss_and_aux_equations_error_dep) > 0
+        push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error_dep...))))
+    end
+    
+    push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
+    push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
+    
+    push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))    
+end
+
+
+
+
 function partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset)
     for n in length(eqs_to_solve)-1:-1:2
         for eq_combo in combinations(1:length(eqs_to_solve), n)
@@ -2315,6 +2521,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                                 push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                             end
 
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Symbol("➕" * sub(string(length(➕_vars))))
                                         end
@@ -2346,6 +2553,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                                     push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                                 end
 
+                                                bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
                                                 push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                                 replacement = Symbol("➕" * sub(string(length(➕_vars))))
                                             end
@@ -2379,6 +2587,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                             push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                         end
 
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
                                         push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                         replacement = Symbol("➕" * sub(string(length(➕_vars))))
                                     end
@@ -2408,6 +2617,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                                 push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                             end
 
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Symbol("➕" * sub(string(length(➕_vars))))
                                         end
@@ -2438,6 +2648,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                             push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                         end
 
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1 - eps())) : (eps(), 1 - eps())
                                         push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                         replacement = Symbol("➕" * sub(string(length(➕_vars))))
                                     end
@@ -2467,6 +2678,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                                 push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                             end
 
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1 - eps())) : (eps(), 1 - eps())
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Symbol("➕" * sub(string(length(➕_vars))))
                                         end
@@ -2497,6 +2709,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                             push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                         end
                                         
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 700)) : (-1e12, 700)
                                         push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                         replacement = Symbol("➕" * sub(string(length(➕_vars))))
                                     end
@@ -2526,6 +2739,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                                 push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                             end
                                             
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 700)) : (-1e12, 700)
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Symbol("➕" * sub(string(length(➕_vars))))
                                         end
@@ -2556,6 +2770,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                             push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                         end
                                         
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 2 - eps())) : (eps(), 2 - eps())
                                         push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                         replacement = Symbol("➕" * sub(string(length(➕_vars))))
                                     end
@@ -2585,6 +2800,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                                 push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                             end
                                             
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 2 - eps())) : (eps(), 2 - eps())
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Symbol("➕" * sub(string(length(➕_vars))))
                                         end
@@ -2921,7 +3137,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
-                write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
+                # write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                write_domain_safe_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
             elseif soll[1].is_number == true
                 ss_equations = [eq.subs(var_to_solve_for,soll[1]) for eq in ss_equations]
                 
@@ -2991,14 +3208,16 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 pe = sortperm(eqs_to_solve, by = string)
 
                 if length(pe) > 5
-                    write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                    # write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                    write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
                 else
                     solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe])
                     
                     if !isnothing(solved_system) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "LambertW")) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "Heaviside")) 
                         write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve)  
                     else
-                        write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
+                        # write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
+                        write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
                     end
                 end
 
