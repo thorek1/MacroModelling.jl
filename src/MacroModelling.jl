@@ -2037,11 +2037,11 @@ end
 
 function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
     ➕_vars = Symbol[]
-    unique_➕_vars = Union{Symbol,Expr}[]
+    unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
 
     vars_to_exclude = [Symbol.(vars_to_solve),Symbol[]]
 
-    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_eqs)
 
 
     push!(𝓂.solved_vars, Symbol.(vars_to_solve))
@@ -2230,13 +2230,13 @@ end
 
 
 
-function write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+function write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)
     # ➕_vars = Symbol[]
     # unique_➕_vars = Union{Symbol,Expr}[]
     
     vars_to_exclude = [Symbol.(vars_to_solve),Symbol[]]
     
-    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, Union{Symbol,Expr}[unique(𝓂.➕_vars)...])
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
     
     
     push!(𝓂.solved_vars, Symbol.(vars_to_solve))
@@ -2249,7 +2249,7 @@ function write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, e
         push!(syms_in_eqs, get_symbols(i)...)
     end
     
-    setdiff!(syms_in_eqs,𝓂.➕_vars)
+    setdiff!(syms_in_eqs, 𝓂.➕_vars)
     
     syms_in_eqs2 = Set{Symbol}()
     
@@ -2471,7 +2471,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                                 vars_to_exclude::Vector{Vector{Symbol}}, 
                                                 bounds::Dict{Symbol,Tuple{Float64,Float64}}, 
                                                 ➕_vars::Vector{Symbol}, 
-                                                unique_➕_vars::Vector{Union{Symbol,Expr}}, 
+                                                unique_➕_eqs,#::Dict{Union{Expr,Symbol},Symbol}();
                                                 precompile::Bool = false)
     ss_and_aux_equations = Expr[]
     ss_and_aux_equations_dep = Expr[]
@@ -2480,7 +2480,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
     rewritten_eqs = Union{Expr,Symbol}[]
     # write down ss equations including nonnegativity auxilliary variables
     # find nonegative variables, parameters, or terms
-    for eq in eqs 
+    for eq in eqs
         if eq isa Symbol
             push!(rewritten_eqs, eq)
         elseif eq isa Expr
@@ -2507,12 +2507,9 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                             x 
                                         end :
                                     begin
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Symbol("➕" * sub(string(➕_vars_idx)))
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
                                         else
-                                            push!(unique_➕_vars,x.args[2])
-
                                             if x.args[2] in vars_to_exclude[1]
                                                 push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
                                                 push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
@@ -2524,6 +2521,8 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
                                         end
                                         
                                         :($(replacement) ^ $(x.args[3]))
@@ -2539,12 +2538,9 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                         end
 
                                         if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                            if x.args[2] ∈ unique_➕_vars
-                                                ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                                replacement = Symbol("➕" * sub(string(➕_vars_idx)))
+                                            if haskey(unique_➕_eqs, x.args[2])
+                                                replacement = unique_➕_eqs[x.args[2]]
                                             else
-                                                push!(unique_➕_vars,x.args[2])
-
                                                 if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
                                                     push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
                                                     push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
@@ -2556,6 +2552,8 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                                 bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
                                                 push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                                 replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                                unique_➕_eqs[x.args[2]] = replacement
                                             end
                                         end
 
@@ -2573,12 +2571,9 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                         x 
                                     end :
                                 begin
-                                    if x.args[2] ∈ unique_➕_vars
-                                        ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                        replacement = Symbol("➕" * sub(string(➕_vars_idx)))
+                                    if haskey(unique_➕_eqs, x.args[2])
+                                        replacement = unique_➕_eqs[x.args[2]]
                                     else
-                                        push!(unique_➕_vars,x.args[2])
-
                                         if x.args[2] in vars_to_exclude[1]
                                             push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
                                             push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
@@ -2590,6 +2585,8 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                         bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
                                         push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                         replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                        unique_➕_eqs[x.args[2]] = replacement
                                     end
                                 
                                     :($(Expr(:call, x.args[1], replacement)))
@@ -2603,12 +2600,9 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                     end
 
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Symbol("➕" * sub(string(➕_vars_idx)))
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
                                         else
-                                            push!(unique_➕_vars,x.args[2])
-
                                             if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
                                                 push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
                                                 push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
@@ -2620,6 +2614,8 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
                                         end
                                     end
 
@@ -2634,12 +2630,9 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                     x 
                                 end :
                                 begin
-                                    if x.args[2] ∈ unique_➕_vars
-                                        ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                        replacement = Symbol("➕" * sub(string(➕_vars_idx)))
+                                    if haskey(unique_➕_eqs, x.args[2])
+                                        replacement = unique_➕_eqs[x.args[2]]
                                     else
-                                        push!(unique_➕_vars,x.args[2])
-
                                         if x.args[2] in vars_to_exclude[1]
                                             push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
                                             push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
@@ -2651,6 +2644,8 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                         bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1 - eps())) : (eps(), 1 - eps())
                                         push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                         replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                        unique_➕_eqs[x.args[2]] = replacement
                                     end
                                 
                                     :($(Expr(:call, x.args[1], replacement)))
@@ -2664,12 +2659,9 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                     end
 
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Symbol("➕" * sub(string(➕_vars_idx)))
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
                                         else
-                                            push!(unique_➕_vars,x.args[2])
-
                                             if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
                                                 push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
                                                 push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
@@ -2681,6 +2673,8 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1 - eps())) : (eps(), 1 - eps())
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
                                         end
                                     end
 
@@ -2695,12 +2689,9 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                     x 
                                 end :
                                 begin
-                                    if x.args[2] ∈ unique_➕_vars
-                                        ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                        replacement = Symbol("➕" * sub(string(➕_vars_idx)))
+                                    if haskey(unique_➕_eqs, x.args[2])
+                                        replacement = unique_➕_eqs[x.args[2]]
                                     else
-                                        push!(unique_➕_vars,x.args[2])
-                                        
                                         if x.args[2] in vars_to_exclude[1]
                                             push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(700,max(-1e12,$(x.args[2])))))
                                             push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
@@ -2712,6 +2703,8 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                         bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 700)) : (-1e12, 700)
                                         push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                         replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                        unique_➕_eqs[x.args[2]] = replacement
                                     end
                                 
                                     :($(Expr(:call, x.args[1], replacement)))
@@ -2725,12 +2718,9 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                     end
 
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Symbol("➕" * sub(string(➕_vars_idx)))
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
                                         else
-                                            push!(unique_➕_vars,x.args[2])
-                                            
                                             if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
                                                 push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(700,max(-1e12,$(x.args[2])))))
                                                 push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
@@ -2742,6 +2732,8 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 700)) : (-1e12, 700)
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
                                         end
                                     end
 
@@ -2756,12 +2748,9 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                         x 
                                     end :
                                 begin
-                                    if x.args[2] ∈ unique_➕_vars
-                                        ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                        replacement = Symbol("➕" * sub(string(➕_vars_idx)))
+                                    if haskey(unique_➕_eqs, x.args[2])
+                                        replacement = unique_➕_eqs[x.args[2]]
                                     else
-                                        push!(unique_➕_vars,x.args[2])
-
                                         if x.args[2] in vars_to_exclude[1]
                                             push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
                                             push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
@@ -2773,6 +2762,8 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                         bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 2 - eps())) : (eps(), 2 - eps())
                                         push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                         replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                        unique_➕_eqs[x.args[2]] = replacement
                                     end
                                 
                                     :($(Expr(:call, x.args[1], replacement)))
@@ -2786,12 +2777,9 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                     end
 
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Symbol("➕" * sub(string(➕_vars_idx)))
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
                                         else
-                                            push!(unique_➕_vars,x.args[2])
-
                                             if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
                                                 push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
                                                 push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
@@ -2803,6 +2791,8 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                             bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 2 - eps())) : (eps(), 2 - eps())
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
                                         end
                                     end
 
@@ -2848,17 +2838,18 @@ end
 
 
 
-function write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve)
+function write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, 
+    unique_➕_eqs)
     ➕_vars = Symbol[]
-    unique_➕_vars = Union{Symbol,Expr}[]
+    # unique_➕_vars = Dict{Union{Expr, Symbol},Symbol}()
 
     vars_to_exclude = [Symbol.(solved_system[1]),Symbol.(solved_system[2])]
 
-    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(solved_system[3])), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(solved_system[3])), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_eqs)
 
     vars_to_exclude = [Symbol.(vcat(solved_system[1])),Symbol[]]
     
-    rewritten_eqs2, ss_and_aux_equations2, ss_and_aux_equations_dep2, ss_and_aux_equations_error2, ss_and_aux_equations_error_dep2 = make_equation_rebust_to_domain_errors(Meta.parse.(string.(solved_system[4])), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_vars)
+    rewritten_eqs2, ss_and_aux_equations2, ss_and_aux_equations_dep2, ss_and_aux_equations_error2, ss_and_aux_equations_error_dep2 = make_equation_rebust_to_domain_errors(Meta.parse.(string.(solved_system[4])), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_eqs)
 
     push!(𝓂.solved_vars, Symbol.(vcat(solved_system[1], solved_system[2])))
     push!(𝓂.solved_vals, vcat(rewritten_eqs, rewritten_eqs2))
@@ -3099,6 +3090,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     min_max_errors = []
 
+    unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
+
     while n > 0 
         if length(eqs[:,eqs[2,:] .== n]) == 2
             var_to_solve_for = collect(unknowns)[vars[:,vars[2,:] .== n][1]]
@@ -3138,7 +3131,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
                 # write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
-                write_domain_safe_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
+                write_domain_safe_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
             elseif soll[1].is_number == true
                 ss_equations = [eq.subs(var_to_solve_for,soll[1]) for eq in ss_equations]
                 
@@ -3164,7 +3157,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 else
                     vars_to_exclude = [[Symbol.(var_to_solve_for)],Symbol[]]
 
-                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors([𝓂.solved_vals[end]], vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, Union{Symbol,Expr}[unique(𝓂.➕_vars)...])
+                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors([𝓂.solved_vals[end]], vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
     
                     if length(ss_and_aux_equations) > 0
                         push!(SS_solve_func,ss_and_aux_equations...)
@@ -3218,15 +3211,16 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 if length(pe) > 5
                     # write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
-                    write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                    write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)
                 else
                     solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe])
                     
                     if !isnothing(solved_system) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "LambertW")) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "Heaviside")) 
-                        write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve)  
+                        write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, 
+                        unique_➕_eqs)  
                     else
                         # write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
-                        write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
+                        write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
                     end
                 end
 
