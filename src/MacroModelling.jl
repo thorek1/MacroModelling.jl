@@ -2839,8 +2839,8 @@ end
 
 
 function write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, 
-    unique_➕_eqs)
-    ➕_vars = Symbol[]
+    ➕_vars, unique_➕_eqs)
+    # ➕_vars = Symbol[]
     # unique_➕_vars = Dict{Union{Expr, Symbol},Symbol}()
 
     vars_to_exclude = [Symbol.(solved_system[1]),Symbol.(solved_system[2])]
@@ -3154,6 +3154,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
+                    push!(SS_solve_func,:(solution_error += Expr(:call,:abs, Expr(:call,:-, $(𝓂.solved_vars[end]), $(𝓂.solved_vals[end])))))
                 else
                     vars_to_exclude = [[Symbol.(var_to_solve_for)],Symbol[]]
 
@@ -3217,7 +3218,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     
                     if !isnothing(solved_system) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "LambertW")) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "Heaviside")) 
                         write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, 
-                        unique_➕_eqs)  
+                        𝓂.➕_vars, unique_➕_eqs)  
                     else
                         # write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
                         write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
