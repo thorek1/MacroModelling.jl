@@ -1,10 +1,22 @@
 using MacroModelling
+
 include("../models/FS2000.jl")
-# include("../models/Caldara_et_al_2012.jl")
 FS2000.SS_solve_func
+
 include("../models/Ascari_Sbordone_2014.jl")
-# include("../models/NAWM_EAUS_2008.jl")
 Ascari_Sbordone_2014.SS_solve_func
+Ascari_Sbordone_2014.ss_solve_blocks
+
+include("../models/Caldara_et_al_2012.jl")
+Caldara_et_al_2012.SS_solve_func
+Caldara_et_al_2012.ss_solve_blocks
+
+include("../models/NAWM_EAUS_2008.jl")
+NAWM_EAUS_2008.SS_solve_func
+NAWM_EAUS_2008.ss_solve_blocks
+# reuse of aux vars indices and not caught in solution_error
+
+
 # include("../test/models/RBC_CME.jl")
 
 # Backus_Kehoe_Kydland_1992
@@ -13,6 +25,9 @@ Ascari_Sbordone_2014.SS_solve_func
 
 FS2000.SS_solve_func
 FS2000.ss_solve_blocks
+
+bbb = Dict{Symbol,Expr}()
+bbb[:p] = :(a-l)
 
 
 
