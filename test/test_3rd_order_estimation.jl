@@ -1,7 +1,7 @@
 using MacroModelling
 import Turing
 import Pigeons
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, PG, IS
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL: logjoint
@@ -47,6 +47,13 @@ end
 
 
 Random.seed!(3)
+
+# Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)
+
+# samps = @time sample(Caldara_et_al_2012_loglikelihood, PG(100), 10, progress = true)#, init_params = sol)
+
+# samps = sample(Caldara_et_al_2012_loglikelihood, IS(), 1000, progress = true)#, init_params = sol)
+
 
 pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)),
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
