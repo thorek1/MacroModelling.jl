@@ -31,25 +31,24 @@ include("../models/Guerrieri_Iacoviello_2017.jl") # stands out
 
 
 all_models = [
-    # Guerrieri_Iacoviello_2017,
+    Guerrieri_Iacoviello_2017,
     NAWM_EAUS_2008, 
-    # GNSS_2010, 
-    # Ascari_Sbordone_2014, 
-    # SW03, 
-    # Backus_Kehoe_Kydland_1992, 
-    # m, 
-    # Baxter_King_1993, 
-    # Ghironi_Melitz_2005, 
-    # SGU_2003_debt_premium, 
-    # JQ_2012_RBC, 
-    # Ireland_2004, 
-    # Caldara_et_al_2012, 
-    # Gali_Monacelli_2005_CITR, 
-    # Gali_2015_chapter_3_nonlinear, 
-    # Aguiar_Gopinath_2007, 
-    # FS2000, 
-    # SW07
-    # RBC_baseline,
+    GNSS_2010, 
+    Ascari_Sbordone_2014, 
+    SW03, 
+    Backus_Kehoe_Kydland_1992, 
+    m, 
+    Baxter_King_1993, 
+    Ghironi_Melitz_2005, 
+    SGU_2003_debt_premium, 
+    JQ_2012_RBC, 
+    Ireland_2004, 
+    Caldara_et_al_2012, 
+    Gali_Monacelli_2005_CITR, 
+    Gali_2015_chapter_3_nonlinear, 
+    Aguiar_Gopinath_2007, 
+    FS2000, 
+    SW07
 ];
 
 
@@ -60,7 +59,7 @@ function calc_total_iters(model, par_inputs, starting_point)
         (outmodel[2][1] > 1e-12) || !isfinite(outmodel[2][1]) ? 
             10000 : 
         outmodel[2][2] : 
-    Inf
+        10000
 end
 
 # SW07.SS_solve_func(SW07.parameter_values, SW07, false, xsol[end], par_inputssol)
@@ -89,7 +88,9 @@ Turing.@model function evaluate_pars(all_models)
     # Translate your function's logic here
     # This part will depend on how you can simulate or calculate the total_iters and total_iters_pars 
     # based on the parameters `x`. You'll need to replace this with the actual logic.
-    par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], x[19], x[20], 0.0, x[21])
+    par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], x[19], Int(abs(round(x[20]))), 
+    0.0, # xsol[21], 
+    Int(abs(round(x[21]))))
     
     for model in all_models
         Turing.@addlogprob! -1e2 *  calc_total_iters(model, par_inputs, x[22])
@@ -105,18 +106,24 @@ end
 # sample_function(all_models)
 # samps = sample(evaluate_pars(all_models), PG(100), 10)
 # samps = sample(evaluate_pars(all_models), SMC(), 100)
-samps = sample(evaluate_pars(all_models), PG(10), 200)
-samps = sample(evaluate_pars(all_models), IS(), 10000) # doesnt cover the relevant region
+samps = sample(evaluate_pars(all_models), PG(100), 10)
+samps = sample(evaluate_pars(all_models), IS(), 1000) # doesnt cover the relevant region
 
 
-# using Pigeons
+using Pigeons
 
-# pt = Pigeons.pigeons(target = Pigeons.TuringLogPotential(evaluate_pars(all_models)),
-#             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-#             n_chains = 1,
-#             n_rounds = 1,
-#             multithreaded = false)
+pt = Pigeons.pigeons(target = Pigeons.TuringLogPotential(evaluate_pars(all_models)),
+            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+            n_chains = 1,
+            n_rounds = 2,
+            multithreaded = false)
 
+
+samps = MCMCChains.Chains(pt)
+
+println(mean(samps).nt.mean)
+            
+candidate = mean(samps).nt.mean
 
 
 plot(samps)
@@ -125,7 +132,7 @@ samps[:lp]|> unique
 filtered_chains = MCMCChains.Chains(samps.value[vec(samps[:lp] .> -1000000), : , :], names(samps))
 
 plot(filtered_chains)
-
+NAWM_EAUS_2008.solver_parameters |> collect
 candidate = samps.value[indexin([maximum(samps[:lp])], vec(samps[:lp])),:,:][1,1:end-2,1]
 # candidate = samps.value[vec(samps[:lp] .> -Inf),:,:][1,:,:]
 # candidate[:,23,:]|>maximum 
@@ -157,8 +164,15 @@ candidate = [0.05814042582751475
 candidate = mean(filtered_chains).nt.mean[1:end-2]
 
 xsol = candidate
+
 par_inputssol = MacroModelling.solver_parameters(   
     eps(),eps(),250,  xsol[1], xsol[2], xsol[3], xsol[4], xsol[5], xsol[6], xsol[7], xsol[8], xsol[9], xsol[10], xsol[11], xsol[12], xsol[13], xsol[14], xsol[15], xsol[16], xsol[17], xsol[18], xsol[19], Int(abs(round(xsol[20]))), 
+    0.0, # xsol[21], 
+    Int(abs(round(xsol[21])))
+)
+par_inputssol = MacroModelling.solver_parameters(   
+    eps(),eps(),250,  xsol[1:19]..., 
+    Int(abs(round(xsol[20]))), 
     0.0, # xsol[21], 
     Int(abs(round(xsol[21])))
 )
@@ -190,6 +204,121 @@ for model in all_models
     # total_iters += iter
 end
 # total_iters
+
+
+parameters = candidate[[1:19...,end]]
+parameters = repeat([2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688],4)
+
+log_lik = 0.0
+    # Apply prior distributions
+    log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 2.0, μσ = true), 19),parameters[1:19])
+    # log_lik -= logpdf(Turing.DiscreteUniform(0, 4),parameters[20])
+    # log_lik -= logpdf(Turing.DiscreteUniform(2, 3),parameters[21])
+    log_lik -= logpdf(MacroModelling.Normal(0.0, 10.0),parameters[20])
+    
+    model_iters = zeros(Int, length(all_models), 4)
+    for t in 0:3
+        # Example solver parameters - this needs to be replaced with actual logic
+        par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, parameters[20 * t .+ (1:19)]..., t, 0.0, 2)
+
+        # Iterate over all models and calculate the total iterations
+        for (i,model) in enumerate(all_models)
+            total_iters = calc_total_iters(model, par_inputs, parameters[20 * (t+1)])
+            model_iters[i,t+1] = -1e2 * total_iters
+        end
+    end
+    sum(maximum(model_iters,dims=2))
+    
+
+    NAWM_EAUS_2008.solver_parameters
+
+
+
+# Function to calculate the posterior log likelihood
+function evaluate_pars_loglikelihood(pars, models)
+    log_lik = 0.0
+    
+    model_iters = zeros(Int, length(models), 4)
+    
+    for t in 0:3
+        pars[20 * t .+ (1:2)] = sort(pars[20 * t .+ (1:2)], rev = true)
+
+        # Apply prior distributions
+        log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 2.0, μσ = true), 19),pars[20 * t .+ (1:19)])
+        log_lik -= logpdf(MacroModelling.Normal(0.0, 10.0), pars[20 * (t+1)])
+
+        # Example solver parameters - this needs to be replaced with actual logic
+        par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, pars[20 * t .+ (1:19)]..., t, 0.0, 2)
+
+        # Iterate over all models and calculate the total iterations
+        for (i,model) in enumerate(models)
+            total_iters = calc_total_iters(model, par_inputs, pars[20 * (t+1)])
+            model_iters[i,t+1] = 1e2 * total_iters
+        end
+    end
+    
+    return Float64(log_lik + sum(minimum(model_iters, dims=2)))
+end
+
+evaluate_pars_loglikelihood(parameters, all_models)
+
+using Optimization, OptimizationNLopt
+
+parameters = repeat([2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688],4)
+
+lbs = fill(eps(),length(parameters))
+lbs[[20 .* (1:4)...]] .= -20
+
+ubs = fill(20.0,length(parameters))
+
+prob = OptimizationProblem(evaluate_pars_loglikelihood, parameters, all_models, lb = lbs, ub = ubs)
+
+# using BenchmarkTools
+
+max_minutes = 1 * 60
+# Start 1200 (PT time)
+
+sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes); sol_ESCH.minimum
+
+sol_NM = solve(prob, NLopt.LN_NELDERMEAD(), maxtime = max_minutes); sol_NM.minimum
+
+max_hours = 8 * 60 ^ 2
+sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_hours); sol_ESCH.minimum
+
+innit2 = deepcopy(sol_ESCH.u)
+
+
+
+
+pars = sol_NM.u
+
+log_lik = 0.0
+    
+model_iters = zeros(Int, length(all_models), 4)
+
+for t in 0:3
+    pars[20 * t .+ (1:2)] = sort(pars[20 * t .+ (1:2)], rev = true)
+
+    # Apply prior distributions
+    log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 2.0, μσ = true), 19),pars[20 * t .+ (1:19)])
+    log_lik -= logpdf(MacroModelling.Normal(0.0, 10.0), pars[20 * (t+1)])
+
+    # Example solver parameters - this needs to be replaced with actual logic
+    par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, pars[20 * t .+ (1:19)]..., t, 0.0, 2)
+
+    # Iterate over all models and calculate the total iterations
+    for (i,model) in enumerate(all_models)
+        total_iters = calc_total_iters(model, par_inputs, pars[20 * (t+1)])
+        model_iters[i,t+1] = 1e2 * total_iters
+    end
+end
+
+
+
+# This is a high-level pseudocode and needs to be adapted based on the actual
+# implementation details of `calc_total_iters`, `MacroModelling.solver_parameters`,
+# and the structure of `all_models`.
+
 
 
 
@@ -344,7 +473,7 @@ prob = OptimizationProblem(f, innit, false, lb = lbs, ub = ubs)
 f(innit,true)
 # using BenchmarkTools
 
-max_minutes = 1 * 60
+max_minutes = 1 * 10
 # Start 1200 (PT time)
 
 sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes); sol_ESCH.minimum
