@@ -106,7 +106,7 @@ macro model(𝓂,ex...)
     ss_and_aux_equations = []
     aux_vars_created = Set()
 
-    unique_➕_vars = []
+    unique_➕_eqs = Dict{Union{Expr,Symbol},Expr}()
 
     ss_eq_aux_ind = Int[]
     dyn_eq_aux_ind = Int[]
@@ -309,6 +309,37 @@ macro model(𝓂,ex...)
                                             x
                                         end :
                                     x :
+                                x.args[2].head == :call ? # nonnegative expressions
+                                    begin
+                                        if precompile
+                                            replacement = x.args[2]
+                                        else
+                                            replacement = simplify(x.args[2])
+                                        end
+
+                                        if !(replacement isa Int) # check if the nonnegative term is just a constant
+                                            if haskey(unique_➕_eqs, x.args[2])
+                                                replacement = unique_➕_eqs[x.args[2]]
+                                            else 
+                                                lb = eps()
+                                                ub = 1e12
+
+                                                # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
+                                                push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
+
+                                                bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
+
+                                                push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+
+                                                push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                                replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+
+                                                unique_➕_eqs[x.args[2]] = replacement
+                                            end
+                                        end
+
+                                        :($(replacement) ^ $(x.args[3]))
+                                    end :
                                 x :
                             x :
                         x.args[2] isa Float64 ?
@@ -326,6 +357,36 @@ macro model(𝓂,ex...)
                                         x
                                     end :
                                 x :
+                            x.args[2].head == :call ? # nonnegative expressions
+                                begin
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
+                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            lb = eps()
+                                            ub = 1e12
+
+                                            # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
+                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
+
+                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                    end
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
                             x :
                         x.args[1] ∈ [:norminvcdf, :norminv, :qnorm] ?
                             x.args[2] isa Symbol ? # nonnegative parameters 
@@ -340,6 +401,36 @@ macro model(𝓂,ex...)
                                         x
                                     end :
                                 x :
+                            x.args[2].head == :call ? # nonnegative expressions
+                                begin
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
+                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            lb = eps()
+                                            ub = 1-eps()
+
+                                            # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
+                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
+
+                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                    end
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
                             x :
                         x.args[1] ∈ [:exp] ?
                             x.args[2] isa Symbol ? # have exp terms bound so they dont go to Inf
@@ -354,6 +445,36 @@ macro model(𝓂,ex...)
                                         x
                                     end :
                                 x :
+                            x.args[2].head == :call ? # nonnegative expressions
+                                begin
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
+                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            lb = -1e12
+                                            ub = 700
+
+                                            # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
+                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
+
+                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                    end
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
                             x :
                         x.args[1] ∈ [:erfcinv] ?
                             x.args[2] isa Symbol ? # nonnegative parameters 
@@ -368,6 +489,36 @@ macro model(𝓂,ex...)
                                         x
                                     end :
                                 x :
+                            x.args[2].head == :call ? # nonnegative expressions
+                                begin
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
+                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            lb = eps()
+                                            ub = 2-eps()
+
+                                            # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
+                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
+
+                                            push!(ss_eq_aux_ind,length(ss_and_aux_equations))
+
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                    end
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
                             x :
                         x :
                     x :
