@@ -3756,7 +3756,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         verbose::Bool;
                         tol::AbstractFloat = 1e-12,#eps(),
                         # timeout = 120,
-                        starting_points::Vector{Float64} = [0.7688, 0.897, 1.2, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
+                        starting_points::Vector{Float64} = [0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
                         # fail_fast_solvers_only = true,
                         # verbose::Bool = false
                         )
@@ -3771,20 +3771,20 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     if cold_start isa Bool
         if cold_start
-            sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_points[1],length(guess))))
+            sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_points[1],length(guess))))
 
-            sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, sol_values))
+            sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, sol_values_init))
         else !cold_start
-            sol_values = guess
+            sol_values_init = guess
 
-            sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, sol_values))
+            sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, sol_values_init))
     
             if verbose && sol_minimum < tol
-                println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+                println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values_init)))
             end
         end
     elseif cold_start isa Float64
-        sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(cold_start, length(guess))))
+        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(cold_start, length(guess))))
     end
 
 
@@ -3798,7 +3798,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         sol_new_tmp, info = SS_optimizer(
             ss_solve_blocks_incl_params,
-            vcat(sol_values, closest_parameters_and_solved_vars),
+            vcat(sol_values_init, closest_parameters_and_solved_vars),
             lbs,
             ubs,
             parameters = parameters
@@ -3817,7 +3817,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
 
         if sol_minimum > tol && cold_start isa Bool
-            previous_sol_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_values))
+            previous_sol_init = Float64.(max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_values_init)))
             
             sol_new, info = SS_optimizer(
                 x->ss_solve_blocks(parameters_and_solved_vars, x),
