@@ -3787,6 +3787,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(cold_start, length(guess))))
     end
 
+    sol_values = sol_values_init
 
     if sol_minimum > tol
         function ss_solve_blocks_incl_params(guesses)
