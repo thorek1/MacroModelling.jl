@@ -42,6 +42,10 @@ jobs:
           - version: '1.10'
             os: macos-14
             arch: x64
+            test_set: "solver"
+          - version: '1.10'
+            os: macos-14
+            arch: x64
             test_set: "2nd_order_estimation"
           - version: '1.10'
             os: macos-14
@@ -74,7 +78,7 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" >> $GITHUB_ENV
       - name: Set JULIA_NUM_THREADS for estimation tests
-        if: matrix.version == '1.10' && (matrix.test_set == 'estimation' || matrix.test_set == '1st_order_inversion_estimation' || matrix.test_set == '2nd_order_estimation' || matrix.test_set == '3rd_order_estimation')
+        if: matrix.version == '1.10' && (matrix.test_set == 'estimation' || matrix.test_set == 'solver' || matrix.test_set == '1st_order_inversion_estimation' || matrix.test_set == '2nd_order_estimation' || matrix.test_set == '3rd_order_estimation')
         run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
       - uses: actions/cache@v4
         env:

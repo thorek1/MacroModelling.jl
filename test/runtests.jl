@@ -17,6 +17,10 @@ include("functionality_tests.jl")
 #     @test format(MacroModelling; verbose=true, overwrite=true)
 # end
 
+if test_set == "solver"
+    include("optim_solver_params.jl")
+end
+
 if test_set == "estimation"
     include("test_estimation.jl")
 end
