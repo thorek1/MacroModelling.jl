@@ -1302,11 +1302,11 @@ function get_steady_state(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    SS, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters, false, 𝓂.solver_parameters)
+    SS, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
     # SS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
     if solution_error > tol
-        @warn "Could not find non-stochastic steady state."
+        @warn "Could not find non-stochastic steady state. Solution error: $solution_error > $tol"
     end
 
     if stochastic
