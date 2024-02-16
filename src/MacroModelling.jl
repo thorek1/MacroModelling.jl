@@ -3763,7 +3763,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     guess = guess_and_pars_solved_vars[1]
 
-    closest_parameters_and_solved_vars = sum(abs, guess_and_pars_solved_vars[2]) == Inf ? parameters_and_solved_vars : closest_parameters_and_solved_vars
+    closest_parameters_and_solved_vars = sum(abs, guess_and_pars_solved_vars[2]) == Inf ? parameters_and_solved_vars : guess_and_pars_solved_vars[2]
 
     total_iters = 0
 
