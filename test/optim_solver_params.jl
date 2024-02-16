@@ -73,7 +73,7 @@ function evaluate_pars_loglikelihood(pars, models)
         pars[20 * t .+ (1:2)] = sort(pars[20 * t .+ (1:2)], rev = true)
 
         # Apply prior distributions
-        log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 2.0, μσ = true), 19),pars[20 * t .+ (1:19)])
+        log_lik -= logpdf(Turing.filldist(MacroModelling.Gamma(1.0, 2.0, μσ = true), 19),pars[20 * t .+ (1:19)])
         log_lik -= logpdf(MacroModelling.Normal(0.0, 10.0), pars[20 * (t+1)])
 
         # Example solver parameters - this needs to be replaced with actual logic
