@@ -3763,7 +3763,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     guess = guess_and_pars_solved_vars[1]
 
-    closest_parameters_and_solved_vars = guess_and_pars_solved_vars[2]
+    closest_parameters_and_solved_vars = sum(abs, guess_and_pars_solved_vars[2]) == Inf ? parameters_and_solved_vars : closest_parameters_and_solved_vars
 
     total_iters = 0
 
@@ -3772,8 +3772,6 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     if cold_start isa Bool
         if cold_start
             sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_points[1],length(guess))))
-            
-            closest_parameters_and_solved_vars = parameters_and_solved_vars
 
             sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, sol_values))
         else !cold_start
@@ -3849,8 +3847,6 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 if sol_minimum > tol
                     standard_inits = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_point,length(guess))))
                     standard_inits[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
-
-                    closest_parameters_and_solved_vars = sum(closest_parameters_and_solved_vars) == Inf ? parameters_and_solved_vars : closest_parameters_and_solved_vars
 
                     sol_new_tmp, info = SS_optimizer(
                         ss_solve_blocks_incl_params,
