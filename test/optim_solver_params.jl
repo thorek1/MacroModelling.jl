@@ -1,4 +1,4 @@
-using MacroModelling, Turing, Optimization, OptimizationNLopt
+using MacroModelling, Optimization, OptimizationNLopt
 
 # logic to implement
 
@@ -62,7 +62,7 @@ function calc_total_iters(model, par_inputs, starting_point)
         10000
 end
 
-
+import Turing
 # Function to calculate the posterior log likelihood
 function evaluate_pars_loglikelihood(pars, models)
     log_lik = 0.0
