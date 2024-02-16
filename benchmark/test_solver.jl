@@ -31,24 +31,24 @@ include("../models/Guerrieri_Iacoviello_2017.jl") # stands out
 
 
 all_models = [
-    Guerrieri_Iacoviello_2017,
-    NAWM_EAUS_2008, 
-    GNSS_2010, 
-    Ascari_Sbordone_2014, 
-    SW03, 
-    Backus_Kehoe_Kydland_1992, 
+    # Guerrieri_Iacoviello_2017,
+    # NAWM_EAUS_2008, 
+    # GNSS_2010, 
+    # Ascari_Sbordone_2014, 
+    # SW03, 
+    # Backus_Kehoe_Kydland_1992, 
     m, 
-    Baxter_King_1993, 
-    Ghironi_Melitz_2005, 
-    SGU_2003_debt_premium, 
-    JQ_2012_RBC, 
-    Ireland_2004, 
-    Caldara_et_al_2012, 
-    Gali_Monacelli_2005_CITR, 
-    Gali_2015_chapter_3_nonlinear, 
-    Aguiar_Gopinath_2007, 
-    FS2000, 
-    SW07
+    # Baxter_King_1993, 
+    # Ghironi_Melitz_2005, 
+    # SGU_2003_debt_premium, 
+    # JQ_2012_RBC, 
+    # Ireland_2004, 
+    # Caldara_et_al_2012, 
+    # Gali_Monacelli_2005_CITR, 
+    # Gali_2015_chapter_3_nonlinear, 
+    # Aguiar_Gopinath_2007, 
+    # FS2000, 
+    # SW07
 ];
 
 
@@ -88,9 +88,7 @@ Turing.@model function evaluate_pars(all_models)
     # Translate your function's logic here
     # This part will depend on how you can simulate or calculate the total_iters and total_iters_pars 
     # based on the parameters `x`. You'll need to replace this with the actual logic.
-    par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, x[1], x[2], x[3], x[4], x[5], x[6], x[7], x[8], x[9], x[10], x[11], x[12], x[13], x[14], x[15], x[16], x[17], x[18], x[19], Int(abs(round(x[20]))), 
-    0.0, # xsol[21], 
-    Int(abs(round(x[21]))))
+    par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, x[1:19]..., Int(abs(round(x[20]))), 0.0, Int(abs(round(x[21]))))
     
     for model in all_models
         Turing.@addlogprob! -1e2 *  calc_total_iters(model, par_inputs, x[22])
@@ -106,16 +104,53 @@ end
 # sample_function(all_models)
 # samps = sample(evaluate_pars(all_models), PG(100), 10)
 # samps = sample(evaluate_pars(all_models), SMC(), 100)
-samps = sample(evaluate_pars(all_models), PG(100), 10)
-samps = sample(evaluate_pars(all_models), IS(), 1000) # doesnt cover the relevant region
+samps = sample(evaluate_pars(all_models), PG(10), 100, θ = candidate)
+samps = sample(evaluate_pars(all_models), IS(), 1000, θ = candidate) # doesnt cover the relevant region
 
+samps[:lp] |> maximum
+
+candidate = [2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 1, 2, 0.7688]
+
+candidate = fill(1e-5,22)
+candidate[20] = 2
+candidate[21] = 2
+
+using LogDensityProblems, SliceSampling, AbstractMCMC, Random, DynamicPPL
+
+sample_model = AbstractMCMC.LogDensityModel(DynamicPPL.LogDensityFunction(evaluate_pars(all_models)));
+
+samps = AbstractMCMC.sample(sample_model, SliceSampling.LatentSlice(.1), 100, initial_params = candidate);
+
+samps = AbstractMCMC.sample(sample_model, SliceSampling.Slice(1), 50, initial_params = candidate);
+
+samps = AbstractMCMC.sample(sample_model, SliceSampling.SliceDoublingOut(8), 50, initial_params = candidate);
+
+samp = MCMCChains.Chains(samps)
+
+println(mean(samp).nt.mean)
+            
+function return_iters(pars)
+    par_inputssol = MacroModelling.solver_parameters(   
+        eps(),eps(),250,  pars[1:19]..., 
+        Int(abs(round(pars[20]))), 0.0, Int(abs(round(pars[21])))
+    )
+
+
+    log_lik = 0
+
+    for model in all_models
+        log_lik -= -1e0 * (calc_total_iters(model, par_inputssol, pars[22]))
+    end
+    return log_lik
+end
+return_iters.(samps)|>minimum
 
 using Pigeons
 
 pt = Pigeons.pigeons(target = Pigeons.TuringLogPotential(evaluate_pars(all_models)),
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
-            n_rounds = 2,
+            n_rounds = 3,
             multithreaded = false)
 
 
