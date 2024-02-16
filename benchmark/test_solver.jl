@@ -234,6 +234,9 @@ log_lik = 0.0
 
 
 
+using Turing
+
+
 # Function to calculate the posterior log likelihood
 function evaluate_pars_loglikelihood(pars, models)
     log_lik = 0.0
@@ -260,11 +263,11 @@ function evaluate_pars_loglikelihood(pars, models)
     return Float64(log_lik + sum(minimum(model_iters, dims=2)))
 end
 
-evaluate_pars_loglikelihood(parameters, all_models)
-
 using Optimization, OptimizationNLopt
 
 parameters = repeat([2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688],4)
+
+evaluate_pars_loglikelihood(parameters, all_models)
 
 lbs = fill(eps(),length(parameters))
 lbs[[20 .* (1:4)...]] .= -20
@@ -275,10 +278,12 @@ prob = OptimizationProblem(evaluate_pars_loglikelihood, parameters, all_models, 
 
 # using BenchmarkTools
 
-max_minutes = 1 * 60
+max_minutes = 2 *60 * 60
 # Start 1200 (PT time)
 
 sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes); sol_ESCH.minimum
+
+prob = OptimizationProblem(evaluate_pars_loglikelihood, sol_ESCH.u, all_models, lb = lbs, ub = ubs)
 
 sol_NM = solve(prob, NLopt.LN_NELDERMEAD(), maxtime = max_minutes); sol_NM.minimum
 
@@ -287,10 +292,13 @@ sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_hours); sol_ESCH.minimum
 
 innit2 = deepcopy(sol_ESCH.u)
 
+innit2[21:40]
 
 
 
-pars = sol_NM.u
+
+
+pars = sol_ESCH.u
 
 log_lik = 0.0
     
@@ -309,11 +317,11 @@ for t in 0:3
     # Iterate over all models and calculate the total iterations
     for (i,model) in enumerate(all_models)
         total_iters = calc_total_iters(model, par_inputs, pars[20 * (t+1)])
-        model_iters[i,t+1] = 1e2 * total_iters
+        model_iters[i,t+1] = total_iters
     end
 end
 
-
+model_iters
 
 # This is a high-level pseudocode and needs to be adapted based on the actual
 # implementation details of `calc_total_iters`, `MacroModelling.solver_parameters`,
