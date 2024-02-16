@@ -3772,6 +3772,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     if cold_start isa Bool
         if cold_start
             sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_points[1],length(guess))))
+            
+            closest_parameters_and_solved_vars = parameters_and_solved_vars
 
             sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, sol_values))
         else !cold_start
