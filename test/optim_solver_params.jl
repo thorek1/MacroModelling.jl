@@ -64,7 +64,7 @@ end
 
 using Turing
 # Function to calculate the posterior log likelihood
-function evaluate_pars_loglikelihood(pars, models, transform)
+function evaluate_pars_loglikelihood(pars, models)
     log_lik = 0.0
     
     model_iters = zeros(Int, length(models))
