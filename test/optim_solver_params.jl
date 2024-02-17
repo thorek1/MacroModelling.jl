@@ -64,29 +64,27 @@ end
 
 using Turing
 # Function to calculate the posterior log likelihood
-function evaluate_pars_loglikelihood(pars, models)
+function evaluate_pars_loglikelihood(pars, models, transform)
     log_lik = 0.0
     
-    model_iters = zeros(Int, length(models), 4)
+    model_iters = zeros(Int, length(models))
     
-    for t in 0:3
-        pars[20 * t .+ (1:2)] = sort(pars[20 * t .+ (1:2)], rev = true)
+    pars[1:2] = sort(pars[1:2], rev = true)
 
-        # Apply prior distributions
-        log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 2.0, μσ = true), 19),pars[20 * t .+ (1:19)])
-        log_lik -= logpdf(MacroModelling.Normal(0.0, 10.0), pars[20 * (t+1)])
+    # Apply prior distributions
+    log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 2.0, μσ = true), 19),pars[1:19])
+    log_lik -= logpdf(MacroModelling.Normal(0.0, 10.0), pars[20])
 
-        # Example solver parameters - this needs to be replaced with actual logic
-        par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, pars[20 * t .+ (1:19)]..., t, 0.0, 2)
+    # Example solver parameters - this needs to be replaced with actual logic
+    par_inputs = MacroModelling.solver_parameters(eps(), eps(), 500, pars[1:19]..., transform, 0.0, 2)
 
-        # Iterate over all models and calculate the total iterations
-        for (i,model) in enumerate(models)
-            total_iters = calc_total_iters(model, par_inputs, pars[20 * (t+1)])
-            model_iters[i,t+1] = 1e2 * total_iters
-        end
+    # Iterate over all models and calculate the total iterations
+    for (i,model) in enumerate(models)
+        total_iters = calc_total_iters(model, par_inputs, pars[20])
+        model_iters[i] = 1e2 * total_iters
     end
     
-    return Float64(log_lik + sum(minimum(model_iters, dims=2)))
+    return Float64(log_lik + sum(model_iters))
 end
 
 # parameters = repeat([2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688],4)
@@ -108,21 +106,20 @@ sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes); sol_ESCH.minimum
 
 pars = deepcopy(sol_ESCH.u)
 
+println("Transform: $transform")
 println("Parameters: $pars")
 
-model_iters = zeros(Int, length(all_models), 4)
+model_iters = zeros(Int, length(models))
+    
+pars[1:2] = sort(pars[1:2], rev = true)
 
-for t in 0:3
-    pars[20 * t .+ (1:2)] = sort(pars[20 * t .+ (1:2)], rev = true)
+# Example solver parameters - this needs to be replaced with actual logic
+par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, pars[1:19]..., transform, 0.0, 2)
 
-    # Example solver parameters - this needs to be replaced with actual logic
-    par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, pars[20 * t .+ (1:19)]..., t, 0.0, 2)
-
-    # Iterate over all models and calculate the total iterations
-    for (i,model) in enumerate(all_models)
-        total_iters = calc_total_iters(model, par_inputs, pars[20 * (t+1)])
-        model_iters[i,t+1] = total_iters
-    end
+# Iterate over all models and calculate the total iterations
+for (i,model) in enumerate(models)
+    total_iters = calc_total_iters(model, par_inputs, pars[20])
+    model_iters[i] = 1e2 * total_iters
 end
 
 println("Iterations per model: $model_iters")

@@ -38,7 +38,19 @@ jobs:
           - version: '1.10'
             os: macos-14
             arch: x64
-            test_set: "solver"
+            test_set: "solver0"
+          - version: '1.10'
+            os: macos-14
+            arch: x64
+            test_set: "solver1"
+          - version: '1.10'
+            os: macos-14
+            arch: x64
+            test_set: "solver2"
+          - version: '1.10'
+            os: macos-14
+            arch: x64
+            test_set: "solver3"
           - version: '1.10'
             os: macos-14
             arch: x64
@@ -51,20 +63,20 @@ jobs:
             os: macos-14
             arch: x64
             test_set: "3rd_order_estimation"
-          - version: '1.10'
-            os: macOS-latest
-            arch: x64
-            test_set: "basic"
-          - version: 'nightly'
-            os: macos-14
-            arch: x64
-            test_set: "basic"
-            allow_failure: true
-          - version: '^1.11.0-0'
-            os: macos-14
-            arch: x64
-            test_set: "basic"
-            allow_failure: true
+          # - version: '1.10'
+          #   os: macOS-latest
+          #   arch: x64
+          #   test_set: "basic"
+          # - version: 'nightly'
+          #   os: macos-14
+          #   arch: x64
+          #   test_set: "basic"
+          #   allow_failure: true
+          # - version: '^1.11.0-0'
+          #   os: macos-14
+          #   arch: x64
+          #   test_set: "basic"
+          #   allow_failure: true
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v1
