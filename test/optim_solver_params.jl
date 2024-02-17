@@ -116,7 +116,7 @@ pars[1:2] = sort(pars[1:2], rev = true)
 par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, pars[1:19]..., transform, 0.0, 2)
 
 # Iterate over all models and calculate the total iterations
-for (i,model) in enumerate(models)
+for (i,model) in enumerate(all_models)
     total_iters = calc_total_iters(model, par_inputs, pars[20])
     model_iters[i] = 1e2 * total_iters
 end
