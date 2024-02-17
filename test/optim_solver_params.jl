@@ -88,13 +88,12 @@ function evaluate_pars_loglikelihood(pars, models, transform)
 end
 
 # parameters = repeat([2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688],4)
-init_par = rand(20) .+ 1
-parameters = repeat(init_par, 4)
+parameters = rand(20) .+ 1
 
 evaluate_pars_loglikelihood(parameters, all_models)
 
 lbs = fill(eps(),length(parameters))
-lbs[[20 .* (1:4)...]] .= -20
+lbs[20] .= -20
 
 ubs = fill(30.0,length(parameters))
 
