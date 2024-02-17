@@ -110,16 +110,10 @@ pars = deepcopy(sol_ESCH.u)
 
 println("Parameters: $pars")
 
-log_lik = 0.0
-    
 model_iters = zeros(Int, length(all_models), 4)
 
 for t in 0:3
     pars[20 * t .+ (1:2)] = sort(pars[20 * t .+ (1:2)], rev = true)
-
-    # Apply prior distributions
-    log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 2.0, μσ = true), 19),pars[20 * t .+ (1:19)])
-    log_lik -= logpdf(MacroModelling.Normal(0.0, 10.0), pars[20 * (t+1)])
 
     # Example solver parameters - this needs to be replaced with actual logic
     par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, pars[20 * t .+ (1:19)]..., t, 0.0, 2)
