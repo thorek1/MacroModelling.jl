@@ -93,7 +93,7 @@ parameters = rand(20) .+ 1
 evaluate_pars_loglikelihood(parameters, all_models)
 
 lbs = fill(eps(),length(parameters))
-lbs[20] .= -20
+lbs[20] = -20
 
 ubs = fill(30.0,length(parameters))
 
