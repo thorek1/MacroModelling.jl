@@ -108,7 +108,7 @@ pars = deepcopy(sol_ESCH.u)
 println("Transform: $transform")
 println("Parameters: $pars")
 
-model_iters = zeros(Int, length(models))
+model_iters = zeros(Int, length(all_models))
     
 pars[1:2] = sort(pars[1:2], rev = true)
 
