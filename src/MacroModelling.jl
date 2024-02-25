@@ -7163,11 +7163,11 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables_index::Vec
     P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
     # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
 
-    u = zeros(length(observables_and_states))
+    u = zeros(S, length(observables_and_states))
     # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
     z = C * u
 
-    loglik = 0.0
+    loglik = S(0)
     for t in 1:size(data_in_deviations, 2)
         loglik, P, u, z = update_loglikelihood!(loglik, P, u, z, C, A, 𝐁, data_in_deviations[:, t])
         if loglik == -Inf
@@ -7178,7 +7178,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables_index::Vec
     return -(loglik + length(data_in_deviations) * log(2 * 3.141592653589793)) / 2 
 end
 
-function update_loglikelihood!(loglik::S, P::Matrix{S}, u::Vector{S}, z::Vector{S}, C::Matrix{S}, A::Matrix{S}, 𝐁::Matrix{S}, data_point::Vector{S}) where S
+function update_loglikelihood!(loglik::S, P::Matrix{S}, u::Vector{S}, z::Vector{S}, C::Matrix{T}, A::Matrix{S}, 𝐁::Matrix{S}, data_point::Vector{S}) where {S,T}
     v = data_point - z
     F = C * P * C'
     Fdet = ℒ.det(F)
