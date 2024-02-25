@@ -5561,7 +5561,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
 
     A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     
-    return @view(A[T.reorder,:]), true
+    return A[T.reorder,:], true
 end
 
 function riccati_conditions(∇₁::AbstractMatrix{M}, sol_d::AbstractMatrix{N}, solved::Bool; T::timings, explosive::Bool = false) where {M,N}
@@ -6462,7 +6462,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
     dims::Vector{Tuple{Int,Int}},
     sparse_output::Bool = false,
-    solver::Symbol = :doubling)
+    solver::Symbol = :doubling)#::Tuple{Matrix{Float64}, Bool}
 
     if length(coords) == 1
         lengthA = length(coords[1][1])
@@ -7131,13 +7131,25 @@ function calculate_third_order_moments(parameters::Vector{T},
 end
 
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Union{Vector{String}, Vector{Symbol}}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}) where S
-    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S})::S where S
+    obs_idx = convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present))))
 
-    A = @views 𝐒₁[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
-    B = @views 𝐒₁[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations)
+end
 
-    C = @views ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states)),:]
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{String}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S})::S where S
+    obs_idx = convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present))))
+
+    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations)
+end
+
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables_index::Vector{Int}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S})::S where S
+    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,observables_index))
+
+    A = 𝐒₁[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
+    B = 𝐒₁[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+
+    C = ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(observables_index),observables_and_states)),:]
 
     𝐁 = B * B'
 
@@ -7154,45 +7166,43 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Union{Vec
     u = zeros(length(observables_and_states))
     # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
     z = C * u
-    
+
     loglik = 0.0
-
-    for t in 1:size(data_in_deviations)[2]
-        v = data_in_deviations[:,t] - z
-
-        F = C * P * C'
-
-        # F = (F + F') / 2
-
-        # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
-        # K = P * C' * ℒ.pinv(F)
-
-        # loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
-        Fdet = ℒ.det(F)
-
-        if Fdet < eps() return -Inf end
-
-        F̄ = ℒ.lu(F, check = false)
-
-        if !ℒ.issuccess(F̄) return -Inf end
-
-        invF = inv(F̄)
-
-        loglik += log(Fdet) + v' * invF  * v
-        
-        K = P * C' * invF
-
-        P = A * (P - K * C * P) * A' + 𝐁
-
-        u = A * (u + K * v)
-        
-        z = C * u 
+    for t in 1:size(data_in_deviations, 2)
+        loglik, P, u, z = update_loglikelihood!(loglik, P, u, z, C, A, 𝐁, data_in_deviations[:, t])
+        if loglik == -Inf
+            break
+        end
     end
 
     return -(loglik + length(data_in_deviations) * log(2 * 3.141592653589793)) / 2 
 end
 
+function update_loglikelihood!(loglik::S, P::Matrix{S}, u::Vector{S}, z::Vector{S}, C::Matrix{S}, A::Matrix{S}, 𝐁::Matrix{S}, data_point::Vector{S}) where S
+    v = data_point - z
+    F = C * P * C'
+    Fdet = ℒ.det(F)
 
+    # Early return if determinant is too small, indicating numerical instability.
+    if Fdet < eps(S)
+        return -Inf, P, u, z
+    end
+
+    F̄ = ℒ.lu(F, check = false)
+
+    if !ℒ.issuccess(F̄)
+        return -Inf, P, u, z
+    end
+
+    invF = inv(F̄)
+    loglik_increment = log(Fdet) + v' * invF * v
+    K = P * C' * invF
+    P = A * (P - K * C * P) * A' + 𝐁
+    u = A * (u + K * v)
+    z = C * u
+
+    return loglik + loglik_increment, P, u, z
+end
 
 function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector{Float64},Vector{Vector{Float64}}}, state_update::Function, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, warmup_iterations::Int)
     if state isa Vector{Float64}
