@@ -365,8 +365,8 @@ fin_grad = FiniteDifferences.grad(central_fdm(4,1),x -> calculate_posterior_logl
 
 include("../models/RBC_baseline.jl")
 
-𝓂 = SW07
-# 𝓂 = RBC_baseline
+# 𝓂 = SW07
+𝓂 = RBC_baseline
 verbose = true
 parameters = nothing
 tol = eps()
@@ -521,29 +521,250 @@ maximum(abs,𝐒₁-s1)
 function riccati_conditions(∇₁::AbstractMatrix{M}, sol_d::AbstractMatrix{N}, solved::Bool; T, explosive::Bool = false) where {M,N}
     expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
-    A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    B = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    C = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+    colA = ℒ.diagm(ones(size(∇₁,2)))[:,1:T.nFuture_not_past_and_mixed]
+    colB = ℒ.diagm(ones(size(∇₁,2)))[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    colC = ℒ.diagm(ones(size(∇₁,2)))[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)]
+
+    A = ∇₁ * colA * expand[1]
+    B = ∇₁ * colB
+    C = ∇₁ * colC * expand[2]
 
     sol_buf = sol_d * expand[2]
 
     sol_buf2 = sol_buf * sol_buf
 
-    # err1 = A * sol_buf2 + B * sol_buf + C
+    err1 = (A * sol_buf2 + B * sol_buf + C) * expand[2]'
+    # err1 = (B * sol_buf + C) * expand[2]'
 
-    err1 = A * sol_buf2 # + B * sol_buf + C
+    # err1 = A * sol_buf2  # + B * sol_buf + C
 
-    err1[:,T.past_not_future_and_mixed_idx]
+    return err1 # [:,T.past_not_future_and_mixed_idx]
 end
+riccati_conditions(∇₁, 𝐒₁, solved, T = 𝓂.timings)
+
+d𝐒₁f = ForwardDiff.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁) |> sparse
+d𝐒₁z = Zygote.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁)[1] |> sparse
+collect(d𝐒₁z)
+
+∇₁
+𝐒₁
+riccati_conditions(∇₁, 𝐒₁, solved, T = 𝓂.timings)
+
+sol_d = 𝐒₁
+
 
 T = 𝓂.timings;
 # ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)]
+∇₁
+sol_d
+
 expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+expand[1]
+expand[2]
+
+A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+B = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+C = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
 
 
+sol_buf = sol_d * expand[2]
+
+sol_buf2 = sol_buf * sol_buf
+
+err1 = A * sol_buf2 * expand[2]' # + B * sol_buf + C
+
+err1[:,T.past_not_future_and_mixed_idx]
 # (T.nFuture_not_past_and_mixed + T.nVars)*40
-# 𝓂.timings.past_not_future_and_mixed_idx
+# 𝓂.timings.past_not_future_aNnd_mixed_idx
 # riccati_conditions(∇₁, 𝐒₁, solved, T = 𝓂.timings)
+using LinearAlgebra
+# ArrayAdd(NPermuteDims(ArrayTensorProduct(A.T, X), (3)(1 2)), 
+        #  PermuteDims(ArrayTensorProduct(X.T*A.T, I), (3)(1 2)))
+C1 = kron(A[T.future_not_past_and_mixed_idx,:]', sol_d * expand[2]) |> sparse
+C2 = kron((sol_d * expand[2])' * A[T.future_not_past_and_mixed_idx,:]', I(9)) |> sparse
+
+C1 = kron((sol_buf * expand[2]')', A) |> sparse
+C2 = kron(expand[2], A * sol_buf) |> sparse
+
+
+C1 = kron(sol_d', ∇₁[:,1:T.nFuture_not_past_and_mixed]) |> sparse
+C2 = kron(I(3), sol_d * ∇₁[:,1:T.nFuture_not_past_and_mixed]')' |> sparse
+
+CC = C1+C2
+
+C1 = kron(A', expand[2] * sol_d * expand[2] * expand[2]') |> sparse
+C2 = kron((A' * sol_d * expand[2])', expand[2] * expand[2]') |> sparse
+
+
+
+
+# ArrayAdd(PermuteDims(ArrayTensorProduct(e1.T*cs.T*nab.T, e2*sol_d*e2*e2.T), (3)(1 2)), 
+        #  PermuteDims(ArrayTensorProduct(e2.T*sol_d.T*e1.T*cs.T*nab.T, e2*e2.T), (3)(1 2)))
+
+colselect = ℒ.diagm(ones(size(∇₁,2)))[:,1:T.nFuture_not_past_and_mixed]
+
+# C1 = kron(expand[1]' * colselect' * ∇₁', expand[2] * sol_d * expand[2] * expand[2]') |> sparse
+# C2 = kron(expand[2]' * sol_d' * expand[1]' * colselect' * ∇₁', expand[2] * expand[2]') |> sparse
+
+C1 = kron(expand[2] * sol_d * expand[2] * expand[2]', expand[1]' * colA' * ∇₁') |> sparse
+C2 = kron(expand[2] * expand[2]', expand[2]' * sol_d' * expand[1]' * colA' * ∇₁') |> sparse
+
+
+(C1 + C2)' - d𝐒₁f
+###### works
+
+# colB.T*nab.T, e2*e2.T
+CC = kron(expand[2] * expand[2]', colB' * ∇₁') |> sparse
+
+
+
+d𝐒₁a = (C1 + C2)' + CC'
+
+
+expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+# A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+# B = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+# C = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+
+# sol_buf = sol_d * expand[2]
+
+# sol_buf2 = sol_buf * sol_buf
+
+# err1 = A * sol_buf2 + B * sol_buf + C
+
+
+C1 = kron(expand[2] * sol_d, A') |> sparse
+C2 = kron(expand[2] * expand[2]', sol_buf' * A') |> sparse
+
+d𝐒₁a = (kron(expand[2] * sol_d, A') + 
+        kron(expand[2] * expand[2]', sol_buf' * A') + 
+        kron(expand[2] * expand[2]', B'))'
+
+d𝐒₁a = kron(expand[2] * sol_d, A') + 
+        kron(expand[2] * expand[2]', sol_buf' * A' + B')
+
+
+d𝐒₁a - d𝐒₁f
+
+
+
+c1 = reshape(permutedims(reshape(C1 ,3, 9, 9, 3), [2, 3, 4, 1]), 27, 27)
+c2 = reshape(permutedims(reshape(C2 ,3, 9, 9, 3), [2, 3, 4, 1]), 27, 27)
+
+using Combinatorics
+
+solved = false
+solution = [1:4...]
+ccs = [reshape((C1 + C2) ,3, 9, 9, 3),
+        reshape((C1 + C2)' ,3, 9, 9, 3),
+        reshape((C1 + C2) ,9, 3, 3, 9),
+        reshape((C1 + C2)' ,9, 3, 3, 9),
+        reshape((C1 + C2) ,9, 9, 3, 3),
+        reshape((C1 + C2)' ,9, 9, 3, 3),
+        reshape((C1 + C2), 3, 3 ,9, 9),
+        reshape((C1 + C2)', 3, 3 ,9, 9)];
+for perm in permutations(1:4)
+    for cc in ccs
+        ccc = reshape(permutedims(cc, perm), 27, 27)
+        if isapprox(ccc, d𝐒₁re, atol = 1e-7)
+            solution = perm
+            solved = true
+            println("Found it: $perm, $cc")
+            break
+        end
+    end
+    if solved break end
+end
+
+
+cc = reshape(permutedims(reshape(C1 + C2 ,3, 9, 9, 3), [2, 3, 1, 4]), 27, 27) |> sparse
+cc = reshape(permutedims(reshape(C1' + C2' ,3, 9, 9, 3), [2, 3, 4, 1]), 27, 27) |> sparse
+cc = reshape(permutedims(reshape(C1 + C2 ,9, 3, 3, 9), [2, 3, 4, 1]), 27, 27) |> sparse
+cc = reshape(permutedims(reshape(C1 + C2 ,3, 9, 9, 3), [0, 2, 1, 3] .+ 1), 27, 27) |> sparse
+
+
+sparse(cc - collect(d𝐒₁re))
+maximum(abs, cc - collect(d𝐒₁re))
+
+
+
+Permutation([0, 2, 1, 3])
+abs.(vec(sol_d)) .> 0
+sparse(c1 + c2)' * abs.(vec(sol_d)) .> 0
+
+el1 = findnz(sparse(c1 + c2))[3]|>unique|>sort
+el11 = findnz(sparse(c1))[3]|>unique|>sort
+el12 = findnz(sparse(c2))[3]|>unique|>sort
+el2 = findnz(d𝐒₁re)[3]|>unique|>sort
+
+
+setdiff(el2,el11)
+setdiff(el2,el12)
+setdiff(el2,union(el11,el12))
+
+
+sparse(c1' - collect(d𝐒₁re))
+sparse(c2' - collect(d𝐒₁re))
+sparse(c1' + c2' - collect(d𝐒₁re))
+
+
+maximum(abs, (c1 + c2)' - collect(d𝐒₁re))
+
+findnz((c1 + c2)' - (d𝐒₁re))
+findnz(d𝐒₁)[3]|>unique|>sort
+
+d𝐒₁ |> collect
+
+elem1 = findnz(C1)[3]|>unique|>sort
+elem2 = findnz(C2)[3]|>unique|>sort
+
+union(elem1,elem2) |>unique|>sort
+
+findnz(C1 + C2)[3]|>unique|>sort
+
+findnz(d𝐒₁)[3]|>unique|>sort
+
+
+sparse(final_rows, final_cols, vals, size(A,1) * size(B,1), size(A,1) * size(B,1))
+
+
+
+C1 = kron(A[T.past_not_future_and_mixed_idx,:]', sol_d[T.past_not_future_and_mixed_idx,:]) |>sparse
+C2 = kron(sol_d[:,T.past_not_future_and_mixed_idx] * A[:,T.past_not_future_and_mixed_idx]', I(20)) |>sparse
+    (kron(A', X) + kron(X', A'))|>sparse
+
+d𝐒₁fo = ForwardDiff.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁) |> sparse
+d𝐒₁fi = FiniteDifferences.jacobian(central_fdm(4,1), x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁)[1] |> sparse
+d𝐒₁re = Zygote.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁)[1] |> sparse
+
+d𝐒₁fo |> collect
+d𝐒₁fi |> collect
+d𝐒₁re |> collect
+
+collect(CC)
+collect(CC + d𝐒₁fi)
+    A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+
+𝐒₁  (A' * expand[1]' + (expand[1] * A)')'
+
+X = 𝐒₁
+L = expand[1]
+A
+
+
+
+kron(X, (A' * L')')|>sparse
+
+kron(X, L * A) 
+
+aaa = (kron(X, L * A) + kron(X, (A' * L')') ) |> sparse
+
+findnz(aaa)[3]|>unique|>sort
+findnz(d𝐒₁z)[3]|>unique|>sort
+collect(d𝐒₁z)
+
+
 
 d∇₁ = ForwardDiff.jacobian(x -> riccati_conditions(x, 𝐒₁, solved, T = 𝓂.timings), ∇₁) |> sparse
 # d𝐒₁ = ForwardDiff.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁) #|> sparse
