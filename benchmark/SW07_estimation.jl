@@ -641,8 +641,8 @@ d𝐒₁a = (kron(expand[2] * sol_d, A') +
         kron(expand[2] * expand[2]', sol_buf' * A') + 
         kron(expand[2] * expand[2]', B'))'
 
-d𝐒₁a = kron(expand[2] * sol_d, A') + 
-        kron(expand[2] * expand[2]', sol_buf' * A' + B')
+d𝐒₁a = (kron(expand[2] * sol_d, A') + 
+        kron(expand[2] * expand[2]', sol_buf' * A' + B'))'
 
 
 d𝐒₁a - d𝐒₁f
