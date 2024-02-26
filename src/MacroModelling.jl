@@ -5460,6 +5460,53 @@ end
 
 
 
+function calculate_quadratic_iteration_solution_AD(∇₁::AbstractMatrix{S}; T::timings, tol::AbstractFloat = 1e-12) where S
+    # see Binder and Pesaran (1997) for more details on this approach
+    expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
+            ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    ∇₀ = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇₋ = @views ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+    ∇ₑ = @views ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+
+    A = ∇₀ \ ∇₋
+    B = ∇₀ \ ∇₊
+
+    # A = sparse(∇̂₀ \ ∇₋) # sparsity desnt make it faster
+    # B = sparse(∇̂₀ \ ∇₊)
+
+    # droptol!(A,eps())
+    # droptol!(B,eps())
+
+    C = copy(A)
+    C̄ = similar(A)
+
+    maxiter = 10000  # Maximum number of iterations
+
+    error = one(tol) + tol
+    iter = 0
+
+    while error > tol && iter <= maxiter
+        C̄ = copy(C)  # Store the current C̄ before updating it
+        
+        # Update C̄ based on the given formula
+        C = A + B * C^2
+        
+        # Check for convergence
+        if iter % 100 == 0
+            error = maximum(abs, C - C̄)
+        end
+
+        iter += 1
+    end
+
+    D = -(∇₊ * -C + ∇₀) \ ∇ₑ
+
+    return hcat(-C[:, T.past_not_future_and_mixed_idx], D), error <= tol
+end
+
+
 function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
@@ -5613,8 +5660,9 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
 end
 
 
-riccati_AD_direct = ℐ.ImplicitFunction(riccati_forward, 
-                                    riccati_conditions; 
+riccati_AD_direct = ℐ.ImplicitFunction(riccati_forward,
+                                    riccati_conditions;
+                                    # conditions_backend = 𝒷(), # ForwardDiff is slower in combination with Zygote as overall backend
                                     linear_solver = ℐ.DirectLinearSolver())
 
 riccati_AD = ℐ.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt converge!?

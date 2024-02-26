@@ -1,5 +1,5 @@
 using MacroModelling
-import Turing
+import Turing, Pigeons, DynamicPPL
 import Turing: NUTS, sample, logpdf, Truncated#, Normal, Beta, Gamma, InverseGamma,
 using Random, CSV, DataFrames, Zygote, AxisKeys, MCMCChains
 # using ComponentArrays, Optimization, OptimizationNLopt, OptimizationOptimisers
@@ -223,13 +223,15 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
 
     ctou, clandaw, cg, curvp, curvw, crhols, crhoas = fixed_parameters
 
-    parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhols,crhoqs,crhoas,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhols,crhoqs,crhoas,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
 
-    kalman_prob = get_loglikelihood(m, data(observables), parameters_combined)
+        kalman_prob = get_loglikelihood(m, data(observables), parameters_combined)
 
-    # println(kalman_prob)
-    
-    Turing.@addlogprob! kalman_prob 
+        # println(kalman_prob)
+        
+        Turing.@addlogprob! kalman_prob 
+    end
 end
 
 
@@ -239,6 +241,15 @@ fixed_parameters = SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:cur
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, SW07, observables, fixed_parameters)
 
+
+# generate a Pigeons log potential
+sw07_lp = Pigeons.TuringLogPotential(SW07_loglikelihood)
+
+using BenchmarkTools
+# find a feasible starting point
+# @benchmark Pigeons.pigeons(target = sw07_lp, n_rounds = 1, n_chains = 1);
+Pigeons.pigeons(target = sw07_lp, n_rounds = 1, n_chains = 1)
+@profview Pigeons.pigeons(target = sw07_lp, n_rounds = 1, n_chains = 1)
 
 
 n_samples = 1000
@@ -319,7 +330,7 @@ SW07.parameter_values[indexin([:crhoms, :crhopinf, :crhow, :cmap, :cmaw],SW07.pa
 calculate_posterior_loglikelihoods(SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))],[])
 
 
-using ForwardDiff, BenchmarkTools, FiniteDifferences
+using ForwardDiff, BenchmarkTools#, FiniteDifferences
 
 
 
@@ -347,18 +358,300 @@ fin_grad = FiniteDifferences.grad(central_fdm(4,1),x -> calculate_posterior_logl
 
 @profview ForwardDiff.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])
 
-@profview for i in 1:30 Zygote.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1] end
+@profview for i in 1:10 Zygote.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1] end
 
 @profview for i in 1:10 FiniteDifferences.grad(central_fdm(4,1),x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1] end
 
 
+include("../models/RBC_baseline.jl")
+
 𝓂 = SW07
+# 𝓂 = RBC_baseline
 verbose = true
 parameters = nothing
 tol = eps()
 import LinearAlgebra as ℒ
 using ImplicitDifferentiation
 import MacroModelling: ℳ 
+import RecursiveFactorization as RF
+import SpeedMapping: speedmapping
+
+parameter_values = 𝓂.parameter_values
+algorithm = :first_order
+filter = :kalman
+warmup_iterations = 0
+tol = 1e-16
+T = 𝓂.timings
+
+solve!(𝓂, verbose = verbose, algorithm = algorithm)
+
+SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+
+∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) |> Matrix
+
+
+
+expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
+ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+∇₀ = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+∇₋ = @views ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+∇ₑ = @views ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+
+∇̂₀ =  RF.lu(∇₀)
+
+A = ∇̂₀ \ ∇₋
+B = ∇̂₀ \ ∇₊
+
+C = copy(A)
+C̄ = similar(A)
+
+maxiter = 10000  # Maximum number of iterations
+
+error = one(tol) + tol
+iter = 0
+while error > tol && iter <= maxiter
+    C̄ = copy(C)  # Store the current C̄ before updating it
+
+    # Update C̄ based on the given formula
+    C = A + B * C^2
+
+    # Check for convergence
+    error = maximum(abs, C - C̄)
+
+    iter += 1
+end
+
+D = -(∇₊ * -C + ∇₀) \ ∇ₑ
+
+return hcat(-C[:, T.past_not_future_and_mixed_idx], D), error <= tol
+s1 = hcat(-C[:, T.past_not_future_and_mixed_idx], D)
+𝐒₁, solved = MacroModelling.riccati_forward(∇₁; T = 𝓂.timings)
+
+maximum(abs, 𝐒₁ + C[:, T.past_not_future_and_mixed_idx])
+
+
+@benchmark begin
+    A = ∇̂₀ \ ∇₋
+    B = ∇̂₀ \ ∇₊
+
+    C = similar(A)
+    C̄ = similar(A)
+
+    sol = speedmapping(zero(A); m! = (C̄, C) -> C̄ .=  A + B * C^2, tol = eps(), maps_limit = 10000)
+end
+
+sol.minimizer
+
+C = -sol.minimizer
+# maximum(abs,C + (A + B * C^2))
+
+tol=eps()
+@benchmark begin
+    A = ∇̂₀ \ ∇₋
+    B = ∇̂₀ \ ∇₊
+
+    C = copy(A)
+    C̄ = similar(A)
+
+    maxiter = 10000  # Maximum number of iterations
+
+    error = one(tol) + tol
+    iter = 0
+    while error > tol && iter <= maxiter
+        C̄ = copy(C)  # Store the current C̄ before updating it
+
+        # Update C̄ based on the given formula
+        C = A + B * C^2
+
+        # Check for convergence
+        error = maximum(abs, C - C̄)
+
+        iter += 1
+    end
+end
+
+
+
+@benchmark begin
+    A = sparse(∇̂₀ \ ∇₋)
+    B = sparse(∇̂₀ \ ∇₊)
+
+    droptol!(A, 1e-15)
+    droptol!(B, 1e-15)
+
+    C = copy(collect(A))
+    C̄ = similar(C)
+
+    maxiter = 10000  # Maximum number of iterations
+
+    error = one(tol) + tol
+    iter = 0
+    while error > tol && iter <= maxiter
+        C̄ = copy(C)  # Store the current C̄ before updating it
+
+        # Update C̄ based on the given formula
+        C = A + B * C^2
+
+        # droptol!(C, 1e-15)
+
+        # Check for convergence
+        error = maximum(abs, C - C̄)
+
+        iter += 1
+    end
+end
+
+
+D = -(∇₊ * -C + ∇₀) \ ∇ₑ
+
+return hcat(-C[:, T.past_not_future_and_mixed_idx], D), error < tol
+
+s1 =hcat(-C[:, T.past_not_future_and_mixed_idx], D)
+
+𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    
+maximum(abs,𝐒₁-s1)
+𝐒₁, solved = MacroModelling.riccati_forward(∇₁; T = 𝓂.timings)
+# sparse(∇₁)
+
+
+
+function riccati_conditions(∇₁::AbstractMatrix{M}, sol_d::AbstractMatrix{N}, solved::Bool; T, explosive::Bool = false) where {M,N}
+    expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+    A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    B = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    C = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+
+    sol_buf = sol_d * expand[2]
+
+    sol_buf2 = sol_buf * sol_buf
+
+    # err1 = A * sol_buf2 + B * sol_buf + C
+
+    err1 = A * sol_buf2 # + B * sol_buf + C
+
+    err1[:,T.past_not_future_and_mixed_idx]
+end
+
+T = 𝓂.timings;
+# ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)]
+expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+
+# (T.nFuture_not_past_and_mixed + T.nVars)*40
+# 𝓂.timings.past_not_future_and_mixed_idx
+# riccati_conditions(∇₁, 𝐒₁, solved, T = 𝓂.timings)
+
+d∇₁ = ForwardDiff.jacobian(x -> riccati_conditions(x, 𝐒₁, solved, T = 𝓂.timings), ∇₁) |> sparse
+# d𝐒₁ = ForwardDiff.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁) #|> sparse
+
+
+# d∇₁[:,1:T.nVars*size(𝐒₁,2)] |> collect # A
+
+# lll = d∇₁[:,T.nFuture_not_past_and_mixed*T.nVars .+ (1:T.nVars^2)] |> collect # B
+
+# d∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars)*T.nVars .+ (1:T.nVars*size(𝐒₁,2))] |> collect # C
+
+using LinearAlgebra
+
+sol_buf = 𝐒₁ * expand[2]
+
+# tmp = (𝐒₁ * expand[2] * 𝐒₁ * expand[2])[T.future_not_past_and_mixed_idx,T.past_not_future_and_mixed_idx]
+# kron(tmp,I(9))
+# tmp[[1,5,9],:]|>vec|>sort
+
+# kron(𝐒₁,I(9))' #B
+# sum(abs,kron(𝐒₁,I(9))' - lll)
+
+dA = kron((𝐒₁ * expand[2] * 𝐒₁ * expand[2])[T.future_not_past_and_mixed_idx,T.past_not_future_and_mixed_idx],I(size(𝐒₁,1)))'
+dB = kron(𝐒₁, I(size(𝐒₁,1)))' 
+dC = I(length(𝐒₁))
+
+datmp∇₁ = hcat(dA,dB,dC)
+
+da∇₁ = hcat(datmp∇₁, zeros(size(datmp∇₁, 1), length(∇₁) - size(datmp∇₁, 2))) |> sparse
+
+sum(abs, da∇₁ - d∇₁)
+
+
+
+d𝐒₁ = ForwardDiff.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁) |> sparse
+d𝐒₁ = Zygote.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁)[1] |> sparse
+d𝐒₁ = FiniteDifferences.jacobian(central_fdm(5,1), x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁)[1] |> sparse
+droptol!(d𝐒₁,1e-14)
+
+findnz(d𝐒₁)[3]|>unique|>sort
+
+dS1 = kron(I(20),∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)])|>sparse
+dS1 = kron(I(20),∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)])|>sparse
+
+spatmp = kron(∇₁[T.past_not_future_and_mixed_idx,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)], 𝐒₁)|>sparse
+
+# vec(∇₁[T.past_not_future_and_mixed_idx,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]) * kron(𝐒₁,I(20))
+
+droptol!(spatmp,1e-14)
+spaaa= kron(∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)], ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]) |> sparse
+findnz(spaaa)[3]|>unique|>sort
+
+spaaa= ∇₁[T.past_not_future_and_mixed_idx,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]|>sparse
+
+
+nzvals = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]|>sparse|>findnz
+nzvals[3]|>unique|>sort
+
+X = 𝐒₁# * expand[2]
+A = ∇₁[:,1:T.nFuture_not_past_and_mixed]# * expand[1]
+    # Compute the Kronecker product and subtract from identity
+    C1 = kron(A[T.past_not_future_and_mixed_idx,:]', X[T.past_not_future_and_mixed_idx,:]) |>sparse
+    C2 = kron(X[:,T.past_not_future_and_mixed_idx] * A[:,T.past_not_future_and_mixed_idx]', I(20)) |>sparse
+    (kron(A', X) + kron(X', A'))|>sparse
+
+    C1+C2
+    d𝐒₁
+
+    # Extract the row, column, and value indices from C
+    rows, cols, vals = findnz(C)
+
+    # Lists to store the 2D indices after the operations
+    final_rows = zeros(Int,length(rows))
+    final_cols = zeros(Int,length(rows))
+
+    Threads.@threads for i = 1:length(rows)
+        # Convert the 1D row index to its 2D components
+        i1, i2 = divrem(rows[i]-1, size(A,1)) .+ 1
+
+        # Convert the 1D column index to its 2D components
+        j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
+
+        # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
+        final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(A,1), size(A,1)), i2, i1, j1, j2) - 1, size(A,1) * size(A,1)) .+ 1
+
+        # Store the 2D indices
+        final_rows[i] = final_row
+        final_cols[i] = final_col
+    end
+
+    r,c,_ = findnz(A) 
+    
+    non_zeros_only = spzeros(Int,size(A,1)^2,size(A,1)^2)
+    
+    non_zeros_only[CartesianIndex.(r .+ (c.-1) * size(A,1), r .+ (c.-1) * size(A,1))] .= 1
+    
+    return sparse(final_rows, final_cols, vals, size(A,1) * size(A,1), size(A,1) * size(A,1)) + ℒ.kron(sparse(X * A'), ℒ.I(size(A,1)))' * non_zeros_only
+
+
+using SparseArrays
+findnz(d∇₁)
+
+findnz(d∇₁)[3]|>unique|>sort
+tmp[:,1]|>vec|>sort
+𝐒₁|>vec|>sort
+# droptol!(d∇₁,1e-14)
+@benchmark d∇₁\d𝐒₁
+@benchmark d𝐒₁\d∇₁
 
 calculate_covariance_AD(sol; T, subset_indices) = ImplicitFunction(sol->calculate_covariance_forward(sol, T=T, subset_indices = subset_indices), (x,y)->calculate_covariance_conditions(x,y,T=T, subset_indices = subset_indices))
 # calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = Int64[observables_and_states...])

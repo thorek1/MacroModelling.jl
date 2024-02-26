@@ -2980,7 +2980,8 @@ function get_loglikelihood(𝓂::ℳ,
 
         ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) |> Matrix
 
-        𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+        # 𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+        𝐒₁, solved = calculate_quadratic_iteration_solution_AD(∇₁; T = 𝓂.timings)
         
         if !solved return -Inf end
 
