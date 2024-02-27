@@ -350,29 +350,46 @@ fin_grad = FiniteDifferences.grad(central_fdm(4,1),x -> calculate_posterior_logl
 
 @benchmark ForwardDiff.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])
 
-@benchmark Zygote.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1]
+@benchmark Zygote.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))] .* (1 + randn()*1e-6))[1]
 
+# BenchmarkTools.Trial: 59 samples with 1 evaluation.
+#  Range (min … max):  79.393 ms … 117.609 ms  ┊ GC (min … max): 0.00% … 26.87%
+#  Time  (median):     81.066 ms               ┊ GC (median):    0.00%
+#  Time  (mean ± σ):   84.742 ms ±   8.168 ms  ┊ GC (mean ± σ):  2.83% ±  6.44%
+
+#   █ ▂                                                           
+#   ███▇▅▃▁▁▅▅▃▁▁▃▃▁▁▃▁▃▃▁▃▁▁▁▃▁▁▃▃▁▁▁▃▁▁▃▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▃ ▁
+#   79.4 ms         Histogram: frequency by time          115 ms <
+
+#  Memory estimate: 93.94 MiB, allocs estimate: 217016. 
 @benchmark FiniteDifferences.grad(central_fdm(4,1),x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1]
 
 
 
 @profview ForwardDiff.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])
 
-@profview for i in 1:10 Zygote.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1] end
+@profview for i in 1:10 Zygote.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters ))])[1] end
+
+
+@profview for i in 1:10 
+    Zygote.gradient(x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters ))] .* (1 +randn()*1e-6))[1] 
+end
+
+
 
 @profview for i in 1:10 FiniteDifferences.grad(central_fdm(4,1),x -> calculate_posterior_loglikelihoods(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters))])[1] end
 
 
 include("../models/RBC_baseline.jl")
 
-# 𝓂 = SW07
-𝓂 = RBC_baseline
+𝓂 = SW07
+# 𝓂 = RBC_baseline
 verbose = true
 parameters = nothing
 tol = eps()
 import LinearAlgebra as ℒ
 using ImplicitDifferentiation
-import MacroModelling: ℳ 
+import MacroModelling: ℳ, get_and_check_observables, calculate_jacobian, calculate_first_order_solution, calculate_kalman_filter_loglikelihood, solve_matrix_equation_AD
 import RecursiveFactorization as RF
 import SpeedMapping: speedmapping
 
@@ -383,14 +400,359 @@ warmup_iterations = 0
 tol = 1e-16
 T = 𝓂.timings
 
+
+function update_loglikelihood!(loglik::S, P::Matrix{S}, u::Vector{S}, z::Vector{S}, C::Matrix{T}, A::Matrix{S}, 𝐁::Matrix{S}, data_point::Vector{S}) where {S,T}
+    v = data_point - z
+    F = C * P * C'
+
+    F̄ = ℒ.lu(F, check = false)
+
+    if !ℒ.issuccess(F̄)
+        return -Inf, P, u, z
+    end
+
+    Fdet = ℒ.det(F̄)
+
+    # Early return if determinant is too small, indicating numerical instability.
+    if Fdet < eps(S)
+        return -Inf, P, u, z
+    end
+
+    invF = inv(F̄)
+    loglik_increment = log(Fdet) + v' * invF * v
+    K = P * C' * invF
+    P = A * (P - K * C * P) * A' + 𝐁
+    u = A * (u + K * v)
+    z = C * u
+
+    return loglik + loglik_increment, P, u, z
+end
+
+
+
+function calculate_kalman_filter_ll(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S})::S where S
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present))))
+
+    calculate_kalman_filter_ll(𝓂, obs_idx, 𝐒₁, data_in_deviations)
+end
+
+function calculate_kalman_filter_ll(𝓂::ℳ, observables::Vector{String}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S})::S where S
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present))))
+
+    calculate_kalman_filter_ll(𝓂, obs_idx, 𝐒₁, data_in_deviations)
+end
+
+function calculate_kalman_filter_ll(𝓂::ℳ, observables_index::Vector{Int}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S})::S where S
+    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,observables_index))
+
+    A = 𝐒₁[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
+    B = 𝐒₁[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+
+    C = ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(observables_index),observables_and_states)),:]
+
+    𝐁 = B * B'
+
+    # Gaussian Prior
+    coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    
+    dimensions = [size(A),size(𝐁)]
+    
+    values = vcat(vec(A), vec(collect(-𝐁)))
+
+    P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+
+    u = zeros(S, length(observables_and_states))
+    # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
+    z = C * u
+
+    loglik = S(0)
+    for t in 1:size(data_in_deviations, 2)
+        loglik, P, u, z = update_loglikelihood!(loglik, P, u, z, C, A, 𝐁, data_in_deviations[:, t])
+        if loglik == -Inf
+            break
+        end
+    end
+
+    return -(loglik + length(data_in_deviations) * log(2 * 3.141592653589793)) / 2 
+end
+
+
+
+function get_ll(𝓂, 
+    data::KeyedArray{Float64}, 
+    parameter_values::Vector{S}; 
+    algorithm::Symbol = :first_order, 
+    filter::Symbol = :kalman, 
+    warmup_iterations::Int = 0, 
+    tol::AbstractFloat = 1e-12, 
+    verbose::Bool = false)::S where S
+    
+    # checks to avoid errors further down the line and inform the user
+    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
+
+    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+        filter = :inversion
+    end
+
+    observables = @ignore_derivatives get_and_check_observables(𝓂, data)
+
+    @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
+
+    # keep the parameters within bounds
+    for (k,v) in 𝓂.bounds
+        if k ∈ 𝓂.parameters
+            if min(max(parameter_values[indexin([k], 𝓂.parameters)][1], v[1]), v[2]) != parameter_values[indexin([k], 𝓂.parameters)][1]
+                return -Inf
+            end
+        end
+    end
+
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+
+    if solution_error > tol || isnan(solution_error)
+        return -Inf
+    end
+
+    state = zeros(𝓂.timings.nVars)
+
+    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) |> Matrix
+
+    𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    # 𝐒₁, solved = calculate_quadratic_iteration_solution_AD(∇₁; T = 𝓂.timings)
+    
+    if !solved return -Inf end
+
+    state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
+        aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+                    shock]
+        return 𝐒₁ * aug_state # you need a return statement for forwarddiff to work
+    end
+
+    # prepare data
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
+
+    data_in_deviations = collect(data) .- SS_and_pars[obs_indices]
+
+    loglikelihood = calculate_kalman_filter_ll(𝓂, observables, 𝐒₁, data_in_deviations)
+
+    return loglikelihood
+end
+
+
+
+
+function calculate_posterior_ll(parameters, u)
+    ctou, clandaw, cg, curvp, curvw, crhols, crhoas = @ignore_derivatives SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters)]
+
+    calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhoqs,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta = parameters
+
+    parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhols,crhoqs,crhoas,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
+
+    log_lik = 0
+    log_lik -= get_ll(SW07, data(observables), parameters_combined, filter = :kalman)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_ea)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.025,5), z_eb)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_eg)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_eqs)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_em)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_epinf)
+    log_lik -= logpdf(Truncated(InverseGamma(0.1, 2.0, μσ = true),0.01,3), z_ew)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999), crhoa)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999), crhob)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999), crhog)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999), crhoqs)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999), crhoms)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.01,.9999), crhopinf)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.20, μσ = true),.001,.9999), crhow)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.2, μσ = true),0.01,.9999), cmap)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.2, μσ = true),0.01,.9999), cmaw)
+    log_lik -= logpdf(Truncated(Normal(4,1.5),2,15), csadjcost)
+    log_lik -= logpdf(Truncated(Normal(1.50,0.375),0.25,3), csigma)
+    log_lik -= logpdf(Truncated(Beta(0.7, 0.1, μσ = true),0.001,0.99), chabb)
+    log_lik -= logpdf(Beta(0.5, 0.1, μσ = true), cprobw)
+    # log_lik -= logpdf(Truncated(Beta(0.5, 0.1, μσ = true),0.3,0.95), cprobw)
+    log_lik -= logpdf(Truncated(Normal(2,0.75),0.25,10), csigl)
+    log_lik -= logpdf(Beta(0.5, 0.10, μσ = true), cprobp)
+    # log_lik -= logpdf(Truncated(Beta(0.5, 0.10, μσ = true),0.5,0.95), cprobp)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.15, μσ = true),0.01,0.99), cindw)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.15, μσ = true),0.01,0.99), cindp)
+    log_lik -= logpdf(Truncated(Beta(0.5, 0.15, μσ = true),0.01,1), czcap)
+    log_lik -= logpdf(Truncated(Normal(1.25,0.125),1.0,3), cfc)
+    log_lik -= logpdf(Truncated(Normal(1.5,0.25),1.0,3), crpi)
+    # log_lik -= logpdf(Truncated(Beta(0.75, 0.10, μσ = true),0.5,0.975), crr)
+    log_lik -= logpdf(Beta(0.75, 0.10, μσ = true), crr)
+    log_lik -= logpdf(Truncated(Normal(0.125,0.05),0.001,0.5), cry)
+    log_lik -= logpdf(Truncated(Normal(0.125,0.05),0.001,0.5), crdy)
+    log_lik -= logpdf(Truncated(Gamma(0.625,0.1, μσ = true),0.1,2.0), constepinf)
+    log_lik -= logpdf(Truncated(Gamma(0.25,0.1, μσ = true),0.01,2.0), constebeta)
+    log_lik -= logpdf(Truncated(Normal(0.0,2.0),-10.0,10.0), constelab)
+    log_lik -= logpdf(Truncated(Normal(0.4,0.10),0.1,0.8), ctrend)
+    log_lik -= logpdf(Truncated(Normal(0.5,0.25),0.01,2.0), cgy)
+    log_lik -= logpdf(Truncated(Normal(0.3,0.05),0.01,1.0), calfa)
+
+    return log_lik
+end
+
+
+calculate_posterior_ll(SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters ))], [])
+
+
+calculate_posterior_ll(SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters ))] .* (1 +randn()*1e-6), [])
+
+
+Zygote.gradient(x -> calculate_posterior_ll(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters ))] .* (1 +randn()*1e-6))[1] 
+
+@profview for i in 1:100
+    Zygote.gradient(x -> calculate_posterior_ll(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters ))] .* (1 +randn()*1e-6))[1] 
+end
+
+@benchmark Zygote.gradient(x -> calculate_posterior_ll(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters ))] .* (1 +randn()*1e-6))[1] 
+
+@benchmark Zygote.gradient(x -> calculate_posterior_ll(x,[]), SW07.parameter_values[setdiff(1:length(SW07.parameters),indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters ))])[1] 
+
+
+
+
+
+
+
+
+
+
+
+
 solve!(𝓂, verbose = verbose, algorithm = algorithm)
 
 SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
 
 ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) |> Matrix
 
+using BenchmarkTools
+import SparseArrays: spdiagm
+import ThreadedSparseArrays
+[spdiagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], spdiagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
 
+
+# Assuming `size(datmp∇₁, 1)` gives the number of rows and `length(∇₁)` gives the number of columns
+num_rows = size(datmp∇₁, 1)
+num_cols = length(∇₁)
+
+# Create an empty sparse matrix with the given dimensions
+spd∇₁a = spzeros(num_rows, num_cols)
+
+
+@profview for i in 1:50 begin
+𝐒₁, solved = MacroModelling.riccati_forward(∇₁;T = T, explosive = false)
+
+sp𝐒₁ = sparse(𝐒₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+sp∇₁ = sparse(∇₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+
+droptol!(sp𝐒₁, 10*eps())
+droptol!(sp∇₁, 10*eps())
+
+# expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+expand = [
+    spdiagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC, 
+    spdiagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+] 
+
+A = sp∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+B = sp∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+
+sol_buf = sp𝐒₁ * expand[2]
+sol_buf2 = sol_buf * sol_buf
+
+spd𝐒₁a = (ℒ.kron(expand[2] * sp𝐒₁, A') + 
+        ℒ.kron(expand[2] * expand[2]', sol_buf' * A' + B'))
+        
+droptol!(spd𝐒₁a, 10*eps())
+
+d𝐒₁a = spd𝐒₁a' |> collect
+
+# Initialize empty spd∇₁a
+spd∇₁a = spzeros(length(sp𝐒₁), length(∇₁))
+
+# Directly allocate dA, dB, dC into spd∇₁a
+# Note: You need to calculate the column indices where each matrix starts and ends
+# This is conceptual; actual implementation would depend on how you can obtain or compute these indices
+dA_cols = 1:(T.nFuture_not_past_and_mixed * size(𝐒₁,1))
+dB_cols = dA_cols[end] .+ (1 : 2 * length(sp𝐒₁))
+dC_cols = dB_cols[end] .+ (1 : length(sp𝐒₁))
+
+spd∇₁a[:,dA_cols] = ℒ.kron(expand[1] * sol_buf2 * expand[2]' , ℒ.I(size(𝐒₁, 1)))'
+spd∇₁a[:,dB_cols] = ℒ.kron(sp𝐒₁, ℒ.I(size(𝐒₁, 1)))' 
+spd∇₁a[:,dC_cols] = ℒ.I(length(𝐒₁))
+
+tmp = -(d𝐒₁a \ spd∇₁a)'
+end
+end
+
+rand(3160)
+b = rand(800)
+x = -(d𝐒₁a \ spd∇₁a)' * b
+-d𝐒₁a' * b
+spd∇₁a' * x
+-d𝐒₁a' \ spd∇₁a' 
+
+spd∇₁a' * rand(800)
+spd𝐒₁a = sparse(d𝐒₁a)
+d∇₁a = collect(spd∇₁a)
+
+@benchmark spd𝐒₁a \ d∇₁a
+@benchmark d𝐒₁a \ d∇₁a
+@benchmark d𝐒₁a \ spd∇₁a
+
+
+inv(d𝐒₁a)
+
+using Krylov
+
+
+d𝐒₁a_dense = Matrix(d𝐒₁a)  # Ensure it's a dense matrix if it's not already
+d∇₁a_dense = Matrix(d∇₁a)
+
+
+function sylvester!(sol,𝐱)
+    𝐗 = reshape(𝐱, size(d∇₁a))
+    sol .= vec(d𝐒₁a * 𝐗)
+    return sol
+end
+
+sylvester = LinearOperators.LinearOperator(Float64, length(d∇₁a), length(d∇₁a), true, true, sylvester!)
+
+𝐂, info = Krylov.gmres(sylvester, [vec(d∇₁a);], itmax = 10)
+
+Krylov.block_gmres(collect(d𝐒₁a), d∇₁a)
+# Assuming d𝐒₁a and d∇₁a are already computed as per your code
+# Convert matrices to appropriate types if necessary. Krylov methods work with dense matrices.
+
+# Define a function for the matrix-vector multiplication
+A_mul_B!(y, A, x) = mul!(y, A, x)
+
+# Setup a vector for the result of GMRES
+b = vec(d∇₁a_dense)  # Make sure it's a vector
+x = zeros(size(b))   # Initial guess can be a vector of zeros
+using LinearOperators
+
+# Assuming the rest of your code has defined d𝐒₁a and d∇₁a
+
+# Define the linear operator based on d𝐒₁a
+A_op = LinearOperator(Float64, size(d𝐒₁a, 1), size(d𝐒₁a, 2), false, false,
+                      v -> d𝐒₁a * v, 
+                      v -> d𝐒₁a' * v, 
+                      v -> d𝐒₁a' * v)
+# Apply GMRES
+# You may need to adjust the tolerance and max iterations based on your problem's specifics
+sol, history = Krylov.gmres(A_op, b)
+
+# Since the original operation was -(d𝐒₁a \ d∇₁a)', we need to reshape and transpose the solution vector
+tmp = reshape(sol, size(d∇₁a_dense)...)'
+
+# 1st order perturbation solution solver
 expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
 ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
@@ -512,10 +874,11 @@ s1 =hcat(-C[:, T.past_not_future_and_mixed_idx], D)
 
 𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
-maximum(abs,𝐒₁-s1)
-𝐒₁, solved = MacroModelling.riccati_forward(∇₁; T = 𝓂.timings)
-# sparse(∇₁)
 
+
+
+
+𝐒₁, solved = MacroModelling.riccati_forward(∇₁; T = 𝓂.timings)
 
 
 function riccati_conditions(∇₁::AbstractMatrix{M}, sol_d::AbstractMatrix{N}, solved::Bool; T, explosive::Bool = false) where {M,N}
@@ -540,336 +903,205 @@ function riccati_conditions(∇₁::AbstractMatrix{M}, sol_d::AbstractMatrix{N},
 
     return err1 # [:,T.past_not_future_and_mixed_idx]
 end
+
 riccati_conditions(∇₁, 𝐒₁, solved, T = 𝓂.timings)
 
 d𝐒₁f = ForwardDiff.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁) |> sparse
 d𝐒₁z = Zygote.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁)[1] |> sparse
 collect(d𝐒₁z)
 
-∇₁
-𝐒₁
-riccati_conditions(∇₁, 𝐒₁, solved, T = 𝓂.timings)
 
 sol_d = 𝐒₁
-
-
-T = 𝓂.timings;
-# ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)]
-∇₁
-sol_d
-
-expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
-expand[1]
-expand[2]
+expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
 A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
 B = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-C = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
-
+# C = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
 
 sol_buf = sol_d * expand[2]
 
 sol_buf2 = sol_buf * sol_buf
 
-err1 = A * sol_buf2 * expand[2]' # + B * sol_buf + C
-
-err1[:,T.past_not_future_and_mixed_idx]
-# (T.nFuture_not_past_and_mixed + T.nVars)*40
-# 𝓂.timings.past_not_future_aNnd_mixed_idx
-# riccati_conditions(∇₁, 𝐒₁, solved, T = 𝓂.timings)
-using LinearAlgebra
-# ArrayAdd(NPermuteDims(ArrayTensorProduct(A.T, X), (3)(1 2)), 
-        #  PermuteDims(ArrayTensorProduct(X.T*A.T, I), (3)(1 2)))
-C1 = kron(A[T.future_not_past_and_mixed_idx,:]', sol_d * expand[2]) |> sparse
-C2 = kron((sol_d * expand[2])' * A[T.future_not_past_and_mixed_idx,:]', I(9)) |> sparse
-
-C1 = kron((sol_buf * expand[2]')', A) |> sparse
-C2 = kron(expand[2], A * sol_buf) |> sparse
-
-
-C1 = kron(sol_d', ∇₁[:,1:T.nFuture_not_past_and_mixed]) |> sparse
-C2 = kron(I(3), sol_d * ∇₁[:,1:T.nFuture_not_past_and_mixed]')' |> sparse
-
-CC = C1+C2
-
-C1 = kron(A', expand[2] * sol_d * expand[2] * expand[2]') |> sparse
-C2 = kron((A' * sol_d * expand[2])', expand[2] * expand[2]') |> sparse
-
-
-
-
-# ArrayAdd(PermuteDims(ArrayTensorProduct(e1.T*cs.T*nab.T, e2*sol_d*e2*e2.T), (3)(1 2)), 
-        #  PermuteDims(ArrayTensorProduct(e2.T*sol_d.T*e1.T*cs.T*nab.T, e2*e2.T), (3)(1 2)))
-
-colselect = ℒ.diagm(ones(size(∇₁,2)))[:,1:T.nFuture_not_past_and_mixed]
-
-# C1 = kron(expand[1]' * colselect' * ∇₁', expand[2] * sol_d * expand[2] * expand[2]') |> sparse
-# C2 = kron(expand[2]' * sol_d' * expand[1]' * colselect' * ∇₁', expand[2] * expand[2]') |> sparse
-
-C1 = kron(expand[2] * sol_d * expand[2] * expand[2]', expand[1]' * colA' * ∇₁') |> sparse
-C2 = kron(expand[2] * expand[2]', expand[2]' * sol_d' * expand[1]' * colA' * ∇₁') |> sparse
-
-
-(C1 + C2)' - d𝐒₁f
-###### works
-
-# colB.T*nab.T, e2*e2.T
-CC = kron(expand[2] * expand[2]', colB' * ∇₁') |> sparse
-
-
-
-d𝐒₁a = (C1 + C2)' + CC'
-
-
-expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
-
-# A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-# B = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-# C = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
-
-# sol_buf = sol_d * expand[2]
-
-# sol_buf2 = sol_buf * sol_buf
-
 # err1 = A * sol_buf2 + B * sol_buf + C
 
 
-C1 = kron(expand[2] * sol_d, A') |> sparse
-C2 = kron(expand[2] * expand[2]', sol_buf' * A') |> sparse
-
 d𝐒₁a = (kron(expand[2] * sol_d, A') + 
-        kron(expand[2] * expand[2]', sol_buf' * A') + 
-        kron(expand[2] * expand[2]', B'))'
-
-d𝐒₁a = (kron(expand[2] * sol_d, A') + 
-        kron(expand[2] * expand[2]', sol_buf' * A' + B'))'
+        kron(expand[2] * expand[2]', sol_buf' * A' + B'))' |> collect
 
 
-d𝐒₁a - d𝐒₁f
+sum(abs, d𝐒₁a - d𝐒₁f)
 
-
-
-c1 = reshape(permutedims(reshape(C1 ,3, 9, 9, 3), [2, 3, 4, 1]), 27, 27)
-c2 = reshape(permutedims(reshape(C2 ,3, 9, 9, 3), [2, 3, 4, 1]), 27, 27)
-
-using Combinatorics
-
-solved = false
-solution = [1:4...]
-ccs = [reshape((C1 + C2) ,3, 9, 9, 3),
-        reshape((C1 + C2)' ,3, 9, 9, 3),
-        reshape((C1 + C2) ,9, 3, 3, 9),
-        reshape((C1 + C2)' ,9, 3, 3, 9),
-        reshape((C1 + C2) ,9, 9, 3, 3),
-        reshape((C1 + C2)' ,9, 9, 3, 3),
-        reshape((C1 + C2), 3, 3 ,9, 9),
-        reshape((C1 + C2)', 3, 3 ,9, 9)];
-for perm in permutations(1:4)
-    for cc in ccs
-        ccc = reshape(permutedims(cc, perm), 27, 27)
-        if isapprox(ccc, d𝐒₁re, atol = 1e-7)
-            solution = perm
-            solved = true
-            println("Found it: $perm, $cc")
-            break
-        end
-    end
-    if solved break end
-end
-
-
-cc = reshape(permutedims(reshape(C1 + C2 ,3, 9, 9, 3), [2, 3, 1, 4]), 27, 27) |> sparse
-cc = reshape(permutedims(reshape(C1' + C2' ,3, 9, 9, 3), [2, 3, 4, 1]), 27, 27) |> sparse
-cc = reshape(permutedims(reshape(C1 + C2 ,9, 3, 3, 9), [2, 3, 4, 1]), 27, 27) |> sparse
-cc = reshape(permutedims(reshape(C1 + C2 ,3, 9, 9, 3), [0, 2, 1, 3] .+ 1), 27, 27) |> sparse
-
-
-sparse(cc - collect(d𝐒₁re))
-maximum(abs, cc - collect(d𝐒₁re))
-
-
-
-Permutation([0, 2, 1, 3])
-abs.(vec(sol_d)) .> 0
-sparse(c1 + c2)' * abs.(vec(sol_d)) .> 0
-
-el1 = findnz(sparse(c1 + c2))[3]|>unique|>sort
-el11 = findnz(sparse(c1))[3]|>unique|>sort
-el12 = findnz(sparse(c2))[3]|>unique|>sort
-el2 = findnz(d𝐒₁re)[3]|>unique|>sort
-
-
-setdiff(el2,el11)
-setdiff(el2,el12)
-setdiff(el2,union(el11,el12))
-
-
-sparse(c1' - collect(d𝐒₁re))
-sparse(c2' - collect(d𝐒₁re))
-sparse(c1' + c2' - collect(d𝐒₁re))
-
-
-maximum(abs, (c1 + c2)' - collect(d𝐒₁re))
-
-findnz((c1 + c2)' - (d𝐒₁re))
-findnz(d𝐒₁)[3]|>unique|>sort
-
-d𝐒₁ |> collect
-
-elem1 = findnz(C1)[3]|>unique|>sort
-elem2 = findnz(C2)[3]|>unique|>sort
-
-union(elem1,elem2) |>unique|>sort
-
-findnz(C1 + C2)[3]|>unique|>sort
-
-findnz(d𝐒₁)[3]|>unique|>sort
-
-
-sparse(final_rows, final_cols, vals, size(A,1) * size(B,1), size(A,1) * size(B,1))
-
-
-
-C1 = kron(A[T.past_not_future_and_mixed_idx,:]', sol_d[T.past_not_future_and_mixed_idx,:]) |>sparse
-C2 = kron(sol_d[:,T.past_not_future_and_mixed_idx] * A[:,T.past_not_future_and_mixed_idx]', I(20)) |>sparse
-    (kron(A', X) + kron(X', A'))|>sparse
-
-d𝐒₁fo = ForwardDiff.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁) |> sparse
-d𝐒₁fi = FiniteDifferences.jacobian(central_fdm(4,1), x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁)[1] |> sparse
-d𝐒₁re = Zygote.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁)[1] |> sparse
-
-d𝐒₁fo |> collect
-d𝐒₁fi |> collect
-d𝐒₁re |> collect
-
-collect(CC)
-collect(CC + d𝐒₁fi)
-    A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-
-𝐒₁  (A' * expand[1]' + (expand[1] * A)')'
-
-X = 𝐒₁
-L = expand[1]
-A
-
-
-
-kron(X, (A' * L')')|>sparse
-
-kron(X, L * A) 
-
-aaa = (kron(X, L * A) + kron(X, (A' * L')') ) |> sparse
-
-findnz(aaa)[3]|>unique|>sort
-findnz(d𝐒₁z)[3]|>unique|>sort
-collect(d𝐒₁z)
-
-
-
-d∇₁ = ForwardDiff.jacobian(x -> riccati_conditions(x, 𝐒₁, solved, T = 𝓂.timings), ∇₁) |> sparse
-# d𝐒₁ = ForwardDiff.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁) #|> sparse
-
-
-# d∇₁[:,1:T.nVars*size(𝐒₁,2)] |> collect # A
-
-# lll = d∇₁[:,T.nFuture_not_past_and_mixed*T.nVars .+ (1:T.nVars^2)] |> collect # B
-
-# d∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars)*T.nVars .+ (1:T.nVars*size(𝐒₁,2))] |> collect # C
 
 using LinearAlgebra
 
-sol_buf = 𝐒₁ * expand[2]
+d∇₁f = ForwardDiff.jacobian(x -> riccati_conditions(x, 𝐒₁, solved, T = 𝓂.timings), ∇₁) |> sparse
 
-# tmp = (𝐒₁ * expand[2] * 𝐒₁ * expand[2])[T.future_not_past_and_mixed_idx,T.past_not_future_and_mixed_idx]
-# kron(tmp,I(9))
-# tmp[[1,5,9],:]|>vec|>sort
-
-# kron(𝐒₁,I(9))' #B
-# sum(abs,kron(𝐒₁,I(9))' - lll)
-
-dA = kron((𝐒₁ * expand[2] * 𝐒₁ * expand[2])[T.future_not_past_and_mixed_idx,T.past_not_future_and_mixed_idx],I(size(𝐒₁,1)))'
-dB = kron(𝐒₁, I(size(𝐒₁,1)))' 
-dC = I(length(𝐒₁))
+dA = kron(expand[1] * sol_buf2 * expand[2]' , I(size(𝐒₁,1)))'
+dB = kron(sol_d, I(size(𝐒₁,1)))' 
+dC = I(length(sol_d))
 
 datmp∇₁ = hcat(dA,dB,dC)
 
-da∇₁ = hcat(datmp∇₁, zeros(size(datmp∇₁, 1), length(∇₁) - size(datmp∇₁, 2))) |> sparse
+d∇₁a = hcat(datmp∇₁, zeros(size(datmp∇₁, 1), length(∇₁) - size(datmp∇₁, 2))) |> sparse
 
-sum(abs, da∇₁ - d∇₁)
-
-
-
-d𝐒₁ = ForwardDiff.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁) |> sparse
-d𝐒₁ = Zygote.jacobian(x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁)[1] |> sparse
-d𝐒₁ = FiniteDifferences.jacobian(central_fdm(5,1), x -> riccati_conditions(∇₁, x, solved, T = 𝓂.timings), 𝐒₁)[1] |> sparse
-droptol!(d𝐒₁,1e-14)
-
-findnz(d𝐒₁)[3]|>unique|>sort
-
-dS1 = kron(I(20),∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)])|>sparse
-dS1 = kron(I(20),∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)])|>sparse
-
-spatmp = kron(∇₁[T.past_not_future_and_mixed_idx,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)], 𝐒₁)|>sparse
-
-# vec(∇₁[T.past_not_future_and_mixed_idx,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]) * kron(𝐒₁,I(20))
-
-droptol!(spatmp,1e-14)
-spaaa= kron(∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)], ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]) |> sparse
-findnz(spaaa)[3]|>unique|>sort
-
-spaaa= ∇₁[T.past_not_future_and_mixed_idx,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]|>sparse
+sum(abs, d∇₁a - d∇₁f)
 
 
-nzvals = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]|>sparse|>findnz
-nzvals[3]|>unique|>sort
+collect(d∇₁a)\d𝐒₁a |> sparse
+collect(d∇₁f)\d𝐒₁f |> sparse
 
-X = 𝐒₁# * expand[2]
-A = ∇₁[:,1:T.nFuture_not_past_and_mixed]# * expand[1]
-    # Compute the Kronecker product and subtract from identity
-    C1 = kron(A[T.past_not_future_and_mixed_idx,:]', X[T.past_not_future_and_mixed_idx,:]) |>sparse
-    C2 = kron(X[:,T.past_not_future_and_mixed_idx] * A[:,T.past_not_future_and_mixed_idx]', I(20)) |>sparse
-    (kron(A', X) + kron(X', A'))|>sparse
+collect(d𝐒₁a)\d∇₁a |> sparse
+collect(d𝐒₁f)\d∇₁f |> sparse
 
-    C1+C2
-    d𝐒₁
 
-    # Extract the row, column, and value indices from C
-    rows, cols, vals = findnz(C)
 
-    # Lists to store the 2D indices after the operations
-    final_rows = zeros(Int,length(rows))
-    final_cols = zeros(Int,length(rows))
 
-    Threads.@threads for i = 1:length(rows)
-        # Convert the 1D row index to its 2D components
-        i1, i2 = divrem(rows[i]-1, size(A,1)) .+ 1
 
-        # Convert the 1D column index to its 2D components
-        j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
+import MacroModelling: timings, riccati_forward
 
-        # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
-        final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(A,1), size(A,1)), i2, i1, j1, j2) - 1, size(A,1) * size(A,1)) .+ 1
 
-        # Store the 2D indices
-        final_rows[i] = final_row
-        final_cols[i] = final_col
+function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = 1e-12)
+    # see Binder and Pesaran (1997) for more details on this approach
+    expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
+            ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    ∇₀ = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇₋ = @views ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+    ∇ₑ = @views ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+    
+    ∇̂₀ =  RF.lu(∇₀)
+    
+    A = ∇̂₀ \ ∇₋
+    B = ∇̂₀ \ ∇₊
+
+    C = similar(A)
+    C̄ = similar(A)
+
+    sol = speedmapping(zero(A); m! = (C̄, C) -> C̄ .=  A + B * C^2, tol = tol, maps_limit = 100000)
+
+    C = -sol.minimizer
+
+    # D = -(∇₊ * C + ∇₀) \ ∇ₑ
+
+    # @views hcat(C[:,T.past_not_future_and_mixed_idx],D), sol.converged
+    C[:,T.past_not_future_and_mixed_idx], sol.converged
+end
+
+S1, solved = calculate_quadratic_iteration_solution(∇₁,T = 𝓂.timings)
+
+
+
+using ChainRulesCore, LinearAlgebra
+
+function ChainRulesCore.rrule(::typeof(calculate_quadratic_iteration_solution), ∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = eps())
+    # Forward pass to compute the output and intermediate values needed for the backward pass
+    𝐒₁, solved = calculate_quadratic_iteration_solution(∇₁, T=T, tol=tol)
+
+    expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+    A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    B = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+
+    sol_buf = 𝐒₁ * expand[2]
+    sol_buf2 = sol_buf * sol_buf
+    
+    d𝐒₁a = (kron(expand[2] * 𝐒₁, A') + 
+            kron(expand[2] * expand[2]', sol_buf' * A' + B'))' |> collect
+
+    dA = kron(expand[1] * sol_buf2 * expand[2]' , I(size(𝐒₁,1)))'
+    dB = kron(𝐒₁, I(size(𝐒₁,1)))' 
+    dC = I(length(𝐒₁))
+            
+    datmp∇₁ = hcat(dA,dB,dC)
+            
+    d∇₁a = hcat(datmp∇₁, zeros(size(datmp∇₁, 1), length(∇₁) - size(datmp∇₁, 2))) |> collect
+    tmp = -(d𝐒₁a \ d∇₁a)'
+
+    function calculate_quadratic_iteration_solution_pullback(Δ𝐒₁)
+        # Backward pass to compute the derivatives with respect to inputs
+        # This would involve computing the derivatives for each operation in reverse order
+        # and applying chain rule to propagate through the function
+        return NoTangent(), reshape(tmp * vec(Δ𝐒₁[1]), size(∇₁)) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
+        # return NoTangent(), (reshape(-d𝐒₁a \ d∇₁a * vec(Δ𝐒₁) , size(∇₁))) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
     end
 
-    r,c,_ = findnz(A) 
-    
-    non_zeros_only = spzeros(Int,size(A,1)^2,size(A,1)^2)
-    
-    non_zeros_only[CartesianIndex.(r .+ (c.-1) * size(A,1), r .+ (c.-1) * size(A,1))] .= 1
-    
-    return sparse(final_rows, final_cols, vals, size(A,1) * size(A,1), size(A,1) * size(A,1)) + ℒ.kron(sparse(X * A'), ℒ.I(size(A,1)))' * non_zeros_only
+    return (𝐒₁, solved), calculate_quadratic_iteration_solution_pullback
+end
 
 
-using SparseArrays
-findnz(d∇₁)
+𝐒₁, solved = calculate_quadratic_iteration_solution(∇₁, T=T, tol=tol)
 
-findnz(d∇₁)[3]|>unique|>sort
-tmp[:,1]|>vec|>sort
-𝐒₁|>vec|>sort
+expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+B = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+
+sol_buf = 𝐒₁ * expand[2]
+sol_buf2 = sol_buf * sol_buf
+
+d𝐒₁a = (kron(expand[2] * 𝐒₁, A') + 
+        kron(expand[2] * expand[2]', sol_buf' * A' + B'))' |> collect
+
+dA = kron(expand[1] * sol_buf2 * expand[2]' , I(size(𝐒₁,1)))'
+dB = kron(𝐒₁, I(size(𝐒₁,1)))' 
+dC = I(length(𝐒₁))
+        
+datmp∇₁ = hcat(dA,dB,dC)
+        
+d∇₁a = hcat(datmp∇₁, zeros(size(datmp∇₁, 1), length(∇₁) - size(datmp∇₁, 2))) |> sparse
+
+
+
+fid = FiniteDifferences.jacobian(central_fdm(3,1), x->calculate_quadratic_iteration_solution(x, T = 𝓂.timings)[1], ∇₁)[1]
+red = Zygote.jacobian(x->calculate_quadratic_iteration_solution(x, T = 𝓂.timings)[1], ∇₁)[1]
+
+@profview for i in 1:10 red = Zygote.jacobian(x->calculate_quadratic_iteration_solution(x, T = 𝓂.timings)[1], ∇₁)[1] end
+
+dy = vec([0.0 0.0 0.0; 0.0 0.0 0.0; 0.0 0.0 0.0; 0.0 0.0 0.0; 0.0 0.0 0.0; 0.0 0.0 0.0; 0.0 0.0 0.0; 0.0 0.0 0.0; 0.0 0.0 1.0])
+
+-(d∇₁a \ d𝐒₁a) * dy
+-(d𝐒₁a \ d∇₁a)' * dy
+
+fid[27,:]
+isapprox(-(d𝐒₁a \ d∇₁a), fid, rtol = 1e-7)
+
+findmax(abs,(d𝐒₁a \ d∇₁a) + fid)
+(d𝐒₁a \ d∇₁a)[21,126]
+fid[21,126]
+
+-(d𝐒₁a \ d∇₁a)[:,18]
+fid[1,:]
+
+
+
+
+
+d𝐒₁a' \ d∇₁a
+
+using FiniteDifferences, Zygote
+
+@profview for i in 1:100 Zygote.jacobian(x->begin
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(x, 𝓂, verbose, false, 𝓂.solver_parameters)
+    
+    aa = calculate_jacobian(x, SS_and_pars, 𝓂) |> Matrix
+    
+    calculate_quadratic_iteration_solution(aa, T = 𝓂.timings)
+    end,parameter_values)[1] end
+
+fid = FiniteDifferences.jacobian(central_fdm(3,1),
+    x->begin
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(x, 𝓂, verbose, false, 𝓂.solver_parameters)
+
+    aa = calculate_jacobian(x, SS_and_pars, 𝓂) |> Matrix
+
+    calculate_quadratic_iteration_solution(aa, T = 𝓂.timings)
+    end, parameter_values)[1]
+
+
+
+d∇₁a * vec(∇₁)
+d∇₁a \ d𝐒₁a * vec(𝐒₁)
 # droptol!(d∇₁,1e-14)
 @benchmark d∇₁\d𝐒₁
 @benchmark d𝐒₁\d∇₁
