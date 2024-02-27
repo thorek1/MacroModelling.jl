@@ -8,6 +8,8 @@ using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
 import Symbolics
+# import Memoization: @memoize
+# import LRUCache: LRU
 
 import AbstractDifferentiation as 𝒜
 import ForwardDiff as ℱ
@@ -37,7 +39,7 @@ import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mp
 # using NamedArrays
 # using AxisKeys
 
-import ChainRulesCore: @ignore_derivatives, ignore_derivatives
+import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent
 import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
@@ -5659,6 +5661,71 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
     end,size(val)), solved
 end
 
+# @memoize LRU(maxsize=50) 
+function calculate_jacobian_transpose(∇₁::AbstractMatrix{Float64}; T::timings, explosive::Bool = false)
+    𝐒₁, solved = MacroModelling.riccati_forward(∇₁;T = T, explosive = false)
+
+    sp𝐒₁ = sparse(𝐒₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+    sp∇₁ = sparse(∇₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+
+    droptol!(sp𝐒₁, 10*eps())
+    droptol!(sp∇₁, 10*eps())
+
+    # expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+    expand = [
+        spdiagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC, 
+        spdiagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+    ] 
+
+    A = sp∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    B = sp∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+
+    sol_buf = sp𝐒₁ * expand[2]
+    sol_buf2 = sol_buf * sol_buf
+
+    spd𝐒₁a = (ℒ.kron(expand[2] * sp𝐒₁, A') + 
+            ℒ.kron(expand[2] * expand[2]', sol_buf' * A' + B'))
+            
+    droptol!(spd𝐒₁a, 10*eps())
+
+    d𝐒₁a = spd𝐒₁a' |> collect
+
+    # Initialize empty spd∇₁a
+    spd∇₁a = spzeros(length(sp𝐒₁), length(∇₁))
+
+    # Directly allocate dA, dB, dC into spd∇₁a
+    # Note: You need to calculate the column indices where each matrix starts and ends
+    # This is conceptual; actual implementation would depend on how you can obtain or compute these indices
+    dA_cols = 1:(T.nFuture_not_past_and_mixed * size(𝐒₁,1))
+    dB_cols = dA_cols[end] .+ (1 : size(𝐒₁, 1)^2)
+    dC_cols = dB_cols[end] .+ (1 : length(sp𝐒₁))
+
+    spd∇₁a[:,dA_cols] = ℒ.kron(expand[1] * sol_buf2 * expand[2]' , ℒ.I(size(𝐒₁, 1)))'
+    spd∇₁a[:,dB_cols] = ℒ.kron(sp𝐒₁, ℒ.I(size(𝐒₁, 1)))' 
+    spd∇₁a[:,dC_cols] = ℒ.I(length(𝐒₁))
+
+    tmp = -(d𝐒₁a \ spd∇₁a)'
+
+    return 𝐒₁, solved, tmp
+end
+
+
+
+function rrule(::typeof(riccati_forward), ∇₁::AbstractMatrix{Float64}; T::timings, explosive::Bool = false)
+    # Forward pass to compute the output and intermediate values needed for the backward pass
+    𝐒₁, solved, tmp = calculate_jacobian_transpose(∇₁, T = T, explosive = explosive)
+
+    function calculate_riccati_pullback(Δ𝐒₁)
+        # Backward pass to compute the derivatives with respect to inputs
+        # This would involve computing the derivatives for each operation in reverse order
+        # and applying chain rule to propagate through the function
+        return NoTangent(), reshape(tmp * sparsevec(Δ𝐒₁[1]), size(∇₁)) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
+        # return NoTangent(), (reshape(-d𝐒₁a \ d∇₁a * vec(Δ𝐒₁) , size(∇₁))) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
+    end
+
+    return (𝐒₁, solved), calculate_riccati_pullback
+end
+
 
 riccati_AD_direct = ℐ.ImplicitFunction(riccati_forward,
                                     riccati_conditions;
@@ -5668,8 +5735,29 @@ riccati_AD_direct = ℐ.ImplicitFunction(riccati_forward,
 riccati_AD = ℐ.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt converge!?
 
 
-function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
+function calculate_first_order_solution(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
+    # A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
+    A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
+
+    if !solved
+        return hcat(A, zeros(size(A,1),T.nExo)), solved
+    end
+
+    Jm = @view(ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:])
+    
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:]
+    ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+
+    B = -((∇₊ * A * Jm + ∇₀) \ ∇ₑ)
+
+    return hcat(A, B), solved
+end
+
+
+function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}},Bool} where {Z,S,N}
     A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
+    # A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
 
     if !solved
         return hcat(A, zeros(size(A,1),T.nExo)), solved
@@ -7229,16 +7317,17 @@ end
 function update_loglikelihood!(loglik::S, P::Matrix{S}, u::Vector{S}, z::Vector{S}, C::Matrix{T}, A::Matrix{S}, 𝐁::Matrix{S}, data_point::Vector{S}) where {S,T}
     v = data_point - z
     F = C * P * C'
-    Fdet = ℒ.det(F)
-
-    # Early return if determinant is too small, indicating numerical instability.
-    if Fdet < eps(S)
-        return -Inf, P, u, z
-    end
 
     F̄ = ℒ.lu(F, check = false)
 
     if !ℒ.issuccess(F̄)
+        return -Inf, P, u, z
+    end
+
+    Fdet = ℒ.det(F̄)
+
+    # Early return if determinant is too small, indicating numerical instability.
+    if Fdet < eps(S)
         return -Inf, P, u, z
     end
 

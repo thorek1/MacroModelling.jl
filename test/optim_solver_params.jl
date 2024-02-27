@@ -95,7 +95,7 @@ evaluate_pars_loglikelihood(parameters, all_models)
 lbs = fill(eps(),length(parameters))
 lbs[20] = -20
 
-ubs = fill(30.0,length(parameters))
+ubs = fill(50.0,length(parameters))
 
 prob = OptimizationProblem(evaluate_pars_loglikelihood, parameters, all_models, lb = lbs, ub = ubs)
 
@@ -132,7 +132,8 @@ par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, pars[1:19]..., 
 # Iterate over all models and calculate the total iterations
 for (i,model) in enumerate(all_models)
     total_iters = calc_total_iters(model, par_inputs, pars[20])
-    model_iters[i] = 1e2 * total_iters
+    model_iters[i] = total_iters
 end
 
 println("Iterations per model: $model_iters")
+println("Total iterations across model: $(sum(model_iters))")
