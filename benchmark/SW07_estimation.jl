@@ -180,20 +180,21 @@ observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs]
 # subset observables in data
 data = data(observables,75:230)
 
-# functions to map mean and standard deviations to distribution parameters
-
-
 
 Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_parameters)
     # truncation failed with Zygote for beta distribution
 
     # z_ea    ~   InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true)
-    # z_eb    ~   InverseGamma(0.1, 2.0, 0.025,5.0, μσ = true)
+    z_eb    ~   InverseGamma(0.1, 2.0, 0.025,5.0, μσ = true)
     # z_eg    ~   InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true)
     # z_eqs   ~   InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true)
     # z_em    ~   InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true)
     # z_epinf ~   InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true)
     # z_ew    ~   InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true)
+
+    zs      ~ Turing.filldist(InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true), 6)
+
+    z_ea, z_eg, z_eqs, z_em, z_epinf, z_ew = zs
 
     # crhoa   ~   Beta(0.5, 0.2, μσ = true)
     # crhob   ~   Beta(0.5, 0.2, μσ = true)
@@ -203,9 +204,9 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
     # crhopinf~   Beta(0.5, 0.2, μσ = true)
     # crhow   ~   Beta(0.5, 0.2, μσ = true)
 
-    zs      ~ Turing.filldist(InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true), 7)
-
     rhos    ~ Turing.filldist(Beta(0.5, 0.2, μσ = true), 7)
+
+    crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow = rhos
 
     cmap    ~   Beta(0.5, 0.2, μσ = true)
     cmaw    ~   Beta(0.5, 0.2, μσ = true)
@@ -221,9 +222,15 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
     cprobw  ~   Beta(0.5, 0.1, μσ = true)
     csigl   ~   Normal(2.0, 0.75, 0.25, 10.0)
     cprobp  ~   Beta(0.5, 0.10, μσ = true)
-    cindw   ~   Beta(0.5, 0.15, μσ = true)
-    cindp   ~   Beta(0.5, 0.15, μσ = true)
-    czcap   ~   Beta(0.5, 0.15, μσ = true)
+    
+    # cindw   ~   Beta(0.5, 0.15, μσ = true)
+    # cindp   ~   Beta(0.5, 0.15, μσ = true)
+    # czcap   ~   Beta(0.5, 0.15, μσ = true)
+
+    indcap    ~ Turing.filldist(Beta(0.5, 0.15, μσ = true), 3)
+
+    cindw, cindp, czcap = indcap
+
     cfc     ~   Normal(1.25, 0.125, 1.0, 3.0)
 
     constepinf~ Gamma(0.625, 0.1, 0.1, 2.0, μσ = true)
@@ -233,18 +240,6 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
     cgy     ~   Normal(0.5, 0.25, 0.01, 2.0)
     calfa   ~   Normal(0.3, 0.05, 0.01, 1.0)
     
-    # (ctou, clandaw, cg, curvp, curvw, crhols, crhoas#, 
-    # z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew,
-    # crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, 
-    # csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, 
-    # crpi, crr, cry, crdy, 
-    # constepinf, constebeta, constelab, ctrend, cgy, calfa
-    # ) = fixed_parameters
-    
-    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew = zs
-
-    crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow = rhos
-
     ctou, clandaw, cg, curvp, curvw, crhols, crhoas = fixed_parameters
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
@@ -252,8 +247,6 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
 
         kalman_prob = get_loglikelihood(m, data(observables), parameters_combined)
 
-        # println(kalman_prob)
-        
         Turing.@addlogprob! kalman_prob 
     end
 end
@@ -261,15 +254,7 @@ end
 
 SW07.parameter_values[indexin([:crhoms, :crhopinf, :crhow, :cmap, :cmaw],SW07.parameters)] .= 0.02
 
-fixed_parameters = SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas, 
-
-# :z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew,
-# :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw#, 
-# :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, 
-# :crpi, :crr, :cry, :crdy, 
-# :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa
-
-],SW07.parameters)]
+fixed_parameters = SW07.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw, :crhols, :crhoas], SW07.parameters)]
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, SW07, observables, fixed_parameters)
 
@@ -277,7 +262,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, SW07, observables, fixed_
 n_samples = 1000
 
 # Turing.setadbackend(:zygote) # deprecated
-samps = Turing.sample(SW07_loglikelihood, NUTS(adtype=Turing.AutoZygote()), n_samples, progress = true)#, init_params = sol)
+samps = Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true)#, init_params = sol)
 
 
 # generate a Pigeons log potential
