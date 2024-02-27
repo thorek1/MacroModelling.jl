@@ -185,43 +185,65 @@ data = data(observables,75:230)
 
 
 Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_parameters)
-    # truncation failed with Zygote
-    z_ea    ~   InverseGamma(0.1, 2.0, μσ = true)
-    z_eb    ~   InverseGamma(0.1, 2.0, μσ = true)
-    z_eg    ~   InverseGamma(0.1, 2.0, μσ = true)
-    z_eqs   ~   InverseGamma(0.1, 2.0, μσ = true)
-    z_em    ~   InverseGamma(0.1, 2.0, μσ = true)
-    z_epinf ~   InverseGamma(0.1, 2.0, μσ = true)
-    z_ew    ~   InverseGamma(0.1, 2.0, μσ = true)
-    crhoa   ~   Beta(0.5, 0.20, μσ = true)
-    crhob   ~   Beta(0.5, 0.20, μσ = true)
-    crhog   ~   Beta(0.5, 0.20, μσ = true)
-    crhoqs  ~   Beta(0.5, 0.20, μσ = true)
-    crhoms  ~   Beta(0.5, 0.20, μσ = true)
-    crhopinf~   Beta(0.5, 0.20, μσ = true)
-    crhow   ~   Beta(0.5, 0.20, μσ = true)
+    # truncation failed with Zygote for beta distribution
+
+    # z_ea    ~   InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true)
+    # z_eb    ~   InverseGamma(0.1, 2.0, 0.025,5.0, μσ = true)
+    # z_eg    ~   InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true)
+    # z_eqs   ~   InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true)
+    # z_em    ~   InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true)
+    # z_epinf ~   InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true)
+    # z_ew    ~   InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true)
+
+    # crhoa   ~   Beta(0.5, 0.2, μσ = true)
+    # crhob   ~   Beta(0.5, 0.2, μσ = true)
+    # crhog   ~   Beta(0.5, 0.2, μσ = true)
+    # crhoqs  ~   Beta(0.5, 0.2, μσ = true)
+    # crhoms  ~   Beta(0.5, 0.2, μσ = true)
+    # crhopinf~   Beta(0.5, 0.2, μσ = true)
+    # crhow   ~   Beta(0.5, 0.2, μσ = true)
+
+    zs      ~ Turing.filldist(InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true), 7)
+
+    rhos    ~ Turing.filldist(Beta(0.5, 0.2, μσ = true), 7)
+
     cmap    ~   Beta(0.5, 0.2, μσ = true)
     cmaw    ~   Beta(0.5, 0.2, μσ = true)
-    csadjcost~  Normal(4,1.5)
-    csigma  ~   Normal(1.50,0.375)
+
+    crpi    ~   Normal(1.5, 0.25, 1.0, 3.0)
+    crr     ~   Beta(0.75, 0.10, μσ = true) #truncation causes trouble here
+    cry     ~   Normal(0.125, 0.05, 0.001, 0.5)
+    crdy    ~   Normal(0.125, 0.05, 0.001, 0.5)
+
+    csadjcost~  Normal(4.0, 1.5, 2.0, 15.0)
+    csigma  ~   Normal(1.50, 0.375, 0.25, 3.0)
     chabb   ~   Beta(0.7, 0.1, μσ = true)
     cprobw  ~   Beta(0.5, 0.1, μσ = true)
-    csigl   ~   Normal(2,0.75)
+    csigl   ~   Normal(2.0, 0.75, 0.25, 10.0)
     cprobp  ~   Beta(0.5, 0.10, μσ = true)
     cindw   ~   Beta(0.5, 0.15, μσ = true)
     cindp   ~   Beta(0.5, 0.15, μσ = true)
     czcap   ~   Beta(0.5, 0.15, μσ = true)
-    cfc     ~   Normal(1.25,0.125)
-    crpi    ~   Normal(1.5,0.25)
-    crr     ~   Beta(0.75, 0.10, μσ = true)
-    cry     ~   Normal(0.125,0.05)
-    crdy    ~   Normal(0.125,0.05)
-    constepinf~ Gamma(0.625,0.1, μσ = true)
-    constebeta~ Gamma(0.25,0.1, μσ = true)
-    constelab ~ Normal(0.0,2.0)
-    ctrend  ~   Normal(0.4,0.10)
-    cgy     ~   Normal(0.5,0.25)
-    calfa   ~   Normal(0.3,0.05)
+    cfc     ~   Normal(1.25, 0.125, 1.0, 3.0)
+
+    constepinf~ Gamma(0.625, 0.1, 0.1, 2.0, μσ = true)
+    constebeta~ Gamma(0.25, 0.1, 0.01, 2.0, μσ = true)
+    constelab ~ Normal(0.0, 2.0, -10.0, 10.0)
+    ctrend  ~   Normal(0.4, 0.10, 0.1, 0.8)
+    cgy     ~   Normal(0.5, 0.25, 0.01, 2.0)
+    calfa   ~   Normal(0.3, 0.05, 0.01, 1.0)
+    
+    # (ctou, clandaw, cg, curvp, curvw, crhols, crhoas#, 
+    # z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew,
+    # crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, 
+    # csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, 
+    # crpi, crr, cry, crdy, 
+    # constepinf, constebeta, constelab, ctrend, cgy, calfa
+    # ) = fixed_parameters
+    
+    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew = zs
+
+    crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow = rhos
 
     ctou, clandaw, cg, curvp, curvw, crhols, crhoas = fixed_parameters
 
@@ -239,9 +261,23 @@ end
 
 SW07.parameter_values[indexin([:crhoms, :crhopinf, :crhow, :cmap, :cmaw],SW07.parameters)] .= 0.02
 
-fixed_parameters = SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas],SW07.parameters)]
+fixed_parameters = SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw,:crhols,:crhoas, 
+
+# :z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew,
+# :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw#, 
+# :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, 
+# :crpi, :crr, :cry, :crdy, 
+# :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa
+
+],SW07.parameters)]
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, SW07, observables, fixed_parameters)
+
+
+n_samples = 1000
+
+# Turing.setadbackend(:zygote) # deprecated
+samps = Turing.sample(SW07_loglikelihood, NUTS(adtype=Turing.AutoZygote()), n_samples, progress = true)#, init_params = sol)
 
 
 # generate a Pigeons log potential
@@ -253,11 +289,6 @@ using BenchmarkTools
 Pigeons.pigeons(target = sw07_lp, n_rounds = 1, n_chains = 1)
 @profview Pigeons.pigeons(target = sw07_lp, n_rounds = 1, n_chains = 1)
 
-
-n_samples = 1000
-
-# Turing.setadbackend(:zygote) # deprecated
-samps = Turing.sample(SW07_loglikelihood, NUTS(adtype=Turing.AutoZygote()), n_samples, progress = true)#, init_params = sol)
 
 
 serialize("chain-file.jls", samps)
