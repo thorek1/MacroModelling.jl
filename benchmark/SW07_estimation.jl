@@ -254,8 +254,8 @@ Pigeons.pigeons(target = sw07_lp, n_rounds = 1, n_chains = 1)
 
 n_samples = 1000
 
-Turing.setadbackend(:zygote)
-samps = Turing.sample(SW07_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
+# Turing.setadbackend(:zygote) # deprecated
+samps = Turing.sample(SW07_loglikelihood, NUTS(adtype=Turing.AutoZygote()), n_samples, progress = true)#, init_params = sol)
 
 
 serialize("chain-file.jls", samps)
@@ -382,7 +382,10 @@ end
 
 include("../models/RBC_baseline.jl")
 
+include("../models/FS2000.jl")
+
 𝓂 = SW07
+𝓂 = FS2000
 # 𝓂 = RBC_baseline
 verbose = true
 parameters = nothing
@@ -645,7 +648,7 @@ num_cols = length(∇₁)
 spd∇₁a = spzeros(num_rows, num_cols)
 
 
-@profview for i in 1:50 begin
+# @profview for i in 1:50 begin
 𝐒₁, solved = MacroModelling.riccati_forward(∇₁;T = T, explosive = false)
 
 sp𝐒₁ = sparse(𝐒₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
@@ -680,16 +683,16 @@ spd∇₁a = spzeros(length(sp𝐒₁), length(∇₁))
 # Note: You need to calculate the column indices where each matrix starts and ends
 # This is conceptual; actual implementation would depend on how you can obtain or compute these indices
 dA_cols = 1:(T.nFuture_not_past_and_mixed * size(𝐒₁,1))
-dB_cols = dA_cols[end] .+ (1 : 2 * length(sp𝐒₁))
+dB_cols = dA_cols[end] .+ (1 : size(𝐒₁, 1)^2)
 dC_cols = dB_cols[end] .+ (1 : length(sp𝐒₁))
-
+18^2
 spd∇₁a[:,dA_cols] = ℒ.kron(expand[1] * sol_buf2 * expand[2]' , ℒ.I(size(𝐒₁, 1)))'
 spd∇₁a[:,dB_cols] = ℒ.kron(sp𝐒₁, ℒ.I(size(𝐒₁, 1)))' 
 spd∇₁a[:,dC_cols] = ℒ.I(length(𝐒₁))
 
 tmp = -(d𝐒₁a \ spd∇₁a)'
-end
-end
+# end
+# end
 
 rand(3160)
 b = rand(800)
