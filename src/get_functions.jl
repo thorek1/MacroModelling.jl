@@ -2898,7 +2898,7 @@ function get_loglikelihood(𝓂::ℳ,
     # keep the parameters within bounds
     for (k,v) in 𝓂.bounds
         if k ∈ 𝓂.parameters
-            if min(max(parameter_values[indexin([k], 𝓂.parameters)][1], v[1]), v[2]) != parameter_values[indexin([k], 𝓂.parameters)][1]
+            if @ignore_derivatives min(max(parameter_values[indexin([k], 𝓂.parameters)][1], v[1]), v[2]) != parameter_values[indexin([k], 𝓂.parameters)][1]
                 return -Inf
             end
         end

@@ -5696,7 +5696,7 @@ end
     # Note: You need to calculate the column indices where each matrix starts and ends
     # This is conceptual; actual implementation would depend on how you can obtain or compute these indices
     dA_cols = 1:(T.nFuture_not_past_and_mixed * size(𝐒₁,1))
-    dB_cols = dA_cols[end] .+ (1 : 2 * length(sp𝐒₁))
+    dB_cols = dA_cols[end] .+ (1 : size(𝐒₁, 1)^2)
     dC_cols = dB_cols[end] .+ (1 : length(sp𝐒₁))
 
     spd∇₁a[:,dA_cols] = ℒ.kron(expand[1] * sol_buf2 * expand[2]' , ℒ.I(size(𝐒₁, 1)))'
