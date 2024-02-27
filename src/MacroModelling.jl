@@ -8,8 +8,8 @@ using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
 import Symbolics
-import Memoization: @memoize
-import LRUCache: LRU
+# import Memoization: @memoize
+# import LRUCache: LRU
 
 import AbstractDifferentiation as 𝒜
 import ForwardDiff as ℱ
@@ -5661,7 +5661,8 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
     end,size(val)), solved
 end
 
-@memoize LRU(maxsize=50) function calculate_jacobian_transpose(∇₁::AbstractMatrix{Float64}; T::timings, explosive::Bool = false)
+# @memoize LRU(maxsize=50) 
+function calculate_jacobian_transpose(∇₁::AbstractMatrix{Float64}; T::timings, explosive::Bool = false)
     𝐒₁, solved = MacroModelling.riccati_forward(∇₁;T = T, explosive = false)
 
     sp𝐒₁ = sparse(𝐒₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
