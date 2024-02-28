@@ -81,7 +81,7 @@ function evaluate_pars_loglikelihood(pars, models)
     # Iterate over all models and calculate the total iterations
     for (i,model) in enumerate(models)
         total_iters = calc_total_iters(model, par_inputs, pars[20])
-        model_iters[i] = 1e2 * total_iters
+        model_iters[i] = 1e1 * total_iters
     end
     
     return Float64(log_lik + sum(model_iters))
