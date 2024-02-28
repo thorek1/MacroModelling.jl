@@ -2,6 +2,8 @@
 
 ## High priority
 - [ ] ss transition by entering new prameters at given periods
+- [ ] log in parameters block is recognized as variable
+- [ ] add termination condition if relative change in ss solver is smaller than tol (relevant when values get very large)
 - [ ] add technical details about SS solver, obc solver, and other algorithms
 - [ ] throw error when equations appear more than once
 - [ ] plot multiple solutions or models - multioptions in one graph
