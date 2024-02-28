@@ -72,8 +72,8 @@ function evaluate_pars_loglikelihood(pars, models)
     pars[1:2] = sort(pars[1:2], rev = true)
 
     # Apply prior distributions
-    log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 2.0, μσ = true), 19),pars[1:19])
-    log_lik -= logpdf(MacroModelling.Normal(0.0, 10.0), pars[20])
+    log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 1.0, μσ = true), 19),pars[1:19])
+    log_lik -= logpdf(MacroModelling.Normal(0.0, 2.0), pars[20])
 
     # Example solver parameters - this needs to be replaced with actual logic
     par_inputs = MacroModelling.solver_parameters(eps(), eps(), 500, pars[1:19]..., transform, 0.0, 2)
@@ -87,8 +87,8 @@ function evaluate_pars_loglikelihood(pars, models)
     return Float64(log_lik + sum(model_iters))
 end
 
-parameters = [2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688]
-#parameters = rand(20) .+ 1
+# parameters = [2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688]
+parameters = rand(20) .+ 1
 
 evaluate_pars_loglikelihood(parameters, all_models)
 
@@ -99,7 +99,7 @@ ubs = fill(50.0,length(parameters))
 
 prob = OptimizationProblem(evaluate_pars_loglikelihood, parameters, all_models, lb = lbs, ub = ubs)
 
-max_minutes = 5 * 60^2
+max_minutes = 5 * 60^2 + 30 * 60
 
 sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes); sol_ESCH.minimum
 # sol_CRS = solve(prob, NLopt.GN_CRS2_LM(), maxtime = max_minutes); sol_CRS.minimum # gets nowhere
