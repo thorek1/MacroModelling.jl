@@ -1,4 +1,4 @@
-using MacroModelling, Optimization, OptimizationNLopt
+using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics
 
 # logic to implement
 
@@ -103,15 +103,15 @@ prob = OptimizationProblem(evaluate_pars_loglikelihood, parameters, all_models, 
 
 max_minutes = 5 * 60^2 + 30 * 60
 
-max_minutes = 20
+# max_minutes = 20
 
-# sol_WOA = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes, maxiters = 1000000000); sol_WOA.minimum 
+sol_WOA = solve(prob, WOA(), maxtime = max_minutes, maxiters = 1000000000); sol_WOA.minimum 
 # WOA terminates early
-sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes); sol_ESCH.minimum
+# sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes); sol_ESCH.minimum
 # sol_CRS = solve(prob, NLopt.GN_CRS2_LM(), maxtime = max_minutes); sol_CRS.minimum # gets nowhere
 # sol_DIRECT = solve(prob, NLopt.GN_DIRECT(), maxtime = max_minutes); sol_DIRECT.minimum
 
-pars = deepcopy(sol_ESCH.u)
+pars = deepcopy(sol_WOA.u)
 
 # transform = 0
 # pars = [0.0005091362638940568, 2.8685509141200138e-5, 5.853782207686227e-5, 0.00013196080350191824, 0.0002770476425730156, 0.0009519716244767909, 0.0001214119776051054, 0.00030908501576441285, 0.00015604633597157022, 0.00022641413680158165, 0.00019937397397335106, 0.00024166807372048577, 0.0006155904822177251, 6.834833988676723e-5, 0.0005660185689597568, 0.00023832991638765894, 1.3844380657673424e-5, 6.031788146343705e-5, 0.0002638201993322502, -0.0012275435299784476]
