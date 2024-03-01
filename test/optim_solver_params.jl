@@ -103,7 +103,8 @@ max_minutes = 5 * 60^2 + 30 * 60
 
 max_minutes = 20
 
-sol_WOA = solve(prob, ABC(), maxtime = max_minutes); sol_WOA.minimum
+sol_WOA = solve(prob, PSO(), maxtime = max_minutes); sol_WOA.minimum 
+# WOA terminates early
 # sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes); sol_ESCH.minimum
 # sol_CRS = solve(prob, NLopt.GN_CRS2_LM(), maxtime = max_minutes); sol_CRS.minimum # gets nowhere
 # sol_DIRECT = solve(prob, NLopt.GN_DIRECT(), maxtime = max_minutes); sol_DIRECT.minimum
