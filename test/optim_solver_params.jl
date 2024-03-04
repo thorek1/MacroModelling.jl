@@ -57,11 +57,17 @@ all_models = [
 function calc_total_iters(model, par_inputs, starting_point)
     outmodel = try model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs) catch end
 
-    outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
+    iters = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
         (outmodel[2][1] > 1e-12) || !isfinite(outmodel[2][1]) ? 
             10000 : 
         outmodel[2][2] : 
         10000
+
+    if model.model_name == "SWnonlinear"
+        iters = SS(model)(:gamw1) > .01 ? iters : 10000
+    end
+
+    return iters
 end
 
 using Turing
@@ -99,24 +105,31 @@ lbs[20] = -20
 
 ubs = fill(50.0,length(parameters))
 
+
+
 prob = OptimizationProblem(evaluate_pars_loglikelihood, parameters, all_models, lb = lbs, ub = ubs)
 
 max_minutes = 5 * 60^2 + 30 * 60
 
-# max_minutes = 20
+# max_minutes = 1 * 60
 
-# sol_DE = solve(prob, DE(), maxtime = max_minutes); sol_DE.minimum 
-# sol_SA = solve(prob, SA(), maxtime = max_minutes); sol_SA.minimum 
-# sol_ECA = solve(prob, ECA(), maxtime = max_minutes); sol_ECA.minimum 
-# sol_PSO = solve(prob, PSO(), maxtime = max_minutes); sol_PSO.minimum 
-# sol_WOA = solve(prob, WOA(), maxtime = max_minutes); sol_WOA.minimum 
-sol_ABC = solve(prob, ABC(), maxtime = max_minutes); sol_ABC.minimum 
-# WOA terminates early
-# sol_ESCH = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes); sol_ESCH.minimum
+opt = Options(verbose = true, parallel_evaluation = false)
+
+# solDE = solve(prob, DE(options = opt), maxtime = max_minutes); solDE.minimum
+# # solGA = solve(prob, GA(options = opt), maxtime = max_minutes); solGA.minimum # doesnt work with this
+# solSA = solve(prob, SA(options = opt), maxtime = max_minutes); solSA.minimum
+# solECA = solve(prob, ECA(options = opt), maxtime = max_minutes); solECA.minimum
+# solPSO = solve(prob, PSO(options = opt), maxtime = max_minutes); solPSO.minimum
+# solWOA = solve(prob, WOA(options = opt), maxtime = max_minutes); solWOA.minimum
+solABC = solve(prob, ABC(options = opt), maxtime = max_minutes); solABC.minimum
+# solMCCGA = solve(prob, MCCGA(options = opt), maxtime = max_minutes); solMCCGA.minimum
+# solCGSA = solve(prob, CGSA(options = opt), maxtime = max_minutes); solCGSA.minimum
+# sol = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes); sol.minimum
+
 # sol_CRS = solve(prob, NLopt.GN_CRS2_LM(), maxtime = max_minutes); sol_CRS.minimum # gets nowhere
 # sol_DIRECT = solve(prob, NLopt.GN_DIRECT(), maxtime = max_minutes); sol_DIRECT.minimum
 
-pars = deepcopy(sol_ABC.u)
+pars = deepcopy(solABC.u)
 
 # transform = 0
 # pars = [0.0005091362638940568, 2.8685509141200138e-5, 5.853782207686227e-5, 0.00013196080350191824, 0.0002770476425730156, 0.0009519716244767909, 0.0001214119776051054, 0.00030908501576441285, 0.00015604633597157022, 0.00022641413680158165, 0.00019937397397335106, 0.00024166807372048577, 0.0006155904822177251, 6.834833988676723e-5, 0.0005660185689597568, 0.00023832991638765894, 1.3844380657673424e-5, 6.031788146343705e-5, 0.0002638201993322502, -0.0012275435299784476]
