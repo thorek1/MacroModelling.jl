@@ -1,4 +1,4 @@
-using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics
+using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics, BlackBoxOptim
 
 # logic to implement
 
@@ -64,6 +64,7 @@ function calc_total_iters(model, par_inputs, starting_point)
         10000
 
     if model.model_name == "SWnonlinear"
+        iters = outmodel[1][indexin([:gamw1], model.var)][1] > .01 ? iters : 10000
         iters = SS(model)(:gamw1) > .01 ? iters : 10000
     end
 
@@ -84,7 +85,7 @@ function evaluate_pars_loglikelihood(pars, models)
     log_lik -= logpdf(MacroModelling.Normal(0.0, 2.0), pars[20])
 
     # Example solver parameters - this needs to be replaced with actual logic
-    par_inputs = MacroModelling.solver_parameters(eps(), eps(), 500, pars[1:19]..., transform, 0.0, 2)
+    par_inputs = MacroModelling.solver_parameters(eps(), eps(), 500, pars[1:19]..., 1, 0.0, 2)
 
     # Iterate over all models and calculate the total iterations
     for (i,model) in enumerate(models)
@@ -115,12 +116,26 @@ max_minutes = 5 * 60^2 + 30 * 60
 
 opt = Options(verbose = true, parallel_evaluation = false)
 
-solDE = solve(prob, DE(options = opt), maxtime = max_minutes); solDE.minimum
+
+
+solBBO = bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
+            SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
+            NumDimensions = length(parameters),
+            MaxTime = 30, 
+            PopulationSize = 500, 
+            TraceMode = :verbose, 
+            TraceInterval = 10, 
+            Method = :generating_set_search)#
+            # Method = :adaptive_de_rand_1_bin_radiuslimited)
+            
+pars = best_candidate(solBBO)
+
+# solDE = solve(prob, DE(options = opt), maxtime = max_minutes); solDE.minimum
 # # solGA = solve(prob, GA(options = opt), maxtime = max_minutes); solGA.minimum # doesnt work with this
 # solSA = solve(prob, SA(options = opt), maxtime = max_minutes); solSA.minimum
-# solECA = solve(prob, ECA(options = opt), maxtime = max_minutes); solECA.minimum
+# solECA = solve(prob, ECA(options = opt), maxtime = max_minutes, maxiters = 1000000); solECA.minimum
 # solPSO = solve(prob, PSO(options = opt), maxtime = max_minutes); solPSO.minimum
-# solWOA = solve(prob, WOA(options = opt), maxtime = max_minutes); solWOA.minimum
+# solWOA = solve(prob, WOA(N = 1000, options = opt), maxtime = max_minutes); solWOA.minimum
 # solABC = solve(prob, ABC(options = opt), maxtime = max_minutes); solABC.minimum
 # solMCCGA = solve(prob, MCCGA(options = opt), maxtime = max_minutes); solMCCGA.minimum
 # solCGSA = solve(prob, CGSA(options = opt), maxtime = max_minutes); solCGSA.minimum
@@ -129,7 +144,7 @@ solDE = solve(prob, DE(options = opt), maxtime = max_minutes); solDE.minimum
 # sol_CRS = solve(prob, NLopt.GN_CRS2_LM(), maxtime = max_minutes); sol_CRS.minimum # gets nowhere
 # sol_DIRECT = solve(prob, NLopt.GN_DIRECT(), maxtime = max_minutes); sol_DIRECT.minimum
 
-pars = deepcopy(solABC.u)
+# pars = deepcopy(solABC.u)
 
 # transform = 0
 # pars = [0.0005091362638940568, 2.8685509141200138e-5, 5.853782207686227e-5, 0.00013196080350191824, 0.0002770476425730156, 0.0009519716244767909, 0.0001214119776051054, 0.00030908501576441285, 0.00015604633597157022, 0.00022641413680158165, 0.00019937397397335106, 0.00024166807372048577, 0.0006155904822177251, 6.834833988676723e-5, 0.0005660185689597568, 0.00023832991638765894, 1.3844380657673424e-5, 6.031788146343705e-5, 0.0002638201993322502, -0.0012275435299784476]
