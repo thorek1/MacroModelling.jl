@@ -115,10 +115,10 @@ max_minutes = 5 * 60^2 + 30 * 60
 
 opt = Options(verbose = true, parallel_evaluation = false)
 
-solDE = solve(prob, DE(options = opt), maxtime = max_minutes); solDE.minimum
+# solDE = solve(prob, DE(options = opt), maxtime = max_minutes); solDE.minimum
 # # solGA = solve(prob, GA(options = opt), maxtime = max_minutes); solGA.minimum # doesnt work with this
 # solSA = solve(prob, SA(options = opt), maxtime = max_minutes); solSA.minimum
-# solECA = solve(prob, ECA(options = opt), maxtime = max_minutes); solECA.minimum
+solECA = solve(prob, ECA(options = opt), maxtime = max_minutes); solECA.minimum
 # solPSO = solve(prob, PSO(options = opt), maxtime = max_minutes); solPSO.minimum
 # solWOA = solve(prob, WOA(options = opt), maxtime = max_minutes); solWOA.minimum
 # solABC = solve(prob, ABC(options = opt), maxtime = max_minutes); solABC.minimum
