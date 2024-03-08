@@ -121,8 +121,8 @@ opt = Options(verbose = true, parallel_evaluation = false)
 solBBO = bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
             SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
             NumDimensions = length(parameters),
-            MaxTime = 30, 
-            PopulationSize = 500, 
+            MaxTime = max_minutes, 
+            # PopulationSize = 500, 
             TraceMode = :verbose, 
             TraceInterval = 10, 
             Method = :generating_set_search)#
