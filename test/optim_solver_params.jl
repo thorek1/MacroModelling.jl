@@ -122,11 +122,11 @@ solBBO = bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters,
             SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
             NumDimensions = length(parameters),
             MaxTime = max_minutes, 
-            # PopulationSize = 500, 
+            PopulationSize = 500, 
             TraceMode = :verbose, 
-            TraceInterval = 10, 
-            Method = :generating_set_search)#
-            # Method = :adaptive_de_rand_1_bin_radiuslimited)
+            TraceInterval = 60, 
+            # Method = :generating_set_search)#
+            Method = :adaptive_de_rand_1_bin_radiuslimited)
             
 pars = best_candidate(solBBO)
 
