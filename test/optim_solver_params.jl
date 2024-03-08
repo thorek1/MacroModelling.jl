@@ -126,8 +126,8 @@ solBBO = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models
             PopulationSize = 500, 
             TraceMode = :verbose, 
             TraceInterval = 60, 
-            # Method = :generating_set_search)#
-            Method = :adaptive_de_rand_1_bin_radiuslimited)
+            Method = :generating_set_search)#
+            # Method = :adaptive_de_rand_1_bin_radiuslimited)
             
 pars = BlackBoxOptim.best_candidate(solBBO)
 
