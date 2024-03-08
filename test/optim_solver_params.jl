@@ -1,4 +1,5 @@
-using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics, BlackBoxOptim
+using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics
+import BlackBoxOptim
 
 # logic to implement
 
@@ -118,7 +119,7 @@ opt = Options(verbose = true, parallel_evaluation = false)
 
 
 
-solBBO = bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
+solBBO = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
             SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
             NumDimensions = length(parameters),
             MaxTime = max_minutes, 
@@ -128,7 +129,7 @@ solBBO = bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters,
             # Method = :generating_set_search)#
             Method = :adaptive_de_rand_1_bin_radiuslimited)
             
-pars = best_candidate(solBBO)
+pars = BlackBoxOptim.best_candidate(solBBO)
 
 # solDE = solve(prob, DE(options = opt), maxtime = max_minutes); solDE.minimum
 # # solGA = solve(prob, GA(options = opt), maxtime = max_minutes); solGA.minimum # doesnt work with this
