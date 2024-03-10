@@ -1,8 +1,4 @@
-import Pkg
-Pkg.activate("/home/cdsw/MacroModelling.jl-ss_solver/")
-# using MKL
-# using LinearAlgebra
-# BLAS.get_config()
+
 import Dates
 using MacroModelling
 using Serialization
@@ -26,12 +22,6 @@ mdl = "nonlinear" #
 chns = 1 # 
 scns = 1000
 
-smpler = ENV["sampler"] # "pigeons" #
-smple = ENV["sample"] # "original" #
-mdl = ENV["model"] # "linear" # 
-chns = Meta.parse(ENV["chains"]) # "4" # 
-scns = Meta.parse(ENV["scans"]) # "4" # 
-
 println("Sampler: $smpler")
 println("Sample: $smple")
 println("Model: $mdl")
@@ -42,15 +32,15 @@ println("Scans: $scns")
 if smple == "extended"
     smpl = "1966Q1-2020Q1"
     sample_idx = 75:291
-    dat = CSV.read("data/usmodel_extended.csv", DataFrame)
+    dat = CSV.read("test/data/usmodel_extended.csv", DataFrame)
 elseif smple == "original"
     smpl = "1966Q1-2004Q4"
     sample_idx = 75:230
-    dat = CSV.read("data/usmodel.csv", DataFrame)
+    dat = CSV.read("test/data/usmodel.csv", DataFrame)
 elseif smple == "full"
     smpl = "1966Q1-2023Q4"
     sample_idx = 75:306
-    dat = CSV.read("data/usmodel_extended.csv", DataFrame)
+    dat = CSV.read("test/data/usmodel_extended.csv", DataFrame)
 end
     
 # define callback
@@ -83,10 +73,10 @@ function callback(rng, model, sampler, sample, state, i; kwargs...)
 end
 
 if mdl == "linear"
-  include("model/sw07_linear.jl")
+    include("../models/SW07.jl")
 elseif mdl == "nonlinear"
-  include("model/SWnonlinear.jl")
-  SW07 = SWnonlinear
+    include("../models/SW07_nonlinear.jl")
+    SW07 = SW07_nonlinear
 end
 
 
@@ -180,7 +170,8 @@ elseif smpler == "pg"
     
     samps = Turing.sample(SW07_loglikelihood, PG(100), n_samples, progress = true, callback = callback)#, init_params = sol)
 elseif smpler == "nuts"    
-    samps = Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), scns, progress = true, callback = callback)#, init_params = sol)
+    samps = Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), 10, progress = true, callback = callback)#, init_params = sol)
+    samps = Turing.sample(SW07_loglikelihood, NUTS(), 10, progress = true, callback = callback)
 elseif smpler == "pigeons"
     # generate a Pigeons log potential
     sw07_lp = Pigeons.TuringLogPotential(SW07_loglikelihood)
