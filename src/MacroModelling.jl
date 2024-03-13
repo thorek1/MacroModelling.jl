@@ -1715,6 +1715,7 @@ function levenberg_marquardt(f::Function,
     upper_bounds::Array{T,1}; 
     parameters::solver_parameters = solver_parameters(eps(), eps(), 250, 
     # 2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 
+
     # 3.001264908018902, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.54108165203539, 0.06375413238034794, 0.24284340766769424, 0.6102523441501573, 0.009549630552246828, 0.6342888355132347, 1.1484888084737253, 11.048560536772209, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457,
     15.223285246843304, 0.95517, 38.52678, 43.54497, 0.0008500000000000058, 0.62934, 75.54509549110291, 7.261945059036699, 85.51936289088874, 87.41658873754673, 55.07229950750884, 4.11876, 39.10866, 19.048629999998944, 10.314559999999997, 28.678813991497712, 36.343002891808354, 20.09102186880269, 8.49258045180932,
     # 22.13654460573062, 0.06251610182461204, 29.42135732408044, 41.79896087849935, 3.4495426135179095, 1.7280961636234355, 27.264244841834778, 33.3082961944112, 11.514292603612345, 16.48794270397051, 19.776014409721775, 2.2506631049585355, 22.111175744019675, 17.85135302982493, 30.966501089200783, 26.405474755368814, 9.679980896862265, 27.23057283670464, 31.798890760568398,
@@ -2171,7 +2172,7 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
             return [$(solved_vals...)]
         end)
 
-    push!(NSSS_solver_cache_init_tmp,fill(2.4593900000000004, length(sorted_vars)))
+    push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(sorted_vars)))
     push!(NSSS_solver_cache_init_tmp,[Inf])
 
     # WARNING: infinite bounds are transformed to 1e12
@@ -2373,7 +2374,7 @@ function write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, e
             return [$(solved_vals...), $(aux_equations...)]
         end)
     
-    push!(NSSS_solver_cache_init_tmp,fill(2.4593900000000004, length(vcat(sorted_vars,aux_vars))))
+    push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(vcat(sorted_vars,aux_vars))))
     push!(NSSS_solver_cache_init_tmp,[Inf])
     
     # WARNING: infinite bounds are transformed to 1e12
@@ -2983,7 +2984,7 @@ function write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relev
             return [$(solved_vals...)]
         end)
 
-    push!(NSSS_solver_cache_init_tmp,fill(2.4593900000000004, length(sorted_vars)))
+    push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(sorted_vars)))
     push!(NSSS_solver_cache_init_tmp,[Inf])
 
     # WARNING: infinite bounds are transformed to 1e12
@@ -3555,7 +3556,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                 return [$(solved_vals...),$(nnaux_linear...)]
             end)
 
-        push!(NSSS_solver_cache_init_tmp,fill(2.4593900000000004, length(sorted_vars)))
+        push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(sorted_vars)))
         push!(NSSS_solver_cache_init_tmp,[Inf])
 
         # WARNING: infinite bounds are transformed to 1e12
@@ -3764,7 +3765,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         verbose::Bool;
                         tol::AbstractFloat = 1e-12,#eps(),
                         # timeout = 120,
-                        starting_points::Vector{Float64} = [2.4593900000000004, 0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
+                        starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
                         # fail_fast_solvers_only = true,
                         # verbose::Bool = false
                         )
@@ -3903,7 +3904,7 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     verbose::Bool ;
     tol::AbstractFloat = eps(),
     # timeout = 120,
-    starting_points::Vector{Float64} = [2.4593900000000004, 0.7688, 0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
+    starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
     # fail_fast_solvers_only = true,
     # verbose::Bool = false
     ) where {Z,S,N}
@@ -5710,7 +5711,14 @@ function calculate_jacobian_transpose(∇₁::AbstractMatrix{Float64}; T::timing
     spd∇₁a[:,dB_cols] = ℒ.kron(sp𝐒₁, ℒ.I(size(𝐒₁, 1)))' 
     spd∇₁a[:,dC_cols] = ℒ.I(length(𝐒₁))
 
-    tmp = -(d𝐒₁a \ spd∇₁a)'
+    d𝐒₁â = ℒ.lu(d𝐒₁a, check = false)
+    
+    if !ℒ.issuccess(d𝐒₁â)
+        tmp = spd∇₁a'
+        solved = false
+    else
+        tmp = -(d𝐒₁â \ spd∇₁a)'
+    end
 
     return 𝐒₁, solved, tmp
 end

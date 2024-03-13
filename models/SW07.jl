@@ -110,9 +110,9 @@ end
     crhoa=    0.9977
     crhob=    0.5799
     crhog=    0.9957
-    crhols=   0.9928
+    # crhols=   0.9928
     crhoqs=   0.7165
-    crhoas=1 
+    # crhoas=1 
     crhoms=0
     crhopinf=0
     crhow=0

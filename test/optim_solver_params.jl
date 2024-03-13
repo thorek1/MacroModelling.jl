@@ -1,4 +1,18 @@
-using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics
+import Pkg
+Pkg.activate("/home/cdsw/MacroModelling.jl-ss_solver2/MacroModelling.jl-ss_solver/")
+Pkg.add(["Turing", "Optimization", "OptimizationNLopt", "OptimizationMetaheuristics", "BlackBoxOptim", "Optim", "OptimizationMultistartOptimization"])
+
+using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics, OptimizationMultistartOptimization, Optim
+import BlackBoxOptim#, OptimizationEvolutionary
+
+# max_time = 100
+# transformation = 1
+# algo = "SA"
+
+max_time = Meta.parse(ENV["maxtime"]) # "4" # 
+transformation = Meta.parse(ENV["transformation"]) # "4" # 
+algo = ENV["algorithm"] # "ESCH" # 
+
 
 # logic to implement
 
@@ -53,7 +67,6 @@ all_models = [
     SW07
 ];
 
-
 function calc_total_iters(model, par_inputs, starting_point)
     outmodel = try model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs) catch end
 
@@ -64,11 +77,14 @@ function calc_total_iters(model, par_inputs, starting_point)
         10000
 
     if model.model_name == "SWnonlinear"
-        iters = SS(model)(:gamw1) > .01 ? iters : 10000
+        iters = outmodel[1][indexin([:gamw1], model.var)][1] > .01 ? iters : 100000
     end
 
     return iters
 end
+
+
+maxiters = 250
 
 using Turing
 # Function to calculate the posterior log likelihood
@@ -80,11 +96,11 @@ function evaluate_pars_loglikelihood(pars, models)
     pars[1:2] = sort(pars[1:2], rev = true)
 
     # Apply prior distributions
-    log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 1.0, μσ = true), 19),pars[1:19])
-    log_lik -= logpdf(MacroModelling.Normal(0.0, 2.0), pars[20])
+   log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 1.0, μσ = true), 19),pars[1:19])
+   log_lik -= logpdf(MacroModelling.Normal(0.0, 5.0), pars[20])
 
     # Example solver parameters - this needs to be replaced with actual logic
-    par_inputs = MacroModelling.solver_parameters(eps(), eps(), 500, pars[1:19]..., transform, 0.0, 2)
+    par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, pars[1:19]..., transformation, 0.0, 2)
 
     # Iterate over all models and calculate the total iterations
     for (i,model) in enumerate(models)
@@ -95,55 +111,123 @@ function evaluate_pars_loglikelihood(pars, models)
     return Float64(log_lik + sum(model_iters))
 end
 
-parameters = [2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688]
-parameters = rand(20) .+ 1
+parameters = [37.43453157340342, 0.955165023642146, 38.52677779968875, 95.04867034722088, 0.000853689773926441, 0.6293394580085896, 93.73768759873417, 2.1182394698715467e-11, 12.95559055961808, 99.99999999999662, 24.3348635729501, 4.118758409516733, 39.10864859959332, 99.99999999999999, 10.31461007643029, 40.85122820001249, 15.98399822778196, 6.030696898083779e-8, 95.4840354280116, 2.4593914105545123]
+# parameters = [37.848315380908126, 0.9526763793111475, 38.57687571822749, 95.06299787106212, 0.0008502803638540511, 0.6325649634774726, 93.75, 2.136387910452622e-11, 12.938130858544689, 99.99999999999662, 24.31858091208389, 4.11777400869617, 39.204774174235276, 100.0, 10.324167321843138, 40.72731100951839, 15.9844287184187, 6.03635340082695e-8, 81.9907380880773, 2.3287839364442786]
+# parameters = [37.848315380909575, 0.9526763793111475, 38.57687571822749, 95.06299787106212, 0.0008502803638540511, 0.6325649634774871, 93.75, 2.2813386285476825e-11, 12.938130858546138, 99.99999999999807, 24.318580912085338, 4.11777400869617, 39.204774174235276, 100.0, 10.324167321843138, 40.7273110095184, 15.98442871842015, 6.036498351545045e-8, 81.9907380880773, 2.3287839364442786]
+# parameters = [38.237414502003325, 0.9527636074246202, 38.57687571822749, 95.06299787106212, 0.0008502803638540511, 0.6325649634774871, 100.0, 2.8077962648754957e-11, 12.938130858546138, 99.99999999999807, 24.318580912085338, 4.11777400869617, 39.204774174235276, 100.0, 10.324167321843138, 40.7273110095184, 15.98442871842015, 6.036498351545045e-8, 81.9907380880773, 2.3287839364442786]
+# parameters = [40.653449421030615, 0.9579543617960843, 9.97332192578991, 81.98802086152607, 0.008909032074826044, 0.5645562343804136, 89.01800964358117, 60.85834318907328, 53.862153957134666, 79.94101658022927, 66.47498026777562, 13.524117918347589, 4.664804437126141, 79.64865112828011, 31.157157536515367, 26.612793916106224, 77.91244651627218, 1.8858853864455494, 63.60002535111804, 2.41565115787875]
+# parameters = [0.12093703888495441, 2.220446049250313e-16, 61.878895561555915, 65.84447938424393, 2.220446049250313e-16, 2.220446049250313e-16, 6.933804874728828, 0.03550533269177629, 2.320205642186332, 2.220446049250313e-16, 0.11105635242360294, 26.04149988887009, 2.2262295630876796, 15.050993533154083, 0.46563877913151125, 0.0011852170148789498, 7.918691209270494, 0.058009549651149024, 0.38452735521908066, 2.4680472122656134]
+# parameters = [2.9699835653158626, 2.220446049250313e-16, 2.220446049250313e-16, 100.0, 2.220446049250313e-16, 2.220446049250313e-16, 15.70610701003443, 0.7621920764720541, 81.36639856950987, 2.220446049250313e-16, 100.0, 98.89303867353514, 22.02471417808018, 84.44731715339454, 2.220446049250313e-16, 2.220446049250313e-16, 100.0, 37.624811147776846, 13.281021688292757, 4.318100177071883]
+# parameters = [2.0613343866845275, 0.8640348498807412, 98.12952506814149, 8.391075855914728, 2.220446049250313e-16, 0.00039247645151413365, 0.39152149242423145, 3.271716018599044, 2.220446049250313e-16, 0.5396861590700143, 0.024481377276542992, 38.2048416891502, 78.47102658051715, 61.533985856719, 0.016794191100658155, 2.220446049250313e-16, 0.8770574214422433, 0.0026513744112316136, 0.785831661396662, 2.769459604291346]
+# parameters = [2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688]
+# parameters = rand(20) .+ 1
 
 evaluate_pars_loglikelihood(parameters, all_models)
 
 lbs = fill(eps(),length(parameters))
 lbs[20] = -20
 
-ubs = fill(50.0,length(parameters))
-
-
+ubs = fill(100.0,length(parameters))
 
 prob = OptimizationProblem(evaluate_pars_loglikelihood, parameters, all_models, lb = lbs, ub = ubs)
 
-max_minutes = 5 * 60^2 + 30 * 60
-
-# max_minutes = 1 * 60
+# maxtime = 23 * 60^2
 
 opt = Options(verbose = true, parallel_evaluation = false)
+# sol = solve(prob, NLopt.LN_BOBYQA()); sol.minimum
+# sol = solve(prob, NLopt.LN_NELDERMEAD()); sol.minimum
+# sol = solve(prob, NLopt.LN_SBPLX()); sol.minimum
+# sol = solve(prob, NLopt.LN_PRAXIS()); sol.minimum
+# solve(prob, NLopt.G_MLSL_LDS(), local_method =  NLopt.LN_BOBYQA(), maxtime = maxt); sol.minimum
 
-# solDE = solve(prob, DE(options = opt), maxtime = max_minutes); solDE.minimum
-# # solGA = solve(prob, GA(options = opt), maxtime = max_minutes); solGA.minimum # doesnt work with this
-# solSA = solve(prob, SA(options = opt), maxtime = max_minutes); solSA.minimum
-# solECA = solve(prob, ECA(options = opt), maxtime = max_minutes); solECA.minimum
-# solPSO = solve(prob, PSO(options = opt), maxtime = max_minutes); solPSO.minimum
-# solWOA = solve(prob, WOA(options = opt), maxtime = max_minutes); solWOA.minimum
-solABC = solve(prob, ABC(options = opt), maxtime = max_minutes); solABC.minimum
-# solMCCGA = solve(prob, MCCGA(options = opt), maxtime = max_minutes); solMCCGA.minimum
-# solCGSA = solve(prob, CGSA(options = opt), maxtime = max_minutes); solCGSA.minimum
-# sol = solve(prob, NLopt.GN_ESCH(), maxtime = max_minutes); sol.minimum
+if algo == "ESCH"
+    sol = solve(prob, NLopt.GN_ESCH(), maxtime = max_time); sol.minimum
+    pars = deepcopy(sol.u)
+elseif algo == "SAMIN"   
+    sol = Optim.optimize(x -> evaluate_pars_loglikelihood(x, all_models), lbs, ubs, parameters, 
+                        SAMIN(verbosity = 3), 
+                        Optim.Options(time_limit = max_time, 
+                                        show_trace = true, 
+                                        iterations = 10000000,
+                                        extended_trace = true, 
+                                        show_every = 100))
+    pars = Optim.minimizer(sol)
+elseif algo == "MLSL"   
+    sol = solve(prob, NLopt.G_MLSL_LDS(), local_method =  NLopt.LN_BOBYQA(), maxtime = max_time); sol.minimum
+    pars = deepcopy(sol.u)
+elseif algo == "TikTak"   
+    sol = solve(prob, MultistartOptimization.TikTak(100), NLopt.LN_BOBYQA(), maxtime = max_time); sol.minimum
+    pars = deepcopy(sol.u)
+elseif algo == "BBO_SS"   
+    sol = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
+            SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
+            NumDimensions = length(parameters),
+            MaxTime = max_time, 
+#            PopulationSize = 500, 
+            TraceMode = :verbose, 
+            TraceInterval = 60, 
+            Method = :generating_set_search)#
+#            Method = :adaptive_de_rand_1_bin_radiuslimited)
+            
+    pars = BlackBoxOptim.best_candidate(sol)  
+elseif algo == "BBO_DXNES"   
+    sol = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
+            SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
+            NumDimensions = length(parameters),
+            MaxTime = max_time, 
+#            PopulationSize = 500, 
+            TraceMode = :verbose, 
+            TraceInterval = 60, 
+            Method = :dxnes)#
+#            Method = :adaptive_de_rand_1_bin_radiuslimited)
+            
+    pars = BlackBoxOptim.best_candidate(sol)  
+elseif algo == "BBO_DE"   
+    sol = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
+            SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
+            NumDimensions = length(parameters),
+            MaxTime = max_time, 
+            PopulationSize = 500, 
+            TraceMode = :verbose, 
+            TraceInterval = 60, 
+#            Method = :generating_set_search)#
+            Method = :adaptive_de_rand_1_bin_radiuslimited)
+            
+    pars = BlackBoxOptim.best_candidate(sol)   
+elseif algo == "DE"
+    sol = solve(prob, DE(options = opt), maxtime = max_time); sol.minimum
+    pars = deepcopy(sol.u)
+elseif algo == "SA" # terminates early with not great results
+    sol = solve(prob, SA(options = opt), maxtime = max_time); sol.minimum
+    pars = deepcopy(sol.u)
+elseif algo == "ECA"
+    sol = solve(prob, ECA(options = opt), maxtime = max_time); sol.minimum 
+    pars = deepcopy(sol.u)
+elseif algo == "MCCGA" # terminates early with not great results
+    sol = solve(prob, MCCGA(options = opt), maxtime = max_time); sol.minimum
+    pars = deepcopy(sol.u)
+elseif algo == "BRKGA" # terminates early with not great results
+    sol = solve(prob, BRKGA(options = opt), maxtime = max_time); sol.minimum
+    pars = deepcopy(sol.u)
+elseif algo == "PSO"
+    sol = solve(prob, PSO(options = opt), maxtime = max_time); sol.minimum
+    pars = deepcopy(sol.u)
+elseif algo == "WOA"
+    sol = solve(prob, WOA(N = 500, options = opt), maxtime = max_time); sol.minimum 
+    pars = deepcopy(sol.u)
+elseif algo == "ABC"
+    sol = solve(prob, ABC(N = 500, options = opt), maxtime = max_time); sol.minimum
+    pars = deepcopy(sol.u)
+elseif algo == "NOMAD" # terminates early with not great results
+    sol = solve(prob, NOMADOpt(), maxtime = max_time); sol.minimum
+    pars = deepcopy(sol.u)
+elseif algo == "GA"
+    sol = solve(prob, Evolutionary.GA(), maxtime = max_time); sol.minimum
+    pars = deepcopy(sol.u)
+end
 
-# sol_CRS = solve(prob, NLopt.GN_CRS2_LM(), maxtime = max_minutes); sol_CRS.minimum # gets nowhere
-# sol_DIRECT = solve(prob, NLopt.GN_DIRECT(), maxtime = max_minutes); sol_DIRECT.minimum
 
-pars = deepcopy(solABC.u)
-
-# transform = 0
-# pars = [0.0005091362638940568, 2.8685509141200138e-5, 5.853782207686227e-5, 0.00013196080350191824, 0.0002770476425730156, 0.0009519716244767909, 0.0001214119776051054, 0.00030908501576441285, 0.00015604633597157022, 0.00022641413680158165, 0.00019937397397335106, 0.00024166807372048577, 0.0006155904822177251, 6.834833988676723e-5, 0.0005660185689597568, 0.00023832991638765894, 1.3844380657673424e-5, 6.031788146343705e-5, 0.0002638201993322502, -0.0012275435299784476]
-
-# transform = 1
-# pars = [0.0009722629716867275, 0.0001226307621386892, 0.001394733545491217, 0.00020917332586393864, 3.443396112525556e-5, 0.000335726967547115, 0.0002127283513562217, 0.00022964278163688752, 0.0007721004173625069, 0.000674726682515611, 0.0007265065066785959, 0.0006368782202599225, 0.00033532317447594986, 0.00016604570894159111, 0.0007628267491510528, 1.4257916433958474e-5, 0.00017981947865976965, 0.0003429553550297806, 9.249519367471304e-6, -0.007678671054904385]
-
-# transform = 2
-# pars = [5.846510669966325e-5, 3.4129209353932815e-5, 0.0006505823521997761, 9.775916040749463e-5, 7.035264708621578e-5, 0.0007777756833533508, 0.002335262852991666, 0.00024831303889830245, 0.0005387508892999407, 0.00020225438940622587, 0.0001995261291163045, 0.000177631857961649, 3.403135735039661e-5, 0.0003017909959808597, 0.00022612713121778226, 0.0006430807474245832, 0.000496769666096488, 4.859031350196916e-5, 0.00029815039144675864, -0.014631202632603646]
-
-# transform = 3
-# pars = [0.001599643065980533, 0.00023357673646668051, 0.0008217384808418395, 0.0016514597308153382, 8.740547578718626e-6, 8.842504188831453e-5, 5.6630416478296754e-5, 0.0010582351341452108, 0.0002663753023310461, 0.0004692002779868142, 0.0005955395984410753, 0.00038998440665810537, 0.0007312132025819346, 0.0010101692249234668, 0.00026494260353431584, 0.0003154723515398832, 0.00018704238077452866, 0.00037738743688103533, 0.001210668814603666, -0.0008009605883678717]
-
-println("Transform: $transform")
+println("Transform: $transformation")
 println("Parameters: $pars")
 
 model_iters = zeros(Int, length(all_models))
@@ -151,7 +235,7 @@ model_iters = zeros(Int, length(all_models))
 pars[1:2] = sort(pars[1:2], rev = true)
 
 # Example solver parameters - this needs to be replaced with actual logic
-par_inputs = MacroModelling.solver_parameters(eps(), eps(), 250, pars[1:19]..., transform, 0.0, 2)
+par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, pars[1:19]..., transformation, 0.0, 2)
 
 # Iterate over all models and calculate the total iterations
 for (i,model) in enumerate(all_models)
@@ -161,3 +245,10 @@ end
 
 println("Iterations per model: $model_iters")
 println("Total iterations across model: $(sum(model_iters))")
+
+# SWnonlinear.SS_solve_func(SWnonlinear.parameter_values, SWnonlinear, false, pars[20], par_inputs)
+# Guerrieri_Iacoviello_2017.SS_solve_func(Guerrieri_Iacoviello_2017.parameter_values, Guerrieri_Iacoviello_2017, false, pars[20], par_inputs)
+
+# SS(Guerrieri_Iacoviello_2017)
+
+# SWnonlinear.bounds

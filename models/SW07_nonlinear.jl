@@ -1,6 +1,6 @@
 # using MacroModelling
 
-@model SWnonlinear begin
+@model SW07_nonlinear begin
     y[0] = c[0] + inve[0] + y[ss] * gy[0] + afunc[0] * kp[-1] / (1 + ctrend / 100)
 
     y[0] * (pdot[0] + curvp * (1 - cfc) / cfc) / (1 + curvp * (1 - cfc) / cfc) = a[0] * k[0] ^ calfa * lab[0] ^ (1 - calfa) - (cfc - 1) * y[ss]
@@ -69,23 +69,23 @@
 
     SfuncD[0] = csadjcost * ((1 + ctrend / 100) * inve[0] / inve[-1] - (1 + ctrend / 100))
 
-    a[0] = 1 - crhoa + crhoa * a[-1] + ea[x] / 100
+    a[0] = 1 - crhoa + crhoa * a[-1] + z_ea * ea[x] / 100
 
-    b[0] = 1 - crhob + crhob * b[-1] + eb[x] * ( - (((1 - chabb / (1 + ctrend / 100)) / (csigma * (1 + chabb / (1 + ctrend / 100)))) ^ (-1))) / 100
+    b[0] = 1 - crhob + crhob * b[-1] + z_eb * eb[x] * ( - (((1 - chabb / (1 + ctrend / 100)) / (csigma * (1 + chabb / (1 + ctrend / 100)))) ^ (-1))) / 100
 
-    gy[0] - cg = crhog * (gy[-1] - cg) + egy[x] / 100 + ea[x] * cgy / 100
+    gy[0] - cg = crhog * (gy[-1] - cg) + z_eg * egy[x] / 100 + z_ea * ea[x] * cgy / 100
 
-    qs[0] = 1 - crhoqs + crhoqs * qs[-1] + eqs[x] * csadjcost * (1 + ctrend / 100) ^ 2 * (1 + 1 / (1 + constebeta / 100) * (1 + ctrend / 100) ^ (1 - csigma)) / 100
+    qs[0] = 1 - crhoqs + crhoqs * qs[-1] + z_eqs * eqs[x] * csadjcost * (1 + ctrend / 100) ^ 2 * (1 + 1 / (1 + constebeta / 100) * (1 + ctrend / 100) ^ (1 - csigma)) / 100
 
-    ms[0] = 1 - crhoms + crhoms * ms[-1] + ems[x] / 100
+    ms[0] = 1 - crhoms + crhoms * ms[-1] + z_em * ems[x] / 100
 
     spinf[0] = 1 - crhopinf + crhopinf * spinf[-1] + epinfma[0] - cmap * epinfma[-1]
 
-    epinfma[0] = epinf[x] * 1 / (1 / (1 + cindp * (1 + ctrend / 100) * 1 / (1 + constebeta / 100) * (1 + ctrend / 100) ^ (-csigma)) * (1 - cprobp) * (1 - cprobp * (1 + ctrend / 100) * 1 / (1 + constebeta / 100) * (1 + ctrend / 100) ^ (-csigma)) / cprobp / (1 + curvp * (cfc - 1))) / 100
+    epinfma[0] = z_epinf * epinf[x] * 1 / (1 / (1 + cindp * (1 + ctrend / 100) * 1 / (1 + constebeta / 100) * (1 + ctrend / 100) ^ (-csigma)) * (1 - cprobp) * (1 - cprobp * (1 + ctrend / 100) * 1 / (1 + constebeta / 100) * (1 + ctrend / 100) ^ (-csigma)) / cprobp / (1 + curvp * (cfc - 1))) / 100
 
     sw[0] = 1 - crhow + crhow * sw[-1] + ewma[0] - cmaw * ewma[-1]
 
-    ewma[0] = ew[x] * 1 / (1 / (1 + curvw * (clandaw - 1)) * (1 - cprobw) * (1 - cprobw * (1 + ctrend / 100) * 1 / (1 + constebeta / 100) * (1 + ctrend / 100) ^ (-csigma)) / (cprobw * (1 + (1 + ctrend / 100) * 1 / (1 + constebeta / 100) * (1 + ctrend / 100) ^ (-csigma)))) / 100
+    ewma[0] = z_ew * ew[x] * 1 / (1 / (1 + curvw * (clandaw - 1)) * (1 - cprobw) * (1 - cprobw * (1 + ctrend / 100) * 1 / (1 + constebeta / 100) * (1 + ctrend / 100) ^ (-csigma)) / (cprobw * (1 + (1 + ctrend / 100) * 1 / (1 + constebeta / 100) * (1 + ctrend / 100) ^ (-csigma)))) / 100
 
     yflex[0] = cflex[0] + inveflex[0] + gy[0] * yflex[ss] + afuncflex[0] * kpflex[-1] / (1 + ctrend / 100)
 
@@ -121,113 +121,99 @@
 
     SfuncDflex[0] = csadjcost * ((1 + ctrend / 100) * inveflex[0] / inveflex[-1] - (1 + ctrend / 100))
 
-    # ygap[0] = 100 * log(y[0] / yflex[0])
+    ygap[0] = 100 * log(y[0] / yflex[0])
 
-    # dy[0] = ctrend + 100 * (y[0] / y[-1] - 1)
+    dy[0] = ctrend + 100 * (y[0] / y[-1] - 1)
 
-    # dc[0] = ctrend + 100 * (c[0] / c[-1] - 1)
+    dc[0] = ctrend + 100 * (c[0] / c[-1] - 1)
 
-    # dinve[0] = ctrend + 100 * (inve[0] / inve[-1] - 1)
+    dinve[0] = ctrend + 100 * (inve[0] / inve[-1] - 1)
 
-    # pinfobs[0] = 100 * (pinf[0] - pinf[ss]) + constepinf
+    pinfobs[0] = 100 * (pinf[0] - pinf[ss]) + constepinf
 
-    # robs[0] = 100 * (r[0] - 1)
+    robs[0] = 100 * (r[0] - 1)
 
-    # dwobs[0] = ctrend + 100 * (w[0] / w[-1] - 1)
+    dwobs[0] = ctrend + 100 * (w[0] / w[-1] - 1)
 
-    # labobs[0] = 100 * (lab[0] / lab[ss] - 1)
+    labobs[0] = 100 * (lab[0] / lab[ss] - 1)
 
 end
 
 
-@parameters SWnonlinear begin
+@parameters SW07_nonlinear begin
+    ctou=.025
+    clandaw=1.5
+    cg=0.18
+    curvp=10
+    curvw=10
+    
+    calfa=.24
+    csigma=1.5
+    cfc=1.5
+    cgy=0.51
+    
+    csadjcost= 6.0144
+    chabb=    0.6361    
+    cprobw=   0.8087
+    csigl=    1.9423
+    cprobp=   0.6
+    cindw=    0.3243
+    cindp=    0.47
+    czcap=    0.2696
+    crpi=     1.488
+    crr=      0.8762
+    cry=      0.0593
+    crdy=     0.2347
+    
+    crhoa=    0.9977
+    crhob=    0.5799
+    crhog=    0.9957
+    # crhols=   0.9928
+    crhoqs=   0.7165
+    # crhoas=1 
+    crhoms=0
+    crhopinf=0
+    crhow=0
+    cmap = 0
+    cmaw  = 0
+    
+    clandap=cfc
+    cbetabar=cbeta*cgamma^(-csigma)
+    cr=cpie/(cbeta*cgamma^(-csigma))
+    crk=(cbeta^(-1))*(cgamma^csigma) - (1-ctou)
+    cw = (calfa^calfa*(1-calfa)^(1-calfa)/(clandap*crk^calfa))^(1/(1-calfa))
+    cikbar=(1-(1-ctou)/cgamma)
+    cik=(1-(1-ctou)/cgamma)*cgamma
+    clk=((1-calfa)/calfa)*(crk/cw)
+    cky=cfc*(clk)^(calfa-1)
+    ciy=cik*cky
+    ccy=1-cg-cik*cky
+    crkky=crk*cky
+    cwhlc=(1/clandaw)*(1-calfa)/calfa*crk*cky/ccy
+    cwly=1-crk*cky
+    
+    conster=(cr-1)*100
+    ctrend=(1.004-1)*100
+    constepinf=(1.005-1)*100
+
+    cpie=1+constepinf/100
+    cgamma=1+ctrend/100 
+
+    cbeta=1/(1+constebeta/100)
+    constebeta = 100 / .9995 - 100
+
+    constelab=0
+
+    z_ea = 0.4618
+    z_eb = 1.8513
+    z_eg = 0.6090
+    z_eqs = 0.6017
+    z_em = 0.2397
+    z_epinf = 0.1455
+    z_ew = 0.2089
+
     mcflex = mc[ss] | mcflex
     pinf[ss] = 1 + constepinf / 100 | pinfss
-
-    # mcflex = 1 / cfc
-
-    ctou = 0.025
-
-    cg = 0.18
-
-    clandaw = 1.5
-
-    curvw = 10
-
-    crhoa = 0.95827
-
-    crhob = 0.22137
-
-    crhog = 0.97391
-
-    crhoqs = 0.70524
-
-    crhoms = 0.11421
-
-    crhopinf = 0.83954
-
-    crhow = 0.9745
-
-    cmap = 0.69414
-
-    cmaw = 0.93617
-
-    csadjcost = 5.5811
-
-    csigma = 1.4103
-
-    chabb = 0.68049
-
-    cprobw = 0.80501
-
-    csigl = 2.2061
-
-    cindw = 0.56351
-
-    cindp = 0.24165
-
-    czcap = 0.49552
-
-    cfc = 1.3443
-
-    crpi = 1.931
-
-    crr = 0.82512
-
-    cry = 0.097844
-
-    crdy = 0.25114
-
-    constepinf = 0.8731
-
-    constebeta = 0.12575
-
-    ctrend = 0.4419
-
-    cgy = 0.53817
-
-    calfa = 0.18003
-
-    curvp = 64.5595
-
-    cprobp = 0.667
-
-    # gamw1 > .1 # 6
-    # gamw2 > .1 # 6
-    # gamw3 > .1 # 6
-
-    # gam1 > 0 # 3.5 # this is the only one that is necessary
-    # gam2 >  2
-    # gam3 > .1 # 4
-
-    # k > .1 # 7
-    # kp > .1
-    # mc > .1
-    # c > .1 # 7
-    # w > .1 # 7
-    # y > .1 # 7
-    # inve > .1 # 7
-    # lab > .1 # 7
 end
 
 # SS(SWnonlinear)
@@ -308,7 +294,79 @@ end
 # ygap       		 =	0
 
 
+# 0.451788281662122
+# 0.242460701013770
+# 0.520010319208288
+# 0.450106906080831
+# 0.239839325484002
+# 0.141123850778673
+# 0.244391601233500
+# 0.958774095336246
+# 0.182439345125560
+# 0.976161415046499
+# 0.709569323873602
+# 0.127131476313068
+# 0.903807340558011
+# 0.971853774024447
+# 0.744871846683131
+# 0.888145926618249
+# 5.48819700906062
+# 1.39519289795144
+# 0.712400635178752
+# 0.737541323772002
+# 1.91988384168640
+# 0.656266260297550
+# 0.591998309497386
+# 0.228354019115349
+# 0.547213129238992
+# 1.61497958797633
+# 2.02946740344113
+# 0.815324872021385
+# 0.0846869053285818
+# 0.222925708063948
+# 0.817982220538172
+# 0.160654114713215
+# -0.103065166985808
+# 0.432026374810516
+# 0.526121219470843
+# 0.192800456418155
 
+# stderr ea,0.4618,0.01,3,INV_GAMMA_PDF,0.1,2;
+# stderr eb,0.1818513,0.025,5,INV_GAMMA_PDF,0.1,2;
+# stderr eg,0.6090,0.01,3,INV_GAMMA_PDF,0.1,2;
+# stderr eqs,0.46017,0.01,3,INV_GAMMA_PDF,0.1,2;
+# stderr em,0.2397,0.01,3,INV_GAMMA_PDF,0.1,2;
+# stderr epinf,0.1455,0.01,3,INV_GAMMA_PDF,0.1,2;
+# stderr ew,0.2089,0.01,3,INV_GAMMA_PDF,0.1,2;
+# crhoa,.9676 ,.01,.9999,BETA_PDF,0.5,0.20;
+# crhob,.2703,.01,.9999,BETA_PDF,0.5,0.20;
+# crhog,.9930,.01,.9999,BETA_PDF,0.5,0.20;
+# crhoqs,.5724,.01,.9999,BETA_PDF,0.5,0.20;
+# crhoms,.3,.01,.9999,BETA_PDF,0.5,0.20;
+# crhopinf,.8692,.01,.9999,BETA_PDF,0.5,0.20;
+# crhow,.9546,.001,.9999,BETA_PDF,0.5,0.20;
+# cmap,.7652,0.01,.9999,BETA_PDF,0.5,0.2;
+# cmaw,.8936,0.01,.9999,BETA_PDF,0.5,0.2;
+# csadjcost,6.3325,2,15,NORMAL_PDF,4,1.5;
+# csigma,1.2312,0.25,3,NORMAL_PDF,1.50,0.375;
+# chabb,0.7205,0.001,0.99,BETA_PDF,0.7,0.1;
+# cprobw,0.7937,0.3,0.95,BETA_PDF,0.5,0.1;
+# csigl,2.8401,0.25,10,NORMAL_PDF,2,0.75;
+# cprobp,0.7813,0.5,0.95,BETA_PDF,0.5,0.10;
+# cindw,0.4425,0.01,0.99,BETA_PDF,0.5,0.15;
+# cindp,0.3291,0.01,0.99,BETA_PDF,0.5,0.15;
+# czcap,0.2648,0.01,1,BETA_PDF,0.5,0.15;
+# cfc,1.4672,1.0,3,NORMAL_PDF,1.25,0.125;
+# crpi,1.7985,1.0,3,NORMAL_PDF,1.5,0.25;
+# crr,0.8258,0.5,0.975,BETA_PDF,0.75,0.10;
+# cry,0.0893,0.001,0.5,NORMAL_PDF,0.125,0.05;
+# crdy,0.2239,0.001,0.5,NORMAL_PDF,0.125,0.05;
+# constepinf,0.7,0.1,2.0,GAMMA_PDF,0.625,0.1;//20;
+# constebeta,0.7420,0.01,2.0,GAMMA_PDF,0.25,0.1;//0.20;
+# constelab,1.2918,-10.0,10.0,NORMAL_PDF,0.0,2.0;
+# ctrend,0.3982,0.1,0.8,NORMAL_PDF,0.4,0.10;
+# cgy,0.05,0.01,2.0,NORMAL_PDF,0.5,0.25;
+# calfa,0.24,0.01,1.0,NORMAL_PDF,0.3,0.05;
 
 # 𝓂 = SWnonlinear
 # parameters = 𝓂.parameter_values
