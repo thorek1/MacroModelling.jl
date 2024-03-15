@@ -3828,7 +3828,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
         end
 
-        if sol_minimum > tol && cold_start isa Bool
+        
+        if sol_minimum > tol
             previous_sol_init = Float64.(max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_values_init)))
             
             sol_new, info = SS_optimizer(
@@ -3854,7 +3855,9 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     push!(starting_points, iii) 
                 end
             end
+        end
 
+        if sol_minimum > tol && cold_start isa Bool
             for starting_point in starting_points
                 if sol_minimum > tol
                     standard_inits = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(starting_point,length(guess))))
