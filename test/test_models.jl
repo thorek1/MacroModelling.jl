@@ -1,8 +1,8 @@
 if !test_higher_order
     include("models/Backus_Kehoe_Kydland_1992.jl")
-    SS = get_SS(Backus_Kehoe_Kydland_1992)
+    SSvals = get_SS(Backus_Kehoe_Kydland_1992)
 
-    @test isapprox(SS(["A{F}","K{H}","L{F}","LGM"]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
+    @test isapprox(SSvals(["A{F}","K{H}","L{F}","LGM"]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
 
     var_dec = get_var_decomp(Backus_Kehoe_Kydland_1992)
 
@@ -17,9 +17,9 @@ if !test_higher_order
 
 
     include("../models/NAWM_EAUS_2008.jl")
-    SS = get_SS(NAWM_EAUS_2008)
+    SSvals = get_SS(NAWM_EAUS_2008)
 
-    @test isapprox(SS([:EAUS_RER,:EA_Y,:EA_K,:EA_C,:US_Y,:US_K]),[0.937577, 3.62701, 33.4238, 2.18955, 3.92449, 33.6712],rtol = 1e-5)
+    @test isapprox(SSvals([:EAUS_RER,:EA_Y,:EA_K,:EA_C,:US_Y,:US_K]),[0.937577, 3.62701, 33.4238, 2.18955, 3.92449, 33.6712],rtol = 1e-5)
 
     var_dec = get_var_decomp(NAWM_EAUS_2008)
 
