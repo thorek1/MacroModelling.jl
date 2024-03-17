@@ -4,7 +4,7 @@ using MacroModelling
 using Serialization
 using StatsPlots
 import Turing
-import Turing: NUTS, PG, IS, sample, logpdf, Truncated#, Normal, Beta, Gamma, InverseGamma,
+import Turing: NUTS, HMC, PG, IS, sample, logpdf, Truncated#, Normal, Beta, Gamma, InverseGamma,
 using Random, CSV, DataFrames, Zygote, AxisKeys, MCMCChains
 # using ComponentArrays, Optimization, OptimizationNLopt, OptimizationOptimisers
 import DynamicPPL: logjoint
@@ -208,7 +208,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
     end
 end
 
-SW07.parameter_values[indexin([:crhoms, :crhopinf, :crhow, :cmap, :cmaw],SW07.parameters)] .= 0.02
+# SW07.parameter_values[indexin([:crhoms, :crhopinf, :crhow, :cmap, :cmaw],SW07.parameters)] .= 0.02
 
 fixed_parameters = SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw],SW07.parameters)]
 
@@ -217,22 +217,34 @@ dir_name = "sw07_$(mdl)_$(smpler)_$(smpl)_samples_$(chns)_chains"
 
 if !isdir(dir_name) mkdir(dir_name) end
 
-cd(dir_name)
+# cd(dir_name)
 
 println("Current working directory: ", pwd())
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, SW07, observables, fixed_parameters)
 
+
+inits = [Dict(get_parameters(SW07_nonlinear, values = true))[string(i)] for i in [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]]
+
+samps = Turing.sample(SW07_loglikelihood, PG(100), 500, progress = true, initial_params = inits)
+
+inits = mean(samps).nt.mean
+Turing.sample(SW07_loglikelihood, HMC(0.01, 2, adtype = Turing.AutoForwardDiff(chunksize = 4)), 10, progress = true, initial_params = inits)
+Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoForwardDiff(chunksize = 4)), 10, progress = true, initial_params = inits)
+@profview Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), 1, progress = true, initial_params = inits)
+@profview Turing.sample(SW07_loglikelihood, HMC(0.01, 2, adtype = Turing.AutoZygote()), 1, progress = true, initial_params = inits)
+
+
 if smpler == "is"
     n_samples = 1000
     
-    samps = Turing.sample(SW07_loglikelihood, IS(), n_samples, progress = true, callback = callback)#, init_params = sol)
+    samps = Turing.sample(SW07_loglikelihood, IS(), n_samples, progress = true, callback = callback)#, initial_params = sol)
 elseif smpler == "pg"
     n_samples = 1000
     
-    samps = Turing.sample(SW07_loglikelihood, PG(100), n_samples, progress = true, callback = callback)#, init_params = sol)
+    samps = Turing.sample(SW07_loglikelihood, PG(100), n_samples, progress = true, callback = callback)#, initial_params = sol)
 elseif smpler == "nuts"    
-    samps = Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), 10, progress = true, callback = callback)#, init_params = sol)
+    samps = Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), 10, progress = true, initial_params = inits)#, initial_params = sol)
     samps = Turing.sample(SW07_loglikelihood, NUTS(), 10, progress = true, callback = callback)
 elseif smpler == "pigeons"
     # generate a Pigeons log potential
@@ -279,4 +291,4 @@ StatsPlots.savefig(my_plot, "samples_$(dt)h.png")
 #Base.show(samps)
 #println(Base.show(samps))
 Base.show(stdout, MIME"text/plain"(), samps)
-  
+
