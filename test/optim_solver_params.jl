@@ -5,13 +5,13 @@ Pkg.add(["Turing", "Optimization", "OptimizationNLopt", "OptimizationMetaheurist
 using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics, OptimizationMultistartOptimization, Optim
 import BlackBoxOptim#, OptimizationEvolutionary
 
-# max_time = 100
-# transformation = 1
-# algo = "SA"
+max_time = 8 * 60^2
+transformation = 1
+algo = "BBO_DE"
 
-max_time = Meta.parse(ENV["maxtime"]) # "4" # 
-transformation = Meta.parse(ENV["transformation"]) # "4" # 
-algo = ENV["algorithm"] # "ESCH" # 
+# max_time = Meta.parse(ENV["maxtime"]) # "4" # 
+# transformation = Meta.parse(ENV["transformation"]) # "4" # 
+# algo = ENV["algorithm"] # "ESCH" # 
 
 
 # logic to implement
@@ -40,31 +40,31 @@ include("../models/Aguiar_Gopinath_2007.jl")
 include("../models/Ascari_Sbordone_2014.jl") # stands out
 include("../models/FS2000.jl")
 include("../models/SW07.jl")
-include("../models/SWnonlinear.jl")
+include("../models/SW07_nonlinear.jl")
 # include("../models/RBC_baseline.jl") # no solver block / everything analytical
 include("../models/Guerrieri_Iacoviello_2017.jl") # stands out
 
 
 all_models = [
-    SWnonlinear,
+    # SW07_nonlinear,
     Guerrieri_Iacoviello_2017,
-    NAWM_EAUS_2008, 
-    GNSS_2010, 
-    Ascari_Sbordone_2014, 
+    # NAWM_EAUS_2008, 
+    # GNSS_2010, 
+    # Ascari_Sbordone_2014, 
     SW03, 
-    Backus_Kehoe_Kydland_1992, 
-    m, 
-    Baxter_King_1993, 
-    Ghironi_Melitz_2005, 
-    SGU_2003_debt_premium, 
-    JQ_2012_RBC, 
-    Ireland_2004, 
-    Caldara_et_al_2012, 
-    Gali_Monacelli_2005_CITR, 
-    Gali_2015_chapter_3_nonlinear, 
-    Aguiar_Gopinath_2007, 
+    # Backus_Kehoe_Kydland_1992, 
+    # m, 
+    # Baxter_King_1993, 
+    # Ghironi_Melitz_2005, 
+    # SGU_2003_debt_premium, 
+    # JQ_2012_RBC, 
+    # Ireland_2004, 
+    # Caldara_et_al_2012, 
+    # Gali_Monacelli_2005_CITR, 
+    # Gali_2015_chapter_3_nonlinear, 
+    # Aguiar_Gopinath_2007, 
     FS2000, 
-    SW07
+    # SW07
 ];
 
 function calc_total_iters(model, par_inputs, starting_point)
@@ -96,8 +96,8 @@ function evaluate_pars_loglikelihood(pars, models)
     pars[1:2] = sort(pars[1:2], rev = true)
 
     # Apply prior distributions
-   log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 1.0, μσ = true), 19),pars[1:19])
-   log_lik -= logpdf(MacroModelling.Normal(0.0, 5.0), pars[20])
+    log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 1.0, μσ = true), 19),pars[1:19])
+    log_lik -= logpdf(MacroModelling.Normal(0.0, 5.0), pars[20])
 
     # Example solver parameters - this needs to be replaced with actual logic
     par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, pars[1:19]..., transformation, 0.0, 2)
@@ -154,10 +154,10 @@ if algo == "ESCH"
     pars = deepcopy(sol.u)
 elseif algo == "SAMIN"   
     sol = Optim.optimize(x -> evaluate_pars_loglikelihood(x, all_models), lbs, ubs, parameters, 
-                        SAMIN(nt = 10, 
-                              ns = 10, 
-                              rt = 0.95, 
-                              verbosity = 2), 
+                        SAMIN(  nt = 10, 
+                                ns = 10, 
+                                rt = 0.95, 
+                                verbosity = 2), 
                         Optim.Options(time_limit = max_time, 
 #                                        show_trace = true, 
                                         iterations = 10000000,
@@ -168,8 +168,8 @@ elseif algo == "SAMIN"
 elseif algo == "PS"   
     sol = Optim.optimize(x -> evaluate_pars_loglikelihood(x, all_models), lbs, ubs, parameters, 
                         ParticleSwarm(lower = lbs, 
-                                      upper = ubs, 
-                                      n_particles = 500), 
+                                        upper = ubs, 
+                                        n_particles = 500), 
                         Optim.Options(time_limit = max_time, 
                                         show_trace = true, 
                                         iterations = 1000000,
@@ -251,6 +251,30 @@ elseif algo == "GA"
     pars = deepcopy(sol.u)
 end
 
+
+
+# do another local optim refinement
+prob = OptimizationProblem(evaluate_pars_loglikelihood, pars, all_models, lb = lbs, ub = ubs)
+sol = solve(prob, NLopt.LN_NELDERMEAD()); sol.minimum
+sol = solve(prob, NLopt.LN_BOBYQA()); sol.minimum
+sol = solve(prob, NLopt.LN_PRAXIS()); sol.minimum
+sol = solve(prob, NLopt.LN_SBPLX()); sol.minimum #80.79
+# sol = solve(prob, NLopt.LN_COBYLA()); sol.minimum
+pars = deepcopy(sol.u)
+
+
+# SW07 nonlinear
+# [0.5892723157762478, 0.5887527065005829, 0.0006988523559835617, 0.009036867721330505, 0.14457591298892497, 1.3282546133453548, 1.378515451210324, 1.7661485851863441e-6, 2.6206711939142943e-7, 7.052160321659248e-12, 1.8442212583051863e-6, 5.118937128189348, 13.301617690046848, 6.044293140571821e-13, 1.691251847378593, 0.03319322730594751, 0.1201767636895742, 0.0007802908980930664, 0.011310267585075185, 1.0032972640942657]
+# Iterations per model: [37, 10000, 10000, 35, 38, 10000, 18, 10000, 9, 21, 10, 22, 5, 27, 6, 12, 15, 10000, 21]
+
+# refinement across models which solved (see above)
+# [1.0242323883590136, 0.5892723157762478, 0.0006988523559835617, 0.009036867721330505, 0.14457591298892497, 1.3282546133453548, 0.7955753778741823, 1.7661485851863441e-6, 2.6206711939142943e-7, 7.052160321659248e-12, 1.06497513443326e-6, 5.118937128189348, 90.94952163302091, 3.1268025435012207e-13, 1.691251847378593, 0.5455751102495228, 0.1201767636895742, 0.0007802908980930664, 0.011310267585075185, 1.0032972640942657]
+# [44, 10000, 83, 36, 40, 10000, 13, 22, 9, 18, 9, 11, 5, 24, 5, 11, 15, 10000, 20]
+
+
+# Guerrieri_Iacoviello_2017, SW03, FS2000
+# [2.2166000934038386, 0.3342989316385292, 1.322105676270657, 2.4423579385973486, 5.28291512449182, 0.2436333363251138, 2.0392909437375537, 2.220446049250313e-16, 0.1179149349062645, 1.7950574466127827, 5.645113651574673e-14, 29.199406403144636, 21.508413489197178, 7.358430465764362, 1.139797041569637, 3.5086499739182466, 2.4965112615295393, 2.268534694762562, 12.120815210691354, 0.884940029673057]
+# [10000, 16, 10000, 10000, 10000, 45, 22, 10000, 21, 35, 26, 10000, 7, 10000, 7, 16, 12, 10, 200]
 
 println("Transform: $transformation")
 println("Parameters: $pars")
