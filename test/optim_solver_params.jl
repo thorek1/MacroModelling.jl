@@ -1,5 +1,5 @@
 import Pkg
-Pkg.activate("/home/cdsw/MacroModelling.jl-ss_solver2/MacroModelling.jl-ss_solver/")
+# Pkg.activate("/home/cdsw/MacroModelling.jl-ss_solver2/MacroModelling.jl-ss_solver/")
 Pkg.add(["Turing", "Optimization", "OptimizationNLopt", "OptimizationMetaheuristics", "BlackBoxOptim", "Optim", "OptimizationMultistartOptimization"])
 
 using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics, OptimizationMultistartOptimization, Optim
@@ -9,6 +9,9 @@ max_time = 8 * 60^2
 transformation = 1
 algo = "BBO_DE"
 
+# max_time = Meta.parse(ENV["maxtime"]) # "4" # 
+# transformation = Meta.parse(ENV["transformation"]) # "4" # 
+# algo = ENV["algorithm"] # "ESCH" # 
 # max_time = Meta.parse(ENV["maxtime"]) # "4" # 
 # transformation = Meta.parse(ENV["transformation"]) # "4" # 
 # algo = ENV["algorithm"] # "ESCH" # 
@@ -46,6 +49,7 @@ include("../models/Guerrieri_Iacoviello_2017.jl") # stands out
 
 
 all_models = [
+    # SW07_nonlinear,
     # SW07_nonlinear,
     Guerrieri_Iacoviello_2017,
     # NAWM_EAUS_2008, 
