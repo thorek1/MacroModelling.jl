@@ -1,17 +1,17 @@
 import Pkg
-Pkg.activate("/home/cdsw/MacroModelling.jl-ss_solver2/MacroModelling.jl-ss_solver/")
+# Pkg.activate("/home/cdsw/MacroModelling.jl-ss_solver2/MacroModelling.jl-ss_solver/")
 Pkg.add(["Turing", "Optimization", "OptimizationNLopt", "OptimizationMetaheuristics", "BlackBoxOptim", "Optim", "OptimizationMultistartOptimization"])
 
 using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics, OptimizationMultistartOptimization, Optim
 import BlackBoxOptim#, OptimizationEvolutionary
 
-# max_time = 100
-# transformation = 1
-# algo = "SA"
+max_time = 2 * 60^2
+transformation = 1
+algo = "BBO_DE"
 
-max_time = Meta.parse(ENV["maxtime"]) # "4" # 
-transformation = Meta.parse(ENV["transformation"]) # "4" # 
-algo = ENV["algorithm"] # "ESCH" # 
+# max_time = Meta.parse(ENV["maxtime"]) # "4" # 
+# transformation = Meta.parse(ENV["transformation"]) # "4" # 
+# algo = ENV["algorithm"] # "ESCH" # 
 
 
 # logic to implement
@@ -22,49 +22,49 @@ algo = ENV["algorithm"] # "ESCH" #
 # for estimation use the small system (no aux, pars and solved vars) and again look for optim parameters that solve the system with the least necessary iterations during estimation
 
 
-include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
-# include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-include("../models/Backus_Kehoe_Kydland_1992.jl")
-include("../models/Baxter_King_1993.jl")
-include("../models/SW03.jl")
-include("../models/GNSS_2010.jl")
-include("../models/Ghironi_Melitz_2005.jl")
-include("../models/SGU_2003_debt_premium.jl")
-include("../models/NAWM_EAUS_2008.jl") # stands out
-include("../models/JQ_2012_RBC.jl")
-include("../models/Ireland_2004.jl")
-include("../models/Caldara_et_al_2012.jl")
-include("../models/Gali_Monacelli_2005_CITR.jl")
-include("../models/Gali_2015_chapter_3_nonlinear.jl")
-include("../models/Aguiar_Gopinath_2007.jl")
-include("../models/Ascari_Sbordone_2014.jl") # stands out
-include("../models/FS2000.jl")
-include("../models/SW07.jl")
-include("../models/SWnonlinear.jl")
+# include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+# # include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+# include("../models/Backus_Kehoe_Kydland_1992.jl")
+# include("../models/Baxter_King_1993.jl")
+# include("../models/SW03.jl")
+# include("../models/GNSS_2010.jl")
+# include("../models/Ghironi_Melitz_2005.jl")
+# include("../models/SGU_2003_debt_premium.jl")
+# include("../models/NAWM_EAUS_2008.jl") # stands out
+# include("../models/JQ_2012_RBC.jl")
+# include("../models/Ireland_2004.jl")
+# include("../models/Caldara_et_al_2012.jl")
+# include("../models/Gali_Monacelli_2005_CITR.jl")
+# include("../models/Gali_2015_chapter_3_nonlinear.jl")
+# include("../models/Aguiar_Gopinath_2007.jl")
+# include("../models/Ascari_Sbordone_2014.jl") # stands out
+# include("../models/FS2000.jl")
+# include("../models/SW07.jl")
+# include("../models/SW07_nonlinear.jl")
 # include("../models/RBC_baseline.jl") # no solver block / everything analytical
 include("../models/Guerrieri_Iacoviello_2017.jl") # stands out
 
 
 all_models = [
-    SWnonlinear,
+    # SW07_nonlinear,
     Guerrieri_Iacoviello_2017,
-    NAWM_EAUS_2008, 
-    GNSS_2010, 
-    Ascari_Sbordone_2014, 
-    SW03, 
-    Backus_Kehoe_Kydland_1992, 
-    m, 
-    Baxter_King_1993, 
-    Ghironi_Melitz_2005, 
-    SGU_2003_debt_premium, 
-    JQ_2012_RBC, 
-    Ireland_2004, 
-    Caldara_et_al_2012, 
-    Gali_Monacelli_2005_CITR, 
-    Gali_2015_chapter_3_nonlinear, 
-    Aguiar_Gopinath_2007, 
-    FS2000, 
-    SW07
+    # NAWM_EAUS_2008, 
+    # GNSS_2010, 
+    # Ascari_Sbordone_2014, 
+    # SW03, 
+    # Backus_Kehoe_Kydland_1992, 
+    # m, 
+    # Baxter_King_1993, 
+    # Ghironi_Melitz_2005, 
+    # SGU_2003_debt_premium, 
+    # JQ_2012_RBC, 
+    # Ireland_2004, 
+    # Caldara_et_al_2012, 
+    # Gali_Monacelli_2005_CITR, 
+    # Gali_2015_chapter_3_nonlinear, 
+    # Aguiar_Gopinath_2007, 
+    # FS2000, 
+    # SW07
 ];
 
 function calc_total_iters(model, par_inputs, starting_point)
