@@ -348,7 +348,7 @@ The left axis shows the level, and the right the deviation from the reference st
 - $ALGORITHM
 - $NEGATIVE_SHOCK
 - $GENERALISED_IRF
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
+- $INITIAL_STATE
 - `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
 - $VERBOSE
 
@@ -387,7 +387,7 @@ function plot_irf(𝓂::ℳ;
     algorithm::Symbol = :first_order,
     negative_shock::Bool = false,
     generalised_irf::Bool = false,
-    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol} = :relevant_ss,
     ignore_obc::Bool = false,
     verbose::Bool = false)
 
@@ -446,31 +446,8 @@ function plot_irf(𝓂::ℳ;
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
-    
-    unspecified_initial_state = initial_state == [0.0]
 
-    if unspecified_initial_state
-        if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
-        elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
-        else
-            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
-        end
-    else
-        if initial_state isa Vector{Float64}
-            if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
-            elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
-            else
-                initial_state = initial_state - reference_steady_state[1:𝓂.timings.nVars]
-            end
-        else
-            @assert algorithm ∉ [:pruned_second_order, :pruned_third_order] && initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
-        end
-    end
-    
+    initial_state = get_and_check_initial_state(𝓂, initial_state, reference_steady_state, NSSS, SSS_delta, algorithm)
 
     if occasionally_binding_constraints
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
@@ -764,20 +741,43 @@ plot_irfs = plot_irf
 
 
 """
-Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
+Wrapper for [`plot_irf`](@ref) which overrides and sets `shocks = :simulate` and sets the default `periods = 100`.
 """
-plot_simulations(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
+function plot_simulations(args...; periods::Int = 100, kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :shocks)
+        @warn "Warning: `shocks` keyword is overridden in `plot_simulations`. Defaulting to `shocks = :simulate`."
+    end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:shocks => :simulate))
+
+    # Call plot_irf with the modified arguments
+    plot_irf(args...; periods=periods, kwargs...)
+end
+
 
 """
-Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
+Wrapper for [`plot_irf`](@ref) which overrides and sets `shocks = :simulate` and sets the default `periods = 100`.
 """
-plot_simulation(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
+plot_simulation =  plot_simulations
 
 
 """
-Wrapper for [`plot_irf`](@ref) with `generalised_irf = true`.
+Wrapper for [`plot_irf`](@ref) which overrides and sets `generalised_irf = true`.
 """
-plot_girf(args...; kwargs...) =  plot_irf(args...; kwargs..., generalised_irf = true)
+function plot_girf(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :generalised_irf)
+        @warn "Warning: `generalised_irf` keyword is overridden in `plot_girf`. Defaulting to `generalised_irf = true`."
+    end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:generalised_irf => true))
+
+    # Call plot_irf with the modified arguments
+    plot_irf(args...; kwargs...)
+end
 
 
 
@@ -1012,7 +1012,8 @@ function plot_solution(𝓂::ℳ,
     state::Union{Symbol,String};
     variables::Union{Symbol_input,String_input} = :all,
     algorithm::Union{Symbol,Vector{Symbol}} = :first_order,
-    σ::Union{Int64,Float64} = 2,
+    σ::Union{Int64,Float64,KeyedArray{Float64}} = 2,
+    initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol} = :relevant_steady_state,
     parameters::ParameterType = nothing,
     ignore_obc::Bool = false,
     show_plots::Bool = true,
@@ -1072,7 +1073,11 @@ function plot_solution(𝓂::ℳ,
 
     vars_to_plot = intersect(axiskeys(SS_and_std[1])[1],𝓂.timings.var[var_idx])
 
-    state_range = collect(range(-SS_and_std[2](state), SS_and_std[2](state), 100)) * σ
+    if typeof(σ) in [Int, Float64]
+        state_range = collect(range(-SS_and_std[2](state), SS_and_std[2](state), 100)) * σ
+    else
+        state_range = collect(range(-σ(state), σ(state), 100))
+    end
 
     state_selector = state .== 𝓂.timings.var
 
@@ -1113,14 +1118,18 @@ function plot_solution(𝓂::ℳ,
         full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
     end
 
-    relevant_SS_dictionnary = Dict{Symbol,Vector{Float64}}()
+    initial_state_dictionnary = Dict{Symbol, Vector{Float64}}()
 
     for a in algorithm
-        relevant_SS = get_steady_state(𝓂, algorithm = a, return_variables_only = true, derivatives = false)
+        reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, a)
+    
+        init_state = get_and_check_initial_state(𝓂, initial_state, reference_steady_state, NSSS, SSS_delta, a)
 
-        full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
-
-        push!(relevant_SS_dictionnary, a => full_SS)
+        if a ∈ [:pruned_second_order, :pruned_third_order]
+            push!(initial_state_dictionnary, a => NSSS + init_state[2])
+        else
+            push!(initial_state_dictionnary, a => NSSS + init_state)
+        end
     end
 
     if :first_order ∉ algorithm
@@ -1128,7 +1137,7 @@ function plot_solution(𝓂::ℳ,
 
         full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
 
-        push!(relevant_SS_dictionnary, :first_order => full_SS)
+        push!(initial_state_dictionnary, :first_order => full_SS)
     end
 
     StatsPlots.scatter!(fill(0,1,1), 
@@ -1145,25 +1154,25 @@ function plot_solution(𝓂::ℳ,
     has_impact_dict = Dict()
     variable_dict = Dict()
 
-    NSSS = relevant_SS_dictionnary[:first_order]
+    NSSS = initial_state_dictionnary[:first_order]
 
     all_states = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
     for a in algorithm
-        SSS_delta = collect(NSSS - relevant_SS_dictionnary[a])
+        SSS_delta = collect(NSSS - initial_state_dictionnary[a])
 
         var_state_range = []
 
         for x in state_range
             if a == :pruned_second_order
-                initial_state = [state_selector * x, -SSS_delta]
+                init_st = [state_selector * x, -SSS_delta]
             elseif a == :pruned_third_order
-                initial_state = [state_selector * x, -SSS_delta, zeros(length(all_states))]
+                init_st = [state_selector * x, -SSS_delta, zeros(length(all_states))]
             else
-                initial_state = collect(relevant_SS_dictionnary[a]) .+ state_selector * x
+                init_st = collect(initial_state_dictionnary[a]) .+ state_selector * x
             end
 
-            push!(var_state_range, get_irf(𝓂, algorithm = a, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
+            push!(var_state_range, get_irf(𝓂, algorithm = a, periods = 1, ignore_obc = ignore_obc, initial_state = init_st, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
         end
 
         var_state_range = hcat(var_state_range...)
@@ -1206,7 +1215,7 @@ function plot_solution(𝓂::ℳ,
                     Pl = StatsPlots.plot() 
 
                     for a in algorithm
-                        StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state],all_states)][1], 
+                        StatsPlots.plot!(state_range .+ initial_state_dictionnary[a][indexin([state],all_states)][1], 
                             variable_dict[a][k][1,:], 
                             ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
                             xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
@@ -1214,7 +1223,7 @@ function plot_solution(𝓂::ℳ,
                     end
 
                     for a in algorithm
-                        StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], all_states)][1]], [relevant_SS_dictionnary[a][indexin([k], all_states)][1]], 
+                        StatsPlots.scatter!([initial_state_dictionnary[a][indexin([state], all_states)][1]], [initial_state_dictionnary[a][indexin([k], all_states)][1]], 
                         label = "")
                     end
 
@@ -1356,7 +1365,7 @@ plot_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_le
 function plot_conditional_forecast(𝓂::ℳ,
     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol} = :relevant_steady_state,
     periods::Int = 40, 
     parameters::ParameterType = nothing,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
