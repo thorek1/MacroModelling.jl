@@ -5,7 +5,7 @@ Pkg.add(["Turing", "Optimization", "OptimizationNLopt", "OptimizationMetaheurist
 using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics, OptimizationMultistartOptimization, Optim
 import BlackBoxOptim#, OptimizationEvolutionary
 
-max_time = 6 * 60^2
+max_time = 3 * 60^2
 transformation = 1
 algo = "BBO_DE"
 
@@ -186,7 +186,9 @@ function calc_total_iters(model, par_inputs, starting_point)
         10000
 
     if model.model_name == "SW07_nonlinear"
-        iters = outmodel[1][indexin([:y], model.var)][1] > .01 ? iters : 100000
+        if (abs(outmodel[1][indexin([:ygap], model.var)][1]) > .01) || (outmodel[1][indexin([:y], model.var)][1] < .01)
+            iters = 100000
+        end
     end
 
     return iters
@@ -205,8 +207,8 @@ function evaluate_pars_loglikelihood(pars, models)
     pars[1:2] = sort(pars[1:2], rev = true)
 
     # Apply prior distributions
-   log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 1.0, μσ = true), 19),pars[1:19])
-   log_lik -= logpdf(MacroModelling.Normal(0.0, 5.0), pars[20])
+    log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 1.0, μσ = true), 19),pars[1:19])
+    log_lik -= logpdf(MacroModelling.Normal(0.0, 5.0), pars[20])
 
     # Example solver parameters - this needs to be replaced with actual logic
     par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, pars[1:19]..., transformation, 0.0, 2)
@@ -265,12 +267,12 @@ parameters[20] -= 1
 
 # evaluate_pars_loglikelihood(parameters, all_models)
 
-# parameters[1:2] = sort(parameters[1:2], rev = true)
+parameters[1:2] = sort(parameters[1:2], rev = true)
 
-# # Example solver parameters - this needs to be replaced with actual logic
-# par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, parameters[1:19]..., transformation, 0.0, 2)
+# # # Example solver parameters - this needs to be replaced with actual logic
+par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, parameters[1:19]..., transformation, 0.0, 2)
 
-# outmodel = SW07_nonlinear.SS_solve_func(SW07_nonlinear.parameter_values, SW07_nonlinear, false, parameters[20], par_inputs)
+outmodel = SW07_nonlinear.SS_solve_func(SW07_nonlinear.parameter_values, SW07_nonlinear, false, parameters[20], par_inputs)
 
 # iters = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
 #     (outmodel[2][1] > 1e-12) || !isfinite(outmodel[2][1]) ? 
@@ -278,7 +280,7 @@ parameters[20] -= 1
 #     outmodel[2][2] : 
 #     10000
 
-# iters = outmodel[1][indexin([:y], SW07_nonlinear.var)][1] > .01 ? iters : 100000
+# iters = outmodel[1][indexin([:ygap], SW07_nonlinear.var)][1] > .01 ? iters : 100000
 
 
 lbs = fill(eps(),length(parameters))
@@ -314,21 +316,33 @@ all_models = [
 pars = optimize_parameters(parameters, all_models, lbs, ubs, algo, max_time)
 
 
-
-
-# do another local optim refinement
-prob = OptimizationProblem(evaluate_pars_loglikelihood, pars, all_models, lb = lbs, ub = ubs)
-sol = solve(prob, NLopt.LN_NELDERMEAD()); sol.minimum
-sol = solve(prob, NLopt.LN_BOBYQA()); sol.minimum
-sol = solve(prob, NLopt.LN_PRAXIS()); sol.minimum
-sol = solve(prob, NLopt.LN_SBPLX()); sol.minimum #80.79
-# sol = solve(prob, NLopt.LN_COBYLA()); sol.minimum
-pars = deepcopy(sol.u)
-
-
 # SW07 nonlinear
 # [0.5892723157762478, 0.5887527065005829, 0.0006988523559835617, 0.009036867721330505, 0.14457591298892497, 1.3282546133453548, 1.378515451210324, 1.7661485851863441e-6, 2.6206711939142943e-7, 7.052160321659248e-12, 1.8442212583051863e-6, 5.118937128189348, 13.301617690046848, 6.044293140571821e-13, 1.691251847378593, 0.03319322730594751, 0.1201767636895742, 0.0007802908980930664, 0.011310267585075185, 1.0032972640942657]
 # Iterations per model: [37, 10000, 10000, 35, 38, 10000, 18, 10000, 9, 21, 10, 22, 5, 27, 6, 12, 15, 10000, 21]
+
+# SW07 nonlinear (w/o help)
+# [1.2472903868878749, 0.7149401846020106, 0.0034717544971213966, 0.0008409477479813854, 0.24599133854242075, 1.7996260724902138, 0.2399133704286251, 0.728108158144521, 0.03250298738504968, 0.003271716521926188, 0.5319194600339338, 2.1541622462034, 7.751722474870615, 0.08193253023289011, 1.52607969046303, 0.0002086811131899754, 0.005611466658864538, 0.018304952326087726, 0.0024888171138406773, 0.9061879299736817]
+
+# 3.7349994707848047e-14
+# 3.2974680693518946e-16
+# 0.258893178398098
+# 0.1841022751661884
+# 0.18068090216955102
+# 1.7014636514070283
+# 1.5677760746357532
+# 4.254677962816626e-15
+# 1.3405031384692835e-14
+# 5.882185606106154e-16
+# 8.44054984080944e-15
+# 11.096566648501781
+# 15.17067544296616
+# 1.816986379232247e-15
+# 1.638084025340988
+# 1.061110875865641e-15
+# 1.9860323089578468e-14
+# 3.4679045837714834e-15
+# 6.15209491181507e-16
+# 1.2375251201307327
 
 # refinement across models which solved (see above)
 # [1.0242323883590136, 0.5892723157762478, 0.0006988523559835617, 0.009036867721330505, 0.14457591298892497, 1.3282546133453548, 0.7955753778741823, 1.7661485851863441e-6, 2.6206711939142943e-7, 7.052160321659248e-12, 1.06497513443326e-6, 5.118937128189348, 90.94952163302091, 3.1268025435012207e-13, 1.691251847378593, 0.5455751102495228, 0.1201767636895742, 0.0007802908980930664, 0.011310267585075185, 1.0032972640942657]
