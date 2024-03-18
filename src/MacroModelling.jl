@@ -3850,11 +3850,6 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
             end
 
-            if cold_start
-                for iii in [1.2, 0.9, 0.75, 1.5, -0.5, 2.0, 0.25] 
-                    push!(starting_points, iii) 
-                end
-            end
         end
 
         if sol_minimum > tol && cold_start isa Bool
