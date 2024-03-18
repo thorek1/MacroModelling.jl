@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] ss transition by entering new parameters at given periods
+- [ ] check whether its possible to run parameters block without rerunning model block
 - [ ] eliminate possible log ^ terms in parameters block equations
 - [ ] log in parameters block is recognized as variable
 - [ ] add termination condition if relative change in ss solver is smaller than tol (relevant when values get very large)
