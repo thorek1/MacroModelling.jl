@@ -8,6 +8,7 @@ using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
 import Symbolics
+import NaNMath
 # import Memoization: @memoize
 # import LRUCache: LRU
 
@@ -4791,7 +4792,15 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                 # if deriv_first != 0 
                 #     deriv_expr = Meta.parse(string(deriv_first.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
                 #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                    push!(first_order, Symbolics.toexpr(deriv_first))
+                    deriv_first_expr = Symbolics.toexpr(deriv_first)
+                    deriv_first_expr_safe = postwalk(x -> x isa Expr ? 
+                                                        x.args[1] == :^ ? 
+                                                            :(NaNMath.pow($(x.args[2:end]...))) : 
+                                                        x : 
+                                                    x, 
+                                            deriv_first_expr)
+
+                    push!(first_order, deriv_first_expr_safe)
                     push!(row1,r)
                     push!(column1,c1)
                     i1 += 1
