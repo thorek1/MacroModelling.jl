@@ -177,21 +177,21 @@ end
 
 
 function calc_total_iters(model, par_inputs, starting_point)
-    outmodel = try model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs) catch end
+    runtime = @elapsed outmodel = try model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs) catch end
 
-    iters = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
-        (outmodel[2][1] > 1e-12) || !isfinite(outmodel[2][1]) ? 
-            10000 : 
-        outmodel[2][2] : 
-        10000
+    runtime = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
+                    (outmodel[2][1] > 1e-12) || !isfinite(outmodel[2][1]) ? 
+                        100 : 
+                    runtime : 
+                100
 
     if model.model_name == "SW07_nonlinear"
         if (abs(outmodel[1][indexin([:ygap], model.var)][1]) > .01) || (outmodel[1][indexin([:y], model.var)][1] < .01)
-            iters = 100000
+            runtime = 100
         end
     end
 
-    return iters
+    return runtime * 1e4
 end
 
 
@@ -202,7 +202,7 @@ using Turing
 function evaluate_pars_loglikelihood(pars, models)
     log_lik = 0.0
     
-    model_iters = zeros(Int, length(models))
+    model_iters = zeros(length(models))
     
     pars[1:2] = sort(pars[1:2], rev = true)
 
@@ -248,7 +248,7 @@ end
 
 # best which solves all
 # parameters = [15.223285246843304, 0.95517, 38.52678, 43.54497, 0.0008500000000000058, 0.62934, 75.54509549110291, 7.261945059036699, 85.51936289088874, 87.41658873754673, 55.07229950750884, 4.11876, 39.10866, 19.048629999998944, 10.314559999999997, 28.678813991497712, 36.343002891808354, 20.09102186880269, 8.49258045180932, 2.4593900000000004]
-  
+
 # parameters = [33.22212, 0.95517, 38.52678, 43.54497, 0.00085, 0.62934, 46.08991, 7.42148, 88.03616, 95.55800, 85.29771, 4.11876, 39.10866, 19.04863, 10.31456, 40.92975, 36.34300, 69.75309, 30.12526, 2.45939]
 # parameters = [37.43453157340342, 0.955165023642146, 38.52677779968875, 95.04867034722088, 0.000853689773926441, 0.6293394580085896, 93.73768759873417, 2.1182394698715467e-11, 12.95559055961808, 99.99999999999662, 24.3348635729501, 4.118758409516733, 39.10864859959332, 99.99999999999999, 10.31461007643029, 40.85122820001249, 15.98399822778196, 6.030696898083779e-8, 95.4840354280116, 2.4593914105545123]
 # parameters = [37.848315380908126, 0.9526763793111475, 38.57687571822749, 95.06299787106212, 0.0008502803638540511, 0.6325649634774726, 93.75, 2.136387910452622e-11, 12.938130858544689, 99.99999999999662, 24.31858091208389, 4.11777400869617, 39.204774174235276, 100.0, 10.324167321843138, 40.72731100951839, 15.9844287184187, 6.03635340082695e-8, 81.9907380880773, 2.3287839364442786]
@@ -264,15 +264,13 @@ end
 
 parameters = rand(20) .+ 1
 parameters[20] -= 1
-
-# evaluate_pars_loglikelihood(parameters, all_models)
-
-parameters[1:2] = sort(parameters[1:2], rev = true)
+# 
+# parameters[1:2] = sort(parameters[1:2], rev = true)
 
 # # # Example solver parameters - this needs to be replaced with actual logic
-par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, parameters[1:19]..., transformation, 0.0, 2)
+# par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, parameters[1:19]..., transformation, 0.0, 2)
 
-outmodel = SW07_nonlinear.SS_solve_func(SW07_nonlinear.parameter_values, SW07_nonlinear, false, parameters[20], par_inputs)
+# outmodel = SW07_nonlinear.SS_solve_func(SW07_nonlinear.parameter_values, SW07_nonlinear, false, parameters[20], par_inputs)
 
 # iters = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
 #     (outmodel[2][1] > 1e-12) || !isfinite(outmodel[2][1]) ? 
@@ -311,6 +309,9 @@ all_models = [
     # FS2000, 
     # SW07
 ];
+
+
+evaluate_pars_loglikelihood(parameters, all_models)
 
 
 pars = optimize_parameters(parameters, all_models, lbs, ubs, algo, max_time)
