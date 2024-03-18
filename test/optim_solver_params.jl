@@ -5,7 +5,7 @@ Pkg.add(["Turing", "Optimization", "OptimizationNLopt", "OptimizationMetaheurist
 using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics, OptimizationMultistartOptimization, Optim
 import BlackBoxOptim#, OptimizationEvolutionary
 
-max_time = 2 * 60^2
+max_time = 6 * 60^2
 transformation = 1
 algo = "BBO_DE"
 
@@ -22,50 +22,156 @@ algo = "BBO_DE"
 # for estimation use the small system (no aux, pars and solved vars) and again look for optim parameters that solve the system with the least necessary iterations during estimation
 
 
-# include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
-# # include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-# include("../models/Backus_Kehoe_Kydland_1992.jl")
-# include("../models/Baxter_King_1993.jl")
-# include("../models/SW03.jl")
-# include("../models/GNSS_2010.jl")
-# include("../models/Ghironi_Melitz_2005.jl")
-# include("../models/SGU_2003_debt_premium.jl")
-# include("../models/NAWM_EAUS_2008.jl") # stands out
-# include("../models/JQ_2012_RBC.jl")
-# include("../models/Ireland_2004.jl")
-# include("../models/Caldara_et_al_2012.jl")
-# include("../models/Gali_Monacelli_2005_CITR.jl")
-# include("../models/Gali_2015_chapter_3_nonlinear.jl")
-# include("../models/Aguiar_Gopinath_2007.jl")
-# include("../models/Ascari_Sbordone_2014.jl") # stands out
-# include("../models/FS2000.jl")
-# include("../models/SW07.jl")
-# include("../models/SW07_nonlinear.jl")
+include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+# include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+include("../models/Backus_Kehoe_Kydland_1992.jl")
+include("../models/Baxter_King_1993.jl")
+include("../models/SW03.jl")
+include("../models/GNSS_2010.jl")
+include("../models/Ghironi_Melitz_2005.jl")
+include("../models/SGU_2003_debt_premium.jl")
+include("../models/NAWM_EAUS_2008.jl") # stands out
+include("../models/JQ_2012_RBC.jl")
+include("../models/Ireland_2004.jl")
+include("../models/Caldara_et_al_2012.jl")
+include("../models/Gali_Monacelli_2005_CITR.jl")
+include("../models/Gali_2015_chapter_3_nonlinear.jl")
+include("../models/Aguiar_Gopinath_2007.jl")
+include("../models/Ascari_Sbordone_2014.jl") # stands out
+include("../models/FS2000.jl")
+include("../models/SW07.jl")
+include("../models/SW07_nonlinear.jl")
 # include("../models/RBC_baseline.jl") # no solver block / everything analytical
 include("../models/Guerrieri_Iacoviello_2017.jl") # stands out
 
 
-all_models = [
-    # SW07_nonlinear,
-    Guerrieri_Iacoviello_2017,
-    # NAWM_EAUS_2008, 
-    # GNSS_2010, 
-    # Ascari_Sbordone_2014, 
-    # SW03, 
-    # Backus_Kehoe_Kydland_1992, 
-    # m, 
-    # Baxter_King_1993, 
-    # Ghironi_Melitz_2005, 
-    # SGU_2003_debt_premium, 
-    # JQ_2012_RBC, 
-    # Ireland_2004, 
-    # Caldara_et_al_2012, 
-    # Gali_Monacelli_2005_CITR, 
-    # Gali_2015_chapter_3_nonlinear, 
-    # Aguiar_Gopinath_2007, 
-    # FS2000, 
-    # SW07
-];
+
+
+function optimize_parameters(parameters, all_models, lbs, ubs, algo, max_time)
+    prob = OptimizationProblem(evaluate_pars_loglikelihood, parameters, all_models, lb = lbs, ub = ubs)
+
+    opt = Options(verbose = true, parallel_evaluation = false)
+
+    if algo == "ESCH"
+        sol = solve(prob, NLopt.GN_ESCH(), maxtime = max_time); sol.minimum
+        pars = deepcopy(sol.u)
+    elseif algo == "SAMIN"   
+        sol = Optim.optimize(x -> evaluate_pars_loglikelihood(x, all_models), lbs, ubs, parameters, 
+                            SAMIN(nt = 10, 
+                                ns = 10, 
+                                rt = 0.95, 
+                                verbosity = 2), 
+                            Optim.Options(time_limit = max_time, 
+    #                                        show_trace = true, 
+                                            iterations = 10000000,
+    #                                        extended_trace = true, 
+    #                                        show_every = 10000
+        ))
+        pars = Optim.minimizer(sol)
+    elseif algo == "PS"   
+        sol = Optim.optimize(x -> evaluate_pars_loglikelihood(x, all_models), lbs, ubs, parameters, 
+                            ParticleSwarm(lower = lbs, 
+                                        upper = ubs, 
+                                        n_particles = 500), 
+                            Optim.Options(time_limit = max_time, 
+                                            show_trace = true, 
+                                            iterations = 1000000,
+                                            extended_trace = true, 
+                                            show_every = 100
+        ))
+        pars = Optim.minimizer(sol)
+    elseif algo == "MLSL"   
+        sol = solve(prob, NLopt.G_MLSL_LDS(), local_method =  NLopt.LN_BOBYQA(), maxtime = max_time); sol.minimum
+        pars = deepcopy(sol.u)
+    elseif algo == "TikTak"   
+        sol = solve(prob, MultistartOptimization.TikTak(5000), NLopt.LN_NELDERMEAD(), maxtime = max_time); sol.minimum
+        pars = deepcopy(sol.u)
+    elseif algo == "BBO_SS"   
+        sol = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
+                SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
+                NumDimensions = length(parameters),
+                MaxTime = max_time, 
+    #            PopulationSize = 500, 
+                TraceMode = :verbose, 
+                TraceInterval = 60, 
+                Method = :generating_set_search)#
+    #            Method = :adaptive_de_rand_1_bin_radiuslimited)
+                
+        pars = BlackBoxOptim.best_candidate(sol)  
+    elseif algo == "BBO_DXNES"   
+        sol = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
+                SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
+                NumDimensions = length(parameters),
+                MaxTime = max_time, 
+    #            PopulationSize = 500, 
+                TraceMode = :verbose, 
+                TraceInterval = 60, 
+                Method = :dxnes)#
+    #            Method = :adaptive_de_rand_1_bin_radiuslimited)
+                
+        pars = BlackBoxOptim.best_candidate(sol)  
+    elseif algo == "BBO_DE"   
+        sol = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
+                SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
+                NumDimensions = length(parameters),
+                MaxTime = max_time, 
+                PopulationSize = 500, 
+                TraceMode = :verbose, 
+                TraceInterval = 60, 
+    #            Method = :generating_set_search)#
+                Method = :adaptive_de_rand_1_bin_radiuslimited)
+                
+        pars = BlackBoxOptim.best_candidate(sol)   
+    elseif algo == "DE"
+        sol = solve(prob, DE(options = opt), maxtime = max_time); sol.minimum
+        pars = deepcopy(sol.u)
+    elseif algo == "SA" # terminates early with not great results
+        sol = solve(prob, SA(options = opt), maxtime = max_time); sol.minimum
+        pars = deepcopy(sol.u)
+    elseif algo == "ECA"
+        sol = solve(prob, ECA(options = opt), maxtime = max_time); sol.minimum 
+        pars = deepcopy(sol.u)
+    elseif algo == "MCCGA" # terminates early with not great results
+        sol = solve(prob, MCCGA(options = opt), maxtime = max_time); sol.minimum
+        pars = deepcopy(sol.u)
+    elseif algo == "BRKGA" # terminates early with not great results
+        sol = solve(prob, BRKGA(options = opt), maxtime = max_time); sol.minimum
+        pars = deepcopy(sol.u)
+    elseif algo == "PSO"
+        sol = solve(prob, PSO(options = opt), maxtime = max_time); sol.minimum
+        pars = deepcopy(sol.u)
+    elseif algo == "WOA"
+        sol = solve(prob, WOA(N = 500, options = opt), maxtime = max_time); sol.minimum 
+        pars = deepcopy(sol.u)
+    elseif algo == "ABC"
+        sol = solve(prob, ABC(N = 500, options = opt), maxtime = max_time); sol.minimum
+        pars = deepcopy(sol.u)
+    elseif algo == "NOMAD" # terminates early with not great results
+        sol = solve(prob, NOMADOpt(), maxtime = max_time); sol.minimum
+        pars = deepcopy(sol.u)
+    elseif algo == "GA"
+        sol = solve(prob, Evolutionary.GA(), maxtime = max_time); sol.minimum
+        pars = deepcopy(sol.u)
+    end
+
+    println("Parameters: $pars")
+
+    prob = OptimizationProblem(evaluate_pars_loglikelihood, pars, all_models, lb = lbs, ub = ubs)
+    sol = solve(prob, NLopt.LN_BOBYQA()); sol.minimum
+
+    prob = OptimizationProblem(evaluate_pars_loglikelihood, sol.u, all_models, lb = lbs, ub = ubs)
+    sol = solve(prob, NLopt.LN_NELDERMEAD()); sol.minimum
+
+    prob = OptimizationProblem(evaluate_pars_loglikelihood, sol.u, all_models, lb = lbs, ub = ubs)
+    sol = solve(prob, NLopt.LN_SBPLX()); sol.minimum
+
+    prob = OptimizationProblem(evaluate_pars_loglikelihood, sol.u, all_models, lb = lbs, ub = ubs)
+    sol = solve(prob, NLopt.LN_PRAXIS()); sol.minimum
+
+    println("Parameters after refinement: $(sol.u)")
+    return sol.u
+end
+
 
 function calc_total_iters(model, par_inputs, starting_point)
     outmodel = try model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs) catch end
@@ -76,7 +182,7 @@ function calc_total_iters(model, par_inputs, starting_point)
         outmodel[2][2] : 
         10000
 
-    if model.model_name == "SWnonlinear"
+    if model.model_name == "SW07_nonlinear"
         iters = outmodel[1][indexin([:y], model.var)][1] > .01 ? iters : 100000
     end
 
@@ -112,6 +218,29 @@ function evaluate_pars_loglikelihood(pars, models)
     return Float64(log_lik / 1e1 + sum(model_iters))
 end
 
+
+# best for Guerrieri
+# 1.9479518608134938
+# 0.02343520604394183
+# 5.125002799990568
+# 0.02387522857907376
+# 0.2239226474715968
+# 4.889172213411495
+# 1.747880258818237
+# 2.8683242331457
+# 0.938229356687311
+# 1.4890887655876235
+# 1.6261504814901664
+# 11.26863249187599
+# 36.05486169712279
+# 6.091535897587629
+# 11.73936761697657
+# 3.189349432626493
+# 0.21045178305336348
+# 0.17122196312330415
+# 13.251662547139363
+# 5.282429995876679
+
 # best which solves all
 # parameters = [15.223285246843304, 0.95517, 38.52678, 43.54497, 0.0008500000000000058, 0.62934, 75.54509549110291, 7.261945059036699, 85.51936289088874, 87.41658873754673, 55.07229950750884, 4.11876, 39.10866, 19.048629999998944, 10.314559999999997, 28.678813991497712, 36.343002891808354, 20.09102186880269, 8.49258045180932, 2.4593900000000004]
   
@@ -131,125 +260,56 @@ end
 parameters = rand(20) .+ 1
 parameters[20] -= 1
 
-evaluate_pars_loglikelihood(parameters, all_models)
+# evaluate_pars_loglikelihood(parameters, all_models)
+
+# parameters[1:2] = sort(parameters[1:2], rev = true)
+
+# # Example solver parameters - this needs to be replaced with actual logic
+# par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, parameters[1:19]..., transformation, 0.0, 2)
+
+# outmodel = SW07_nonlinear.SS_solve_func(SW07_nonlinear.parameter_values, SW07_nonlinear, false, parameters[20], par_inputs)
+
+# iters = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
+#     (outmodel[2][1] > 1e-12) || !isfinite(outmodel[2][1]) ? 
+#         10000 : 
+#     outmodel[2][2] : 
+#     10000
+
+# iters = outmodel[1][indexin([:y], SW07_nonlinear.var)][1] > .01 ? iters : 100000
+
 
 lbs = fill(eps(),length(parameters))
 lbs[20] = -20
 
 ubs = fill(100.0,length(parameters))
 
-prob = OptimizationProblem(evaluate_pars_loglikelihood, parameters, all_models, lb = lbs, ub = ubs)
 
-# maxtime = 23 * 60^2
 
-opt = Options(verbose = true, parallel_evaluation = false)
-# sol = solve(prob, NLopt.LN_BOBYQA()); sol.minimum
-# sol = solve(prob, NLopt.LN_NELDERMEAD()); sol.minimum
-# sol = solve(prob, NLopt.LN_SBPLX()); sol.minimum
-# sol = solve(prob, NLopt.LN_PRAXIS()); sol.minimum
-# solve(prob, NLopt.G_MLSL_LDS(), local_method =  NLopt.LN_BOBYQA(), maxtime = maxt); sol.minimum
+all_models = [
+    SW07_nonlinear,
+    # Guerrieri_Iacoviello_2017,
+    # NAWM_EAUS_2008, 
+    # GNSS_2010, 
+    # Ascari_Sbordone_2014, 
+    # SW03, 
+    # Backus_Kehoe_Kydland_1992, 
+    # m, 
+    # Baxter_King_1993, 
+    # Ghironi_Melitz_2005, 
+    # SGU_2003_debt_premium, 
+    # JQ_2012_RBC, 
+    # Ireland_2004, 
+    # Caldara_et_al_2012, 
+    # Gali_Monacelli_2005_CITR, 
+    # Gali_2015_chapter_3_nonlinear, 
+    # Aguiar_Gopinath_2007, 
+    # FS2000, 
+    # SW07
+];
 
-if algo == "ESCH"
-    sol = solve(prob, NLopt.GN_ESCH(), maxtime = max_time); sol.minimum
-    pars = deepcopy(sol.u)
-elseif algo == "SAMIN"   
-    sol = Optim.optimize(x -> evaluate_pars_loglikelihood(x, all_models), lbs, ubs, parameters, 
-                        SAMIN(nt = 10, 
-                              ns = 10, 
-                              rt = 0.95, 
-                              verbosity = 2), 
-                        Optim.Options(time_limit = max_time, 
-#                                        show_trace = true, 
-                                        iterations = 10000000,
-#                                        extended_trace = true, 
-#                                        show_every = 10000
-    ))
-    pars = Optim.minimizer(sol)
-elseif algo == "PS"   
-    sol = Optim.optimize(x -> evaluate_pars_loglikelihood(x, all_models), lbs, ubs, parameters, 
-                        ParticleSwarm(lower = lbs, 
-                                      upper = ubs, 
-                                      n_particles = 500), 
-                        Optim.Options(time_limit = max_time, 
-                                        show_trace = true, 
-                                        iterations = 1000000,
-                                        extended_trace = true, 
-                                        show_every = 100
-    ))
-    pars = Optim.minimizer(sol)
-elseif algo == "MLSL"   
-    sol = solve(prob, NLopt.G_MLSL_LDS(), local_method =  NLopt.LN_BOBYQA(), maxtime = max_time); sol.minimum
-    pars = deepcopy(sol.u)
-elseif algo == "TikTak"   
-    sol = solve(prob, MultistartOptimization.TikTak(5000), NLopt.LN_NELDERMEAD(), maxtime = max_time); sol.minimum
-    pars = deepcopy(sol.u)
-elseif algo == "BBO_SS"   
-    sol = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
-            SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
-            NumDimensions = length(parameters),
-            MaxTime = max_time, 
-#            PopulationSize = 500, 
-            TraceMode = :verbose, 
-            TraceInterval = 60, 
-            Method = :generating_set_search)#
-#            Method = :adaptive_de_rand_1_bin_radiuslimited)
-            
-    pars = BlackBoxOptim.best_candidate(sol)  
-elseif algo == "BBO_DXNES"   
-    sol = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
-            SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
-            NumDimensions = length(parameters),
-            MaxTime = max_time, 
-#            PopulationSize = 500, 
-            TraceMode = :verbose, 
-            TraceInterval = 60, 
-            Method = :dxnes)#
-#            Method = :adaptive_de_rand_1_bin_radiuslimited)
-            
-    pars = BlackBoxOptim.best_candidate(sol)  
-elseif algo == "BBO_DE"   
-    sol = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
-            SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
-            NumDimensions = length(parameters),
-            MaxTime = max_time, 
-            PopulationSize = 500, 
-            TraceMode = :verbose, 
-            TraceInterval = 60, 
-#            Method = :generating_set_search)#
-            Method = :adaptive_de_rand_1_bin_radiuslimited)
-            
-    pars = BlackBoxOptim.best_candidate(sol)   
-elseif algo == "DE"
-    sol = solve(prob, DE(options = opt), maxtime = max_time); sol.minimum
-    pars = deepcopy(sol.u)
-elseif algo == "SA" # terminates early with not great results
-    sol = solve(prob, SA(options = opt), maxtime = max_time); sol.minimum
-    pars = deepcopy(sol.u)
-elseif algo == "ECA"
-    sol = solve(prob, ECA(options = opt), maxtime = max_time); sol.minimum 
-    pars = deepcopy(sol.u)
-elseif algo == "MCCGA" # terminates early with not great results
-    sol = solve(prob, MCCGA(options = opt), maxtime = max_time); sol.minimum
-    pars = deepcopy(sol.u)
-elseif algo == "BRKGA" # terminates early with not great results
-    sol = solve(prob, BRKGA(options = opt), maxtime = max_time); sol.minimum
-    pars = deepcopy(sol.u)
-elseif algo == "PSO"
-    sol = solve(prob, PSO(options = opt), maxtime = max_time); sol.minimum
-    pars = deepcopy(sol.u)
-elseif algo == "WOA"
-    sol = solve(prob, WOA(N = 500, options = opt), maxtime = max_time); sol.minimum 
-    pars = deepcopy(sol.u)
-elseif algo == "ABC"
-    sol = solve(prob, ABC(N = 500, options = opt), maxtime = max_time); sol.minimum
-    pars = deepcopy(sol.u)
-elseif algo == "NOMAD" # terminates early with not great results
-    sol = solve(prob, NOMADOpt(), maxtime = max_time); sol.minimum
-    pars = deepcopy(sol.u)
-elseif algo == "GA"
-    sol = solve(prob, Evolutionary.GA(), maxtime = max_time); sol.minimum
-    pars = deepcopy(sol.u)
-end
+
+pars = optimize_parameters(parameters, all_models, lbs, ubs, algo, max_time)
+
 
 
 println("Transform: $transformation")
