@@ -173,23 +173,23 @@ macro model(𝓂,ex...)
                                         k = - x.args[2].args[3]
                     
                                         while k < -2 # create auxilliary dynamic equations for exogenous variables with lag < -1
-                                            if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎") ∈ aux_vars_created
+                                            if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 1)) * "⁾₍₀₎") ∈ aux_vars_created
                                                 break
                                             else
-                                                push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
+                                                push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 1)) * "⁾₍₀₎"))
                     
-                                                push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 2)) * "⁾₍₋₁₎")))
+                                                push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 2)) * "⁾₍₋₁₎")))
                                                 push!(dyn_eq_aux_ind,length(dyn_equations))
                                                 
                                                 k += 1
                                             end
                                         end
                     
-                                        if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎") ∉ aux_vars_created && k < -1
+                                        if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 1)) * "⁾₍₀₎") ∉ aux_vars_created && k < -1
                                         
-                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
+                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 1)) * "⁾₍₀₎"))
                     
-                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₋₁₎")))
+                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₋₁₎")))
                                             push!(dyn_eq_aux_ind,length(dyn_equations))
                                         end
                                         
@@ -201,7 +201,7 @@ macro model(𝓂,ex...)
                                         end
 
                                         if  - x.args[2].args[3] < -1
-                                            Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(x.args[2].args[3] - 1)) * "⁾₍₋₁₎")
+                                            Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(x.args[2].args[3] - 1)) * "⁾₍₋₁₎")
                                         else
                                             Symbol(string(x.args[1]) * "₍₋₁₎")
                                         end
@@ -250,26 +250,26 @@ macro model(𝓂,ex...)
                                         k = x.args[2]
 
                                         while k < -2
-                                            if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎") ∈ aux_vars_created
+                                            if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 1)) * "⁾₍₀₎") ∈ aux_vars_created
                                                 break
                                             else
-                                                push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
+                                                push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 1)) * "⁾₍₀₎"))
 
-                                                push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 2)) * "⁾₍₋₁₎")))
+                                                push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 2)) * "⁾₍₋₁₎")))
                                                 push!(dyn_eq_aux_ind,length(dyn_equations))
                                                 
                                                 k += 1
                                             end
                                         end
 
-                                        if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎") ∉ aux_vars_created
-                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"))
+                                        if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 1)) * "⁾₍₀₎") ∉ aux_vars_created
+                                            push!(aux_vars_created,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 1)) * "⁾₍₀₎"))
 
-                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₋₁₎")))
+                                            push!(dyn_equations,Expr(:call,:-,Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(k + 1)) * "⁾₍₀₎"),Symbol(string(x.args[1]) * "₍₋₁₎")))
                                             push!(dyn_eq_aux_ind,length(dyn_equations))
                                         end
 
-                                        Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(x.args[2] + 1)) * "⁾₍₋₁₎")
+                                        Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(x.args[2] + 1)) * "⁾₍₋₁₎")
                                     end :
                             x.args[1] :
                         x.args[1] : 
