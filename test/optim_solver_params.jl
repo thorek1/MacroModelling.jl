@@ -1,8 +1,8 @@
 import Pkg
 # Pkg.activate("/home/cdsw/MacroModelling.jl-ss_solver2/MacroModelling.jl-ss_solver/")
-Pkg.add(["Turing", "Optimization", "OptimizationNLopt", "OptimizationMetaheuristics", "BlackBoxOptim", "Optim", "OptimizationMultistartOptimization"])
+Pkg.add(["Turing", "Optimization", "OptimizationNLopt", "OptimizationMetaheuristics", "BlackBoxOptim", "Optim"])#, "OptimizationMultistartOptimization"])
 
-using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics, OptimizationMultistartOptimization, Optim
+using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics, Optim # , OptimizationMultistartOptimization
 import BlackBoxOptim#, OptimizationEvolutionary
 
 max_time = 3 * 60^2
@@ -86,9 +86,9 @@ function optimize_parameters(parameters, all_models, lbs, ubs, algo, max_time)
     elseif algo == "MLSL"   
         sol = solve(prob, NLopt.G_MLSL_LDS(), local_method =  NLopt.LN_BOBYQA(), maxtime = max_time); sol.minimum
         pars = deepcopy(sol.u)
-    elseif algo == "TikTak"   
-        sol = solve(prob, MultistartOptimization.TikTak(5000), NLopt.LN_NELDERMEAD(), maxtime = max_time); sol.minimum
-        pars = deepcopy(sol.u)
+    # elseif algo == "TikTak"   
+    #     sol = solve(prob, MultistartOptimization.TikTak(5000), NLopt.LN_NELDERMEAD(), maxtime = max_time); sol.minimum
+    #     pars = deepcopy(sol.u)
     elseif algo == "BBO_SS"   
         sol = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
                 SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
@@ -191,7 +191,7 @@ function calc_total_iters(model, par_inputs, starting_point)
         end
     end
 
-    return runtime * 1e4
+    return runtime * 1e3
 end
 
 
@@ -220,7 +220,7 @@ function evaluate_pars_loglikelihood(pars, models)
         model_iters[i] = total_iters
     end
     
-    return Float64(log_lik / 1e1 + sum(model_iters))
+    return Float64(log_lik / 1e2 + sum(model_iters))
 end
 
 
