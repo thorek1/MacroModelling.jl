@@ -45,7 +45,7 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 using Requires
 
 import Reexport
-Reexport.@reexport import AxisKeys: KeyedArray, axiskeys
+Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
 
