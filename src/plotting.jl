@@ -515,7 +515,7 @@ function plot_irf(𝓂::ℳ;
 
                     opt.xtol_abs = eps(Float32)
                     opt.ftol_abs = eps(Float32)
-                    # opt.maxeval = 500
+                    opt.maxeval = 500
                     
                     # Adding constraints
                     # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) 
