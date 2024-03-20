@@ -257,18 +257,18 @@ function evaluate_multi_pars_loglikelihood(pars, models)
         end  
     end
 
-    return Float64(log_lik / 1e4 + total_runtime * 1e3 + sum(minimum(model_runtimes, dims=1)))
+    return Float64(log_lik / 1e4 + total_runtime * 1e3 + sum(minimum(model_runtimes, dims = 2)))
 end
 
-n_candidates = 3
+n_par_sets = 3
 
-parameters = rand(20 * n_candidates) .+ 1
-parameters[20 .* 1:n_candidates] .-= 1
+parameters = rand(20 * n_par_sets) .+ 1
+parameters[20 .* 1:n_par_sets] .-= 1
 
-lbs = fill(eps(),length(parameters) * n_candidates)
-lbs[20 .* 1:n_candidates] = -20
+lbs = fill(eps(), length(parameters))
+lbs[20 .* (1:n_par_sets)] .= -20
 
-ubs = fill(100.0,length(parameters) * n_candidates)
+ubs = fill(100.0,length(parameters))
 
 
 
@@ -299,10 +299,10 @@ all_models = [
 sol = BlackBoxOptim.bboptimize(x -> evaluate_multi_pars_loglikelihood(x, all_models), parameters, 
                                 SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
                                 NumDimensions = length(parameters),
-                                MaxFuncEvals = 250000,
+                                MaxFuncEvals = 25000,
                                 PopulationSize = 500, 
                                 TraceMode = :verbose, 
-                                TraceInterval = 600, 
+                                TraceInterval = 60, 
                                 Method = :adaptive_de_rand_1_bin_radiuslimited)
 
 pars = BlackBoxOptim.best_candidate(sol)   
