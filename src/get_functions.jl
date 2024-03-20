@@ -1092,15 +1092,15 @@ function get_irf(𝓂::ℳ;
                 if constraints_violated
                     # solved = false
 
-                    for algo ∈ [NLopt.:LD_SLSQP, NLopt.:LN_COBYLA] 
+                    # for algo ∈ [NLopt.:LD_SLSQP, NLopt.:LN_COBYLA] 
                         # check whether auglag is more reliable here (as in gives smaller shock size)
-                        opt = NLopt.Opt(algo, num_shocks*periods_per_shock)
+                        opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
                     
                         opt.min_objective = obc_objective_optim_fun
 
                         opt.xtol_abs = eps(Float32)
                         opt.ftol_abs = eps(Float32)
-                        opt.maxeval = 500
+                        # opt.maxeval = 500
                         
                         # Adding constraints
                         # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) 
@@ -1128,7 +1128,7 @@ function get_irf(𝓂::ℳ;
                         if !constraints_violated
                             break
                         end
-                    end
+                    # end
 
                     solved = !constraints_violated
                 else
