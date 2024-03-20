@@ -50,7 +50,7 @@ include("../models/Guerrieri_Iacoviello_2017.jl") # stands out
 
 
 
-function optimize_parameters(parameters, all_models, lbs, ubs, algo, max_time, max_evals = 500000)
+function optimize_parameters(parameters, all_models, lbs, ubs, algo, max_time, max_evals = 300000)
     prob = OptimizationProblem(evaluate_pars_loglikelihood, parameters, all_models, lb = lbs, ub = ubs)
 
     opt = Options(verbose = true, parallel_evaluation = false)
@@ -117,7 +117,7 @@ function optimize_parameters(parameters, all_models, lbs, ubs, algo, max_time, m
         sol = BlackBoxOptim.bboptimize(x -> evaluate_pars_loglikelihood(x, all_models), parameters, 
                 SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
                 NumDimensions = length(parameters),
-                MaxTime = max_time, 
+                # MaxTime = max_time, # has precedence over max_evals
                 MaxFuncEvals = max_evals,
                 PopulationSize = 500, 
                 TraceMode = :verbose, 
