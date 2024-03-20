@@ -1125,9 +1125,9 @@ function get_irf(𝓂::ℳ;
 
                         constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
 
-                        # if !constraints_violated
-                        #     break
-                        # end
+                        if !constraints_violated
+                            break
+                        end
                     # end
 
                     solved = !constraints_violated
