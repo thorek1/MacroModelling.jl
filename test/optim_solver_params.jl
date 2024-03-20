@@ -299,10 +299,10 @@ all_models = [
 sol = BlackBoxOptim.bboptimize(x -> evaluate_multi_pars_loglikelihood(x, all_models), parameters, 
                                 SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
                                 NumDimensions = length(parameters),
-                                MaxFuncEvals = 25000,
+                                MaxFuncEvals = 250000,
                                 PopulationSize = 500, 
                                 TraceMode = :verbose, 
-                                TraceInterval = 60, 
+                                TraceInterval = 360, 
                                 Method = :adaptive_de_rand_1_bin_radiuslimited)
 
 pars = BlackBoxOptim.best_candidate(sol)   
