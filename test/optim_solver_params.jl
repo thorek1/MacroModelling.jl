@@ -1,8 +1,8 @@
 import Pkg
 # Pkg.activate("/home/cdsw/MacroModelling.jl-ss_solver2/MacroModelling.jl-ss_solver/")
-Pkg.add(["Turing", "Optimization", "OptimizationNLopt", "OptimizationMetaheuristics", "BlackBoxOptim", "Optim"])#, "OptimizationMultistartOptimization"])
+Pkg.add(["Turing", "Optimization", "OptimizationNLopt", "BlackBoxOptim", "Optim"])#, "OptimizationMultistartOptimization", "OptimizationMetaheuristics"])
 
-using MacroModelling, Optimization, OptimizationNLopt, OptimizationMetaheuristics, Optim # , OptimizationMultistartOptimization
+using MacroModelling, Optimization, OptimizationNLopt, Optim # , OptimizationMultistartOptimization, OptimizationMetaheuristics
 import BlackBoxOptim#, OptimizationEvolutionary
 
 max_time = 3 * 60^2
@@ -233,7 +233,7 @@ function evaluate_multi_pars_loglikelihood(pars, models)
     
     num_cols = length(pars) ÷ 20
 
-    model_runtimes = zeros(length(models), num_cols)
+    model_runtimes = zeros(length(models), num_cols) .+ 1e4
     
     pars_mat = reshape(pars, 20, num_cols)
 
@@ -254,6 +254,10 @@ function evaluate_multi_pars_loglikelihood(pars, models)
             total_runtimes = calc_total_runtime(model, par_inputs, pars_mat[20, k])
             # model_runtimes[i] = 1e1 * total_runtimes
             model_runtimes[i, k] = total_runtimes
+
+            if total_runtimes < 1e4
+                break 
+            end
         end  
     end
 
@@ -302,7 +306,7 @@ sol = BlackBoxOptim.bboptimize(x -> evaluate_multi_pars_loglikelihood(x, all_mod
                                 MaxFuncEvals = 250000,
                                 PopulationSize = 500, 
                                 TraceMode = :verbose, 
-                                TraceInterval = 360, 
+                                TraceInterval = 60, 
                                 Method = :adaptive_de_rand_1_bin_radiuslimited)
 
 pars = BlackBoxOptim.best_candidate(sol)   
