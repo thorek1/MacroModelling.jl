@@ -255,6 +255,7 @@ mutable struct solver_parameters
     λ̅²::Float64   
     λ̂̅¹::Float64   
     λ̂̅²::Float64   
+    starting_value::Float64
     transformation_level::Int
     shift::Float64 
     backtracking_order::Int
@@ -384,7 +385,7 @@ mutable struct ℳ
     max_obc_horizon::Int
     obc_violation_function::Function
 
-    solver_parameters::solver_parameters
+    solver_parameters::Vector{solver_parameters}
 
     solution::solution
     # symbolics::symbolics
