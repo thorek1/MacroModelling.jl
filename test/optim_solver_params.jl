@@ -1,6 +1,6 @@
 import Pkg
 # Pkg.activate("/home/cdsw/MacroModelling.jl-ss_solver2/MacroModelling.jl-ss_solver/")
-Pkg.add(["Turing", "Optimization", "OptimizationNLopt", "BlackBoxOptim", "Optim"])#, "OptimizationMultistartOptimization", "OptimizationMetaheuristics"])
+Pkg.add(["Optimization", "OptimizationNLopt", "BlackBoxOptim"])#, "OptimizationMultistartOptimization", "OptimizationMetaheuristics"])
 
 using MacroModelling, Optimization, OptimizationNLopt, Optim # , OptimizationMultistartOptimization, OptimizationMetaheuristics
 import BlackBoxOptim#, OptimizationEvolutionary
@@ -177,8 +177,8 @@ function optimize_parameters(parameters, all_models, lbs, ubs, algo, max_time; m
 end
 
 
-function calc_total_runtime(model, par_inputs, starting_point)
-    runtime = @elapsed outmodel = try model.SS_solve_func(model.parameter_values, model, false, starting_point, par_inputs) catch end
+function calc_total_runtime(model, par_inputs)
+    runtime = @elapsed outmodel = try model.SS_solve_func(model.parameter_values, model, false, true, [par_inputs]) catch end
 
     runtime = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
                     (outmodel[2][1] > 1e-12) || !isfinite(outmodel[2][1]) ? 
@@ -198,7 +198,6 @@ end
 
 maxiters = 250
 
-using Turing
 # Function to calculate the posterior log likelihood
 function evaluate_pars_loglikelihood(pars, models)
     log_lik = 0.0
@@ -208,15 +207,16 @@ function evaluate_pars_loglikelihood(pars, models)
     pars[1:2] = sort(pars[1:2], rev = true)
 
     # Apply prior distributions
-    log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 1.0, μσ = true), 19),pars[1:19])
-    log_lik -= logpdf(MacroModelling.Normal(0.0, 5.0), pars[20])
+    log_lik -= -sum(pars[1:19])                                 # logpdf of a gamma dist with mean and variance 1
+    log_lik -= -log(5 * sqrt(2 * π)) - (pars[20]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and 
+    
 
     # Example solver parameters - this needs to be replaced with actual logic
-    par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, pars[1:19]..., transformation, 0.0, 2)
+    par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, pars..., transformation, 0.0, 2)
 
     # Iterate over all models and calculate the total iterations
     for (i,model) in enumerate(models)
-        total_runtimes = calc_total_runtime(model, par_inputs, pars[20])
+        total_runtimes = calc_total_runtime(model, par_inputs)
 #        model_runtimes[i] = 1e1 * total_runtimes
         model_runtimes[i] = total_runtimes
     end
@@ -229,29 +229,33 @@ end
 # optim across multiple models and parameters sets
 
 function evaluate_multi_pars_loglikelihood(pars, models)
+    num_starting_points = length(pars) - 19
+
+    model_runtimes = zeros(length(models), num_starting_points) .+ 1e4
+    
+    pars_mat = zeros(20, num_starting_points)
+
+    pars_mat[1:19,:] .= pars[1:19]
+    pars_mat[20,:]   .= pars[20:end]
+
     log_lik = 0.0
     
-    num_cols = length(pars) ÷ 20
+    log_lik -= -sum(pars[1:19]) # logpdf of a gamma dist with mean and variance 1
 
-    model_runtimes = zeros(length(models), num_cols) .+ 1e4
-    
-    pars_mat = reshape(pars, 20, num_cols)
-
-    for k in 1:num_cols
+    for k in 1:num_starting_points
         pars_mat[1:2, k] = sort(pars_mat[1:2, k], rev = true)
 
         # Apply prior distributions
-        log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 1.0, μσ = true), 19),pars_mat[1:19, k])
-        log_lik -= logpdf(MacroModelling.Normal(0.0, 5.0), pars_mat[20, k])
+        log_lik -= -log(5 * sqrt(2 * π)) - (pars_mat[20, k]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and 
     end
 
     total_runtime = @elapsed for (i,model) in enumerate(models)
-        for k in 1:num_cols
+        for k in 1:num_starting_points
             # Example solver parameters - this needs to be replaced with actual logic
-            par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, pars_mat[1:19, k]..., transformation, 0.0, 2)
+            par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, pars_mat[:, k]..., transformation, 0.0, 2)
 
             # Iterate over all models and calculate the total iterations
-            total_runtimes = calc_total_runtime(model, par_inputs, pars_mat[20, k])
+            total_runtimes = calc_total_runtime(model, par_inputs)
             # model_runtimes[i] = 1e1 * total_runtimes
             model_runtimes[i, k] = total_runtimes
 
@@ -264,13 +268,13 @@ function evaluate_multi_pars_loglikelihood(pars, models)
     return Float64(log_lik / 1e4 + total_runtime * 1e3 + sum(minimum(model_runtimes, dims = 2)))
 end
 
-n_par_sets = 3
+n_starting_points = 5
 
-parameters = rand(20 * n_par_sets) .+ 1
-parameters[20 .* 1:n_par_sets] .-= 1
+parameters = rand(19 + n_starting_points)
+parameters[20:end] .-= 1
 
 lbs = fill(eps(), length(parameters))
-lbs[20 .* (1:n_par_sets)] .= -20
+lbs[20:end] .= -20
 
 ubs = fill(100.0,length(parameters))
 
@@ -299,11 +303,10 @@ all_models = [
 ];
 
 
-
 sol = BlackBoxOptim.bboptimize(x -> evaluate_multi_pars_loglikelihood(x, all_models), parameters, 
                                 SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
                                 NumDimensions = length(parameters),
-                                MaxFuncEvals = 250000,
+                                MaxFuncEvals = 150000,
                                 PopulationSize = 500, 
                                 TraceMode = :verbose, 
                                 TraceInterval = 60, 
@@ -404,8 +407,8 @@ for k in 1:num_cols
     pars_mat[1:2, k] = sort(pars_mat[1:2, k], rev = true)
 
     # Apply prior distributions
-    log_lik -= logpdf(filldist(MacroModelling.Gamma(1.0, 1.0, μσ = true), 19),pars_mat[1:19, k])
-    log_lik -= logpdf(MacroModelling.Normal(0.0, 5.0), pars_mat[20, k])
+    log_lik -= -sum(pars[1:19])                                 # logpdf of a gamma dist with mean and variance 1
+    log_lik -= -log(5 * sqrt(2 * π)) - (pars[20]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and 
 end
 
 total_runtime = @elapsed for (i,model) in enumerate(all_models)
