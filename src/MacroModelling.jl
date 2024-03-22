@@ -3776,7 +3776,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 60, maxiter::Int =
 
     ubs = fill(100.0,length(pars))
 
-    sol = Optim.optimize(x -> calculate_runtime_and_loglikelihood(x, 𝓂), lbs, ubs, pars, Optim.SAMIN(verbosity = 0), Optim.Options(time_limit = maxtime, iterations = maxiter))
+    sol = Optim.optimize(x -> calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂), lbs, ubs, pars, Optim.SAMIN(verbosity = 0), Optim.Options(time_limit = maxtime, iterations = maxiter))
 
     pars = Optim.minimizer(sol)
 
