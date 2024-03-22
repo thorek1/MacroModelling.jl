@@ -1378,43 +1378,54 @@ macro parameters(𝓂,ex...)
         if !$precompile 
             start_time = time()
 
+            if !$silent print("Remove redundant variables in non stochastic steady state problem:\t") end
+
             symbolics = create_symbols_eqs!(mod.$𝓂)
             remove_redundant_SS_vars!(mod.$𝓂, symbolics) 
 
-            if !$silent println("Remove redundant variables in non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
+            if !$silent println(round(time() - start_time, digits = 3), " seconds") end
 
 
             start_time = time()
     
+            if !$silent print("Set up non stochastic steady state problem:\t") end
+
             solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 2nd argument is SS_symbolic
 
             mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
             
             set_up_obc_violation_function!(mod.$𝓂)
 
-            if !$silent println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
+            if !$silent println(round(time() - start_time, digits = 3), " seconds") end
         else
             start_time = time()
         
+            if !$silent print("Set up non stochastic steady state problem:\t") end
+
             solve_steady_state!(mod.$𝓂, verbose = $verbose)
 
-            if !$silent println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
+            if !$silent println(round(time() - start_time, digits = 3), " seconds") end
         end
 
         start_time = time()
+
+        if !$silent
+            if $perturbation_order == 1
+                print("Take symbolic derivatives up to first order:\t")
+            elseif $perturbation_order == 2
+                print("Take symbolic derivatives up to second order:\t")
+            elseif $perturbation_order == 3
+                print("Take symbolic derivatives up to third order:\t")
+            end
+        end
+
         # time_dynamic_derivs = @elapsed 
         write_functions_mapping!(mod.$𝓂, $perturbation_order)
 
         mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
         
         if !$silent
-            if $perturbation_order == 1
-                println("Take symbolic derivatives up to first order:\t",round(time() - start_time, digits = 3), " seconds")
-            elseif $perturbation_order == 2
-                println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds")
-            elseif $perturbation_order == 3
-                println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
-            end
+            println(round(time() - start_time, digits = 3), " seconds")
         end
 
         start_time = time()
@@ -1422,15 +1433,20 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.solution.functions_written = true
 
         if !$precompile
+            if !$silent 
+                print("Find non stochastic steady state:\t") 
+            end
             # time_SS_real_solve = @elapsed 
             SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose, true, mod.$𝓂.solver_parameters)
             
             select_fastest_SS_solver_parameters!(mod.$𝓂)
-            
+
             found_solution = true
 
             if solution_error > 1e-12
+                # start_time = time()
                 found_solution = find_SS_solver_parameters!(mod.$𝓂)
+                # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
             end
             
             if !found_solution
@@ -1438,7 +1454,7 @@ macro parameters(𝓂,ex...)
             end
 
             if !$silent 
-                println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds") 
+                println(round(time() - start_time, digits = 3), " seconds") 
             end
 
             mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars

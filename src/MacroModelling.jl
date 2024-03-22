@@ -3798,8 +3798,11 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::AbstractFloat = 1e
 
     best_time = Inf
 
+    solved = false
+
     for p in 𝓂.solver_parameters
         total_time = 0.0
+        
         for _ in 1:10
             start_time = time()
 
@@ -3819,9 +3822,13 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::AbstractFloat = 1e
             best_time = total_time
             best_param = p
         end
+
+        solved = true
     end
 
-    push!(𝓂.solver_parameters, best_param)
+    if solved
+        push!(𝓂.solver_parameters, best_param)
+    end
 end
 
 
