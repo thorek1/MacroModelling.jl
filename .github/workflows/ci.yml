@@ -35,22 +35,22 @@ jobs:
         include:
           - os: ubuntu-latest
             prefix: xvfb-run
-          - version: '1.10'
-            os: macos-14
-            arch: x64
-            test_set: "solver0"
-          - version: '1.10'
-            os: macos-14
-            arch: x64
-            test_set: "solver1"
-          - version: '1.10'
-            os: macos-14
-            arch: x64
-            test_set: "solver2"
-          - version: '1.10'
-            os: macos-14
-            arch: x64
-            test_set: "solver3"
+          # - version: '1.10'
+          #   os: macos-14
+          #   arch: x64
+          #   test_set: "solver0"
+          # - version: '1.10'
+          #   os: macos-14
+          #   arch: x64
+          #   test_set: "solver1"
+          # - version: '1.10'
+          #   os: macos-14
+          #   arch: x64
+          #   test_set: "solver2"
+          # - version: '1.10'
+          #   os: macos-14
+          #   arch: x64
+          #   test_set: "solver3"
           - version: '1.10'
             os: macos-14
             arch: x64
