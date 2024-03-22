@@ -3746,6 +3746,53 @@ function reverse_diff_friendly_push!(x,y)
     @ignore_derivatives push!(x,y)
 end
 
+function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, 𝓂::ℳ, tol::AbstractFloat = 1e-12)::Float64
+    log_lik = 0.0
+    log_lik -= -sum(pars[1:19])                                 # logpdf of a gamma dist with mean and variance 1
+    log_lik -= -log(5 * sqrt(2 * π)) - (pars[20]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and variance = 5^2
+
+    pars[1:2] = sort(pars[1:2], rev = true)
+
+    par_inputs = solver_parameters(eps(), eps(), 250, pars..., 1, 0.0, 2)
+
+    runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs]) catch end
+
+    runtime = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
+                    (outmodel[2][1] > tol) || !isfinite(outmodel[2][1]) ? 
+                        10 : 
+                    runtime : 
+                10
+
+    return log_lik / 1e4 + runtime * 1e3
+end
+
+
+function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 60, maxiter::Int = 250000, tol::AbstractFloat = 1e-12)
+    pars = rand(20) .+ 1
+    pars[20] -= 1
+
+    lbs = fill(eps(), length(pars))
+    lbs[20] = -20
+
+    ubs = fill(100.0,length(pars))
+
+    sol = Optim.optimize(x -> calculate_runtime_and_loglikelihood(x, 𝓂), lbs, ubs, pars, Optim.SAMIN(verbosity = 0), Optim.Options(time_limit = maxtime, iterations = maxiter))
+
+    pars = Optim.minimizer(sol)
+
+    par_inputs = solver_parameters(eps(), eps(), 250, pars..., 1, 0.0, 2)
+
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs])
+
+    if solution_error < tol
+        push!(𝓂.solver_parameters, par_inputs)
+        return true
+    else 
+        return false
+    end
+end
+
+
 function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::AbstractFloat = 1e-12)
     best_param = 𝓂.solver_parameters[1]
 

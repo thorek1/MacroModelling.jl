@@ -1427,12 +1427,18 @@ macro parameters(𝓂,ex...)
             
             select_fastest_SS_solver_parameters!(mod.$𝓂)
             
+            found_solution = true
+
+            if solution_error > 1e-12
+                found_solution = find_SS_solver_parameters!(mod.$𝓂)
+            end
+            
+            if !found_solution
+                @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
+            end
+
             if !$silent 
                 println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds") 
-
-                if solution_error > 1e-12
-                    @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
-                end
             end
 
             mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
