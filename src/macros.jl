@@ -1425,6 +1425,8 @@ macro parameters(𝓂,ex...)
             # time_SS_real_solve = @elapsed 
             SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose, true, mod.$𝓂.solver_parameters)
             
+            select_fastest_SS_solver_parameters!(mod.$𝓂)
+            
             if !$silent 
                 println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds") 
 
