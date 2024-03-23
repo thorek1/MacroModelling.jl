@@ -7481,41 +7481,65 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables_index::Vec
 
     loglik = S(0)
     for t in 1:size(data_in_deviations, 2)
-        loglik, P, u, z = update_loglikelihood!(loglik, P, u, z, C, A, 𝐁, data_in_deviations[:, t])
-        if loglik == -Inf
-            break
+        v = data_in_deviations[:, t] - z
+
+        F = C * P * C'
+
+        F̄ = ℒ.lu(F, check = false)
+
+        if !ℒ.issuccess(F̄)
+            return -Inf
         end
+
+        Fdet = ℒ.det(F̄)
+
+        # Early return if determinant is too small, indicating numerical instability.
+        if Fdet < eps(S)
+            return -Inf
+        end
+
+        invF = inv(F̄)
+
+        loglik += log(Fdet) + v' * invF  * v
+
+        K = P * C' * invF
+
+        P = A * (P - K * C * P) * A' + 𝐁
+
+        u = A * (u + K * v)
+
+        z = C * u
     end
 
     return -(loglik + length(data_in_deviations) * log(2 * 3.141592653589793)) / 2 
 end
 
-function update_loglikelihood!(loglik::S, P::Matrix{S}, u::Vector{S}, z::Vector{S}, C::Matrix{T}, A::Matrix{S}, 𝐁::Matrix{S}, data_point::Vector{S}) where {S,T}
-    v = data_point - z
-    F = C * P * C'
+# function update_loglikelihood!(loglik::S, P::Matrix{S}, u::Vector{S}, z::Vector{S}, C::Matrix{T}, A::Matrix{S}, 𝐁::Matrix{S}, data_point::Vector{S}) where {S,T}
+#     v = data_point - z
+#     F = C * P * C'
 
-    F̄ = ℒ.lu(F, check = false)
+#     F̄ = ℒ.lu(F, check = false)
 
-    if !ℒ.issuccess(F̄)
-        return -Inf, P, u, z
-    end
+#     if !ℒ.issuccess(F̄)
+#         return -Inf, P, u, z
+#     end
 
-    Fdet = ℒ.det(F̄)
+#     Fdet = ℒ.det(F̄)
 
-    # Early return if determinant is too small, indicating numerical instability.
-    if Fdet < eps(S)
-        return -Inf, P, u, z
-    end
+#     # Early return if determinant is too small, indicating numerical instability.
+#     if Fdet < eps(S)
+#         return -Inf, P, u, z
+#     end
 
-    invF = inv(F̄)
-    loglik_increment = log(Fdet) + v' * invF * v
-    K = P * C' * invF
-    P = A * (P - K * C * P) * A' + 𝐁
-    u = A * (u + K * v)
-    z = C * u
+#     invF = inv(F̄)
+#     loglik_increment = log(Fdet) + v' * invF * v
+#     K = P * C' * invF
+#     P = A * (P - K * C * P) * A' + 𝐁
+#     u = A * (u + K * v)
+#     z = C * u
 
-    return loglik + loglik_increment, P, u, z
-end
+#     return loglik + loglik_increment, P, u, z
+# end
 
 function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector{Float64},Vector{Vector{Float64}}}, state_update::Function, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, warmup_iterations::Int)
     if state isa Vector{Float64}
