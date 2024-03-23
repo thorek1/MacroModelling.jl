@@ -7471,8 +7471,8 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables_index::Vec
     
     values = vcat(vec(A), vec(collect(-𝐁)))
 
-    # P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+    P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
     # P = collect(ℒ.I(length(observables_and_states)) * 10.0)
     
     u = zeros(S, length(observables_and_states))
