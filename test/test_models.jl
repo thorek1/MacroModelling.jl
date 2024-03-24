@@ -1,4 +1,38 @@
 if !test_higher_order
+    # include("models/Guerrieri_Iacoviello_2017.jl")
+    # SSvals = get_SS(Guerrieri_Iacoviello_2017)
+
+    # @test isapprox(SSvals(["A{F}","K{H}","L{F}","LGM"]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
+
+    # var_dec = get_var_decomp(Guerrieri_Iacoviello_2017)
+
+    # @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{F}") * 100, [51.34, 42.44, 52.59],rtol = 1e-3)
+    # @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{H}") * 100, [48.66, 57.56, 47.41],rtol = 1e-3)
+
+    # write_to_dynare_file(Guerrieri_Iacoviello_2017)
+    # translate_dynare_file("Guerrieri_Iacoviello_2017.mod")
+    # include("Guerrieri_Iacoviello_2017.jl")
+    # get_solution(Guerrieri_Iacoviello_2017)
+    # Guerrieri_Iacoviello_2017 = nothing
+
+
+    include("models/SW07_nonlinear.jl")
+    SSvals = get_SS(SW07_nonlinear)
+
+    @test isapprox(SSvals(["gamw1","y","cflex","ygap"]),[24.5877, 1.36422, 0.896367, 0],rtol = 1e-4)
+
+    # var_dec = get_var_decomp(SW07_nonlinear)
+
+    # @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{F}") * 100, [51.34, 42.44, 52.59],rtol = 1e-3)
+    # @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{H}") * 100, [48.66, 57.56, 47.41],rtol = 1e-3)
+
+    write_to_dynare_file(SW07_nonlinear)
+    translate_dynare_file("SW07_nonlinear.mod")
+    include("SW07_nonlinear.jl")
+    get_solution(SW07_nonlinear)
+    SW07_nonlinear = nothing
+
+
     include("models/Backus_Kehoe_Kydland_1992.jl")
     SSvals = get_SS(Backus_Kehoe_Kydland_1992)
 
