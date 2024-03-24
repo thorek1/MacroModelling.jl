@@ -7812,7 +7812,11 @@ function inversion_filter(𝓂::ℳ,
 end
 
 
-function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}, observables::Vector{Symbol}; verbose::Bool = false, tol::AbstractFloat = 1e-12)
+function filter_and_smooth(𝓂::ℳ, 
+                            data_in_deviations::AbstractArray{Float64}, 
+                            observables::Vector{Symbol}; 
+                            verbose::Bool = false, 
+                            tol::AbstractFloat = 1e-12)
     # Based on Durbin and Koopman (2012)
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
 
