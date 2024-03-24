@@ -332,7 +332,51 @@ sol = solve(prob, NLopt.LN_PRAXIS()); sol.minimum
 println("Parameters after refinement: $(sol.u)")
 
 
+# best if you have fixed parameters but can vary the starting points
+parameters = [89.26544495540728, 0.300470076841684, 32.608492240550035, 61.628310990014114, 0.22610409380854896, 3.919570107373496, 35.50795473779334, 37.03271739937227, 62.749088965512996, 70.21693929731778, 74.40398893915436, 3.675790863305796, 89.82730346299283, 80.8421422677031, 85.98114225234478, 26.64171352273762, 18.55068585609554, 90.36787165320399, 2.932047332701063, 26.0419358675045, 69.93130357191069, 10.854564115179858, -12.964333286598562, 1.4740906290561546]
 
+
+sol = Optim.optimize(x -> evaluate_multi_pars_loglikelihood(x, all_models), lbs, ubs, parameters, 
+                            SAMIN(
+                                # nt = 10, 
+                                # ns = 10, 
+                                # rt = 0.95, 
+                                verbosity = 2), 
+                            Optim.Options(#time_limit = max_time, 
+    #                                        show_trace = true, 
+                                            iterations = 10000,
+    #                                        extended_trace = true, 
+    #                                        show_every = 10000
+        ))
+pars = Optim.minimizer(sol)
+
+println("Parameters: $pars")
+
+
+
+sol2 = Optim.optimize(x -> evaluate_multi_pars_loglikelihood(x, all_models), lbs, ubs, parameters, 
+                            SAMIN(
+                                # nt = 10, 
+                                # ns = 10, 
+                                # rt = 0.95, 
+                                verbosity = 2), 
+                            Optim.Options(#time_limit = max_time, 
+    #                                        show_trace = true, 
+                                            iterations = 150000,
+    #                                        extended_trace = true, 
+    #                                        show_every = 10000
+        ))
+pars2 = Optim.minimizer(sol2)
+
+println("Parameters: $pars2")
+
+
+# try WOA
+using OptimizationMetaheuristics
+prob = OptimizationProblem(evaluate_multi_pars_loglikelihood, parameters, all_models, lb = lbs, ub = ubs)
+opt = Options(verbose = true)
+sol = solve(prob, WOA(N = 500, options = opt), maxiters = 100000); sol.minimum 
+pars = deepcopy(sol.u)
 
 
 # check and test
