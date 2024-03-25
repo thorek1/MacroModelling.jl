@@ -1,30 +1,30 @@
 if !test_higher_order
-    # include("../models/Guerrieri_Iacoviello_2017.jl")
-    # SSvals = get_SS(Guerrieri_Iacoviello_2017)
+    include("../models/Guerrieri_Iacoviello_2017.jl")
+    SSvals = get_SS(Guerrieri_Iacoviello_2017)
 
-    # @test isapprox(SSvals(["A{F}","K{H}","L{F}","LGM"]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
+    @test isapprox(SSvals([:b,:c,:k,:r]),[3.7449, 1.01054, 16.5337, 1.01005],rtol = 1e-4)
 
-    # var_dec = get_var_decomp(Guerrieri_Iacoviello_2017)
+    var_dec = get_var_decomp(Guerrieri_Iacoviello_2017)
 
-    # @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{F}") * 100, [51.34, 42.44, 52.59],rtol = 1e-3)
-    # @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{H}") * 100, [48.66, 57.56, 47.41],rtol = 1e-3)
+    @test isapprox(var_dec([:dw,:k,:b],:eps_j) * 100, [0.38, 1.66, 83.52],rtol = 1e-3)
+    @test isapprox(var_dec([:y,:r,:c],:eps_r) * 100, [7.35, 31.93, 0.59],rtol = 1e-3)
 
-    # write_to_dynare_file(Guerrieri_Iacoviello_2017)
-    # translate_dynare_file("Guerrieri_Iacoviello_2017.mod")
-    # include("Guerrieri_Iacoviello_2017.jl")
-    # get_solution(Guerrieri_Iacoviello_2017)
-    # Guerrieri_Iacoviello_2017 = nothing
+    write_to_dynare_file(Guerrieri_Iacoviello_2017)
+    translate_dynare_file("Guerrieri_Iacoviello_2017.mod")
+    include("Guerrieri_Iacoviello_2017.jl")
+    get_solution(Guerrieri_Iacoviello_2017)
+    Guerrieri_Iacoviello_2017 = nothing
 
 
     include("../models/SW07_nonlinear.jl")
     SSvals = get_SS(SW07_nonlinear)
 
-    @test isapprox(SSvals([:gamw1, :y, :cflex, :ygap]),[24.5877, 1.36422, 0.896367, 0],rtol = 1e-4)
+    @test isapprox(SSvals([:robs, :y, :kflex, :ygap]),[1.62996, 1.36422, 7.55624, 0],rtol = 1e-4)
 
     var_dec = get_var_decomp(SW07_nonlinear)
 
-    @test isapprox(var_dec([:dw,:k,:b],:eps_j) * 100, [0.38, 1.66, 83.52],rtol = 1e-3)
-    @test isapprox(var_dec([:y,:r,:c],:eps_r) * 100, [7.35, 31.93, 0.59],rtol = 1e-3)
+    @test isapprox(var_dec([:y,:yflex,:labobs],:ea) * 100, [10.10, 89.47, 0.53],rtol = 1e-3)
+    @test isapprox(var_dec([:y,:r,:c],:epinf) * 100, [36.42, 29.30, 22.62],rtol = 1e-3)
 
     write_to_dynare_file(SW07_nonlinear)
     translate_dynare_file("SW07_nonlinear.mod")
