@@ -12,7 +12,7 @@ if !test_higher_order
     write_to_dynare_file(Guerrieri_Iacoviello_2017)
     translate_dynare_file("Guerrieri_Iacoviello_2017.mod")
     include("Guerrieri_Iacoviello_2017.jl")
-    get_solution(Guerrieri_Iacoviello_2017)
+    # get_solution(Guerrieri_Iacoviello_2017)
     Guerrieri_Iacoviello_2017 = nothing
 
 
