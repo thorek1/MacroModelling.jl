@@ -21,10 +21,10 @@ if !test_higher_order
 
     @test isapprox(SSvals([:gamw1, :y, :cflex, :ygap]),[24.5877, 1.36422, 0.896367, 0],rtol = 1e-4)
 
-    # var_dec = get_var_decomp(SW07_nonlinear)
+    var_dec = get_var_decomp(SW07_nonlinear)
 
-    # @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{F}") * 100, [51.34, 42.44, 52.59],rtol = 1e-3)
-    # @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{H}") * 100, [48.66, 57.56, 47.41],rtol = 1e-3)
+    @test isapprox(var_dec([:dw,:k,:b],:eps_j) * 100, [0.38, 1.66, 83.52],rtol = 1e-3)
+    @test isapprox(var_dec([:y,:r,:c],:eps_r) * 100, [7.35, 31.93, 0.59],rtol = 1e-3)
 
     write_to_dynare_file(SW07_nonlinear)
     translate_dynare_file("SW07_nonlinear.mod")
