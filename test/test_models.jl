@@ -1,5 +1,5 @@
 if !test_higher_order
-    # include("models/Guerrieri_Iacoviello_2017.jl")
+    # include("../models/Guerrieri_Iacoviello_2017.jl")
     # SSvals = get_SS(Guerrieri_Iacoviello_2017)
 
     # @test isapprox(SSvals(["A{F}","K{H}","L{F}","LGM"]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
@@ -16,7 +16,7 @@ if !test_higher_order
     # Guerrieri_Iacoviello_2017 = nothing
 
 
-    include("models/SW07_nonlinear.jl")
+    include("../models/SW07_nonlinear.jl")
     SSvals = get_SS(SW07_nonlinear)
 
     @test isapprox(SSvals(["gamw1","y","cflex","ygap"]),[24.5877, 1.36422, 0.896367, 0],rtol = 1e-4)
