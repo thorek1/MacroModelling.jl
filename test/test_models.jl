@@ -19,7 +19,7 @@ if !test_higher_order
     include("../models/SW07_nonlinear.jl")
     SSvals = get_SS(SW07_nonlinear)
 
-    @test isapprox(SSvals(["gamw1","y","cflex","ygap"]),[24.5877, 1.36422, 0.896367, 0],rtol = 1e-4)
+    @test isapprox(SSvals([:gamw1, :y, :cflex, :ygap]),[24.5877, 1.36422, 0.896367, 0],rtol = 1e-4)
 
     # var_dec = get_var_decomp(SW07_nonlinear)
 
