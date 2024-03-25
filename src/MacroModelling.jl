@@ -807,6 +807,9 @@ function translate_symbol_to_ascii(x::Symbol)
             outstr *= string(i)
         else
             outstr *= replace(out,  
+                        r"\!" => s"_",
+                        r"\(" => s"_",
+                        r"\)" => s"_",
                         r"\^" => s"_",
                         r"\_\^" => s"_",
                         r"\+" => s"plus",
