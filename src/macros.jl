@@ -92,6 +92,7 @@ macro model(𝓂,ex...)
     
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = x->x
+    SS_check_func = x->x
     SS_dependencies = nothing
 
     original_equations = []
@@ -104,6 +105,7 @@ macro model(𝓂,ex...)
 
     ➕_vars = []
     ss_and_aux_equations = []
+    ss_equations = []
     aux_vars_created = Set()
 
     unique_➕_eqs = Dict{Union{Expr,Symbol},Expr}()
@@ -279,6 +281,28 @@ macro model(𝓂,ex...)
 
             push!(dyn_equations,unblock(t_ex))
             
+            
+            # write down ss equations
+            eqs = postwalk(x -> 
+                x isa Expr ? 
+                    x.head == :(=) ? 
+                        Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
+                            x.head == :ref ?
+                                occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 : # set shocks to zero and remove time scripts
+                        x.args[1] :
+                    x.head == :call ?
+                        x.args[1] == :* ?
+                            x.args[2] isa Int ?
+                                x.args[3] isa Int ?
+                                    x :
+                                Expr(:call, :*, x.args[3:end]..., x.args[2]) : # 2beta => beta * 2 
+                            x :
+                        x :
+                    x :
+                x,
+            model_ex.args[i])
+            push!(ss_equations,unblock(eqs))
+
             # write down ss equations including nonnegativity auxilliary variables
             # find nonegative variables, parameters, or terms
             eqs = postwalk(x -> 
@@ -830,11 +854,13 @@ macro model(𝓂,ex...)
                         $ss_solve_blocks,
                         $NSSS_solver_cache,
                         $SS_solve_func,
+                        $SS_check_func,
                         $SS_dependencies,
 
                         $➕_vars,
                         $ss_eq_aux_ind,
                         $dyn_equations,
+                        $ss_equations,
                         $original_equations, 
 
                         $calibration_equations, #no_var_

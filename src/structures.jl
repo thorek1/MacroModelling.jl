@@ -353,6 +353,7 @@ mutable struct ℳ
     # SS_init_guess::Vector{Real}
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func::Function
+    SS_check_func::Function
     # nonlinear_solution_helper
     SS_dependencies::Any
 
@@ -363,6 +364,7 @@ mutable struct ℳ
     # t_past_equations 
     # t_present_equations 
     dyn_equations::Vector{Expr}
+    ss_equations::Vector{Expr}
     # dyn_equations_future::Vector{Expr}
     original_equations::Vector{Expr}
 

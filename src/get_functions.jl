@@ -3007,3 +3007,108 @@ function get_loglikelihood(𝓂::ℳ,
 
     return loglikelihood
 end
+
+
+
+"""
+$(SIGNATURES)
+Calculate the residuals of the non-stochastic steady state equations of the model for a given set of values.
+
+# Arguments
+- $MODEL
+- `values`: A Vector, Dict, or KeyedArray containing the values of the variables and calibrated parameters in the steady state equations. 
+
+# Returns
+- A KeyedArray containing the absolute values of the residuals of the non-stochastic steady state equations.
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    k[ss] / q[ss] = 2.5 | α
+    β = 0.95
+end
+
+steady_state = SS(RBC, derivatives = false)
+
+get_non_stochastic_steady_state_residuals(RBC, steady_state)
+# output
+1-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Equation ∈ 5-element Vector{Symbol}
+And data, 5-element Vector{Float64}:
+ (:Equation₁)             0.0
+ (:Equation₂)             0.0
+ (:Equation₃)             0.0
+ (:Equation₄)             0.0
+ (:CalibrationEquation₁)  0.0
+```
+
+get_non_stochastic_steady_state_residuals(RBC, [1.1641597, 3.0635781, 1.2254312, 0.0, 0.18157895])
+# output
+1-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Equation ∈ 5-element Vector{Symbol}
+And data, 5-element Vector{Float64}:
+ (:Equation₁)             2.7360991250446887e-10
+ (:Equation₂)             6.199999980083248e-8
+ (:Equation₃)             2.7897102183871425e-8
+ (:Equation₄)             0.0
+ (:CalibrationEquation₁)  8.160392850342646e-8
+```
+"""
+function get_non_stochastic_steady_state_residuals(𝓂::ℳ, values::Union{Vector{Float64}, Dict{Symbol, Float64}, KeyedArray{Float64, 1}})
+    SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, false, 𝓂.solver_parameters)
+
+    aux_and_vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_aux_equations)), union(𝓂.parameters_in_equations, 𝓂.➕_vars))))
+
+    axis1 = vcat(aux_and_vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_equations)), union(𝓂.parameters_in_equations))))
+
+    unknowns = vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+
+    combined_values = Dict(unknowns .=> SS_and_pars[indexin(unknowns, axis1)])
+
+    if isa(values, Vector)
+        @assert length(values) == length(unknowns) "Invalid input. Expected a vector of length $(length(unknowns))."
+        for (i, value) in enumerate(values)
+            combined_values[unknowns[i]] = value
+        end
+    elseif isa(values, Dict)
+        for (key, value) in values
+            combined_values[key] = value
+        end
+    elseif isa(values, KeyedArray)
+        for (key, value) in Dict(axiskeys(values, 1) .=> collect(values))
+            combined_values[key] = value
+        end
+    else
+        error("Invalid input type. Expected Vector, Dict, or KeyedArray.")
+    end
+    
+    vals = [combined_values[i] for i in unknowns]
+
+    axis1 = vcat([Symbol("Equation" * sub(string(i))) for i in 1:length(vars_in_ss_equations)], [Symbol("CalibrationEquation" * sub(string(i))) for i in 1:length(𝓂.calibration_equations_parameters)])
+
+    KeyedArray(abs.(𝓂.SS_check_func(𝓂.parameter_values, vals)), Equation = axis1)
+end
+
+"""
+See [`get_non_stochastic_steady_state_residuals`](@ref)
+"""
+get_residuals = get_non_stochastic_steady_state_residuals
+
+"""
+See [`get_non_stochastic_steady_state_residuals`](@ref)
+"""
+check_residuals = get_non_stochastic_steady_state_residuals

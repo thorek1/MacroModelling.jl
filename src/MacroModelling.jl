@@ -106,6 +106,7 @@ export get_irfs, get_irf, get_IRF, simulate, get_simulation, get_simulations
 export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution, get_second_order_solution, get_third_order_solution
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS, ss, sss
+export get_non_stochastic_steady_state_residuals, get_residuals, check_residuals
 export get_moments, get_statistics, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_stdev, get_cov, var, std, stdev, cov, get_mean #, mean
 export get_autocorrelation, get_correlation, get_variance_decomposition, get_corr, get_autocorr, get_var_decomp, corr, autocorr
 export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
@@ -3050,7 +3051,38 @@ function write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relev
     push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
 end
 
+
+function write_ss_check_function!(𝓂::ℳ)
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
+
+    unknowns = union(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+
+    ss_equations = vcat(𝓂.ss_equations,𝓂.calibration_equations)
+
+    pars = []
+    for (i, p) in enumerate(𝓂.parameters)
+        push!(pars, :($p = parameters[$i]))
+    end
+
+    unknwns = []
+    for (i, u) in enumerate(union(vars_in_ss_equations, 𝓂.calibration_equations_parameters))
+        push!(unknwns, :($u = unknowns[$i]))
+    end
+
+    solve_exp = :(function solve_SS(parameters::Vector{Real}, unknowns::Vector{Real})
+        $(pars...)
+        $(𝓂.calibration_equations_no_var...)
+        $(unknwns...)
+        return [$(ss_equations...)]
+    end)
+
+    𝓂.SS_check_func = @RuntimeGeneratedFunction(solve_exp)
+end
+
+
 function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false)
+    write_ss_check_function!(𝓂)
+
     unknowns = union(Symbolics.vars_in_ss_equations,Symbolics.calibration_equations_parameters)
 
     @assert length(unknowns) <= length(Symbolics.ss_equations) + length(Symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
