@@ -33,9 +33,9 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
     NSSS = get_SS(m, derivatives = false)
 
-    @test maximum(check_residuals(m, NSSS)) < 1e-12
-    @test maximum(check_residuals(m, collect(NSSS))) < 1e-12
-    @test maximum(check_residuals(m, Dict(axiskeys(NSSS, 1) .=> collect(NSSS)))) < 1e-12
+    @test maximum(collect(check_residuals(m, NSSS))) < 1e-12
+    @test maximum(collect(check_residuals(m, collect(NSSS)))) < 1e-12
+    @test maximum(collect(check_residuals(m, Dict(axiskeys(NSSS, 1) .=> collect(NSSS))))) < 1e-12
 
 
     if algorithm ∈ [:pruned_second_order,:second_order]
