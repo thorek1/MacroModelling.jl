@@ -34,9 +34,13 @@ if smple == "extended"
     smpl = "1966Q1-2020Q1"
     sample_idx = 75:291
     dat = CSV.read("test/data/usmodel_extended.csv", DataFrame)
-elseif smple == "original"
+elseif smple == "short"
     smpl = "1966Q1-2004Q4"
     sample_idx = 75:230
+    dat = CSV.read("test/data/usmodel.csv", DataFrame)
+elseif smple == "long"
+    smpl = "1947Q2-2004Q4"
+    sample_idx = 1:230
     dat = CSV.read("test/data/usmodel.csv", DataFrame)
 elseif smple == "full"
     smpl = "1966Q1-2023Q4"
@@ -74,10 +78,10 @@ function callback(rng, model, sampler, sample, state, i; kwargs...)
 end
 
 if mdl == "linear"
-    include("../models/SW07.jl")
+    include("../models/Smets_Wouters_2007_linear.jl")
+    Smets_Wouters_2007 = Smets_Wouters_2007_linear
 elseif mdl == "nonlinear"
-    include("../models/SW07_nonlinear.jl")
-    SW07 = SW07_nonlinear
+    include("../models/Smets_Wouters_2007.jl")
 end
 
 
@@ -91,114 +95,49 @@ observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs]
 # subset observables in data
 data = data(observables, sample_idx)
 
-# setdiff(SW07.parameters, [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa])
-
-constepinf    =   0.817982220538172
-constebeta    =   0.160654114713215
-ctrend    =   0.432026374810516
-csigma    =   1.39519289795144
-
-constepinf=(1.005-1)*100
-constebeta = 100 / .9995 - 100
-ctrend=(1.004-1)*100
-csigma=1.5
-
-((1+constepinf/100)/(1/(1+constebeta/100)*(1+ctrend/100)^(-csigma))-1)*100
-
-SS(SW07,parameters = 
-[:z_ea      => 0.481064235660120,   #  0.451788281662122,
-:z_eb       => 0.265569468549687,   #  0.242460701013770,
-:z_eg       => 0.530009229302678,   #  0.520010319208288,
-:z_eqs      => 0.510080548197391,   #  0.450106906080831,
-:z_em       => 0.242805212766187,   #  0.239839325484002,
-:z_epinf    => 0.140624210271175,   #  0.141123850778673,
-:z_ew       => 0.243464119623125,   #  0.244391601233500,
-:crhoa      => 0.948341692103317,   #  0.958774095336246,
-:crhob      => 0.136678014645334,   #  0.182439345125560,
-:crhog      => 0.980979837626711,   #  0.976161415046499,
-:crhoqs     => 0.593494947782819,   #  0.709569323873602,
-:crhoms     => 0.213556825226145,   #  0.127131476313068,
-:crhopinf   => 0.887258941179433,   #  0.903807340558011,
-:crhow      => 0.973435983798524,   #  0.971853774024447,
-:cmap       => 0.717532013781080,   #  0.744871846683131,
-:cmaw       => 0.887794017434772,   #  0.888145926618249,
-:csadjcost  => 5.99952751571366,    #  5.48819700906062,
-:csigma     => 1.41240119951583,    #  1.39519289795144,
-:chabb      => 0.738103692985740,   #  0.712400635178752,
-:cprobw     => 0.724456773135722,   #  0.737541323772002,
-:csigl      => 1.97751546784892,    #  1.91988384168640,
-:cprobp     => 0.634599795663496,   #  0.656266260297550,
-:cindw      => 0.693515193327969,   #  0.591998309497386,
-:cindp      => 0.283791140186624,   #  0.228354019115349,
-:czcap      => 0.549614982337085,   #  0.547213129238992,
-:cfc        => 1.61907258779412,    #  1.61497958797633,
-:crpi       => 2.12854466316362,    #  2.02946740344113,
-:crr        => 0.818269209849510,   #  0.815324872021385,
-:cry        => 0.106658324932051,  #  0.0846869053285818,
-:crdy       => 0.202124863199370,   #  0.222925708063948,
-:constepinf => 0.889384095950681,   #  0.817982220538172,
-:constebeta => 0.189583057183080,   #  0.160654114713215,
-:constelab  => -0.881753480006142,  #  -0.103065166985808,
-:ctrend     => 0.414994474715527,   #  0.432026374810516,
-:cgy        => 0.470205518654597,   #  0.526121219470843,
-:calfa      => 0.195905571708394,   #  0.192800456418155,
-
-# already defined above
-# :crhoms => 0.0, 
-# :crhopinf   => 0.0, 
-# :crhow  => 0.0, 
-# :cmap   => 0.0, 
-# :cmaw => 0.0
-])
-
-
-# SS(SW07, parameter_derivatives = :constelab)(observables,:)
-
-# SW07.SS_solve_func
-
-kalman_prob = get_loglikelihood(SW07, data(observables), SW07.parameter_values)
+kalman_prob = get_loglikelihood(Smets_Wouters_2007, data, Smets_Wouters_2007.parameter_values)
 
 # Handling distributions with varying parameters using arraydist
 dists = [
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true), # z_ea
-InverseGamma(0.1, 2.0, 0.025,5.0, μσ = true), # z_eb
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true), # z_eg
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true), # z_eqs
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true), # z_em
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true), # z_epinf
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true), # z_ew
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true), # crhoa
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true), # crhob
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true), # crhog
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true), # crhoqs
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true), # crhoms
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true), # crhopinf
-Beta(0.5, 0.2, 0.001,0.9999, μσ = true), # crhow
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true), # cmap
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true), # cmaw
-Normal(4.0, 1.5,   2.0, 15.0), # csadjcost
-Normal(1.50,0.375, 0.25, 3.0), # csigma
-Beta(0.7, 0.1, 0.001, 0.99, μσ = true), # chabb
-Beta(0.5, 0.1, 0.3, 0.95, μσ = true), # cprobw
-Normal(2.0, 0.75, 0.25, 10.0), # csigl
-Beta(0.5, 0.10, 0.5, 0.95, μσ = true), # cprobp
-Beta(0.5, 0.15, 0.01, 0.99, μσ = true), # cindw
-Beta(0.5, 0.15, 0.01, 0.99, μσ = true), # cindp
-Beta(0.5, 0.15, 0.01, 0.99999, μσ = true), # czcap
-Normal(1.25, 0.125, 1.0, 3.0), # cfc
-Normal(1.5, 0.25, 1.0, 3.0), # crpi
-Beta(0.75, 0.10, 0.5, 0.975, μσ = true), # crr
-Normal(0.125, 0.05, 0.001, 0.5), # cry
-Normal(0.125, 0.05, 0.001, 0.5), # crdy
-Gamma(0.625, 0.1, 0.1, 2.0, μσ = true), # constepinf
-Gamma(0.25, 0.1, 0.01, 2.0, μσ = true), # constebeta
-Normal(0.0, 2.0, -10.0, 10.0), # constelab
-Normal(0.4, 0.10, 0.1, 0.8), # ctrend
-Normal(0.5, 0.25, 0.01, 2.0), # cgy
-Normal(0.3, 0.05, 0.01, 1.0), # calfa
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_ea
+InverseGamma(0.1, 2.0, 0.025,5.0, μσ = true),   # z_eb
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_eg
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_eqs
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_em
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_epinf
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_ew
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoa
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhob
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhog
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoqs
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoms
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhopinf
+Beta(0.5, 0.2, 0.001,0.9999, μσ = true),        # crhow
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # cmap
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # cmaw
+Normal(4.0, 1.5,   2.0, 15.0),                  # csadjcost
+Normal(1.50,0.375, 0.25, 3.0),                  # csigma
+Beta(0.7, 0.1, 0.001, 0.99, μσ = true),         # chabb
+Beta(0.5, 0.1, 0.3, 0.95, μσ = true),           # cprobw
+Normal(2.0, 0.75, 0.25, 10.0),                  # csigl
+Beta(0.5, 0.10, 0.5, 0.95, μσ = true),          # cprobp
+Beta(0.5, 0.15, 0.01, 0.99, μσ = true),         # cindw
+Beta(0.5, 0.15, 0.01, 0.99, μσ = true),         # cindp
+Beta(0.5, 0.15, 0.01, 0.99999, μσ = true),      # czcap
+Normal(1.25, 0.125, 1.0, 3.0),                  # cfc
+Normal(1.5, 0.25, 1.0, 3.0),                    # crpi
+Beta(0.75, 0.10, 0.5, 0.975, μσ = true),        # crr
+Normal(0.125, 0.05, 0.001, 0.5),                # cry
+Normal(0.125, 0.05, 0.001, 0.5),                # crdy
+Gamma(0.625, 0.1, 0.1, 2.0, μσ = true),         # constepinf
+Gamma(0.25, 0.1, 0.01, 2.0, μσ = true),         # constebeta
+Normal(0.0, 2.0, -10.0, 10.0),                  # constelab
+Normal(0.4, 0.10, 0.1, 0.8),                    # ctrend
+Normal(0.5, 0.25, 0.01, 2.0),                   # cgy
+Normal(0.3, 0.05, 0.01, 1.0),                   # calfa
 ]
 
-Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_parameters)
+Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters)
     all_params ~ Turing.arraydist(dists)
 
     z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params
@@ -206,7 +145,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
     ctou, clandaw, cg, curvp, curvw = fixed_parameters
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        parameters_combined = [ctou,clandaw,cg,curvp,curvw,calfa,csigma,cfc,cgy,csadjcost,chabb,cprobw,csigl,cprobp,cindw,cindp,czcap,crpi,crr,cry,crdy,crhoa,crhob,crhog,crhoqs,crhoms,crhopinf,crhow,cmap,cmaw,constelab,z_ea,z_eb,z_eg,z_eqs,z_em,z_epinf,z_ew,ctrend,constepinf,constebeta]
+        parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
 
         kalman_prob = get_loglikelihood(m, data(observables), parameters_combined)
 
@@ -214,9 +153,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables,fixed_pa
     end
 end
 
-# SW07.parameter_values[indexin([:crhoms, :crhopinf, :crhow, :cmap, :cmaw],SW07.parameters)] .= 0.02
-
-fixed_parameters = SW07.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw],SW07.parameters)]
+fixed_parameters = Smets_Wouters_2007.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw],Smets_Wouters_2007.parameters)]
 
 
 dir_name = "sw07_$(mdl)_$(smpler)_$(smpl)_samples_$(chns)_chains"
@@ -227,19 +164,10 @@ if !isdir(dir_name) mkdir(dir_name) end
 
 println("Current working directory: ", pwd())
 
-SW07_loglikelihood = SW07_loglikelihood_function(data, SW07, observables, fixed_parameters)
+SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters)
 
 
-inits = [Dict(get_parameters(SW07_nonlinear, values = true))[string(i)] for i in [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]]
-
-samps = Turing.sample(SW07_loglikelihood, PG(100), 500, progress = true, initial_params = inits)
-
-inits = mean(samps).nt.mean
-Turing.sample(SW07_loglikelihood, HMC(0.01, 2, adtype = Turing.AutoForwardDiff(chunksize = 4)), 10, progress = true, initial_params = inits)
-Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoForwardDiff(chunksize = 4)), 10, progress = true, initial_params = inits)
-@profview Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), 1, progress = true, initial_params = inits)
-@profview Turing.sample(SW07_loglikelihood, HMC(0.01, 2, adtype = Turing.AutoZygote()), 1, progress = true, initial_params = inits)
-
+# inits = [Dict(get_parameters(Smets_Wouters_2007, values = true))[string(i)] for i in [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]]
 
 if smpler == "is"
     n_samples = 1000
@@ -250,8 +178,7 @@ elseif smpler == "pg"
     
     samps = Turing.sample(SW07_loglikelihood, PG(100), n_samples, progress = true, callback = callback)#, initial_params = sol)
 elseif smpler == "nuts"    
-    samps = Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), 10, progress = true, initial_params = inits)#, initial_params = sol)
-    samps = Turing.sample(SW07_loglikelihood, NUTS(), 10, progress = true, callback = callback)
+    samps = Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, callback = callback)#, initial_params = inits)
 elseif smpler == "pigeons"
     # generate a Pigeons log potential
     sw07_lp = Pigeons.TuringLogPotential(SW07_loglikelihood)
