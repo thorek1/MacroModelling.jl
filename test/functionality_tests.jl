@@ -30,6 +30,14 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     nsss = get_non_stochastic_steady_state(m)
     nsss = get_SS(m)
 
+
+    NSSS = get_SS(m, derivatives = false)
+
+    @test maximum(check_residuals(m, NSSS)) < 1e-12
+    @test maximum(check_residuals(m, collect(NSSS))) < 1e-12
+    @test maximum(check_residuals(m, Dict(axiskeys(NSSS, 1) .=> collect(NSSS)))) < 1e-12
+
+
     if algorithm ∈ [:pruned_second_order,:second_order]
         sols_nv = get_second_order_solution(m)
     elseif algorithm ∈ [:pruned_third_order,:third_order]
