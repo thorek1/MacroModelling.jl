@@ -18,7 +18,7 @@ Random.seed!(1)
 println("Threads used: ", Threads.nthreads())
 
 smpler = "nuts" #
-smple = "original" #
+smple = "long" #
 mdl = "linear" # 
 chns = 1 # 
 scns = 1000
@@ -178,7 +178,7 @@ elseif smpler == "pg"
     
     samps = Turing.sample(SW07_loglikelihood, PG(100), n_samples, progress = true, callback = callback)#, initial_params = sol)
 elseif smpler == "nuts"    
-    samps = Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, callback = callback)#, initial_params = inits)
+    samps = Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), scns, progress = true, callback = callback)#, initial_params = inits)
 elseif smpler == "pigeons"
     # generate a Pigeons log potential
     sw07_lp = Pigeons.TuringLogPotential(SW07_loglikelihood)
