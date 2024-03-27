@@ -1163,7 +1163,7 @@ macro parameters(𝓂,ex...)
                 occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i,string(x)) ?
                     x :
                     begin
-                        diffed = setdiff([x],ss_tmp)
+                        diffed = intersect(setdiff([x], ss_tmp), get_symbols(cal_eq))
                         if !isempty(diffed)
                             push!(par_tmp,diffed[1])
                         end
@@ -1379,16 +1379,12 @@ macro parameters(𝓂,ex...)
         calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         
-        println(calib_parameters)
-        println(calib_eq_parameters)
-        println(calib_parameters_no_var)
-
         @assert length(setdiff(setdiff(setdiff(union(reduce(union, par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)...])
 
         for (k,v) in $bounds
             mod.$𝓂.bounds[k] = haskey(mod.$𝓂.bounds, k) ? (max(mod.$𝓂.bounds[k][1], v[1]), min(mod.$𝓂.bounds[k][2], v[2])) : (v[1], v[2])
         end
-             
+        
         invalid_bounds = Symbol[]
 
         for (k,v) in mod.$𝓂.bounds
