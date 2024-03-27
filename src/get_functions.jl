@@ -3096,10 +3096,16 @@ function get_non_stochastic_steady_state_residuals(
         end
     elseif isa(values, Dict)
         for (key, value) in values
+            if key isa String
+                key = replace_indices(key)
+            end
             combined_values[key] = value
         end
     elseif isa(values, KeyedArray)
         for (key, value) in Dict(axiskeys(values, 1) .=> collect(values))
+            if key isa String
+                key = replace_indices(key)
+            end
             combined_values[key] = value
         end
     else
