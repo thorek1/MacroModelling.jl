@@ -16,7 +16,7 @@ if !test_higher_order
     Guerrieri_Iacoviello_2017 = nothing
 
 
-    include("../models/SW07_nonlinear.jl")
+    include("models/SW07_nonlinear.jl")
     SSvals = get_SS(SW07_nonlinear)
 
     @test isapprox(SSvals([:robs, :y, :kflex, :ygap]),[1.62996, 1.36422, 7.55624, 0],rtol = 1e-4)
