@@ -2019,6 +2019,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
             intersect.(Symbolics.ss_list,Symbolics.var_future_list)
         ),
     Symbolics.var_list)
+
     redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(Symbolics.var_list) .> 1))
 
     for i in redundant_idx
@@ -2170,8 +2171,8 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
             return [$(solved_vals...)]
         end)
 
-    push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(sorted_vars)))
-    push!(NSSS_solver_cache_init_tmp,[Inf])
+    push!(NSSS_solver_cache_init_tmp, [haskey(𝓂.guess, v) ? 𝓂.guess[v] : Inf for v in sorted_vars])
+    push!(NSSS_solver_cache_init_tmp, [Inf])
 
     # WARNING: infinite bounds are transformed to 1e12
     lbs = Float64[]
@@ -3083,7 +3084,7 @@ end
 function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false)
     write_ss_check_function!(𝓂)
 
-    unknowns = union(Symbolics.vars_in_ss_equations,Symbolics.calibration_equations_parameters)
+    unknowns = union(Symbolics.vars_in_ss_equations, Symbolics.calibration_equations_parameters)
 
     @assert length(unknowns) <= length(Symbolics.ss_equations) + length(Symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
 
@@ -3095,7 +3096,6 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             Symbolics.par_list),
                     union.(Symbolics.ss_calib_list,
                             Symbolics.par_calib_list))
-
 
     for i in 1:length(unknowns)
         for k in 1:length(unknowns)
@@ -3274,8 +3274,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
         n -= 1
     end
 
-    push!(NSSS_solver_cache_init_tmp,fill(Inf,length(𝓂.parameters)))
-    push!(𝓂.NSSS_solver_cache,NSSS_solver_cache_init_tmp)
+    push!(NSSS_solver_cache_init_tmp, fill(Inf, length(𝓂.parameters)))
+    push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_init_tmp)
 
     unknwns = Symbol.(collect(unknowns))
 
@@ -3907,48 +3907,26 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     # if cold_start isa Bool
     if cold_start
-        for p in parameters
-            sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(p.starting_value, length(guess))))
+        sol_minimum = 1.0
+        
+        if any(guess .< 1e12)
+            for p in parameters
+                sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : p.starting_value for g in guess]))
 
-            sol_new_tmp, info = SS_optimizer(
-                ss_solve_blocks_incl_params,
-                vcat(sol_values_init, closest_parameters_and_solved_vars),
-                lbs,
-                ubs,
-                p
-            )
-
-            sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
-
-            sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
-
-            sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
-
-            total_iters += info[1]
-
-            if sol_minimum < tol 
-                if verbose
-                    println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
-                end
-                
-                break
-            end
-
-            if sol_minimum > tol
-                previous_sol_init = Float64.(max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_values_init)))
-                
-                sol_new, info = SS_optimizer(
-                    x->ss_solve_blocks(parameters_and_solved_vars, x),
-                    previous_sol_init,
-                    lbs[1:length(guess)],
-                    ubs[1:length(guess)],
+                sol_new_tmp, info = SS_optimizer(
+                    ss_solve_blocks_incl_params,
+                    vcat(sol_values_init, closest_parameters_and_solved_vars),
+                    lbs,
+                    ubs,
                     p
-                    )# catch e end
+                )
+
+                sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
 
                 sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
 
                 sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
-        
+
                 total_iters += info[1]
 
                 if sol_minimum < tol 
@@ -3957,6 +3935,89 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     end
                     
                     break
+                end
+
+                if sol_minimum > tol
+                    previous_sol_init = Float64.(max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_values_init)))
+                    
+                    sol_new, info = SS_optimizer(
+                        x->ss_solve_blocks(parameters_and_solved_vars, x),
+                        previous_sol_init,
+                        lbs[1:length(guess)],
+                        ubs[1:length(guess)],
+                        p
+                        )# catch e end
+
+                    sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
+
+                    sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
+            
+                    total_iters += info[1]
+
+                    if sol_minimum < tol 
+                        if verbose
+                            println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+                        end
+                        
+                        break
+                    end
+                end
+            end
+        end
+
+
+        if sol_minimum > tol
+            for p in parameters
+                sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(p.starting_value, length(guess))))
+
+                sol_new_tmp, info = SS_optimizer(
+                    ss_solve_blocks_incl_params,
+                    vcat(sol_values_init, closest_parameters_and_solved_vars),
+                    lbs,
+                    ubs,
+                    p
+                )
+
+                sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
+
+                sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
+
+                sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
+
+                total_iters += info[1]
+
+                if sol_minimum < tol 
+                    if verbose
+                        println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+                    end
+                    
+                    break
+                end
+
+                if sol_minimum > tol
+                    previous_sol_init = Float64.(max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_values_init)))
+                    
+                    sol_new, info = SS_optimizer(
+                        x->ss_solve_blocks(parameters_and_solved_vars, x),
+                        previous_sol_init,
+                        lbs[1:length(guess)],
+                        ubs[1:length(guess)],
+                        p
+                        )# catch e end
+
+                    sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
+
+                    sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
+            
+                    total_iters += info[1]
+
+                    if sol_minimum < tol 
+                        if verbose
+                            println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+                        end
+                        
+                        break
+                    end
                 end
             end
         end

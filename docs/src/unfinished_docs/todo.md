@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] ss transition by entering new parameters at given periods
+- [ ] NaNMath pow does not work (is not substituted)
 - [ ] provide option for external SS guess
 - [ ] estimation: run auto-tune before and use solver treating parameters as given
 - [ ] check whether its possible to run parameters block without rerunning model block
