@@ -56,3 +56,6 @@ estimation__*
 results
 
 octave*
+*.jls
+samples*
+*samples.csv
