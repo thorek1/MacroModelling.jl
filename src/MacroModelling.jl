@@ -3908,7 +3908,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     # if cold_start isa Bool
     if cold_start
         sol_minimum = 1.0
-        
+
         if any(guess .< 1e12)
             for p in parameters
                 sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : p.starting_value for g in guess]))
@@ -3931,7 +3931,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
                 if sol_minimum < tol 
                     if verbose
-                        println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+                        println("Block: ",n_block," - Solved (homotopy version) using ",string(SS_optimizer),", provided guess, and starting point: $(p.starting_value); maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
                     end
                     
                     break
@@ -3956,7 +3956,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
                     if sol_minimum < tol 
                         if verbose
-                            println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+                            println("Block: ",n_block," - Solved using ",string(SS_optimizer),", provided guess, and starting point: $(p.starting_value); maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
                         end
                         
                         break
@@ -3988,7 +3988,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
                 if sol_minimum < tol 
                     if verbose
-                        println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+                        println("Block: ",n_block," - Solved (homotopy version) using ",string(SS_optimizer),", and starting point: $(p.starting_value); maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
                     end
                     
                     break
@@ -4013,7 +4013,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
                     if sol_minimum < tol 
                         if verbose
-                            println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+                            println("Block: ",n_block," - Solved using ",string(SS_optimizer),", and starting point: $(p.starting_value); maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
                         end
                         
                         break
