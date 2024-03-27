@@ -3012,11 +3012,14 @@ end
 
 """
 $(SIGNATURES)
-Calculate the residuals of the non-stochastic steady state equations of the model for a given set of values.
+Calculate the residuals of the non-stochastic steady state equations of the model for a given set of values. Values not provided, will be filled with the non-stochastic steady state values corresponding to the current parameters.
 
 # Arguments
 - $MODEL
-- `values`: A Vector, Dict, or KeyedArray containing the values of the variables and calibrated parameters in the steady state equations. 
+- `values` [Type: `Union{Vector{Float64}, Dict{Union{Symbol,String}, Float64}, KeyedArray{Float64, 1}}`]: A Vector, Dict, or KeyedArray containing the values of the variables and calibrated parameters in the non-stochastic steady state equations (including calibration equations). 
+
+# Keyword Arguments
+- $PARAMETERS
 
 # Returns
 - A KeyedArray containing the absolute values of the residuals of the non-stochastic steady state equations.
@@ -3066,7 +3069,14 @@ And data, 5-element Vector{Float64}:
  (:CalibrationEquation₁)  8.160392850342646e-8
 ```
 """
-function get_non_stochastic_steady_state_residuals(𝓂::ℳ, values::Union{Vector{Float64}, Dict{Symbol, Float64}, KeyedArray{Float64, 1}})
+function get_non_stochastic_steady_state_residuals(
+                𝓂::ℳ, 
+                values::Union{Vector{Float64}, Dict{Union{Symbol,String}, Float64}, KeyedArray{Float64, 1}}; 
+                parameters::ParameterType = nothing
+    )
+    
+    solve!(𝓂, parameters = parameters)
+
     SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, false, 𝓂.solver_parameters)
 
     aux_and_vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_aux_equations)), union(𝓂.parameters_in_equations, 𝓂.➕_vars))))
