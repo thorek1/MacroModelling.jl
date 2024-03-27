@@ -235,6 +235,7 @@ end
 mutable struct solver_parameters
     xtol::Float64 
     ftol::Float64 
+    rel_xtol::Float64 
     iterations::Int
     ϕ̄::Float64    
     ϕ̂::Float64    
@@ -271,7 +272,7 @@ mutable struct ℳ
     parameter_values::Vector{Float64}
 
     guess::Dict{Symbol, Float64}
-    
+
     # ss
     # dynamic_variables::Vector{Symbol}
     # dyn_ss_past::Vector{Symbol}

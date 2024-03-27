@@ -4,12 +4,10 @@
 
 - [ ] ss transition by entering new parameters at given periods
 - [ ] NaNMath pow does not work (is not substituted)
-- [ ] provide option for external SS guess
 - [ ] estimation: run auto-tune before and use solver treating parameters as given
-- [ ] check whether its possible to run parameters block without rerunning model block
+- [ ] check whether its possible to run parameters macro/block without rerunning model block
 - [ ] eliminate possible log ^ terms in parameters block equations
 - [ ] log in parameters block is recognized as variable
-- [ ] add termination condition if relative change in ss solver is smaller than tol (relevant when values get very large)
 - [ ] add technical details about SS solver, obc solver, and other algorithms
 - [ ] throw error when equations appear more than once
 - [ ] plot multiple solutions or models - multioptions in one graph
@@ -77,6 +75,8 @@
 - [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
+- [x] add termination condition if relative change in ss solver is smaller than tol (relevant when values get very large)
+- [x] provide option for external SS guess; provided in parameters macro
 - [x] make it possible to run multiple ss solver parameter combination including starting points when solving a model
 - [x] automatically put the combi first which solves it fastest the first time
 - [x] write auto-tune in case he cant find SS (add it to the warning when he cant find the SS)

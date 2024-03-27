@@ -1724,6 +1724,7 @@ function levenberg_marquardt(f::Function,
 
     xtol = parameters.xtol
     ftol = parameters.ftol
+    rel_xtol = parameters.rel_xtol
     iterations = parameters.iterations
     ϕ̄ = parameters.ϕ̄
     ϕ̂ = parameters.ϕ̂
@@ -1871,10 +1872,11 @@ function levenberg_marquardt(f::Function,
         end
 
         largest_step = maximum(abs, previous_guess - current_guess)
+        largest_relative_step = maximum(abs, (previous_guess - current_guess) ./ previous_guess)
         largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level)))
         # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
 
-        if largest_step <= xtol || largest_residual <= ftol
+        if largest_step <= xtol || largest_residual <= ftol || largest_relative_step <= rel_xtol
             return undo_transform(current_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level)))
             # return undo_transform(current_guess,transformation_level,shift), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level,shift)))
         end
@@ -3788,7 +3790,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 
     pars[1:2] = sort(pars[1:2], rev = true)
 
-    par_inputs = solver_parameters(eps(), eps(), 250, pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(eps(), eps(), eps(), 250, pars..., 1, 0.0, 2)
 
     runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs]) catch end
 
@@ -3818,7 +3820,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 60, maxiter::Int =
 
     pars = Optim.minimizer(sol)
 
-    par_inputs = solver_parameters(eps(), eps(), 250, pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(eps(), eps(), eps(), 250, pars..., 1, 0.0, 2)
 
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs])
 
