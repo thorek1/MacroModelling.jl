@@ -3108,8 +3108,6 @@ function get_non_stochastic_steady_state_residuals(
             end
             combined_values[key] = value
         end
-    else
-        error("Invalid input type. Expected Vector, Dict, or KeyedArray.")
     end
     
     vals = [combined_values[i] for i in unknowns]

@@ -934,7 +934,7 @@ end
 
 """
 $(SIGNATURES)
-Adds parameter values and calibration equations to the previously defined model.
+Adds parameter values and calibration equations to the previously defined model. Allows to provide an initial guess for the non-stochastic steady state (NSSS). This is a way to calculate the NSSS separately and input the result.
 
 # Arguments
 - `𝓂`: name of the object previously created containing the model information.
@@ -947,6 +947,7 @@ Parameters can be defined in either of the following ways:
 - expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneaously with the non-stochastic steady state using the equation defined with it.
 
 # Optional arguments to be placed between `𝓂` and `ex`
+- `guess` [Type: `Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}`]: Guess for the non-stochastic steady state. If a vector is provided, it must be in the same order as the variables (and calibrated parameters) in the model. If a dictionary is provided, the keys must be the variable (and calibrated parameters) names and the values the guesses. If a `KeyedArray` is provided, the keys must be the variable (and calibrated parameters) names and the values the guesses. Missing values are filled with standard starting values.
 - `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
 - `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
@@ -1010,6 +1011,7 @@ macro parameters(𝓂,ex...)
     symbolic = false
     precompile = false
     perturbation_order = 1
+    guess = Float64[]
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -1025,6 +1027,8 @@ macro parameters(𝓂,ex...)
                         precompile = x.args[2] :
                     x.args[1] == :perturbation_order && x.args[2] isa Int ?
                         perturbation_order = x.args[2] :
+                    x.args[1] == :guess && x.args[2] isa Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}} ?
+                        guess = x.args[2] :
                     begin
                         @warn "Invalid options." 
                         x
@@ -1402,6 +1406,33 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.calibration_equations_no_var = calib_equations_no_var_list
         mod.$𝓂.calibration_equations_parameters = calib_eq_parameters
         # mod.$𝓂.solution.outdated_NSSS = true
+
+
+        
+        vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(mod.$𝓂.ss_equations)), union(mod.$𝓂.parameters_in_equations))))
+
+        unknowns = vcat(vars_in_ss_equations, mod.$𝓂.calibration_equations_parameters)
+
+        if isa(values, Vector)
+            @assert length(values) == length(unknowns) "Invalid input. Expected a vector of length $(length(unknowns))."
+            
+            values_dict = Dict(unknowns .=> values)
+        elseif isa(values, Dict{String, Float64})
+            values_dict = Dict()
+            for (key, value) in values
+                if key isa String
+                    key = replace_indices(key)
+                end
+                values_dict[replace_indices(key)] = value
+            end
+        elseif isa(values, Dict{Symbol, Float64})
+            values_dict = values
+        elseif isa(values, KeyedArray)
+            keys = axiskeys(values, 1)
+            values_dict = Dict(keys isa Vector{String} ? replace_indices.(keys) : keys .=> collect(values))
+        end
+
+        println(values_dict)
 
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed 
