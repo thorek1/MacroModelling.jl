@@ -170,14 +170,19 @@ if test_set == "plots"
     FS2000 = nothing
     GC.gc()
 
-
-    @testset verbose = true "SW07 with calibration equations" begin
-        include("../models/SW07.jl")
-        functionality_test(SW07, plots = plots)
+    @testset verbose = true "Smets and Wouters (2007) linear" begin
+        include("../models/Smets_Wouters_2007_linear.jl")
+        functionality_test(Smets_Wouters_2007_linear, plots = plots)
     end
-    SW07 = nothing
+    Smets_Wouters_2007_linear = nothing
     GC.gc()
 
+    @testset verbose = true "Smets and Wouters (2007) nonlinear" begin
+        include("../models/Smets_Wouters_2007.jl")
+        functionality_test(Smets_Wouters_2007, plots = plots)
+    end
+    Smets_Wouters_2007 = nothing
+    GC.gc()
 
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
@@ -228,11 +233,11 @@ if test_set == "plots"
 
 
 
-    @testset verbose = true "SW03 with calibration equations" begin
-        include("../models/SW03.jl")
-        functionality_test(SW03, plots = plots)
+    @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
+        include("../models/Smets_Wouters_2003.jl")
+        functionality_test(Smets_Wouters_2003, plots = plots)
     end
-    SW03 = nothing
+    Smets_Wouters_2003 = nothing
     GC.gc()
 end
 
@@ -1530,9 +1535,9 @@ if test_set == "basic"
 
     # using MacroModelling: @model, @parameters, get_steady_state, solve!
 
-    @testset verbose = true "Steady state SW03 model" begin 
+    @testset verbose = true "Steady state Smets_Wouters_2003 model" begin 
         
-        @model SW03 begin
+        @model Smets_Wouters_2003 begin
             -q[0] + beta * ((1 - tau) * q[1] + epsilon_b[1] * (r_k[1] * z[1] - psi^-1 * r_k[ss] * (-1 + exp(psi * (-1 + z[1])))) * (C[1] - h * C[0])^(-sigma_c)) = 0
             -q_f[0] + beta * ((1 - tau) * q_f[1] + epsilon_b[1] * (r_k_f[1] * z_f[1] - psi^-1 * r_k_f[ss] * (-1 + exp(psi * (-1 + z_f[1])))) * (C_f[1] - h * C_f[0])^(-sigma_c)) = 0
             -r_k[0] + alpha * epsilon_a[0] * mc[0] * L[0]^(1 - alpha) * (K[-1] * z[0])^(-1 + alpha) = 0
@@ -1590,7 +1595,7 @@ if test_set == "basic"
         end
 
 
-        @parameters SW03 verbose = true begin  
+        @parameters Smets_Wouters_2003 verbose = true begin  
             calibr_pi_obj | 1 = pi_obj[ss]
             calibr_pi | pi[ss] = pi_obj[ss]
             # Phi | Y_s[ss] * .408 = Phi
@@ -1651,10 +1656,10 @@ if test_set == "basic"
         end
 
 
-        # solve!(SW03, verbose = true)
+        # solve!(Smets_Wouters_2003, verbose = true)
 
 
-        @test isapprox(get_steady_state(SW03, verbose = true)(SW03.timings.var),
+        @test isapprox(get_steady_state(Smets_Wouters_2003, verbose = true)(Smets_Wouters_2003.timings.var),
                         [  1.2043777509278788
                         1.2043777484127967
                         0.362
@@ -1712,13 +1717,13 @@ if test_set == "basic"
                         rtol = eps(Float32)
         )
 
-        SW03 = nothing
+        Smets_Wouters_2003 = nothing
     #     # x = 1
 
 
-    # #     SW03 = nothing
+    # #     Smets_Wouters_2003 = nothing
 
-    # #     @model SW03 begin
+    # #     @model Smets_Wouters_2003 begin
     # #         -q[0] + beta * ((1 - tau) * q[1] + epsilon_b[1] * (r_k[1] * z[1] - psi^-1 * r_k[ss] * (-1 + exp(psi * (-1 + z[1])))) * (C[1] - h * C[0])^(-sigma_c)) = 0
     # #         -q_f[0] + beta * ((1 - tau) * q_f[1] + epsilon_b[1] * (r_k_f[1] * z_f[1] - psi^-1 * r_k_f[ss] * (-1 + exp(psi * (-1 + z_f[1])))) * (C_f[1] - h * C_f[0])^(-sigma_c)) = 0
     # #         -r_k[0] + alpha * epsilon_a[0] * mc[0] * L[0]^(1 - alpha) * (K[-1] * z[0])^(-1 + alpha) = 0
@@ -1776,7 +1781,7 @@ if test_set == "basic"
     # #     end
 
 
-    # #     @parameters SW03 begin  
+    # #     @parameters Smets_Wouters_2003 begin  
     # #         calibr_pi_obj | 1 = pi_obj[ss]
     # #         calibr_pi | pi[ss] = pi_obj[ss]
     # #         Phi | (Y_s[ss] + Phi) / Y_s[ss] = 1.408
@@ -1817,11 +1822,11 @@ if test_set == "basic"
     # #     end
 
 
-    # #     solve!(SW03, symbolic_SS = false)
+    # #     solve!(Smets_Wouters_2003, symbolic_SS = false)
 
-    # #     # get_steady_state(SW03)
+    # #     # get_steady_state(Smets_Wouters_2003)
 
-    # #     @test get_steady_state(SW03)[1] ≈ [     1.20465991441435
+    # #     @test get_steady_state(Smets_Wouters_2003)[1] ≈ [     1.20465991441435
     # #     1.204659917151701
     # #     0.3613478048030788
     # #     0.3613478048030788

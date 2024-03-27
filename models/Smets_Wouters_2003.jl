@@ -1,4 +1,4 @@
-@model SW03 begin
+@model Smets_Wouters_2003 begin
     -q[0] + beta * ((1 - tau) * q[1] + epsilon_b[1] * (r_k[1] * z[1] - psi^-1 * r_k[ss] * (-1 + exp(psi * (-1 + z[1])))) * (C[1] - h * C[0])^(-sigma_c))
     
     -q_f[0] + beta * ((1 - tau) * q_f[1] + epsilon_b[1] * (r_k_f[1] * z_f[1] - psi^-1 * r_k_f[ss] * (-1 + exp(psi * (-1 + z_f[1])))) * (C_f[1] - h * C_f[0])^(-sigma_c))
@@ -112,7 +112,7 @@
 
 end
 
-@parameters SW03 begin  
+@parameters Smets_Wouters_2003 begin  
     lambda_p = 0.368
     G_bar    = 0.362
     lambda_w = 0.5

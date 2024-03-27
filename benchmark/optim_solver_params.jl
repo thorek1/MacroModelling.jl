@@ -29,7 +29,7 @@ include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_
 # include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
 include("../models/Backus_Kehoe_Kydland_1992.jl")
 include("../models/Baxter_King_1993.jl")
-include("../models/SW03.jl")
+include("../models/Smets_Wouters_2003.jl")
 include("../models/GNSS_2010.jl")
 include("../models/Ghironi_Melitz_2005.jl")
 include("../models/SGU_2003_debt_premium.jl")
@@ -42,8 +42,8 @@ include("../models/Gali_2015_chapter_3_nonlinear.jl")
 include("../models/Aguiar_Gopinath_2007.jl")
 include("../models/Ascari_Sbordone_2014.jl") # stands out
 include("../models/FS2000.jl")
-include("../models/SW07.jl")
-include("../models/SW07_nonlinear.jl")
+include("../models/Smets_Wouters_2007.jl")
+include("../models/Smets_Wouters_2007_linear.jl")
 # include("../models/RBC_baseline.jl") # no solver block / everything analytical
 include("../models/Guerrieri_Iacoviello_2017.jl") # stands out
 
@@ -281,12 +281,12 @@ ubs = fill(100.0,length(parameters))
 
 
 all_models = [
-    SW07_nonlinear,
+    Smets_Wouters_2003,
     Guerrieri_Iacoviello_2017,
     NAWM_EAUS_2008, 
     GNSS_2010, 
     Ascari_Sbordone_2014, 
-    SW03, 
+    Smets_Wouters_2003, 
     Backus_Kehoe_Kydland_1992, 
     m, 
     Baxter_King_1993, 
@@ -299,7 +299,7 @@ all_models = [
     Gali_2015_chapter_3_nonlinear, 
     Aguiar_Gopinath_2007, 
     FS2000, 
-    SW07
+    Smets_Wouters_2007_linear
 ];
 
 
@@ -541,7 +541,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -572,7 +572,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -601,7 +601,7 @@ all_models = [
     NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -630,7 +630,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -662,7 +662,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -691,7 +691,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    SW03, 
+    Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -720,7 +720,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -752,7 +752,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -782,7 +782,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -813,7 +813,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -845,7 +845,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -880,7 +880,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -915,7 +915,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -955,7 +955,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -998,7 +998,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -1036,7 +1036,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     # Backus_Kehoe_Kydland_1992, 
     # m, 
     Baxter_King_1993, 
@@ -1075,7 +1075,7 @@ all_models = [
     # NAWM_EAUS_2008, 
     # GNSS_2010, 
     # Ascari_Sbordone_2014, 
-    # SW03, 
+    # Smets_Wouters_2003, 
     Backus_Kehoe_Kydland_1992, 
     # m, 
     # Baxter_King_1993, 
@@ -1115,7 +1115,7 @@ pars17 = optimize_parameters(parameters, all_models, lbs, ubs, algo, max_time, m
 # [44, 10000, 83, 36, 40, 10000, 13, 22, 9, 18, 9, 11, 5, 24, 5, 11, 15, 10000, 20]
 
 
-# Guerrieri_Iacoviello_2017, SW03, FS2000
+# Guerrieri_Iacoviello_2017, Smets_Wouters_2003, FS2000
 # [2.2166000934038386, 0.3342989316385292, 1.322105676270657, 2.4423579385973486, 5.28291512449182, 0.2436333363251138, 2.0392909437375537, 2.220446049250313e-16, 0.1179149349062645, 1.7950574466127827, 5.645113651574673e-14, 29.199406403144636, 21.508413489197178, 7.358430465764362, 1.139797041569637, 3.5086499739182466, 2.4965112615295393, 2.268534694762562, 12.120815210691354, 0.884940029673057]
 # [10000, 16, 10000, 10000, 10000, 45, 22, 10000, 21, 35, 26, 10000, 7, 10000, 7, 16, 12, 10, 200]
 
