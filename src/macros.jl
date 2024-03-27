@@ -975,6 +975,21 @@ end
     α = 0.5
     β = 0.95
 end
+
+@model RBC_calibrated begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC_calibrated verbose = true guess = Dict(:k => 3) begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    k[ss] / q[ss] = 2.5 | α
+    β = 0.95
+end
 ```
 
 # Programmatic model writing
@@ -1029,10 +1044,10 @@ macro parameters(𝓂,ex...)
                         precompile = x.args[2] :
                     x.args[1] == :perturbation_order && x.args[2] isa Int ?
                         perturbation_order = x.args[2] :
-                    (x.args[1] == :guess && (isa(eval(x.args[2]), Dict{Symbol, <:Real}) || isa(eval(x.args[2]), Dict{String, <:Real}))) ?
+                    x.args[1] == :guess && (isa(eval(x.args[2]), Dict{Symbol, <:Real}) || isa(eval(x.args[2]), Dict{String, <:Real})) ?
                         guess = x.args[2] :
                     begin
-                        @warn "Invalid options." 
+                        @warn "Invalid options. See docs: `?@parameters` for valid options." 
                         x
                     end :
                 x :
