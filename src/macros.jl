@@ -885,7 +885,7 @@ macro model(𝓂,ex...)
                         x->x,
 
                         [
-# solver_parameters(eps(), eps(), 250, 
+                            # solver_parameters(eps(), eps(), 250, 
                             # 2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.897,
                             # 1, 0.0, 2),
 
@@ -949,7 +949,7 @@ Parameters can be defined in either of the following ways:
 - expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneaously with the non-stochastic steady state using the equation defined with it.
 
 # Optional arguments to be placed between `𝓂` and `ex`
-- `guess` [Type: `Dict{Symbol, Float64}, Dict{String, Float64}}`]: Guess for the non-stochastic steady state. The keys must be the variable (and calibrated parameters) names and the values the guesses. Missing values are filled with standard starting values.
+- `guess` [Type: `Dict{Symbol, <:Real}, Dict{String, <:Real}}`]: Guess for the non-stochastic steady state. The keys must be the variable (and calibrated parameters) names and the values the guesses. Missing values are filled with standard starting values.
 - `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
 - `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
@@ -1029,7 +1029,7 @@ macro parameters(𝓂,ex...)
                         precompile = x.args[2] :
                     x.args[1] == :perturbation_order && x.args[2] isa Int ?
                         perturbation_order = x.args[2] :
-                    x.args[1] == :guess && (typeof(eval(x.args[2])) ∈ [Dict{Symbol, Float64}, Dict{String, Float64}, Dict{Symbol, Int}, Dict{String, Int}]) ?
+                    (x.args[1] == :guess && (isa(eval(x.args[2]), Dict{Symbol, <:Real}) || isa(eval(x.args[2]), Dict{String, <:Real}))) ?
                         guess = x.args[2] :
                     begin
                         @warn "Invalid options." 
@@ -1408,8 +1408,8 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.calibration_equations_no_var = calib_equations_no_var_list
         mod.$𝓂.calibration_equations_parameters = calib_eq_parameters
         # mod.$𝓂.solution.outdated_NSSS = true
-
-        if typeof($guess) ∈ [Dict{String, Float64}, Dict{String, Int}]
+        
+        if isa($guess, Dict{String, <:Real}) 
             guess_dict = Dict{Symbol, Float64}()
             for (key, value) in $guess
                 if key isa String
@@ -1417,7 +1417,7 @@ macro parameters(𝓂,ex...)
                 end
                 guess_dict[replace_indices(key)] = value
             end
-        elseif typeof($guess) ∈ [Dict{Symbol, Float64}, Dict{Symbol, Int}]
+        elseif isa($guess, Dict{Symbol, <:Real})
             guess_dict = $guess
         end
 
