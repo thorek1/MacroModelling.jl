@@ -2,6 +2,14 @@
 
 ## High priority
 
+- [ ] include guess in docs
+- [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
+- [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
+- [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
+- [ ] feedback: sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
+- [ ] recheck function examples and docs (include output description)
+- [ ] Docs: document outputs and associated functions to work with function
+- [ ] write documentation/docstrings using copilot
 - [ ] ss transition by entering new parameters at given periods
 - [ ] NaNMath pow does not work (is not substituted)
 - [ ] estimation: run auto-tune before and use solver treating parameters as given
@@ -19,13 +27,6 @@
 - [ ] use analytical derivatives also for shocks matching optim (and HMC - implicit diff)
 - [ ] info on when what filter is used and chosen options are overridden
 - [ ] check warnings, errors throughout. check suppress not interfering with pigeons
-- [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
-- [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
-- [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
-- [ ] feedback: sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
-- [ ] recheck function examples and docs (include output description)
-- [ ] Docs: document outputs and associated functions to work with function
-- [ ] write documentation/docstrings using copilot
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
 - [ ] cover nested case: min(50,a+b+max(c,10))
 - [ ] add balanced growth path handling
@@ -67,9 +68,9 @@
 - [ ] clean up printouts/reporting
 - [ ] clean up function inputs and harmonise AD and standard commands
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
-- [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
+- [x] Find any SS by optimising over both SS guesses and parameter inputs
 - [x] riccati with analytical derivatives (much faster if sparse) instead of implicit diff; done for ChainRules; ForwardDiff only feasible for smaller problems -> ID is fine there
 - [x] log in parameters block is recognized as variable
 - [x] add termination condition if relative change in ss solver is smaller than tol (relevant when values get very large)
