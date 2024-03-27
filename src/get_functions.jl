@@ -3016,7 +3016,7 @@ Calculate the residuals of the non-stochastic steady state equations of the mode
 
 # Arguments
 - $MODEL
-- `values` [Type: `Union{Vector{Float64}, Dict{Union{Symbol,String}, Float64}, KeyedArray{Float64, 1}}`]: A Vector, Dict, or KeyedArray containing the values of the variables and calibrated parameters in the non-stochastic steady state equations (including calibration equations). 
+- `values` [Type: `Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}`]: A Vector, Dict, or KeyedArray containing the values of the variables and calibrated parameters in the non-stochastic steady state equations (including calibration equations). 
 
 # Keyword Arguments
 - $PARAMETERS
@@ -3071,7 +3071,7 @@ And data, 5-element Vector{Float64}:
 """
 function get_non_stochastic_steady_state_residuals(
                 𝓂::ℳ, 
-                values::Union{Vector{Float64}, Dict{Union{Symbol,String}, Float64}, KeyedArray{Float64, 1}}; 
+                values::Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}; 
                 parameters::ParameterType = nothing
     )
     
