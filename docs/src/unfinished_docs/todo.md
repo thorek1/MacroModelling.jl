@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] include guess in docs
+- [ ] use arraydist in tests and docs
 - [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
 - [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
