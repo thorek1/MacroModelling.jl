@@ -3872,6 +3872,79 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::AbstractFloat = 1e
 end
 
 
+function solve_ss(SS_optimizer::Function,
+                    ss_solve_blocks::Function,
+                    parameters_and_solved_vars::Vector{Float64},
+                    closest_parameters_and_solved_vars::Vector{Float64},
+                    lbs::Vector{Float64},
+                    ubs::Vector{Float64},
+                    tol::AbstractFloat,
+                    total_iters::Int,
+                    n_block::Int,
+                    verbose::Bool,
+                    guess::Vector{Float64},
+                    solver_params::solver_parameters,
+                    extended_problem::Bool,
+                    separate_starting_value::Union{Bool,Float64})
+    # first check whether the provided guess solves the system
+    sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, guess))
+    
+    if sol_minimum < tol
+        if verbose
+            println("Block: $n_block, - Solved using previous solution; maximum residual = ", maximum(abs, ss_solve_blocks(parameters_and_solved_vars, guess)))
+        end
+        return guess, sol_minimum
+    end
+
+    if separate_starting_value isa Float64
+        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(separate_starting_value, length(guess))))
+        sol_values_init[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
+    else
+        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : solver_params.starting_value for g in guess]))
+    end
+
+    if extended_problem
+        function ext_function_to_optimize(guesses)
+            gss = guesses[1:length(guess)]
+    
+            parameters_and_solved_vars_guess = guesses[length(guess)+1:end]
+    
+            res = ss_solve_blocks(parameters_and_solved_vars, gss)
+    
+            return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
+        end
+    else
+        function function_to_optimize(guesses) ss_solve_blocks(parameters_and_solved_vars, guesses) end
+    end
+
+    sol_new_tmp, info = SS_optimizer(   extended_problem ? ext_function_to_optimize : function_to_optimize,
+                                        extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
+                                        extended_problem ? lbs : lbs[1:length(guess)],
+                                        extended_problem ? ubs : ubs[1:length(guess)],
+                                        solver_params   )
+
+    sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
+
+    sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
+
+    sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
+
+    total_iters += info[1]
+    
+    extended_problem_str = extended_problem ? "(extended problem) " : ""
+
+    any_guess_str = any(guess .< 1e12) && separate_starting_value isa Bool ? "provided guess, " : ""
+
+    max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
+
+    if sol_minimum < tol && verbose
+        println("Block: $n_block - Solved $(extended_problem_str)using ",string(SS_optimizer),", $(any_guess_str)and starting point: $(starting_value); maximum residual = $max_resid")
+    end
+
+    return sol_values, sol_minimum
+end
+
+
 function block_solver(parameters_and_solved_vars::Vector{Float64}, 
                         n_block::Int, 
                         ss_solve_blocks::Function, 
@@ -3910,211 +3983,36 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
     end
 
+    sol_minimum = 1.0
+
     if cold_start
-        sol_minimum = 1.0
+        guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
 
-        # if a guess is provided, cmbine it with the starting values and solve
-        if any(guess .< 1e12)
+        for g in guesses
             for p in parameters
-                # try first the system where values and parameters can vary
-                sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : p.starting_value for g in guess]))
-
-                sol_new_tmp, info = SS_optimizer(
-                    ss_solve_blocks_incl_params,
-                    vcat(sol_values_init, closest_parameters_and_solved_vars),
-                    lbs,
-                    ubs,
-                    p
-                )
-
-                sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
-
-                sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
-
-                sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
-
-                total_iters += info[1]
-
-                if sol_minimum < tol 
-                    if verbose
-                        println("Block: ",n_block," - Solved (extended problem) using ",string(SS_optimizer),", provided guess, and starting point: $(p.starting_value); maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
-                    end
-                    
-                    break
-                end
-
-                # next try the system where only values can vary
-                if sol_minimum > tol
-                    previous_sol_init = Float64.(max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_values_init)))
-                    
-                    sol_new, info = SS_optimizer(
-                        x->ss_solve_blocks(parameters_and_solved_vars, x),
-                        previous_sol_init,
-                        lbs[1:length(guess)],
-                        ubs[1:length(guess)],
-                        p
-                        )# catch e end
-
-                    sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
-
-                    sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
-            
-                    total_iters += info[1]
-
-                    if sol_minimum < tol 
-                        if verbose
-                            println("Block: ",n_block," - Solved using ",string(SS_optimizer),", provided guess, and starting point: $(p.starting_value); maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
-                        end
-                        
-                        break
+                for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
+                    if sol_minimum > tol
+                        sol_values, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                            g, 
+                                                            p,
+                                                            ext,
+                                                            false)
                     end
                 end
             end
         end
-
-
-        # next do the same as before but without the guess
-        if sol_minimum > tol
-            for p in parameters
-                sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(p.starting_value, length(guess))))
-
-                sol_new_tmp, info = SS_optimizer(
-                    ss_solve_blocks_incl_params,
-                    vcat(sol_values_init, closest_parameters_and_solved_vars),
-                    lbs,
-                    ubs,
-                    p
-                )
-
-                sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
-
-                sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
-
-                sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
-
-                total_iters += info[1]
-
-                if sol_minimum < tol 
-                    if verbose
-                        println("Block: ",n_block," - Solved (extended problem) using ",string(SS_optimizer),", and starting point: $(p.starting_value); maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
-                    end
-                    
-                    break
-                end
-
-                if sol_minimum > tol
-                    previous_sol_init = Float64.(max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_values_init)))
-                    
-                    sol_new, info = SS_optimizer(
-                        x->ss_solve_blocks(parameters_and_solved_vars, x),
-                        previous_sol_init,
-                        lbs[1:length(guess)],
-                        ubs[1:length(guess)],
-                        p
-                        )# catch e end
-
-                    sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
-
-                    sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
-            
-                    total_iters += info[1]
-
-                    if sol_minimum < tol 
-                        if verbose
-                            println("Block: ",n_block," - Solved using ",string(SS_optimizer),", and starting point: $(p.starting_value); maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
-                        end
-                        
-                        break
-                    end
-                end
-            end
-        end
-
-
     else !cold_start
-        # first check whether the provided guess solves the system
-        sol_values_init = guess
-        
-        sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, sol_values_init))
-        
-        if verbose && sol_minimum < tol
-            println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values_init)))
-        end
-
-        if sol_minimum > tol
-            # next try solving the system with the provided guess and only the variables can vary
-            previous_sol_init = Float64.(max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_values_init)))
-            
-            sol_new, info = SS_optimizer(
-                x->ss_solve_blocks(parameters_and_solved_vars, x),
-                previous_sol_init,
-                lbs[1:length(guess)],
-                ubs[1:length(guess)],
-                parameters[end]
-                )# catch e end
-
-            sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
-
-            sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
-    
-            total_iters += info[1]
-
-            if sol_minimum < tol && verbose
-                println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
-            end
-
-            if sol_minimum > tol
-                # next try solving the system with the provided guess and variables and parameters can vary
-                sol_new_tmp, info = SS_optimizer(
-                    ss_solve_blocks_incl_params,
-                    vcat(previous_sol_init, closest_parameters_and_solved_vars),
-                    lbs,
-                    ubs,
-                    parameters[end]
-                )
-
-                sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
-
-                sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
-
-                sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
-
-                total_iters += info[1]   
-                
-                if sol_minimum < tol 
-                    if verbose
-                        println("Block: ",n_block," - Solved (extended problem) using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+        # next try solving the system with some starting values and variables can vary
+        for p in reverse(unique(parameters)) # take unique because some parameters might appear more than once
+            for s in [false, p.starting_value, 1.206, 0.7688, 0.897, 1.5]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+                for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
+                    if sol_minimum > tol
+                        sol_values, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                            guess, 
+                                                            p,
+                                                            ext,
+                                                            s)
                     end
-                end 
-            end
-
-            if sol_minimum > tol
-                # next try solving the system with some starting values and variables can vary
-                for s in [parameters[end].starting_value, 1.206, 0.7688, 0.897]#, .9, .75, 1.5, -.5, 2, .25]
-                    sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(s, length(guess))))
-                    sol_values_init[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
-
-                    sol_new, info = SS_optimizer(
-                        x->ss_solve_blocks(parameters_and_solved_vars, x),
-                        sol_values_init,
-                        lbs[1:length(guess)],
-                        ubs[1:length(guess)],
-                        parameters[end]
-                        )# catch e end
-
-                    sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
-
-                    sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
-
-                    total_iters += info[1]   
-                    
-                    if sol_minimum < tol 
-                        if verbose
-                            println("Block: ",n_block," - Solved using ",string(SS_optimizer),", and starting point: $s; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
-                        end
-                        
-                        break
-                    end 
                 end
             end
         end
@@ -8034,80 +7932,80 @@ function filter_and_smooth(𝓂::ℳ,
 end
 
 
-if VERSION >= v"1.9"
-    @setup_workload begin
-        # Putting some things in `setup` can reduce the size of the
-        # precompile file and potentially make loading faster.
-        @model FS2000 precompile = true begin
-            dA[0] = exp(gam + z_e_a  *  e_a[x])
-            log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-            - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-            W[0] = l[0] / n[0]
-            - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-            R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-            1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-            c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-            P[0] * c[0] = m[0]
-            m[0] - 1 + d[0] = l[0]
-            e[0] = exp(z_e_a  *  e_a[x])
-            y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-            gy_obs[0] = dA[0] * y[0] / y[-1]
-            gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-            log_gy_obs[0] = log(gy_obs[0])
-            log_gp_obs[0] = log(gp_obs[0])
-        end
+# if VERSION >= v"1.9"
+#     @setup_workload begin
+#         # Putting some things in `setup` can reduce the size of the
+#         # precompile file and potentially make loading faster.
+#         @model FS2000 precompile = true begin
+#             dA[0] = exp(gam + z_e_a  *  e_a[x])
+#             log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#             - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#             W[0] = l[0] / n[0]
+#             - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#             R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#             1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#             c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#             P[0] * c[0] = m[0]
+#             m[0] - 1 + d[0] = l[0]
+#             e[0] = exp(z_e_a  *  e_a[x])
+#             y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#             gy_obs[0] = dA[0] * y[0] / y[-1]
+#             gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#             log_gy_obs[0] = log(gy_obs[0])
+#             log_gp_obs[0] = log(gp_obs[0])
+#         end
 
-        @parameters FS2000 silent = true precompile = true begin  
-            alp     = 0.356
-            bet     = 0.993
-            gam     = 0.0085
-            mst     = 1.0002
-            rho     = 0.129
-            psi     = 0.65
-            del     = 0.01
-            z_e_a   = 0.035449
-            z_e_m   = 0.008862
-        end
+#         @parameters FS2000 silent = true precompile = true begin  
+#             alp     = 0.356
+#             bet     = 0.993
+#             gam     = 0.0085
+#             mst     = 1.0002
+#             rho     = 0.129
+#             psi     = 0.65
+#             del     = 0.01
+#             z_e_a   = 0.035449
+#             z_e_m   = 0.008862
+#         end
         
-        ENV["GKSwstype"] = "nul"
+#         ENV["GKSwstype"] = "nul"
 
-        @compile_workload begin
-            # all calls in this block will be precompiled, regardless of whether
-            # they belong to your package or not (on Julia 1.8 and higher)
-            @model RBC precompile = true begin
-                1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-                c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-                z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-            end
+#         @compile_workload begin
+#             # all calls in this block will be precompiled, regardless of whether
+#             # they belong to your package or not (on Julia 1.8 and higher)
+#             @model RBC precompile = true begin
+#                 1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#                 c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#                 z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#             end
 
-            @parameters RBC silent = true precompile = true begin
-                δ = 0.02
-                α = 0.5
-            end
+#             @parameters RBC silent = true precompile = true begin
+#                 δ = 0.02
+#                 α = 0.5
+#             end
 
-            get_SS(FS2000)
-            get_SS(FS2000, parameters = :alp => 0.36)
-            get_solution(FS2000)
-            get_solution(FS2000, parameters = :alp => 0.35)
-            get_standard_deviation(FS2000)
-            get_correlation(FS2000)
-            get_autocorrelation(FS2000)
-            get_variance_decomposition(FS2000)
-            get_conditional_variance_decomposition(FS2000)
-            get_irf(FS2000)
+#             get_SS(FS2000)
+#             get_SS(FS2000, parameters = :alp => 0.36)
+#             get_solution(FS2000)
+#             get_solution(FS2000, parameters = :alp => 0.35)
+#             get_standard_deviation(FS2000)
+#             get_correlation(FS2000)
+#             get_autocorrelation(FS2000)
+#             get_variance_decomposition(FS2000)
+#             get_conditional_variance_decomposition(FS2000)
+#             get_irf(FS2000)
 
-            data = simulate(FS2000)([:c,:k],:,:simulate)
-            get_loglikelihood(FS2000, data, FS2000.parameter_values)
-            get_mean(FS2000, silent = true)
-            # get_SSS(FS2000, silent = true)
-            # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#             data = simulate(FS2000)([:c,:k],:,:simulate)
+#             get_loglikelihood(FS2000, data, FS2000.parameter_values)
+#             get_mean(FS2000, silent = true)
+#             # get_SSS(FS2000, silent = true)
+#             # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-            # import StatsPlots
-            # plot_irf(FS2000)
-            # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-            # plot_conditional_variance_decomposition(FS2000)
-        end
-    end
-end
+#             # import StatsPlots
+#             # plot_irf(FS2000)
+#             # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#             # plot_conditional_variance_decomposition(FS2000)
+#         end
+#     end
+# end
 
 end
