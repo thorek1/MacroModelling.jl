@@ -1453,7 +1453,7 @@ macro parameters(𝓂,ex...)
 
             start_time = time()
     
-            if !$silent print("Set up non stochastic steady state problem:\t") end
+            if !$silent print("Set up non stochastic steady state problem:\t\t\t\t") end
 
             solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 2nd argument is SS_symbolic
 
@@ -1465,7 +1465,7 @@ macro parameters(𝓂,ex...)
         else
             start_time = time()
         
-            if !$silent print("Set up non stochastic steady state problem:\t") end
+            if !$silent print("Set up non stochastic steady state problem:\t\t\t\t") end
 
             solve_steady_state!(mod.$𝓂, verbose = $verbose)
 
@@ -1476,11 +1476,11 @@ macro parameters(𝓂,ex...)
 
         if !$silent
             if $perturbation_order == 1
-                print("Take symbolic derivatives up to first order:\t")
+                print("Take symbolic derivatives up to first order:\t\t\t\t")
             elseif $perturbation_order == 2
-                print("Take symbolic derivatives up to second order:\t")
+                print("Take symbolic derivatives up to second order:\t\t\t\t")
             elseif $perturbation_order == 3
-                print("Take symbolic derivatives up to third order:\t")
+                print("Take symbolic derivatives up to third order:\t\t\t\t")
             end
         end
 
@@ -1499,7 +1499,7 @@ macro parameters(𝓂,ex...)
 
         if !$precompile
             if !$silent 
-                print("Find non stochastic steady state:\t") 
+                print("Find non stochastic steady state:\t\t\t\t\t") 
             end
             # time_SS_real_solve = @elapsed 
             SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose, true, mod.$𝓂.solver_parameters)
