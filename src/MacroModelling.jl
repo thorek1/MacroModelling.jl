@@ -3996,7 +3996,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
                 if sol_minimum < tol 
                     if verbose
-                        println("Block: ",n_block," - Solved (homotopy version) using ",string(SS_optimizer),", and starting point: $(p.starting_value); maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+                        println("Block: ",n_block," - Solved (extended problem) using ",string(SS_optimizer),", and starting point: $(p.starting_value); maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
                     end
                     
                     break
@@ -4083,7 +4083,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                 
                 if sol_minimum < tol 
                     if verbose
-                        println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+                        println("Block: ",n_block," - Solved (extended problem) using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
                     end
                 end 
             end
@@ -4110,7 +4110,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                     
                     if sol_minimum < tol 
                         if verbose
-                            println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+                            println("Block: ",n_block," - Solved using ",string(SS_optimizer),", and starting point: $s; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
                         end
                         
                         break
