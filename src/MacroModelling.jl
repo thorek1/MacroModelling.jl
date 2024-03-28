@@ -4010,7 +4010,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
 
         for p in unique(parameters) # take unique because some parameters might appear more than once
-            for s in [p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+            for s in [p.starting_value, 1.206, 1.5]#, 2.0]#, 0.897, 0.7688]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                 for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
                     if sol_minimum > tol
                         sol_values, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
