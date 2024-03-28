@@ -3933,12 +3933,24 @@ function solve_ss(SS_optimizer::Function,
     
     extended_problem_str = extended_problem ? "(extended problem) " : ""
 
-    any_guess_str = any(guess .< 1e12) && separate_starting_value isa Bool ? "provided guess, " : ""
+    if separate_starting_value isa Bool
+        starting_value_str = ""
+    else
+        starting_value_str = separate_starting_value
+    end
+
+    if all(guess .< 1e12) && separate_starting_value isa Bool
+        any_guess_str = "previous solution, "
+    elseif any(guess .< 1e12) && separate_starting_value isa Bool
+        any_guess_str = "provided guess, "
+    else
+        any_guess_str = ""
+    end
 
     max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
 
     if sol_minimum < tol && verbose
-        println("Block: $n_block - Solved $(extended_problem_str)using ",string(SS_optimizer),", $(any_guess_str)and starting point: $(starting_value); maximum residual = $max_resid")
+        println("Block: $n_block - Solved $(extended_problem_str)using ",string(SS_optimizer),", $(any_guess_str)and starting point: $(starting_value_str); maximum residual = $max_resid")
     end
 
     return sol_values, sol_minimum

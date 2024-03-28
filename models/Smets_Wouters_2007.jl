@@ -239,4 +239,5 @@ end
 
 	z_epinf	= 0.1455
 
+	1e-6 > ygap > -1e-6
 end
