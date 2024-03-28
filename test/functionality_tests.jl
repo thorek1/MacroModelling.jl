@@ -281,7 +281,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
     conditions = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
     conditions[1,1] = .01
-    conditions[2,2] = .02
+    conditions[end,2] = .02
 
     cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false)
 
