@@ -3867,7 +3867,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::AbstractFloat = 1e
     end
 
     if solved
-        push!(𝓂.solver_parameters, best_param)
+        pushfirst!(𝓂.solver_parameters, best_param)
     end
 end
 
@@ -3886,16 +3886,6 @@ function solve_ss(SS_optimizer::Function,
                     solver_params::solver_parameters,
                     extended_problem::Bool,
                     separate_starting_value::Union{Bool,Float64})
-    # first check whether the provided guess solves the system
-    sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, guess))
-    
-    if sol_minimum < tol
-        if verbose
-            println("Block: $n_block, - Solved using previous solution; maximum residual = ", maximum(abs, ss_solve_blocks(parameters_and_solved_vars, guess)))
-        end
-        return guess, sol_minimum
-    end
-
     if separate_starting_value isa Float64
         sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(separate_starting_value, length(guess))))
         sol_values_init[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
@@ -3936,7 +3926,7 @@ function solve_ss(SS_optimizer::Function,
     if separate_starting_value isa Bool
         starting_value_str = ""
     else
-        starting_value_str = separate_starting_value
+        starting_value_str = "and starting point: $separate_starting_value"
     end
 
     if all(guess .< 1e12) && separate_starting_value isa Bool
@@ -3950,7 +3940,7 @@ function solve_ss(SS_optimizer::Function,
     max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
 
     if sol_minimum < tol && verbose
-        println("Block: $n_block - Solved $(extended_problem_str)using ",string(SS_optimizer),", $(any_guess_str)and starting point: $(starting_value_str); maximum residual = $max_resid")
+        println("Block: $n_block - Solved $(extended_problem_str)using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
     end
 
     return sol_values, sol_minimum
@@ -3974,28 +3964,23 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         # fail_fast_solvers_only = true,
                         # verbose::Bool = false
                         )
-
     guess = guess_and_pars_solved_vars[1]
 
     sol_values = guess
 
     closest_parameters_and_solved_vars = sum(abs, guess_and_pars_solved_vars[2]) == Inf ? parameters_and_solved_vars : guess_and_pars_solved_vars[2]
 
+    sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, guess))
+    
+    if sol_minimum < tol
+        if verbose
+            println("Block: $n_block, - Solved using previous solution; maximum residual = ", maximum(abs, ss_solve_blocks(parameters_and_solved_vars, guess)))
+        end
+    end
+
     total_iters = 0
 
     SS_optimizer = levenberg_marquardt
-
-    function ss_solve_blocks_incl_params(guesses)
-        gss = guesses[1:length(guess)]
-
-        parameters_and_solved_vars_guess = guesses[length(guess)+1:end]
-
-        res = ss_solve_blocks(parameters_and_solved_vars, gss)
-
-        return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
-    end
-
-    sol_minimum = 1.0
 
     if cold_start
         guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
@@ -4014,9 +3999,18 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             end
         end
     else !cold_start
-        # next try solving the system with some starting values and variables can vary
-        for p in reverse(unique(parameters)) # take unique because some parameters might appear more than once
-            for s in [false, p.starting_value, 1.206, 0.7688, 0.897, 1.5]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+        for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
+            if sol_minimum > tol
+                sol_values, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                    guess, 
+                                                    parameters[1],
+                                                    ext,
+                                                    false)
+            end
+        end
+
+        for p in unique(parameters) # take unique because some parameters might appear more than once
+            for s in [p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                 for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
                     if sol_minimum > tol
                         sol_values, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
