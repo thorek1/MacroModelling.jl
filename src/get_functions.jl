@@ -1276,7 +1276,7 @@ function get_steady_state(𝓂::ℳ;
     return_variables_only::Bool = false,
     verbose::Bool = false,
     silent::Bool = true,
-    tol::AbstractFloat = eps())
+    tol::AbstractFloat = 1e-12)
 
     if !(algorithm == :first_order) stochastic = true end
     
@@ -1302,11 +1302,11 @@ function get_steady_state(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    SS, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters, false, 𝓂.solver_parameters)
+    SS, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
     # SS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
 
     if solution_error > tol
-        @warn "Could not find non-stochastic steady state."
+        @warn "Could not find non-stochastic steady state. Solution error: $solution_error > $tol"
     end
 
     if stochastic
@@ -1644,21 +1644,16 @@ function get_solution(𝓂::ℳ,
                         parameters::Vector{<: Real}; 
                         algorithm::Symbol = :first_order, 
                         verbose::Bool = false, 
-                        tol::AbstractFloat = eps())
+                        tol::AbstractFloat = 1e-12)
     @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
 
-    ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters))
-    lb = @ignore_derivatives -ub
-
-    for (i,v) in enumerate(𝓂.bounded_vars)
-        if v ∈ 𝓂.parameters
-            @ignore_derivatives lb[i] = 𝓂.lower_bounds[i]
-            @ignore_derivatives ub[i] = 𝓂.upper_bounds[i]
+    
+    for (k,v) in 𝓂.bounds
+        if k ∈ 𝓂.parameters
+            if min(max(parameters[indexin([k], 𝓂.parameters)][1], v[1]), v[2]) != parameters[indexin([k], 𝓂.parameters)][1]
+                return -Inf
+            end
         end
-    end
-
-    if min(max(parameters,lb),ub) != parameters 
-        return -Inf
     end
 
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
@@ -2886,7 +2881,7 @@ function get_loglikelihood(𝓂::ℳ,
     algorithm::Symbol = :first_order, 
     filter::Symbol = :kalman, 
     warmup_iterations::Int = 0, 
-    tol::AbstractFloat = eps(), 
+    tol::AbstractFloat = 1e-12, 
     verbose::Bool = false)::S where S
     
     # checks to avoid errors further down the line and inform the user
@@ -2900,19 +2895,13 @@ function get_loglikelihood(𝓂::ℳ,
 
     @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
 
-    # keep the parameters wihtin bounds
-    ub = @ignore_derivatives fill(1e12+rand(),length(𝓂.parameters) + length(𝓂.➕_vars))
-    lb = @ignore_derivatives -ub
-
-    for (i,v) in enumerate(𝓂.bounded_vars)
-        if v ∈ 𝓂.parameters
-            @ignore_derivatives lb[i] = 𝓂.lower_bounds[i]
-            @ignore_derivatives ub[i] = 𝓂.upper_bounds[i]
+    # keep the parameters within bounds
+    for (k,v) in 𝓂.bounds
+        if k ∈ 𝓂.parameters
+            if @ignore_derivatives min(max(parameter_values[indexin([k], 𝓂.parameters)][1], v[1]), v[2]) != parameter_values[indexin([k], 𝓂.parameters)][1]
+                return -Inf
+            end
         end
-    end
-
-    if min(max(parameter_values,lb),ub) != parameter_values 
-        return -Inf
     end
 
     # solve model given the parameters
@@ -2992,6 +2981,7 @@ function get_loglikelihood(𝓂::ℳ,
         ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) |> Matrix
 
         𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+        # 𝐒₁, solved = calculate_quadratic_iteration_solution_AD(∇₁; T = 𝓂.timings)
         
         if !solved return -Inf end
 
@@ -3017,3 +3007,122 @@ function get_loglikelihood(𝓂::ℳ,
 
     return loglikelihood
 end
+
+
+
+"""
+$(SIGNATURES)
+Calculate the residuals of the non-stochastic steady state equations of the model for a given set of values. Values not provided, will be filled with the non-stochastic steady state values corresponding to the current parameters.
+
+# Arguments
+- $MODEL
+- `values` [Type: `Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}`]: A Vector, Dict, or KeyedArray containing the values of the variables and calibrated parameters in the non-stochastic steady state equations (including calibration equations). 
+
+# Keyword Arguments
+- $PARAMETERS
+
+# Returns
+- A KeyedArray containing the absolute values of the residuals of the non-stochastic steady state equations.
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    k[ss] / q[ss] = 2.5 | α
+    β = 0.95
+end
+
+steady_state = SS(RBC, derivatives = false)
+
+get_non_stochastic_steady_state_residuals(RBC, steady_state)
+# output
+1-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Equation ∈ 5-element Vector{Symbol}
+And data, 5-element Vector{Float64}:
+ (:Equation₁)             0.0
+ (:Equation₂)             0.0
+ (:Equation₃)             0.0
+ (:Equation₄)             0.0
+ (:CalibrationEquation₁)  0.0
+```
+
+get_non_stochastic_steady_state_residuals(RBC, [1.1641597, 3.0635781, 1.2254312, 0.0, 0.18157895])
+# output
+1-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Equation ∈ 5-element Vector{Symbol}
+And data, 5-element Vector{Float64}:
+ (:Equation₁)             2.7360991250446887e-10
+ (:Equation₂)             6.199999980083248e-8
+ (:Equation₃)             2.7897102183871425e-8
+ (:Equation₄)             0.0
+ (:CalibrationEquation₁)  8.160392850342646e-8
+```
+"""
+function get_non_stochastic_steady_state_residuals(
+                𝓂::ℳ, 
+                values::Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}; 
+                parameters::ParameterType = nothing
+    )
+    
+    solve!(𝓂, parameters = parameters)
+
+    SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, false, 𝓂.solver_parameters)
+
+    aux_and_vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_aux_equations)), union(𝓂.parameters_in_equations, 𝓂.➕_vars))))
+
+    axis1 = vcat(aux_and_vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_equations)), union(𝓂.parameters_in_equations))))
+
+    unknowns = vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+
+    combined_values = Dict(unknowns .=> SS_and_pars[indexin(unknowns, axis1)])
+
+    if isa(values, Vector)
+        @assert length(values) == length(unknowns) "Invalid input. Expected a vector of length $(length(unknowns))."
+        for (i, value) in enumerate(values)
+            combined_values[unknowns[i]] = value
+        end
+    elseif isa(values, Dict)
+        for (key, value) in values
+            if key isa String
+                key = replace_indices(key)
+            end
+            combined_values[key] = value
+        end
+    elseif isa(values, KeyedArray)
+        for (key, value) in Dict(axiskeys(values, 1) .=> collect(values))
+            if key isa String
+                key = replace_indices(key)
+            end
+            combined_values[key] = value
+        end
+    end
+    
+    vals = [combined_values[i] for i in unknowns]
+
+    axis1 = vcat([Symbol("Equation" * sub(string(i))) for i in 1:length(vars_in_ss_equations)], [Symbol("CalibrationEquation" * sub(string(i))) for i in 1:length(𝓂.calibration_equations_parameters)])
+
+    KeyedArray(abs.(𝓂.SS_check_func(𝓂.parameter_values, vals)), Equation = axis1)
+end
+
+"""
+See [`get_non_stochastic_steady_state_residuals`](@ref)
+"""
+get_residuals = get_non_stochastic_steady_state_residuals
+
+"""
+See [`get_non_stochastic_steady_state_residuals`](@ref)
+"""
+check_residuals = get_non_stochastic_steady_state_residuals

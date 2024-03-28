@@ -51,7 +51,7 @@
 
 	log(aj[0]) = RHO_J * log(aj[-1]) + z_j[0]
 
-	z_j[0] = RHO_J2 * z_j[-1] + eps_j[x]
+	z_j[0] = RHO_J2 * z_j[-1] + STD_J * eps_j[x]
 
 	log(ak[0]) = RHO_K * log(ak[-1]) + STD_K * eps_k[x]
 

@@ -1,7 +1,7 @@
 using MacroModelling
 import Turing
 import Pigeons
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, PG, IS
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL: logjoint
@@ -48,13 +48,45 @@ end
 
 Random.seed!(3)
 
-pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)),
+# Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)
+
+# samps = @time sample(Caldara_et_al_2012_loglikelihood, PG(100), 10, progress = true)#, init_params = sol)
+
+# samps = sample(Caldara_et_al_2012_loglikelihood, IS(), 1000, progress = true)#, init_params = sol)
+
+
+# generate a Pigeons log potential
+Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim))
+
+# find a feasible starting point
+pt = Pigeons.pigeons(target = Caldara_lp, n_rounds = 0, n_chains = 1)
+
+replica = pt.replicas[end]
+XMAX = deepcopy(replica.state)
+LPmax = Caldara_lp(XMAX)
+
+i = 0
+
+while !isfinite(LPmax) && i < 1000
+    Pigeons.sample_iid!(Caldara_lp, replica, pt.shared)
+    new_LP = Caldara_lp(replica.state)
+    if new_LP > LPmax
+        LPmax = new_LP
+        XMAX  = deepcopy(replica.state)
+    end
+    i += 1
+end
+
+# define a specific initialization for this model
+Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(Caldara_et_al_2012_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
+
+pt = @time Pigeons.pigeons(target = Caldara_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
             n_rounds = 6,
             multithreaded = true)
 
-samps = MCMCChains.Chains(Pigeons.get_sample(pt))
+samps = MCMCChains.Chains(pt)
 
 
 println(mean(samps).nt.mean)

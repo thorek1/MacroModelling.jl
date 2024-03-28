@@ -1,8 +1,42 @@
 if !test_higher_order
-    include("models/Backus_Kehoe_Kydland_1992.jl")
-    SS = get_SS(Backus_Kehoe_Kydland_1992)
+    include("../models/Guerrieri_Iacoviello_2017.jl")
+    SSvals = get_SS(Guerrieri_Iacoviello_2017)
 
-    @test isapprox(SS(["A{F}","K{H}","L{F}","LGM"]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
+    @test isapprox(SSvals([:b,:c,:k,:r]),[3.7449, 1.01054, 16.5337, 1.01005],rtol = 1e-4)
+
+    var_dec = get_var_decomp(Guerrieri_Iacoviello_2017)
+
+    @test isapprox(var_dec([:dw,:k,:b],:eps_j) * 100, [0.38, 1.66, 83.52],rtol = 1e-3)
+    @test isapprox(var_dec([:y,:r,:c],:eps_r) * 100, [7.35, 31.93, 0.59],rtol = 1e-3)
+
+    write_to_dynare_file(Guerrieri_Iacoviello_2017)
+    translate_dynare_file("Guerrieri_Iacoviello_2017.mod")
+    include("Guerrieri_Iacoviello_2017.jl")
+    # get_solution(Guerrieri_Iacoviello_2017)
+    Guerrieri_Iacoviello_2017 = nothing
+
+
+    include("models/SW07_nonlinear.jl")
+    SSvals = get_SS(SW07_nonlinear)
+
+    @test isapprox(SSvals([:robs, :y, :kflex, :ygap]),[1.62996, 1.36422, 7.55624, 0],rtol = 1e-4)
+
+    var_dec = get_var_decomp(SW07_nonlinear)
+
+    @test isapprox(var_dec([:y,:yflex,:labobs],:ea) * 100, [10.10, 89.47, 0.53],rtol = 1e-3)
+    @test isapprox(var_dec([:y,:r,:c],:epinf) * 100, [36.42, 29.30, 22.62],rtol = 1e-3)
+
+    write_to_dynare_file(SW07_nonlinear)
+    translate_dynare_file("SW07_nonlinear.mod")
+    include("SW07_nonlinear.jl")
+    get_solution(SW07_nonlinear)
+    SW07_nonlinear = nothing
+
+
+    include("models/Backus_Kehoe_Kydland_1992.jl")
+    SSvals = get_SS(Backus_Kehoe_Kydland_1992)
+
+    @test isapprox(SSvals(["A{F}","K{H}","L{F}","LGM"]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
 
     var_dec = get_var_decomp(Backus_Kehoe_Kydland_1992)
 
@@ -17,9 +51,9 @@ if !test_higher_order
 
 
     include("../models/NAWM_EAUS_2008.jl")
-    SS = get_SS(NAWM_EAUS_2008)
+    SSvals = get_SS(NAWM_EAUS_2008)
 
-    @test isapprox(SS([:EAUS_RER,:EA_Y,:EA_K,:EA_C,:US_Y,:US_K]),[0.937577, 3.62701, 33.4238, 2.18955, 3.92449, 33.6712],rtol = 1e-5)
+    @test isapprox(SSvals([:EAUS_RER,:EA_Y,:EA_K,:EA_C,:US_Y,:US_K]),[0.937577, 3.62701, 33.4238, 2.18955, 3.92449, 33.6712],rtol = 1e-5)
 
     var_dec = get_var_decomp(NAWM_EAUS_2008)
 

@@ -235,6 +235,7 @@ end
 mutable struct solver_parameters
     xtol::Float64 
     ftol::Float64 
+    rel_xtol::Float64 
     iterations::Int
     ϕ̄::Float64    
     ϕ̂::Float64    
@@ -255,6 +256,7 @@ mutable struct solver_parameters
     λ̅²::Float64   
     λ̂̅¹::Float64   
     λ̂̅²::Float64   
+    starting_value::Float64
     transformation_level::Int
     shift::Float64 
     backtracking_order::Int
@@ -268,6 +270,9 @@ mutable struct ℳ
     parameters_as_function_of_parameters::Vector{Symbol}
     parameters::Vector{Symbol}
     parameter_values::Vector{Float64}
+
+    guess::Dict{Symbol, Float64}
+
     # ss
     # dynamic_variables::Vector{Symbol}
     # dyn_ss_past::Vector{Symbol}
@@ -352,6 +357,7 @@ mutable struct ℳ
     # SS_init_guess::Vector{Real}
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func::Function
+    SS_check_func::Function
     # nonlinear_solution_helper
     SS_dependencies::Any
 
@@ -362,6 +368,7 @@ mutable struct ℳ
     # t_past_equations 
     # t_present_equations 
     dyn_equations::Vector{Expr}
+    ss_equations::Vector{Expr}
     # dyn_equations_future::Vector{Expr}
     original_equations::Vector{Expr}
 
@@ -370,9 +377,7 @@ mutable struct ℳ
     calibration_equations::Vector{Expr}
     calibration_equations_parameters::Vector{Symbol}
 
-    bounded_vars::Vector{Symbol}
-    lower_bounds::Vector{Float64}
-    upper_bounds::Vector{Float64}
+    bounds::Dict{Symbol,Tuple{Float64,Float64}}
 
     model_jacobian::Function
     # model_jacobian::FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}#{typeof(model_jacobian)}
@@ -386,7 +391,7 @@ mutable struct ℳ
     max_obc_horizon::Int
     obc_violation_function::Function
 
-    solver_parameters::solver_parameters
+    solver_parameters::Vector{solver_parameters}
 
     solution::solution
     # symbolics::symbolics
