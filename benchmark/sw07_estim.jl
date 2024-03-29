@@ -40,19 +40,19 @@ println("Scans: $scns")
 if smple == "extended"
     smpl = "1966Q1-2020Q1"
     sample_idx = 75:291
-    dat = CSV.read("../test/data/usmodel_extended.csv", DataFrame)
+    dat = CSV.read("usmodel_extended.csv", DataFrame)
 elseif smple == "short"
     smpl = "1966Q1-2004Q4"
     sample_idx = 75:230
-    dat = CSV.read("../test/data/usmodel.csv", DataFrame)
+    dat = CSV.read("usmodel.csv", DataFrame)
 elseif smple == "long"
     smpl = "1947Q2-2004Q4"
     sample_idx = 1:230
-    dat = CSV.read("../test/data/usmodel.csv", DataFrame)
+    dat = CSV.read("usmodel.csv", DataFrame)
 elseif smple == "full"
     smpl = "1966Q1-2023Q4"
     sample_idx = 75:306
-    dat = CSV.read("../test/data/usmodel_extended.csv", DataFrame)
+    dat = CSV.read("usmodel_extended.csv", DataFrame)
 end
     
 # define callback
