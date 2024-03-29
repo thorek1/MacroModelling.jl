@@ -2,16 +2,18 @@
 
 ## High priority
 
-- [ ] include guess in docs
+- [ ] ss transition by entering new parameters at given periods
+- [ ] allow external functions to calculate the steady state (and hand it over via SS or get_loglikelihood function)
+- [ ] go through custom SS solver once more and try to find parameters and logic that achieves best results
+- [ ] SS solver with less equations than variables
 - [ ] use arraydist in tests and docs
 - [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
 - [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
-- [ ] feedback: sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
 - [ ] recheck function examples and docs (include output description)
 - [ ] Docs: document outputs and associated functions to work with function
 - [ ] write documentation/docstrings using copilot
-- [ ] ss transition by entering new parameters at given periods
+- [ ] feedback: sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
 - [ ] NaNMath pow does not work (is not substituted)
 - [ ] estimation: run auto-tune before and use solver treating parameters as given
 - [ ] check whether its possible to run parameters macro/block without rerunning model block
@@ -71,6 +73,7 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] weed out SS solver and saved objects
 
+- [x] include guess in docs
 - [x] Find any SS by optimising over both SS guesses and parameter inputs
 - [x] riccati with analytical derivatives (much faster if sparse) instead of implicit diff; done for ChainRules; ForwardDiff only feasible for smaller problems -> ID is fine there
 - [x] log in parameters block is recognized as variable
