@@ -6281,8 +6281,12 @@ function irf(state_update::Function,
             end
         end
 
-        axis2 = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix]
-        
+        axis2 = shocks isa Union{Symbol_input,String_input} ? 
+                    shock_idx isa Int ? 
+                        [T.exo[shock_idx]] : 
+                    T.exo[shock_idx] : 
+                [:Shock_matrix]
+
         if any(x -> contains(string(x), "◖"), axis2)
             axis2_decomposed = decompose_name.(axis2)
             axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
@@ -6401,7 +6405,11 @@ function irf(state_update::Function,
             end
         end
 
-        axis2 = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix]
+        axis2 = shocks isa Union{Symbol_input,String_input} ? 
+                    shock_idx isa Int ? 
+                        [T.exo[shock_idx]] : 
+                    T.exo[shock_idx] : 
+                [:Shock_matrix]
         
         if any(x -> contains(string(x), "◖"), axis2)
             axis2_decomposed = decompose_name.(axis2)
@@ -6521,8 +6529,12 @@ function girf(state_update::Function,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    axis2 = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix]
-        
+    axis2 = shocks isa Union{Symbol_input,String_input} ? 
+                shock_idx isa Int ? 
+                    [T.exo[shock_idx]] : 
+                T.exo[shock_idx] : 
+            [:Shock_matrix]
+
     if any(x -> contains(string(x), "◖"), axis2)
         axis2_decomposed = decompose_name.(axis2)
         axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
@@ -6569,7 +6581,7 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
 end
 
 
-function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T::timings)
+function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T::timings)#::Union{UnitRange{Int64}, Int64, Vector{Int64}}
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks == :all
@@ -6582,27 +6594,37 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
         shock_idx = 1
     elseif shocks isa Matrix{Symbol}
         if length(setdiff(shocks,T.exo)) > 0
-            return @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
+            @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
+            shock_idx = Int64[]
+        else
+            shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(shocks .== T.exo,dims= 2))))
         end
-        shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(shocks .== T.exo,dims= 2))))
     elseif shocks isa Vector{Symbol}
         if length(setdiff(shocks,T.exo)) > 0
-            return @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
+            @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
+            shock_idx = Int64[]
+        else
+            shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(shocks,1,length(shocks)) .== T.exo, dims= 2))))
         end
-        shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(shocks,1,length(shocks)) .== T.exo, dims= 2))))
     elseif shocks isa Tuple{Symbol, Vararg{Symbol}}
         if length(setdiff(shocks,T.exo)) > 0
-            return @warn "Following shocks are not part of the model: " * join(string.(setdiff(Symbol.(collect(shocks)),T.exo)),", ")
+            @warn "Following shocks are not part of the model: " * join(string.(setdiff(Symbol.(collect(shocks)),T.exo)),", ")
+            shock_idx = Int64[]
+        else
+            shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(collect(shocks),1,length(shocks)) .== T.exo,dims= 2))))
         end
-        shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(collect(shocks),1,length(shocks)) .== T.exo,dims= 2))))
     elseif shocks isa Symbol
         if length(setdiff([shocks],T.exo)) > 0
-            return @warn "Following shock is not part of the model: " * join(string(setdiff([shocks],T.exo)[1]),", ")
+            @warn "Following shock is not part of the model: " * join(string(setdiff([shocks],T.exo)[1]),", ")
+            shock_idx = Int64[]
+        else
+            shock_idx = getindex(1:T.nExo,shocks .== T.exo)
         end
-        shock_idx = getindex(1:T.nExo,shocks .== T.exo)
     else
-        return @warn "Invalid argument in shocks"
+        @warn "Invalid argument in shocks"
+        shock_idx = Int64[]
     end
+    return shock_idx
 end
 
 
