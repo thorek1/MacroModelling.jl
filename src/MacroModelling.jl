@@ -3210,6 +3210,10 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
                 end
+
+                if haskey(𝓂.bounds, 𝓂.solved_vars[end]) && 𝓂.solved_vars[end] ∉ 𝓂.➕_vars
+                    push!(SS_solve_func,:(solution_error += abs(min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vars[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2])) - $(𝓂.solved_vars[end]))))
+                end
             end
         else
             vars_to_solve = collect(unknowns)[vars[:,vars[2,:] .== n][1,:]]
@@ -4009,19 +4013,19 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             end
         end
 
-        # for p in unique(parameters) # take unique because some parameters might appear more than once
-            for s in [parameters[1].starting_value, 1.206, 0.7688, 0.897]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+        for p in unique(parameters) # take unique because some parameters might appear more than once
+            for s in [p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                 # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
                     if sol_minimum > tol
                         sol_values, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                             guess, 
-                                                            parameters[1],
+                                                            p,
                                                             false,
                                                             s)
                     end
                 # end
             end
-        # end
+        end
     end
 
     return sol_values, (sol_minimum, total_iters)
