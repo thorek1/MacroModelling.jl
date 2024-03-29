@@ -18,11 +18,17 @@ Random.seed!(1)
 # ]add CSV, DataFrames, Zygote, AxisKeys, MCMCChains, Turing, DynamicPPL, Pigeons, StatsPlots
 println("Threads used: ", Threads.nthreads())
 
-smpler = "pigeons" #
-smple = "short" #
-mdl = "nonlinear" # 
-chns = 1 #
-scns = 1000
+# smpler = "pigeons" #
+# smple = "short" #
+# mdl = "nonlinear" # 
+# chns = 1 #
+# scns = 1000
+
+smpler = ENV["sampler"] # "pigeons" #
+smple = ENV["sample"] # "original" #
+mdl = ENV["model"] # "linear" # 
+chns = Meta.parse(ENV["chains"]) # "4" # 
+scns = Meta.parse(ENV["scans"]) # "4" # 
 
 println("Sampler: $smpler")
 println("Sample: $smple")
@@ -252,9 +258,7 @@ inits = sol.minimizer
 
 
 if smpler == "is"
-    n_samples = 1000
-    
-    samps = Turing.sample(SW07_loglikelihood, IS(), n_samples, progress = true, callback = callback, initial_params = inits)
+    samps = Turing.sample(SW07_loglikelihood, IS(), scns, progress = true, callback = callback, initial_params = inits)
 elseif smpler == "pg"
     samps = Turing.sample(SW07_loglikelihood, PG(100), scns, progress = true, callback = callback, initial_params = inits)
 elseif smpler == "nuts"    
