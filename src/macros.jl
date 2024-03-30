@@ -92,23 +92,23 @@ macro model(𝓂,ex...)
     
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = x->x
+    SS_check_func = x->x
     SS_dependencies = nothing
 
     original_equations = []
     calibration_equations = []
     calibration_equations_parameters = []
 
-    bounded_vars = []
-    lower_bounds = []
-    upper_bounds = []
+    bounds = Dict{Symbol,Tuple{Float64,Float64}}()
 
     dyn_equations = []
 
     ➕_vars = []
     ss_and_aux_equations = []
+    ss_equations = []
     aux_vars_created = Set()
 
-    unique_➕_vars = []
+    unique_➕_eqs = Dict{Union{Expr,Symbol},Expr}()
 
     ss_eq_aux_ind = Int[]
     dyn_eq_aux_ind = Int[]
@@ -281,6 +281,28 @@ macro model(𝓂,ex...)
 
             push!(dyn_equations,unblock(t_ex))
             
+            
+            # write down ss equations
+            eqs = postwalk(x -> 
+                x isa Expr ? 
+                    x.head == :(=) ? 
+                        Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
+                            x.head == :ref ?
+                                occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 : # set shocks to zero and remove time scripts
+                        x.args[1] :
+                    x.head == :call ?
+                        x.args[1] == :* ?
+                            x.args[2] isa Int ?
+                                x.args[3] isa Int ?
+                                    x :
+                                Expr(:call, :*, x.args[3:end]..., x.args[2]) : # 2beta => beta * 2 
+                            x :
+                        x :
+                    x :
+                x,
+            model_ex.args[i])
+            push!(ss_equations,unblock(eqs))
+
             # write down ss equations including nonnegativity auxilliary variables
             # find nonegative variables, parameters, or terms
             eqs = postwalk(x -> 
@@ -301,17 +323,13 @@ macro model(𝓂,ex...)
                             !(x.args[3] isa Int) ?
                                 x.args[2] isa Symbol ? # nonnegative parameters 
                                         begin
-                                            push!(bounded_vars,x.args[2])
-                                            push!(lower_bounds,eps(Float32))
-                                            push!(upper_bounds,1e12+rand())
+                                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
                                             x
                                         end :
                                 x.args[2].head == :ref ?
                                     x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                         begin
-                                            push!(bounded_vars,x.args[2].args[1])
-                                            push!(lower_bounds,eps(Float32))
-                                            push!(upper_bounds,1e12+rand())
+                                            bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 1e12)) : (eps(), 1e12)
                                             x
                                         end :
                                     x :
@@ -324,19 +342,23 @@ macro model(𝓂,ex...)
                                         end
 
                                         if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                            if x.args[2] ∈ unique_➕_vars
-                                                ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                                replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
-                                            else
-                                                push!(unique_➕_vars,x.args[2])
-                                                push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                                push!(lower_bounds,eps(Float32))
-                                                push!(upper_bounds,1e12+rand())
-                                                push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the cond_var_decomp
+                                            if haskey(unique_➕_eqs, x.args[2])
+                                                replacement = unique_➕_eqs[x.args[2]]
+                                            else 
+                                                lb = eps()
+                                                ub = 1e12
+
+                                                # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
+                                                push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
+
+                                                bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
+
                                                 push!(ss_eq_aux_ind,length(ss_and_aux_equations))
 
                                                 push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                                 replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+
+                                                unique_➕_eqs[x.args[2]] = replacement
                                             end
                                         end
 
@@ -349,17 +371,13 @@ macro model(𝓂,ex...)
                         x.args[1] ∈ [:log] ?
                             x.args[2] isa Symbol ? # nonnegative parameters 
                                 begin
-                                    push!(bounded_vars,x.args[2])
-                                    push!(lower_bounds,eps(Float32))
-                                    push!(upper_bounds,1e12+rand())
+                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
                                     x
                                 end :
                             x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
-                                        push!(bounded_vars,x.args[2].args[1])
-                                        push!(lower_bounds,eps(Float32))
-                                        push!(upper_bounds,1e12+rand())
+                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 1e12)) : (eps(), 1e12)
                                         x
                                     end :
                                 x :
@@ -372,19 +390,23 @@ macro model(𝓂,ex...)
                                     end
 
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
                                         else
-                                            push!(unique_➕_vars,x.args[2])
-                                            push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                            push!(lower_bounds,eps(Float32))
-                                            push!(upper_bounds,1e12+rand())
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
+                                            lb = eps()
+                                            ub = 1e12
+
+                                            # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
+                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
+
                                             push!(ss_eq_aux_ind,length(ss_and_aux_equations))
-                                            
+
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+
+                                            unique_➕_eqs[x.args[2]] = replacement
                                         end
                                     end
                                     :($(Expr(:call, x.args[1], replacement)))
@@ -393,17 +415,13 @@ macro model(𝓂,ex...)
                         x.args[1] ∈ [:norminvcdf, :norminv, :qnorm] ?
                             x.args[2] isa Symbol ? # nonnegative parameters 
                                 begin
-                                    push!(bounded_vars,x.args[2])
-                                    push!(lower_bounds,eps())
-                                    push!(upper_bounds,1-eps())
+                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1-eps())) : (eps(), 1-eps())
                                     x
                                 end :
                             x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
-                                        push!(bounded_vars,x.args[2].args[1])
-                                        push!(lower_bounds,eps())
-                                        push!(upper_bounds,1-eps())
+                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 1-eps())) : (eps(), 1-eps())
                                         x
                                     end :
                                 x :
@@ -416,39 +434,38 @@ macro model(𝓂,ex...)
                                     end
 
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
                                         else
-                                            push!(unique_➕_vars,x.args[2])
-                                            push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                            push!(lower_bounds,eps())
-                                            push!(upper_bounds,1-eps())
+                                            lb = eps()
+                                            ub = 1-eps()
 
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
+                                            # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
+                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
+
                                             push!(ss_eq_aux_ind,length(ss_and_aux_equations))
-                                            
+
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+
+                                            unique_➕_eqs[x.args[2]] = replacement
                                         end
                                     end
                                     :($(Expr(:call, x.args[1], replacement)))
                                 end :
                             x :
                         x.args[1] ∈ [:exp] ?
-                            x.args[2] isa Symbol ? # nonnegative parameters 
+                            x.args[2] isa Symbol ? # have exp terms bound so they dont go to Inf
                                 begin
-                                    push!(bounded_vars,x.args[2])
-                                    push!(lower_bounds,-1e12+rand())
-                                    push!(upper_bounds,700)
+                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 700)) : (-1e12, 700)
                                     x
                                 end :
                             x.args[2].head == :ref ?
-                                x.args[2].args[1] isa Symbol ? # nonnegative variables 
+                                x.args[2].args[1] isa Symbol ? # have exp terms bound so they dont go to Inf
                                     begin
-                                        push!(bounded_vars,x.args[2].args[1])
-                                        push!(lower_bounds,-1e12+rand())
-                                        push!(upper_bounds,700)
+                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], -1e12), min(bounds[x.args[2].args[1]][2], 700)) : (-1e12, 700)
                                         x
                                     end :
                                 x :
@@ -460,22 +477,24 @@ macro model(𝓂,ex...)
                                         replacement = simplify(x.args[2])
                                     end
 
-                                    # println(replacement)
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
                                         else
-                                            push!(unique_➕_vars,x.args[2])
-                                            push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                            push!(lower_bounds,-1e12+rand())
-                                            push!(upper_bounds,700)
+                                            lb = -1e12
+                                            ub = 700
 
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
+                                            # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
+                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
+
                                             push!(ss_eq_aux_ind,length(ss_and_aux_equations))
-                                            
+
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+
+                                            unique_➕_eqs[x.args[2]] = replacement
                                         end
                                     end
                                     :($(Expr(:call, x.args[1], replacement)))
@@ -484,17 +503,13 @@ macro model(𝓂,ex...)
                         x.args[1] ∈ [:erfcinv] ?
                             x.args[2] isa Symbol ? # nonnegative parameters 
                                 begin
-                                    push!(bounded_vars,x.args[2])
-                                    push!(lower_bounds,eps())
-                                    push!(upper_bounds,2-eps())
+                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 2-eps())) : (eps(), 2-eps())
                                     x
                                 end :
                             x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
-                                        push!(bounded_vars,x.args[2].args[1])
-                                        push!(lower_bounds,eps())
-                                        push!(upper_bounds,2-eps())
+                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 2-eps())) : (eps(), 2-eps())
                                         x
                                     end :
                                 x :
@@ -506,21 +521,24 @@ macro model(𝓂,ex...)
                                         replacement = simplify(x.args[2])
                                     end
 
-                                    # println(replacement)
                                     if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if x.args[2] ∈ unique_➕_vars
-                                            ➕_vars_idx = findfirst([x.args[2]] .== unique_➕_vars)
-                                            replacement = Expr(:ref,Symbol("➕" * sub(string(➕_vars_idx))),0)
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
                                         else
-                                            push!(unique_➕_vars,x.args[2])
-                                            push!(bounded_vars,:($(Symbol("➕" * sub(string(length(➕_vars)+1))))))
-                                            push!(lower_bounds,eps())
-                                            push!(upper_bounds,2-eps())
-                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2])) # take position of equation in order to get name of vars which are being replaced and substitute accordingly or rewrite to have substitutuion earlier in the code
+                                            lb = eps()
+                                            ub = 2-eps()
+
+                                            # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
+                                            push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], lb), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], ub)) : (lb, ub)
+
                                             push!(ss_eq_aux_ind,length(ss_and_aux_equations))
-                                            
+
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)))),0)
+
+                                            unique_➕_eqs[x.args[2]] = replacement
                                         end
                                     end
                                     :($(Expr(:call, x.args[1], replacement)))
@@ -766,21 +784,6 @@ macro model(𝓂,ex...)
                                                       collect.(dyn_exo_list))) .== 1)
                                                     
     @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " * repr([original_equations[indexin(single_dyn_vars_equations,setdiff(1:length(dyn_equations),dyn_eq_aux_ind .- 1))]...])
-
-
-    # unique bounded_vars. before they can be defined multiple times with different bounds
-    unique_bounded_vars = []
-    unique_lower_bounds = []
-    unique_upper_bounds = []
-
-    for i in unique(bounded_vars)
-        idx = indexin([i],bounded_vars)
-        if length(idx) > 0
-            push!(unique_lower_bounds,maximum(lower_bounds[idx]))
-            push!(unique_upper_bounds,minimum(upper_bounds[idx]))
-            push!(unique_bounded_vars,i)
-        end
-    end
     
     duplicate_equations = []
     for item in unique(dyn_equations)
@@ -808,6 +811,8 @@ macro model(𝓂,ex...)
                         $parameters,
                         $parameters,
                         $parameter_values,
+
+                        Dict{Symbol, Float64}(), # guess
 
                         sort($aux),
                         sort(collect($aux_present)), 
@@ -851,11 +856,13 @@ macro model(𝓂,ex...)
                         $ss_solve_blocks,
                         $NSSS_solver_cache,
                         $SS_solve_func,
+                        $SS_check_func,
                         $SS_dependencies,
 
                         $➕_vars,
                         $ss_eq_aux_ind,
                         $dyn_equations,
+                        $ss_equations,
                         $original_equations, 
 
                         $calibration_equations, #no_var_
@@ -863,9 +870,7 @@ macro model(𝓂,ex...)
                         $calibration_equations, 
                         $calibration_equations_parameters,
 
-                        $unique_bounded_vars,
-                        $unique_lower_bounds,
-                        $unique_upper_bounds,
+                        $bounds,
 
                         x->x,
                         # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
@@ -879,8 +884,28 @@ macro model(𝓂,ex...)
                         $max_obc_horizon,
                         x->x,
 
-                        solver_parameters(eps(), eps(), 250, 2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 1, 0.0, 2),
-                        
+                        [
+                            solver_parameters(eps(), eps(), eps(), 250, 
+                            1.0242323883590136, 0.5892723157762478, 0.0006988523559835617, 0.009036867721330505, 0.14457591298892497, 1.3282546133453548, 0.7955753778741823, 1.7661485851863441e-6, 2.6206711939142943e-7, 7.052160321659248e-12, 1.06497513443326e-6, 5.118937128189348, 90.94952163302091, 3.1268025435012207e-13, 1.691251847378593, 0.5455751102495228, 0.1201767636895742, 0.0007802908980930664, 0.011310267585075185, 1.0032972640942657, 
+                            1, 0.0, 2),
+
+                            solver_parameters(eps(), eps(), eps(), 250, 
+                            1.2472903868878749, 0.7149401846020106, 0.0034717544971213966, 0.0008409477479813854, 0.24599133854242075, 1.7996260724902138, 0.2399133704286251, 0.728108158144521, 0.03250298738504968, 0.003271716521926188, 0.5319194600339338, 2.1541622462034, 7.751722474870615, 0.08193253023289011, 1.52607969046303, 0.0002086811131899754, 0.005611466658864538, 0.018304952326087726, 0.0024888171138406773, 0.9061879299736817, 
+                            1, 0.0, 2),
+
+                            solver_parameters(eps(), eps(), eps(), 250, 
+                            1.9479518608134938, 0.02343520604394183, 5.125002799990568, 0.02387522857907376, 0.2239226474715968, 4.889172213411495, 1.747880258818237, 2.8683242331457, 0.938229356687311, 1.4890887655876235, 1.6261504814901664, 11.26863249187599, 36.05486169712279, 6.091535897587629, 11.73936761697657, 3.189349432626493, 0.21045178305336348, 0.17122196312330415, 13.251662547139363, 5.282429995876679, 
+                            1, 0.0, 2),
+
+                            solver_parameters(eps(), eps(), eps(), 250, 
+                            2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688, 
+                            1, 0.0, 2),
+
+                            solver_parameters(eps(), eps(), eps(), 250, 
+                            2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.897,
+                            1, 0.0, 2)
+                        ],
+
                         solution(
                             perturbation(   perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), (x,y)->nothing, nothing),
                                             perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), (x,y)->nothing, nothing),
@@ -910,7 +935,7 @@ end
 
 """
 $(SIGNATURES)
-Adds parameter values and calibration equations to the previously defined model.
+Adds parameter values and calibration equations to the previously defined model. Allows to provide an initial guess for the non-stochastic steady state (NSSS).
 
 # Arguments
 - `𝓂`: name of the object previously created containing the model information.
@@ -923,6 +948,7 @@ Parameters can be defined in either of the following ways:
 - expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneaously with the non-stochastic steady state using the equation defined with it.
 
 # Optional arguments to be placed between `𝓂` and `ex`
+- `guess` [Type: `Dict{Symbol, <:Real}, Dict{String, <:Real}}`]: Guess for the non-stochastic steady state. The keys must be the variable (and calibrated parameters) names and the values the guesses. Missing values are filled with standard starting values.
 - `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
 - `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
@@ -946,6 +972,21 @@ end
     ρ = 0.2
     δ = 0.02
     α = 0.5
+    β = 0.95
+end
+
+@model RBC_calibrated begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC_calibrated verbose = true guess = Dict(:k => 3) begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    k[ss] / q[ss] = 2.5 | α
     β = 0.95
 end
 ```
@@ -978,7 +1019,7 @@ macro parameters(𝓂,ex...)
 
     par_defined_more_than_once = Set()
     
-    bounds = []
+    bounded_vars = []
 
     # parse options
     verbose = false
@@ -986,6 +1027,7 @@ macro parameters(𝓂,ex...)
     symbolic = false
     precompile = false
     perturbation_order = 1
+    guess = Dict{Symbol,Float64}()
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -1001,8 +1043,10 @@ macro parameters(𝓂,ex...)
                         precompile = x.args[2] :
                     x.args[1] == :perturbation_order && x.args[2] isa Int ?
                         perturbation_order = x.args[2] :
+                    x.args[1] == :guess && (isa(eval(x.args[2]), Dict{Symbol, <:Real}) || isa(eval(x.args[2]), Dict{String, <:Real})) ?
+                        guess = x.args[2] :
                     begin
-                        @warn "Invalid options." 
+                        @warn "Invalid options. See docs: `?@parameters` for valid options." 
                         x
                     end :
                 x :
@@ -1045,10 +1089,10 @@ macro parameters(𝓂,ex...)
                     end :
                 x :
             x.head == :comparison ? 
-                push!(bounds,x) :
+                push!(bounded_vars,x) :
             x.head == :call ?
                 issubset([x.args[1]], [:(<) :(>) :(<=) :(>=)]) ?
-                    push!(bounds,x) :
+                    push!(bounded_vars,x) :
                 x :
             x :
         x,
@@ -1133,7 +1177,7 @@ macro parameters(𝓂,ex...)
                 occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i,string(x)) ?
                     x :
                     begin
-                        diffed = setdiff([x],ss_tmp)
+                        diffed = intersect(setdiff([x], ss_tmp), get_symbols(cal_eq))
                         if !isempty(diffed)
                             push!(par_tmp,diffed[1])
                         end
@@ -1241,69 +1285,51 @@ macro parameters(𝓂,ex...)
 
 
     #parse bounds
-    bounded_vars = []
-    upper_bounds = []
-    lower_bounds = []
+    bounds = Dict{Symbol,Tuple{Float64,Float64}}()
 
-    for bound in bounds
+    for bound in bounded_vars
         postwalk(x -> 
         x isa Expr ?
             x.head == :comparison ? 
                 x.args[2] == :(<) ?
                     x.args[4] == :(<) ?
                         begin
-                            push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[1]+eps(Float32)) 
-                            push!(upper_bounds,x.args[5]-eps(Float32)) 
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]+eps(Float32)), min(bounds[x.args[3]][2], x.args[5]-eps(Float32))) : (x.args[1]+eps(Float32), x.args[5]-eps(Float32))
                         end :
                     x.args[4] == :(<=) ?
                         begin
-                            push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[1]+eps(Float32)) 
-                            push!(upper_bounds,x.args[5]) 
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]+eps(Float32)), min(bounds[x.args[3]][2], x.args[5])) : (x.args[1]+eps(Float32), x.args[5])
                         end :
                     x :
                 x.args[2] == :(<=) ?
                     x.args[4] == :(<) ?
                         begin
-                            push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[1]) 
-                            push!(upper_bounds,x.args[5]-eps(Float32)) 
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]), min(bounds[x.args[3]][2], x.args[5]-eps(Float32))) : (x.args[1], x.args[5]-eps(Float32))
                         end :
                     x.args[4] == :(<=) ?
                         begin
-                            push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[1]) 
-                            push!(upper_bounds,x.args[5]) 
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[1]), min(bounds[x.args[3]][2], x.args[5])) : (x.args[1], x.args[5])
                         end :
                     x :
 
                 x.args[2] == :(>) ?
                     x.args[4] == :(>) ?
                         begin
-                            push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[5]+eps(Float32)) 
-                            push!(upper_bounds,x.args[1]-eps(Float32)) 
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]+eps(Float32)), min(bounds[x.args[3]][2], x.args[1]-eps(Float32))) : (x.args[5]+eps(Float32), x.args[1]-eps(Float32))
                         end :
                     x.args[4] == :(>=) ?
                         begin
-                            push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[5]+eps(Float32)) 
-                            push!(upper_bounds,x.args[1]) 
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]+eps(Float32)), min(bounds[x.args[3]][2], x.args[1])) : (x.args[5]+eps(Float32), x.args[1])
                         end :
                     x :
                 x.args[2] == :(>=) ?
                     x.args[4] == :(>) ?
                         begin
-                            push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[5]) 
-                            push!(upper_bounds,x.args[1]-eps(Float32)) 
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]), min(bounds[x.args[3]][2], x.args[1]-eps(Float32))) : (x.args[5], x.args[1]-eps(Float32))
                         end :
                     x.args[4] == :(>=) ?
                         begin
-                            push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[5]) 
-                            push!(upper_bounds,x.args[1]) 
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[5]), min(bounds[x.args[3]][2], x.args[1])) : (x.args[5], x.args[1])
                         end :
                     x :
                 x :
@@ -1312,57 +1338,41 @@ macro parameters(𝓂,ex...)
                 x.args[1] == :(<) ?
                     x.args[2] isa Symbol ? 
                         begin
-                            push!(bounded_vars,x.args[2]) 
-                            push!(upper_bounds,x.args[3]-eps(Float32)) 
-                            push!(lower_bounds,-1e12+rand()) 
+                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12+rand()), min(bounds[x.args[2]][2], x.args[3]-eps(Float32))) : (-1e12+rand(), x.args[3]-eps(Float32))
                         end :
                     x.args[3] isa Symbol ? 
                         begin
-                            push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[2]+eps(Float32)) 
-                            push!(upper_bounds,1e12+rand()) 
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[2]+eps(Float32)), min(bounds[x.args[3]][2], 1e12+rand())) : (x.args[2]+eps(Float32), 1e12+rand())
                         end :
                     x :
                 x.args[1] == :(>) ?
                     x.args[2] isa Symbol ? 
                         begin
-                            push!(bounded_vars,x.args[2]) 
-                            push!(lower_bounds,x.args[3]+eps(Float32)) 
-                            push!(upper_bounds,1e12+rand()) 
+                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], x.args[3]+eps(Float32)), min(bounds[x.args[2]][2], 1e12+rand())) : (x.args[3]+eps(Float32), 1e12+rand())
                         end :
                     x.args[3] isa Symbol ? 
                         begin
-                            push!(bounded_vars,x.args[3]) 
-                            push!(upper_bounds,x.args[2]-eps(Float32)) 
-                            push!(lower_bounds,-1e12+rand()) 
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], -1e12+rand()), min(bounds[x.args[3]][2], x.args[2]-eps(Float32))) : (-1e12+rand(), x.args[2]-eps(Float32))
                         end :
                     x :
                 x.args[1] == :(>=) ?
                     x.args[2] isa Symbol ? 
                         begin
-                            push!(bounded_vars,x.args[2]) 
-                            push!(lower_bounds,x.args[3]) 
-                            push!(upper_bounds,1e12+rand()) 
+                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], x.args[3]), min(bounds[x.args[2]][2], 1e12+rand())) : (x.args[3], 1e12+rand())
                         end :
                     x.args[3] isa Symbol ? 
                         begin
-                            push!(bounded_vars,x.args[3]) 
-                            push!(upper_bounds,x.args[2])
-                            push!(lower_bounds,-1e12+rand()) 
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], -1e12+rand()), min(bounds[x.args[3]][2], x.args[2])) : (-1e12+rand(), x.args[2])
                         end :
                     x :
                 x.args[1] == :(<=) ?
                     x.args[2] isa Symbol ? 
                         begin
-                            push!(bounded_vars,x.args[2]) 
-                            push!(upper_bounds,x.args[3]) 
-                            push!(lower_bounds,-1e12+rand()) 
+                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12+rand()), min(bounds[x.args[2]][2], x.args[3])) : (-1e12+rand(), x.args[3])
                         end :
                     x.args[3] isa Symbol ? 
                         begin
-                            push!(bounded_vars,x.args[3]) 
-                            push!(lower_bounds,x.args[2]) 
-                            push!(upper_bounds,1e12+rand()) 
+                            bounds[x.args[3]] = haskey(bounds, x.args[3]) ? (max(bounds[x.args[3]][1], x.args[2]), min(bounds[x.args[3]][2],1e12+rand())) : (x.args[2],1e12+rand())
                         end :
                     x :
                 x :
@@ -1382,22 +1392,23 @@ macro parameters(𝓂,ex...)
         calib_parameters, calib_values = expand_indices($calib_parameters, $calib_values, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
-
-        @assert length(setdiff(setdiff(setdiff(union(reduce(union, par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)...])
         
-        $lower_bounds[indexin(intersect(mod.$𝓂.bounded_vars,$bounded_vars),$bounded_vars)] = max.(mod.$𝓂.lower_bounds[indexin(intersect(mod.$𝓂.bounded_vars,$bounded_vars),mod.$𝓂.bounded_vars)],$lower_bounds[indexin(intersect(mod.$𝓂.bounded_vars,$bounded_vars),$bounded_vars)])
+        @assert length(setdiff(setdiff(setdiff(union(reduce(union, par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)...])
 
-        $upper_bounds[indexin(intersect(mod.$𝓂.bounded_vars,$bounded_vars),$bounded_vars)] = min.(mod.$𝓂.upper_bounds[indexin(intersect(mod.$𝓂.bounded_vars,$bounded_vars),mod.$𝓂.bounded_vars)],$upper_bounds[indexin(intersect(mod.$𝓂.bounded_vars,$bounded_vars),$bounded_vars)])
+        for (k,v) in $bounds
+            mod.$𝓂.bounds[k] = haskey(mod.$𝓂.bounds, k) ? (max(mod.$𝓂.bounds[k][1], v[1]), min(mod.$𝓂.bounds[k][2], v[2])) : (v[1], v[2])
+        end
+        
+        invalid_bounds = Symbol[]
 
-        mod.$𝓂.lower_bounds = vcat($lower_bounds, mod.$𝓂.lower_bounds[indexin(setdiff(mod.$𝓂.bounded_vars,$bounded_vars),mod.$𝓂.bounded_vars)])
-        mod.$𝓂.upper_bounds = vcat($upper_bounds, mod.$𝓂.upper_bounds[indexin(setdiff(mod.$𝓂.bounded_vars,$bounded_vars),mod.$𝓂.bounded_vars)])
-        mod.$𝓂.bounded_vars = vcat($bounded_vars,setdiff(mod.$𝓂.bounded_vars,$bounded_vars))
+        for (k,v) in mod.$𝓂.bounds
+            if v[1] >= v[2]
+                push!(invalid_bounds, k)
+            end
+        end
 
-        # _, mod.$𝓂.upper_bounds = expand_indices(mod.$𝓂.bounded_vars, mod.$𝓂.upper_bounds, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
-        # mod.$𝓂.bounded_vars, mod.$𝓂.lower_bounds = expand_indices(mod.$𝓂.bounded_vars, mod.$𝓂.lower_bounds, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
-    
-        @assert all(mod.$𝓂.lower_bounds .< mod.$𝓂.upper_bounds) "Invalid bounds: " * repr([mod.$𝓂.bounded_vars[findall(mod.$𝓂.lower_bounds .>= mod.$𝓂.upper_bounds)]...])
-    
+        @assert isempty(invalid_bounds) "Invalid bounds: " * repr(invalid_bounds)
+        
         mod.$𝓂.ss_calib_list = ss_calib_list
         mod.$𝓂.par_calib_list = par_calib_list
     
@@ -1411,49 +1422,75 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.calibration_equations_no_var = calib_equations_no_var_list
         mod.$𝓂.calibration_equations_parameters = calib_eq_parameters
         # mod.$𝓂.solution.outdated_NSSS = true
+        
+        if isa($guess, Dict{String, <:Real}) 
+            guess_dict = Dict{Symbol, Float64}()
+            for (key, value) in $guess
+                if key isa String
+                    key = replace_indices(key)
+                end
+                guess_dict[replace_indices(key)] = value
+            end
+        elseif isa($guess, Dict{Symbol, <:Real})
+            guess_dict = $guess
+        end
 
+        mod.$𝓂.guess = guess_dict
+        
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed 
         if !$precompile 
             start_time = time()
 
+            if !$silent print("Remove redundant variables in non stochastic steady state problem:\t") end
+
             symbolics = create_symbols_eqs!(mod.$𝓂)
+
             remove_redundant_SS_vars!(mod.$𝓂, symbolics) 
 
-            if !$silent println("Remove redundant variables in non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
+            if !$silent println(round(time() - start_time, digits = 3), " seconds") end
 
 
             start_time = time()
     
+            if !$silent print("Set up non stochastic steady state problem:\t\t\t\t") end
+
             solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 2nd argument is SS_symbolic
 
             mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
             
             set_up_obc_violation_function!(mod.$𝓂)
 
-            if !$silent println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
+            if !$silent println(round(time() - start_time, digits = 3), " seconds") end
         else
             start_time = time()
         
+            if !$silent print("Set up non stochastic steady state problem:\t\t\t\t") end
+
             solve_steady_state!(mod.$𝓂, verbose = $verbose)
 
-            if !$silent println("Set up non stochastic steady state problem:\t",round(time() - start_time, digits = 3), " seconds") end
+            if !$silent println(round(time() - start_time, digits = 3), " seconds") end
         end
 
         start_time = time()
+
+        if !$silent
+            if $perturbation_order == 1
+                print("Take symbolic derivatives up to first order:\t\t\t\t")
+            elseif $perturbation_order == 2
+                print("Take symbolic derivatives up to second order:\t\t\t\t")
+            elseif $perturbation_order == 3
+                print("Take symbolic derivatives up to third order:\t\t\t\t")
+            end
+        end
+
         # time_dynamic_derivs = @elapsed 
         write_functions_mapping!(mod.$𝓂, $perturbation_order)
 
         mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
         
         if !$silent
-            if $perturbation_order == 1
-                println("Take symbolic derivatives up to first order:\t",round(time() - start_time, digits = 3), " seconds")
-            elseif $perturbation_order == 2
-                println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds")
-            elseif $perturbation_order == 3
-                println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds")
-            end
+            println(round(time() - start_time, digits = 3), " seconds")
         end
 
         start_time = time()
@@ -1461,15 +1498,28 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.solution.functions_written = true
 
         if !$precompile
-            # time_SS_real_solve = @elapsed 
-            SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose, false, mod.$𝓂.solver_parameters)
-            
             if !$silent 
-                println("Find non stochastic steady state:\t",round(time() - start_time, digits = 3), " seconds") 
+                print("Find non stochastic steady state:\t\t\t\t\t") 
+            end
+            # time_SS_real_solve = @elapsed 
+            SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose, true, mod.$𝓂.solver_parameters)
+            
+            select_fastest_SS_solver_parameters!(mod.$𝓂)
 
-                if solution_error > eps()
-                    @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
-                end
+            found_solution = true
+
+            if solution_error > 1e-12
+                # start_time = time()
+                found_solution = find_SS_solver_parameters!(mod.$𝓂)
+                # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
+            end
+            
+            if !found_solution
+                @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
+            end
+
+            if !$silent 
+                println(round(time() - start_time, digits = 3), " seconds") 
             end
 
             mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars

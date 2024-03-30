@@ -30,6 +30,14 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     nsss = get_non_stochastic_steady_state(m)
     nsss = get_SS(m)
 
+
+    NSSS = get_SS(m, derivatives = false)
+
+    @test maximum(collect(check_residuals(m, NSSS))) < 1e-12
+    @test maximum(collect(check_residuals(m, collect(NSSS)))) < 1e-12
+    @test maximum(collect(check_residuals(m, Dict(axiskeys(NSSS, 1) .=> collect(NSSS))))) < 1e-12
+
+
     if algorithm ∈ [:pruned_second_order,:second_order]
         sols_nv = get_second_order_solution(m)
     elseif algorithm ∈ [:pruned_third_order,:third_order]
@@ -269,51 +277,51 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     varnames = axiskeys(new_sub_irfs_all,1)
     shocknames = axiskeys(new_sub_irfs_all,3)
     sol = get_solution(m)
-    var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[1:2]
+    var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
 
     conditions = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
     conditions[var_idxs[1],1] = .01
     conditions[var_idxs[2],2] = .02
-    
+
     cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false)
 
-    if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
+    if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
         shocks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
         shocks[1,1] = .1
         cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, shocks = shocks)
     end
 
     conditions = spzeros(size(new_sub_irfs_all,1),2)
-    conditions[var_idxs[1],1] = .01
-    conditions[var_idxs[2],2] = .02
-    
+    conditions[1,1] = .01
+    conditions[2,2] = .02
+
     cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false)
 
-    if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
+    if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
         shocks = spzeros(size(new_sub_irfs_all,3),1)
         shocks[1,1] = .1
         cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, shocks = shocks)
     end
 
-    conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs[1:2]]), Periods = 1:2)
-    conditions[var_idxs[1],1] = .01
-    conditions[var_idxs[2],2] = .02
+    conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs[[1, end]]]), Periods = 1:2)
+    conditions[1,1] = .01
+    conditions[2,2] = .02
 
     cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false)
 
-    conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[1:2]], Periods = 1:2)
-    conditions[var_idxs[1],1] = .01
-    conditions[var_idxs[2],2] = .02
+    conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[[1, end]]], Periods = 1:2)
+    conditions[1,1] = .01
+    conditions[2,2] = .02
 
     cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false)
 
-    if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
+    if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
         shocks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
         shocks[1,1] = .1
         cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, shocks = shocks)
     end
 
-    if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[1:2]] .!= 0, dims = 1)) .> 0)
+    if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
         shocks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
         shocks[1,1] = .1
         cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, shocks = shocks)
@@ -345,15 +353,15 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     full_SS[indexin(m.aux,full_SS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾|ᴸ⁽[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  m.aux)
     reference_steady_state = [s ∈ m.exo_present ? 0 : NSSS(axiskeys(NSSS,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol(s) : s) for s in full_SS]
 
-    conditions_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[1:2]], Periods = 1:2)
-    conditions_lvl[var_idxs[1],1] = .01 + reference_steady_state[var_idxs[1]]
-    conditions_lvl[var_idxs[2],2] = .02 + reference_steady_state[var_idxs[2]]
+    conditions_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[[1, end]]], Periods = 1:2)
+    conditions_lvl[1,1] = .01 + reference_steady_state[var_idxs[1]]
+    conditions_lvl[2,2] = .02 + reference_steady_state[var_idxs[2]]
 
     cond_fcst = get_conditional_forecast(m, conditions_lvl, algorithm = algorithm, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
 
-    conditions_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs[1:2]]), Periods = 1:2)
-    conditions_lvl[var_idxs[1],1] = .01 + reference_steady_state[var_idxs[1]]
-    conditions_lvl[var_idxs[2],2] = .02 + reference_steady_state[var_idxs[2]]
+    conditions_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs[[1, end]]]), Periods = 1:2)
+    conditions_lvl[1,1] = .01 + reference_steady_state[var_idxs[1]]
+    conditions_lvl[2,2] = .02 + reference_steady_state[var_idxs[2]]
 
     cond_fcst = get_conditional_forecast(m, conditions_lvl, algorithm = algorithm, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
 

@@ -122,9 +122,11 @@ end
 
 Parameter definitions are similar to assigning values in julia. Note that we have to write one parameter definition per line.
 
+Given the equations and parameters, the package will first attempt to solve the system of nonlinear equations symbolically (including possible calibration equations - see next tutorial for an example). If an analytical solution is not possible, numerical solution methods are used to try and solve it. There is no guarantee that a solution can be found, but it is highly likely, given that a solution exists. The problem setup tries to incorporate parts of the structure of the problem, e.g. bounds on variables: if one equation contains `log(k)` it must be that `k > 0`. Nonetheless, the user can also provide useful information such as variable bounds or initial guesses. Bounds can be set by adding another expression to the parameter block e.g.: `c > 0`. Large values are typically a problem for numerical solvers. Therefore, providing a guess for these values will increase the speed of the solver. Guesses can be provided as a `Dict` after the model name and before the parameter definitions block, e.g.: `@parameters RBC guess = Dict(k => 10) begin ... end`.
+
 ## Plot impulse response functions (IRFs)
 
-Given the equations and parameters, we have everything to solve the model and do some analysis. A common output are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non stochastic steady state (SS) and calculates the first order perturbation solution.
+A useful output to analyze are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non stochastic steady state (SS) and calculates the first order perturbation solution.
 
 ```@repl tutorial_1
 import StatsPlots

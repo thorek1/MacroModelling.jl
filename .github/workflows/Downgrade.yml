@@ -15,14 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        version: ['1']
+        version: ['1.10']
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v1
         with:
           version: ${{ matrix.version }}
       - uses: cjdoris/julia-downgrade-compat-action@v1
-#        if: ${{ matrix.version == '1.6' }}
+#        if: ${{ matrix.version == '1.10' }}
         with:
           skip: Pkg,TOML
       - uses: julia-actions/julia-buildpkg@v1
