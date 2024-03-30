@@ -30,19 +30,24 @@ include("models/Caldara_et_al_2012_estim.jl")
 
 # get_parameters(Caldara_et_al_2012_estim, values = true)
 
-Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
-    dȳ  ~ Normal(0, 1)
-    dc̄  ~ Normal(0, 1)
-    β   ~ Beta(0.95, 0.005, μσ = true)
-    ζ   ~ Beta(0.33, 0.05, μσ = true)
-    δ   ~ Beta(0.02, 0.01, μσ = true)
-    λ   ~ Beta(0.75, 0.01, μσ = true)
-    ψ   ~ Normal(1, .25)#, μσ = true)
-    σ̄   ~ InverseGamma(0.021, Inf, μσ = true)
-    η   ~ InverseGamma(0.1, Inf, μσ = true)
-    ρ   ~ Beta(0.75, 0.02, μσ = true)
+# Handling distributions with varying parameters using arraydist
+dists = [
+    Normal(0, 1),                           # dȳ
+    Normal(0, 1),                           # dc̄
+    Beta(0.95, 0.005, μσ = true),           # β
+    Beta(0.33, 0.05, μσ = true),            # ζ
+    Beta(0.02, 0.01, μσ = true),            # δ
+    Beta(0.75, 0.01, μσ = true),            # λ
+    Normal(1, .25)#, μσ = true),            # ψ
+    InverseGamma(0.021, Inf, μσ = true),    # σ̄
+    InverseGamma(0.1, Inf, μσ = true),      # η
+    Beta(0.75, 0.02, μσ = true)             # ρ
+]
 
-    Turing.@addlogprob! get_loglikelihood(m, data, [dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ], algorithm = :pruned_third_order)
+Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
+    all_params ~ Turing.arraydist(dists)
+
+    Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_third_order)
 end
 
 
