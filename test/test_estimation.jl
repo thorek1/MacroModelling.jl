@@ -19,18 +19,23 @@ observables = sort(Symbol.("log_".*names(dat)))
 data = data(observables,:)
 
 
+# Handling distributions with varying parameters using arraydist
+dists = [
+    Beta(0.356, 0.02, μσ = true),           # alp
+    Beta(0.993, 0.002, μσ = true),          # bet
+    Normal(0.0085, 0.003),                  # gam
+    Normal(1.0002, 0.007),                  # mst
+    Beta(0.129, 0.223, μσ = true),          # rho
+    Beta(0.65, 0.05, μσ = true),            # psi
+    Beta(0.01, 0.005, μσ = true),           # del
+    InverseGamma(0.035449, Inf, μσ = true), # z_e_a
+    InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
+]
+
 Turing.@model function FS2000_loglikelihood_function(data, m)
-    alp     ~ Beta(0.356, 0.02, μσ = true)
-    bet     ~ Beta(0.993, 0.002, μσ = true)
-    gam     ~ Normal(0.0085, 0.003)
-    mst     ~ Normal(1.0002, 0.007)
-    rho     ~ Beta(0.129, 0.223, μσ = true)
-    psi     ~ Beta(0.65, 0.05, μσ = true)
-    del     ~ Beta(0.01, 0.005, μσ = true)
-    z_e_a   ~ InverseGamma(0.035449, Inf, μσ = true)
-    z_e_m   ~ InverseGamma(0.008862, Inf, μσ = true)
-    # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
-    Turing.@addlogprob! get_loglikelihood(m, data, [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
+    all_params ~ Turing.arraydist(dists)
+
+    Turing.@addlogprob! get_loglikelihood(m, data, all_params)
 end
 
 FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000)
@@ -86,23 +91,20 @@ sample_pigeons = mean(samps).nt.mean
 
 Random.seed!(30)
 
-function calculate_posterior_loglikelihood(parameters)
-    alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
+
+function calculate_posterior_loglikelihood(parameters, prior_distribuions)
     log_lik = 0
+
+    for (dist, val) in zip(prior_distribuions, parameters)
+        log_lik -= logpdf(dist, val)
+    end
+
     log_lik -= get_loglikelihood(FS2000, data, parameters)
-    log_lik -= logpdf(Beta(0.356, 0.02, μσ = true),alp)
-    log_lik -= logpdf(Beta(0.993, 0.002, μσ = true),bet)
-    log_lik -= logpdf(Normal(0.0085, 0.003),gam)
-    log_lik -= logpdf(Normal(1.0002, 0.007),mst)
-    log_lik -= logpdf(Beta(0.129, 0.223, μσ = true),rho)
-    log_lik -= logpdf(Beta(0.65, 0.05, μσ = true),psi)
-    log_lik -= logpdf(Beta(0.01, 0.005, μσ = true),del)
-    log_lik -= logpdf(InverseGamma(0.035449, Inf, μσ = true),z_e_a)
-    log_lik -= logpdf(InverseGamma(0.008862, Inf, μσ = true),z_e_m)
+
     return log_lik
 end
 
-sol = Optim.optimize(calculate_posterior_loglikelihood, 
+sol = Optim.optimize(x -> calculate_posterior_loglikelihood(x, dists), 
 [0,0,-10,-10,0,0,0,0,0], [1,1,10,10,1,1,1,100,100] ,FS2000.parameter_values, 
 Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
