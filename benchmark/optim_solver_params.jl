@@ -250,6 +250,8 @@ function evaluate_multi_pars_loglikelihood(pars, models)
         log_lik -= -log(5 * sqrt(2 * π)) - (pars_mat[20, k]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and 
     end
 
+    [if length(model.NSSS_solver_cache) > 1 pop!(model.NSSS_solver_cache) end for model in models]
+
     total_runtime = @elapsed for (i,model) in enumerate(models)
         for k in 1:num_starting_points
             # Example solver parameters - this needs to be replaced with actual logic
@@ -265,6 +267,8 @@ function evaluate_multi_pars_loglikelihood(pars, models)
             end
         end  
     end
+    
+    [if length(model.NSSS_solver_cache) > 1 pop!(model.NSSS_solver_cache) end for model in models]
 
     return Float64(log_lik / 1e2 +  1e3 * total_runtime + sum(minimum(model_runtimes, dims = 2)))
 end
@@ -303,7 +307,58 @@ all_models = [
     Smets_Wouters_2007_linear
 ];
 
-# [pop!(model.NSSS_solver_cache) for model in all_models]
+# [if length(model.NSSS_solver_cache) > 1 pop!(model.NSSS_solver_cache) end for model in all_models]
+
+# all_models[1].NSSS_solver_cache
+# pars = [2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688]
+
+# evaluate_multi_pars_loglikelihood(pars, all_models)
+
+
+
+# models = all_models
+# num_starting_points = length(pars) - 19
+
+# model_runtimes = zeros(length(models), num_starting_points) .+ 1e4
+
+# pars_mat = zeros(20, num_starting_points)
+
+# pars_mat[1:19,:] .= pars[1:19]
+# pars_mat[20,:]   .= pars[20:end]
+
+# log_lik = 0.0
+
+# log_lik -= -sum(pars[1:19]) # logpdf of a gamma dist with mean and variance 1
+
+# for k in 1:num_starting_points
+#     pars_mat[1:2, k] = sort(pars_mat[1:2, k], rev = true)
+
+#     # Apply prior distributions
+#     log_lik -= -log(5 * sqrt(2 * π)) - (pars_mat[20, k]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and 
+# end
+
+# total_runtime = @elapsed for (i,model) in enumerate(models)
+#     for k in 1:num_starting_points
+#         # Example solver parameters - this needs to be replaced with actual logic
+#         par_inputs = MacroModelling.solver_parameters(eps(), eps(), eps(), maxiters, pars_mat[:, k]..., transformation, 0.0, 2)
+
+#         # Iterate over all models and calculate the total iterations
+#         total_runtimes = calc_total_runtime(model, par_inputs)
+#         # model_runtimes[i] = 1e1 * total_runtimes
+#         model_runtimes[i, k] = total_runtimes
+
+#         if total_runtimes < 1e4
+#             break 
+#         end
+#     end  
+# end
+
+# model_runtimes
+
+# using BenchmarkTools
+
+# @benchmark evaluate_multi_pars_loglikelihood(parameters, all_models)
+
 
 sol = BlackBoxOptim.bboptimize(x -> evaluate_multi_pars_loglikelihood(x, all_models), parameters, 
                                 SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
@@ -316,9 +371,6 @@ sol = BlackBoxOptim.bboptimize(x -> evaluate_multi_pars_loglikelihood(x, all_mod
 
 pars = BlackBoxOptim.best_candidate(sol)  
 
-using BenchmarkTools
-
-@benchmark evaluate_multi_pars_loglikelihood(pars, all_models)
 
 println("Parameters: $pars")
 
