@@ -33,7 +33,7 @@ include("../models/Smets_Wouters_2003.jl")
 include("../models/GNSS_2010.jl")
 include("../models/Ghironi_Melitz_2005.jl")
 include("../models/SGU_2003_debt_premium.jl")
-include("../models/NAWM_EAUS_2008.jl") # stands out
+# include("../models/NAWM_EAUS_2008.jl") # stands out
 include("../models/JQ_2012_RBC.jl")
 include("../models/Ireland_2004.jl")
 include("../models/Caldara_et_al_2012.jl")
@@ -179,18 +179,18 @@ end
 
 function calc_total_runtime(model, par_inputs)
     runtime = @elapsed outmodel = try model.SS_solve_func(model.parameter_values, model, false, true, [par_inputs]) catch end
-
+    # outmodel = try model.SS_solve_func(model.parameter_values, model, false, true, [par_inputs]) catch end
     runtime = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
                     (outmodel[2][1] > 1e-12) || !isfinite(outmodel[2][1]) ? 
                         10 : 
                     runtime : 
                 10
 
-    if model.model_name == "Smets_Wouters_2007"
-        if (abs(outmodel[1][indexin([:ygap], model.var)][1]) > .01) || (outmodel[1][indexin([:y], model.var)][1] < .01)
-            runtime = 10
-        end
-    end
+    # if model.model_name == "Smets_Wouters_2007"
+    #     if (abs(outmodel[1][indexin([:ygap], model.var)][1]) > .01) || (outmodel[1][indexin([:y], model.var)][1] < .01)
+    #         runtime = 10
+    #     end
+    # end
 
     return runtime * 1e3
 end
@@ -207,6 +207,7 @@ function evaluate_pars_loglikelihood(pars, models)
     pars[1:2] = sort(pars[1:2], rev = true)
 
     # Apply prior distributions
+    # log_lik -= sum(x -> log(x) - x, pars[1:19])                                 # logpdf of a gamma dist with mean and variance 1
     log_lik -= -sum(pars[1:19])                                 # logpdf of a gamma dist with mean and variance 1
     log_lik -= -log(5 * sqrt(2 * π)) - (pars[20]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and 
     
@@ -221,7 +222,7 @@ function evaluate_pars_loglikelihood(pars, models)
         model_runtimes[i] = total_runtimes
     end
     
-    return Float64(log_lik / 1e4 + sum(model_runtimes))
+    return Float64(log_lik / 1e3 + sum(model_runtimes))
 end
 
 
@@ -252,7 +253,7 @@ function evaluate_multi_pars_loglikelihood(pars, models)
     total_runtime = @elapsed for (i,model) in enumerate(models)
         for k in 1:num_starting_points
             # Example solver parameters - this needs to be replaced with actual logic
-            par_inputs = MacroModelling.solver_parameters(eps(), eps(), maxiters, pars_mat[:, k]..., transformation, 0.0, 2)
+            par_inputs = MacroModelling.solver_parameters(eps(), eps(), eps(), maxiters, pars_mat[:, k]..., transformation, 0.0, 2)
 
             # Iterate over all models and calculate the total iterations
             total_runtimes = calc_total_runtime(model, par_inputs)
@@ -265,7 +266,7 @@ function evaluate_multi_pars_loglikelihood(pars, models)
         end  
     end
 
-    return Float64(log_lik / 1e4 + total_runtime * 1e3 + sum(minimum(model_runtimes, dims = 2)))
+    return Float64(log_lik / 1e2 +  1e3 * total_runtime + sum(minimum(model_runtimes, dims = 2)))
 end
 
 n_starting_points = 5
@@ -283,7 +284,7 @@ ubs = fill(100.0,length(parameters))
 all_models = [
     Smets_Wouters_2003,
     Guerrieri_Iacoviello_2017,
-    NAWM_EAUS_2008, 
+    # NAWM_EAUS_2008, 
     GNSS_2010, 
     Ascari_Sbordone_2014, 
     Smets_Wouters_2003, 
@@ -302,6 +303,7 @@ all_models = [
     Smets_Wouters_2007_linear
 ];
 
+# [pop!(model.NSSS_solver_cache) for model in all_models]
 
 sol = BlackBoxOptim.bboptimize(x -> evaluate_multi_pars_loglikelihood(x, all_models), parameters, 
                                 SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
@@ -312,8 +314,11 @@ sol = BlackBoxOptim.bboptimize(x -> evaluate_multi_pars_loglikelihood(x, all_mod
                                 TraceInterval = 60, 
                                 Method = :adaptive_de_rand_1_bin_radiuslimited)
 
-pars = BlackBoxOptim.best_candidate(sol)   
+pars = BlackBoxOptim.best_candidate(sol)  
 
+using BenchmarkTools
+
+@benchmark evaluate_multi_pars_loglikelihood(pars, all_models)
 
 println("Parameters: $pars")
 
