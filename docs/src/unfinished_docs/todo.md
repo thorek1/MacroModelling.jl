@@ -3,6 +3,8 @@
 ## High priority
 
 - [ ] ss transition by entering new parameters at given periods
+- [ ] check downgrade tests
+- [ ] figure out why PG and IS return basically the prior
 - [ ] allow external functions to calculate the steady state (and hand it over via SS or get_loglikelihood function) - need to use the check function for implicit derivatives and cannot use it to get him a guess from which he can use internal solver going forward
 - [ ] go through custom SS solver once more and try to find parameters and logic that achieves best results
 - [ ] SS solver with less equations than variables
