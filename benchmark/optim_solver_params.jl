@@ -1,8 +1,8 @@
 import Pkg
 # Pkg.activate("/home/cdsw/MacroModelling.jl-ss_solver2/MacroModelling.jl-ss_solver/")
-Pkg.add(["Optimization", "OptimizationNLopt", "BlackBoxOptim"])#, "OptimizationMultistartOptimization", "OptimizationMetaheuristics"])
+Pkg.add(["Optimization", "OptimizationNLopt", "BlackBoxOptim", "NOMAD"])#, "OptimizationMultistartOptimization", "OptimizationMetaheuristics"])
 
-using MacroModelling, Optimization, OptimizationNLopt, Optim # , OptimizationMultistartOptimization, OptimizationMetaheuristics
+using MacroModelling, Optimization, OptimizationNLopt, Optim, NOMAD # , OptimizationMultistartOptimization, OptimizationMetaheuristics
 import BlackBoxOptim#, OptimizationEvolutionary
 
 max_time = 3 * 60^2
@@ -33,7 +33,7 @@ include("../models/Smets_Wouters_2003.jl")
 include("../models/GNSS_2010.jl")
 include("../models/Ghironi_Melitz_2005.jl")
 include("../models/SGU_2003_debt_premium.jl")
-# include("../models/NAWM_EAUS_2008.jl") # stands out
+include("../models/NAWM_EAUS_2008.jl") # stands out
 include("../models/JQ_2012_RBC.jl")
 include("../models/Ireland_2004.jl")
 include("../models/Caldara_et_al_2012.jl")
@@ -266,6 +266,9 @@ function evaluate_multi_pars_loglikelihood(pars, models)
                 break 
             end
         end  
+        if minimum(model_runtimes[i,:]) == 1e4
+            return 1e7
+        end
     end
     
     [if length(model.NSSS_solver_cache) > 1 pop!(model.NSSS_solver_cache) end for model in models]
@@ -273,22 +276,22 @@ function evaluate_multi_pars_loglikelihood(pars, models)
     return Float64(log_lik / 1e2 +  1e3 * total_runtime + sum(minimum(model_runtimes, dims = 2)))
 end
 
-n_starting_points = 5
+n_starting_points = 1
 
 parameters = rand(19 + n_starting_points)
 parameters[20:end] .-= 1
 
 lbs = fill(eps(), length(parameters))
-lbs[20:end] .= -20
+lbs[20:end] .= -2
 
 ubs = fill(100.0,length(parameters))
-
+ubs[20:end] .= 5
 
 
 all_models = [
     Smets_Wouters_2003,
     Guerrieri_Iacoviello_2017,
-    # NAWM_EAUS_2008, 
+    NAWM_EAUS_2008, 
     GNSS_2010, 
     Ascari_Sbordone_2014, 
     Smets_Wouters_2003, 
@@ -310,13 +313,14 @@ all_models = [
 # [if length(model.NSSS_solver_cache) > 1 pop!(model.NSSS_solver_cache) end for model in all_models]
 
 # all_models[1].NSSS_solver_cache
-# pars = [2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688]
+pars = [2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688]
 
-# evaluate_multi_pars_loglikelihood(pars, all_models)
+evaluate_multi_pars_loglikelihood(pars, all_models)
 
 
 
 # models = all_models
+
 # num_starting_points = length(pars) - 19
 
 # model_runtimes = zeros(length(models), num_starting_points) .+ 1e4
@@ -337,6 +341,8 @@ all_models = [
 #     log_lik -= -log(5 * sqrt(2 * π)) - (pars_mat[20, k]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and 
 # end
 
+# [if length(model.NSSS_solver_cache) > 1 pop!(model.NSSS_solver_cache) end for model in models]
+
 # total_runtime = @elapsed for (i,model) in enumerate(models)
 #     for k in 1:num_starting_points
 #         # Example solver parameters - this needs to be replaced with actual logic
@@ -351,7 +357,12 @@ all_models = [
 #             break 
 #         end
 #     end  
+#     if minimum(model_runtimes[i,:]) == 1e4
+#         return 1e7
+#     end
 # end
+
+# [if length(model.NSSS_solver_cache) > 1 pop!(model.NSSS_solver_cache) end for model in models]
 
 # model_runtimes
 
@@ -360,10 +371,98 @@ all_models = [
 # @benchmark evaluate_multi_pars_loglikelihood(parameters, all_models)
 
 
-sol = BlackBoxOptim.bboptimize(x -> evaluate_multi_pars_loglikelihood(x, all_models), parameters, 
+
+function evaluate_multi_pars_loglikelihood_NOMAD(pars, models)
+    num_starting_points = length(pars) - 19
+
+    model_runtimes = zeros(length(models), num_starting_points) .+ 1e4
+    
+    pars_mat = zeros(20, num_starting_points)
+
+    pars_mat[1:19,:] .= pars[1:19]
+    pars_mat[20,:]   .= pars[20:end]
+
+    log_lik = 0.0
+    
+    # log_lik -= -sum(pars[1:19]) # logpdf of a gamma dist with mean and variance 1
+
+    for k in 1:num_starting_points
+        pars_mat[1:2, k] = sort(pars_mat[1:2, k], rev = true)
+
+        # Apply prior distributions
+        # log_lik -= -log(5 * sqrt(2 * π)) - (pars_mat[20, k]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and 
+    end
+
+    [if length(model.NSSS_solver_cache) > 1 pop!(model.NSSS_solver_cache) end for model in models]
+
+    total_runtime = @elapsed for (i,model) in enumerate(models)
+                                for k in 1:num_starting_points
+                                    # Example solver parameters - this needs to be replaced with actual logic
+                                    par_inputs = MacroModelling.solver_parameters(eps(), eps(), eps(), maxiters, pars_mat[:, k]..., transformation, 0.0, 2)
+
+                                    # Iterate over all models and calculate the total iterations
+                                    total_runtimes = calc_total_runtime(model, par_inputs)
+                                    # model_runtimes[i] = 1e1 * total_runtimes
+                                    model_runtimes[i, k] = total_runtimes
+
+                                    if total_runtimes < 1e4
+                                        break 
+                                    end
+                                end
+                                if minimum(model_runtimes[i,:]) >= 1e4
+                                    return false, false, 1e7
+                                end
+                            end
+    
+    [if length(model.NSSS_solver_cache) > 1 pop!(model.NSSS_solver_cache) end for model in models]
+
+    return true, true, Float64(log_lik / 1e2 +  1e3 * total_runtime + sum(minimum(model_runtimes, dims = 2)))
+end
+
+
+evaluate_multi_pars_loglikelihood_NOMAD(pars, all_models)
+
+p = NomadProblem(length(parameters), 1, ["OBJ"], 
+                    x -> evaluate_multi_pars_loglikelihood_NOMAD(x, all_models),
+                    lower_bound = lbs,
+                    upper_bound = ubs,
+                    # initial_mesh_size = fill(20.0, length(parameters))
+                    )
+
+# Fix some options
+p.options.max_bb_eval = 1000000 # total number of evaluations
+p.options.max_time = 7 * 60^2 # max time in seconds
+p.options.display_stats = ["TIME", "BBE", "INF_BBE", "EVAL", "OBJ"] # some display options
+p.options.display_degree = 2
+p.options.display_all_eval = true
+p.options.display_unsuccessful = true
+
+# Deactivate quadratic models
+# p.options.quad_model_search = false # for the search step ..
+# # p.options.sgtelib_search = false
+# p.options.nm_search = false
+# p.options.lh_search = (10,10)
+# p.options.speculative_search_max = 1
+# p.options.eval_opportunistic = false
+# # p.options.stop_if_feasible = true
+# p.options.vns_mads_search = false
+# p.options.anisotropic_mesh = false
+# p.options.direction_type = "ORTHO N+1 NEG" # .. and the computation of the n+1 direction.
+
+# One can also deactivate the sorting of poll directions by quadratic models but it is not
+# mandatory as it plays a minimal role in the computational performance.
+# p.options.eval_queue_sort = "DIR_LAST_SUCCESS"
+# p.options.eval_queue_sort = "RANDOM"
+
+result = NOMAD.solve(p, pars)
+
+
+pars = result.x_best_feas
+
+sol = BlackBoxOptim.bboptimize(x -> evaluate_multi_pars_loglikelihood(x, all_models), pars, 
                                 SearchRange = [(lb, ub) for (ub, lb) in zip(ubs, lbs)], 
                                 NumDimensions = length(parameters),
-                                MaxFuncEvals = 150000,
+                                MaxFuncEvals = 15000000,
                                 PopulationSize = 500, 
                                 TraceMode = :verbose, 
                                 TraceInterval = 60, 
@@ -373,9 +472,9 @@ pars = BlackBoxOptim.best_candidate(sol)
 
 
 println("Parameters: $pars")
-
-prob = OptimizationProblem(evaluate_multi_pars_loglikelihood, pars, all_models, lb = lbs, ub = ubs)
-sol = solve(prob, NLopt.LN_BOBYQA()); sol.minimum
+# Parameters: [40.08254312013302, 0.8725246623777, 0.0027048807345, 0.02895638158135, 8.0399863989285, 4.07640642601482, 0.46380625778036, 0.24280985510768, 0.56328843032977, 0.00954343644506, 0.63428876528872, 0.52757022623372, 0.9999784818084, 0.0617801523342, 0.52342514358078, 0.4219987431969, 0.01119297401336, 0.504598540533, 0.60207400370736, 0.768794398439]
+prob = OptimizationProblem(evaluate_multi_pars_loglikelihood, pars, all_models, lb = lbs[1:length(pars)], ub = ubs[1:length(pars)])
+sol = Optimization.solve(prob, NLopt.LN_BOBYQA()); sol.minimum
 
 prob = OptimizationProblem(evaluate_multi_pars_loglikelihood, sol.u, all_models, lb = lbs, ub = ubs)
 sol = solve(prob, NLopt.LN_NELDERMEAD()); sol.minimum
