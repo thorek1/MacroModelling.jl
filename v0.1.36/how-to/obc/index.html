@@ -90,10 +90,10 @@ Parameters:   18</code></pre><p>In the background the system of equations is aug
        
            std_nu = .0025
        
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	1.824 seconds
-Set up non stochastic steady state problem:				3.728 seconds
-Take symbolic derivatives up to first order:				1.062 seconds
-Find non stochastic steady state:					6.475 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	1.466 seconds
+Set up non stochastic steady state problem:				4.305 seconds
+Take symbolic derivatives up to first order:				1.124 seconds
+Find non stochastic steady state:					6.99 seconds
 Model:        Gali_2015_chapter_3_obc
 Variables
  Total:       68
@@ -231,10 +231,10 @@ Parameters:   18</code><br/><code class="language-julia-repl hljs" style="displa
            std_nu = .0025
        
            R &gt; 1.000001
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	1.069 seconds
-Set up non stochastic steady state problem:				3.077 seconds
-Take symbolic derivatives up to first order:				0.201 seconds
-Find non stochastic steady state:					0.382 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	1.869 seconds
+Set up non stochastic steady state problem:				3.813 seconds
+Take symbolic derivatives up to first order:				0.367 seconds
+Find non stochastic steady state:					0.392 seconds
 Model:        Gali_2015_chapter_3_obc
 Variables
  Total:       68
@@ -387,10 +387,10 @@ Parameters:   7</code></pre><p>In the background the system of equations is augm
            σ = 0.05
            m = 1
            γ = 1
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	0.485 seconds
-Set up non stochastic steady state problem:				9.769 seconds
-Take symbolic derivatives up to first order:				0.118 seconds
-Find non stochastic steady state:					2.709 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	0.504 seconds
+Set up non stochastic steady state problem:				10.304 seconds
+Take symbolic derivatives up to first order:				0.138 seconds
+Find non stochastic steady state:					2.871 seconds
 Model:        borrowing_constraint
 Variables
  Total:       49
@@ -407,8 +407,8 @@ And data, <span class="sgr1">49-element Vector{Float64}</span>:
  <span class="sgr35">(:C)</span>                0.95
  <span class="sgr35">(:Y)</span>                1.0
  <span class="sgr35">(:Χᵒᵇᶜ⁺ꜝ¹ꜝ)</span>         0.0
- <span class="sgr35">(:λ)</span>                0.008157894736842098
- <span class="sgr35">(:χᵒᵇᶜ⁺ꜝ¹ꜝʳ)</span>       -0.008157894736842098
+ <span class="sgr35">(:λ)</span>                0.008157894736842097
+ <span class="sgr35">(:χᵒᵇᶜ⁺ꜝ¹ꜝʳ)</span>       -0.008157894736842097
  <span class="sgr35">(:χᵒᵇᶜ⁺ꜝ¹ꜝˡ)</span>        8.773722820781672e-25
  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ)</span>         0.0
   ⋮
@@ -440,16 +440,16 @@ And data, <span class="sgr1">4×1000×1 Array{Float64, 3}</span>:
   <span class="sgr35">(:B)</span>    0.999025      0.978434          1.0              1.0
   <span class="sgr35">(:C)</span>    0.94805       0.907891          0.95             0.95
   <span class="sgr35">(:Y)</span>    0.999025      0.978434          1.0              1.0
-  <span class="sgr35">(:λ)</span>    0.00951431    0.0370327         0.00815789       0.00815789</code></pre><p>Let&#39;s look at the mean and standard deviation of borrowing:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import Statistics</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.mean(sims(:B,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.959722395107753</code></pre><p>and</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.std(sims(:B,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.08986494438053381</code></pre><p>Compare this to the theoretical mean of the model without the occasionally binding constraint:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_mean(borrowing_constraint)</code><code class="nohighlight hljs ansi" style="display:block;">1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+  <span class="sgr35">(:λ)</span>    0.00951431    0.0370327         0.00815789       0.00815789</code></pre><p>Let&#39;s look at the mean and standard deviation of borrowing:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import Statistics</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.mean(sims(:B,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.9597223949671511</code></pre><p>and</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.std(sims(:B,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.08986494469244331</code></pre><p>Compare this to the theoretical mean of the model without the occasionally binding constraint:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_mean(borrowing_constraint)</code><code class="nohighlight hljs ansi" style="display:block;">1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 4-element Vector{Symbol}</span>
 And data, <span class="sgr1">4-element Vector{Float64}</span>:
  <span class="sgr35">(:B)</span>  1.0
  <span class="sgr35">(:C)</span>  0.95
  <span class="sgr35">(:Y)</span>  1.0
- <span class="sgr35">(:λ)</span>  0.008157894736842098</code></pre><p>and the theoretical standard deviation:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(borrowing_constraint)</code><code class="nohighlight hljs ansi" style="display:block;">1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+ <span class="sgr35">(:λ)</span>  0.008157894736842097</code></pre><p>and the theoretical standard deviation:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(borrowing_constraint)</code><code class="nohighlight hljs ansi" style="display:block;">1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 4-element Vector{Symbol}</span>
 And data, <span class="sgr1">4-element Vector{Float64}</span>:
  <span class="sgr35">(:B)</span>  0.1147078669352811
  <span class="sgr35">(:C)</span>  0.1319140469755731
  <span class="sgr35">(:Y)</span>  0.11470786693528105
- <span class="sgr35">(:λ)</span>  0.07031743997991882</code></pre><p>The mean of borrowing is lower in the model with occasionally binding constraints compared to the model without and the standard deviation is higher.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../loops/">« Programmatic model writing using for-loops</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.3.0 on <span class="colophon-date" title="Saturday 30 March 2024 20:13">Saturday 30 March 2024</span>. Using Julia version 1.10.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ <span class="sgr35">(:λ)</span>  0.07031743997991882</code></pre><p>The mean of borrowing is lower in the model with occasionally binding constraints compared to the model without and the standard deviation is higher.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../loops/">« Programmatic model writing using for-loops</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.3.0 on <span class="colophon-date" title="Sunday 31 March 2024 11:47">Sunday 31 March 2024</span>. Using Julia version 1.10.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
