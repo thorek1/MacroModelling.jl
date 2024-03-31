@@ -19,7 +19,7 @@ println("Threads used: ", Threads.nthreads())
 
 smpler = "nuts" #
 smple = "original" #
-mdl = "nonlinear" # 
+mdl = "linear" # 
 chns = 1 # 
 scns = 1000
 
@@ -45,10 +45,10 @@ elseif smple == "full"
 end
 
 if mdl == "linear"
-    include("../models/SW07.jl")
+    include("../models/Smets_Wouters_2007_linear.jl")
+    Smets_Wouters_2007 = Smets_Wouters_2007_linear
 elseif mdl == "nonlinear"
-    include("../models/SW07_nonlinear.jl")
-    SW07 = SW07_nonlinear
+    include("../models/Smets_Wouters_2007.jl")
 end
 
 # get_solution(SW07_nonlinear)
@@ -66,7 +66,7 @@ observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs]
 # subset observables in data
 data = data(observables, sample_idx)
 
-SS(SW07)(observables)
+SS(Smets_Wouters_2007)(observables)
 
 # SS(SW07,parameters = 
 # [:z_ea    =>   0.451788281662122,
@@ -112,6 +112,6 @@ SS(SW07)(observables)
 # :cmap   => 0.02, 
 # :cmaw => 0.02])
 
-kalman_prob = get_loglikelihood(SW07, data(observables), SW07.parameter_values)
+kalman_prob = get_loglikelihood(Smets_Wouters_2007, data(observables), Smets_Wouters_2007.parameter_values)
 
 # SS(SW07, parameter_derivatives = :constelab)(observables,:)
