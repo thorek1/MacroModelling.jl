@@ -152,12 +152,13 @@ Next, we are plotting the posterior loglikelihood along two parameters dimension
 using ComponentArrays, MCMCChains, DynamicPPL
 
 parameter_mean = mean(chain_NUTS)
-pars = ComponentArray(parameter_mean.nt[2],Axis(parameter_mean.nt[1]))
+
+pars = ComponentArray([parameter_mean.nt[2]], Axis(:parameters));
 
 logjoint(FS2000_loglikelihood, pars)
 
 function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
-    orig_pars[pars_syms] = [par1, par2]
+    orig_pars[1][pars_syms] = [par1, par2]
     logjoint(model, orig_pars)
 end
 
@@ -165,21 +166,24 @@ granularity = 32;
 
 par1 = :del;
 par2 = :gam;
-par_range1 = collect(range(minimum(chain_NUTS[par1]), stop = maximum(chain_NUTS[par1]), length = granularity));
-par_range2 = collect(range(minimum(chain_NUTS[par2]), stop = maximum(chain_NUTS[par2]), length = granularity));
+
+paridx1 = indexin([par1], FS2000.parameters)[1];
+paridx2 = indexin([par2], FS2000.parameters)[1];
+
+par_range1 = collect(range(minimum(chain_NUTS[Symbol("parameters[$paridx1]")]), stop = maximum(chain_NUTS[Symbol("parameters[$paridx1]")]), length = granularity));
+par_range2 = collect(range(minimum(chain_NUTS[Symbol("parameters[$paridx2]")]), stop = maximum(chain_NUTS[Symbol("parameters[$paridx2]")]), length = granularity));
 
 p = surface(par_range1, par_range2, 
-            (x,y) -> calculate_log_probability(x, y, [par1, par2], pars, FS2000_loglikelihood),
+            (x,y) -> calculate_log_probability(x, y, [paridx1, paridx2], pars, FS2000_loglikelihood),
             camera=(30, 65),
             colorbar=false,
             color=:inferno);
 
+joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray([reduce(hcat, get(chain_NUTS, :parameters)[1])[s,:]], Axis(:parameters))) for s in 1:length(chain_NUTS)];
 
-joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray(reduce(hcat, get(chain_NUTS, FS2000.parameters)[FS2000.parameters])[s,:], Axis(FS2000.parameters))) for s in 1:length(chain_NUTS)];
-
-scatter3d!(vec(collect(chain_NUTS[par1])),
-           vec(collect(chain_NUTS[par2])),
-           joint_loglikelihood,
+scatter3d!(vec(collect(chain_NUTS[Symbol("parameters[$paridx1]")])),
+            vec(collect(chain_NUTS[Symbol("parameters[$paridx2]")])),
+            joint_loglikelihood,
             mc = :viridis, 
             marker_z = collect(1:length(chain_NUTS)), 
             msw = 0,
@@ -202,19 +206,15 @@ Other than the mean and median of the posterior distribution we can also calcula
 First, we define the posterior loglikelihood function, similar to how we defined it for the Turing model macro.
 
 ```@repl tutorial_2
-function calculate_posterior_loglikelihood(parameters)
+function calculate_posterior_loglikelihood(parameters, prior_distribuions)
     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
     log_lik = 0
     log_lik -= get_loglikelihood(FS2000, data, parameters)
-    log_lik -= logpdf(Beta(0.356, 0.02, μσ = true),alp)
-    log_lik -= logpdf(Beta(0.993, 0.002, μσ = true),bet)
-    log_lik -= logpdf(Normal(0.0085, 0.003),gam)
-    log_lik -= logpdf(Normal(1.0002, 0.007),mst)
-    log_lik -= logpdf(Beta(0.129, 0.223, μσ = true),rho)
-    log_lik -= logpdf(Beta(0.65, 0.05, μσ = true),psi)
-    log_lik -= logpdf(Beta(0.01, 0.005, μσ = true),del)
-    log_lik -= logpdf(InverseGamma(0.035449, Inf, μσ = true),z_e_a)
-    log_lik -= logpdf(InverseGamma(0.008862, Inf, μσ = true),z_e_m)
+
+    for (dist, val) in zip(prior_distribuions, parameters)
+        log_lik -= logpdf(dist, val)
+    end
+
     return log_lik
 end
 ```
@@ -227,7 +227,7 @@ using Optim, LineSearches
 lbs = [0,0,-10,-10,0,0,0,0,0];
 ubs = [1,1,10,10,1,1,1,100,100];
 
-sol = optimize(calculate_posterior_loglikelihood, lbs, ubs , FS2000.parameter_values, Fminbox(LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
+sol = optimize(x -> calculate_posterior_loglikelihood(x, prior_distributions), lbs, ubs , FS2000.parameter_values, Fminbox(LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
 
 sol.minimum
 ```
