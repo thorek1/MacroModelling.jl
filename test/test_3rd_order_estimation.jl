@@ -38,7 +38,7 @@ dists = [
     Beta(0.33, 0.05, μσ = true),            # ζ
     Beta(0.02, 0.01, μσ = true),            # δ
     Beta(0.75, 0.01, μσ = true),            # λ
-    Normal(1, .25)#, μσ = true),            # ψ
+    Normal(1, .25),                         # ψ
     InverseGamma(0.021, Inf, μσ = true),    # σ̄
     InverseGamma(0.1, Inf, μσ = true),      # η
     Beta(0.75, 0.02, μσ = true)             # ρ
