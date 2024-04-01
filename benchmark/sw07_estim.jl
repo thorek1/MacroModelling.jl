@@ -99,11 +99,15 @@ end
 data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
 
 # declare observables
-observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+observables_old = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
 # Subsample
 # subset observables in data
-data = data(observables, sample_idx)
+data = data(observables_old, sample_idx)
+
+observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+
+data = rekey(data, :Variable => observables)
 
 kalman_prob = get_loglikelihood(Smets_Wouters_2007, data, Smets_Wouters_2007.parameter_values, presample_periods = 4, filter = Symbol(fltr), initial_covariance = :diagonal)
 

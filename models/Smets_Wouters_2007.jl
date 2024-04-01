@@ -133,7 +133,7 @@
 
 	dwobs[0] = ctrend + 100 * (w[0] / w[-1] - 1)
 
-	labobs[0] = 100 * (lab[0] / lab[ss] - 1)
+	labobs[0] = constelab + 100 * (lab[0] / lab[ss] - 1)
 
 end
 
