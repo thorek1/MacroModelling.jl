@@ -102,7 +102,7 @@ observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs]
 # subset observables in data
 data = data(observables, sample_idx)
 
-kalman_prob = get_loglikelihood(Smets_Wouters_2007, data, Smets_Wouters_2007.parameter_values)
+kalman_prob = get_loglikelihood(Smets_Wouters_2007, data, Smets_Wouters_2007.parameter_values, presample_periods = 4)
 
 # Handling distributions with varying parameters using arraydist
 dists = [
@@ -154,7 +154,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
         parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
 
-        kalman_prob = get_loglikelihood(m, data(observables), parameters_combined)
+        kalman_prob = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4)
 
         Turing.@addlogprob! kalman_prob 
     end
@@ -192,7 +192,7 @@ function calculate_posterior_loglikelihood(parameters, fixed_parameters, prior_d
 
     parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
 
-    log_lik -= get_loglikelihood(model, data, parameters_combined, verbose = false)
+    log_lik -= get_loglikelihood(model, data, parameters_combined, verbose = false, presample_periods = 4)
 
     return log_lik
 end
@@ -294,7 +294,7 @@ elseif smpler == "pigeons"
                 record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
                 n_chains = chns,
                 n_rounds = scns,
-                multithreaded = false)
+                multithreaded = true)
 
     samps = MCMCChains.Chains(Pigeons.get_sample(pt))
 end
