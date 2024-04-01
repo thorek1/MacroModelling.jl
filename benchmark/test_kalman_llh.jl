@@ -37,6 +37,7 @@ if smple == "extended"
 elseif smple == "original"
     smpl = "1966Q1-2004Q4"
     sample_idx = 1:230
+    sample_idx = 1:230
     dat = CSV.read("test/data/usmodel.csv", DataFrame)
 elseif smple == "full"
     smpl = "1966Q1-2023Q4"
@@ -65,8 +66,6 @@ observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs]
 # Subsample
 # subset observables in data
 data = data(observables, sample_idx)
-
-SS(Smets_Wouters_2007)(observables)
 
 SS(Smets_Wouters_2007, parameters = 
 [:z_ea        =>   0.451788281662122,
@@ -105,13 +104,17 @@ SS(Smets_Wouters_2007, parameters =
 :ctrend       =>   0.432026374810516,
 :cgy          =>   0.526121219470843,
 :calfa        =>   0.192800456418155,
-
 # :crhoms => 0.02, 
 # :crhopinf   => 0.02, 
 # :crhow  => 0.02, 
 # :cmap   => 0.02, 
 # :cmaw => 0.02
 ])
+
+
+SS(Smets_Wouters_2007)(observables)
+
+data .- collect(SS(Smets_Wouters_2007)(observables))
 
 kalman_prob = get_loglikelihood(Smets_Wouters_2007, data(observables), Smets_Wouters_2007.parameter_values)
 

@@ -2847,6 +2847,7 @@ This function is differentiable (so far for the Kalman filter only) and can be u
 - $ALGORITHM
 - $FILTER
 - `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
+- `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data for which the loglikelihood is discarded.
 - $VERBOSE
 
 # Examples
@@ -2881,6 +2882,7 @@ function get_loglikelihood(𝓂::ℳ,
     algorithm::Symbol = :first_order, 
     filter::Symbol = :kalman, 
     warmup_iterations::Int = 0, 
+    presample_periods::Int = 0,
     tol::AbstractFloat = 1e-12, 
     verbose::Bool = false)::S where S
     
@@ -2997,10 +2999,10 @@ function get_loglikelihood(𝓂::ℳ,
 
     obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
 
-    data_in_deviations = collect(data) .- SS_and_pars[obs_indices]
+    data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
     if filter == :kalman
-        loglikelihood = calculate_kalman_filter_loglikelihood(𝓂, observables, 𝐒₁, data_in_deviations)
+        loglikelihood = calculate_kalman_filter_loglikelihood(𝓂, observables, 𝐒₁, data_in_deviations, presample_periods = presample_periods)
     elseif filter == :inversion
         loglikelihood = @ignore_derivatives calculate_inversion_filter_loglikelihood(𝓂, state, state_update, data_in_deviations, observables, warmup_iterations)
     end
