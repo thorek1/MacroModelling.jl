@@ -7453,19 +7453,19 @@ function calculate_third_order_moments(parameters::Vector{T},
 end
 
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S})::S where S
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations)
+    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations, presample_periods = presample_periods)
 end
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{String}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S})::S where S
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{String}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations)
+    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations, presample_periods = presample_periods)
 end
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables_index::Vector{Int}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S})::S where S
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables_index::Vector{Int}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S
     observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,observables_index))
 
     A = 𝐒₁[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
@@ -7511,7 +7511,9 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables_index::Vec
 
         invF = inv(F̄)
 
-        loglik += log(Fdet) + v' * invF  * v
+        if t > presample_periods
+            loglik += log(Fdet) + v' * invF  * v
+        end
 
         K = P * C' * invF
 
@@ -7522,7 +7524,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables_index::Vec
         z = C * u
     end
 
-    return -(loglik + length(data_in_deviations) * log(2 * 3.141592653589793)) / 2 
+    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
 end
 
 # function update_loglikelihood!(loglik::S, P::Matrix{S}, u::Vector{S}, z::Vector{S}, C::Matrix{T}, A::Matrix{S}, 𝐁::Matrix{S}, data_point::Vector{S}) where {S,T}
