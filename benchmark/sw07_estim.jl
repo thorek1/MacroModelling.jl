@@ -43,7 +43,7 @@ if smple == "extended"
     dat = CSV.read("./MacroModelling.jl/benchmark/usmodel_extended.csv", DataFrame)
 elseif smple == "short"
     smpl = "1966Q1-2004Q4"
-    sample_idx = 75:230
+    sample_idx = 71:230
     dat = CSV.read("./MacroModelling.jl/benchmark/usmodel.csv", DataFrame)
 elseif smple == "long"
     smpl = "1947Q2-2004Q4"
@@ -304,6 +304,7 @@ serialize("samples_$(dt)h.jls", samps)
 
 my_plot = StatsPlots.plot(samps)
 StatsPlots.savefig(my_plot, "samples_$(dt)h.png")
+StatsPlots.savefig(my_plot, "samples_latest.png")
 
 #Base.show(samps)
 #println(Base.show(samps))
