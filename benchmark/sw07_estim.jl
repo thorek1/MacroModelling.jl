@@ -170,7 +170,7 @@ dir_name = "sw07_$(mdl)_$(smpler)_$(smpl)_samples_$(chns)_chains"
 
 if !isdir(dir_name) mkdir(dir_name) end
 
-# cd(dir_name)
+cd(dir_name)
 
 println("Current working directory: ", pwd())
 
@@ -307,7 +307,7 @@ serialize("samples_$(dt)h.jls", samps)
 
 my_plot = StatsPlots.plot(samps)
 StatsPlots.savefig(my_plot, "samples_$(dt)h.png")
-StatsPlots.savefig(my_plot, "samples_latest.png")
+StatsPlots.savefig(my_plot, "../samples_latest.png")
 
 #Base.show(samps)
 #println(Base.show(samps))
