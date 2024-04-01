@@ -127,7 +127,7 @@
 
 	dinve[0] = ctrend + 100 * (inve[0] / inve[-1] - 1)
 
-	pinfobs[0] = 100 * (pinf[0] - pinf[ss]) + constepinf
+	pinfobs[0] = constepinf + 100 * (pinf[0] - pinf[ss])
 
 	robs[0] = 100 * (r[0] - 1)
 

@@ -99,7 +99,7 @@ end
 data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
 
 # declare observables
-observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs]
+observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
 # Subsample
 # subset observables in data
