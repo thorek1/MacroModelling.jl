@@ -3004,7 +3004,7 @@ function get_loglikelihood(𝓂::ℳ,
     if filter == :kalman
         loglikelihood = calculate_kalman_filter_loglikelihood(𝓂, observables, 𝐒₁, data_in_deviations, presample_periods = presample_periods)
     elseif filter == :inversion
-        loglikelihood = @ignore_derivatives calculate_inversion_filter_loglikelihood(𝓂, state, state_update, data_in_deviations, observables, warmup_iterations)
+        loglikelihood = @ignore_derivatives calculate_inversion_filter_loglikelihood(𝓂, state, state_update, data_in_deviations, observables, warmup_iterations, presample_periods = presample_periods)
     end
 
     return loglikelihood

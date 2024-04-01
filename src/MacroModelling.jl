@@ -7554,7 +7554,12 @@ end
 #     return loglik + loglik_increment, P, u, z
 # end
 
-function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector{Float64},Vector{Vector{Float64}}}, state_update::Function, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, warmup_iterations::Int)
+function calculate_inversion_filter_loglikelihood(𝓂::ℳ, 
+                                                    state::Union{Vector{Float64},Vector{Vector{Float64}}}, 
+                                                    state_update::Function, data_in_deviations::Matrix{Float64}, 
+                                                    observables::Union{Vector{String}, Vector{Symbol}}, 
+                                                    warmup_iterations::Int,
+                                                    presample_periods::Int = 0)
     if state isa Vector{Float64}
         pruning = false
     else
@@ -7645,18 +7650,20 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector
 
         match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
 
-        if 𝓂.timings.nExo == length(observables)
-            logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
-        else
-            logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc ./ precision_factor))
-        end
+        if i > presample_periods
+            if 𝓂.timings.nExo == length(observables)
+                logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
+            else
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc ./ precision_factor))
+            end
 
-        shocks² += sum(abs2,x)
+            shocks² += sum(abs2,x)
+        end
 
         state = state_update(state, x)
     end
 
-    return -(logabsdets + shocks² + (𝓂.timings.nExo * (warmup_iterations + n_obs)) * log(2 * 3.141592653589793)) / 2
+    return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
 
