@@ -2848,6 +2848,7 @@ This function is differentiable (so far for the Kalman filter only) and can be u
 - $FILTER
 - `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data for which the loglikelihood is discarded.
+- `initial_covariance` [Default: `:theoretical`, Type: `Symbol`]: defines the method to initialise the Kalman filters covariance matrix. It can be initialised with the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`).
 - $VERBOSE
 
 # Examples
@@ -2883,11 +2884,15 @@ function get_loglikelihood(𝓂::ℳ,
     filter::Symbol = :kalman, 
     warmup_iterations::Int = 0, 
     presample_periods::Int = 0,
+    initial_covariance::Symbol = :theoretical,
     tol::AbstractFloat = 1e-12, 
     verbose::Bool = false)::S where S
     
     # checks to avoid errors further down the line and inform the user
-    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
+    @assert filter ∈ [:kalman, :inversion] "Currently only the Kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
+
+    # checks to avoid errors further down the line and inform the user
+    @assert initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`)."
 
     if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
         filter = :inversion
@@ -3002,7 +3007,7 @@ function get_loglikelihood(𝓂::ℳ,
     data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
     if filter == :kalman
-        loglikelihood = calculate_kalman_filter_loglikelihood(𝓂, observables, 𝐒₁, data_in_deviations, presample_periods = presample_periods)
+        loglikelihood = calculate_kalman_filter_loglikelihood(𝓂, observables, 𝐒₁, data_in_deviations, presample_periods = presample_periods, initial_covariance = initial_covariance)
     elseif filter == :inversion
         loglikelihood = @ignore_derivatives calculate_inversion_filter_loglikelihood(𝓂, state, state_update, data_in_deviations, observables, warmup_iterations, presample_periods = presample_periods)
     end

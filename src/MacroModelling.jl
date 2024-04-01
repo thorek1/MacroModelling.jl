@@ -7453,19 +7453,24 @@ function calculate_third_order_moments(parameters::Vector{T},
 end
 
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0, initial_covariance::Symbol = :theoretical)::S where S
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations, presample_periods = presample_periods)
+    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations, presample_periods = presample_periods, initial_covariance = initial_covariance)
 end
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{String}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{String}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0, initial_covariance::Symbol = :theoretical)::S where S
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations, presample_periods = presample_periods)
+    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations, presample_periods = presample_periods, initial_covariance = initial_covariance)
 end
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables_index::Vector{Int}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, 
+                                                observables_index::Vector{Int}, 
+                                                𝐒₁::Matrix{S}, 
+                                                data_in_deviations::Matrix{S}; 
+                                                presample_periods::Int = 0,
+                                                initial_covariance::Symbol = :theoretical)::S where S
     observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,observables_index))
 
     A = 𝐒₁[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
@@ -7482,9 +7487,12 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables_index::Vec
     
     values = vcat(vec(A), vec(collect(-𝐁)))
 
-    # P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
-    P = collect(ℒ.I(length(observables_and_states)) * 10.0)
+    if initial_covariance == :theoretical
+        P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+        # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+    elseif initial_covariance == :diagonal
+        P = collect(ℒ.I(length(observables_and_states)) * 10.0)
+    end
     
     u = zeros(S, length(observables_and_states))
     # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
@@ -7558,7 +7566,7 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ,
                                                     state::Union{Vector{Float64},Vector{Vector{Float64}}}, 
                                                     state_update::Function, data_in_deviations::Matrix{Float64}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}}, 
-                                                    warmup_iterations::Int,
+                                                    warmup_iterations::Int;
                                                     presample_periods::Int = 0)
     if state isa Vector{Float64}
         pruning = false
