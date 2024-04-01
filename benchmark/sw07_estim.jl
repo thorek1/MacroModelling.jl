@@ -18,22 +18,25 @@ Random.seed!(1)
 # ]add CSV, DataFrames, Zygote, AxisKeys, MCMCChains, Turing, DynamicPPL, Pigeons, StatsPlots
 println("Threads used: ", Threads.nthreads())
 
-# smpler = "pigeons" #
-# smple = "short" #
-# mdl = "nonlinear" # 
-# chns = 1 #
-# scns = 1000
+smpler = "pigeons" #
+smple = "short" #
+mdl = "linear" # 
+chns = 1 #
+scns = 10
+fltr = :inversion
 
-smpler = ENV["sampler"] # "pigeons" #
-smple = ENV["sample"] # "original" #
-mdl = ENV["model"] # "linear" # 
-chns = Meta.parse(ENV["chains"]) # "4" # 
-scns = Meta.parse(ENV["scans"]) # "4" # 
+# smpler = ENV["sampler"] # "pigeons" #
+# smple = ENV["sample"] # "original" #
+# mdl = ENV["model"] # "linear" # 
+# fltr = ENV["filter"] # "kalman" # 
+# chns = Meta.parse(ENV["chains"]) # "4" # 
+# scns = Meta.parse(ENV["scans"]) # "4" # 
 
 println("Sampler: $smpler")
 println("Sample: $smple")
 println("Model: $mdl")
 println("Chains: $chns")
+println("Filter: $fltr")
 println("Scans: $scns")
 println(pwd())
 
@@ -102,7 +105,7 @@ observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs]
 # subset observables in data
 data = data(observables, sample_idx)
 
-kalman_prob = get_loglikelihood(Smets_Wouters_2007, data, Smets_Wouters_2007.parameter_values, presample_periods = 4)
+kalman_prob = get_loglikelihood(Smets_Wouters_2007, data, Smets_Wouters_2007.parameter_values, presample_periods = 4, filter = fltr)
 
 # Handling distributions with varying parameters using arraydist
 dists = [
@@ -154,7 +157,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
         parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
 
-        kalman_prob = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4)
+        kalman_prob = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4, filter = fltr)
 
         Turing.@addlogprob! kalman_prob 
     end
@@ -192,7 +195,7 @@ function calculate_posterior_loglikelihood(parameters, fixed_parameters, prior_d
 
     parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
 
-    log_lik -= get_loglikelihood(model, data, parameters_combined, verbose = false, presample_periods = 4)
+    log_lik -= get_loglikelihood(model, data, parameters_combined, verbose = false, presample_periods = 4, filter = fltr)
 
     return log_lik
 end
