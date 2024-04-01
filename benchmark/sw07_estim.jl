@@ -60,7 +60,7 @@ end
     
 # define callback
 # Define the path for the CSV file
-csv_file_path = "sw07_$(mdl)_$(smpler)_$(smpl)_samples.csv"
+csv_file_path = "sw07_$(mdl)_$(fltr)_$(smpler)_$(smpl)_samples.csv"
 
 # Initialize a DataFrame to store the data
 df = DataFrame(iteration = Float64[])
@@ -166,7 +166,7 @@ end
 fixed_parameters = Smets_Wouters_2007.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw],Smets_Wouters_2007.parameters)]
 
 
-dir_name = "sw07_$(mdl)_$(smpler)_$(smpl)_samples_$(chns)_chains"
+dir_name = "sw07_$(mdl)_$(fltr)_$(smpler)_$(smpl)_samples_$(chns)_chains"
 
 if !isdir(dir_name) mkdir(dir_name) end
 
