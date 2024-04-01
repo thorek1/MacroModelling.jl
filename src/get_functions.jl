@@ -2997,7 +2997,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
 
-    data_in_deviations = collect(data) .- SS_and_pars[obs_indices]
+    data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
     if filter == :kalman
         loglikelihood = calculate_kalman_filter_loglikelihood(𝓂, observables, 𝐒₁, data_in_deviations)
