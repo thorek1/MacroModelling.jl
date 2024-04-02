@@ -293,10 +293,10 @@ elseif smpler == "pigeons"
         Pigeons.sample_iid!(sw07_lp, replica, pt.shared)
         new_LP = sw07_lp(replica.state)
         if new_LP > LPmax
-            LPmax = new_LP
-            XMAX  = deepcopy(replica.state)
+            global LPmax = new_LP
+            global XMAX  = deepcopy(replica.state)
         end
-        i += 1
+        global i += 1
     end
     
     # define a specific initialization for this model
