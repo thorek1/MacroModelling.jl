@@ -422,7 +422,7 @@ Return the conditional forecast given restrictions on endogenous variables and s
 - $CONDITIONS
 # Keyword Arguments
 - $SHOCK_CONDITIONS
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
+- $INITIAL_STATE
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS
 - $VARIABLES
@@ -506,7 +506,7 @@ And data, 9×42 Matrix{Float64}:
 function get_conditional_forecast(𝓂::ℳ,
     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol} = :relevant_ss,
     periods::Int = 40, 
     parameters::ParameterType = nothing,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
@@ -579,31 +579,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
 
-    unspecified_initial_state = initial_state == [0.0]
-
-    if unspecified_initial_state
-        if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
-        elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
-        else
-            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
-        end
-    else
-        if initial_state isa Vector{Float64}
-            if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
-            elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
-            else
-                initial_state = initial_state - NSSS
-            end
-        else
-            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
-                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
-            end
-        end
-    end
+    initial_state = get_and_check_initial_state(𝓂, initial_state, reference_steady_state, NSSS, SSS_delta, algorithm)
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
 
@@ -776,7 +752,7 @@ Function to use when differentiating IRFs with repect to parameters.
 - $VARIABLES
 - $SHOCKS
 - $NEGATIVE_SHOCK
-- $INITIAL_STATE
+- "`initial_state` [Default: `[0.0]`, Type: `Vector{Float64}`]: provide state (in levels, not deviations) from which to start IRFs. Relevant for normal IRFs. The state includes all variables as well as exogenous variables in leads or lags if present."
 - $LEVELS
 - $VERBOSE
 
@@ -920,7 +896,7 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedAr
 - $SHOCKS
 - $NEGATIVE_SHOCK
 - $GENERALISED_IRF
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
+- $INITIAL_STATE
 - $LEVELS
 - `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
 - $VERBOSE
@@ -967,7 +943,7 @@ function get_irf(𝓂::ℳ;
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
     negative_shock::Bool = false, 
     generalised_irf::Bool = false,
-    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+    initial_state::Union{Vector{Vector{Float64}}, Vector{Float64}, Symbol} = :relevant_ss,
     levels::Bool = false,
     ignore_obc::Bool = false,
     verbose::Bool = false)
@@ -1023,34 +999,10 @@ function get_irf(𝓂::ℳ;
     end
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
-    
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
-    
-    unspecified_initial_state = initial_state == [0.0]
 
-    if unspecified_initial_state
-        if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
-        elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
-        else
-            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
-        end
-    else
-        if initial_state isa Vector{Float64}
-            if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
-            elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
-            else
-                initial_state = initial_state - NSSS
-            end
-        else
-            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
-                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
-            end
-        end
-    end
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+
+    initial_state = get_and_check_initial_state(𝓂, initial_state, reference_steady_state, NSSS, SSS_delta, algorithm)
 
     if occasionally_binding_constraints
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
@@ -1190,31 +1142,139 @@ get_IRF = get_irf
 # See [`get_irf`](@ref)
 # """
 # IRF = get_irf
+"""
+Wrapper for [`get_irf`](@ref) which overrides and sets `shocks = :simulate` and sets the default `levels = true`.
+"""
+function get_simulations(args...; levels::Bool = true, kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :shocks)
+        @warn "Warning: `shocks` keyword is overridden in `plot_simulations`. Defaulting to `shocks = :simulate`."
+    end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:shocks => :simulate))
+
+    # Call plot_irf with the modified arguments
+    get_irf(args...; levels=levels, kwargs...)
+end 
 
 """
-Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
+Wrapper for [`get_irf`](@ref) which overrides and sets `shocks = :simulate` and sets the default `levels = true`.
 """
-simulate(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
-
-"""
-Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
-"""
-get_simulation(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
+simulate = get_simulations
 
 """
-Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
+Wrapper for [`get_irf`](@ref) which overrides and sets `shocks = :simulate` and sets the default `levels = true`.
 """
-get_simulations(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
+get_simulation = get_simulations
 
 """
-Wrapper for [`get_irf`](@ref) with `shocks = :simulate`.
+Wrapper for [`get_irf`](@ref) which overrides and sets `generalised_irf = true`.
 """
-get_girf(args...; kwargs...) =  get_irf(args...; kwargs..., generalised_irf = true)
+function get_girf(args...; kwargs...)
+    # Check if 'generalised_irf' is manually set
+    if haskey(kwargs, :generalised_irf)
+        @warn "Warning: `generalised_irf` keyword is overridden in `plot_girf`. Defaulting to `generalised_irf = true`."
+    end
+
+    # Set 'generalised_irf' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:generalised_irf => true))
+
+    # Call plot_irf with the modified arguments
+    get_irf(args...; kwargs...)
+end
 
 
 
 
 
+"""
+$(SIGNATURES)
+Return the sorted modulus (absoulte), real, and imaginary part if the eigenvalues of the first order problem of the model in a 2-dimensional KeyedArray.
+
+# Arguments
+- $MODEL
+# Keyword Arguments
+- $PARAMETERS
+- $VERBOSE
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+get_eigenvalues(RBC)
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Eigenvalue ∈ 4-element UnitRange{Int64}
+→   Part ∈ 3-element Vector{Symbol}
+And data, 4×3 Matrix{Float64}:
+      (:Modulus)  (:Real)    (:Imaginary)
+ (1)  Inf         Inf         0.0
+ (2)   1.10012     1.10012    0.0
+ (3)   0.956835    0.956835   0.0
+ (4)   0.2         0.2        0.0
+```
+"""
+function get_eigenvalues(𝓂::ℳ;
+                        parameters::ParameterType = nothing,
+                        verbose::Bool = false,
+                        tol::AbstractFloat = eps())
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
+
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+
+    @assert solution_error < tol "Could not find non-stochastic steady state."
+
+    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+
+    T = 𝓂.timings
+
+    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
+    ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
+    ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
+
+    Q    = ℒ.qr(collect(∇₀[:,T.present_only_idx]))
+    Qinv = Q.Q'
+
+    A₊ = Qinv * ∇₊
+    A₀ = Qinv * ∇₀
+    A₋ = Qinv * ∇₋
+
+    dynIndex = T.nPresent_only+1:T.nVars
+
+    Ã₊  = @view A₊[dynIndex,:]
+    Ã₋  = @view A₋[dynIndex,:]
+    Ã₀₊ = @view A₀[dynIndex, T.future_not_past_and_mixed_idx]
+    Ã₀₋ = @views A₀[dynIndex, T.past_not_future_idx] * ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.not_mixed_in_past_idx,:]
+
+    Z₊ = zeros(T.nMixed,T.nFuture_not_past_and_mixed)
+    I₊ = @view ℒ.diagm(ones(T.nFuture_not_past_and_mixed))[T.mixed_in_future_idx,:]
+
+    Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
+    I₋ = @view ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.mixed_in_past_idx,:]
+
+    D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
+    E = vcat(hcat(-Ã₋,-Ã₀₊), hcat(Z₋, I₊))
+
+    eigvals = ℒ.eigen(E,D, sortby = x-> -abs(x)).values
+
+    return KeyedArray(hcat(abs.(eigvals), real.(eigvals), imag.(eigvals)); Eigenvalue = 1:length(eigvals), Part = [:Modulus, :Real, :Imaginary])
+end
 
 
 
@@ -1419,33 +1479,49 @@ end
 
 
 """
-Wrapper for [`get_steady_state`](@ref) with `stochastic = false`.
+Wrapper for [`get_steady_state`](@ref) which overrides and sets `stochastic = false`.
 """
-get_non_stochastic_steady_state(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = false)
+function get_non_stochastic_steady_state(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :stochastic) @warn "Warning: `stochastic` keyword is overridden in `get_steady_state`. Defaulting to `stochastic = false`." end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:stochastic => false))
+
+    # Call plot_irf with the modified arguments
+    get_steady_state(args...; kwargs...)
+end
+
+"""
+Wrapper for [`get_steady_state`](@ref) which overrides and sets `stochastic = true`.
+"""
+function get_stochastic_steady_state(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :stochastic) @warn "Warning: `stochastic` keyword is overridden in `get_steady_state`. Defaulting to `stochastic = true`." end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:stochastic => true))
+
+    # Call plot_irf with the modified arguments
+    get_steady_state(args...; kwargs...)
+end
+
+"""
+Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
+"""
+get_SSS = get_stochastic_steady_state
 
 
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
-get_stochastic_steady_state(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
+SSS = get_stochastic_steady_state
 
 
 """
 Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
 """
-get_SSS(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
-
-
-"""
-Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
-"""
-SSS(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
-
-
-"""
-Wrapper for [`get_steady_state`](@ref) with `stochastic = true`.
-"""
-sss(args...; kwargs...) = get_steady_state(args...; kwargs..., stochastic = true)
+sss = get_stochastic_steady_state
 
 
 
@@ -1472,7 +1548,7 @@ get_ss = get_steady_state
 """
 See [`get_steady_state`](@ref)
 """
-ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
+ss = get_steady_state
 
 
 
@@ -1618,24 +1694,53 @@ end
 
 
 """
-Wrapper for [`get_solution`](@ref) with `algorithm = :first_order`.
+Wrapper for [`get_solution`](@ref) which overrides and sets `algorithm = :first_order`.
 """
-get_first_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :first_order)
+function get_first_order_solution(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :algorithm) @warn "Warning: `algorithm` keyword is overridden in `get_solution`. Defaulting to `algorithm = :first_order`." end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:algorithm => :first_order))
+
+    # Call plot_irf with the modified arguments
+    get_solution(args...; kwargs...)
+end
+
 
 """
-Wrapper for [`get_solution`](@ref) with `algorithm = :second_order`.
+Wrapper for [`get_solution`](@ref) which overrides and sets `algorithm = :second_order`.
 """
-get_second_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :second_order)
+function get_second_order_solution(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :algorithm) @warn "Warning: `algorithm` keyword is overridden in `get_solution`. Defaulting to `algorithm = :second_order`." end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:algorithm => :second_order))
+
+    # Call plot_irf with the modified arguments
+    get_solution(args...; kwargs...)
+end
+
 
 """
-Wrapper for [`get_solution`](@ref) with `algorithm = :third_order`.
+Wrapper for [`get_solution`](@ref) which overrides and sets `algorithm = :third_order`.
 """
-get_third_order_solution(args...; kwargs...) = get_solution(args...; kwargs..., algorithm = :third_order)
+function get_third_order_solution(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :algorithm) @warn "Warning: `algorithm` keyword is overridden in `get_solution`. Defaulting to `algorithm = :third_order`." end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:algorithm => :third_order))
+
+    # Call plot_irf with the modified arguments
+    get_solution(args...; kwargs...)
+end
 
 """
 See [`get_solution`](@ref)
 """
-get_perturbation_solution(args...; kwargs...) = get_solution(args...; kwargs...)
+get_perturbation_solution = get_solution
 
 
 
@@ -2578,10 +2683,22 @@ function get_moments(𝓂::ℳ;
 end
 
 """
-Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
+Wrapper for [`get_moments`](@ref) which overrides and sets `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = false`.
 """
-get_variance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false)[1]
+function get_variance(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :mean) @warn "Warning: `mean` keyword is overridden in `get_moments`. Defaulting to `mean = false`." end
+    if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = true`." end
+    if haskey(kwargs, :non_stochastic_steady_state) @warn "Warning: `non_stochastic_steady_state` keyword is overridden in `get_moments`. Defaulting to `non_stochastic_steady_state = false`." end
+    if haskey(kwargs, :standard_deviation) @warn "Warning: `standard_deviation` keyword is overridden in `get_moments`. Defaulting to `standard_deviation = false`." end
+    if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = false`." end
 
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:mean => false, :variance => true, :non_stochastic_steady_state => false, :standard_deviation => false, :covariance => false))
+
+    # Call plot_irf with the modified arguments
+    get_moments(args...; kwargs...)[1]
+end
 
 """
 Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
@@ -2596,10 +2713,22 @@ var = get_variance
 
 
 """
-Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
+Wrapper for [`get_moments`](@ref) which overrides and sets `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false, mean = false`.
 """
-get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false)[1]
+function get_standard_deviation(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :variance) @warn "Warning: `mean` keyword is overridden in `get_moments`. Defaulting to `mean = false`." end
+    if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = false`." end
+    if haskey(kwargs, :non_stochastic_steady_state) @warn "Warning: `non_stochastic_steady_state` keyword is overridden in `get_moments`. Defaulting to `non_stochastic_steady_state = false`." end
+    if haskey(kwargs, :standard_deviation) @warn "Warning: `standard_deviation` keyword is overridden in `get_moments`. Defaulting to `standard_deviation = true`." end
+    if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = false`." end
 
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:mean => false, :variance => false, :non_stochastic_steady_state => false, :standard_deviation => true, :covariance => false))
+
+    # Call plot_irf with the modified arguments
+    get_moments(args...; kwargs...)[1]
+end
 
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
@@ -2623,11 +2752,24 @@ Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stoc
 """
 std =  get_standard_deviation
 
-"""
-Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
-"""
-get_covariance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true)[1]
 
+"""
+Wrapper for [`get_moments`](@ref) which overrides and sets `covariance = true` and `non_stochastic_steady_state = false, standard_deviation = false, variance = false, mean = false`.
+"""
+function get_covariance(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :variance) @warn "Warning: `mean` keyword is overridden in `get_moments`. Defaulting to `mean = false`." end
+    if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = false`." end
+    if haskey(kwargs, :non_stochastic_steady_state) @warn "Warning: `non_stochastic_steady_state` keyword is overridden in `get_moments`. Defaulting to `non_stochastic_steady_state = false`." end
+    if haskey(kwargs, :standard_deviation) @warn "Warning: `standard_deviation` keyword is overridden in `get_moments`. Defaulting to `standard_deviation = fa;lse`." end
+    if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = true`." end
+
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:mean => false, :variance => false, :non_stochastic_steady_state => false, :standard_deviation => false, :covariance => true))
+
+    # Call plot_irf with the modified arguments
+    get_moments(args...; kwargs...)[1]
+end
 
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
@@ -2642,10 +2784,22 @@ cov = get_covariance
 
 
 """
-Wrapper for [`get_moments`](@ref) with `mean = true`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
+Wrapper for [`get_moments`](@ref) which overrides and sets `mean = true` and `non_stochastic_steady_state = false, standard_deviation = false, variance = false, covariance = false`.
 """
-get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[1]
+function get_mean(args...; kwargs...)
+    # Check if 'shocks' is manually set
+    if haskey(kwargs, :mean) @warn "Warning: `mean` keyword is overridden in `get_moments`. Defaulting to `mean = true`." end
+    if haskey(kwargs, :variance) @warn "Warning: `variance` keyword is overridden in `get_moments`. Defaulting to `variance = false`." end
+    if haskey(kwargs, :non_stochastic_steady_state) @warn "Warning: `non_stochastic_steady_state` keyword is overridden in `get_moments`. Defaulting to `non_stochastic_steady_state = false`." end
+    if haskey(kwargs, :standard_deviation) @warn "Warning: `standard_deviation` keyword is overridden in `get_moments`. Defaulting to `standard_deviation = fa;lse`." end
+    if haskey(kwargs, :covariance) @warn "Warning: `covariance` keyword is overridden in `get_moments`. Defaulting to `covariance = false`." end
 
+    # Set 'shocks' to :simulate
+    kwargs = Base.merge(kwargs, Dict(:variance => false, :non_stochastic_steady_state => false, :standard_deviation => false, :covariance => false, :mean => true))
+
+    # Call plot_irf with the modified arguments
+    get_moments(args...; kwargs...)[1]
+end
 
 # """
 # Wrapper for [`get_moments`](@ref) with `mean = true`, the default algorithm being `:pruned_second_order`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`

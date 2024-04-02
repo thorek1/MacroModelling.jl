@@ -199,6 +199,7 @@
 ## Not high priority
 
 - [ ] estimation codes with missing values (adopt kalman filter)
+- [ ] add better error messages from dynare parser and dont have him change the folder even if he fails (catch the case and change the folder back)
 - [ ] decide on whether levels = false means deviations from NSSS or relevant SS
 - [ ] whats a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
 - [ ] improve redundant calculations of SS and other parts of solution
