@@ -21,10 +21,10 @@ println("Threads used: ", Threads.nthreads())
 # smpler = "pigeons" #
 # smple = "medium" #
 # mdl = "nonlinear" # 
-# algo = :pruned_second_order
+# algo = "pruned_second_order"
 # chns = 1 #
 # scns = 10
-# fltr = :inversion
+# fltr = "inversion"
 
 smpler = ENV["sampler"] # "pigeons" #
 smple = ENV["sample"] # "original" #
@@ -116,7 +116,7 @@ observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :
 
 data = rekey(data, :Variable => observables)
 
-kalman_prob = get_loglikelihood(Smets_Wouters_2007, data, Smets_Wouters_2007.parameter_values, presample_periods = 4, filter = Symbol(fltr), algorithm = Symbol(algo), initial_covariance = :diagonal)
+llh = get_loglikelihood(Smets_Wouters_2007, data, Smets_Wouters_2007.parameter_values, presample_periods = 4, filter = Symbol(fltr), algorithm = Symbol(algo), initial_covariance = :diagonal)
 
 # Handling distributions with varying parameters using arraydist
 dists = [
@@ -168,9 +168,9 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
         parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
 
-        kalman_prob = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4, filter = Symbol(fltr), algorithm = Symbol(algo), initial_covariance = :diagonal)
+        llh = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4, filter = Symbol(fltr), algorithm = Symbol(algo), initial_covariance = :diagonal)
 
-        Turing.@addlogprob! kalman_prob 
+        Turing.@addlogprob! llh 
     end
 end
 
@@ -285,7 +285,7 @@ elseif smpler == "pigeons"
     
     replica = pt.replicas[end]
     XMAX = deepcopy(replica.state)
-    LPmax = sw07_lp(XMAX)
+    LPmax = sw07_lp(replica.state)
 
     i = 0
 
