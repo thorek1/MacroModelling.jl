@@ -8,6 +8,9 @@ using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
 import Symbolics
+# import NaNMath
+# import Memoization: @memoize
+# import LRUCache: LRU
 
 import AbstractDifferentiation as 𝒜
 import ForwardDiff as ℱ
@@ -21,6 +24,7 @@ import Optim, LineSearches
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 # import ComponentArrays as 𝒞
+import Combinatorics: combinations
 import BlockTriangularForm
 import Subscripts: super, sub
 import Krylov
@@ -36,7 +40,7 @@ import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mp
 # using NamedArrays
 # using AxisKeys
 
-import ChainRulesCore: @ignore_derivatives, ignore_derivatives
+import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent
 import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
@@ -45,7 +49,7 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 using Requires
 
 import Reexport
-Reexport.@reexport using AxisKeys
+Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
 
@@ -96,17 +100,18 @@ end
 
 
 export @model, @parameters, solve!
-export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation#, plot
+export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation #, plot
 export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
 export get_irfs, get_irf, get_IRF, simulate, get_simulation, get_simulations
 export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution, get_second_order_solution, get_third_order_solution, get_eigenvalues
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS, ss, sss
-export get_moments, get_statistics, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_stdev, get_cov, var, std, stdev, cov, get_mean#, mean
+export get_non_stochastic_steady_state_residuals, get_residuals, check_residuals
+export get_moments, get_statistics, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_stdev, get_cov, var, std, stdev, cov, get_mean #, mean
 export get_autocorrelation, get_correlation, get_variance_decomposition, get_corr, get_autocorr, get_var_decomp, corr, autocorr
 export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
-export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution#, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
+export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution #, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export get_shock_decomposition, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations, get_loglikelihood
 export plotlyjs_backend, gr_backend
 export Beta, InverseGamma, Gamma, Normal
@@ -803,6 +808,9 @@ function translate_symbol_to_ascii(x::Symbol)
             outstr *= string(i)
         else
             outstr *= replace(out,  
+                        r"\!" => s"_",
+                        r"\(" => s"_",
+                        r"\)" => s"_",
                         r"\^" => s"_",
                         r"\_\^" => s"_",
                         r"\+" => s"plus",
@@ -1751,13 +1759,14 @@ end
 function levenberg_marquardt(f::Function, 
     initial_guess::Array{T,1}, 
     lower_bounds::Array{T,1}, 
-    upper_bounds::Array{T,1}; 
-    parameters::solver_parameters = solver_parameters(eps(), eps(), 250, 2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 1, 0.0, 2)
+    upper_bounds::Array{T,1},
+    parameters::solver_parameters
     ) where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
     xtol = parameters.xtol
     ftol = parameters.ftol
+    rel_xtol = parameters.rel_xtol
     iterations = parameters.iterations
     ϕ̄ = parameters.ϕ̄
     ϕ̂ = parameters.ϕ̂
@@ -1905,10 +1914,11 @@ function levenberg_marquardt(f::Function,
         end
 
         largest_step = maximum(abs, previous_guess - current_guess)
+        largest_relative_step = maximum(abs, (previous_guess - current_guess) ./ previous_guess)
         largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level)))
         # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
 
-        if largest_step <= xtol || largest_residual <= ftol
+        if largest_step <= xtol || largest_residual <= ftol || largest_relative_step <= rel_xtol
             return undo_transform(current_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level)))
             # return undo_transform(current_guess,transformation_level,shift), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level,shift)))
         end
@@ -1954,18 +1964,15 @@ function create_symbols_eqs!(𝓂::ℳ)
 
     symbols_in_equation = union(𝓂.parameters_in_equations,𝓂.parameters,𝓂.parameters_as_function_of_parameters,symbols_in_dynamic_equations,symbols_in_dynamic_equations_wo_subscripts,symbols_in_ss_equations)#,𝓂.dynamic_variables_future)
 
-    l_bnds = Dict(𝓂.bounded_vars .=> 𝓂.lower_bounds)
-    u_bnds = Dict(𝓂.bounded_vars .=> 𝓂.upper_bounds)
-
     symbols_pos = []
     symbols_neg = []
     symbols_none = []
 
     for symb in symbols_in_equation
-        if symb in 𝓂.bounded_vars
-            if l_bnds[symb] >= 0
+        if haskey(𝓂.bounds, symb)
+            if 𝓂.bounds[symb][1] >= 0
                 push!(symbols_pos, symb)
-            elseif u_bnds[symb] <= 0
+            elseif 𝓂.bounds[symb][2] <= 0
                 push!(symbols_neg, symb)
             else 
                 push!(symbols_none, symb)
@@ -2056,6 +2063,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
             intersect.(Symbolics.ss_list,Symbolics.var_future_list)
         ),
     Symbolics.var_list)
+
     redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(Symbolics.var_list) .> 1))
 
     for i in redundant_idx
@@ -2079,10 +2087,1048 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
 end
 
 
+function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+    # ➕_vars = Symbol[]
+    unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
+
+    vars_to_exclude = [vcat(Symbol.(vars_to_solve), 𝓂.➕_vars),Symbol[]]
+
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
+
+
+    push!(𝓂.solved_vars, Symbol.(vars_to_solve))
+    push!(𝓂.solved_vals, rewritten_eqs)
+
+
+    syms_in_eqs = Set{Symbol}()
+
+    for i in vcat(ss_and_aux_equations_dep, ss_and_aux_equations, rewritten_eqs)
+        push!(syms_in_eqs, get_symbols(i)...)
+    end
+
+    setdiff!(syms_in_eqs,𝓂.➕_vars)
+
+    syms_in_eqs2 = Set{Symbol}()
+
+    for i in ss_and_aux_equations
+        push!(syms_in_eqs2, get_symbols(i)...)
+    end
+
+    ➕_vars_alread_in_eqs = intersect(𝓂.➕_vars,reduce(union,get_symbols.(Meta.parse.(string.(eqs_to_solve)))))
+
+    union!(syms_in_eqs, intersect(union(➕_vars_alread_in_eqs, syms_in_eqs2), 𝓂.➕_vars))
+
+    push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
+
+    calib_pars = Expr[]
+    calib_pars_input = Symbol[]
+    relevant_pars = union(intersect(reduce(union, vcat(𝓂.par_list_aux_SS, 𝓂.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.➕_vars))
+    
+    union!(relevant_pars_across, relevant_pars)
+
+    iii = 1
+    for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters)
+        if :($parss) ∈ relevant_pars
+            push!(calib_pars, :($parss = parameters_and_solved_vars[$iii]))
+            push!(calib_pars_input, :($parss))
+            iii += 1
+        end
+    end
+
+    guess = Expr[]
+    result = Expr[]
+
+    sorted_vars = sort(Symbol.(vars_to_solve))
+
+    for (i, parss) in enumerate(sorted_vars) 
+        push!(guess,:($parss = guess[$i]))
+        push!(result,:($parss = sol[$i]))
+    end
+
+    # separate out auxilliary variables (nonnegativity)
+    # nnaux = []
+    # nnaux_linear = []
+    # nnaux_error = []
+    # push!(nnaux_error, :(aux_error = 0))
+    solved_vals = Expr[]
+    partially_solved_block = Expr[]
+
+    other_vrs_eliminated_by_sympy = Set{Symbol}()
+
+    for (i,val) in enumerate(𝓂.solved_vals[end])
+        if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
+            val = vcat(𝓂.ss_aux_equations, 𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
+            # push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
+            push!(other_vrs_eliminated_by_sympy, val.args[2])
+            # push!(nnaux_linear,:($val))
+            # push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
+        end
+    end
+
+
+
+    for (i,val) in enumerate(rewritten_eqs)
+        push!(solved_vals, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+    end
+
+    # if length(nnaux) > 1
+    #     all_symbols = map(x->x.args[1],nnaux) #relevant symbols come first in respective equations
+
+    #     nn_symbols = map(x->intersect(all_symbols,x), get_symbols.(nnaux))
+        
+    #     inc_matrix = fill(0,length(all_symbols),length(all_symbols))
+
+    #     for i in 1:length(all_symbols)
+    #         for k in 1:length(nn_symbols)
+    #             inc_matrix[i,k] = collect(all_symbols)[i] ∈ collect(nn_symbols)[k]
+    #         end
+    #     end
+
+    #     QQ, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(inc_matrix))
+
+    #     nnaux = nnaux[QQ]
+    #     nnaux_linear = nnaux_linear[QQ]
+    # end
+
+    other_vars = Expr[]
+    other_vars_input = Symbol[]
+    other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
+                                        sort(𝓂.solved_vars[end]) ),
+                                union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
+                                # union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
+
+    for var in other_vrs
+        push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
+        push!(other_vars_input,:($(var)))
+        iii += 1
+    end
+
+    # solved_vals[end] = Expr(:call, :+, solved_vals[end], ss_and_aux_equations_error_dep...)
+
+    funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)
+            $(guess...) 
+            $(calib_pars...) # add those variables which were previously solved and are used in the equations
+            $(other_vars...) # take only those that appear in equations - DONE
+
+            $(ss_and_aux_equations_dep...)
+            # return [$(solved_vals...),$(nnaux_linear...)]
+            return [$(solved_vals...)]
+        end)
+
+    push!(NSSS_solver_cache_init_tmp, [haskey(𝓂.guess, v) ? 𝓂.guess[v] : Inf for v in sorted_vars])
+    push!(NSSS_solver_cache_init_tmp, [Inf])
+
+    # WARNING: infinite bounds are transformed to 1e12
+    lbs = Float64[]
+    ubs = Float64[]
+
+    limit_boundaries = 1e12
+
+    for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
+        if haskey(𝓂.bounds,i)
+            push!(lbs,𝓂.bounds[i][1])
+            push!(ubs,𝓂.bounds[i][2])
+        else
+            push!(lbs,-limit_boundaries)
+            push!(ubs, limit_boundaries)
+        end
+    end
+
+    push!(SS_solve_func,ss_and_aux_equations...)
+
+    push!(SS_solve_func,:(params_and_solved_vars = [$(calib_pars_input...), $(other_vars_input...)]))
+
+    push!(SS_solve_func,:(lbs = [$(lbs...)]))
+    push!(SS_solve_func,:(ubs = [$(ubs...)]))
+            
+    n_block = length(𝓂.ss_solve_blocks) + 1   
+        
+    push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
+
+    if VERSION >= v"1.9"
+        push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒷())))
+    else
+        push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
+    end
+
+    push!(SS_solve_func,:(solution = block_solver_AD(params_and_solved_vars,
+                                                            $(n_block), 
+                                                            𝓂.ss_solve_blocks[$(n_block)], 
+                                                            # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
+                                                            # f, 
+                                                            inits,
+                                                            lbs, 
+                                                            ubs,
+                                                            solver_parameters,
+                                                            # fail_fast_solvers_only = fail_fast_solvers_only,
+                                                            cold_start,
+                                                            verbose)))
+                                                            
+    push!(SS_solve_func,:(iters += solution[2][2])) 
+    push!(SS_solve_func,:(solution_error += solution[2][1])) 
+
+    if length(ss_and_aux_equations_error) > 0
+        push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error...))))
+    end
+
+    push!(SS_solve_func,:(sol = solution[1]))
+
+    push!(SS_solve_func,:($(result...)))   
+
+    push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
+    push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
+
+    push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
+end
+
+
+
+
+# function write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)
+#     # ➕_vars = Symbol[]
+#     # unique_➕_vars = Union{Symbol,Expr}[]
+    
+#     vars_to_exclude = [Symbol.(vars_to_solve),Symbol[]]
+    
+#     rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
+    
+    
+#     push!(𝓂.solved_vars, Symbol.(vars_to_solve))
+#     push!(𝓂.solved_vals, rewritten_eqs)
+    
+    
+#     syms_in_eqs = Set{Symbol}()
+    
+#     for i in vcat(ss_and_aux_equations_dep, ss_and_aux_equations, rewritten_eqs)
+#         push!(syms_in_eqs, get_symbols(i)...)
+#     end
+    
+#     setdiff!(syms_in_eqs, 𝓂.➕_vars)
+    
+#     syms_in_eqs2 = Set{Symbol}()
+    
+#     for i in ss_and_aux_equations
+#         push!(syms_in_eqs2, get_symbols(i)...)
+#     end
+    
+#     union!(syms_in_eqs, intersect(syms_in_eqs2, 𝓂.➕_vars))
+    
+#     push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
+    
+#     calib_pars = Expr[]
+#     calib_pars_input = Symbol[]
+#     relevant_pars = union(intersect(reduce(union, vcat(𝓂.par_list_aux_SS, 𝓂.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.➕_vars))
+    
+#     union!(relevant_pars_across, relevant_pars)
+    
+#     iii = 1
+#     for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters)
+#         if :($parss) ∈ relevant_pars
+#             push!(calib_pars, :($parss = parameters_and_solved_vars[$iii]))
+#             push!(calib_pars_input, :($parss))
+#             iii += 1
+#         end
+#     end
+    
+#     guess = Expr[]
+#     result = Expr[]
+    
+#     sorted_vars = sort(Symbol.(vars_to_solve))
+    
+#     # ss_and_aux_equations_dep[1]|>dump
+#     # ss_and_aux_equations_dep[1].args[1]
+#     # [i.args[1] for i in ss_and_aux_equations_dep]
+#     aux_vars = sort([i.args[1] for i in ss_and_aux_equations_dep])
+    
+#     for (i, parss) in enumerate(vcat(sorted_vars, aux_vars))
+#         push!(guess,:($parss = guess[$i]))
+#         push!(result,:($parss = sol[$i]))
+#     end
+    
+#     # separate out auxilliary variables (nonnegativity)
+#     # nnaux = []
+#     # nnaux_linear = []
+#     # nnaux_error = []
+#     # push!(nnaux_error, :(aux_error = 0))
+#     solved_vals = Expr[]
+#     partially_solved_block = Expr[]
+    
+#     other_vrs_eliminated_by_sympy = Set{Symbol}()
+    
+#     for (i,val) in enumerate(𝓂.solved_vals[end])
+#         if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
+#             val = vcat(𝓂.ss_aux_equations, 𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
+#             # push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
+#             push!(other_vrs_eliminated_by_sympy, val.args[2])
+#             # push!(nnaux_linear,:($val))
+#             # push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
+#         end
+#     end
+    
+    
+    
+#     for (i,val) in enumerate(rewritten_eqs)
+#         push!(solved_vals, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+#     end
+    
+#     # if length(nnaux) > 1
+#     #     all_symbols = map(x->x.args[1],nnaux) #relevant symbols come first in respective equations
+    
+#     #     nn_symbols = map(x->intersect(all_symbols,x), get_symbols.(nnaux))
+        
+#     #     inc_matrix = fill(0,length(all_symbols),length(all_symbols))
+    
+#     #     for i in 1:length(all_symbols)
+#     #         for k in 1:length(nn_symbols)
+#     #             inc_matrix[i,k] = collect(all_symbols)[i] ∈ collect(nn_symbols)[k]
+#     #         end
+#     #     end
+    
+#     #     QQ, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(inc_matrix))
+    
+#     #     nnaux = nnaux[QQ]
+#     #     nnaux_linear = nnaux_linear[QQ]
+#     # end
+    
+#     other_vars = Expr[]
+#     other_vars_input = Symbol[]
+#     other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
+#                                         sort(𝓂.solved_vars[end]) ),
+#                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
+#                                 # union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
+    
+#     for var in other_vrs
+#         push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
+#         push!(other_vars_input,:($(var)))
+#         iii += 1
+#     end
+    
+#     # solved_vals[end] = Expr(:call, :+, solved_vals[end], ss_and_aux_equations_error_dep...)
+    
+#     aux_equations = [:($(i.args[1]) - $(i.args[2].args[3].args[3])) for i in ss_and_aux_equations_dep]
+    
+#     funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)
+#             $(guess...) 
+#             $(calib_pars...) # add those variables which were previously solved and are used in the equations
+#             $(other_vars...) # take only those that appear in equations - DONE
+    
+#             # $(ss_and_aux_equations_dep...)
+#             # return [$(solved_vals...),$(nnaux_linear...)]
+#             return [$(solved_vals...), $(aux_equations...)]
+#         end)
+    
+#     push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(vcat(sorted_vars,aux_vars))))
+#     push!(NSSS_solver_cache_init_tmp,[Inf])
+    
+#     # WARNING: infinite bounds are transformed to 1e12
+#     lbs = Float64[]
+#     ubs = Float64[]
+    
+#     limit_boundaries = 1e12
+    
+#     for i in vcat(sorted_vars, aux_vars, calib_pars_input, other_vars_input)
+#         if haskey(𝓂.bounds,i)
+#             push!(lbs,𝓂.bounds[i][1])
+#             push!(ubs,𝓂.bounds[i][2])
+#         else
+#             push!(lbs,-limit_boundaries)
+#             push!(ubs, limit_boundaries)
+#         end
+#     end
+    
+#     push!(SS_solve_func,ss_and_aux_equations...)
+    
+#     push!(SS_solve_func,:(params_and_solved_vars = [$(calib_pars_input...), $(other_vars_input...)]))
+    
+#     push!(SS_solve_func,:(lbs = [$(lbs...)]))
+#     push!(SS_solve_func,:(ubs = [$(ubs...)]))
+            
+#     n_block = length(𝓂.ss_solve_blocks) + 1   
+        
+#     push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
+    
+#     if VERSION >= v"1.9"
+#         push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒷())))
+#     else
+#         push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
+#     end
+    
+#     push!(SS_solve_func,:(solution = block_solver_AD(params_and_solved_vars,
+#                                                             $(n_block), 
+#                                                             𝓂.ss_solve_blocks[$(n_block)], 
+#                                                             # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
+#                                                             # f, 
+#                                                             inits,
+#                                                             lbs, 
+#                                                             ubs,
+#                                                             solver_parameters,
+#                                                             # fail_fast_solvers_only = fail_fast_solvers_only,
+#                                                             cold_start,
+#                                                             verbose)))
+                                                            
+#     push!(SS_solve_func,:(iters += solution[2][2])) 
+#     push!(SS_solve_func,:(solution_error += solution[2][1])) 
+    
+#     if length(ss_and_aux_equations_error) > 0
+#         push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error...))))
+#     end
+    
+#     push!(SS_solve_func,:(sol = solution[1]))
+    
+#     push!(SS_solve_func,:($(result...)))   
+    
+#     if length(ss_and_aux_equations_error_dep) > 0
+#         push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error_dep...))))
+#     end
+    
+#     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
+#     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
+    
+#     push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))    
+# end
+
+
+
+
+function partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset)
+    for n in length(eqs_to_solve)-1:-1:2
+        for eq_combo in combinations(1:length(eqs_to_solve), n)
+            var_indices_to_select_from = findall([sum(incidence_matrix_subset[:,eq_combo],dims = 2)...] .> 0)
+
+            var_indices_in_remaining_eqs = findall([sum(incidence_matrix_subset[:,setdiff(1:length(eqs_to_solve),eq_combo)],dims = 2)...] .> 0) 
+
+            for var_combo in combinations(var_indices_to_select_from, n)
+                remaining_vars_in_remaining_eqs = setdiff(var_indices_in_remaining_eqs, var_combo)
+                # println("Solving for: ",vars_to_solve[var_combo]," in: ",eqs_to_solve[eq_combo])
+                if length(remaining_vars_in_remaining_eqs) == length(eqs_to_solve) - n # not sure whether this condition needs to be there. could be because if the last remaining vars not solved for in the block is not present in the remaining block he will not be able to solve it for the same reasons he wasnt able to solve the unpartitioned block
+                    soll = try SPyPyC.solve(eqs_to_solve[eq_combo], vars_to_solve[var_combo])
+                    catch
+                    end
+                    
+                    if !(isnothing(soll) || length(soll) == 0)
+                        soll_collected = soll isa Dict ? collect(values(soll)) : collect(soll[end])
+                        
+                        return (vars_to_solve[setdiff(1:length(eqs_to_solve),var_combo)],
+                                vars_to_solve[var_combo],
+                                eqs_to_solve[setdiff(1:length(eqs_to_solve),eq_combo)],
+                                soll_collected)
+                    end
+                end
+            end
+        end
+    end
+end
+
+
+
+function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}, 
+                                                vars_to_exclude::Vector{Vector{Symbol}}, 
+                                                bounds::Dict{Symbol,Tuple{Float64,Float64}}, 
+                                                ➕_vars::Vector{Symbol}, 
+                                                unique_➕_eqs,#::Dict{Union{Expr,Symbol},Symbol}();
+                                                precompile::Bool = false)
+    ss_and_aux_equations = Expr[]
+    ss_and_aux_equations_dep = Expr[]
+    ss_and_aux_equations_error = Expr[]
+    ss_and_aux_equations_error_dep = Expr[]
+    rewritten_eqs = Union{Expr,Symbol}[]
+    # write down ss equations including nonnegativity auxilliary variables
+    # find nonegative variables, parameters, or terms
+    for eq in eqs
+        if eq isa Symbol
+            push!(rewritten_eqs, eq)
+        elseif eq isa Expr
+            rewritten_eq = postwalk(x -> 
+                x isa Expr ? 
+                    # x.head == :(=) ? 
+                    #     Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
+                    #         x.head == :ref ?
+                    #             occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 : # set shocks to zero and remove time scripts
+                    #     x : 
+                    x.head == :call ?
+                        x.args[1] == :* ?
+                            x.args[2] isa Int ?
+                                x.args[3] isa Int ?
+                                    x :
+                                Expr(:call, :*, x.args[3:end]..., x.args[2]) : # 2beta => beta * 2 
+                            x :
+                        x.args[1] ∈ [:^] ?
+                            !(x.args[3] isa Int) ?
+                                x.args[2] isa Symbol ? # nonnegative parameters 
+                                    x.args[2] ∈ vars_to_exclude[1] ?
+                                        begin
+                                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
+                                            x 
+                                        end :
+                                    begin
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            if x.args[2] in vars_to_exclude[1]
+                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            else
+                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            end
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                        
+                                        :($(replacement) ^ $(x.args[3]))
+                                    end :
+                                x.args[2] isa Float64 ?
+                                    x :
+                                x.args[2].head == :call ? # nonnegative expressions
+                                    begin
+                                        if precompile
+                                            replacement = x.args[2]
+                                        else
+                                            replacement = simplify(x.args[2])
+                                        end
+
+                                        if !(replacement isa Int) # check if the nonnegative term is just a constant
+                                            if haskey(unique_➕_eqs, x.args[2])
+                                                replacement = unique_➕_eqs[x.args[2]]
+                                            else
+                                                if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
+                                                    push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                                    push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                                else
+                                                    push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                                    push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                                end
+
+                                                bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
+                                                push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                                replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                                unique_➕_eqs[x.args[2]] = replacement
+                                            end
+                                        end
+
+                                        :($(replacement) ^ $(x.args[3]))
+                                    end :
+                                x :
+                            x :
+                        x.args[2] isa Float64 ?
+                            x :
+                        x.args[1] ∈ [:log] ?
+                            x.args[2] isa Symbol ? # nonnegative parameters 
+                                x.args[2] ∈ vars_to_exclude[1] ?
+                                    begin
+                                        bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
+                                        x 
+                                    end :
+                                begin
+                                    if haskey(unique_➕_eqs, x.args[2])
+                                        replacement = unique_➕_eqs[x.args[2]]
+                                    else
+                                        if x.args[2] in vars_to_exclude[1]
+                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        else
+                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        end
+
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
+                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                        replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                        unique_➕_eqs[x.args[2]] = replacement
+                                    end
+                                
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x.args[2].head == :call ? # nonnegative expressions
+                                begin
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
+                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
+                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            else
+                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            end
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                    end
+
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x :
+                        x.args[1] ∈ [:norminvcdf, :norminv, :qnorm] ?
+                            x.args[2] isa Symbol ? # nonnegative parameters 
+                                x.args[2] ∈ vars_to_exclude[1] ?
+                                begin
+                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1-eps())) : (eps(), 1 - eps())
+                                    x 
+                                end :
+                                begin
+                                    if haskey(unique_➕_eqs, x.args[2])
+                                        replacement = unique_➕_eqs[x.args[2]]
+                                    else
+                                        if x.args[2] in vars_to_exclude[1]
+                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        else
+                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        end
+
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1 - eps())) : (eps(), 1 - eps())
+                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                        replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                        unique_➕_eqs[x.args[2]] = replacement
+                                    end
+                                
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x.args[2].head == :call ? # nonnegative expressions
+                                begin
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
+                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
+                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            else
+                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            end
+
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1 - eps())) : (eps(), 1 - eps())
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                    end
+
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x :
+                        x.args[1] ∈ [:exp] ?
+                            x.args[2] isa Symbol ? # have exp terms bound so they dont go to Inf
+                                x.args[2] ∈ vars_to_exclude[1] ?
+                                begin
+                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 700)) : (-1e12, 700)
+                                    x 
+                                end :
+                                begin
+                                    if haskey(unique_➕_eqs, x.args[2])
+                                        replacement = unique_➕_eqs[x.args[2]]
+                                    else
+                                        if x.args[2] in vars_to_exclude[1]
+                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(700,max(-1e12,$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        else
+                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(700,max(-1e12,$(x.args[2]))))) 
+                                            push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        end
+                                        
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 700)) : (-1e12, 700)
+                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                        replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                        unique_➕_eqs[x.args[2]] = replacement
+                                    end
+                                
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x.args[2].head == :call ? # have exp terms bound so they dont go to Inf
+                                begin
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
+                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
+                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(700,max(-1e12,$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            else
+                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(700,max(-1e12,$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            end
+                                            
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 700)) : (-1e12, 700)
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                    end
+
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x :
+                        x.args[1] ∈ [:erfcinv] ?
+                            x.args[2] isa Symbol ? # nonnegative parameters 
+                                x.args[2] ∈ vars_to_exclude[1] ?
+                                    begin
+                                        bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 2 - eps())) : (eps(), 2 - eps())
+                                        x 
+                                    end :
+                                begin
+                                    if haskey(unique_➕_eqs, x.args[2])
+                                        replacement = unique_➕_eqs[x.args[2]]
+                                    else
+                                        if x.args[2] in vars_to_exclude[1]
+                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        else
+                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
+                                            push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                        end
+                                        
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 2 - eps())) : (eps(), 2 - eps())
+                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                        replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                        unique_➕_eqs[x.args[2]] = replacement
+                                    end
+                                
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x.args[2].head == :call ? # nonnegative expressions
+                                begin
+                                    if precompile
+                                        replacement = x.args[2]
+                                    else
+                                        replacement = simplify(x.args[2])
+                                    end
+
+                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
+                                        if haskey(unique_➕_eqs, x.args[2])
+                                            replacement = unique_➕_eqs[x.args[2]]
+                                        else
+                                            if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
+                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            else
+                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
+                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
+                                            end
+                                            
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 2 - eps())) : (eps(), 2 - eps())
+                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
+                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
+
+                                            unique_➕_eqs[x.args[2]] = replacement
+                                        end
+                                    end
+
+                                    :($(Expr(:call, x.args[1], replacement)))
+                                end :
+                            x :
+                        x :
+                    x :
+                x,
+            eq)
+            push!(rewritten_eqs,rewritten_eq)
+        else
+            @assert typeof(eq) in [Symbol, Expr]
+        end
+    end
+
+    vars_to_exclude_from_block = vcat(vars_to_exclude...)
+
+    found_new_dependecy = true
+
+    while found_new_dependecy
+        found_new_dependecy = false
+
+        for ssauxdep in ss_and_aux_equations_dep
+            push!(vars_to_exclude_from_block, ssauxdep.args[1])
+        end
+
+        for (iii, ssaux) in enumerate(ss_and_aux_equations)
+            if !isempty(intersect(get_symbols(ssaux), vars_to_exclude_from_block))
+                found_new_dependecy = true
+                push!(vars_to_exclude_from_block, ssaux.args[1])
+                push!(ss_and_aux_equations_dep, ssaux)
+                push!(ss_and_aux_equations_error_dep, ss_and_aux_equations_error[iii])
+                deleteat!(ss_and_aux_equations, iii)
+                deleteat!(ss_and_aux_equations_error, iii)
+            end
+        end
+    end
+
+    return rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep
+end
+
+
+
+
+# function write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, 
+#     ➕_vars, unique_➕_eqs)
+#     # ➕_vars = Symbol[]
+#     # unique_➕_vars = Dict{Union{Expr, Symbol},Symbol}()
+
+#     vars_to_exclude = [Symbol.(solved_system[1]),Symbol.(solved_system[2])]
+
+#     rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(solved_system[3])), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_eqs)
+
+#     vars_to_exclude = [Symbol.(vcat(solved_system[1])),Symbol[]]
+    
+#     rewritten_eqs2, ss_and_aux_equations2, ss_and_aux_equations_dep2, ss_and_aux_equations_error2, ss_and_aux_equations_error_dep2 = make_equation_rebust_to_domain_errors(Meta.parse.(string.(solved_system[4])), vars_to_exclude, 𝓂.bounds, ➕_vars, unique_➕_eqs)
+
+#     push!(𝓂.solved_vars, Symbol.(vcat(solved_system[1], solved_system[2])))
+#     push!(𝓂.solved_vals, vcat(rewritten_eqs, rewritten_eqs2))
+
+#     syms_in_eqs = Set{Symbol}()
+
+#     for i in vcat(rewritten_eqs, rewritten_eqs2, ss_and_aux_equations_dep, ss_and_aux_equations_dep2, ss_and_aux_equations, ss_and_aux_equations2)
+#         push!(syms_in_eqs, get_symbols(i)...)
+#     end
+
+#     setdiff!(syms_in_eqs,➕_vars)
+
+#     syms_in_eqs2 = Set{Symbol}()
+
+#     for i in vcat(ss_and_aux_equations, ss_and_aux_equations2)
+#         push!(syms_in_eqs2, get_symbols(i)...)
+#     end
+
+#     union!(syms_in_eqs, intersect(syms_in_eqs2, ➕_vars))
+
+#     calib_pars = Expr[]
+#     calib_pars_input = Symbol[]
+#     relevant_pars = union(intersect(reduce(union, vcat(𝓂.par_list_aux_SS, 𝓂.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, ➕_vars))
+    
+#     union!(relevant_pars_across, relevant_pars)
+
+#     iii = 1
+#     for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters)
+#         if :($parss) ∈ relevant_pars
+#             push!(calib_pars, :($parss = parameters_and_solved_vars[$iii]))
+#             push!(calib_pars_input, :($parss))
+#             iii += 1
+#         end
+#     end
+
+#     guess = Expr[]
+#     result = Expr[]
+
+#     sorted_vars = sort(Symbol.(solved_system[1]))
+
+#     for (i, parss) in enumerate(sorted_vars) 
+#         push!(guess,:($parss = guess[$i]))
+#         push!(result,:($parss = sol[$i]))
+#     end
+
+#     # separate out auxilliary variables (nonnegativity)
+#     # nnaux = []
+#     # nnaux_linear = []
+#     # nnaux_error = []
+#     # push!(nnaux_error, :(aux_error = 0))
+#     solved_vals = Expr[]
+#     partially_solved_block = Expr[]
+
+#     other_vrs_eliminated_by_sympy = Set{Symbol}()
+
+#     for (i,val) in enumerate(𝓂.solved_vals[end])
+#         if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
+#             val = vcat(𝓂.ss_aux_equations, 𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
+#             # push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
+#             push!(other_vrs_eliminated_by_sympy, val.args[2])
+#             # push!(nnaux_linear,:($val))
+#             # push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
+#         end
+#     end
+
+
+
+#     for (var,val) in Dict(Symbol.(solved_system[2]) .=> rewritten_eqs2)
+#         push!(partially_solved_block, :($var = $(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))))
+#     end
+
+#     for (i,val) in enumerate(rewritten_eqs)
+#         push!(solved_vals, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+#     end
+
+#     # if length(nnaux) > 1
+#     #     all_symbols = map(x->x.args[1],nnaux) #relevant symbols come first in respective equations
+
+#     #     nn_symbols = map(x->intersect(all_symbols,x), get_symbols.(nnaux))
+        
+#     #     inc_matrix = fill(0,length(all_symbols),length(all_symbols))
+
+#     #     for i in 1:length(all_symbols)
+#     #         for k in 1:length(nn_symbols)
+#     #             inc_matrix[i,k] = collect(all_symbols)[i] ∈ collect(nn_symbols)[k]
+#     #         end
+#     #     end
+
+#     #     QQ, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(inc_matrix))
+
+#     #     nnaux = nnaux[QQ]
+#     #     nnaux_linear = nnaux_linear[QQ]
+#     # end
+
+#     other_vars = Expr[]
+#     other_vars_input = Symbol[]
+#     other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, ➕_vars),
+#                                         sort(𝓂.solved_vars[end]) ),
+#                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
+#                                 # union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
+
+#     for var in other_vrs
+#         push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
+#         push!(other_vars_input,:($(var)))
+#         iii += 1
+#     end
+
+#     solved_vals[end] = Expr(:call, :+, solved_vals[end], ss_and_aux_equations_error_dep2...)
+
+#     funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)
+#             $(guess...) 
+#             $(calib_pars...) # add those variables which were previously solved and are used in the equations
+#             $(other_vars...) # take only those that appear in equations - DONE
+
+#             $(ss_and_aux_equations_dep2...)
+
+#             $(partially_solved_block...) # add those variables which were previously solved and are used in the equations
+
+#             $(ss_and_aux_equations_dep...)
+#             # return [$(solved_vals...),$(nnaux_linear...)]
+#             return [$(solved_vals...)]
+#         end)
+
+#     push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(sorted_vars)))
+#     push!(NSSS_solver_cache_init_tmp,[Inf])
+
+#     # WARNING: infinite bounds are transformed to 1e12
+#     lbs = Float64[]
+#     ubs = Float64[]
+
+#     limit_boundaries = 1e12
+
+#     for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
+#         if haskey(𝓂.bounds,i)
+#             push!(lbs,𝓂.bounds[i][1])
+#             push!(ubs,𝓂.bounds[i][2])
+#         else
+#             push!(lbs,-limit_boundaries)
+#             push!(ubs, limit_boundaries)
+#         end
+#     end
+
+#     push!(SS_solve_func,ss_and_aux_equations...)
+#     push!(SS_solve_func,ss_and_aux_equations2...)
+
+#     push!(SS_solve_func,:(params_and_solved_vars = [$(calib_pars_input...), $(other_vars_input...)]))
+
+#     push!(SS_solve_func,:(lbs = [$(lbs...)]))
+#     push!(SS_solve_func,:(ubs = [$(ubs...)]))
+            
+#     n_block = length(𝓂.ss_solve_blocks) + 1   
+        
+#     push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
+
+#     if VERSION >= v"1.9"
+#         push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒷())))
+#     else
+#         push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
+#     end
+
+#     push!(SS_solve_func,:(solution = block_solver_AD(params_and_solved_vars,
+#                                                             $(n_block), 
+#                                                             𝓂.ss_solve_blocks[$(n_block)], 
+#                                                             # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
+#                                                             # f, 
+#                                                             inits,
+#                                                             lbs, 
+#                                                             ubs,
+#                                                             solver_parameters,
+#                                                             # fail_fast_solvers_only = fail_fast_solvers_only,
+#                                                             cold_start,
+#                                                             verbose)))
+                                                            
+#     push!(SS_solve_func,:(iters += solution[2][2])) 
+#     push!(SS_solve_func,:(solution_error += solution[2][1])) 
+
+#     if length(ss_and_aux_equations_error) + length(ss_and_aux_equations_error2) > 0
+#         push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error..., ss_and_aux_equations_error2...))))
+#     end
+
+#     push!(SS_solve_func,:(sol = solution[1]))
+
+#     push!(SS_solve_func,:($(result...)))   
+#     push!(SS_solve_func,:($(ss_and_aux_equations_dep2...)))  
+#     push!(SS_solve_func,:($(partially_solved_block...)))  
+
+#     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
+#     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
+
+#     push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
+# end
+
+
+function write_ss_check_function!(𝓂::ℳ)
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
+
+    unknowns = union(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+
+    ss_equations = vcat(𝓂.ss_equations,𝓂.calibration_equations)
+
+    pars = []
+    for (i, p) in enumerate(𝓂.parameters)
+        push!(pars, :($p = parameters[$i]))
+    end
+
+    unknwns = []
+    for (i, u) in enumerate(union(vars_in_ss_equations, 𝓂.calibration_equations_parameters))
+        push!(unknwns, :($u = unknowns[$i]))
+    end
+
+    solve_exp = :(function solve_SS(parameters::Vector{Real}, unknowns::Vector{Real})
+        $(pars...)
+        $(𝓂.calibration_equations_no_var...)
+        $(unknwns...)
+        return [$(ss_equations...)]
+    end)
+
+    𝓂.SS_check_func = @RuntimeGeneratedFunction(solve_exp)
+end
 
 
 function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false)
-    unknowns = union(Symbolics.vars_in_ss_equations,Symbolics.calibration_equations_parameters)
+    write_ss_check_function!(𝓂)
+
+    unknowns = union(Symbolics.vars_in_ss_equations, Symbolics.calibration_equations_parameters)
 
     @assert length(unknowns) <= length(Symbolics.ss_equations) + length(Symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
 
@@ -2094,7 +3140,6 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             Symbolics.par_list),
                     union.(Symbolics.ss_calib_list,
                             Symbolics.par_calib_list))
-
 
     for i in 1:length(unknowns)
         for k in 1:length(unknowns)
@@ -2124,12 +3169,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     atoms_in_equations = Set{Symbol}()
     atoms_in_equations_list = []
-    relevant_pars_across = []
+    relevant_pars_across = Symbol[]
     NSSS_solver_cache_init_tmp = []
 
     min_max_errors = []
 
-    n_block = 1
+    unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
 
     while n > 0 
         if length(eqs[:,eqs[2,:] .== n]) == 2
@@ -2164,15 +3209,14 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             catch
             end
             
-            if isnothing(soll)
-                # println("Could not solve single variables case symbolically.")
+            if isnothing(soll) || isempty(soll)
                 println("Failed finding solution symbolically for: ",var_to_solve_for," in: ",eq_to_solve)
-                # solve numerically
-                continue
-            # elseif PythonCall.pyconvert(Bool,soll[1].is_number)
+                
+                eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
+                write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                # write_domain_safe_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
             elseif soll[1].is_number == true
-                # ss_equations = ss_equations.subs(var_to_solve,soll[1])
                 ss_equations = [eq.subs(var_to_solve_for,soll[1]) for eq in ss_equations]
                 
                 push!(𝓂.solved_vars,Symbol(var_to_solve_for))
@@ -2186,29 +3230,34 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 push!(atoms_in_equations_list,[])
             else
-
                 push!(𝓂.solved_vars,Symbol(var_to_solve_for))
                 push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
                 
-                # atoms = reduce(union,soll[1].atoms())
-
                 [push!(atoms_in_equations, Symbol(a)) for a in soll[1].atoms()]
                 push!(atoms_in_equations_list, Set(union(setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs)),Symbol.(soll[1].atoms()))))
 
-                # println(atoms_in_equations)
-                # push!(atoms_in_equations, soll[1].atoms())
-
-                if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.lower_bounds[indexin([𝓂.solved_vars[end]],𝓂.bounded_vars)][1]),$(𝓂.solved_vals[end])),$(𝓂.upper_bounds[indexin([𝓂.solved_vars[end]],𝓂.bounded_vars)][1]))))
+                if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
+                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
+                    push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, 𝓂.solved_vars[end], 𝓂.solved_vals[end])))))
+                    unique_➕_eqs[𝓂.solved_vals[end]] = 𝓂.solved_vars[end]
                 else
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                    vars_to_exclude = [vcat(Symbol.(var_to_solve_for), 𝓂.➕_vars), Symbol[]]
+                    
+                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors([𝓂.solved_vals[end]], vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
+    
+                    if length(vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)) > 0
+                        push!(SS_solve_func,vcat(ss_and_aux_equations, ss_and_aux_equations_dep)...)
+                        push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)...))))
+                    end
+                    
+                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
+                end
+
+                if haskey(𝓂.bounds, 𝓂.solved_vars[end]) && 𝓂.solved_vars[end] ∉ 𝓂.➕_vars
+                    push!(SS_solve_func,:(solution_error += abs(min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vars[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2])) - $(𝓂.solved_vars[end]))))
                 end
             end
-
-            # push!(single_eqs,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
-            # solve symbolically
         else
-
             vars_to_solve = collect(unknowns)[vars[:,vars[2,:] .== n][1,:]]
 
             eqs_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1,:]]
@@ -2217,319 +3266,64 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             
             if symbolic_SS
                 soll = try SPyPyC.solve(eqs_to_solve,vars_to_solve)
-                # soll = try solve(SPyPyC.Sym(eqs_to_solve),var_order)#,check=false,force = true,manual=true)
                 catch
                 end
 
-                if isnothing(soll)
-                    if verbose
-                        println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
-                    end
+                if isnothing(soll) || length(soll) == 0 || length(intersect((union(SPyPyC.free_symbols.(soll[1])...) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
+                    if verbose println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.") end
+
                     numerical_sol = true
-                    # continue
-                elseif length(soll) == 0
-                    if verbose
-                        println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
-                    end
-                    numerical_sol = true
-                    # continue
-                # elseif length(intersect(vars_to_solve,reduce(union,map(x->x.atoms(),collect(soll[1]))))) > 0
-                elseif length(intersect((union(SPyPyC.free_symbols.(soll[1])...) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
-                # elseif length(intersect(union(SPyPyC.free_symbols.(soll[1])...),vars_to_solve)) > 0
-                    if verbose
-                        println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.")
-                    end
-                    numerical_sol = true
-                    # println("Could not solve for: ",intersect(var_list,reduce(union,map(x->x.atoms(),solll)))...)
-                    # break_ind = true
-                    # break
                 else
-                    if verbose
-                        println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " symbolically.")
-                    end
-                    # relevant_pars = reduce(union,vcat(𝓂.par_list,𝓂.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
-                    # relevant_pars = reduce(union,map(x->x.atoms(),collect(soll[1])))
+                    if verbose println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " symbolically.") end
+                    
                     atoms = reduce(union,map(x->x.atoms(),collect(soll[1])))
-                    # println(atoms)
-                    [push!(atoms_in_equations, Symbol(a)) for a in atoms]
+
+                    for a in atoms push!(atoms_in_equations, Symbol(a)) end
                     
                     for (k, vars) in enumerate(vars_to_solve)
                         push!(𝓂.solved_vars,Symbol(vars))
                         push!(𝓂.solved_vals,Meta.parse(string(soll[1][k]))) #using convert(Expr,x) leads to ugly expressions
 
                         push!(atoms_in_equations_list, Set(Symbol.(soll[1][k].atoms())))
-                        # push!(atoms_in_equations_list, Set(Symbol.(soll[vars].atoms()))) # to be fixed
                         push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
                     end
                 end
-
-
             end
-                
+
+            eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
+
+            incidence_matrix_subset = incidence_matrix[vars[:,vars[2,:] .== n][1,:], eq_idx_in_block_to_solve]
+
             # try symbolically and use numerical if it does not work
             if numerical_sol || !symbolic_SS
+                pv = sortperm(vars_to_solve, by = Symbol)
+                pe = sortperm(eqs_to_solve, by = string)
+
+                if length(pe) > 5
+                    write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                    # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)
+                else
+                    solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe])
+                    
+                    # if !isnothing(solved_system) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "LambertW")) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "Heaviside")) 
+                    #     write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, 
+                    #     𝓂.➕_vars, unique_➕_eqs)  
+                    # else
+                        write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
+                        # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
+                    # end
+                end
+
                 if !symbolic_SS && verbose
                     println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " numerically.")
                 end
-                
-                push!(𝓂.solved_vars,Symbol.(vars_to_solve))
-                push!(𝓂.solved_vals,Meta.parse.(string.(eqs_to_solve)))
-
-                syms_in_eqs = Set()
-
-                for i in eqs_to_solve
-                    # push!(syms_in_eqs, Symbol.(PythonCall.pystr.(i.atoms()))...)
-                    push!(syms_in_eqs, Symbol.(SPyPyC.:↓(SPyPyC.free_symbols(i)))...)
-                end
-
-                # println(syms_in_eqs)
-                push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
-
-                calib_pars = []
-                calib_pars_input = []
-                relevant_pars = reduce(union,vcat(𝓂.par_list_aux_SS,𝓂.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
-                relevant_pars_across = union(relevant_pars_across,relevant_pars)
-                
-                iii = 1
-                for parss in union(𝓂.parameters,𝓂.parameters_as_function_of_parameters)
-                    # valss   = 𝓂.parameter_values[i]
-                    if :($parss) ∈ relevant_pars
-                        push!(calib_pars,:($parss = parameters_and_solved_vars[$iii]))
-                        push!(calib_pars_input,:($parss))
-                        iii += 1
-                    end
-                end
-
-
-                guess = []
-                result = []
-                sorted_vars = sort(𝓂.solved_vars[end])
-                # sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.➕_vars))
-                for (i, parss) in enumerate(sorted_vars) 
-                    push!(guess,:($parss = guess[$i]))
-                    # push!(guess,:($parss = undo_transformer(guess[$i])))
-                    push!(result,:($parss = sol[$i]))
-                end
-
-                
-                # separate out auxilliary variables (nonnegativity)
-                nnaux = []
-                nnaux_linear = []
-                nnaux_error = []
-                push!(nnaux_error, :(aux_error = 0))
-                solved_vals = []
-                
-                eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
-
-
-                other_vrs_eliminated_by_sympy = Set()
-
-                for (i,val) in enumerate(𝓂.solved_vals[end])
-                    if typeof(val) ∈ [Symbol,Float64,Int]
-                        push!(solved_vals,val)
-                    else
-                        if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
-                            val = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
-                            push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
-                            push!(other_vrs_eliminated_by_sympy, val.args[2])
-                            push!(nnaux_linear,:($val))
-                            push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
-                        else
-                            push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
-                        end
-                    end
-                end
-
-                # println(other_vrs_eliminated_by_sympy)
-                # sort nnaux vars so that they enter in right order. avoid using a variable before it is declared
-                # println(nnaux)
-                if length(nnaux) > 1
-                    all_symbols = map(x->x.args[1],nnaux) #relevant symbols come first in respective equations
-
-                    nn_symbols = map(x->intersect(all_symbols,x), get_symbols.(nnaux))
-                    
-                    inc_matrix = fill(0,length(all_symbols),length(all_symbols))
-
-                    for i in 1:length(all_symbols)
-                        for k in 1:length(nn_symbols)
-                            inc_matrix[i,k] = collect(all_symbols)[i] ∈ collect(nn_symbols)[k]
-                        end
-                    end
-
-                    QQ, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(inc_matrix))
-
-                    nnaux = nnaux[QQ]
-                    nnaux_linear = nnaux_linear[QQ]
-                end
-
-
-
-                other_vars = []
-                other_vars_input = []
-                # other_vars_inverse = []
-                other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
-                                                    sort(𝓂.solved_vars[end]) ),
-                                        union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
-
-                # println(intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars), sort(𝓂.solved_vars[end]) ), union(syms_in_eqs, other_vrs_eliminated_by_sympy ) ))
-                # println(other_vrs)
-                for var in other_vrs
-                    # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
-                    push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
-                    push!(other_vars_input,:($(var)))
-                    iii += 1
-                    # push!(other_vars_inverse,:(𝓂.SS_init_guess[$var_idx] = $(var)))
-                end
-
-                # augment system for bound constraint violations
-                # aug_lag = []
-                # aug_lag_penalty = []
-                # push!(aug_lag_penalty, :(bound_violation_penalty = 0))
-
-                # for varpar in intersect(𝓂.bounded_vars,union(other_vrs,sorted_vars,relevant_pars))
-                #     i = indexin([varpar],𝓂.bounded_vars)
-                #     push!(aug_lag,:($varpar = min(max($varpar,$(𝓂.lower_bounds[i...])),$(𝓂.upper_bounds[i...]))))
-                #     push!(aug_lag_penalty,:(bound_violation_penalty += max(0,$(𝓂.lower_bounds[i...]) - $varpar) + max(0,$varpar - $(𝓂.upper_bounds[i...]))))
-                # end
-
-
-                # add it also to output from optimisation, in case you use optimiser without bounds
-                # aug_lag_results = []
-
-                # for varpar in intersect(𝓂.bounded_vars,sorted_vars)
-                #     i = indexin([varpar],𝓂.bounded_vars)
-                #     push!(aug_lag_results,:($varpar = min(max($varpar,𝓂.lower_bounds[$i...]),𝓂.upper_bounds[$i...])))
-                # end
-
-                # funcs_no_transform = :(function block(parameters_and_solved_vars::Vector{Float64}, guess::Vector{Float64})
-                #         # if guess isa Tuple guess = guess[1] end
-                #         # guess = undo_transformer(guess) 
-                #         # println(guess)
-                #         $(guess...) 
-                #         $(calib_pars...) # add those variables which were previously solved and are used in the equations
-                #         $(other_vars...) # take only those that appear in equations - DONE
-
-                #         # $(aug_lag...)
-                #         # $(nnaux_linear...)
-                #         return [$(solved_vals...),$(nnaux_linear...)]
-                #     end)
-
-# println(solved_vals)
-                funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)
-                        # if guess isa Tuple guess = guess[1] end
-                        # guess = undo_transformer(guess,lbs,ubs, option = transformer_option) 
-                        # println(guess)
-                        $(guess...) 
-                        $(calib_pars...) # add those variables which were previously solved and are used in the equations
-                        $(other_vars...) # take only those that appear in equations - DONE
-
-                        # $(aug_lag...)
-                        # $(nnaux...)
-                        # $(nnaux_linear...)
-                        return [$(solved_vals...),$(nnaux_linear...)]
-                    end)
-
-                # push!(solved_vals,:(aux_error))
-                # push!(solved_vals,:(bound_violation_penalty))
-
-                #funcs_optim = :(function block(guess::Vector{Float64},transformer_parameters_and_solved_vars::Tuple{Vector{Float64},Int})
-                    #guess = undo_transformer(guess,option = transformer_parameters_and_solved_vars[2])
-                    #parameters_and_solved_vars = transformer_parameters_and_solved_vars[1]
-                #  $(guess...) 
-                # $(calib_pars...) # add those variables which were previously solved and are used in the equations
-                #   $(other_vars...) # take only those that appear in equations - DONE
-
-                    # $(aug_lag_penalty...)
-                    # $(aug_lag...)
-                    # $(nnaux...) # not needed because the aux vars are inputs
-                    # $(nnaux_error...)
-                    #return sum(abs2,[$(solved_vals...),$(nnaux_linear...)])
-                #end)
-            
-                push!(NSSS_solver_cache_init_tmp,fill(0.897,length(sorted_vars)))
-
-                # WARNING: infinite bounds are transformed to 1e12
-                lbs = []
-                ubs = []
-                
-                limit_boundaries = 1e12
-
-                for i in sorted_vars
-                    if i ∈ 𝓂.bounded_vars
-                        push!(lbs,𝓂.lower_bounds[i .== 𝓂.bounded_vars][1] == -Inf ? -limit_boundaries+rand() : 𝓂.lower_bounds[i .== 𝓂.bounded_vars][1])
-                        push!(ubs,𝓂.upper_bounds[i .== 𝓂.bounded_vars][1] ==  Inf ?  limit_boundaries-rand() : 𝓂.upper_bounds[i .== 𝓂.bounded_vars][1])
-                    else
-                        push!(lbs,-limit_boundaries+rand())
-                        push!(ubs,limit_boundaries+rand())
-                    end
-                end
-                push!(SS_solve_func,:(lbs = [$(lbs...)]))
-                push!(SS_solve_func,:(ubs = [$(ubs...)]))
-                # push!(SS_solve_func,:(𝓂.SS_init_guess = initial_guess))
-                # push!(SS_solve_func,:(f = OptimizationFunction(𝓂.ss_solve_blocks_optim[$(n_block)], Optimization.AutoForwardDiff())))
-                # push!(SS_solve_func,:(inits = max.(lbs,min.(ubs,𝓂.SS_init_guess[$([findfirst(x->x==y,union(𝓂.var,𝓂.calibration_equations_parameters)) for y in sorted_vars])]))))
-                # push!(SS_solve_func,:(closest_solution = 𝓂.NSSS_solver_cache[findmin([sum(abs2,pars[end] - params_flt) for pars in 𝓂.NSSS_solver_cache])[2]]))
-                # push!(SS_solve_func,:(inits = [transformer(max.(lbs,min.(ubs, closest_solution[$(n_block)] ))),closest_solution[end]]))
-                push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, closest_solution[$(n_block)]))))
-
-                # push!(SS_solve_func,:(println([$(calib_pars_input...),$(other_vars_input...)])))
-
-                if VERSION >= v"1.9"
-                    push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒷())))
-                else
-                    push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
-                end
-
-                push!(SS_solve_func,:(solution = block_solver_AD([$(calib_pars_input...),$(other_vars_input...)],
-                                                                        $(n_block), 
-                                                                        𝓂.ss_solve_blocks[$(n_block)], 
-                                                                        # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
-                                                                        # f, 
-                                                                        inits,
-                                                                        lbs, 
-                                                                        ubs,
-                                                                        solver_parameters,
-                                                                        # fail_fast_solvers_only = fail_fast_solvers_only,
-                                                                        cold_start,
-                                                                        verbose)))
-                
-                # push!(SS_solve_func,:(solution = block_solver_RD([$(calib_pars_input...),$(other_vars_input...)])))#, 
-                        # $(n_block), 
-                        # 𝓂.ss_solve_blocks[$(n_block)], 
-                        # # 𝓂.SS_optimizer, 
-                        # f, 
-                        # inits,
-                        # lbs, 
-                        # ubs,
-                        # fail_fast_solvers_only = fail_fast_solvers_only,
-                        # verbose = verbose)))
-                push!(SS_solve_func,:(iters += solution[2][2])) 
-                push!(SS_solve_func,:(solution_error += solution[2][1])) 
-                push!(SS_solve_func,:(sol = solution[1]))
-                # push!(SS_solve_func,:(solution_error += sum(abs2,𝓂.ss_solve_blocks[$(n_block)]([$(calib_pars_input...),$(other_vars_input...)],solution))))
-                # push!(SS_solve_func,:(sol = solution))
-
-                # push!(SS_solve_func,:(println(sol))) 
-
-                push!(SS_solve_func,:($(result...)))   
-                # push!(SS_solve_func,:($(aug_lag_results...))) 
-
-                # push!(SS_solve_func,:(NSSS_solver_cache_tmp = []))
-                # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol))))
-                push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
-
-                push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
-                # push!(𝓂.ss_solve_blocks_no_transform,@RuntimeGeneratedFunction(funcs_no_transform))
-                # push!(𝓂.ss_solve_blocks_optim,@RuntimeGeneratedFunction(funcs_optim))
-                
-                n_block += 1
             end
         end
         n -= 1
     end
 
-    push!(NSSS_solver_cache_init_tmp,fill(Inf,length(𝓂.parameters)))
-    push!(𝓂.NSSS_solver_cache,NSSS_solver_cache_init_tmp)
+    push!(NSSS_solver_cache_init_tmp, fill(Inf, length(𝓂.parameters)))
+    push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_init_tmp)
 
     unknwns = Symbol.(collect(unknowns))
 
@@ -2547,7 +3341,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     for (i, parss) in enumerate(𝓂.parameters) 
         if parss ∈ union(atoms_in_equations, relevant_pars_across)
-            push!(parameters_in_equations,:($parss = params[$i]))
+            push!(parameters_in_equations,:($parss = parameters[$i]))
         end
     end
     
@@ -2571,20 +3365,20 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     
     push!(SS_solve_func, min_max_errors...)
     # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
-    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [params_scaled_flt] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp...,params_scaled_flt] end))
     
-    push!(SS_solve_func,:(current_best = sqrt(sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt))))# / max(sum(abs2,𝓂.NSSS_solver_cache[end][end]), sum(abs2,params_flt))))
+    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp...,copy(params_flt)] end))
+    
 
-    push!(SS_solve_func,:(for pars in 𝓂.NSSS_solver_cache
-                                latest = sqrt(sum(abs2,pars[end] - params_flt))# / max(sum(abs2,pars[end]), sum(abs,params_flt))
-                                if latest <= current_best
-                                    current_best = latest
-                                end
-                            end))
+    # push!(SS_solve_func,:(for pars in 𝓂.NSSS_solver_cache
+    #                             latest = sqrt(sum(abs2,pars[end] - params_flt))# / max(sum(abs2,pars[end]), sum(abs,params_flt))
+    #                             if latest <= current_best
+    #                                 current_best = latest
+    #                             end
+    #                         end))
 
-    push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < eps(Float64))
+    push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < 1e-12)
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
-                                solved_scale = scale
+                                # solved_scale = scale
                             end))
     # push!(SS_solve_func,:(if length(𝓂.NSSS_solver_cache) > 100 popfirst!(𝓂.NSSS_solver_cache) end))
     
@@ -2597,36 +3391,37 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     # fix parameter bounds
     par_bounds = []
-    
-    for varpar in intersect(𝓂.bounded_vars, intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across)))
-        i = indexin([varpar],𝓂.bounded_vars)
-        push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.lower_bounds[i...])),$(𝓂.upper_bounds[i...]))))
-    end
 
+    for varpar in intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across))
+        if haskey(𝓂.bounds, varpar)
+            push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.bounds[varpar][1])),$(𝓂.bounds[varpar][2]))))
+        end
+    end
 
     solve_exp = :(function solve_SS(parameters::Vector{Real}, 
                                     𝓂::ℳ,
                                     # fail_fast_solvers_only::Bool, 
                                     verbose::Bool, 
-                                    cold_start::Union{Bool,Float64},
-                                    solver_parameters::solver_parameters)
+                                    cold_start::Bool,
+                                    solver_parameters::Vector{solver_parameters})
 
-                    params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
-                    current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
-                    closest_solution_init = 𝓂.NSSS_solver_cache[end]
-                    for pars in 𝓂.NSSS_solver_cache
-                        latest = sum(abs2,pars[end] - params_flt)
-                        if latest <= current_best
-                            current_best = latest
-                            closest_solution_init = pars
-                        end
-                    end
-                    solved_scale = 0
-                    range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
-                    for r in range_length
-                        rangee = ignore_derivatives(range(0,1,r+1))
-                        for scale in rangee[2:end]
-                            if scale <= solved_scale continue end
+                    # params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
+                    # current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
+                    # closest_solution_init = 𝓂.NSSS_solver_cache[end]
+                    # for pars in 𝓂.NSSS_solver_cache
+                    #     latest = sum(abs2,pars[end] - params_flt)
+                    #     if latest <= current_best
+                    #         current_best = latest
+                    #         closest_solution_init = pars
+                    #     end
+                    # end
+                    # solved_scale = 0
+                    # range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
+                    # for r in range_length
+                        # rangee = ignore_derivatives(range(0,1,r+1))
+                        # for scale in rangee[2:end]
+                            # if scale <= solved_scale continue end
+                            params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                             current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
                             closest_solution = 𝓂.NSSS_solver_cache[end]
                             for pars in 𝓂.NSSS_solver_cache
@@ -2636,8 +3431,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                     closest_solution = pars
                                 end
                             end
-                            params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
-                            params_scaled_flt = typeof(params) == Vector{Float64} ? params : ℱ.value.(params)
+
+                            # params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
+
                             $(parameters_in_equations...)
                             $(par_bounds...)
                             $(𝓂.calibration_equations_no_var...)
@@ -2645,14 +3441,14 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             solution_error = 0.0
                             iters = 0
                             $(SS_solve_func...)
-                            if scale == 1
+                            # if scale == 1
                                 # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
                                 # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
                                 # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesnt work with Zygote
                                 return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
-                            end
-                        end
-                    end
+                            # end
+                        # end
+                    # end
                 end)
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
@@ -2763,7 +3559,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         nnaux_linear = []
         nnaux_error = []
         push!(nnaux_error, :(aux_error = 0))
-        solved_vals = []
+        solved_vals = Expr[]
         
         eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
@@ -2815,7 +3611,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
                                             sort(𝓂.solved_vars[end]) ),
                                 union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
-                  
+
         for var in other_vrs
             # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
             push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
@@ -2838,7 +3634,8 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                 return [$(solved_vals...),$(nnaux_linear...)]
             end)
 
-        push!(NSSS_solver_cache_init_tmp,fill(0.897,length(sorted_vars)))
+        push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(sorted_vars)))
+        push!(NSSS_solver_cache_init_tmp,[Inf])
 
         # WARNING: infinite bounds are transformed to 1e12
         lbs = []
@@ -2846,19 +3643,22 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         
         limit_boundaries = 1e12
 
-        for i in sorted_vars
-            if i ∈ 𝓂.bounded_vars
-                push!(lbs,𝓂.lower_bounds[i .== 𝓂.bounded_vars][1] == -Inf ? -limit_boundaries+rand() : 𝓂.lower_bounds[i .== 𝓂.bounded_vars][1])
-                push!(ubs,𝓂.upper_bounds[i .== 𝓂.bounded_vars][1] ==  Inf ?  limit_boundaries-rand() : 𝓂.upper_bounds[i .== 𝓂.bounded_vars][1])
+        for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
+            if haskey(𝓂.bounds, i)
+                push!(lbs,𝓂.bounds[i][1] == -Inf ? -limit_boundaries+rand() : 𝓂.bounds[i][1])
+                push!(ubs,𝓂.bounds[i][2] ==  Inf ?  limit_boundaries-rand() : 𝓂.bounds[i][2])
             else
                 push!(lbs,-limit_boundaries+rand())
                 push!(ubs,limit_boundaries+rand())
             end
         end
+
+        push!(SS_solve_func,:(params_and_solved_vars = [$(calib_pars_input...),$(other_vars_input...)]))
+
         push!(SS_solve_func,:(lbs = [$(lbs...)]))
         push!(SS_solve_func,:(ubs = [$(ubs...)]))
         
-        push!(SS_solve_func,:(inits = max.(lbs,min.(ubs, closest_solution[$(n_block)]))))
+        push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
 
         if VERSION >= v"1.9"
             push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒷())))
@@ -2866,7 +3666,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
             push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
         end
 
-        push!(SS_solve_func,:(solution = block_solver_AD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)],
+        push!(SS_solve_func,:(solution = block_solver_AD(length(params_and_solved_vars) == 0 ? [0.0] : params_and_solved_vars,
                                                                 $(n_block), 
                                                                 𝓂.ss_solve_blocks[$(n_block)], 
                                                                 # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
@@ -2892,6 +3692,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         push!(SS_solve_func,:($(result...)))   
         
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
+        push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
         push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
         
@@ -2900,6 +3701,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         n -= 1
     end
 
+    push!(NSSS_solver_cache_init_tmp,[Inf])
     push!(NSSS_solver_cache_init_tmp,fill(Inf,length(𝓂.parameters)))
     push!(𝓂.NSSS_solver_cache,NSSS_solver_cache_init_tmp)
 
@@ -2919,7 +3721,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
 
     for (i, parss) in enumerate(𝓂.parameters) 
         if parss ∈ union(atoms_in_equations, relevant_pars_across)
-            push!(parameters_in_equations,:($parss = params[$i]))
+            push!(parameters_in_equations,:($parss = parameters[$i]))
         end
     end
     
@@ -2941,7 +3743,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
     push!(SS_solve_func,:($(dyn_exos...)))
 
     # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
-    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [params_scaled_flt] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp...,params_scaled_flt] end))
+    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., copy(params_flt)] end))
     
     push!(SS_solve_func,:(current_best = sqrt(sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt))))# / max(sum(abs2,𝓂.NSSS_solver_cache[end][end]), sum(abs2,params_flt))))
 
@@ -2952,43 +3754,44 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                                 end
                             end))
 
-    push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < eps(Float64))
+    push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < 1e-12)
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
-                                solved_scale = scale
+                                # solved_scale = scale
                             end))
 
     # fix parameter bounds
     par_bounds = []
     
-    for varpar in intersect(𝓂.bounded_vars, intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across)))
-        i = indexin([varpar],𝓂.bounded_vars)
-        push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.lower_bounds[i...])),$(𝓂.upper_bounds[i...]))))
+    for varpar in intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across))
+        if haskey(𝓂.bounds, varpar)
+            push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.bounds[varpar][1])),$(𝓂.bounds[varpar][2]))))
+        end
     end
-
 
     solve_exp = :(function solve_SS(parameters::Vector{Real}, 
                                     𝓂::ℳ, 
                                     # fail_fast_solvers_only::Bool, 
                                     verbose::Bool, 
-                                    cold_start::Union{Bool,Float64},
-                                    solver_parameters::solver_parameters)
+                                    cold_start::Bool,
+                                    solver_parameters::Vector{solver_parameters})
 
-                    params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
-                    current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
-                    closest_solution_init = 𝓂.NSSS_solver_cache[end]
-                    for pars in 𝓂.NSSS_solver_cache
-                        latest = sum(abs2,pars[end] - params_flt)
-                        if latest <= current_best
-                            current_best = latest
-                            closest_solution_init = pars
-                        end
-                    end
-                    solved_scale = 0
-                    range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
-                    for r in range_length
-                        rangee = ignore_derivatives(range(0,1,r+1))
-                        for scale in rangee[2:end]
-                            if scale <= solved_scale continue end
+                    # params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
+                    # current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
+                    # closest_solution_init = 𝓂.NSSS_solver_cache[end]
+                    # for pars in 𝓂.NSSS_solver_cache
+                    #     latest = sum(abs2,pars[end] - params_flt)
+                    #     if latest <= current_best
+                    #         current_best = latest
+                    #         closest_solution_init = pars
+                    #     end
+                    # end
+                    # solved_scale = 0
+                    # range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
+                    # for r in range_length
+                    #     rangee = ignore_derivatives(range(0,1,r+1))
+                    #     for scale in rangee[2:end]
+                    #         if scale <= solved_scale continue end
+                            params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
                             current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
                             closest_solution = 𝓂.NSSS_solver_cache[end]
                             for pars in 𝓂.NSSS_solver_cache
@@ -2998,8 +3801,8 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                                     closest_solution = pars
                                 end
                             end
-                            params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
-                            params_scaled_flt = typeof(params) == Vector{Float64} ? params : ℱ.value.(params)
+                            # params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
+
                             $(parameters_in_equations...)
                             $(par_bounds...)
                             $(𝓂.calibration_equations_no_var...)
@@ -3007,12 +3810,12 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                             iters = 0
                             solution_error = 0.0
                             $(SS_solve_func...)
-                            if scale == 1
+                            # if scale == 1
                                 # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
                                 return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)] , (solution_error, iters)
-                            end
-                        end
-                    end
+                            # end
+                    #     end
+                    # end
                 end)
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
@@ -3026,96 +3829,248 @@ function reverse_diff_friendly_push!(x,y)
     @ignore_derivatives push!(x,y)
 end
 
+function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, 𝓂::ℳ, tol::AbstractFloat = 1e-12)::Float64
+    log_lik = 0.0
+    log_lik -= -sum(pars[1:19])                                 # logpdf of a gamma dist with mean and variance 1
+    log_lik -= -log(5 * sqrt(2 * π)) - (pars[20]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and variance = 5^2
+
+    pars[1:2] = sort(pars[1:2], rev = true)
+
+    par_inputs = solver_parameters(eps(), eps(), eps(), 250, pars..., 1, 0.0, 2)
+
+    runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs]) catch end
+
+    runtime = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
+                    (outmodel[2][1] > tol) || !isfinite(outmodel[2][1]) ? 
+                        10 : 
+                    runtime : 
+                10
+
+    return log_lik / 1e4 + runtime * 1e3
+end
+
+
+function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 60, maxiter::Int = 250000, tol::AbstractFloat = 1e-12)
+    pars = rand(20) .+ 1
+    pars[20] -= 1
+
+    lbs = fill(eps(), length(pars))
+    lbs[20] = -20
+
+    ubs = fill(100.0,length(pars))
+
+    sol = Optim.optimize(x -> calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂), 
+                            lbs, ubs, pars, 
+                            Optim.SAMIN(verbosity = 0), 
+                            Optim.Options(time_limit = maxtime, iterations = maxiter))
+
+    pars = Optim.minimizer(sol)
+
+    par_inputs = solver_parameters(eps(), eps(), eps(), 250, pars..., 1, 0.0, 2)
+
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs])
+
+    if solution_error < tol
+        push!(𝓂.solver_parameters, par_inputs)
+        return true
+    else 
+        return false
+    end
+end
+
+
+function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::AbstractFloat = 1e-12)
+    best_param = 𝓂.solver_parameters[1]
+
+    best_time = Inf
+
+    solved = false
+
+    for p in 𝓂.solver_parameters
+        total_time = 0.0
+        
+        for _ in 1:10
+            start_time = time()
+
+            SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [p])
+
+            elapsed_time = time() - start_time
+
+            total_time += elapsed_time
+            
+            if solution_error > tol
+                total_time = 1e7
+                break
+            end
+        end
+
+        if total_time < best_time
+            best_time = total_time
+            best_param = p
+        end
+
+        solved = true
+    end
+
+    if solved
+        pushfirst!(𝓂.solver_parameters, best_param)
+    end
+end
+
+
+function solve_ss(SS_optimizer::Function,
+                    ss_solve_blocks::Function,
+                    parameters_and_solved_vars::Vector{Float64},
+                    closest_parameters_and_solved_vars::Vector{Float64},
+                    lbs::Vector{Float64},
+                    ubs::Vector{Float64},
+                    tol::AbstractFloat,
+                    total_iters::Int,
+                    n_block::Int,
+                    verbose::Bool,
+                    guess::Vector{Float64},
+                    solver_params::solver_parameters,
+                    extended_problem::Bool,
+                    separate_starting_value::Union{Bool,Float64})
+    if separate_starting_value isa Float64
+        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(separate_starting_value, length(guess))))
+        sol_values_init[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
+    else
+        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : solver_params.starting_value for g in guess]))
+    end
+
+    if extended_problem
+        function ext_function_to_optimize(guesses)
+            gss = guesses[1:length(guess)]
+    
+            parameters_and_solved_vars_guess = guesses[length(guess)+1:end]
+    
+            res = ss_solve_blocks(parameters_and_solved_vars, gss)
+    
+            return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
+        end
+    else
+        function function_to_optimize(guesses) ss_solve_blocks(parameters_and_solved_vars, guesses) end
+    end
+
+    sol_new_tmp, info = SS_optimizer(   extended_problem ? ext_function_to_optimize : function_to_optimize,
+                                        extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
+                                        extended_problem ? lbs : lbs[1:length(guess)],
+                                        extended_problem ? ubs : ubs[1:length(guess)],
+                                        solver_params   )
+
+    sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
+
+    sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
+
+    sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
+
+    total_iters += info[1]
+    
+    extended_problem_str = extended_problem ? "(extended problem) " : ""
+
+    if separate_starting_value isa Bool
+        starting_value_str = ""
+    else
+        starting_value_str = "and starting point: $separate_starting_value"
+    end
+
+    if all(guess .< 1e12) && separate_starting_value isa Bool
+        any_guess_str = "previous solution, "
+    elseif any(guess .< 1e12) && separate_starting_value isa Bool
+        any_guess_str = "provided guess, "
+    else
+        any_guess_str = ""
+    end
+
+    max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
+
+    if sol_minimum < tol && verbose
+        println("Block: $n_block - Solved $(extended_problem_str)using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
+    end
+
+    return sol_values, sol_minimum
+end
+
 
 function block_solver(parameters_and_solved_vars::Vector{Float64}, 
                         n_block::Int, 
                         ss_solve_blocks::Function, 
                         # SS_optimizer, 
                         # f::OptimizationFunction, 
-                        guess::Vector{Float64}, 
+                        guess_and_pars_solved_vars::Vector{Vector{Float64}}, 
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64},
-                        parameters::solver_parameters,
-                        cold_start::Union{Bool,Float64},
+                        parameters::Vector{solver_parameters},
+                        cold_start::Bool,
                         verbose::Bool;
-                        tol::AbstractFloat = eps(),
+                        tol::AbstractFloat = 1e-12 #, # eps(),
                         # timeout = 120,
-                        starting_points::Vector{Float64} = [0.7688, 0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
+                        # starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
                         # fail_fast_solvers_only = true,
                         # verbose::Bool = false
                         )
-    
-    if cold_start isa Float64
-        sol_values = max.(lbs,min.(ubs, fill(cold_start,length(guess))))
-        sol_minimum = 1
-    elseif cold_start isa Bool 
-        if cold_start
-            sol_values = max.(lbs,min.(ubs, fill(0.0,length(guess))))
-            sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,sol_values))
-        else
-            sol_values = guess
-            sol_minimum  = sum(abs2,ss_solve_blocks(parameters_and_solved_vars,sol_values))
-            iters = 0
+    guess = guess_and_pars_solved_vars[1]
 
-            if verbose && sol_minimum < tol
-                println("Block: ",n_block," - Solved using previous solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
-            end
+    sol_values = guess
+
+    closest_parameters_and_solved_vars = sum(abs, guess_and_pars_solved_vars[2]) == Inf ? parameters_and_solved_vars : guess_and_pars_solved_vars[2]
+
+    sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, guess))
+    
+    if sol_minimum < tol
+        if verbose
+            println("Block: $n_block, - Solved using previous solution; maximum residual = ", maximum(abs, ss_solve_blocks(parameters_and_solved_vars, guess)))
         end
     end
 
-    # try modified LM to solve hard SS problems
-    if (sol_minimum > tol)# | (maximum(abs,ss_solve_blocks(sol_values,parameters_and_solved_vars)) > tol))
-        SS_optimizer = levenberg_marquardt
+    total_iters = 0
 
-        previous_sol_init = max.(lbs,min.(ubs, sol_values))
-        
-        sol_new, info = SS_optimizer(
-                                        x->ss_solve_blocks(parameters_and_solved_vars, x),
-                                        previous_sol_init,
-                                        lbs,
-                                        ubs,
-                                        parameters = parameters
-                                    ) # alternatively use .001)#, μ = μ, p = p)# catch e end
+    SS_optimizer = levenberg_marquardt
 
-        sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
-        sol_values = max.(lbs,min.(ubs, sol_new ))
-        iters = info[1]
+    if cold_start
+        guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
 
-        if sol_minimum < tol
-            if verbose
-                println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and previous best non-converged solution; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
-            end
-        elseif cold_start isa Bool && !cold_start
-            # if the previous non-converged best guess as a starting point does not work, try the standard starting points
-            for starting_point in starting_points
-                if sol_minimum > tol
-                    standard_inits = max.(lbs,min.(ubs, fill(starting_point,length(guess))))
-                    standard_inits[ubs .<= 1] .= .1 # capture cases where part of values is small
-
-                    sol_new, info = SS_optimizer(
-                        x->ss_solve_blocks(parameters_and_solved_vars, x),
-                        standard_inits,
-                        lbs,
-                        ubs,
-                        parameters = parameters
-                        )# catch e end
-                
-                    sol_minimum = isnan(sum(abs2,info[4])) ? Inf : sum(abs2,info[4])
-                    sol_values = max.(lbs,min.(ubs, sol_new))
-                    iters = info[1]
-
-                    if sol_minimum < tol && verbose
-                        println("Block: ",n_block," - Solved using ",string(SS_optimizer)," and starting point: ",starting_point,"; maximum residual = ",maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values)))
+        for g in guesses
+            for p in parameters
+                for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
+                    if sol_minimum > tol
+                        sol_values, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                            g, 
+                                                            p,
+                                                            ext,
+                                                            false)
                     end
-
-                else 
-                    break
                 end
             end
         end
+    else !cold_start
+        for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
+            if sol_minimum > tol
+                sol_values, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                    guess, 
+                                                    parameters[1],
+                                                    ext,
+                                                    false)
+            end
+        end
+
+        for p in unique(parameters) # take unique because some parameters might appear more than once
+            for s in [p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+                # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
+                    if sol_minimum > tol
+                        sol_values, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                            guess, 
+                                                            p,
+                                                            false,
+                                                            s)
+                    end
+                # end
+            end
+        end
     end
 
-    return sol_values, (sol_minimum, iters)
+    return sol_values, (sol_minimum, total_iters)
 end
 
 # needed for Julia 1.8
@@ -3124,15 +4079,15 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
     ss_solve_blocks::Function, 
     # SS_optimizer, 
     # f::OptimizationFunction, 
-    guess::Vector{Float64}, 
+    guess::Vector{Vector{Float64}}, 
     lbs::Vector{Float64}, 
     ubs::Vector{Float64},
-    parameters::solver_parameters,
-    cold_start::Union{Bool,Float64},
+    parameters::Vector{solver_parameters},
+    cold_start::Bool,
     verbose::Bool ;
-    tol::AbstractFloat = eps(),
+    tol::AbstractFloat = eps() #,
     # timeout = 120,
-    starting_points::Vector{Float64} = [0.7688, 0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
+    # starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
     # fail_fast_solvers_only = true,
     # verbose::Bool = false
     ) where {Z,S,N}
@@ -3156,9 +4111,10 @@ function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}},
                         parameters,
                         cold_start,
                         verbose;
-                        tol = tol,
+                        tol = tol #,
                         # timeout = timeout,
-                        starting_points = starting_points)
+                        # starting_points = starting_points
+                        )
 
     if min > tol
         jvp = fill(0,length(val),length(inp)) * ps
@@ -3270,7 +4226,7 @@ second_order_stochastic_steady_state_iterative_solution = ℐ.ImplicitFunction(s
                                                                                     linear_solver = ℐ.DirectLinearSolver())
 
 
-function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = eps())::Tuple{Vector{M}, Bool, Vector{M}, Float64, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
+function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     if solution_error > tol || isnan(solution_error)
@@ -3416,7 +4372,7 @@ function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁�
 end
 
 
-function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = eps())::Tuple{Vector{M}, Bool, Vector{M}, Float64, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
+function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     if solution_error > tol || isnan(solution_error)
@@ -3492,7 +4448,7 @@ function solve!(𝓂::ℳ;
     obc::Bool = false,
     verbose::Bool = false,
     silent::Bool = false,
-    tol::AbstractFloat = eps())
+    tol::AbstractFloat = 1e-12)
 
     @assert algorithm ∈ all_available_algorithms
     
@@ -4021,7 +4977,15 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                 # if deriv_first != 0 
                 #     deriv_expr = Meta.parse(string(deriv_first.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
                 #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                    push!(first_order, Symbolics.toexpr(deriv_first))
+                    deriv_first_expr = Symbolics.toexpr(deriv_first)
+                    # deriv_first_expr_safe = postwalk(x -> x isa Expr ? 
+                    #                                     x.args[1] == :^ ? 
+                    #                                         :(NaNMath.pow($(x.args[2:end]...))) : 
+                    #                                     x : 
+                    #                                 x, 
+                    #                         deriv_first_expr)
+
+                    push!(first_order, deriv_first_expr)
                     push!(row1,r)
                     push!(column1,c1)
                     i1 += 1
@@ -4265,18 +5229,15 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
 
     bounds_broken = false
 
-    for i in 1:length(parameters)
-        bnd_idx = findfirst(x->x==collect(keys(parameters))[i],𝓂.bounded_vars)
-        if !isnothing(bnd_idx)
-            if collect(values(parameters))[i] > 𝓂.upper_bounds[bnd_idx]
-                # println("Calibration is out of bounds for ",collect(keys(parameters))[i],":\t",collect(values(parameters))[i]," > ",𝓂.upper_bounds[bnd_idx] + eps())
-                println("Bounds error for ",collect(keys(parameters))[i]," < ",𝓂.upper_bounds[bnd_idx] + eps(),"\tparameter value: ",collect(values(parameters))[i])
+    for (par,val) in parameters
+        if haskey(𝓂.bounds,par)
+            if val > 𝓂.bounds[par][2]
+                println("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
-            if collect(values(parameters))[i] < 𝓂.lower_bounds[bnd_idx]
-                # println("Calibration is out of bounds for ",collect(keys(parameters))[i],":\t",collect(values(parameters))[i]," < ",𝓂.lower_bounds[bnd_idx] - eps())
-                println("Bounds error for ",collect(keys(parameters))[i]," > ",𝓂.lower_bounds[bnd_idx] + eps(),"\tparameter value: ",collect(values(parameters))[i])
+            if val < 𝓂.bounds[par][1]
+                println("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
@@ -4330,16 +5291,15 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
 
     bounds_broken = false
 
-    for i in 1:length(parameters)
-        bnd_idx = findfirst(x -> x == 𝓂.parameters[i], 𝓂.bounded_vars)
-        if !isnothing(bnd_idx)
-            if collect(values(parameters))[i] > 𝓂.upper_bounds[bnd_idx]
-                println("Bounds error for ",𝓂.parameters[i]," < ",𝓂.upper_bounds[bnd_idx] + eps(),"\tparameter value: ",𝓂.parameter_values[i])
+    for (par,val) in Dict(𝓂.parameters .=> parameters)
+        if haskey(𝓂.bounds,par)
+            if val > 𝓂.bounds[par][2]
+                println("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
-            if collect(values(parameters))[i] < 𝓂.lower_bounds[bnd_idx]
-                println("Bounds error for ",𝓂.parameters[i]," > ",𝓂.lower_bounds[bnd_idx] + eps(),"\tparameter value: ",𝓂.parameter_values[i])
+            if val < 𝓂.bounds[par][1]
+                println("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
@@ -4701,6 +5661,53 @@ end
 
 
 
+function calculate_quadratic_iteration_solution_AD(∇₁::AbstractMatrix{S}; T::timings, tol::AbstractFloat = 1e-12) where S
+    # see Binder and Pesaran (1997) for more details on this approach
+    expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
+            ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    ∇₀ = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇₋ = @views ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+    ∇ₑ = @views ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+
+    A = ∇₀ \ ∇₋
+    B = ∇₀ \ ∇₊
+
+    # A = sparse(∇̂₀ \ ∇₋) # sparsity desnt make it faster
+    # B = sparse(∇̂₀ \ ∇₊)
+
+    # droptol!(A,eps())
+    # droptol!(B,eps())
+
+    C = copy(A)
+    C̄ = similar(A)
+
+    maxiter = 10000  # Maximum number of iterations
+
+    error = one(tol) + tol
+    iter = 0
+
+    while error > tol && iter <= maxiter
+        C̄ = copy(C)  # Store the current C̄ before updating it
+        
+        # Update C̄ based on the given formula
+        C = A + B * C^2
+        
+        # Check for convergence
+        if iter % 100 == 0
+            error = maximum(abs, C - C̄)
+        end
+
+        iter += 1
+    end
+
+    D = -(∇₊ * -C + ∇₀) \ ∇ₑ
+
+    return hcat(-C[:, T.past_not_future_and_mixed_idx], D), error <= tol
+end
+
+
 function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
@@ -4802,7 +5809,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
 
     A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     
-    return @view(A[T.reorder,:]), true
+    return A[T.reorder,:], true
 end
 
 function riccati_conditions(∇₁::AbstractMatrix{M}, sol_d::AbstractMatrix{N}, solved::Bool; T::timings, explosive::Bool = false) where {M,N}
@@ -4853,16 +5860,110 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
     end,size(val)), solved
 end
 
+# @memoize LRU(maxsize=50) 
+function calculate_jacobian_transpose(∇₁::AbstractMatrix{Float64}; T::timings, explosive::Bool = false)
+    𝐒₁, solved = MacroModelling.riccati_forward(∇₁;T = T, explosive = false)
 
-riccati_AD_direct = ℐ.ImplicitFunction(riccati_forward, 
-                                    riccati_conditions; 
+    sp𝐒₁ = sparse(𝐒₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+    sp∇₁ = sparse(∇₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+
+    droptol!(sp𝐒₁, 10*eps())
+    droptol!(sp∇₁, 10*eps())
+
+    # expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+    expand = [
+        spdiagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC, 
+        spdiagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+    ] 
+
+    A = sp∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    B = sp∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+
+    sol_buf = sp𝐒₁ * expand[2]
+    sol_buf2 = sol_buf * sol_buf
+
+    spd𝐒₁a = (ℒ.kron(expand[2] * sp𝐒₁, A') + 
+            ℒ.kron(expand[2] * expand[2]', sol_buf' * A' + B'))
+            
+    droptol!(spd𝐒₁a, 10*eps())
+
+    d𝐒₁a = spd𝐒₁a' |> collect
+
+    # Initialize empty spd∇₁a
+    spd∇₁a = spzeros(length(sp𝐒₁), length(∇₁))
+
+    # Directly allocate dA, dB, dC into spd∇₁a
+    # Note: You need to calculate the column indices where each matrix starts and ends
+    # This is conceptual; actual implementation would depend on how you can obtain or compute these indices
+    dA_cols = 1:(T.nFuture_not_past_and_mixed * size(𝐒₁,1))
+    dB_cols = dA_cols[end] .+ (1 : size(𝐒₁, 1)^2)
+    dC_cols = dB_cols[end] .+ (1 : length(sp𝐒₁))
+
+    spd∇₁a[:,dA_cols] = ℒ.kron(expand[1] * sol_buf2 * expand[2]' , ℒ.I(size(𝐒₁, 1)))'
+    spd∇₁a[:,dB_cols] = ℒ.kron(sp𝐒₁, ℒ.I(size(𝐒₁, 1)))' 
+    spd∇₁a[:,dC_cols] = ℒ.I(length(𝐒₁))
+
+    d𝐒₁â = ℒ.lu(d𝐒₁a, check = false)
+    
+    if !ℒ.issuccess(d𝐒₁â)
+        tmp = spd∇₁a'
+        solved = false
+    else
+        tmp = -(d𝐒₁â \ spd∇₁a)'
+    end
+
+    return 𝐒₁, solved, tmp
+end
+
+
+
+function rrule(::typeof(riccati_forward), ∇₁::AbstractMatrix{Float64}; T::timings, explosive::Bool = false)
+    # Forward pass to compute the output and intermediate values needed for the backward pass
+    𝐒₁, solved, tmp = calculate_jacobian_transpose(∇₁, T = T, explosive = explosive)
+
+    function calculate_riccati_pullback(Δ𝐒₁)
+        # Backward pass to compute the derivatives with respect to inputs
+        # This would involve computing the derivatives for each operation in reverse order
+        # and applying chain rule to propagate through the function
+        return NoTangent(), reshape(tmp * sparsevec(Δ𝐒₁[1]), size(∇₁)) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
+        # return NoTangent(), (reshape(-d𝐒₁a \ d∇₁a * vec(Δ𝐒₁) , size(∇₁))) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
+    end
+
+    return (𝐒₁, solved), calculate_riccati_pullback
+end
+
+
+riccati_AD_direct = ℐ.ImplicitFunction(riccati_forward,
+                                    riccati_conditions;
+                                    # conditions_backend = 𝒷(), # ForwardDiff is slower in combination with Zygote as overall backend
                                     linear_solver = ℐ.DirectLinearSolver())
 
 riccati_AD = ℐ.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt converge!?
 
 
-function calculate_first_order_solution(∇₁::Matrix{S}; T::timings, explosive::Bool = false)::Tuple{Matrix{S},Bool} where S <: Real
+function calculate_first_order_solution(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
+    # A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
+    A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
+
+    if !solved
+        return hcat(A, zeros(size(A,1),T.nExo)), solved
+    end
+
+    Jm = @view(ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:])
+    
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:]
+    ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+
+    B = -((∇₊ * A * Jm + ∇₀) \ ∇ₑ)
+
+    return hcat(A, B), solved
+end
+
+
+function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}},Bool} where {Z,S,N}
     A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
+    # A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
 
     if !solved
         return hcat(A, zeros(size(A,1),T.nExo)), solved
@@ -5222,8 +6323,12 @@ function irf(state_update::Function,
             end
         end
 
-        axis2 = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix]
-        
+        axis2 = shocks isa Union{Symbol_input,String_input} ? 
+                    shock_idx isa Int ? 
+                        [T.exo[shock_idx]] : 
+                    T.exo[shock_idx] : 
+                [:Shock_matrix]
+
         if any(x -> contains(string(x), "◖"), axis2)
             axis2_decomposed = decompose_name.(axis2)
             axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
@@ -5342,7 +6447,11 @@ function irf(state_update::Function,
             end
         end
 
-        axis2 = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix]
+        axis2 = shocks isa Union{Symbol_input,String_input} ? 
+                    shock_idx isa Int ? 
+                        [T.exo[shock_idx]] : 
+                    T.exo[shock_idx] : 
+                [:Shock_matrix]
         
         if any(x -> contains(string(x), "◖"), axis2)
             axis2_decomposed = decompose_name.(axis2)
@@ -5462,8 +6571,12 @@ function girf(state_update::Function,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    axis2 = shocks isa Union{Symbol_input,String_input} ? [T.exo[shock_idx]...] : [:Shock_matrix]
-        
+    axis2 = shocks isa Union{Symbol_input,String_input} ? 
+                shock_idx isa Int ? 
+                    [T.exo[shock_idx]] : 
+                T.exo[shock_idx] : 
+            [:Shock_matrix]
+
     if any(x -> contains(string(x), "◖"), axis2)
         axis2_decomposed = decompose_name.(axis2)
         axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
@@ -5510,7 +6623,7 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
 end
 
 
-function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T::timings)
+function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T::timings)#::Union{UnitRange{Int64}, Int64, Vector{Int64}}
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks == :all
@@ -5523,27 +6636,37 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
         shock_idx = 1
     elseif shocks isa Matrix{Symbol}
         if length(setdiff(shocks,T.exo)) > 0
-            return @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
+            @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
+            shock_idx = Int64[]
+        else
+            shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(shocks .== T.exo,dims= 2))))
         end
-        shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(shocks .== T.exo,dims= 2))))
     elseif shocks isa Vector{Symbol}
         if length(setdiff(shocks,T.exo)) > 0
-            return @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
+            @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
+            shock_idx = Int64[]
+        else
+            shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(shocks,1,length(shocks)) .== T.exo, dims= 2))))
         end
-        shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(shocks,1,length(shocks)) .== T.exo, dims= 2))))
     elseif shocks isa Tuple{Symbol, Vararg{Symbol}}
         if length(setdiff(shocks,T.exo)) > 0
-            return @warn "Following shocks are not part of the model: " * join(string.(setdiff(Symbol.(collect(shocks)),T.exo)),", ")
+            @warn "Following shocks are not part of the model: " * join(string.(setdiff(Symbol.(collect(shocks)),T.exo)),", ")
+            shock_idx = Int64[]
+        else
+            shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(collect(shocks),1,length(shocks)) .== T.exo,dims= 2))))
         end
-        shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(collect(shocks),1,length(shocks)) .== T.exo,dims= 2))))
     elseif shocks isa Symbol
         if length(setdiff([shocks],T.exo)) > 0
-            return @warn "Following shock is not part of the model: " * join(string(setdiff([shocks],T.exo)[1]),", ")
+            @warn "Following shock is not part of the model: " * join(string(setdiff([shocks],T.exo)[1]),", ")
+            shock_idx = Int64[]
+        else
+            shock_idx = getindex(1:T.nExo,shocks .== T.exo)
         end
-        shock_idx = getindex(1:T.nExo,shocks .== T.exo)
     else
-        return @warn "Invalid argument in shocks"
+        @warn "Invalid argument in shocks"
+        shock_idx = Int64[]
     end
+    return shock_idx
 end
 
 
@@ -5703,7 +6826,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
     dims::Vector{Tuple{Int,Int}},
     sparse_output::Bool = false,
-    solver::Symbol = :doubling)
+    solver::Symbol = :doubling)#::Tuple{Matrix{Float64}, Bool}
 
     if length(coords) == 1
         lengthA = length(coords[1][1])
@@ -6372,13 +7495,25 @@ function calculate_third_order_moments(parameters::Vector{T},
 end
 
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Union{Vector{String}, Vector{Symbol}}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}) where S
-    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))))
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S})::S where S
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present))))
 
-    A = @views 𝐒₁[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
-    B = @views 𝐒₁[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations)
+end
 
-    C = @views ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),observables_and_states)),:]
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{String}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S})::S where S
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present))))
+
+    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations)
+end
+
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables_index::Vector{Int}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S})::S where S
+    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,observables_index))
+
+    A = 𝐒₁[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
+    B = 𝐒₁[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+
+    C = ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(observables_index),observables_and_states)),:]
 
     𝐁 = B * B'
 
@@ -6391,49 +7526,73 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Union{Vec
 
     P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
     # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
-
-    u = zeros(length(observables_and_states))
+    # P = collect(ℒ.I(length(observables_and_states)) * 10.0)
+    
+    u = zeros(S, length(observables_and_states))
     # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
     z = C * u
-    
-    loglik = 0.0
 
-    for t in 1:size(data_in_deviations)[2]
-        v = data_in_deviations[:,t] - z
+    loglik = S(0)
+    for t in 1:size(data_in_deviations, 2)
+        v = data_in_deviations[:, t] - z
 
         F = C * P * C'
 
-        # F = (F + F') / 2
-
-        # loglik += log(max(eps(),ℒ.det(F))) + v' * ℒ.pinv(F) * v
-        # K = P * C' * ℒ.pinv(F)
-
-        # loglik += log(max(eps(),ℒ.det(F))) + v' / F  * v
-        Fdet = ℒ.det(F)
-
-        if Fdet < eps() return -Inf end
-
         F̄ = ℒ.lu(F, check = false)
 
-        if !ℒ.issuccess(F̄) return -Inf end
+        if !ℒ.issuccess(F̄)
+            return -Inf
+        end
+
+        Fdet = ℒ.det(F̄)
+
+        # Early return if determinant is too small, indicating numerical instability.
+        if Fdet < eps(S)
+            return -Inf
+        end
 
         invF = inv(F̄)
 
         loglik += log(Fdet) + v' * invF  * v
-        
+
         K = P * C' * invF
 
         P = A * (P - K * C * P) * A' + 𝐁
 
         u = A * (u + K * v)
-        
-        z = C * u 
+
+        z = C * u
     end
 
     return -(loglik + length(data_in_deviations) * log(2 * 3.141592653589793)) / 2 
 end
 
+# function update_loglikelihood!(loglik::S, P::Matrix{S}, u::Vector{S}, z::Vector{S}, C::Matrix{T}, A::Matrix{S}, 𝐁::Matrix{S}, data_point::Vector{S}) where {S,T}
+#     v = data_point - z
+#     F = C * P * C'
 
+#     F̄ = ℒ.lu(F, check = false)
+
+#     if !ℒ.issuccess(F̄)
+#         return -Inf, P, u, z
+#     end
+
+#     Fdet = ℒ.det(F̄)
+
+#     # Early return if determinant is too small, indicating numerical instability.
+#     if Fdet < eps(S)
+#         return -Inf, P, u, z
+#     end
+
+#     invF = inv(F̄)
+#     loglik_increment = log(Fdet) + v' * invF * v
+#     K = P * C' * invF
+#     P = A * (P - K * C * P) * A' + 𝐁
+#     u = A * (u + K * v)
+#     z = C * u
+
+#     return loglik + loglik_increment, P, u, z
+# end
 
 function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector{Float64},Vector{Vector{Float64}}}, state_update::Function, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, warmup_iterations::Int)
     if state isa Vector{Float64}
@@ -6482,7 +7641,7 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector
         
         res = zeros(0)
 
-        jacc = zeros(length(observables) * warmup_iterations, length(observables))
+        jacc = zeros(𝓂.timings.nExo * warmup_iterations, length(observables))
 
         match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
 
@@ -6522,7 +7681,7 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ, state::Union{Vector
 
         res  = zeros(0)
 
-        jacc = zeros(length(observables), length(observables))
+        jacc = zeros(𝓂.timings.nExo, length(observables))
 
         match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
 
@@ -6546,7 +7705,7 @@ function inversion_filter(𝓂::ℳ,
     algorithm::Symbol; 
     warmup_iterations::Int = 0,
     verbose::Bool = false, 
-    tol::AbstractFloat = eps())
+    tol::AbstractFloat = 1e-12)
     
     observables = collect(axiskeys(data_in_deviations,1))
 
@@ -6733,7 +7892,11 @@ function inversion_filter(𝓂::ℳ,
 end
 
 
-function filter_and_smooth(𝓂::ℳ, data_in_deviations::AbstractArray{Float64}, observables::Vector{Symbol}; verbose::Bool = false, tol::AbstractFloat = eps())
+function filter_and_smooth(𝓂::ℳ, 
+                            data_in_deviations::AbstractArray{Float64}, 
+                            observables::Vector{Symbol}; 
+                            verbose::Bool = false, 
+                            tol::AbstractFloat = 1e-12)
     # Based on Durbin and Koopman (2012)
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
 

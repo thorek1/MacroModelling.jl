@@ -19,7 +19,7 @@ end
     cap_share = 1.66
     # alpha = .157
 
-    beta | R[ss] = R_ss
+    beta | log(R[ss]) = R_ss - 1
     R_ss = 1.0035
     # beta = .999
 
