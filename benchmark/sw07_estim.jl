@@ -48,6 +48,10 @@ elseif smple == "short"
     smpl = "1966Q1-2004Q4"
     sample_idx = 71:230
     dat = CSV.read("./MacroModelling.jl/benchmark/usmodel.csv", DataFrame)
+elseif smple == "medium"
+    smpl = "1960Q1-2004Q4"
+    sample_idx = 47:230
+    dat = CSV.read("benchmark/usmodel.csv", DataFrame)
 elseif smple == "long"
     smpl = "1947Q2-2004Q4"
     sample_idx = 1:230
