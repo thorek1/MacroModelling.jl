@@ -117,42 +117,42 @@ kalman_prob = get_loglikelihood(Smets_Wouters_2007, data, Smets_Wouters_2007.par
 
 # Handling distributions with varying parameters using arraydist
 dists = [
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_ea
-InverseGamma(0.1, 2.0, 0.025,5.0, μσ = true),   # z_eb
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_eg
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_eqs
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_em
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_epinf
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_ew
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoa
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhob
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhog
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoqs
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoms
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhopinf
-Beta(0.5, 0.2, 0.001,0.9999, μσ = true),        # crhow
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # cmap
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # cmaw
-Normal(4.0, 1.5,   2.0, 15.0),                  # csadjcost
-Normal(1.50,0.375, 0.25, 3.0),                  # csigma
-Beta(0.7, 0.1, 0.001, 0.99, μσ = true),         # chabb
-Beta(0.5, 0.1, 0.3, 0.95, μσ = true),           # cprobw
-Normal(2.0, 0.75, 0.25, 10.0),                  # csigl
-Beta(0.5, 0.10, 0.5, 0.95, μσ = true),          # cprobp
-Beta(0.5, 0.15, 0.01, 0.99, μσ = true),         # cindw
-Beta(0.5, 0.15, 0.01, 0.99, μσ = true),         # cindp
-Beta(0.5, 0.15, 0.01, 0.99999, μσ = true),      # czcap
-Normal(1.25, 0.125, 1.0, 3.0),                  # cfc
-Normal(1.5, 0.25, 1.0, 3.0),                    # crpi
-Beta(0.75, 0.10, 0.5, 0.975, μσ = true),        # crr
-Normal(0.125, 0.05, 0.001, 0.5),                # cry
-Normal(0.125, 0.05, 0.001, 0.5),                # crdy
-Gamma(0.625, 0.1, 0.1, 2.0, μσ = true),         # constepinf
-Gamma(0.25, 0.1, 0.01, 2.0, μσ = true),         # constebeta
-Normal(0.0, 2.0, -10.0, 10.0),                  # constelab
-Normal(0.4, 0.10, 0.1, 0.8),                    # ctrend
-Normal(0.5, 0.25, 0.01, 2.0),                   # cgy
-Normal(0.3, 0.05, 0.01, 1.0),                   # calfa
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # 1     z_ea
+InverseGamma(0.1, 2.0, 0.025,5.0, μσ = true),   # 2     z_eb
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # 3     z_eg
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # 4     z_eqs
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # 5     z_em
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # 6     z_epinf
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # 7     z_ew
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # 8     crhoa
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # 9     crhob
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # 10    crhog
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # 11    crhoqs
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # 12    crhoms
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # 13    crhopinf
+Beta(0.5, 0.2, 0.001,0.9999, μσ = true),        # 14    crhow
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # 15    cmap
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # 16    cmaw
+Normal(4.0, 1.5,   2.0, 15.0),                  # 17    csadjcost
+Normal(1.50,0.375, 0.25, 3.0),                  # 18    csigma 
+Beta(0.7, 0.1, 0.001, 0.99, μσ = true),         # 19    chabb
+Beta(0.5, 0.1, 0.3, 0.95, μσ = true),           # 20    cprobw
+Normal(2.0, 0.75, 0.25, 10.0),                  # 21    csigl
+Beta(0.5, 0.10, 0.5, 0.95, μσ = true),          # 22    cprobp 
+Beta(0.5, 0.15, 0.01, 0.99, μσ = true),         # 23    cindw      -> ιʷ
+Beta(0.5, 0.15, 0.01, 0.99, μσ = true),         # 24    cindp      -> ιᵖ
+Beta(0.5, 0.15, 0.01, 0.99999, μσ = true),      # 25    czcap      -> ψ
+Normal(1.25, 0.125, 1.0, 3.0),                  # 26    cfc        -> Φ
+Normal(1.5, 0.25, 1.0, 3.0),                    # 27    crpi
+Beta(0.75, 0.10, 0.5, 0.975, μσ = true),        # 28    crr
+Normal(0.125, 0.05, 0.001, 0.5),                # 29    cry
+Normal(0.125, 0.05, 0.001, 0.5),                # 30    crdy
+Gamma(0.625, 0.1, 0.1, 2.0, μσ = true),         # 31    constepinf
+Gamma(0.25, 0.1, 0.01, 2.0, μσ = true),         # 32    constebeta -> 100(β⁻¹ - 1)
+Normal(0.0, 2.0, -10.0, 10.0),                  # 33    constelab  -> l̄
+Normal(0.4, 0.10, 0.1, 0.8),                    # 34    ctrend     -> γ̄
+Normal(0.5, 0.25, 0.01, 2.0),                   # 35    cgy        -> ρᵍᵃ
+Normal(0.3, 0.05, 0.01, 1.0),                   # 36    calfa
 ]
 
 Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters)
