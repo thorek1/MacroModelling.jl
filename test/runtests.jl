@@ -31,6 +31,10 @@ include("functionality_tests.jl")
 #     include("optim_solver_params.jl")
 # end
 
+if test_set == "estimate_sw07"
+    include("test_sw07_estimation.jl")
+end
+
 if test_set == "estimation"
     include("test_estimation.jl")
 end
