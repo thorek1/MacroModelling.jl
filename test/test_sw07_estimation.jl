@@ -19,7 +19,7 @@ observables_old = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs] # note that 
 
 # Subsample
 # subset observables in data
-sample_idx = 71:230 # 1966Q1-2004Q4
+sample_idx = 47:230 # 1960Q1-2004Q4
 
 data = data(observables_old, sample_idx)
 
