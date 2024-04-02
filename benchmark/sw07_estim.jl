@@ -12,7 +12,7 @@ import DynamicPPL: logjoint
 import DynamicPPL
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
 import Pigeons
-import Optim, LineSearches
+# import Optim, LineSearches
 using Random
 Random.seed!(1)
 # ]add CSV, DataFrames, Zygote, AxisKeys, MCMCChains, Turing, DynamicPPL, Pigeons, StatsPlots
@@ -186,94 +186,94 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 
 SS(Smets_Wouters_2007, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01,:cmap => 0.01,:cmaw => 0.01])
 
-inits = [Dict(get_parameters(Smets_Wouters_2007, values = true))[string(i)] for i in [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]]
+# inits = [Dict(get_parameters(Smets_Wouters_2007, values = true))[string(i)] for i in [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]]
 
-#find starting value
+# #find starting value
 
-function calculate_posterior_loglikelihood(parameters, fixed_parameters, prior_distribuions, model, data)
-    log_lik = 0.0
+# function calculate_posterior_loglikelihood(parameters, fixed_parameters, prior_distribuions, model, data)
+#     log_lik = 0.0
 
-    for (dist, val) in zip(prior_distribuions, parameters)
-        log_lik -= logpdf(dist, val)
-    end
+#     for (dist, val) in zip(prior_distribuions, parameters)
+#         log_lik -= logpdf(dist, val)
+#     end
 
-    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = parameters
+#     z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = parameters
 
-    ctou, clandaw, cg, curvp, curvw = fixed_parameters
+#     ctou, clandaw, cg, curvp, curvw = fixed_parameters
 
-    parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+#     parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
 
-    log_lik -= get_loglikelihood(model, data, parameters_combined, verbose = false, presample_periods = 4, filter = Symbol(fltr), initial_covariance = :diagonal)
+#     log_lik -= get_loglikelihood(model, data, parameters_combined, verbose = false, presample_periods = 4, filter = Symbol(fltr), initial_covariance = :diagonal)
 
-    return log_lik
-end
+#     return log_lik
+# end
 
-calculate_posterior_loglikelihood(inits, fixed_parameters, dists, Smets_Wouters_2007, data)
-
-
-
-bounds = [0.01 3.0
-0.025 5.0
-0.01 3.0
-0.01 3.0
-0.01 3.0
-0.01 3.0
-0.01 3.0
-0.01 0.9999
-0.01 0.9999
-0.01 0.9999
-0.01 0.9999
-0.01 0.9999
-0.01 0.9999
-0.00 10.9999
-0.01 0.9999
-0.01 0.9999
-2.0 15.0
-0.25 3.0
-0.001 0.99
-0.3 0.95
-0.25 10.0
-0.5 0.95
-0.01 0.99
-0.01 0.99
-0.01 0.9999
-1.0 3.0
-1.0 3.0
-0.5 0.975
-0.001 0.5
-0.001 0.5
-0.1 2.0
-0.01 2.0
--10.0 10.0
-0.1 0.8
-0.01 2.0
-0.01 1.0]
-
-lbs = bounds[:,1]
-ubs = bounds[:,2]
-
-sol = Optim.optimize(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data),
-                            lbs, ubs, inits, 
-                            Optim.SAMIN(verbosity = 2), 
-                            # Optim.ParticleSwarm(lower = lbs, upper = ubs), 
-                            # Optim.NelderMead(), 
-                            Optim.Options(#f_abstol = eps(), 
-                                            # g_tol= 1e-30,
-                                            # iterations = 50000,
-                                            show_trace = false,
-                                            extended_trace = false)
-                            )
+# calculate_posterior_loglikelihood(inits, fixed_parameters, dists, Smets_Wouters_2007, data)
 
 
-inits = sol.minimizer
+
+# bounds = [0.01 3.0
+# 0.025 5.0
+# 0.01 3.0
+# 0.01 3.0
+# 0.01 3.0
+# 0.01 3.0
+# 0.01 3.0
+# 0.01 0.9999
+# 0.01 0.9999
+# 0.01 0.9999
+# 0.01 0.9999
+# 0.01 0.9999
+# 0.01 0.9999
+# 0.00 10.9999
+# 0.01 0.9999
+# 0.01 0.9999
+# 2.0 15.0
+# 0.25 3.0
+# 0.001 0.99
+# 0.3 0.95
+# 0.25 10.0
+# 0.5 0.95
+# 0.01 0.99
+# 0.01 0.99
+# 0.01 0.9999
+# 1.0 3.0
+# 1.0 3.0
+# 0.5 0.975
+# 0.001 0.5
+# 0.001 0.5
+# 0.1 2.0
+# 0.01 2.0
+# -10.0 10.0
+# 0.1 0.8
+# 0.01 2.0
+# 0.01 1.0]
+
+# lbs = bounds[:,1]
+# ubs = bounds[:,2]
+
+# sol = Optim.optimize(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data),
+#                             lbs, ubs, inits, 
+#                             Optim.SAMIN(verbosity = 2), 
+#                             # Optim.ParticleSwarm(lower = lbs, upper = ubs), 
+#                             # Optim.NelderMead(), 
+#                             Optim.Options(#f_abstol = eps(), 
+#                                             # g_tol= 1e-30,
+#                                             # iterations = 50000,
+#                                             show_trace = false,
+#                                             extended_trace = false)
+#                             )
+
+
+# inits = sol.minimizer
 
 
 if smpler == "is"
-    samps = Turing.sample(SW07_loglikelihood, IS(), scns, progress = true, callback = callback, initial_params = inits)
+    samps = Turing.sample(SW07_loglikelihood, IS(), scns, progress = true, callback = callback)#, initial_params = inits)
 elseif smpler == "pg"
-    samps = Turing.sample(SW07_loglikelihood, PG(100), scns, progress = true, callback = callback, initial_params = inits)
+    samps = Turing.sample(SW07_loglikelihood, PG(100), scns, progress = true, callback = callback)#, initial_params = inits)
 elseif smpler == "nuts"    
-    samps = Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), scns, progress = true, callback = callback, initial_params = inits)
+    samps = Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), scns, progress = true, callback = callback)#, initial_params = inits)
 elseif smpler == "pigeons"
     # generate a Pigeons log potential
     sw07_lp = Pigeons.TuringLogPotential(SW07_loglikelihood)
