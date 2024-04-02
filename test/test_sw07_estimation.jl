@@ -3,7 +3,8 @@ import Turing, Pigeons
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
-import DynamicPPL: logjoint
+import DynamicPPL
+import Zygote
 
 include("../models/Smets_Wouters_2007_linear.jl")
 
@@ -78,23 +79,23 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
         parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
 
-        kalman_prob = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4, filter = Symbol(fltr), initial_covariance = :diagonal)
+        kalman_prob = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4, initial_covariance = :diagonal)
 
         Turing.@addlogprob! kalman_prob
     end
 end
 
-fixed_parameters = Smets_Wouters_2007.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw],Smets_Wouters_2007.parameters)]
+fixed_parameters = Smets_Wouters_2007_linear.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw],Smets_Wouters_2007_linear.parameters)]
 
 
-SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters)
+SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear, observables, fixed_parameters)
 
-SS(Smets_Wouters_2007, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01,:cmap => 0.01,:cmaw => 0.01])
+SS(Smets_Wouters_2007_linear, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01,:cmap => 0.01,:cmaw => 0.01])
 
-inits = [Dict(get_parameters(Smets_Wouters_2007, values = true))[string(i)] for i in [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]]
+inits = [Dict(get_parameters(Smets_Wouters_2007_linear, values = true))[string(i)] for i in [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]]
 
 n_samples = 1000
 
-samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, callback = callback, initial_params = inits)
+samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = inits)
 
 println(mean(samps).nt.mean)
