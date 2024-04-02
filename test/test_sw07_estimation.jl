@@ -92,10 +92,18 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear
 
 SS(Smets_Wouters_2007_linear, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01,:cmap => 0.01,:cmaw => 0.01])
 
-inits = [Dict(get_parameters(Smets_Wouters_2007_linear, values = true))[string(i)] for i in [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]]
+# inits = [Dict(get_parameters(Smets_Wouters_2007_linear, values = true))[string(i)] for i in [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]]
+
+# z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = inits
+
+# ctou, clandaw, cg, curvp, curvw = fixed_parameters
+
+# parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+
+# get_loglikelihood(Smets_Wouters_2007_linear, data(observables), parameters_combined, presample_periods = 4, initial_covariance = :diagonal)
 
 n_samples = 1000
 
-samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = inits)
+samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true) #, initial_params = inits)
 
 println(mean(samps).nt.mean)
