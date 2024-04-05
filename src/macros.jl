@@ -923,7 +923,9 @@ macro model(𝓂,ex...)
                             Set(all_available_algorithms),
                             true,
                             false
-                        )
+                        ),
+
+                        Dict{Vector{Symbol}, timings}() # estimation_helper
                     );
     end
 end

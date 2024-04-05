@@ -2913,6 +2913,10 @@ function get_loglikelihood(𝓂::ℳ,
         end
     end
 
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    obs_indices = @ignore_derivatives convert(Vector{Int},indexin(observables,NSSS_labels))
+    
     # solve model given the parameters
     if algorithm == :second_order
         sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂)
@@ -2989,7 +2993,54 @@ function get_loglikelihood(𝓂::ℳ,
 
         ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) |> Matrix
 
-        𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+        # reduce system
+        vars_to_exclude = setdiff(𝓂.timings.present_only, observables)
+
+        # Mapping variables to their equation index
+        variable_to_equation = Dict{Symbol, Vector{Int}}()
+        for var in vars_to_exclude
+            for (eq_idx, vars_set) in enumerate(𝓂.dyn_var_present_list)
+            # for var in vars_set
+                if var in vars_set
+                    if haskey(variable_to_equation, var)
+                        push!(variable_to_equation[var],eq_idx)
+                    else
+                        variable_to_equation[var] = [eq_idx]
+                    end
+                end
+            end
+        end
+    
+        rows_to_exclude = Int[]
+        cant_exclude = Symbol[]
+
+        for (ks, vidx) in variable_to_equation
+            if all(.!(∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed + indexin([ks] ,𝓂.timings.var)[1]] .== 0))
+                for v in vidx
+                    if v ∉ rows_to_exclude
+                        push!(rows_to_exclude, v)
+                        ∇₁[vidx,:] .-= ∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed + indexin([ks] ,𝓂.timings.var)[1]] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed + indexin([ks] ,𝓂.timings.var)[1]]
+                        break
+                    end
+                end
+            else
+                push!(cant_exclude, ks)
+            end
+        end
+
+        rows_to_include = setdiff(1:𝓂.timings.nVars, rows_to_exclude)
+    
+        cols_to_exclude = indexin(setdiff(𝓂.timings.present_only, union(observables, cant_exclude)), 𝓂.timings.var)
+
+        present_idx = 𝓂.timings.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.timings.nVars), cols_to_exclude))
+
+        ∇̄₁ = ∇₁[rows_to_include, vcat(1:𝓂.timings.nFuture_not_past_and_mixed, present_idx , 𝓂.timings.nFuture_not_past_and_mixed + 𝓂.timings.nVars + 1 : size(∇₁,2))]
+    
+        if !haskey(𝓂.estimation_helper, union(observables, cant_exclude)) create_timings_for_estimation!(𝓂, union(observables, cant_exclude)) end
+
+        TT = 𝓂.estimation_helper[union(observables, cant_exclude)]
+
+        𝐒₁, solved = calculate_first_order_solution(∇̄₁; T = TT)
         # 𝐒₁, solved = calculate_quadratic_iteration_solution_AD(∇₁; T = 𝓂.timings)
         
         if !solved return -Inf end
@@ -3002,14 +3053,10 @@ function get_loglikelihood(𝓂::ℳ,
     end
 
     # prepare data
-    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
-
-    obs_indices = @ignore_derivatives indexin(observables,NSSS_labels)
-
     data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
     if filter == :kalman
-        loglikelihood = calculate_kalman_filter_loglikelihood(𝓂, observables, 𝐒₁, data_in_deviations, presample_periods = presample_periods, initial_covariance = initial_covariance)
+        loglikelihood = calculate_kalman_filter_loglikelihood(𝓂, observables, 𝐒₁, data_in_deviations, TT, presample_periods = presample_periods, initial_covariance = initial_covariance)
     elseif filter == :inversion
         loglikelihood = @ignore_derivatives calculate_inversion_filter_loglikelihood(𝓂, state, state_update, data_in_deviations, observables, warmup_iterations, presample_periods = presample_periods)
     end

@@ -396,4 +396,5 @@ mutable struct ℳ
     solution::solution
     # symbolics::symbolics
 
+    estimation_helper::Dict{Vector{Symbol}, timings}
 end

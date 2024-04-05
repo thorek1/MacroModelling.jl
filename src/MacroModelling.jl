@@ -5455,6 +5455,152 @@ function mean_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx:
 end
 
 
+function create_timings_for_estimation!(𝓂::ℳ, observables::Vector{Symbol})
+    dyn_equations = 𝓂.dyn_equations
+
+    vars_to_exclude = setdiff(𝓂.timings.present_only, observables)
+
+    # Mapping variables to their equation index
+    variable_to_equation = Dict{Symbol, Vector{Int}}()
+    for var in vars_to_exclude
+        for (eq_idx, vars_set) in enumerate(𝓂.dyn_var_present_list)
+        # for var in vars_set
+            if var in vars_set
+                if haskey(variable_to_equation, var)
+                    push!(variable_to_equation[var],eq_idx)
+                else
+                    variable_to_equation[var] = [eq_idx]
+                end
+            end
+        end
+    end
+
+    # cols_to_exclude = indexin(𝓂.timings.var, setdiff(𝓂.timings.present_only, observables))
+    cols_to_exclude = indexin(setdiff(𝓂.timings.present_only, observables), 𝓂.timings.var)
+
+    present_idx = 𝓂.timings.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.timings.nVars), cols_to_exclude))
+
+    dyn_var_future_list  = deepcopy(𝓂.dyn_var_future_list)
+    dyn_var_present_list = deepcopy(𝓂.dyn_var_present_list)
+    dyn_var_past_list    = deepcopy(𝓂.dyn_var_past_list)
+    dyn_exo_list         = deepcopy(𝓂.dyn_exo_list)
+    dyn_ss_list          = deepcopy(𝓂.dyn_ss_list)
+
+    rows_to_exclude = Int[]
+
+    for vidx in values(variable_to_equation)
+        for v in vidx
+            if v ∉ rows_to_exclude
+                push!(rows_to_exclude, v)
+
+                for vv in vidx
+                    dyn_var_future_list[vv] = union(dyn_var_future_list[vv], dyn_var_future_list[v])
+                    dyn_var_present_list[vv] = union(dyn_var_present_list[vv], dyn_var_present_list[v])
+                    dyn_var_past_list[vv] = union(dyn_var_past_list[vv], dyn_var_past_list[v])
+                    dyn_exo_list[vv] = union(dyn_exo_list[vv], dyn_exo_list[v])
+                    dyn_ss_list[vv] = union(dyn_ss_list[vv], dyn_ss_list[v])
+                end
+
+                break
+            end
+        end
+    end
+
+    rows_to_include = setdiff(1:𝓂.timings.nVars, rows_to_exclude)
+
+    all_symbols = setdiff(reduce(union,collect.(get_symbols.(dyn_equations)))[rows_to_include], vars_to_exclude)
+    parameters_in_equations = sort(setdiff(all_symbols, match_pattern(all_symbols,r"₎$")))
+    
+    dyn_var_future  =  sort(setdiff(collect(reduce(union,dyn_var_future_list[rows_to_include])), vars_to_exclude))
+    dyn_var_present =  sort(setdiff(collect(reduce(union,dyn_var_present_list[rows_to_include])), vars_to_exclude))
+    dyn_var_past    =  sort(setdiff(collect(reduce(union,dyn_var_past_list[rows_to_include])), vars_to_exclude))
+    dyn_var_ss      =  sort(setdiff(collect(reduce(union,dyn_ss_list[rows_to_include])), vars_to_exclude))
+
+    all_dyn_vars        = union(dyn_var_future, dyn_var_present, dyn_var_past)
+
+    @assert length(setdiff(dyn_var_ss, all_dyn_vars)) == 0 "The following variables are (and cannot be) defined only in steady state (`[ss]`): $(setdiff(dyn_var_ss, all_dyn_vars))"
+
+    all_vars = union(all_dyn_vars, dyn_var_ss)
+
+    present_only              = sort(setdiff(dyn_var_present,union(dyn_var_past,dyn_var_future)))
+    future_not_past           = sort(setdiff(dyn_var_future, dyn_var_past))
+    past_not_future           = sort(setdiff(dyn_var_past, dyn_var_future))
+    mixed                     = sort(setdiff(dyn_var_present, union(present_only, future_not_past, past_not_future)))
+    future_not_past_and_mixed = sort(union(future_not_past,mixed))
+    past_not_future_and_mixed = sort(union(past_not_future,mixed))
+    present_but_not_only      = sort(setdiff(dyn_var_present,present_only))
+    mixed_in_past             = sort(intersect(dyn_var_past, mixed))
+    not_mixed_in_past         = sort(setdiff(dyn_var_past,mixed_in_past))
+    mixed_in_future           = sort(intersect(dyn_var_future, mixed))
+    exo                       = sort(collect(reduce(union,dyn_exo_list)))
+    var                       = sort(dyn_var_present)
+    aux_tmp                   = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
+    aux                       = aux_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_tmp)]
+    exo_future                = dyn_var_future[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_future)]
+    exo_present               = dyn_var_present[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_present)]
+    exo_past                  = dyn_var_past[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_past)]
+
+    nPresent_only              = length(present_only)
+    nMixed                     = length(mixed)
+    nFuture_not_past_and_mixed = length(future_not_past_and_mixed)
+    nPast_not_future_and_mixed = length(past_not_future_and_mixed)
+    nPresent_but_not_only      = length(present_but_not_only)
+    nVars                      = length(all_vars)
+    nExo                       = length(collect(exo))
+
+    present_only_idx              = indexin(present_only,var)
+    present_but_not_only_idx      = indexin(present_but_not_only,var)
+    future_not_past_and_mixed_idx = indexin(future_not_past_and_mixed,var)
+    past_not_future_and_mixed_idx = indexin(past_not_future_and_mixed,var)
+    mixed_in_future_idx           = indexin(mixed_in_future,dyn_var_future)
+    mixed_in_past_idx             = indexin(mixed_in_past,dyn_var_past)
+    not_mixed_in_past_idx         = indexin(not_mixed_in_past,dyn_var_past)
+    past_not_future_idx           = indexin(past_not_future,var)
+
+    reorder       = indexin(var, [present_only; past_not_future; future_not_past_and_mixed])
+    dynamic_order = indexin(present_but_not_only, [past_not_future; future_not_past_and_mixed])
+
+    @assert length(intersect(union(var,exo),parameters_in_equations)) == 0 "Parameters and variables cannot have the same name. This is the case for: " * repr(sort([intersect(union(var,exo),parameters_in_equations)...]))
+
+    T = timings(present_only,
+                future_not_past,
+                past_not_future,
+                mixed,
+                future_not_past_and_mixed,
+                past_not_future_and_mixed,
+                present_but_not_only,
+                mixed_in_past,
+                not_mixed_in_past,
+                mixed_in_future,
+                exo,
+                var,
+                aux,
+                exo_present,
+
+                nPresent_only,
+                nMixed,
+                nFuture_not_past_and_mixed,
+                nPast_not_future_and_mixed,
+                nPresent_but_not_only,
+                nVars,
+                nExo,
+
+                present_only_idx,
+                present_but_not_only_idx,
+                future_not_past_and_mixed_idx,
+                not_mixed_in_past_idx,
+                past_not_future_and_mixed_idx,
+                mixed_in_past_idx,
+                mixed_in_future_idx,
+                past_not_future_idx,
+
+                reorder,
+                dynamic_order)
+
+    push!(𝓂.estimation_helper, observables => T)
+end
+
+
 
 function calculate_jacobian(parameters::Vector{M}, SS_and_pars::AbstractArray{N}, 𝓂::ℳ) where {M,N}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
@@ -5770,6 +5916,8 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     return A[T.reorder,:], true
 end
 
+
+
 function riccati_conditions(∇₁::AbstractMatrix{M}, sol_d::AbstractMatrix{N}, solved::Bool; T::timings, explosive::Bool = false) where {M,N}
     expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
@@ -5820,7 +5968,7 @@ end
 
 # @memoize LRU(maxsize=50) 
 function calculate_jacobian_transpose(∇₁::AbstractMatrix{Float64}; T::timings, explosive::Bool = false)
-    𝐒₁, solved = MacroModelling.riccati_forward(∇₁;T = T, explosive = false)
+    𝐒₁, solved = MacroModelling.riccati_forward(∇₁; T = T, explosive = false)
 
     sp𝐒₁ = sparse(𝐒₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
     sp∇₁ = sparse(∇₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
@@ -5845,7 +5993,7 @@ function calculate_jacobian_transpose(∇₁::AbstractMatrix{Float64}; T::timing
             
     droptol!(spd𝐒₁a, 10*eps())
 
-    d𝐒₁a = spd𝐒₁a' |> collect
+    d𝐒₁a = spd𝐒₁a' |> collect # bottleneck, reduce size, avoid conversion, subselect necessary part of matrix already here (as is done in the estimation part later)
 
     # Initialize empty spd∇₁a
     spd∇₁a = spzeros(length(sp𝐒₁), length(∇₁))
@@ -5867,7 +6015,7 @@ function calculate_jacobian_transpose(∇₁::AbstractMatrix{Float64}; T::timing
         tmp = spd∇₁a'
         solved = false
     else
-        tmp = -(d𝐒₁â \ spd∇₁a)'
+        tmp = -(d𝐒₁â \ spd∇₁a)' # bottleneck, reduce size, avoid conversion
     end
 
     return 𝐒₁, solved, tmp
@@ -5899,7 +6047,10 @@ riccati_AD_direct = ℐ.ImplicitFunction(riccati_forward,
 riccati_AD = ℐ.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt converge!?
 
 
-function calculate_first_order_solution(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
+
+function calculate_first_order_solution(∇₁::Matrix{Float64}; 
+                                        T::timings, 
+                                        explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
     # A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
     A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
 
@@ -7453,30 +7604,33 @@ function calculate_third_order_moments(parameters::Vector{T},
 end
 
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0, initial_covariance::Symbol = :theoretical)::S where S
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present))))
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S},
+    T::timings; presample_periods::Int = 0, initial_covariance::Symbol = :theoretical)::S where S
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,T.var,𝓂.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations, presample_periods = presample_periods, initial_covariance = initial_covariance)
+    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
 end
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{String}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0, initial_covariance::Symbol = :theoretical)::S where S
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present))))
+function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{String}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S},
+    T::timings; presample_periods::Int = 0, initial_covariance::Symbol = :theoretical)::S where S
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,T.var,𝓂.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations, presample_periods = presample_periods, initial_covariance = initial_covariance)
+    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
 end
 
 function calculate_kalman_filter_loglikelihood(𝓂::ℳ, 
                                                 observables_index::Vector{Int}, 
                                                 𝐒₁::Matrix{S}, 
-                                                data_in_deviations::Matrix{S}; 
+                                                data_in_deviations::Matrix{S},
+                                                T::timings; 
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical)::S where S
-    observables_and_states = @ignore_derivatives sort(union(𝓂.timings.past_not_future_and_mixed_idx,observables_index))
+    observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
 
-    A = 𝐒₁[observables_and_states,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(𝓂.timings.past_not_future_and_mixed_idx,observables_and_states)),:]
-    B = 𝐒₁[observables_and_states,𝓂.timings.nPast_not_future_and_mixed+1:end]
+    A = 𝐒₁[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
+    B = 𝐒₁[observables_and_states,T.nPast_not_future_and_mixed+1:end]
 
-    C = ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(observables_index),observables_and_states)),:]
+    C = ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(observables_index), observables_and_states)),:]
 
     𝐁 = B * B'
 
@@ -7495,7 +7649,7 @@ function calculate_kalman_filter_loglikelihood(𝓂::ℳ,
     end
     
     u = zeros(S, length(observables_and_states))
-    # u = SS_and_pars[sort(union(𝓂.timings.past_not_future_and_mixed,observables))] |> collect
+    # u = SS_and_pars[sort(union(T.past_not_future_and_mixed,observables))] |> collect
     z = C * u
 
     loglik = S(0)
@@ -7981,80 +8135,80 @@ function filter_and_smooth(𝓂::ℳ,
 end
 
 
-if VERSION >= v"1.9"
-    @setup_workload begin
-        # Putting some things in `setup` can reduce the size of the
-        # precompile file and potentially make loading faster.
-        @model FS2000 precompile = true begin
-            dA[0] = exp(gam + z_e_a  *  e_a[x])
-            log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-            - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-            W[0] = l[0] / n[0]
-            - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-            R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-            1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-            c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-            P[0] * c[0] = m[0]
-            m[0] - 1 + d[0] = l[0]
-            e[0] = exp(z_e_a  *  e_a[x])
-            y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-            gy_obs[0] = dA[0] * y[0] / y[-1]
-            gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-            log_gy_obs[0] = log(gy_obs[0])
-            log_gp_obs[0] = log(gp_obs[0])
-        end
+# if VERSION >= v"1.9"
+#     @setup_workload begin
+#         # Putting some things in `setup` can reduce the size of the
+#         # precompile file and potentially make loading faster.
+#         @model FS2000 precompile = true begin
+#             dA[0] = exp(gam + z_e_a  *  e_a[x])
+#             log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#             - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#             W[0] = l[0] / n[0]
+#             - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#             R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#             1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#             c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#             P[0] * c[0] = m[0]
+#             m[0] - 1 + d[0] = l[0]
+#             e[0] = exp(z_e_a  *  e_a[x])
+#             y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#             gy_obs[0] = dA[0] * y[0] / y[-1]
+#             gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#             log_gy_obs[0] = log(gy_obs[0])
+#             log_gp_obs[0] = log(gp_obs[0])
+#         end
 
-        @parameters FS2000 silent = true precompile = true begin  
-            alp     = 0.356
-            bet     = 0.993
-            gam     = 0.0085
-            mst     = 1.0002
-            rho     = 0.129
-            psi     = 0.65
-            del     = 0.01
-            z_e_a   = 0.035449
-            z_e_m   = 0.008862
-        end
+#         @parameters FS2000 silent = true precompile = true begin  
+#             alp     = 0.356
+#             bet     = 0.993
+#             gam     = 0.0085
+#             mst     = 1.0002
+#             rho     = 0.129
+#             psi     = 0.65
+#             del     = 0.01
+#             z_e_a   = 0.035449
+#             z_e_m   = 0.008862
+#         end
         
-        ENV["GKSwstype"] = "nul"
+#         ENV["GKSwstype"] = "nul"
 
-        @compile_workload begin
-            # all calls in this block will be precompiled, regardless of whether
-            # they belong to your package or not (on Julia 1.8 and higher)
-            @model RBC precompile = true begin
-                1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-                c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-                z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-            end
+#         @compile_workload begin
+#             # all calls in this block will be precompiled, regardless of whether
+#             # they belong to your package or not (on Julia 1.8 and higher)
+#             @model RBC precompile = true begin
+#                 1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#                 c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#                 z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#             end
 
-            @parameters RBC silent = true precompile = true begin
-                δ = 0.02
-                α = 0.5
-            end
+#             @parameters RBC silent = true precompile = true begin
+#                 δ = 0.02
+#                 α = 0.5
+#             end
 
-            get_SS(FS2000)
-            get_SS(FS2000, parameters = :alp => 0.36)
-            get_solution(FS2000)
-            get_solution(FS2000, parameters = :alp => 0.35)
-            get_standard_deviation(FS2000)
-            get_correlation(FS2000)
-            get_autocorrelation(FS2000)
-            get_variance_decomposition(FS2000)
-            get_conditional_variance_decomposition(FS2000)
-            get_irf(FS2000)
+#             get_SS(FS2000)
+#             get_SS(FS2000, parameters = :alp => 0.36)
+#             get_solution(FS2000)
+#             get_solution(FS2000, parameters = :alp => 0.35)
+#             get_standard_deviation(FS2000)
+#             get_correlation(FS2000)
+#             get_autocorrelation(FS2000)
+#             get_variance_decomposition(FS2000)
+#             get_conditional_variance_decomposition(FS2000)
+#             get_irf(FS2000)
 
-            data = simulate(FS2000)([:c,:k],:,:simulate)
-            get_loglikelihood(FS2000, data, FS2000.parameter_values)
-            get_mean(FS2000, silent = true)
-            # get_SSS(FS2000, silent = true)
-            # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#             data = simulate(FS2000)([:c,:k],:,:simulate)
+#             get_loglikelihood(FS2000, data, FS2000.parameter_values)
+#             get_mean(FS2000, silent = true)
+#             # get_SSS(FS2000, silent = true)
+#             # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-            # import StatsPlots
-            # plot_irf(FS2000)
-            # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-            # plot_conditional_variance_decomposition(FS2000)
-        end
-    end
-end
+#             # import StatsPlots
+#             # plot_irf(FS2000)
+#             # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#             # plot_conditional_variance_decomposition(FS2000)
+#         end
+#     end
+# end
 
 end
