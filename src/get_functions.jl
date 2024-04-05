@@ -3015,16 +3015,19 @@ function get_loglikelihood(𝓂::ℳ,
         cant_exclude = Symbol[]
 
         for (ks, vidx) in variable_to_equation
-            if all(.!(∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed + indexin([ks] ,𝓂.timings.var)[1]] .== 0))
-                for v in vidx
-                    if v ∉ rows_to_exclude
-                        push!(rows_to_exclude, v)
-                        ∇₁[vidx,:] .-= ∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed + indexin([ks] ,𝓂.timings.var)[1]] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed + indexin([ks] ,𝓂.timings.var)[1]]
-                        break
+            iidd = indexin([ks] ,𝓂.timings.var)[1]
+            if !isnothing(iidd)
+                if all(.!(∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] .== 0))
+                    for v in vidx
+                        if v ∉ rows_to_exclude
+                            push!(rows_to_exclude, v)
+                            ∇₁[vidx,:] .-= ∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]
+                            break
+                        end
                     end
+                else
+                    push!(cant_exclude, ks)
                 end
-            else
-                push!(cant_exclude, ks)
             end
         end
 
