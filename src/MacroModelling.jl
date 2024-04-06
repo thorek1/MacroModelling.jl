@@ -7603,6 +7603,36 @@ function calculate_third_order_moments(parameters::Vector{T},
 
 end
 
+function find_variables_to_exclude(𝓂::ℳ, observables::Vector{Symbol})
+    # reduce system
+    vars_to_exclude = setdiff(𝓂.timings.present_only, observables)
+
+    # Mapping variables to their equation index
+    variable_to_equation = Dict{Symbol, Vector{Int}}()
+    for var in vars_to_exclude
+        for (eq_idx, vars_set) in enumerate(𝓂.dyn_var_present_list)
+        # for var in vars_set
+            if var in vars_set
+                if haskey(variable_to_equation, var)
+                    push!(variable_to_equation[var],eq_idx)
+                else
+                    variable_to_equation[var] = [eq_idx]
+                end
+            end
+        end
+    end
+    
+    return variable_to_equation
+end
+
+
+function create_broadcaster(indices::Vector{Int}, n::Int)
+    broadcaster = spzeros(n, length(indices))
+    for (i, vid) in enumerate(indices)
+        broadcaster[vid,i] = 1.0
+    end
+    return broadcaster  
+end
 
 function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S},
     T::timings; presample_periods::Int = 0, initial_covariance::Symbol = :theoretical)::S where S
