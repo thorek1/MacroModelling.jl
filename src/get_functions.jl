@@ -3021,7 +3021,12 @@ function get_loglikelihood(𝓂::ℳ,
                     for v in vidx
                         if v ∉ rows_to_exclude
                             push!(rows_to_exclude, v)
-                            ∇₁[vidx,:] .-= ∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]
+                            # ∇₁[vidx,:] .-= ∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]
+                            broadcaster = spzeros(size(∇₁,1), length(vidx))
+                            for (i, vid) in enumerate(vidx)
+                                broadcaster[vid,i] = 1.0
+                            end
+                            ∇₁ -= broadcaster * (∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd])
                             break
                         end
                     end
