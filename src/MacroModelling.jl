@@ -7646,7 +7646,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
                                                 T::timings; 
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical)::S where S
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo))))
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
     calculate_kalman_filter_loglikelihood(obs_idx, 𝐒₁, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
 end
@@ -7657,7 +7657,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
                                                 T::timings; 
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical)::S where S
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo))))
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
     calculate_kalman_filter_loglikelihood(obs_idx, 𝐒₁, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
 end
@@ -7776,7 +7776,7 @@ function calculate_inversion_filter_loglikelihood(state::Union{Vector{Float64},V
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo)))
+    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
     shocks² = 0.0
     logabsdets = 0.0
