@@ -2927,6 +2927,8 @@ function get_loglikelihood(𝓂::ℳ,
 
         state = collect(sss) - all_SS
 
+        TT = 𝓂.timings
+        
         state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
             aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
             1
@@ -2941,6 +2943,8 @@ function get_loglikelihood(𝓂::ℳ,
         all_SS = expand_steady_state(SS_and_pars,𝓂)
 
         state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
+
+        TT = 𝓂.timings
 
         state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
             aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
@@ -2957,6 +2961,8 @@ function get_loglikelihood(𝓂::ℳ,
 
         state = collect(sss) - all_SS
 
+        TT = 𝓂.timings
+
         state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
             aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
             1
@@ -2971,6 +2977,8 @@ function get_loglikelihood(𝓂::ℳ,
         all_SS = expand_steady_state(SS_and_pars,𝓂)
 
         state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
+
+        TT = 𝓂.timings
 
         state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
             aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
