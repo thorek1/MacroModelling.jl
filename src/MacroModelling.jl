@@ -6064,7 +6064,12 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
 
-    B = -((∇₊ * A * Jm + ∇₀) \ ∇ₑ)
+    C = ℒ.lu(∇₊ * A * Jm + ∇₀, check = false)
+    
+    if !ℒ.issuccess(C)
+        return hcat(A, zeros(size(A,1),T.nExo)), solved
+    end
+    B = -(C \ ∇ₑ)
 
     return hcat(A, B), solved
 end
@@ -7621,7 +7626,7 @@ function find_variables_to_exclude(𝓂::ℳ, observables::Vector{Symbol})
             end
         end
     end
-    
+
     return variable_to_equation
 end
 

@@ -3018,7 +3018,8 @@ function get_loglikelihood(𝓂::ℳ,
         for (ks, vidx) in variable_to_equation
             iidd =  @ignore_derivatives indexin([ks] ,𝓂.timings.var)[1]
             if !isnothing(iidd)
-                if all(.!(∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] .== 0))
+                # if all(.!(∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] .== 0))
+                if minimum(abs, ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]) / maximum(abs, ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]) > 1e-12
                     for v in vidx
                         if v ∉ rows_to_exclude
                             @ignore_derivatives push!(rows_to_exclude, v)
