@@ -7640,22 +7640,29 @@ function create_broadcaster(indices::Vector{Int}, n::Int)
     return broadcaster  
 end
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{Symbol}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S},
-    T::timings; presample_periods::Int = 0, initial_covariance::Symbol = :theoretical)::S where S
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,T.var,𝓂.exo_present))))
+function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
+                                                𝐒₁::Matrix{S}, 
+                                                data_in_deviations::Matrix{S},
+                                                T::timings; 
+                                                presample_periods::Int = 0, 
+                                                initial_covariance::Symbol = :theoretical)::S where S
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo))))
 
-    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒₁, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
 end
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, observables::Vector{String}, 𝐒₁::Matrix{S}, data_in_deviations::Matrix{S},
-    T::timings; presample_periods::Int = 0, initial_covariance::Symbol = :theoretical)::S where S
-    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(𝓂.aux,T.var,𝓂.exo_present))))
+function calculate_kalman_filter_loglikelihood(observables::Vector{String}, 
+                                                𝐒₁::Matrix{S}, 
+                                                data_in_deviations::Matrix{S},
+                                                T::timings; 
+                                                presample_periods::Int = 0, 
+                                                initial_covariance::Symbol = :theoretical)::S where S
+    obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo))))
 
-    calculate_kalman_filter_loglikelihood(𝓂, obs_idx, 𝐒₁, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒₁, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
 end
 
-function calculate_kalman_filter_loglikelihood(𝓂::ℳ, 
-                                                observables_index::Vector{Int}, 
+function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, 
                                                 𝐒₁::Matrix{S}, 
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
@@ -7752,11 +7759,12 @@ end
 #     return loglik + loglik_increment, P, u, z
 # end
 
-function calculate_inversion_filter_loglikelihood(𝓂::ℳ, 
-                                                    state::Union{Vector{Float64},Vector{Vector{Float64}}}, 
-                                                    state_update::Function, data_in_deviations::Matrix{Float64}, 
-                                                    observables::Union{Vector{String}, Vector{Symbol}}, 
-                                                    warmup_iterations::Int;
+function calculate_inversion_filter_loglikelihood(state::Union{Vector{Float64},Vector{Vector{Float64}}}, 
+                                                    state_update::Function, 
+                                                    data_in_deviations::Matrix{Float64}, 
+                                                    observables::Union{Vector{String}, Vector{Symbol}},
+                                                    T::timings; 
+                                                    warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0)
     if state isa Vector{Float64}
         pruning = false
@@ -7768,14 +7776,14 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ,
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))
+    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo)))
 
     shocks² = 0.0
     logabsdets = 0.0
 
     if warmup_iterations > 0
         res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
-                            zeros(𝓂.timings.nExo * warmup_iterations), 
+                            zeros(T.nExo * warmup_iterations), 
                             Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                             Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
                             autodiff = :forward)
@@ -7784,7 +7792,7 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ,
 
         if !matched # for robustness try other linesearch
             res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
-                            zeros(𝓂.timings.nExo * warmup_iterations), 
+                            zeros(T.nExo * warmup_iterations), 
                             Optim.LBFGS(), 
                             Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
                             autodiff = :forward)
@@ -7796,7 +7804,7 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ,
 
         x = Optim.minimizer(res)
 
-        warmup_shocks = reshape(x, 𝓂.timings.nExo, warmup_iterations)
+        warmup_shocks = reshape(x, T.nExo, warmup_iterations)
 
         for i in 1:warmup_iterations-1
             state = state_update(state, warmup_shocks[:,i])
@@ -7804,15 +7812,15 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ,
         
         res = zeros(0)
 
-        jacc = zeros(𝓂.timings.nExo * warmup_iterations, length(observables))
+        jacc = zeros(T.nExo * warmup_iterations, length(observables))
 
         match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
 
         for i in 1:warmup_iterations
-            if 𝓂.timings.nExo == length(observables)
-                logabsdets += ℒ.logabsdet(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:] ./ precision_factor)[1]
+            if T.nExo == length(observables)
+                logabsdets += ℒ.logabsdet(jacc[(i - 1) * T.nExo .+ (1:2),:] ./ precision_factor)[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[(i - 1) * 𝓂.timings.nExo .+ (1:2),:] ./ precision_factor))
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[(i - 1) * T.nExo .+ (1:2),:] ./ precision_factor))
             end
         end
 
@@ -7821,7 +7829,7 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ,
 
     for i in axes(data_in_deviations,2)
         res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
-                        zeros(𝓂.timings.nExo), 
+                        zeros(T.nExo), 
                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                         Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
                         autodiff = :forward)
@@ -7830,7 +7838,7 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ,
 
         if !matched # for robustness try other linesearch
             res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
-                            zeros(𝓂.timings.nExo), 
+                            zeros(T.nExo), 
                             Optim.LBFGS(), 
                             Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
                             autodiff = :forward)
@@ -7844,12 +7852,12 @@ function calculate_inversion_filter_loglikelihood(𝓂::ℳ,
 
         res  = zeros(0)
 
-        jacc = zeros(𝓂.timings.nExo, length(observables))
+        jacc = zeros(T.nExo, length(observables))
 
         match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
 
         if i > presample_periods
-            if 𝓂.timings.nExo == length(observables)
+            if T.nExo == length(observables)
                 logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
             else
                 logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc ./ precision_factor))

@@ -3057,7 +3057,7 @@ function get_loglikelihood(𝓂::ℳ,
         if !solved return -Inf end
 
         state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
-            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+            aug_state = [state[TT.past_not_future_and_mixed_idx]
                         shock]
             return 𝐒₁ * aug_state # you need a return statement for forwarddiff to work
         end
@@ -3067,9 +3067,9 @@ function get_loglikelihood(𝓂::ℳ,
     data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
     if filter == :kalman
-        loglikelihood = calculate_kalman_filter_loglikelihood(𝓂, observables, 𝐒₁, data_in_deviations, TT, presample_periods = presample_periods, initial_covariance = initial_covariance)
+        loglikelihood = calculate_kalman_filter_loglikelihood(observables, 𝐒₁, data_in_deviations, TT, presample_periods = presample_periods, initial_covariance = initial_covariance)
     elseif filter == :inversion
-        loglikelihood = @ignore_derivatives calculate_inversion_filter_loglikelihood(𝓂, state, state_update, data_in_deviations, observables, warmup_iterations, presample_periods = presample_periods)
+        loglikelihood = @ignore_derivatives calculate_inversion_filter_loglikelihood(state, state_update, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods)
     end
 
     return loglikelihood
