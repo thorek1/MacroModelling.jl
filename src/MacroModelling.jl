@@ -6063,13 +6063,14 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
-
+    
     C = ℒ.lu(∇₊ * A * Jm + ∇₀, check = false)
     
     if !ℒ.issuccess(C)
         return hcat(A, zeros(size(A,1),T.nExo)), solved
     end
-    B = -(C \ ∇ₑ)
+    
+    B = -inv(C) * ∇ₑ
 
     return hcat(A, B), solved
 end
