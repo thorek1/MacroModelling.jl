@@ -4,6 +4,8 @@
 
 - [ ] ss transition by entering new parameters at given periods
 - [ ] check downgrade tests
+- [ ] checkout dynamic perturbation for obc solution: https://www.southampton.ac.uk/~alexmen/dynamic_perturbation.pdf
+- [ ] checkout schedule free ADAM for global methods: https://github.com/facebookresearch/schedule_free
 - [ ] figure out why PG and IS return basically the prior
 - [ ] allow external functions to calculate the steady state (and hand it over via SS or get_loglikelihood function) - need to use the check function for implicit derivatives and cannot use it to get him a guess from which he can use internal solver going forward
 - [ ] go through custom SS solver once more and try to find parameters and logic that achieves best results
