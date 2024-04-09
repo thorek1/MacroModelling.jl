@@ -5806,7 +5806,13 @@ function calculate_quadratic_iteration_solution_AD(∇₁::AbstractMatrix{S}; T:
         iter += 1
     end
 
-    D = -(∇₊ * -C + ∇₀) \ ∇ₑ
+    C̄ = ℒ.lu(∇₊ * -C + ∇₀, check = false)
+
+    if !ℒ.issuccess(C̄)
+        return -C, false
+    end
+
+    D = -inv(C̄) * ∇ₑ
 
     return hcat(-C[:, T.past_not_future_and_mixed_idx], D), error <= tol
 end
@@ -5948,7 +5954,6 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
         B = 𝒜.jacobian(𝒷(), x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)[1]
         A = 𝒜.jacobian(𝒷(), x -> riccati_conditions(∇̂₁, x, solved; T = T), val)[1]
 
-
         Â = RF.lu(A, check = false)
 
         if !ℒ.issuccess(Â)
@@ -6050,7 +6055,7 @@ riccati_AD = ℐ.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt 
 
 function calculate_first_order_solution(∇₁::Matrix{Float64}; 
                                         T::timings, 
-                                        explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
+                                        explosive::Bool = false)::Tuple{Matrix{Float64}, Bool}
     # A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
     A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
 
@@ -7667,10 +7672,10 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
                                                 presample_periods::Int = 0,
-                                                initial_covariance::Symbol = :theoretical)::S where S
+                                                initial_covariance::Symbol = :theoretical)::S where S <: Real
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
 
-    A = 𝐒₁[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
+    A = 𝐒₁[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(S, length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
     B = 𝐒₁[observables_and_states,T.nPast_not_future_and_mixed+1:end]
 
     C = ℒ.diagm(ones(length(observables_and_states)))[@ignore_derivatives(indexin(sort(observables_index), observables_and_states)),:]
@@ -7690,12 +7695,17 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     elseif initial_covariance == :diagonal
         P = collect(ℒ.I(length(observables_and_states)) * 10.0)
     end
+
+    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods)
+end
+
+function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}, P::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S <: Real
+    u = zeros(S, size(C,2))
     
-    u = zeros(S, length(observables_and_states))
-    # u = SS_and_pars[sort(union(T.past_not_future_and_mixed,observables))] |> collect
     z = C * u
 
-    loglik = S(0)
+    loglik = S(0.0)
+
     for t in 1:size(data_in_deviations, 2)
         v = data_in_deviations[:, t] - z
 
@@ -7710,7 +7720,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
         Fdet = ℒ.det(F̄)
 
         # Early return if determinant is too small, indicating numerical instability.
-        if Fdet < eps(S)
+        if Fdet < eps(Float64)
             return -Inf
         end
 

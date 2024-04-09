@@ -3001,65 +3001,73 @@ function get_loglikelihood(𝓂::ℳ,
 
         ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-        variable_to_equation = @ignore_derivatives find_variables_to_exclude(𝓂, observables)
-        # # reduce system
-        # vars_to_exclude = setdiff(𝓂.timings.present_only, observables)
+        reduce_system = false
 
-        # # Mapping variables to their equation index
-        # variable_to_equation = Dict{Symbol, Vector{Int}}()
-        # for var in vars_to_exclude
-        #     for (eq_idx, vars_set) in enumerate(𝓂.dyn_var_present_list)
-        #     # for var in vars_set
-        #         if var in vars_set
-        #             if haskey(variable_to_equation, var)
-        #                 push!(variable_to_equation[var],eq_idx)
-        #             else
-        #                 variable_to_equation[var] = [eq_idx]
-        #             end
-        #         end
-        #     end
-        # end
-    
-        rows_to_exclude = Int[]
-        cant_exclude = Symbol[]
+        if reduce_system
+            variable_to_equation = @ignore_derivatives find_variables_to_exclude(𝓂, observables)
+            # # reduce system
+            # vars_to_exclude = setdiff(𝓂.timings.present_only, observables)
 
-        for (ks, vidx) in variable_to_equation
-            iidd =  @ignore_derivatives indexin([ks] ,𝓂.timings.var)[1]
-            if !isnothing(iidd)
-                # if all(.!(∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] .== 0))
-                if minimum(abs, ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]) / maximum(abs, ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]) > 1e-12
-                    for v in vidx
-                        if v ∉ rows_to_exclude
-                            @ignore_derivatives push!(rows_to_exclude, v)
-                            # ∇₁[vidx,:] .-= ∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]
-                            broadcaster = @ignore_derivatives create_broadcaster(vidx, size(∇₁,1))
-                            # broadcaster = spzeros(size(∇₁,1), length(vidx))
-                            # for (i, vid) in enumerate(vidx)
-                            #     broadcaster[vid,i] = 1.0
-                            # end
-                            ∇₁ -= broadcaster * (∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd])
-                            break
+            # # Mapping variables to their equation index
+            # variable_to_equation = Dict{Symbol, Vector{Int}}()
+            # for var in vars_to_exclude
+            #     for (eq_idx, vars_set) in enumerate(𝓂.dyn_var_present_list)
+            #     # for var in vars_set
+            #         if var in vars_set
+            #             if haskey(variable_to_equation, var)
+            #                 push!(variable_to_equation[var],eq_idx)
+            #             else
+            #                 variable_to_equation[var] = [eq_idx]
+            #             end
+            #         end
+            #     end
+            # end
+        
+            rows_to_exclude = Int[]
+            cant_exclude = Symbol[]
+
+            for (ks, vidx) in variable_to_equation
+                iidd =  @ignore_derivatives indexin([ks] ,𝓂.timings.var)[1]
+                if !isnothing(iidd)
+                    # if all(.!(∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] .== 0))
+                    if minimum(abs, ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]) / maximum(abs, ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]) > 1e-12
+                        for v in vidx
+                            if v ∉ rows_to_exclude
+                                @ignore_derivatives push!(rows_to_exclude, v)
+                                # ∇₁[vidx,:] .-= ∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]
+                                broadcaster = @ignore_derivatives create_broadcaster(vidx, size(∇₁,1))
+                                # broadcaster = spzeros(size(∇₁,1), length(vidx))
+                                # for (i, vid) in enumerate(vidx)
+                                #     broadcaster[vid,i] = 1.0
+                                # end
+                                ∇₁ -= broadcaster * (∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd])
+                                break
+                            end
                         end
+                    else
+                        @ignore_derivatives push!(cant_exclude, ks)
                     end
-                else
-                    @ignore_derivatives push!(cant_exclude, ks)
                 end
             end
+
+            rows_to_include = @ignore_derivatives setdiff(1:𝓂.timings.nVars, rows_to_exclude)
+        
+            cols_to_exclude = @ignore_derivatives indexin(setdiff(𝓂.timings.present_only, union(observables, cant_exclude)), 𝓂.timings.var)
+
+            present_idx = @ignore_derivatives 𝓂.timings.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.timings.nVars), cols_to_exclude))
+
+            ∇₁ = Matrix{Float64}(∇₁[rows_to_include, vcat(1:𝓂.timings.nFuture_not_past_and_mixed, present_idx , 𝓂.timings.nFuture_not_past_and_mixed + 𝓂.timings.nVars + 1 : size(∇₁,2))])
+        
+            @ignore_derivatives if !haskey(𝓂.estimation_helper, union(observables, cant_exclude)) create_timings_for_estimation!(𝓂, union(observables, cant_exclude)) end
+
+            TT = @ignore_derivatives 𝓂.estimation_helper[union(observables, cant_exclude)]
+        else
+            TT = 𝓂.timings
+
+            ∇₁ = Matrix{Float64}(∇₁)
         end
 
-        rows_to_include = @ignore_derivatives setdiff(1:𝓂.timings.nVars, rows_to_exclude)
-    
-        cols_to_exclude = @ignore_derivatives indexin(setdiff(𝓂.timings.present_only, union(observables, cant_exclude)), 𝓂.timings.var)
-
-        present_idx = @ignore_derivatives 𝓂.timings.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.timings.nVars), cols_to_exclude))
-
-        ∇̄₁ = ∇₁[rows_to_include, vcat(1:𝓂.timings.nFuture_not_past_and_mixed, present_idx , 𝓂.timings.nFuture_not_past_and_mixed + 𝓂.timings.nVars + 1 : size(∇₁,2))] |> Matrix
-    
-        @ignore_derivatives if !haskey(𝓂.estimation_helper, union(observables, cant_exclude)) create_timings_for_estimation!(𝓂, union(observables, cant_exclude)) end
-
-        TT = @ignore_derivatives 𝓂.estimation_helper[union(observables, cant_exclude)]
-
-        𝐒₁, solved = calculate_first_order_solution(∇̄₁; T = TT)
+        𝐒₁, solved = calculate_first_order_solution(∇₁; T = TT)
         # 𝐒₁, solved = calculate_quadratic_iteration_solution_AD(∇₁; T = 𝓂.timings)
         
         if !solved return -Inf end
