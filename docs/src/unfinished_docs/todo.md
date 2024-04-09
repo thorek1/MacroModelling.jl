@@ -4,6 +4,9 @@
 
 - [ ] ss transition by entering new parameters at given periods
 - [ ] check downgrade tests
+- [ ] check why PG samples are off
+- [ ] implement estimation tests for all models
+- [ ] optimise vanilla loglikelihood calculation and gradient thereof (incl comp time)
 - [ ] checkout dynamic perturbation for obc solution: https://www.southampton.ac.uk/~alexmen/dynamic_perturbation.pdf
 - [ ] checkout schedule free ADAM for global methods: https://github.com/facebookresearch/schedule_free
 - [ ] figure out why PG and IS return basically the prior
