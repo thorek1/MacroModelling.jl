@@ -4220,7 +4220,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
         tmp̄ = RF.lu(tmp, check = false)
 
         if !ℒ.issuccess(tmp̄)
-            return SS_and_pars, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+            return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
         end
 
         SSSstates = tmp̄ \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx]
@@ -4374,7 +4374,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
         tmp̄ = RF.lu(tmp, check = false)
 
         if !ℒ.issuccess(tmp̄)
-            return SS_and_pars, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+            return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
         end
 
         SSSstates = tmp̄ \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx]
