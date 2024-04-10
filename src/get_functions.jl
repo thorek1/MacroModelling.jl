@@ -2886,7 +2886,7 @@ function get_loglikelihood(𝓂::ℳ,
     presample_periods::Int = 0,
     initial_covariance::Symbol = :theoretical,
     tol::AbstractFloat = 1e-12, 
-    verbose::Bool = false)::S where S
+    verbose::Bool = false)::S where S <: Real
     
     # checks to avoid errors further down the line and inform the user
     @assert filter ∈ [:kalman, :inversion] "Currently only the Kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
@@ -2918,80 +2918,80 @@ function get_loglikelihood(𝓂::ℳ,
     obs_indices = @ignore_derivatives convert(Vector{Int},indexin(observables,NSSS_labels))
     
     # solve model given the parameters
-    if algorithm == :second_order
-        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂)
+    # if algorithm == :second_order
+    #     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂)
 
-        if !converged return -Inf end
+    #     if !converged return -Inf end
 
-        all_SS = expand_steady_state(SS_and_pars,𝓂)
+    #     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-        state = collect(sss) - all_SS
+    #     state = collect(sss) - all_SS
 
-        TT = 𝓂.timings
+    #     TT = 𝓂.timings
         
-        state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-            1
-                                shock]
-            return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-        end
-    elseif algorithm == :pruned_second_order
-        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
+    #     state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+    #         aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+    #         1
+    #                             shock]
+    #         return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+    #     end
+    # elseif algorithm == :pruned_second_order
+    #     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
 
-        if !converged return -Inf end
+    #     if !converged return -Inf end
 
-        all_SS = expand_steady_state(SS_and_pars,𝓂)
+    #     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-        state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
+    #     state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
 
-        TT = 𝓂.timings
+    #     TT = 𝓂.timings
 
-        state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-            aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-            aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+    #     state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+    #         aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+    #         aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
                     
-            return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
-        end
-    elseif algorithm == :third_order
-        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂)
+    #         return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+    #     end
+    # elseif algorithm == :third_order
+    #     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂)
 
-        if !converged return -Inf end
+    #     if !converged return -Inf end
 
-        all_SS = expand_steady_state(SS_and_pars,𝓂)
+    #     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-        state = collect(sss) - all_SS
+    #     state = collect(sss) - all_SS
 
-        TT = 𝓂.timings
+    #     TT = 𝓂.timings
 
-        state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-            aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-            1
-                                    shock]
-            return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-        end
-    elseif algorithm == :pruned_third_order
-        sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
+    #     state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
+    #         aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+    #         1
+    #                                 shock]
+    #         return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+    #     end
+    # elseif algorithm == :pruned_third_order
+    #     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
 
-        if !converged return -Inf end
+    #     if !converged return -Inf end
 
-        all_SS = expand_steady_state(SS_and_pars,𝓂)
+    #     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-        state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
+    #     state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
 
-        TT = 𝓂.timings
+    #     TT = 𝓂.timings
 
-        state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-            aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-            aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
-            aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-            aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+    #     state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+    #         aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+    #         aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
+    #         aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+    #         aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
                     
-            kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+    #         kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
                     
-            return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
-        end
-    else
-        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+    #         return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+    #     end
+    # else
+        SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, parameter_values)
 
         if solution_error > tol || isnan(solution_error)
             return -Inf
@@ -2999,73 +2999,56 @@ function get_loglikelihood(𝓂::ℳ,
 
         state = zeros(𝓂.timings.nVars)
 
-        ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂)# |> Matrix
+        sp∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-        reduce_system = false
+        # reduce_system = false
 
-        if reduce_system
-            variable_to_equation = @ignore_derivatives find_variables_to_exclude(𝓂, observables)
-            # # reduce system
-            # vars_to_exclude = setdiff(𝓂.timings.present_only, observables)
-
-            # # Mapping variables to their equation index
-            # variable_to_equation = Dict{Symbol, Vector{Int}}()
-            # for var in vars_to_exclude
-            #     for (eq_idx, vars_set) in enumerate(𝓂.dyn_var_present_list)
-            #     # for var in vars_set
-            #         if var in vars_set
-            #             if haskey(variable_to_equation, var)
-            #                 push!(variable_to_equation[var],eq_idx)
-            #             else
-            #                 variable_to_equation[var] = [eq_idx]
-            #             end
-            #         end
-            #     end
-            # end
+        # if reduce_system
+        #     variable_to_equation = @ignore_derivatives find_variables_to_exclude(𝓂, observables)
         
-            rows_to_exclude = Int[]
-            cant_exclude = Symbol[]
+        #     rows_to_exclude = Int[]
+        #     cant_exclude = Symbol[]
 
-            for (ks, vidx) in variable_to_equation
-                iidd =  @ignore_derivatives indexin([ks] ,𝓂.timings.var)[1]
-                if !isnothing(iidd)
-                    # if all(.!(∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] .== 0))
-                    if minimum(abs, ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]) / maximum(abs, ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]) > 1e-12
-                        for v in vidx
-                            if v ∉ rows_to_exclude
-                                @ignore_derivatives push!(rows_to_exclude, v)
-                                # ∇₁[vidx,:] .-= ∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]
-                                broadcaster = @ignore_derivatives create_broadcaster(vidx, size(∇₁,1))
-                                # broadcaster = spzeros(size(∇₁,1), length(vidx))
-                                # for (i, vid) in enumerate(vidx)
-                                #     broadcaster[vid,i] = 1.0
-                                # end
-                                ∇₁ -= broadcaster * (∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd])
-                                break
-                            end
-                        end
-                    else
-                        @ignore_derivatives push!(cant_exclude, ks)
-                    end
-                end
-            end
+        #     for (ks, vidx) in variable_to_equation
+        #         iidd =  @ignore_derivatives indexin([ks] ,𝓂.timings.var)[1]
+        #         if !isnothing(iidd)
+        #             # if all(.!(∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] .== 0))
+        #             if minimum(abs, ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]) / maximum(abs, ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]) > 1e-12
+        #                 for v in vidx
+        #                     if v ∉ rows_to_exclude
+        #                         @ignore_derivatives push!(rows_to_exclude, v)
+        #                         # ∇₁[vidx,:] .-= ∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]
+        #                         broadcaster = @ignore_derivatives create_broadcaster(vidx, size(∇₁,1))
+        #                         # broadcaster = spzeros(size(∇₁,1), length(vidx))
+        #                         # for (i, vid) in enumerate(vidx)
+        #                         #     broadcaster[vid,i] = 1.0
+        #                         # end
+        #                         ∇₁ -= broadcaster * (∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd])
+        #                         break
+        #                     end
+        #                 end
+        #             else
+        #                 @ignore_derivatives push!(cant_exclude, ks)
+        #             end
+        #         end
+        #     end
 
-            rows_to_include = @ignore_derivatives setdiff(1:𝓂.timings.nVars, rows_to_exclude)
+        #     rows_to_include = @ignore_derivatives setdiff(1:𝓂.timings.nVars, rows_to_exclude)
         
-            cols_to_exclude = @ignore_derivatives indexin(setdiff(𝓂.timings.present_only, union(observables, cant_exclude)), 𝓂.timings.var)
+        #     cols_to_exclude = @ignore_derivatives indexin(setdiff(𝓂.timings.present_only, union(observables, cant_exclude)), 𝓂.timings.var)
 
-            present_idx = @ignore_derivatives 𝓂.timings.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.timings.nVars), cols_to_exclude))
+        #     present_idx = @ignore_derivatives 𝓂.timings.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.timings.nVars), cols_to_exclude))
 
-            ∇₁ = Matrix{Float64}(∇₁[rows_to_include, vcat(1:𝓂.timings.nFuture_not_past_and_mixed, present_idx , 𝓂.timings.nFuture_not_past_and_mixed + 𝓂.timings.nVars + 1 : size(∇₁,2))])
+        #     ∇₁ = Matrix{S}(∇₁[rows_to_include, vcat(1:𝓂.timings.nFuture_not_past_and_mixed, present_idx , 𝓂.timings.nFuture_not_past_and_mixed + 𝓂.timings.nVars + 1 : size(∇₁,2))])
         
-            @ignore_derivatives if !haskey(𝓂.estimation_helper, union(observables, cant_exclude)) create_timings_for_estimation!(𝓂, union(observables, cant_exclude)) end
+        #     @ignore_derivatives if !haskey(𝓂.estimation_helper, union(observables, cant_exclude)) create_timings_for_estimation!(𝓂, union(observables, cant_exclude)) end
 
-            TT = @ignore_derivatives 𝓂.estimation_helper[union(observables, cant_exclude)]
-        else
+        #     TT = @ignore_derivatives 𝓂.estimation_helper[union(observables, cant_exclude)]
+        # else
             TT = 𝓂.timings
 
-            ∇₁ = Matrix{Float64}(∇₁)
-        end
+            ∇₁ = Matrix{S}(sp∇₁)
+        # end
 
         𝐒₁, solved = calculate_first_order_solution(∇₁; T = TT)
         # 𝐒₁, solved = calculate_quadratic_iteration_solution_AD(∇₁; T = 𝓂.timings)
@@ -3077,18 +3060,19 @@ function get_loglikelihood(𝓂::ℳ,
                         shock]
             return 𝐒₁ * aug_state # you need a return statement for forwarddiff to work
         end
-    end
+    # end
 
     # prepare data
     data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
-    if filter == :kalman
-        loglikelihood = calculate_kalman_filter_loglikelihood(observables, 𝐒₁, data_in_deviations, TT, presample_periods = presample_periods, initial_covariance = initial_covariance)
-    elseif filter == :inversion
-        loglikelihood = @ignore_derivatives calculate_inversion_filter_loglikelihood(state, state_update, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods)
-    end
+    # if filter == :kalman
+    #     loglikelihood = calculate_kalman_filter_loglikelihood(observables, 𝐒₁, data_in_deviations, TT, presample_periods = presample_periods, initial_covariance = initial_covariance)
+    # elseif filter == :inversion
+    #     loglikelihood = @ignore_derivatives calculate_inversion_filter_loglikelihood(state, state_update, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods)
+    # end
+    return calculate_loglikelihood(Val(filter), observables, 𝐒₁, data_in_deviations, TT, presample_periods, initial_covariance, state, state_update, warmup_iterations)
 
-    return loglikelihood
+    # return loglikelihood
 end
 
 

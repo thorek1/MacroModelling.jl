@@ -23,6 +23,7 @@ import Optim, LineSearches
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
+# import LinearAlgebra: mul!
 # import ComponentArrays as 𝒞
 import Combinatorics: combinations
 import BlockTriangularForm
@@ -40,7 +41,7 @@ import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mp
 # using NamedArrays
 # using AxisKeys
 
-import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent
+import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent, @thunk
 import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
@@ -5602,7 +5603,7 @@ end
 
 
 
-function calculate_jacobian(parameters::Vector{M}, SS_and_pars::AbstractArray{N}, 𝓂::ℳ) where {M,N}
+function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{M}, 𝓂::ℳ)::SparseMatrixCSC{M} where M <: Real
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     # par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
@@ -5998,10 +5999,10 @@ function calculate_jacobian_transpose(∇₁::AbstractMatrix{Float64}; T::timing
             
     droptol!(spd𝐒₁a, 10*eps())
 
-    d𝐒₁a = spd𝐒₁a' |> collect # bottleneck, reduce size, avoid conversion, subselect necessary part of matrix already here (as is done in the estimation part later)
+    # d𝐒₁a = spd𝐒₁a' |> collect # bottleneck, reduce size, avoid conversion, subselect necessary part of matrix already here (as is done in the estimation part later)
 
     # Initialize empty spd∇₁a
-    spd∇₁a = spzeros(length(sp𝐒₁), length(∇₁))
+    spd∇₁a = spzeros(length(sp𝐒₁), length(∇₁)) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
     # Directly allocate dA, dB, dC into spd∇₁a
     # Note: You need to calculate the column indices where each matrix starts and ends
@@ -6010,20 +6011,20 @@ function calculate_jacobian_transpose(∇₁::AbstractMatrix{Float64}; T::timing
     dB_cols = dA_cols[end] .+ (1 : size(𝐒₁, 1)^2)
     dC_cols = dB_cols[end] .+ (1 : length(sp𝐒₁))
 
-    spd∇₁a[:,dA_cols] = ℒ.kron(expand[1] * sol_buf2 * expand[2]' , ℒ.I(size(𝐒₁, 1)))'
-    spd∇₁a[:,dB_cols] = ℒ.kron(sp𝐒₁, ℒ.I(size(𝐒₁, 1)))' 
-    spd∇₁a[:,dC_cols] = ℒ.I(length(𝐒₁))
+    spd∇₁a[:,dA_cols] = ℒ.kron(expand[1] * sol_buf2 * expand[2]' , -ℒ.I(size(𝐒₁, 1)))'
+    spd∇₁a[:,dB_cols] = ℒ.kron(sp𝐒₁, -ℒ.I(size(𝐒₁, 1)))' 
+    spd∇₁a[:,dC_cols] = -ℒ.I(length(𝐒₁))
 
-    d𝐒₁â = ℒ.lu(d𝐒₁a, check = false)
+    d𝐒₁â = ℒ.lu(spd𝐒₁a', check = false)
     
     if !ℒ.issuccess(d𝐒₁â)
         tmp = spd∇₁a'
         solved = false
     else
-        tmp = -(d𝐒₁â \ spd∇₁a)' # bottleneck, reduce size, avoid conversion
+        tmp = inv(d𝐒₁â) * spd∇₁a # bottleneck, reduce size, avoid conversion
     end
 
-    return 𝐒₁, solved, tmp
+    return 𝐒₁, solved, tmp'
 end
 
 
@@ -7645,12 +7646,27 @@ function create_broadcaster(indices::Vector{Int}, n::Int)
     return broadcaster  
 end
 
+
+# Specialization for :kalman filter
+function calculate_loglikelihood(::Val{:kalman}, observables, 𝐒₁, data_in_deviations, TT, presample_periods, initial_covariance, state, state_update, warmup_iterations)
+    return calculate_kalman_filter_loglikelihood(observables, 𝐒₁, data_in_deviations, TT, presample_periods = presample_periods, initial_covariance = initial_covariance)
+end
+
+# Specialization for :inversion filter
+function calculate_loglikelihood(::Val{:inversion}, observables, 𝐒₁, data_in_deviations, TT, presample_periods, initial_covariance, state, state_update, warmup_iterations)
+    return @ignore_derivatives calculate_inversion_filter_loglikelihood(state, state_update, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods)
+end
+
+function get_non_stochastic_steady_state(𝓂::ℳ, parameter_values::Vector{S}; verbose::Bool = false)::Tuple{Vector{S}, Tuple{Float64, Int}} where S <: Real
+    𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+end
+
 function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
                                                 𝐒₁::Matrix{S}, 
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
                                                 presample_periods::Int = 0, 
-                                                initial_covariance::Symbol = :theoretical)::S where S
+                                                initial_covariance::Symbol = :theoretical)::S where S <: Real
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
     calculate_kalman_filter_loglikelihood(obs_idx, 𝐒₁, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
@@ -7661,7 +7677,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
                                                 presample_periods::Int = 0, 
-                                                initial_covariance::Symbol = :theoretical)::S where S
+                                                initial_covariance::Symbol = :theoretical)::S where S <: Real
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
     calculate_kalman_filter_loglikelihood(obs_idx, 𝐒₁, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
@@ -7689,58 +7705,122 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     
     values = vcat(vec(A), vec(collect(-𝐁)))
 
-    if initial_covariance == :theoretical
-        P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-        # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
-    elseif initial_covariance == :diagonal
-        P = collect(ℒ.I(length(observables_and_states)) * 10.0)
-    end
+    # if initial_covariance == :theoretical
+    #     P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    #     # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
+    # elseif initial_covariance == :diagonal
+    #     P = collect(ℒ.I(length(observables_and_states)) * 10.0)
+    # end
+    P = get_initial_covariance(Val(initial_covariance), values, coordinates, dimensions)
 
     return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods)
 end
 
+
+# Specialization for :theoretical
+function get_initial_covariance(::Val{:theoretical}, values::Vector{S}, coordinates, dimensions)::Matrix{S} where S <: Real
+    P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    return P
+end
+
+# Specialization for :diagonal
+function get_initial_covariance(::Val{:diagonal}, values::Vector{S}, coordinates, dimensions)::Matrix{S} where S <: Real
+    P = collect(ℒ.I(dimensions[1][1]) * 10.0)
+    return P
+end
+
 function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}, P::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S <: Real
     u = zeros(S, size(C,2))
-    
+
     z = C * u
+
+    # Ct = collect(C')
+
+    # At = collect(A')
 
     loglik = S(0.0)
 
+    # utmp = similar(u)
+
+    # Ctmp = similar(C)
+
+    # F = similar(C * C')
+
+    # K = similar(C')
+    # Ktmp = similar(C')
+
+    # tmp = similar(P)
+    # Ptmp = similar(P)
+
     for t in 1:size(data_in_deviations, 2)
+        # ℒ.axpby!(1, data_in_deviations[:, t], -1, z)
         v = data_in_deviations[:, t] - z
 
+        # mul!(Ctmp, C, P)
+        # mul!(F, Ctmp, C')
         F = C * P * C'
 
-        F̄ = ℒ.lu(F, check = false)
+        luF = ℒ.lu(F, check = false) ###
 
-        if !ℒ.issuccess(F̄)
-            return -Inf
-        end
+        # if !ℒ.issuccess(luF)
+        #     return -Inf
+        # end
 
-        Fdet = ℒ.det(F̄)
+        Fdet = ℒ.det(luF)
 
         # Early return if determinant is too small, indicating numerical instability.
-        if Fdet < eps(Float64)
-            return -Inf
-        end
+        # if Fdet < eps(Float64)
+        #     return -Inf
+        # end
 
-        invF = inv(F̄)
+        invF = inv(luF) ###
 
         if t > presample_periods
-            loglik += log(Fdet) + v' * invF  * v
+            # loglik += log(Fdet) + (z' / luF  * z) ###
+            loglik += log(Fdet) + v' * invF * v###
         end
 
+        # mul!(K, P, C')
+        # ℒ.rdiv!(K, luF)
+        # K = P * Ct / luF
         K = P * C' * invF
 
+        # mul!(tmp, K, C)
+        # mul!(Ptmp, tmp, P)
+        # ℒ.axpy!(-1, Ptmp, P)
+
+        # mul!(Ptmp, A, P)
+        # mul!(P, Ptmp, A')
+        # ℒ.axpy!(1, 𝐁, P)
         P = A * (P - K * C * P) * A' + 𝐁
 
+        # mul!(u, K, z, 1, 1)
+        # mul!(utmp, A, u)
+        # u .= utmp
         u = A * (u + K * v)
 
+        # mul!(z, C, u)
         z = C * u
     end
 
     return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
 end
+
+
+# function rrule(::typeof(mul!), C::AbstractArray, A, B)
+#     # Perform the operation
+#     mul!(C, A, B)
+    
+#     function mul_pullback(ΔC)
+#         ∂A = @thunk(ΔC * B')
+#         ∂B = @thunk(A' * ΔC)
+#         return (NoTangent(), ∂A, ∂B)
+#     end
+    
+#     return C, mul_pullback
+# end
+
+
 
 # function update_loglikelihood!(loglik::S, P::Matrix{S}, u::Vector{S}, z::Vector{S}, C::Matrix{T}, A::Matrix{S}, 𝐁::Matrix{S}, data_point::Vector{S}) where {S,T}
 #     v = data_point - z
