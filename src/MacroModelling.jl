@@ -7699,9 +7699,9 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     𝐁 = B * B'
 
     # Gaussian Prior
-    coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    coordinates = @ignore_derivatives Tuple{Vector{Int}, Vector{Int}}[]
     
-    dimensions = [size(A),size(𝐁)]
+    dimensions = @ignore_derivatives [size(A),size(𝐁)]
     
     values = vcat(vec(A), vec(collect(-𝐁)))
 
@@ -7725,7 +7725,7 @@ end
 
 # Specialization for :diagonal
 function get_initial_covariance(::Val{:diagonal}, values::Vector{S}, coordinates, dimensions)::Matrix{S} where S <: Real
-    P = collect(ℒ.I(dimensions[1][1]) * 10.0)
+    P = @ignore_derivatives collect(ℒ.I(dimensions[1][1]) * 10.0)
     return P
 end
 
@@ -7762,16 +7762,16 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
 
         luF = ℒ.lu(F, check = false) ###
 
-        # if !ℒ.issuccess(luF)
-        #     return -Inf
-        # end
+        if !ℒ.issuccess(luF)
+            return -Inf
+        end
 
         Fdet = ℒ.det(luF)
 
         # Early return if determinant is too small, indicating numerical instability.
-        # if Fdet < eps(Float64)
-        #     return -Inf
-        # end
+        if Fdet < eps(Float64)
+            return -Inf
+        end
 
         invF = inv(luF) ###
 
@@ -7817,11 +7817,11 @@ function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: R
             end
         end
     end
-    
+
     return false
 end
 
-function get_relevant_steady_state(::Val{:second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -7842,7 +7842,7 @@ end
 
 
 
-function get_relevant_steady_state(::Val{:pruned_second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -7863,7 +7863,7 @@ end
 
 
 
-function get_relevant_steady_state(::Val{:third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -7884,7 +7884,7 @@ end
 
 
 
-function get_relevant_steady_state(::Val{:pruned_third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -7908,7 +7908,7 @@ function get_relevant_steady_state(::Val{:pruned_third_order}, parameter_values:
 end
 
 
-function get_relevant_steady_state(::Val{:first_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:first_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
     SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, parameter_values)
 
     state = zeros(𝓂.timings.nVars)

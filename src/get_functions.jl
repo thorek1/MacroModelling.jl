@@ -2910,7 +2910,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, NSSS_labels))
 
-    TT, SS_and_pars, 𝐒₁, state, state_update, solved = get_relevant_steady_state(Val(algorithm), parameter_values, 𝓂, tol)
+    TT, SS_and_pars, 𝐒₁, state, state_update, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol)
 
     if !solved return -Inf end
 
