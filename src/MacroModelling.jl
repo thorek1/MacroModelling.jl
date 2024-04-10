@@ -4188,8 +4188,10 @@ second_order_stochastic_steady_state_iterative_solution = ℐ.ImplicitFunction(s
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
+
     if solution_error > tol || isnan(solution_error)
-        return SS_and_pars, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
@@ -4197,7 +4199,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
     if !solved
-        return SS_and_pars, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
@@ -4205,7 +4207,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings)
 
     if !solved2
-        return SS_and_pars, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
@@ -4228,8 +4230,6 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
     else
         state, converged = second_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂)]; dims = [size(𝐒₁); size(𝐒₂)], 𝓂 = 𝓂)
     end
-
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     # all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
@@ -4334,8 +4334,10 @@ end
 function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
+
     if solution_error > tol || isnan(solution_error)
-        return SS_and_pars, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
@@ -4343,7 +4345,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
     if !solved
-        return SS_and_pars, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
@@ -4351,7 +4353,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
 
     if !solved2
-        return SS_and_pars, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
@@ -4359,7 +4361,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
 
     if !solved3
-        return SS_and_pars, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
@@ -4382,8 +4384,6 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
     else
         state, converged = third_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂); vec(𝐒₃)]; dims = [size(𝐒₁); size(𝐒₂); size(𝐒₃)], 𝓂 = 𝓂)
     end
-
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     # all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
@@ -7657,7 +7657,7 @@ function calculate_loglikelihood(::Val{:inversion}, observables, 𝐒₁, data_i
     return @ignore_derivatives calculate_inversion_filter_loglikelihood(state, state_update, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods)
 end
 
-function get_non_stochastic_steady_state(𝓂::ℳ, parameter_values::Vector{S}; verbose::Bool = false)::Tuple{Vector{S}, Tuple{Float64, Int}} where S <: Real
+function get_non_stochastic_steady_state(𝓂::ℳ, parameter_values::Vector{S}; verbose::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
     𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
 end
 
@@ -7821,7 +7821,7 @@ function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: R
     return false
 end
 
-function get_relevant_steady_state_and_state_update(::Val{:second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{Float64}, Vector{Vector{Float64}}}, Function, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -7842,7 +7842,7 @@ end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{Float64}, Vector{Vector{Float64}}}, Function, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -7863,7 +7863,7 @@ end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{Float64}, Vector{Vector{Float64}}}, Function, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -7884,7 +7884,7 @@ end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{Float64}, Vector{Vector{Float64}}}, Function, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -7908,7 +7908,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
 end
 
 
-function get_relevant_steady_state_and_state_update(::Val{:first_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{S}, Vector{Vector{S}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:first_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{Float64}, Vector{Vector{Float64}}}, Function, Bool} where S <: Real
     SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, parameter_values)
 
     state = zeros(𝓂.timings.nVars)
@@ -7916,7 +7916,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order}, paramet
     TT = 𝓂.timings
 
     if solution_error > tol || isnan(solution_error)
-        return TT, zeros(1,1), state, x->x, false
+        return TT, zeros(1), zeros(1,1), state, x->x, false
     end
 
     sp∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂)# |> Matrix
@@ -7925,7 +7925,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order}, paramet
 
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = TT)
 
-    if !solved return TT, zeros(1,1), state, x->x, false end
+    if !solved return TT, zeros(1), zeros(1,1), state, x->x, false end
 
     state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
         aug_state = [state[TT.past_not_future_and_mixed_idx]
