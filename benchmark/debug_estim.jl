@@ -1,53 +1,25 @@
 
-using Tapir
 import Dates
 using MacroModelling
-using Serialization
-using StatsPlots
 import Turing
 import Turing: NUTS, HMC, PG, IS, sample, logpdf, Truncated#, Normal, Beta, Gamma, InverseGamma,
 using CSV, DataFrames, AxisKeys
 using Zygote, MCMCChains
-# using ComponentArrays, Optimization, OptimizationNLopt, OptimizationOptimisers
 import DynamicPPL: logjoint
 import DynamicPPL
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
-import Pigeons
-import Optim, LineSearches
 using Random
 Random.seed!(1)
 # ]add CSV, DataFrames, Zygote, AxisKeys, MCMCChains, Turing, DynamicPPL, Pigeons, StatsPlots
 println("Threads used: ", Threads.nthreads())
 
 smpler = "nuts" #
-smple = "medium" #
 mdl = "linear" # 
-fltr = Symbol("kalman")
-algo = Symbol("first_order")
-chns = 1 #
-scns = 1000
+fltr = :kalman
+algo = :first_order
 
-if smple == "extended"
-    smpl = "1966Q1-2020Q1"
-    sample_idx = 75:291
-    dat = CSV.read("./MacroModelling.jl/benchmark/usmodel_extended.csv", DataFrame)
-elseif smple == "short"
-    smpl = "1966Q1-2004Q4"
-    sample_idx = 71:230
-    dat = CSV.read("./MacroModelling.jl/benchmark/usmodel.csv", DataFrame)
-elseif smple == "medium"
-    smpl = "1960Q1-2004Q4"
-    sample_idx = 47:230
-    dat = CSV.read("benchmark/usmodel.csv", DataFrame)
-elseif smple == "long"
-    smpl = "1947Q2-2004Q4"
-    sample_idx = 1:230
-    dat = CSV.read("./MacroModelling.jl/benchmark/usmodel.csv", DataFrame)
-elseif smple == "full"
-    smpl = "1966Q1-2023Q4"
-    sample_idx = 75:306
-    dat = CSV.read("./MacroModelling.jl/benchmark/usmodel_extended.csv", DataFrame)
-end
+sample_idx = 47:230
+dat = CSV.read("benchmark/usmodel.csv", DataFrame)
 
 # Initialize a DataFrame to store the data
 df = DataFrame(iteration = Float64[])
@@ -73,8 +45,6 @@ data = data(observables_old, sample_idx)
 observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
 data = rekey(data, :Variable => observables)
-
-llh = get_loglikelihood(Smets_Wouters_2007, data, Smets_Wouters_2007.parameter_values, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal)
 
 # Handling distributions with varying parameters using arraydist
 dists = [
@@ -187,11 +157,13 @@ calculate_posterior_loglikelihood(inits, fixed_parameters, dists, Smets_Wouters_
 # using ForwardDiff
 
 # @time grad = ForwardDiff.gradient(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits)
-# using BenchmarkTools
+using BenchmarkTools
 
-# @benchmark calculate_posterior_loglikelihood(inits, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo)
+@benchmark calculate_posterior_loglikelihood(inits, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo)
 
-# @profview for i in 1:1000 calculate_posterior_loglikelihood(inits, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo) end
+@benchmark Zygote.gradient(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits)
+
+@profview for i in 1:1000 calculate_posterior_loglikelihood(inits, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo) end
 
 using AbstractDifferentiation, Enzyme
 backend = AbstractDifferentiation.EnzymeBackend();
