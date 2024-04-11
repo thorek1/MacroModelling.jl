@@ -7879,7 +7879,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order}, paramet
     TT = 𝓂.timings
 
     if solution_error > tol || isnan(solution_error)
-        return TT, zeros(1), zeros(1,1), state, x->x, false
+        return TT, SS_and_pars, zeros(S, 0, 0), [state], false
     end
 
     sp∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂)# |> Matrix
@@ -7984,14 +7984,14 @@ end
 # end
 
 function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}, 
-                                                    𝐒::Vector{AbstractMatrix{Float64}}, 
+                                                    𝐒::Union{Matrix{Float64}, Vector{AbstractMatrix{Float64}}}, 
                                                     data_in_deviations::Matrix{Float64}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0)
     if 𝐒 isa Matrix{Float64} # first order  
-        function first_order_state_update(state::Vector{U}, shock::Vector{S})::Vector{S} where {U <: Real,S <: Real}
+        function first_order_state_update(state::Vector{U}, shock::Vector{S}) where {U <: Real,S <: Real}
         # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
             aug_state = [state[T.past_not_future_and_mixed_idx]
                         shock]
@@ -8000,9 +8000,11 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
 
         state_update = first_order_state_update
 
+        state = state[1]
+
         pruning = false
     elseif length(𝐒) == 2 && length(state) == 1 # second order
-        function second_order_state_update(state::Vector{U}, shock::Vector{S})::Vector{S} where {U <: Real,S <: Real}
+        function second_order_state_update(state::Vector{U}, shock::Vector{S}) where {U <: Real,S <: Real}
         # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
             aug_state = [state[T.past_not_future_and_mixed_idx]
                                 1
@@ -8012,9 +8014,11 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
 
         state_update = second_order_state_update
 
+        state = state[1]
+
         pruning = false
     elseif length(𝐒) == 2 && length(state) == 2 # pruned second order
-        function pruned_second_order_state_update(state::Vector{Vector{U}}, shock::Vector{S})::Vector{S} where {U <: Real,S <: Real}
+        function pruned_second_order_state_update(state::Vector{Vector{U}}, shock::Vector{S}) where {U <: Real,S <: Real}
         # state_update = function(state::Vector{Vector{T}}, shock::Vector{S}) where {T <: Real,S <: Real}
             aug_state₁ = [state[1][T.past_not_future_and_mixed_idx]; 1; shock]
             aug_state₂ = [state[2][T.past_not_future_and_mixed_idx]; 0; zero(shock)]
@@ -8026,7 +8030,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
 
         pruning = true
     elseif length(𝐒) == 3 && length(state) == 1 # third order
-        function third_order_state_update(state::Vector{U}, shock::Vector{S})::Vector{S} where {U <: Real,S <: Real}
+        function third_order_state_update(state::Vector{U}, shock::Vector{S}) where {U <: Real,S <: Real}
         # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
             aug_state = [state[T.past_not_future_and_mixed_idx]
                                     1
@@ -8036,9 +8040,11 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
 
         state_update = third_order_state_update
 
+        state = state[1]
+
         pruning = false
     elseif length(𝐒) == 3 && length(state) == 3 # pruned third order
-        function pruned_third_order_state_update(state::Vector{Vector{U}}, shock::Vector{S})::Vector{S} where {U <: Real,S <: Real}
+        function pruned_third_order_state_update(state::Vector{Vector{U}}, shock::Vector{S}) where {U <: Real,S <: Real}
         # state_update = function(state::Vector{Vector{T}}, shock::Vector{S}) where {T <: Real,S <: Real}
             aug_state₁ = [state[1][T.past_not_future_and_mixed_idx]; 1; shock]
             aug_state₁̂ = [state[1][T.past_not_future_and_mixed_idx]; 0; shock]
