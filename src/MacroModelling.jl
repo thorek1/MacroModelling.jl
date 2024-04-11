@@ -7888,9 +7888,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order}, paramet
 
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = TT)
 
-    if !solved return TT, zeros(1), zeros(1,1), state, x->x, false end
-
-    return TT, SS_and_pars, 𝐒₁, [state], true
+    return TT, SS_and_pars, 𝐒₁, [state], solved
 end
 
     # reduce_system = false
