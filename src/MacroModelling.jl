@@ -7648,13 +7648,13 @@ end
 
 
 # Specialization for :kalman filter
-function calculate_loglikelihood(::Val{:kalman}, observables, 𝐒₁, data_in_deviations, TT, presample_periods, initial_covariance, state, state_update, warmup_iterations)
-    return calculate_kalman_filter_loglikelihood(observables, 𝐒₁, data_in_deviations, TT, presample_periods = presample_periods, initial_covariance = initial_covariance)
+function calculate_loglikelihood(::Val{:kalman}, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations)
+    return calculate_kalman_filter_loglikelihood(observables, 𝐒, data_in_deviations, TT, presample_periods = presample_periods, initial_covariance = initial_covariance)
 end
 
 # Specialization for :inversion filter
-function calculate_loglikelihood(::Val{:inversion}, observables, 𝐒₁, data_in_deviations, TT, presample_periods, initial_covariance, state, state_update, warmup_iterations)
-    return @ignore_derivatives calculate_inversion_filter_loglikelihood(state, state_update, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods)
+function calculate_loglikelihood(::Val{:inversion}, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations)
+    return @ignore_derivatives calculate_inversion_filter_loglikelihood(state, 𝐒, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods)
 end
 
 function get_non_stochastic_steady_state(𝓂::ℳ, parameter_values::Vector{S}; verbose::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
@@ -7662,34 +7662,36 @@ function get_non_stochastic_steady_state(𝓂::ℳ, parameter_values::Vector{S};
 end
 
 function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
-                                                𝐒₁::Matrix{S}, 
+                                                𝐒::Vector{AbstractMatrix{S}}, 
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical)::S where S <: Real
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒₁, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
 end
 
 function calculate_kalman_filter_loglikelihood(observables::Vector{String}, 
-                                                𝐒₁::Matrix{S}, 
+                                                𝐒::Vector{AbstractMatrix{S}}, 
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical)::S where S <: Real
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒₁, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
 end
 
 function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, 
-                                                𝐒₁::Matrix{S}, 
+                                                𝐒::Vector{AbstractMatrix{S}}, 
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical)::S where S <: Real
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
+
+    𝐒₁ = 𝐒[1]
 
     A = 𝐒₁[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(S, length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
     B = 𝐒₁[observables_and_states,T.nPast_not_future_and_mixed+1:end]
@@ -7705,12 +7707,6 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     
     values = vcat(vec(A), vec(collect(-𝐁)))
 
-    # if initial_covariance == :theoretical
-    #     P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    #     # P = reshape((ℒ.I - ℒ.kron(A, A)) \ reshape(𝐁, prod(size(A)), 1), size(A))
-    # elseif initial_covariance == :diagonal
-    #     P = collect(ℒ.I(length(observables_and_states)) * 10.0)
-    # end
     P = get_initial_covariance(Val(initial_covariance), values, coordinates, dimensions)
 
     return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods)
@@ -7821,7 +7817,7 @@ function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: R
     return false
 end
 
-function get_relevant_steady_state_and_state_update(::Val{:second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{Float64}, Vector{Vector{Float64}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Vector{AbstractMatrix{S}}, Vector{Vector{Float64}}, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -7829,20 +7825,13 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order}, parame
     state = collect(sss) - all_SS
 
     TT = 𝓂.timings
-    
-    state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-        aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-        1
-                            shock]
-        return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-    end
 
-    return TT, SS_and_pars, 𝐒₁, state, state_update, converged
+    return TT, SS_and_pars, [𝐒₁, 𝐒₂], [state], converged
 end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{Float64}, Vector{Vector{Float64}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Vector{AbstractMatrix{S}}, Vector{Vector{Float64}}, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -7851,19 +7840,12 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
 
     TT = 𝓂.timings
 
-    state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-        aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-        aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                
-        return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
-    end
-
-    return TT, SS_and_pars, 𝐒₁, state, state_update, converged
+    return TT, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
 end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{Float64}, Vector{Vector{Float64}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Vector{AbstractMatrix{S}}, Vector{Vector{Float64}}, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -7872,19 +7854,12 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order}, paramet
 
     TT = 𝓂.timings
 
-    state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-        aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-        1
-                                shock]
-        return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    end
-
-    return TT, SS_and_pars, 𝐒₁, state, state_update, converged
+    return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [state], converged
 end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{Float64}, Vector{Vector{Float64}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Vector{AbstractMatrix{S}}, Vector{Vector{Float64}}, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -7893,22 +7868,11 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
 
     TT = 𝓂.timings
 
-    state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
-        aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
-        aug_state₁̂ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 0; shock]
-        aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-        aug_state₃ = [pruned_states[3][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-                
-        kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
-                
-        return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
-    end
-
-    return TT, SS_and_pars, 𝐒₁, state, state_update, converged
+    return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
 end
 
 
-function get_relevant_steady_state_and_state_update(::Val{:first_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Matrix{S}, Union{Vector{Float64}, Vector{Vector{Float64}}}, Function, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:first_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Vector{AbstractMatrix{S}}, Vector{Vector{Float64}}, Bool} where S <: Real
     SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, parameter_values)
 
     state = zeros(𝓂.timings.nVars)
@@ -7927,13 +7891,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order}, paramet
 
     if !solved return TT, zeros(1), zeros(1,1), state, x->x, false end
 
-    state_update = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
-        aug_state = [state[TT.past_not_future_and_mixed_idx]
-                    shock]
-        return 𝐒₁ * aug_state # you need a return statement for forwarddiff to work
-    end
-
-    return TT, SS_and_pars, 𝐒₁, state, state_update, true
+    return TT, SS_and_pars, [𝐒₁], [state], true
 end
 
     # reduce_system = false
@@ -8026,16 +7984,75 @@ end
 #     return loglik + loglik_increment, P, u, z
 # end
 
-function calculate_inversion_filter_loglikelihood(state::Union{Vector{Float64},Vector{Vector{Float64}}}, 
-                                                    state_update::Function, 
+function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}, 
+                                                    𝐒::Vector{AbstractMatrix{Float64}}, 
                                                     data_in_deviations::Matrix{Float64}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0)
-    if state isa Vector{Float64}
+    if length(𝐒) == 1 # first order  
+        function first_order_state_update(state::Vector{U}, shock::Vector{S})::Vector{S} where {U <: Real,S <: Real}
+        # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
+            aug_state = [state[T.past_not_future_and_mixed_idx]
+                        shock]
+            return 𝐒[1] * aug_state # you need a return statement for forwarddiff to work
+        end
+
+        state_update = first_order_state_update
+
         pruning = false
-    else
+    elseif length(𝐒) == 2 && length(state) == 1 # second order
+        function second_order_state_update(state::Vector{U}, shock::Vector{S})::Vector{S} where {U <: Real,S <: Real}
+        # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
+            aug_state = [state[T.past_not_future_and_mixed_idx]
+                                1
+                                shock]
+            return 𝐒[1] * aug_state + 𝐒[2] * ℒ.kron(aug_state, aug_state) / 2
+        end
+
+        state_update = second_order_state_update
+
+        pruning = false
+    elseif length(𝐒) == 2 && length(state) == 2 # pruned second order
+        function pruned_second_order_state_update(state::Vector{Vector{U}}, shock::Vector{S})::Vector{S} where {U <: Real,S <: Real}
+        # state_update = function(state::Vector{Vector{T}}, shock::Vector{S}) where {T <: Real,S <: Real}
+            aug_state₁ = [state[1][T.past_not_future_and_mixed_idx]; 1; shock]
+            aug_state₂ = [state[2][T.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    
+            return [𝐒[1] * aug_state₁, 𝐒[1] * aug_state₂ + 𝐒[2] * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+        end
+
+        state_update = pruned_second_order_state_update
+
+        pruning = true
+    elseif length(𝐒) == 3 && length(state) == 1 # third order
+        function third_order_state_update(state::Vector{U}, shock::Vector{S})::Vector{S} where {U <: Real,S <: Real}
+        # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
+            aug_state = [state[T.past_not_future_and_mixed_idx]
+                                    1
+                                    shock]
+            return 𝐒[1] * aug_state + 𝐒[2] * ℒ.kron(aug_state, aug_state) / 2 + 𝐒[3] * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+        end
+
+        state_update = third_order_state_update
+
+        pruning = false
+    elseif length(𝐒) == 3 && length(state) == 3 # pruned third order
+        function pruned_third_order_state_update(state::Vector{Vector{U}}, shock::Vector{S})::Vector{S} where {U <: Real,S <: Real}
+        # state_update = function(state::Vector{Vector{T}}, shock::Vector{S}) where {T <: Real,S <: Real}
+            aug_state₁ = [state[1][T.past_not_future_and_mixed_idx]; 1; shock]
+            aug_state₁̂ = [state[1][T.past_not_future_and_mixed_idx]; 0; shock]
+            aug_state₂ = [state[2][T.past_not_future_and_mixed_idx]; 0; zero(shock)]
+            aug_state₃ = [state[3][T.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    
+            kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+                    
+            return [𝐒[1] * aug_state₁, 𝐒[1] * aug_state₂ + 𝐒[2] * kron_aug_state₁ / 2, 𝐒[1] * aug_state₃ + 𝐒[2] * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒[3] * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+        end
+
+        state_update = pruned_third_order_state_update
+
         pruning = true
     end
 
@@ -8138,6 +8155,7 @@ function calculate_inversion_filter_loglikelihood(state::Union{Vector{Float64},V
 
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
+
 
 
 function inversion_filter(𝓂::ℳ, 

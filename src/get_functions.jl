@@ -2910,14 +2910,14 @@ function get_loglikelihood(𝓂::ℳ,
 
     obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, NSSS_labels))
 
-    TT, SS_and_pars, 𝐒₁, state, state_update, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol)
+    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol)
 
     if !solved return -Inf end
 
     # prepare data
     data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
-    return calculate_loglikelihood(Val(filter), observables, 𝐒₁, data_in_deviations, TT, presample_periods, initial_covariance, state, state_update, warmup_iterations)
+    return calculate_loglikelihood(Val(filter), observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations)
 end
 
 
