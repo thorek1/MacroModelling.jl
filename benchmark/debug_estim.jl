@@ -1,14 +1,13 @@
 
-import Dates
 using MacroModelling
-import Turing
 import Turing: NUTS, HMC, PG, IS, sample, logpdf, Truncated#, Normal, Beta, Gamma, InverseGamma,
 using CSV, DataFrames, AxisKeys
-using Zygote, MCMCChains
-import DynamicPPL: logjoint
-import DynamicPPL
+import Zygote
+import ForwardDiff
+import FiniteDifferences
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives
 using Random
+import BenchmarkTools: @benchmark
 Random.seed!(1)
 # ]add CSV, DataFrames, Zygote, AxisKeys, MCMCChains, Turing, DynamicPPL, Pigeons, StatsPlots
 println("Threads used: ", Threads.nthreads())
@@ -18,7 +17,7 @@ mdl = "linear" #
 fltr = :kalman
 algo = :first_order
 
-sample_idx = 47:230
+sample_idx = 47:52
 dat = CSV.read("benchmark/usmodel.csv", DataFrame)
 
 # Initialize a DataFrame to store the data
@@ -148,26 +147,21 @@ inits = [  0.5295766584252728
 0.5101771887138438
 0.17425592648706756]
 
-calculate_posterior_loglikelihood(inits, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo)
+calculate_posterior_loglikelihood(inits, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo) # -1114.047468890962
 
-@time grad = Zygote.gradient(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits)
+@time back_grad = Zygote.gradient(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits)
 
+@time forw_grad = ForwardDiff.gradient(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits)
 
-# Tapir.gradient(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits)
-# using ForwardDiff
+fini_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1), x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits)[1]
 
-# @time grad = ForwardDiff.gradient(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits)
-using BenchmarkTools
 
 @benchmark calculate_posterior_loglikelihood(inits, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo)
 
 @benchmark Zygote.gradient(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits)
 
-@profview for i in 1:1000 calculate_posterior_loglikelihood(inits, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo) end
+@benchmark ForwardDiff.gradient(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits)
 
-using AbstractDifferentiation, Enzyme
-backend = AbstractDifferentiation.EnzymeBackend();
+@profview for i in 1:100 calculate_posterior_loglikelihood(inits, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo) end
 
-
-grad = Zygote.gradient(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits)
-Enzyme.gradient(Reverse, x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits)
+@profview for i in 1:10 Zygote.gradient(x -> calculate_posterior_loglikelihood(x, fixed_parameters, dists, Smets_Wouters_2007, data, fltr, algo), inits) end
