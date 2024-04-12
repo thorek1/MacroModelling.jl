@@ -7730,9 +7730,11 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
     loglik = S(0.0)
 
     for t in 1:size(data_in_deviations, 2)
-        u,P,loglik = kalman_iteration(u,P,loglik,A,𝐁,C,data_in_deviations,presample_periods,t)
+        u,P,loglik = kalman_iteration(u, P, loglik, A, 𝐁, C, data_in_deviations[:, t], presample_periods, t)
     end
 
+    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
+    
     # u = zeros(S, size(C,2))
 
     # z = C * u
@@ -7806,7 +7808,8 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
     #     z = C * u
     # end
 
-
+    # return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
+    
     # observables = data_in_deviations
 
     # T = size(observables, 2) + 1
@@ -7895,14 +7898,14 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
     #     P_mid[t] .+= B_prod
     # end
 
-    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
+    # return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
 end
 
 
 
 
-function kalman_iteration(u, P, loglik, A, 𝐁, C, data_in_deviations, presample_periods, t)
-    v = data_in_deviations[:, t] - C * u
+function kalman_iteration(u, P, loglik, A, 𝐁, C, data, presample_periods, t)
+    v = data - C * u
 
     F = C * P * C'
 
@@ -7920,7 +7923,6 @@ function kalman_iteration(u, P, loglik, A, 𝐁, C, data_in_deviations, presampl
 
     invF = inv(luF) ###
     
-
     if t > presample_periods
         llh = loglik + log(Fdet) + v' * invF * v ###
     else
@@ -7936,7 +7938,7 @@ end
 
 function rrule(::typeof(kalman_iteration), u, P, loglik, A, 𝐁, C, data_in_deviations, presample_periods, t)
     # Perform the forward pass
-    v = data_in_deviations[:, t] - C * u
+    v = data_in_deviations - C * u
 
     F = C * P * C'
 
@@ -7967,6 +7969,7 @@ function rrule(::typeof(kalman_iteration), u, P, loglik, A, 𝐁, C, data_in_dev
     # pullback of single update function
     function kalman_pullback(∂sol)
         ∂û, ∂P̂, ∂llh = ∂sol
+
         # Calculate gradients for each input
         ∂loglik = ∂llh
     
@@ -7982,6 +7985,12 @@ function rrule(::typeof(kalman_iteration), u, P, loglik, A, 𝐁, C, data_in_dev
         # Gradient w.r.t. u
         ∂u = -C' * invF * v  # Derivative contribution from v in the update step
         ∂u += A' * ∂û
+
+        # Gradient w.r.t. data_in_deviation
+        ∂data_in_deviations_t = invF * v  # Initial contribution from û
+        if t > presample_periods
+            ∂data_in_deviations_t += 2 * invF * v  # Additional contribution due to llh
+        end
         
         # Gradient w.r.t. A
         ∂A = ∂û * (u + P * C' * invF * v)' + ∂P̂ * (P - P * C' * invF * C * P)'
@@ -7989,7 +7998,7 @@ function rrule(::typeof(kalman_iteration), u, P, loglik, A, 𝐁, C, data_in_dev
         # Gradient w.r.t. B
         ∂B = ∂P̂
     
-        return NoTangent(), ∂u, ∂P, ∂loglik, ∂A, ∂B, NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return NoTangent(), ∂u, ∂P, ∂loglik, ∂A, ∂B, NoTangent(), ∂data_in_deviations_t, NoTangent(), NoTangent()
     end
     
     return (û, P̂, llh), kalman_pullback
