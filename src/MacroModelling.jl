@@ -7811,108 +7811,15 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
 
 
 
-    # observables = data_in_deviations
-
-    # T = size(observables, 2) + 1
-
-    # u = [zeros(S, size(C,2)) for _ in 1:T]
-
-    # u_mid = deepcopy(u)
-
-    # z = [zeros(S, size(observables, 1)) for _ in 1:T]
-
-    # P_mid = [deepcopy(P) for _ in 1:T]
-
-    # temp_N_N = similar(P)
-
-    # P = deepcopy(P_mid)
-
-    # B_prod = 𝐁
-    # # Ct = collect(C')
-    # CP = [zero(C) for _ in 1:T]
-
-    # K = [zero(C') for _ in 1:T]
-
-    # cc = C * C'
-
-    # V = [zero(cc) for _ in 1:T]
-    # V[1] += ℒ.I
-    # # luV = ℒ.lu(V[1], check = false)
-    # # Vdet = ℒ.det(luV)
-    # invV = inv(V[1])
-    # # At = collect(A')
-
-    # innovation = deepcopy(z)
-
-    # # V[1] .= C * P[1] * C'
-
-    # loglik = S(0.0)
-
-    # new incl new order
-    # for t in 2:T
-    #     # Kalman iteration
-    #     mul!(CP[t], C, P_mid[t-1]) # CP[t] = C * P[t]
-
-    #     # V[t] = CP[t] * C' + R
-    #     mul!(V[t], CP[t], C')
-    #     # V[t].mat .+= R
-
-    #     luV = ℒ.lu(V[t], check = false)
-    #     Vdet = ℒ.det(luV)
-    #     if Vdet < eps(Float64)
-    #         return -Inf
-    #     end
-    #     invV .= inv(luV)
-    #     # V_t .= (V_t + V_t') / 2 # classic hack to deal with stability of not being quite symmetric
-    #     # transpose!(temp_L_L, V[t].mat)
-    #     # V[t].mat .+= temp_L_L
-    #     # lmul!(0.5, V[t].mat)
-
-    #     # copy!(V[t].chol.factors, V[t].mat) # copy over to the factors for the cholesky and do in place
-    #     # cholesky!(V[t].chol.factors, NoPivot(); check = false) # inplace uses V_t with cholesky.  Now V[t]'s chol is upper-triangular        
-    #     innovation[t] .= observables[:,t-1] - z[t-1]
-    #     # loglik += logpdf(MvNormal(V[t]), innovation[t])  # no allocations since V[t] is a PDMat
-    #     if t - 1 > presample_periods
-    #         loglik += log(Vdet) + innovation[t]' * invV * innovation[t]
-    #     end
-
-    #     # K[t] .= CP[t]' / V[t]  # Kalman gain
-    #     # Can rewrite as K[t]' = V[t] \ CP[t] since V[t] is symmetric
-    #     # ldiv!(temp_L_N, V[t].chol, CP[t])
-    #     # transpose!(K[t], temp_L_N)
-    #     mul!(K[t], P_mid[t-1] * C', invV)
-
-    #     #u[t] += K[t] * innovation[t]
-    #     copy!(u[t], u_mid[t-1])
-    #     mul!(u[t], K[t], innovation[t], 1, 1)
-
-    #     #P[t] -= K[t] * CP[t]
-    #     copy!(P[t], P_mid[t-1])
-    #     mul!(P[t], K[t], CP[t], -1, 1)
-
-    #     # this was moved down indicating a timing difference between the two approaches
-    #     mul!(u_mid[t], A, u[t]) # u[t] = A u[t-1]
-    #     mul!(z[t], C, u_mid[t]) # z[t] = C u[t]
-
-    #     # P[t] = A * P[t - 1] * A' + B * B'
-    #     mul!(temp_N_N, P[t], A')
-    #     mul!(P_mid[t], A, temp_N_N)
-    #     P_mid[t] .+= B_prod
-    # end
-
-
-
-    # new but old order
-
     observables = data_in_deviations
 
     T = size(observables, 2) + 1
 
-    u = [zeros(size(C,2)) for _ in 1:T]
+    u = [zeros(S, size(C,2)) for _ in 1:T]
 
     u_mid = deepcopy(u)
 
-    z = [zeros(size(observables, 1)) for _ in 1:T]
+    z = [zeros(S, size(observables, 1)) for _ in 1:T]
 
     P_mid = [deepcopy(P) for _ in 1:T]
 
@@ -7929,30 +7836,22 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
     cc = C * C'
 
     V = [zero(cc) for _ in 1:T]
-
-    invV = [zero(cc) for _ in 1:T]
-
     V[1] += ℒ.I
-    invV[1] = inv(V[1])
+    # luV = ℒ.lu(V[1], check = false)
+    # Vdet = ℒ.det(luV)
+    invV = inv(V[1])
+    # At = collect(A')
 
     innovation = deepcopy(z)
 
     # V[1] .= C * P[1] * C'
 
-    loglik = (0.0)
+    loglik = S(0.0)
 
+    # new incl new order
     for t in 2:T
         # Kalman iteration
-        # this was moved down indicating a timing difference between the two approaches
-        mul!(u_mid[t], A, u[t-1]) # u[t] = A u[t-1]
-        mul!(z[t], C, u_mid[t]) # z[t] = C u[t]
-
-        # P[t] = A * P[t - 1] * A' + B * B'
-        mul!(temp_N_N, P[t-1], A')
-        mul!(P_mid[t], A, temp_N_N)
-        P_mid[t] .+= B_prod
-
-        mul!(CP[t], C, P_mid[t]) # CP[t] = C * P[t]
+        mul!(CP[t], C, P_mid[t-1]) # CP[t] = C * P[t]
 
         # V[t] = CP[t] * C' + R
         mul!(V[t], CP[t], C')
@@ -7963,25 +7862,134 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         if Vdet < eps(Float64)
             return -Inf
         end
-        invV[t] .= inv(luV)
-        
-        innovation[t] .= observables[:, t-1] - z[t]
+        invV .= inv(luV)
+        # V_t .= (V_t + V_t') / 2 # classic hack to deal with stability of not being quite symmetric
+        # transpose!(temp_L_L, V[t].mat)
+        # V[t].mat .+= temp_L_L
+        # lmul!(0.5, V[t].mat)
+
+        # copy!(V[t].chol.factors, V[t].mat) # copy over to the factors for the cholesky and do in place
+        # cholesky!(V[t].chol.factors, NoPivot(); check = false) # inplace uses V_t with cholesky.  Now V[t]'s chol is upper-triangular        
+        innovation[t] .= observables[:,t-1] - z[t-1]
         # loglik += logpdf(MvNormal(V[t]), innovation[t])  # no allocations since V[t] is a PDMat
         if t - 1 > presample_periods
-            loglik += log(Vdet) + innovation[t]' * invV[t] * innovation[t]
+            loglik += log(Vdet) + innovation[t]' * invV * innovation[t]
         end
 
         # K[t] .= CP[t]' / V[t]  # Kalman gain
-        mul!(K[t], P_mid[t] * C', invV[t])
+        # Can rewrite as K[t]' = V[t] \ CP[t] since V[t] is symmetric
+        # ldiv!(temp_L_N, V[t].chol, CP[t])
+        # transpose!(K[t], temp_L_N)
+        mul!(K[t], P_mid[t-1] * C', invV)
 
         #u[t] += K[t] * innovation[t]
-        copy!(u[t], u_mid[t])
+        copy!(u[t], u_mid[t-1])
         mul!(u[t], K[t], innovation[t], 1, 1)
 
         #P[t] -= K[t] * CP[t]
-        copy!(P[t], P_mid[t])
+        copy!(P[t], P_mid[t-1])
         mul!(P[t], K[t], CP[t], -1, 1)
+
+        # this was moved down indicating a timing difference between the two approaches
+        mul!(u_mid[t], A, u[t]) # u[t] = A u[t-1]
+        mul!(z[t], C, u_mid[t]) # z[t] = C u[t]
+
+        # P[t] = A * P[t - 1] * A' + B * B'
+        mul!(temp_N_N, P[t], A')
+        mul!(P_mid[t], A, temp_N_N)
+        P_mid[t] .+= B_prod
     end
+
+
+
+    # # new but old order
+
+    # observables = data_in_deviations
+
+    # T = size(observables, 2) + 1
+
+    # u = [zeros(size(C,2)) for _ in 1:T]
+
+    # u_mid = deepcopy(u)
+
+    # z = [zeros(size(observables, 1)) for _ in 1:T]
+
+    # P_mid = [deepcopy(P) for _ in 1:T]
+
+    # temp_N_N = similar(P)
+
+    # P = deepcopy(P_mid)
+
+    # B_prod = 𝐁
+    # # Ct = collect(C')
+    # CP = [zero(C) for _ in 1:T]
+
+    # K = [zero(C') for _ in 1:T]
+
+    # cc = C * C'
+
+    # V = [zero(cc) for _ in 1:T]
+
+    # invV = [zero(cc) for _ in 1:T]
+
+    # V[1] += ℒ.I
+    # invV[1] = inv(V[1])
+
+    # innovation = deepcopy(z)
+
+    # # V[1] .= C * P[1] * C'
+
+    # loglik = (0.0)
+
+    # for t in 2:T
+    #     # Kalman iteration
+    #     # this was moved down indicating a timing difference between the two approaches
+    #     u_mid[t] .= A * u[t-1]
+    #     # mul!(u_mid[t], A, u[t-1]) # u[t] = A u[t-1]
+    #     z[t] .= C * u_mid[t]
+    #     # mul!(z[t], C, u_mid[t]) # z[t] = C u[t]
+
+    #     # P[t] = A * P[t - 1] * A' + B * B'
+    #     P_mid[t] .= A * P[t-1] * A' + B_prod
+    #     # mul!(temp_N_N, P[t-1], A')
+    #     # mul!(P_mid[t], A, temp_N_N)
+    #     # P_mid[t] .+= B_prod
+
+    #     CP[t] .= C * P_mid[t]
+    #     # mul!(CP[t], C, P_mid[t]) # CP[t] = C * P[t]
+
+    #     V[t] .= CP[t] * C'
+    #     # V[t] = CP[t] * C' + R
+    #     # mul!(V[t], CP[t], C')
+    #     # V[t].mat .+= R
+
+    #     luV = ℒ.lu(V[t], check = false)
+    #     Vdet = ℒ.det(luV)
+    #     if Vdet < eps(Float64)
+    #         return -Inf
+    #     end
+    #     invV[t] .= inv(luV)
+        
+    #     innovation[t] .= observables[:, t-1] - z[t]
+    #     # loglik += logpdf(MvNormal(V[t]), innovation[t])  # no allocations since V[t] is a PDMat
+    #     if t - 1 > presample_periods
+    #         loglik += log(Vdet) + innovation[t]' * invV[t] * innovation[t]
+    #     end
+
+    #     K[t] .= P_mid[t] * C' * invV[t]
+    #     # K[t] .= CP[t]' / V[t]  # Kalman gain
+    #     # mul!(K[t], P_mid[t] * C', invV[t])
+
+    #     u[t] .= K[t] * innovation[t] + u_mid[t]
+    #     #u[t] += K[t] * innovation[t]
+    #     # copy!(u[t], u_mid[t])
+    #     # mul!(u[t], K[t], innovation[t], 1, 1)
+        
+    #     P[t] .= P_mid[t] - K[t] * CP[t]
+    #     #P[t] -= K[t] * CP[t]
+    #     # copy!(P[t], P_mid[t])
+    #     # mul!(P[t], K[t], CP[t], -1, 1)
+    # end
 
     return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
 end
