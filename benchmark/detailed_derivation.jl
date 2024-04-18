@@ -393,25 +393,31 @@ wⁿ⁻¹⁵₃¹ = A * P[2]
 
 ∂z∂A₃ = ∂wⁿ⁻¹⁰₃∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A + ∂wⁿ⁻¹²₃²∂A + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻²⁰₃²∂A + ∂wⁿ⁻²⁰₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A # this is correct and captues the effect for t = 4
 
-∂wⁿ⁻⁹₃∂A   ≈ ((A * P[3])' *                                             C' * -∂z∂z/ 2 * inv(V[4])' * C    )'
+# V[4] -> P_mid[3] -> A * P[3] * A'
+∂wⁿ⁻⁹₃∂A   ≈ (P[3]' * A' *                                              C' * -∂z∂z/ 2 * inv(V[4])' * C    )'
+# ∂wⁿ⁻⁹₃∂A   ≈ ((A * P[3])' *                                             C' * -∂z∂z/ 2 * inv(V[4])' * C    )'
 ∂wⁿ⁻¹⁰₃∂A  ≈                                                            C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * P[3]'
-∂wⁿ⁻¹²₃¹∂A ≈ ((A * P[2])' * A' *                                        C' * -∂z∂z/ 2 * inv(V[4])' * C     * A)'
-∂wⁿ⁻¹⁵₃²∂A ≈ ((A * P[2])' * C' * K[3]' * -A' *                          C' * -∂z∂z/ 2 * inv(V[4])' * C     * A)'
-∂wⁿ⁻¹²₃²∂A ≈ A' *                                                       C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * A * P[2]'
+
+# V[4] -> P_mid[3] -> P[3] -> P_mid[2] -> A * P[2] * A'
+∂wⁿ⁻¹²₃¹∂A ≈ (P[2]' * A' * A' *                                         C' * -∂z∂z/ 2 * inv(V[4])' * C     * A)'
+# ∂wⁿ⁻¹²₃¹∂A ≈ ((A * P[2])' * A' *                                        C' * -∂z∂z/ 2 * inv(V[4])' * C     * A)'
+∂wⁿ⁻¹²₃²∂A ≈ A' *                                                       C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * A * P[2]
+
+∂wⁿ⁻¹⁵₃²∂A ≈ (P[2]' * A' * C' * K[3]' * -A' *                           C' * -∂z∂z/ 2 * inv(V[4])' * C     * A)'
 ∂wⁿ⁻¹⁵₃³∂A ≈ C' * K[3]' * -A' *                                         C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * A * P[2]'
-∂wⁿ⁻¹⁶₃²∂A ≈ ((A * P[2])' * -A' *                                       C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * CP[3]' * inv(V[3])' * C)'
-∂wⁿ⁻²⁰₃²∂A ≈ ((A * P[2])' * C' * -invV[3]'* (P_mid[2] * C')' * -A' *    C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * CP[3]' * inv(V[3])' * C)'
-∂wⁿ⁻¹⁶₃³∂A ≈ -A' *                                                      C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * CP[3]' * inv(V[3])' * C * A * P[2]'
-∂wⁿ⁻²⁰₃³∂A ≈ C' *  -invV[3]' * (P_mid[2] * C')' * -A' *                 C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * CP[3]' * inv(V[3])' * C * A * P[2]'
+∂wⁿ⁻¹⁶₃²∂A ≈ (P[2]' * A' * -A' *                                        C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * K[3] * C)'
+∂wⁿ⁻²⁰₃²∂A ≈ (P[2]' * A' * C' * -K[3]' * -A' *                          C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * K[3] * C)'
+∂wⁿ⁻¹⁶₃³∂A ≈ -A' *                                                      C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * K[3] * C * A * P[2]'
+∂wⁿ⁻²⁰₃³∂A ≈ C' * -K[3]' * -A' *                                        C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * K[3] * C * A * P[2]'
 
 ∂z∂A₂ = ∂wⁿ⁻¹⁰₂∂A + ∂wⁿ⁻⁹₂∂A # this is correct and captues the effect for t = 3
 
 ∂wⁿ⁻¹⁰₂∂A ≈ C' * -∂z∂z/ 2 * inv(V[3])' * C * A * P[2]'
-∂wⁿ⁻⁹₂∂A  ≈ ((A * P[2])' * C' * -∂z∂z/ 2 * inv(V[3])' * C)'
+∂wⁿ⁻⁹₂∂A  ≈ (P[2]' * A' * C' * -∂z∂z/ 2 * inv(V[3])' * C)'
 # ∂z∂A = ∂wⁿ⁻⁷₃∂wⁿ⁻⁸₃ * ∂z∂z * ∂z∂wⁿ⁻¹ * ∂wⁿ⁻¹∂wⁿ⁻³₁ * ∂wⁿ⁻³₃∂wⁿ⁻⁴₃ * ∂wⁿ⁻⁴₃∂wⁿ⁻⁶₃ * ∂wⁿ⁻⁶₃∂wⁿ⁻⁷₃  * ∂wⁿ⁻⁸₃∂wⁿ⁻⁹₃ * (∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻⁹₃∂wⁿ⁻¹⁰₃ * ∂wⁿ⁻¹⁰₃∂A)
 # ∂z∂A₂ = -1/2 * C' * inv(C * P_mid[3] * C')' * C * (A * P[3] + A * P[3]')
 
-
+2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A)
 ∂z∂A = ∂wⁿ⁻¹⁰₂∂A + ∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻¹⁰₃∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A + ∂wⁿ⁻¹²₃²∂A + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻²⁰₃²∂A + ∂wⁿ⁻²⁰₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A # this is correct and captues the effect for all t
 
 zyggrad =   Zygote.gradient(
@@ -515,6 +521,104 @@ zyggrad =   Zygote.gradient(
             A)[1]
 
 isapprox(∂z∂A, zyggrad)
+
+
+
+# write function to compute the gradient of the log likelihood for P_mid terms
+# forward pass
+
+PP = get_initial_covariance(Val(:theoretical), values, coordinates, dimensions)
+observables = data_in_deviations
+
+T = size(observables, 2) + 1
+
+u = [zeros(size(C,2)) for _ in 1:T]
+
+u_mid = deepcopy(u)
+
+z = [zeros(size(observables, 1)) for _ in 1:T]
+
+P_mid = [deepcopy(PP) for _ in 1:T]
+
+temp_N_N = similar(PP)
+
+P = deepcopy(P_mid)
+
+B_prod = 𝐁
+# Ct = collect(C')
+CP = [zero(C) for _ in 1:T]
+
+K = [zero(C') for _ in 1:T]
+
+cc = C * C'
+
+V = [zero(cc) for _ in 1:T]
+
+invV = [zero(cc) for _ in 1:T]
+
+V[1] += ℒ.I
+invV[1] = inv(V[1])
+
+innovation = deepcopy(z)
+
+# V[1] .= C * P[1] * C'
+
+loglik = (0.0)
+
+
+
+for t in 2:T
+    CP[t] .= C * P_mid[t-1]
+
+    V[t] .= CP[t] * C'
+
+    luV = ℒ.lu(V[t], check = false)
+
+    Vdet = ℒ.det(luV)
+    
+    invV[t] .= inv(luV)
+    
+    innovation[t] .= observables[:, t-1] - z[t-1]
+    
+    loglik += log(Vdet) + innovation[t]' * invV[t] * innovation[t]
+
+    K[t] .= P_mid[t-1] * C' * invV[t]
+
+    u[t] .= K[t] * innovation[t] + u_mid[t-1]
+    
+    P[t] .= P_mid[t-1] - K[t] * CP[t]
+
+    u_mid[t] .= A * u[t]
+
+    z[t] .= C * u_mid[t]
+
+    P_mid[t] .= A * P[t] * A' + B_prod
+end
+
+
+# backward pass
+TT = 4
+∂A = zero(A)
+# for T:-1:2
+for t in TT:-1:2
+    for h in 2:(t-1)
+        ∂A += 2 * (A^(t-h-1))' * C' * invV[t]' * C * A^(t-h) * P[h]'
+    end
+end
+
+∂A *= -1/2
+
+∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A)
+
+
+
+# try again but with more elemental operations
+
+
+∂A = zero(A)
+for t in TT:-1:2
+
+end
 
 fingrad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),
 x -> begin
