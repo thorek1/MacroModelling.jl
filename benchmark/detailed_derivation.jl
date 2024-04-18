@@ -505,7 +505,6 @@ wⁿ⁻¹⁶₃³ = A * P[2]
 
 ∂wⁿ⁻¹⁶₃³∂A = ∂wⁿ⁻¹⁶₃²∂wⁿ⁻¹⁶₃³ * P[2]'
 
-
 # wⁿ⁻¹⁷₃ = inv(V[3]) = inv(wⁿ⁻¹⁸₃)
 ∂wⁿ⁻¹⁷₃∂wⁿ⁻¹⁸₃ = -invV[3]' * ∂wⁿ⁻¹⁴₃∂wⁿ⁻¹⁷₃ * invV[3]'
 
@@ -552,8 +551,9 @@ wⁿ⁻¹⁵₃¹ = A * P[2]
 ∂wⁿ⁻¹⁵₃²∂A ≈ (P[2]' * A' * C' * K[3]' * -A' *                           C' * -∂z∂z/ 2 * inv(V[4])' * C     * A)'
 ∂wⁿ⁻¹⁵₃³∂A ≈ C' * K[3]' * -A' *                                         C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * A * P[2]'
 ∂wⁿ⁻¹⁶₃²∂A ≈ (P[2]' * A' * -A' *                                        C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * K[3] * C)'
-∂wⁿ⁻²⁰₃²∂A ≈ (P[2]' * A' * C' * -K[3]' * -A' *                          C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * K[3] * C)'
 ∂wⁿ⁻¹⁶₃³∂A ≈ -A' *                                                      C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * K[3] * C * A * P[2]'
+
+∂wⁿ⁻²⁰₃²∂A ≈ (P[2]' * A' * C' * -K[3]' * -A' *                          C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * K[3] * C)'
 ∂wⁿ⁻²⁰₃³∂A ≈ C' * -K[3]' * -A' *                                        C' * -∂z∂z/ 2 * inv(V[4])' * C     * A * K[3] * C * A * P[2]'
 
 ∂z∂A₂ = ∂wⁿ⁻¹⁰₂∂A + ∂wⁿ⁻⁹₂∂A # this is correct and captues the effect for t = 3
@@ -760,12 +760,52 @@ end
 
 # try again but with more elemental operations
 
-TT = 3
+TT = 4
+
 ∂A = zero(A)
+∂K = zero(K[1])
+∂V = zero(V[1])
+∂P = zero(PP)
+∂P_mid = zero(PP)
+
 for t in TT:-1:2
-    ∂wⁿ⁻⁸₂∂wⁿ⁻⁹₂ = C' * ∂wⁿ⁻⁶₂∂wⁿ⁻⁷₂
-    ∂wⁿ⁻⁹₂∂A = (P[t-1]' * A * ∂wⁿ⁻⁸₂∂wⁿ⁻⁹₂)'
+    ∂V = invV[t]'
+    if t == 2
+    #     ∂P += C' * ∂V * C
+    else
+        ∂P_mid += C' * ∂V * C
+        # ∂A += 2 * ∂P_mid * A * P[t-1]'
+        ∂A += ∂P_mid * A * P[t-1]'
+        ∂A += P[t-1]' * A * ∂P_mid'
+        # if t == 3
+            # ∂P += A' * ∂P_mid * A
+            # ∂K -= ∂P_mid * CP[t-1]'
+            # ∂P += ∂K * invV[t-1]'
+        # else
+        ∂P_mid = A' * ∂P_mid * A
+        # ∂K -= ∂P_mid * CP[t-1]'
+        # ∂P_mid -= ∂P_mid * K[t-1] * C
+            # ∂P_mid += A' * ∂P_mid * A
+        # end
+    end
 end
+
+∂P *= -1/2
+∂V *= -1/2
+∂A *= -1/2
+
+∂A ≈ 2*∂wⁿ⁻⁹₂∂A
+∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A)
+∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A
+
+
+
+(P[3]' * A' *                                              C' * -∂z∂z/ 2 * inv(V[4])' * C    )'
+(P[2]' * A' * A' *                                         C' * -∂z∂z/ 2 * inv(V[4])' * C     * A)'
+
+
+
+# ∂A ≈ ∂z∂A
 
 fingrad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),
 x -> begin
