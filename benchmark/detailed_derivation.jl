@@ -765,6 +765,7 @@ TT = 4
 ∂A = zero(A)
 ∂K = zero(K[1])
 ∂V = zero(V[1])
+∂Vaccum = zero(V[1])
 ∂P = zero(PP)
 ∂P_mid = zero(PP)
 
@@ -773,10 +774,10 @@ for t in TT:-1:2
     if t == 2
     #     ∂P += C' * ∂V * C
     else
-        ∂P_mid += C' * ∂V * C
+        ∂P_mid += C' * (∂V + ∂Vaccum) * C
         # ∂A += 2 * ∂P_mid * A * P[t-1]'
         ∂A += ∂P_mid * A * P[t-1]'
-        ∂A += P[t-1]' * A * ∂P_mid'
+        ∂A += ((A * P[t-1])' * ∂P_mid)'
         # if t == 3
             # ∂P += A' * ∂P_mid * A
             # ∂K -= ∂P_mid * CP[t-1]'
@@ -784,7 +785,12 @@ for t in TT:-1:2
         # else
         ∂P_mid = A' * ∂P_mid * A
         # ∂K -= ∂P_mid * CP[t-1]'
-        # ∂P_mid -= ∂P_mid * K[t-1] * C
+        ∂P_mid -= C' * K[t-1]' * ∂P_mid + ∂P_mid * K[t-1] * C 
+        # if t > 2
+            # ∂Vaccum -= invV[t-1]' * (P_mid[t-2] * C')' * ∂P_mid * CP[t-1]' * invV[t-1]'
+        ∂Vaccum -= invV[t-1]' * CP[t-1] * ∂P_mid * CP[t-1]' * invV[t-1]'
+        # end
+        # ∂P_mid -= 2 * ∂P_mid * K[t-1] * C
             # ∂P_mid += A' * ∂P_mid * A
         # end
     end
@@ -797,6 +803,10 @@ end
 ∂A ≈ 2*∂wⁿ⁻⁹₂∂A
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A)
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A
+∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A
+∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A + ∂wⁿ⁻²⁰₃²∂A + ∂wⁿ⁻²⁰₃³∂A
+
+maximum(abs, ∂A - (2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A + ∂wⁿ⁻²⁰₃²∂A + ∂wⁿ⁻²⁰₃³∂A))
 
 
 
