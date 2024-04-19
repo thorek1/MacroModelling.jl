@@ -667,7 +667,7 @@ zyggrad =   Zygote.gradient(
             A)[1]
 
 isapprox(∂z∂A, zyggrad)
-
+∂z∂A - zyggrad
 
 
 # write function to compute the gradient of the log likelihood for P_mid terms
@@ -760,7 +760,7 @@ end
 
 # try again but with more elemental operations
 
-TT = 4
+TT = 5
 
 ∂A = zero(A)
 ∂K = zero(K[1])
@@ -807,8 +807,53 @@ end
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A + ∂wⁿ⁻²⁰₃²∂A + ∂wⁿ⁻²⁰₃³∂A
 
 maximum(abs, ∂A - (2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A + ∂wⁿ⁻²⁰₃²∂A + ∂wⁿ⁻²⁰₃³∂A))
+∂A ≈ ∂z∂A
 
 
+zyggrad =   Zygote.gradient(
+                x -> begin
+                    P_mid2 = x * P[2] * x' + B_prod
+                    CP3 = C * P_mid2
+                    V3 = CP3 * C'
+                    K3 = P_mid2 * C' * inv(V3)
+                    P3 = P_mid2 - K3 * CP3
+
+                    P_mid3 = x * P3 * x' + B_prod
+                    CP4 = C * P_mid3
+                    V4 = CP4 * C'
+                    # return -1/2*(logdet(V3))
+                    return -1/2*(logdet(V4) + logdet(V3))
+                end, 
+            A)[1]
+
+isapprox(∂A, zyggrad)
+
+
+zyggrad =   Zygote.gradient(
+                x -> begin
+                    P_mid2 = x * P[2] * x' + B_prod
+                    CP3 = C * P_mid2
+                    V3 = CP3 * C'
+                    K3 = P_mid2 * C' * inv(V3)
+                    P3 = P_mid2 - K3 * CP3
+
+                    P_mid3 = x * P3 * x' + B_prod
+                    CP4 = C * P_mid3
+                    V4 = CP4 * C'
+                    K4 = P_mid3 * C' * inv(V4)
+                    P4 = P_mid3 - K4 * CP4
+
+                    P_mid4 = x * P4 * x' + B_prod
+                    CP5 = C * P_mid4
+                    V5 = CP5 * C'
+                    # return -1/2*(logdet(V3))
+                    # return -1/2*(logdet(V4) + logdet(V3))
+                    return -1/2*(logdet(V5) + logdet(V4) + logdet(V3))
+                end, 
+            A)[1]
+
+isapprox(∂A, zyggrad)
+∂A - zyggrad
 
 (P[3]' * A' *                                              C' * -∂z∂z/ 2 * inv(V[4])' * C    )'
 (P[2]' * A' * A' *                                         C' * -∂z∂z/ 2 * inv(V[4])' * C     * A)'
