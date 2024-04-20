@@ -790,7 +790,7 @@ end
 
 # try again but with more elemental operations
 
-TT = T
+TT = 3
 
 ∂A = zero(A)
 ∂K = zero(K[1])
@@ -801,6 +801,7 @@ TT = T
 ∂u = zero(u[1])
 ∂u_mid = zero(u[1])
 ∂u_mid_accum = zero(u[1])
+∂B_prod = zero(B_prod)
 
 for t in TT:-1:2
     # loglik += logdet(V[t]) + innovation[t]' * invV[t] * innovation[t]
@@ -824,7 +825,7 @@ for t in TT:-1:2
         # P_mid[t] .= A * P[t] * A' + B_prod
         ∂A += ∂P_mid * A * P[t-1]' + ∂P_mid' * A * P[t-1]
         ∂A += ∂u_mid * u[t-1]'
-
+        ∂B_prod = ∂P_mid
         # if t == 3
             # ∂P += A' * ∂P_mid * A
             # ∂K -= ∂P_mid * CP[t-1]'
@@ -856,13 +857,17 @@ end
 ∂V *= -1/2
 ∂A *= -1/2
 ∂u *= -1/2
+∂B_prod *= -1/2
+
+
+∂B_prod ≈ zyggrad
 
 ∂A ≈ 2*∂wⁿ⁻⁹₂∂A
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A)
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A + ∂wⁿ⁻²⁰₃²∂A + ∂wⁿ⁻²⁰₃³∂A
-
+# ΔA, ΔB, NoTangent(), ΔP, Δobservables
 
 ∂A = zero(A)
 ∂K = zero(K[1])
@@ -915,9 +920,9 @@ zyggrad =   Zygote.gradient(
                     K2 = P_mid[1] * C' * invV[2]
                     u2 = K2 * innovation[2] + u_mid[1]
                     P2 = P_mid[1] - K2 * CP2
-                    u_mid2 = x * u2
+                    u_mid2 = A * u2
                     z2 = C * u_mid2
-                    P_mid2 = x * P2 * x' + B_prod
+                    P_mid2 = A * P2 * A' + x
 
                     CP3 = C * P_mid2
                     V3 = CP3 * C'
@@ -928,7 +933,7 @@ zyggrad =   Zygote.gradient(
                     # return -1/2*(logdet(V3) + innovation3' * invV[3] * innovation3)
                     return -1/2*(logdet(V3) + innovation3' * inv(V3) * innovation3)
                 end, 
-            A)[1]
+                B_prod)[1]
 
             zyggrad ≈ ∂A
             zyggrad - ∂A
