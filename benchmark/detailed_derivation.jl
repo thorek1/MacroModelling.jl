@@ -790,7 +790,7 @@ end
 
 # try again but with more elemental operations
 
-TT = 4
+TT = T
 
 ∂A = zero(A)
 ∂K = zero(K[1])
@@ -804,7 +804,7 @@ TT = 4
 
 for t in TT:-1:2
     # loglik += logdet(V[t]) + innovation[t]' * invV[t] * innovation[t]
-    # ∂V = invV[t]' - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
+    ∂V = invV[t]' - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
     # ∂V =  - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
     if t == 2
     #     ∂P += C' * ∂V * C
@@ -951,7 +951,7 @@ zyggrad =   Zygote.gradient(
         innovation3 = observables[:, 2] - z2
         K3 = P_mid2 * C' * inv(V3)
         u3 = K3 * innovation3 + u_mid2
-        P3 = P_mid2 - K[3] * CP[3]
+        P3 = P_mid2 - K3 * CP3
         # u_mid3 = x * (P_mid[2] * C' * inv(V[3]) * (observables[:, 2] - C * u_mid2) + u_mid2)
         # u_mid3 = x * (K[3] * (observables[:, 2] - C * u_mid[2]) + u_mid[2])
         u_mid3 = x * u3
@@ -969,11 +969,12 @@ zyggrad =   Zygote.gradient(
         # return -1/2*(logdet(V4) + innovation4' * inv(V4) * innovation4 + logdet(V3) + innovation3' * inv(V3) * innovation3)
         # return -1/2*(innovation4' * inv(V4) * innovation4)
         # return -1/2*(innovation[3]' * inv(V3) * innovation[3] + innovation[4]' * inv(V4) * innovation[4])
-        return -1/2*(innovation3' * inv(V[3]) * innovation3 + innovation4' * inv(V[4]) * innovation4)
+        # return -1/2*(innovation3' * inv(V[3]) * innovation3 + innovation4' * inv(V[4]) * innovation4)
         # return -1/2*(logdet(V4) + innovation[4]' * inv(V4) * innovation[4] + logdet(V3) + innovation[3]' * inv(V3) * innovation[3])
         # return -1/2*(innovation3' * inv(V[3]) * innovation3)
         # return -1/2*(innovation4' * inv(V[4]) * innovation4)
         # return -1/2*(innovation3' * inv(V3) * innovation3 + innovation4' * inv(V4) * innovation4)
+        return -1/2*(logdet(V4) + innovation3' * inv(V3) * innovation3 + logdet(V3) + innovation4' * inv(V4) * innovation4)
     end, 
 A)[1]
 
@@ -1153,7 +1154,7 @@ for t in 2:T
 end
 
 
-
+isapprox(fingrad, ∂A)
 
 isapprox(fingrad, zyggrad)
 
