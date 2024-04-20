@@ -254,6 +254,35 @@ wⁿ⁻⁴₁ = logdet(wⁿ⁻⁶₁)
 ∂wⁿ⁻³₂∂wⁿ⁻⁴₂ = ∂wⁿ⁻¹∂wⁿ⁻³₂
 ∂wⁿ⁻³₂∂wⁿ⁻⁵₂ = ∂wⁿ⁻¹∂wⁿ⁻³₂
 
+# branch wⁿ⁻⁵₂
+# wⁿ⁻⁵₂ = wⁿ⁻⁵₂¹ * wⁿ⁻⁵₂² = (innovation[3]' * invV[3]) * innovation[3]
+∂wⁿ⁻⁵₂∂wⁿ⁻⁵₂¹ = ∂wⁿ⁻³₂∂wⁿ⁻⁵₂ * innovation[3]'
+∂wⁿ⁻⁵₂∂wⁿ⁻⁵₂² = (innovation[3]' * invV[3])' * ∂wⁿ⁻³₂∂wⁿ⁻⁵₂ # ∂innovation
+
+# wⁿ⁻⁵₂¹ = wⁿ⁻⁵₂³ * wⁿ⁻⁵₂⁴ = innovation[3]' * invV[3]
+∂wⁿ⁻⁵₂¹∂wⁿ⁻⁵₂⁴ = innovation[3] * ∂wⁿ⁻⁵₂∂wⁿ⁻⁵₂¹
+∂wⁿ⁻⁵₂¹∂wⁿ⁻⁵₂³ = (∂wⁿ⁻⁵₂∂wⁿ⁻⁵₂¹ * invV[3]')' # ∂innovation
+
+∂wⁿ⁻⁵₂∂innovation = ∂wⁿ⁻⁵₂∂wⁿ⁻⁵₂² + ∂wⁿ⁻⁵₂¹∂wⁿ⁻⁵₂³
+
+A' * C' * -(invV[3]' * innovation[3] * ∂wⁿ⁻³₂∂wⁿ⁻⁵₂ + invV[3] * innovation[3] *  ∂wⁿ⁻³₂∂wⁿ⁻⁵₂')
+(invV[3]' + invV[3]) * innovation[3]
+# innovation[t] .= observables[:, t-1] - z[t-1]
+# z[t] .= C * u_mid[t]
+# u_mid[t] .= A * u[t]
+# u[t] .= K[t] * innovation[t] + u_mid[t-1]
+# K[t] .= P_mid[t-1] * C' * invV[t]
+∂innovation∂z = -∂wⁿ⁻⁵₂∂innovation
+∂z∂u_mid = C' * ∂innovation∂z
+∂u_mid∂u = A' * ∂z∂u_mid
+∂u∂innovation = K[3]' * ∂u_mid∂u
+∂u∂u_mid = ∂u_mid∂u
+∂u∂K = ∂u_mid∂u * innovation[3]'
+
+# wⁿ⁻⁵₂⁴ = inv(V[3]) = inv(wⁿ⁻⁵₂⁴)
+∂wⁿ⁻⁵₂⁴∂wⁿ⁻⁵₂⁴ = -invV[3]' * ∂wⁿ⁻⁵₂¹∂wⁿ⁻⁵₂⁴ * invV[3]'
+
+
 # branch wⁿ⁻⁴₂
 # wⁿ⁻⁴₂ = logdet(wⁿ⁻⁶₂)
 wⁿ⁻⁶₂ = C * P_mid[2] * C'#V[3]
@@ -760,7 +789,7 @@ end
 
 # try again but with more elemental operations
 
-TT = T
+TT = 3
 
 ∂A = zero(A)
 ∂K = zero(K[1])
@@ -768,24 +797,35 @@ TT = T
 ∂Vaccum = zero(V[1])
 ∂P = zero(PP)
 ∂P_mid = zero(PP)
+∂u = zero(u[1])
 
 for t in TT:-1:2
-    ∂V = invV[t]'
+    # loglik += logdet(V[t]) + innovation[t]' * invV[t] * innovation[t]
+    ∂V = invV[t]' - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
     if t == 2
     #     ∂P += C' * ∂V * C
     else
+        # innovation[t] .= observables[:, t-1] - z[t-1]
+        # z[t] .= C * u_mid[t]
+        # u_mid[t] .= A * u[t]
+        # innovation[t] .= observables[:, t-1] - C * A * u[t-1]
+        ∂u -= A' * C' * (invV[t]' + invV[t]) * innovation[t]
+        # V[t] .= C * P_mid[t-1] * C'
         ∂P_mid += C' * (∂V + ∂Vaccum) * C
-        # ∂A += 2 * ∂P_mid * A * P[t-1]'
-        ∂A += ∂P_mid * A * P[t-1]'
-        # ∂A += ((A * P[t-1])' * ∂P_mid)'
-        ∂A += ∂P_mid' * A * P[t-1]
+
+        # P_mid[t] .= A * P[t] * A' + B_prod
+        ∂A += ∂P_mid * A * P[t-1]' + ∂P_mid' * A * P[t-1]
+
         # if t == 3
             # ∂P += A' * ∂P_mid * A
             # ∂K -= ∂P_mid * CP[t-1]'
             # ∂P += ∂K * invV[t-1]'
         # else
+
+        # P[t] .= P_mid[t-1] - K[t] * C * P_mid[t-1]
         ∂P_mid = A' * ∂P_mid * A
-        # ∂K -= ∂P_mid * CP[t-1]'
+
+        # K[t] .= P_mid[t-1] * C' * invV[t]
         ∂P_mid -= C' * K[t-1]' * ∂P_mid + ∂P_mid * K[t-1] * C 
         # if t > 2
             # ∂Vaccum -= invV[t-1]' * (P_mid[t-2] * C')' * ∂P_mid * CP[t-1]' * invV[t-1]'
@@ -800,6 +840,7 @@ end
 ∂P *= -1/2
 ∂V *= -1/2
 ∂A *= -1/2
+∂u *= -1/2
 
 ∂A ≈ 2*∂wⁿ⁻⁹₂∂A
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A)
@@ -811,6 +852,17 @@ maximum(abs, ∂A - (2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻
 ∂A ≈ ∂z∂A
 
 
+zyggrad =   Zygote.gradient(
+                x -> begin
+                    u_mid2 = A * x
+                    z2 = C * u_mid2
+                    innovation3 = observables[:, 2] - z2
+                    
+                    return -1/2*(innovation3' * invV[3] * innovation3)
+                end, 
+            u[2])[1]
+
+            ∂u - zyggrad
 
 zyggrad =   Zygote.gradient(
                 x -> begin
@@ -861,8 +913,8 @@ zyggrad =   Zygote.gradient(
                     P_mid3 = x * P3 * x' + B_prod
                     CP4 = C * P_mid3
                     V4 = CP4 * C'
-                    # return -1/2*(logdet(V3))
-                    return -1/2*(logdet(V4) + logdet(V3))
+                    # return -1/2*(logdet(V3) + innovation[3]' * inv(V3) * innovation[3])
+                    return -1/2*(logdet(V4) + innovation[4]' * inv(V4) * innovation[4] + logdet(V3) + innovation[3]' * inv(V3) * innovation[3])
                 end, 
             A)[1]
 
@@ -890,7 +942,7 @@ for t in 2:T
     
     innovation[t] .= observables[:, t-1] - z[t-1]
     # if t == 4
-    loglik += log(Vdet)# + innovation[t]' * invV[t] * innovation[t]
+    loglik += log(Vdet) + innovation[t]' * invV[t] * innovation[t]
     # end
     K[t] .= P_mid[t-1] * C' * invV[t]
 
