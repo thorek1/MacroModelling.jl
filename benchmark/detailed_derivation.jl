@@ -644,8 +644,8 @@ zyggrad =   Zygote.gradient(
 
 
 
-isapprox(fingrad, ∂z∂A)
-fingrad - ∂z∂A
+# isapprox(fingrad, ∂z∂A)
+# fingrad - ∂z∂A
 
 ∂z∂A = ∂wⁿ⁻¹⁰₃∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A + ∂wⁿ⁻¹²₃²∂A
 
@@ -673,7 +673,7 @@ isapprox(∂z∂A, zyggrad)
 # write function to compute the gradient of the log likelihood for P_mid terms
 # forward pass
 
-PP = get_initial_covariance(Val(:theoretical), values, coordinates, dimensions)
+PP = get_initial_covariance(Val(:theoretical), vcat(vec(A), vec(collect(-𝐁))), coordinates, dimensions)
 observables = data_in_deviations
 
 T = size(observables, 2) + 1
@@ -760,7 +760,7 @@ end
 
 # try again but with more elemental operations
 
-TT = 5
+TT = T
 
 ∂A = zero(A)
 ∂K = zero(K[1])
@@ -777,7 +777,8 @@ for t in TT:-1:2
         ∂P_mid += C' * (∂V + ∂Vaccum) * C
         # ∂A += 2 * ∂P_mid * A * P[t-1]'
         ∂A += ∂P_mid * A * P[t-1]'
-        ∂A += ((A * P[t-1])' * ∂P_mid)'
+        # ∂A += ((A * P[t-1])' * ∂P_mid)'
+        ∂A += ∂P_mid' * A * P[t-1]
         # if t == 3
             # ∂P += A' * ∂P_mid * A
             # ∂K -= ∂P_mid * CP[t-1]'
@@ -788,7 +789,7 @@ for t in TT:-1:2
         ∂P_mid -= C' * K[t-1]' * ∂P_mid + ∂P_mid * K[t-1] * C 
         # if t > 2
             # ∂Vaccum -= invV[t-1]' * (P_mid[t-2] * C')' * ∂P_mid * CP[t-1]' * invV[t-1]'
-        ∂Vaccum -= invV[t-1]' * CP[t-1] * ∂P_mid * CP[t-1]' * invV[t-1]'
+        ∂Vaccum = -invV[t-1]' * CP[t-1] * ∂P_mid * CP[t-1]' * invV[t-1]'
         # end
         # ∂P_mid -= 2 * ∂P_mid * K[t-1] * C
             # ∂P_mid += A' * ∂P_mid * A
@@ -809,24 +810,6 @@ end
 maximum(abs, ∂A - (2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A + ∂wⁿ⁻²⁰₃²∂A + ∂wⁿ⁻²⁰₃³∂A))
 ∂A ≈ ∂z∂A
 
-
-zyggrad =   Zygote.gradient(
-                x -> begin
-                    P_mid2 = x * P[2] * x' + B_prod
-                    CP3 = C * P_mid2
-                    V3 = CP3 * C'
-                    K3 = P_mid2 * C' * inv(V3)
-                    P3 = P_mid2 - K3 * CP3
-
-                    P_mid3 = x * P3 * x' + B_prod
-                    CP4 = C * P_mid3
-                    V4 = CP4 * C'
-                    # return -1/2*(logdet(V3))
-                    return -1/2*(logdet(V4) + logdet(V3))
-                end, 
-            A)[1]
-
-isapprox(∂A, zyggrad)
 
 
 zyggrad =   Zygote.gradient(
@@ -853,6 +836,11 @@ zyggrad =   Zygote.gradient(
             A)[1]
 
 isapprox(∂A, zyggrad)
+isapprox(∂A, fingrad)
+
+isapprox(fingrad, ∂A)
+fingrad - ∂A
+isapprox(fingrad, zyggrad)
 ∂A - zyggrad
 
 (P[3]' * A' *                                              C' * -∂z∂z/ 2 * inv(V[4])' * C    )'
@@ -860,14 +848,36 @@ isapprox(∂A, zyggrad)
 
 
 
+
+
+zyggrad =   Zygote.gradient(
+                x -> begin
+                    P_mid2 = x * P[2] * x' + B_prod
+                    CP3 = C * P_mid2
+                    V3 = CP3 * C'
+                    K3 = P_mid2 * C' * inv(V3)
+                    P3 = P_mid2 - K3 * CP3
+
+                    P_mid3 = x * P3 * x' + B_prod
+                    CP4 = C * P_mid3
+                    V4 = CP4 * C'
+                    # return -1/2*(logdet(V3))
+                    return -1/2*(logdet(V4) + logdet(V3))
+                end, 
+            A)[1]
+
+isapprox(∂A, zyggrad)
+
+
 # ∂A ≈ ∂z∂A
+import FiniteDifferences
 
 fingrad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),
 x -> begin
 P_mid[1] = deepcopy(PP)
 P[1] = deepcopy(PP)
 loglik = 0.0
-for t in 2:4
+for t in 2:T
     CP[t] .= C * P_mid[t-1]
 
     V[t] .= CP[t] * C'
@@ -879,9 +889,9 @@ for t in 2:4
     invV[t] .= inv(luV)
     
     innovation[t] .= observables[:, t-1] - z[t-1]
-    if t == 4
+    # if t == 4
     loglik += log(Vdet)# + innovation[t]' * invV[t] * innovation[t]
-    end
+    # end
     K[t] .= P_mid[t-1] * C' * invV[t]
 
     u[t] .= K[t] * innovation[t] + u_mid[t-1]
@@ -896,6 +906,78 @@ for t in 2:4
 end
 return -1/2*loglik
 end, A)[1]
+
+
+
+PP = get_initial_covariance(Val(:theoretical), vcat(vec(A), vec(collect(-𝐁))), coordinates, dimensions)
+observables = data_in_deviations
+
+T = size(observables, 2) + 1
+
+u = [zeros(size(C,2)) for _ in 1:T]
+
+u_mid = deepcopy(u)
+
+z = [zeros(size(observables, 1)) for _ in 1:T]
+
+P_mid = [deepcopy(PP) for _ in 1:T]
+
+temp_N_N = similar(PP)
+
+P = deepcopy(P_mid)
+
+B_prod = 𝐁
+# Ct = collect(C')
+CP = [zero(C) for _ in 1:T]
+
+K = [zero(C') for _ in 1:T]
+
+cc = C * C'
+
+V = [zero(cc) for _ in 1:T]
+
+invV = [zero(cc) for _ in 1:T]
+
+V[1] += ℒ.I
+invV[1] = inv(V[1])
+
+innovation = deepcopy(z)
+
+# V[1] .= C * P[1] * C'
+
+loglik = (0.0)
+
+
+
+for t in 2:T
+    CP[t] .= C * P_mid[t-1]
+
+    V[t] .= CP[t] * C'
+
+    luV = ℒ.lu(V[t], check = false)
+
+    Vdet = ℒ.det(luV)
+    
+    invV[t] .= inv(luV)
+    
+    innovation[t] .= observables[:, t-1] - z[t-1]
+    
+    loglik += log(Vdet) + innovation[t]' * invV[t] * innovation[t]
+
+    K[t] .= P_mid[t-1] * C' * invV[t]
+
+    u[t] .= K[t] * innovation[t] + u_mid[t-1]
+    
+    P[t] .= P_mid[t-1] - K[t] * CP[t]
+
+    u_mid[t] .= A * u[t]
+
+    z[t] .= C * u_mid[t]
+
+    P_mid[t] .= A * P[t] * A' + B_prod
+end
+
+
 
 
 isapprox(fingrad, zyggrad)
