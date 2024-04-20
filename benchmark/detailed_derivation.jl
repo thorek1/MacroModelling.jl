@@ -809,7 +809,9 @@ for t in TT:-1:2
     if t == 2
     #     ∂P += C' * ∂V * C
     else
+        ∂P_mid += A' * ∂u_mid * innovation[t]' * invV[t]' * C
         ∂u_mid = A' * ∂u_mid - C' * K[t]' * A' * ∂u_mid
+
         # innovation[t] .= observables[:, t-1] - z[t-1]
         # z[t] .= C * u_mid[t]
         # u_mid[t] .= A * u[t]
@@ -820,7 +822,7 @@ for t in TT:-1:2
         ∂P_mid += C' * (∂V + ∂Vaccum) * C
 
         # P_mid[t] .= A * P[t] * A' + B_prod
-        # ∂A += ∂P_mid * A * P[t-1]' + ∂P_mid' * A * P[t-1]
+        ∂A += ∂P_mid * A * P[t-1]' + ∂P_mid' * A * P[t-1]
         ∂A += ∂u_mid * u[t-1]'
 
         # if t == 3
@@ -837,12 +839,12 @@ for t in TT:-1:2
         # K[t] .= P_mid[t-1] * C' * invV[t]
         ∂P_mid -= C' * K[t-1]' * ∂P_mid + ∂P_mid * K[t-1] * C 
 
-        ∂P_mid += A' * ∂u_mid * innovation[t]' * invV[t]' * C
 
+        ∂Vaccum = -invV[t-1]' * CP[t-1] * A' * ∂u_mid * innovation[t-1]' * invV[t-1]'
 
         # if t > 2
             # ∂Vaccum -= invV[t-1]' * (P_mid[t-2] * C')' * ∂P_mid * CP[t-1]' * invV[t-1]'
-        ∂Vaccum = -invV[t-1]' * CP[t-1] * ∂P_mid * CP[t-1]' * invV[t-1]'
+        ∂Vaccum -= invV[t-1]' * CP[t-1] * ∂P_mid * CP[t-1]' * invV[t-1]'
         # end
         # ∂P_mid -= 2 * ∂P_mid * K[t-1] * C
             # ∂P_mid += A' * ∂P_mid * A
@@ -876,13 +878,16 @@ t = 4
 ∂u_mid -= C' * (invV[t]' + invV[t]) * innovation[t]
 ∂A += ∂u_mid * u[t-1]'
 
+∂Vaccum = -invV[t-1]' * CP[t-1] * A' * ∂u_mid * innovation[t-1]' * invV[t-1]'
+
 t = 3
+∂P_mid += A' * ∂u_mid * innovation[t]' * invV[t]' * C
+∂P_mid += C' * (∂V + ∂Vaccum) * C
 ∂u_mid = A' * ∂u_mid - C' * K[t]' * A' * ∂u_mid
 ∂u_mid -= C' * (invV[t]' + invV[t]) * innovation[t]
 ∂A += ∂u_mid * u[t-1]'
 
-# ∂P_mid += A' * ∂u_mid * innovation[t]' * invV[t]' * C
-# ∂Vaccum = -invV[t-1]' * CP[t-1] * ∂P_mid * CP[t-1]' * invV[t-1]'
+∂A += ∂P_mid * A * P[t-1]' + ∂P_mid' * A * P[t-1]
 
 ∂A *= -1/2
 
@@ -934,9 +939,10 @@ zyggrad =   Zygote.gradient(
     x -> begin
         CP2 = C * P_mid[1]
         K2 = P_mid[1] * C' * invV[2]
-        # u2 = K2 * innovation[2] + u_mid[1]
+        u2 = K2 * innovation[2] + u_mid[1]
         P2 = P_mid[1] - K2 * CP2
-        u_mid2 = x * (K2 * innovation[2] + u_mid[1])
+        # u_mid2 = x * (K2 * innovation[2] + u_mid[1])
+        u_mid2 = x * u2
         z2 = C * u_mid2
         P_mid2 = x * P2 * x' + B_prod
 
@@ -944,28 +950,30 @@ zyggrad =   Zygote.gradient(
         V3 = CP3 * C'
         innovation3 = observables[:, 2] - z2
         K3 = P_mid2 * C' * inv(V3)
-        # u3 = K3 * innovation3 + u_mid2
-        # P3 = P_mid2 - K3 * CP3
-        u_mid3 = x * (P_mid[2] * C' * inv(V[3]) * (observables[:, 2] - C * u_mid2) + u_mid2)
+        u3 = K3 * innovation3 + u_mid2
+        P3 = P_mid2 - K[3] * CP[3]
+        # u_mid3 = x * (P_mid[2] * C' * inv(V[3]) * (observables[:, 2] - C * u_mid2) + u_mid2)
         # u_mid3 = x * (K[3] * (observables[:, 2] - C * u_mid[2]) + u_mid[2])
-        # u_mid3 = x * u3
-        # z3 = C * u_mid3
-        # P_mid3 = x * P3 * x' + B_prod
+        u_mid3 = x * u3
+        z3 = C * u_mid3
+        P_mid3 = x * P3 * x' + B_prod
 
-        # CP4 = C * P_mid3
-        # V4 = CP4 * C'
-        # innovation4 = observables[:, 3] - z3
-        innovation4 = observables[:, 3] - C * u_mid3
+        CP4 = C * P_mid3
+        V4 = CP4 * C'
+        innovation4 = observables[:, 3] - z3
+        # innovation4 = observables[:, 3] - C * u_mid3
 
         # return -1/2*(innovation[3]' * inv(V3) * innovation[3])
         # return -1/2*(innovation3' * inv(V3) * innovation3)
         # return -1/2*(logdet(V3) + innovation3' * invV[3] * innovation3)
         # return -1/2*(logdet(V4) + innovation4' * inv(V4) * innovation4 + logdet(V3) + innovation3' * inv(V3) * innovation3)
         # return -1/2*(innovation4' * inv(V4) * innovation4)
+        # return -1/2*(innovation[3]' * inv(V3) * innovation[3] + innovation[4]' * inv(V4) * innovation[4])
+        return -1/2*(innovation3' * inv(V[3]) * innovation3 + innovation4' * inv(V[4]) * innovation4)
         # return -1/2*(logdet(V4) + innovation[4]' * inv(V4) * innovation[4] + logdet(V3) + innovation[3]' * inv(V3) * innovation[3])
         # return -1/2*(innovation3' * inv(V[3]) * innovation3)
         # return -1/2*(innovation4' * inv(V[4]) * innovation4)
-        return -1/2*(innovation3' * inv(V[3]) * innovation3 + innovation4' * inv(V[4]) * innovation4)
+        # return -1/2*(innovation3' * inv(V3) * innovation3 + innovation4' * inv(V4) * innovation4)
     end, 
 A)[1]
 
@@ -973,6 +981,8 @@ zyggrad
 zyggrad ≈ ∂A
 
 zyggrad - ∂A
+
+k3effect = zyggrad - ∂A
 
 
 
