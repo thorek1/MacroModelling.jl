@@ -97,6 +97,20 @@ parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy,
 get_loglikelihood(𝓂, data, parameters_combined, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal) # -1082.8088568705207
 #old order -1087.2659101980191
 
+@benchmark get_loglikelihood(𝓂, data, parameters_combined, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal) 
+
+# BenchmarkTools.Trial: 1659 samples with 1 evaluation.
+#  Range (min … max):  1.540 ms … 54.966 ms  ┊ GC (min … max): 0.00% … 0.00%
+#  Time  (median):     1.922 ms              ┊ GC (median):    0.00%
+#  Time  (mean ± σ):   3.009 ms ±  3.229 ms  ┊ GC (mean ± σ):  1.16% ± 1.95%
+
+#   █▂                                                          
+#   ██▄▃▃▃▃▃▄▅▃▃▂▂▂▂▂▂▂▂▂▁▂▁▂▂▂▁▂▁▂▁▂▁▂▁▁▂▁▁▁▁▁▁▁▁▂▂▁▁▁▂▁▁▂▂▂▂ ▂
+#   1.54 ms        Histogram: frequency by time        18.3 ms <
+
+#  Memory estimate: 838.58 KiB, allocs estimate: 1557.
+@profview for i in 1:100 get_loglikelihood(𝓂, data, parameters_combined, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal) end
+
 
 import Zygote
 import ForwardDiff
