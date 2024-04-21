@@ -97,7 +97,7 @@ parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy,
 get_loglikelihood(𝓂, data, parameters_combined, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal) # -1082.8088568705207
 #old order -1087.2659101980191
 
-@benchmark get_loglikelihood(𝓂, data, parameters_combined, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal) 
+# @benchmark get_loglikelihood(𝓂, data, parameters_combined, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal) 
 
 # BenchmarkTools.Trial: 2477 samples with 1 evaluation.
 #  Range (min … max):  1.902 ms …   7.331 ms  ┊ GC (min … max): 0.00% … 72.69%
@@ -110,7 +110,7 @@ get_loglikelihood(𝓂, data, parameters_combined, verbose = false, presample_pe
 
 #  Memory estimate: 791.25 KiB, allocs estimate: 1196.
 
-@profview for i in 1:1000 get_loglikelihood(𝓂, data, parameters_combined, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal) end
+# @profview for i in 1:1000 get_loglikelihood(𝓂, data, parameters_combined, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal) end
 
 
 import Zygote
@@ -129,16 +129,16 @@ forw_grad ≈ back_grad
 forw_grad ≈ fini_grad
 
 @benchmark Zygote.gradient(x -> get_loglikelihood(𝓂, data, x, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal), parameters_combined)[1]
-# BenchmarkTools.Trial: 183 samples with 1 evaluation.
-#  Range (min … max):  24.016 ms … 136.318 ms  ┊ GC (min … max): 0.00% … 79.62%
-#  Time  (median):     25.244 ms               ┊ GC (median):    0.00%
-#  Time  (mean ± σ):   27.383 ms ±  10.609 ms  ┊ GC (mean ± σ):  6.74% ±  9.77%
+# BenchmarkTools.Trial: 184 samples with 1 evaluation.
+#  Range (min … max):  23.716 ms … 67.082 ms  ┊ GC (min … max): 0.00% … 0.00%
+#  Time  (median):     25.089 ms              ┊ GC (median):    0.00%
+#  Time  (mean ± σ):   27.186 ms ±  5.474 ms  ┊ GC (mean ± σ):  2.86% ± 5.45%
 
-#    █▃                                                           
-#   ▇██▆▃▃▃▄▅▄▄▃▃▂▃▃▂▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂ ▂
-#   24 ms           Histogram: frequency by time         55.7 ms <
+#    ▂██▄                                                        
+#   ▄█████▄▅▃▃▃▁▃▂▄▃▄▂▄▄▃▃▃▂▂▂▁▃▃▁▁▂▁▂▂▁▁▁▂▁▂▂▁▁▂▁▁▂▂▁▂▁▂▂▁▁▁▁▂ ▂
+#   23.7 ms         Histogram: frequency by time        41.5 ms <
 
-#  Memory estimate: 40.26 MiB, allocs estimate: 24370.
+#  Memory estimate: 39.95 MiB, allocs estimate: 23820.
 
 back_grad = Zygote.withgradient(x -> get_loglikelihood(𝓂, data, x, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal), parameters_combined)
 

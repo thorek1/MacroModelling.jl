@@ -7773,7 +7773,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         # invF = inv(luF) ###
 
         if t > presample_periods
-            TS.ldiv!(ztmp,luF, z)
+            TS.ldiv!(ztmp, luF, z)
             loglik += log(Fdet) + ℒ.dot(z', ztmp) ###
             # loglik += log(Fdet) + z' * invF * z###
             # loglik += log(Fdet) + v' * invF * v###
@@ -7911,7 +7911,7 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
         mul!(K[t], PCtmp, invF[t])
 
         # P[t] .= P̄[t-1] - K[t] * CP[t]
-        mul!(P[t], -K[t], CP[t])
+        mul!(P[t], K[t], CP[t], -1, 0)
         P[t] .+= P̄
     
         # P̄[t] .= A * P[t] * A' + 𝐁
@@ -7943,6 +7943,7 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
     ∂𝐁 = zero(𝐁)
     ∂data_in_deviations = zero(data_in_deviations)
     vtmp = zero(v[1])
+    Ptmp = zero(P[1])
 
     # pullback
     function kalman_pullback(∂llh)
@@ -8000,7 +8001,7 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
             # step to next iteration
             # ∂ū = A' * ∂ū - C' * K[t]' * A' * ∂ū
             mul!(u[1], A', ∂ū) # using u[1] as temporary storage
-            mul!(v[1], K[t]', u[1]) # using u[1] as temporary storage
+            mul!(v[1], K[t]', u[1]) # using v[1] as temporary storage
             mul!(u[1], C', v[1], -1, 1)
             copy!(∂ū, u[1])
         
@@ -8015,7 +8016,10 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
             # v[t] .= data_in_deviations[:, t-1] .- z
             # z[t] .= C * ū[t]
             # ∂data_in_deviations[:,t-1] = -C * ∂ū
-            mul!(∂data_in_deviations[:,t-1], C, ∂ū, -1, 0)
+            mul!(vtmp, C, ∂ū)
+            ℒ.rmul!(vtmp, -1)
+            ∂data_in_deviations[:,t-1] .= vtmp
+            # mul!(∂data_in_deviations[:,t-1], C, ∂ū, -1, 0) # cannot assign to columns in matrix, must be whole matrix 
         
             if t > 2
                 # ∂ū∂A
@@ -8027,10 +8031,10 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
                 # P̄[t] .= A * P[t] * A' + 𝐁
                 # ∂A += ∂P * A * P[t-1]' + ∂P' * A * P[t-1]
                 mul!(P[1], A, P[t-1]')
-                mul!(∂A ,∂P', P[1], 1, 1)
-        
+                mul!(Ptmp ,∂P, P[1])
                 mul!(P[1], A, P[t-1])
-                mul!(∂A ,∂P, P[1], 1, 1)
+                mul!(Ptmp ,∂P', P[1], 1, 1)
+                ℒ.axpy!(1, Ptmp, ∂A)
         
                 # ∂𝐁 += ∂P
                 ℒ.axpy!(1, ∂P, ∂𝐁)
