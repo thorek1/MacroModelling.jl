@@ -808,9 +808,12 @@ for t in TT:-1:2
     # loglik += logdet(V[t]) + innovation[t]' * invV[t] * innovation[t]
     ∂V = invV[t]' - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
     # ∂V =  - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
-    ∂observables[:,t-1] = (invV[t]' + invV[t]) * innovation[t]
+    # ∂observables[:,t-1] = (invV[t]' + invV[t]) * innovation[t]
     if t == 2
     #     ∂P += C' * ∂V * C
+        ∂u_mid = A' * ∂u_mid - C' * K[t]' * A' * ∂u_mid
+        ∂u_mid -= C' * (invV[t]' + invV[t]) * innovation[t]
+        ∂observables[:,t-1] = -C * ∂u_mid
     else
         ∂P_mid += A' * ∂u_mid * innovation[t]' * invV[t]' * C
         ∂u_mid = A' * ∂u_mid - C' * K[t]' * A' * ∂u_mid
@@ -819,7 +822,9 @@ for t in TT:-1:2
         # z[t] .= C * u_mid[t]
         # u_mid[t] .= A * u[t]
         # innovation[t] .= observables[:, t-1] - C * A * u[t-1]
-        ∂u_mid -= C' * ∂observables[:,t-1]
+        # ∂u_mid -= C' * ∂observables[:,t-1]
+        ∂u_mid -= C' * (invV[t]' + invV[t]) * innovation[t]
+        ∂observables[:,t-1] = -C * ∂u_mid
         # ∂u -= A' * C' * (invV[t]' + invV[t]) * innovation[t]
         # V[t] .= C * P_mid[t-1] * C'
         ∂P_mid += C' * (∂V + ∂Vaccum) * C
@@ -883,6 +888,114 @@ A * K[t] * obs
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A + ∂wⁿ⁻²⁰₃²∂A + ∂wⁿ⁻²⁰₃³∂A
+
+# figure out obs
+# attempt with u_mid
+∂u_mid = zero(u[1])
+
+t = 4
+obs3 = (invV[t]' + invV[t]) * innovation[t]
+
+∂u_mid = A' * ∂u_mid - C' * K[t]' * A' * ∂u_mid
+
+∂u_mid -= C' * obs3
+
+t = 3
+obs2 = (invV[t]' + invV[t]) * innovation[t]
+
+∂u_mid = A' * ∂u_mid - C' * K[t]' * A' * ∂u_mid
+
+∂u_mid -= C' * obs2
+
+# obs2 -= K[t]' * A' * C' * obs3
+obs2 = -C * ∂u_mid
+t = 2
+obs1 = (invV[t]' + invV[t]) * innovation[t]
+
+∂u_mid = A' * ∂u_mid - C' * K[t]' * A' * ∂u_mid
+
+∂u_mid -= C' * obs1
+
+obs1 = -C * ∂u_mid
+
+# obs1 -= K[t]' * A' * A' * C' * obs3 - K[t]' * A' * C' * K[t+1]' * A' * C' * obs3 + K[t]' * A' * C' * (invV[t+1]' + invV[t+1]) * innovation[t+1]
+# obs1 += 
+# - K[t]' * A' * A' * C' * obs3 
+# + K[t]' * A' * C' * K[t+1]' * A' * C' * obs3 
+# - K[t]' * A' * C' * (invV[t+1]' + invV[t+1]) * innovation[t+1]
+
+
+obs1 /= -2
+obs2 /= -2
+obs3 /= -2
+
+hcat(obs1, obs2, obs3)
+
+
+
+
+
+# this works
+t = 4
+obs3 = (invV[t]' + invV[t]) * innovation[t]
+
+t = 3
+obs2 = (invV[t]' + invV[t]) * innovation[t]
+
+obs2 -= K[t]' * A' * C' * obs3
+
+t = 2
+obs1 = (invV[t]' + invV[t]) * innovation[t]
+
+# obs1 -= K[t]' * A' * A' * C' * obs3 - K[t]' * A' * C' * K[t+1]' * A' * C' * obs3 + K[t]' * A' * C' * (invV[t+1]' + invV[t+1]) * innovation[t+1]
+obs1 += 
+- K[t]' * A' * A' * C' * obs3 
++ K[t]' * A' * C' * K[t+1]' * A' * C' * obs3 
+- K[t]' * A' * C' * (invV[t+1]' + invV[t+1]) * innovation[t+1]
+
+
+obs1 /= -2
+obs2 /= -2
+obs3 /= -2
+
+hcat(obs1, obs2, obs3)
+
+zyggrad = Zygote.gradient(
+    observables -> begin
+        CP2 = C * P_mid[1]
+        K2 = P_mid[1] * C' * invV[2]
+        innovation2 = observables[:, 1] - z[1]
+        u2 = K2 * innovation2 + u_mid[1]
+        P2 = P_mid[1] - K2 * CP2
+        u_mid2 = A * u2
+        z2 = C * u_mid2
+        P_mid2 = A * P2 * A' + B_prod
+
+        CP3 = C * P_mid2
+        V3 = CP3 * C'
+        innovation3 = observables[:, 2] - z2
+        K3 = P_mid2 * C' * inv(V3)
+        u3 = K3 * innovation3 + u_mid2
+        P3 = P_mid2 - K3 * CP3
+        u_mid3 = A * u3
+        z3 = C * u_mid3
+        P_mid3 = A * P3 * A' + B_prod
+
+        CP4 = C * P_mid3
+        V4 = CP4 * C'
+        innovation4 = observables[:, 3] - z3
+
+        # return -1/2*(innovation2' * inv(V[2]) * innovation2)
+        # return -1/2*(innovation3' * inv(V[3]) * innovation3)
+        # return -1/2*(innovation2' * inv(V[2]) * innovation2 + innovation3' * inv(V[3]) * innovation3)
+        # return -1/2*(innovation4' * inv(V[4]) * innovation4)
+        return -1/2*(innovation2' * inv(V[2]) * innovation2 + innovation3' * inv(V[3]) * innovation3 + innovation4' * inv(V[4]) * innovation4)
+    end, 
+    observables[:,1:3])[1]
+
+forgrad_data_in_deviations
+
+
 
 ∂A = zero(A)
 ∂K = zero(K[1])
