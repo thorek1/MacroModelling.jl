@@ -25,7 +25,7 @@ import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse
 import LinearAlgebra as ℒ
 import LinearAlgebra: mul!
 # import Octavian: matmul!
-import TriangularSolve as TS
+# import TriangularSolve as TS
 # import ComponentArrays as 𝒞
 import Combinatorics: combinations
 import BlockTriangularForm
@@ -7757,7 +7757,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         mul!(F, Ctmp, C')
         # F = C * P * C'
 
-        luF = RF.lu(F, check = false) ###
+        luF = ℒ.lu(F, check = false) ###
 
         if !ℒ.issuccess(luF)
             return -Inf
@@ -7773,7 +7773,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         # invF = inv(luF) ###
 
         if t > presample_periods
-            TS.ldiv!(ztmp, luF, z)
+            ℒ.ldiv!(ztmp, luF, z)
             loglik += log(Fdet) + ℒ.dot(z', ztmp) ###
             # loglik += log(Fdet) + z' * invF * z###
             # loglik += log(Fdet) + v' * invF * v###
@@ -7782,7 +7782,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         # mul!(Ktmp, P, C')
         # mul!(K, Ktmp, invF)
         mul!(K, P, C')
-        TS.rdiv!(K, luF)
+        ℒ.rdiv!(K, luF)
         # K = P * Ct / luF
         # K = P * C' * invF
 
@@ -7895,7 +7895,7 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
         # F[t] .= CP[t] * C'
         mul!(F, CP[t], C')
     
-        luF = RF.lu(F, check = false)
+        luF = ℒ.lu(F, check = false)
     
         Fdet = ℒ.det(luF)
         
