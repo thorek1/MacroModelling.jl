@@ -102,14 +102,20 @@ import Zygote
 import ForwardDiff
 import FiniteDifferences
 
-fini_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1), x -> get_loglikelihood(𝓂, data, x, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal), parameters_combined)[1]
-
 back_grad = Zygote.gradient(x -> get_loglikelihood(𝓂, data, x, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal), parameters_combined)[1]
 
+fini_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1), x -> get_loglikelihood(𝓂, data, x, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal), parameters_combined)[1]
+
+fini_grad ≈ back_grad
 
 forw_grad = ForwardDiff.gradient(x -> get_loglikelihood(𝓂, data, x, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal), parameters_combined)
 
+forw_grad ≈ back_grad
+forw_grad ≈ fini_grad
+
 @benchmark Zygote.gradient(x -> get_loglikelihood(𝓂, data, x, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal), parameters_combined)[1]
+
+@profview for i in 1:100 Zygote.gradient(x -> get_loglikelihood(𝓂, data, x, verbose = false, presample_periods = 4, filter = fltr, algorithm = algo, initial_covariance = :diagonal), parameters_combined)[1] end
 
 import LinearAlgebra: mul!, transpose!, rmul!, logdet
 import LinearAlgebra as ℒ

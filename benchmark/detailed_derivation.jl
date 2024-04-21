@@ -275,7 +275,7 @@ A' * C' * -(invV[3]' * innovation[3] * ∂wⁿ⁻³₂∂wⁿ⁻⁵₂ + invV[3]
 ∂innovation∂z = -∂wⁿ⁻⁵₂∂innovation
 ∂z∂u_mid = C' * ∂innovation∂z
 ∂u_mid∂u = A' * ∂z∂u_mid
-∂u_mid∂A = ∂z∂u_mid * u[t]'
+# ∂u_mid∂A = ∂z∂u_mid * u[t]'
 ∂u∂innovation = K[3]' * ∂u_mid∂u
 ∂u∂u_mid = ∂u_mid∂u
 ∂u∂K = ∂u_mid∂u * innovation[3]'
@@ -790,8 +790,8 @@ end
 
 # try again but with more elemental operations
 
-TT = 3
-
+TT = 4
+presample_periods = 3
 ∂A = zero(A)
 ∂K = zero(K[1])
 ∂V = zero(V[1])
@@ -799,20 +799,28 @@ TT = 3
 ∂P = zero(PP)
 ∂u = zero(u[1])
 ∂u_mid = zero(u[1])
-∂u_mid_accum = zero(u[1])
+# ∂u_mid∂innovation = zero(u[1])
 ∂B_prod = zero(B_prod)
 ∂observables = zero(observables)
 
 for t in TT:-1:2
     # loglik += logdet(V[t]) + innovation[t]' * invV[t] * innovation[t]
-    ∂V = invV[t]' - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
+    if t > presample_periods
+    #     ∂V = invV[t]' - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
+    #     # ∂Vaccum *= 0
+    # end
+        ∂u_mid∂innovation = C' * (invV[t]' + invV[t]) * innovation[t]
+    else
+        ∂u_mid∂innovation = zero(u[1])
+        # ∂P += A' * ∂u_mid * innovation[t]' * invV[t]' * C
+    end
     # ∂V =  - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
     # ∂observables[:,t-1] = (invV[t]' + invV[t]) * innovation[t]
     if t == 2
         ∂P += A' * ∂u_mid * innovation[t]' * invV[t]' * C
         ∂P += C' * (∂V + ∂Vaccum) * C
         ∂u_mid = A' * ∂u_mid - C' * K[t]' * A' * ∂u_mid
-        ∂u_mid -= C' * (invV[t]' + invV[t]) * innovation[t]
+        ∂u_mid -= ∂u_mid∂innovation
         ∂observables[:,t-1] = -C * ∂u_mid
     else
         ∂P += A' * ∂u_mid * innovation[t]' * invV[t]' * C
@@ -820,12 +828,11 @@ for t in TT:-1:2
 
         # innovation[t] .= observables[:, t-1] - z[t-1]
         # z[t] .= C * u_mid[t]
+        ∂u_mid -= ∂u_mid∂innovation
+        ∂observables[:,t-1] = -C * ∂u_mid
         # u_mid[t] .= A * u[t]
         # innovation[t] .= observables[:, t-1] - C * A * u[t-1]
-        # ∂u_mid -= C' * ∂observables[:,t-1]
-        ∂u_mid -= C' * (invV[t]' + invV[t]) * innovation[t]
-        ∂observables[:,t-1] = -C * ∂u_mid
-        # ∂u -= A' * C' * (invV[t]' + invV[t]) * innovation[t]
+
         # V[t] .= C * P_mid[t-1] * C'
         ∂P += C' * (∂V + ∂Vaccum) * C
 
@@ -865,13 +872,15 @@ end
 ∂B_prod *= -1/2
 ∂observables *= -1/2
 
+zyggrad ≈ ∂P
+zyggrad - ∂P
 # ∂B_prod ≈ zyggrad
 # ∂observables ≈ fingrad
 
-∂P += ∂P_mid
-forgrad_P ≈ ∂P
+# ∂P += ∂P_mid
+# forgrad_P ≈ ∂P
 
-∂observables - fingrad
+# ∂observables - fingrad
 
 # ΔA, ΔB, NoTangent(), ΔP, Δobservables
 
@@ -919,13 +928,16 @@ zyggrad = Zygote.gradient(
         V4 = CP4 * C'
         innovation4 = observables[:, 3] - z3
 
-        # return -1/2*(logdet(V2) + innovation2' * inv(V2) * innovation2)
-        # return -1/2*(logdet(V3) + innovation3' * inv(V3) * innovation3)
-        return -1/2*(logdet(V2) + innovation2' * inv(V2) * innovation2 + logdet(V3) + innovation3' * inv(V3) * innovation3)
-        # return -1/2*(logdet(V4) + innovation4' * inv(V4) * innovation4)
+        # return -1/2*(logdet(V[2]) + innovation2' * inv(V[2]) * innovation2)
+        # return -1/2*(logdet(V[3]) + innovation3' * inv(V[3]) * innovation3)
+        # return -1/2*(logdet(V2) + innovation2' * inv(V2) * innovation2 + logdet(V3) + innovation3' * inv(V3) * innovation3)
+        return -1/2*(logdet(V[4]) + innovation4' * inv(V[4]) * innovation4)
         # return -1/2*(logdet(V4) + innovation4' * inv(V4) * innovation4 + logdet(V3) + innovation3' * inv(V3) * innovation3)
     end, 
     PP)[1]
+
+    zyggrad ≈ ∂P
+    zyggrad - ∂P
 
 
 
@@ -940,29 +952,80 @@ zyggrad = Zygote.gradient(
 ∂u_mid_accum = zero(u[1])
 ∂B_prod = zero(B_prod)
 ∂observables = zero(observables)
-    
-t = 3
 
-∂V = invV[t]' - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
+# t = 5
 
-∂P_mid += A' * ∂u_mid * innovation[t]' * invV[t]' * C
+# ∂P += A' * ∂u_mid * innovation[t]' * invV[t]' * C
+# ∂u_mid = A' * ∂u_mid - C' * K[t]' * A' * ∂u_mid
+
+# ∂u_mid -= C' * (invV[t]' + invV[t]) * innovation[t]
+# ∂observables[:,t-1] = -C * ∂u_mid
+
+# ∂P += C' * (∂V + ∂Vaccum) * C
+
+# ∂A += ∂P * A * P[t-1]' + ∂P' * A * P[t-1]
+# ∂A += ∂u_mid * u[t-1]'
+# ∂B_prod += ∂P
+
+# ∂P = A' * ∂P * A
+# ∂P -= C' * K[t-1]' * ∂P + ∂P * K[t-1] * C 
+
+# ∂Vaccum = -invV[t-1]' * CP[t-1] * A' * ∂u_mid * innovation[t-1]' * invV[t-1]'
+# ∂Vaccum -= invV[t-1]' * CP[t-1] * ∂P * CP[t-1]' * invV[t-1]'
+
+t = 4
+
+∂P += A' * ∂u_mid * innovation[t]' * invV[t]' * C
 ∂u_mid = A' * ∂u_mid - C' * K[t]' * A' * ∂u_mid
 
 ∂u_mid -= C' * (invV[t]' + invV[t]) * innovation[t]
+∂observables[:,t-1] = -C * ∂u_mid
 
-∂P_mid += C' * (∂V + ∂Vaccum) * C
+∂P += C' * (∂V + ∂Vaccum) * C
 
-∂P_mid = A' * ∂P_mid * A
+∂A += ∂P * A * P[t-1]' + ∂P' * A * P[t-1]
+∂A += ∂u_mid * u[t-1]'
+∂B_prod += ∂P
 
-∂P_mid -= C' * K[t-1]' * ∂P_mid + ∂P_mid * K[t-1] * C 
+∂P = A' * ∂P * A
+∂P -= C' * K[t-1]' * ∂P + ∂P * K[t-1] * C 
 
 ∂Vaccum = -invV[t-1]' * CP[t-1] * A' * ∂u_mid * innovation[t-1]' * invV[t-1]'
+∂Vaccum -= invV[t-1]' * CP[t-1] * ∂P * CP[t-1]' * invV[t-1]'
 
-∂Vaccum -= invV[t-1]' * CP[t-1] * ∂P_mid * CP[t-1]' * invV[t-1]'
+t = 3
 
+∂P += A' * ∂u_mid * innovation[t]' * invV[t]' * C
+∂u_mid = A' * ∂u_mid - C' * K[t]' * A' * ∂u_mid
 
-zyggrad ≈ ∂P_mid/-2
+# ∂u_mid -= ∂u_mid∂innovation
+∂observables[:,t-1] = -C * ∂u_mid
+
+∂P += C' * (∂V + ∂Vaccum) * C
+
+∂A += ∂P * A * P[t-1]' + ∂P' * A * P[t-1]
+∂A += ∂u_mid * u[t-1]'
+∂B_prod += ∂P
+
+∂P = A' * ∂P * A
+∂P -= C' * K[t-1]' * ∂P + ∂P * K[t-1] * C 
+
+∂Vaccum = -invV[t-1]' * CP[t-1] * A' * ∂u_mid * innovation[t-1]' * invV[t-1]'
+∂Vaccum -= invV[t-1]' * CP[t-1] * ∂P * CP[t-1]' * invV[t-1]'
+
 t = 2
+
+∂P += A' * ∂u_mid * innovation[t]' * invV[t]' * C
+∂P += C' * (∂V + ∂Vaccum) * C
+∂u_mid = A' * ∂u_mid - C' * K[t]' * A' * ∂u_mid
+# ∂u_mid -= ∂u_mid∂innovation
+∂observables[:,t-1] = -C * ∂u_mid
+
+
+∂P/= -2
+
+zyggrad ≈ ∂P
+
 
 ∂V = invV[t]' - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
 ∂P += C' * ∂V * C
