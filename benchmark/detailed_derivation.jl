@@ -790,7 +790,7 @@ end
 
 # try again but with more elemental operations
 
-TT = 3
+TT = T
 
 ∂A = zero(A)
 ∂K = zero(K[1])
@@ -802,11 +802,13 @@ TT = 3
 ∂u_mid = zero(u[1])
 ∂u_mid_accum = zero(u[1])
 ∂B_prod = zero(B_prod)
+∂observables = zero(observables)
 
 for t in TT:-1:2
     # loglik += logdet(V[t]) + innovation[t]' * invV[t] * innovation[t]
     ∂V = invV[t]' - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
     # ∂V =  - invV[t]' * innovation[t] * innovation[t]' * invV[t]'
+    ∂observables[:,t-1] = (invV[t]' + invV[t]) * innovation[t]
     if t == 2
     #     ∂P += C' * ∂V * C
     else
@@ -817,7 +819,7 @@ for t in TT:-1:2
         # z[t] .= C * u_mid[t]
         # u_mid[t] .= A * u[t]
         # innovation[t] .= observables[:, t-1] - C * A * u[t-1]
-        ∂u_mid -= C' * (invV[t]' + invV[t]) * innovation[t]
+        ∂u_mid -= C' * ∂observables[:,t-1]
         # ∂u -= A' * C' * (invV[t]' + invV[t]) * innovation[t]
         # V[t] .= C * P_mid[t-1] * C'
         ∂P_mid += C' * (∂V + ∂Vaccum) * C
@@ -825,7 +827,7 @@ for t in TT:-1:2
         # P_mid[t] .= A * P[t] * A' + B_prod
         ∂A += ∂P_mid * A * P[t-1]' + ∂P_mid' * A * P[t-1]
         ∂A += ∂u_mid * u[t-1]'
-        ∂B_prod = ∂P_mid
+        ∂B_prod += ∂P_mid
         # if t == 3
             # ∂P += A' * ∂P_mid * A
             # ∂K -= ∂P_mid * CP[t-1]'
@@ -858,16 +860,29 @@ end
 ∂A *= -1/2
 ∂u *= -1/2
 ∂B_prod *= -1/2
-
+∂observables *= -1/2
 
 ∂B_prod ≈ zyggrad
+∂observables ≈ fingrad
+
+∂observables - fingrad
+
+# ΔA, ΔB, NoTangent(), ΔP, Δobservables
+
+t = T
+obs = (invV[t]' + invV[t]) * innovation[t]
+
+
+A * K[t] * obs
+-(K[t-1])' * ∂u_mid + (invV[t-1]' + invV[t-1]) * innovation[t-1]
+
+
 
 ∂A ≈ 2*∂wⁿ⁻⁹₂∂A
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A)
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A
 ∂A ≈ 2*(∂wⁿ⁻⁹₂∂A + ∂wⁿ⁻⁹₃∂A + ∂wⁿ⁻¹²₃¹∂A) + ∂wⁿ⁻¹⁶₃²∂A + ∂wⁿ⁻¹⁶₃³∂A + ∂wⁿ⁻¹⁵₃²∂A + ∂wⁿ⁻¹⁵₃³∂A + ∂wⁿ⁻²⁰₃²∂A + ∂wⁿ⁻²⁰₃³∂A
-# ΔA, ΔB, NoTangent(), ΔP, Δobservables
 
 ∂A = zero(A)
 ∂K = zero(K[1])
@@ -947,9 +962,9 @@ zyggrad =   Zygote.gradient(
         u2 = K2 * innovation[2] + u_mid[1]
         P2 = P_mid[1] - K2 * CP2
         # u_mid2 = x * (K2 * innovation[2] + u_mid[1])
-        u_mid2 = x * u2
+        u_mid2 = A * u2
         z2 = C * u_mid2
-        P_mid2 = x * P2 * x' + B_prod
+        P_mid2 = A * P2 * A' + x
 
         CP3 = C * P_mid2
         V3 = CP3 * C'
@@ -959,9 +974,9 @@ zyggrad =   Zygote.gradient(
         P3 = P_mid2 - K3 * CP3
         # u_mid3 = x * (P_mid[2] * C' * inv(V[3]) * (observables[:, 2] - C * u_mid2) + u_mid2)
         # u_mid3 = x * (K[3] * (observables[:, 2] - C * u_mid[2]) + u_mid[2])
-        u_mid3 = x * u3
+        u_mid3 = A * u3
         z3 = C * u_mid3
-        P_mid3 = x * P3 * x' + B_prod
+        P_mid3 = A * P3 * A' + x
 
         CP4 = C * P_mid3
         V4 = CP4 * C'
@@ -979,9 +994,9 @@ zyggrad =   Zygote.gradient(
         # return -1/2*(innovation3' * inv(V[3]) * innovation3)
         # return -1/2*(innovation4' * inv(V[4]) * innovation4)
         # return -1/2*(innovation3' * inv(V3) * innovation3 + innovation4' * inv(V4) * innovation4)
-        return -1/2*(logdet(V4) + innovation3' * inv(V3) * innovation3 + logdet(V3) + innovation4' * inv(V4) * innovation4)
+        return -1/2*(logdet(V3) + innovation3' * inv(V3) * innovation3 + logdet(V4) + innovation4' * inv(V4) * innovation4)
     end, 
-A)[1]
+    B_prod)[1]
 
 zyggrad
 zyggrad ≈ ∂A
@@ -1050,7 +1065,187 @@ zyggrad =   Zygote.gradient(
 isapprox(∂A, zyggrad)
 
 
+
+
 # ∂A ≈ ∂z∂A
+
+# ForwardDiff
+
+PP = get_initial_covariance(Val(:theoretical), vcat(vec(A), vec(collect(-𝐁))), coordinates, dimensions)
+
+forgrad_A = ForwardDiff.gradient(A -> begin
+    u = zeros(size(C,2))
+
+    z = C * u
+
+    P = deepcopy(PP)
+
+    observables = data_in_deviations
+
+    presample_periods = 0
+
+    loglik = 0.0
+
+    for t in 1:size(data_in_deviations, 2)
+        v = data_in_deviations[:, t] - z
+
+        F = C * P * C'
+
+        luF = ℒ.lu(F, check = false) ###
+
+        if !ℒ.issuccess(luF)
+            return -Inf
+        end
+
+        Fdet = ℒ.det(luF)
+
+        # Early return if determinant is too small, indicating numerical instability.
+        if Fdet < eps(Float64)
+            return -Inf
+        end
+
+        invF = inv(luF) ###
+
+        if t > presample_periods
+            loglik += log(Fdet) + v' * invF * v###
+        end
+
+        K = P * C' * invF
+
+        P = A * (P - K * C * P) * A' + 𝐁
+
+        u = A * (u + K * v)
+
+        z = C * u
+    end
+
+    zz = -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2
+
+    return zz
+end, A)
+
+∂A ≈ forgrad_A
+maximum(abs, ∂A - forgrad_A)
+maximum(abs, (∂A - forgrad_A) ./ forgrad_A)
+
+
+
+forgrad_𝐁 = ForwardDiff.gradient(𝐁 -> begin
+    u = zeros(size(C,2))
+
+    z = C * u
+
+    P = deepcopy(PP)
+
+    observables = data_in_deviations
+
+    presample_periods = 0
+
+    loglik = 0.0
+
+    for t in 1:size(data_in_deviations, 2)
+        v = data_in_deviations[:, t] - z
+
+        F = C * P * C'
+
+        luF = ℒ.lu(F, check = false) ###
+
+        if !ℒ.issuccess(luF)
+            return -Inf
+        end
+
+        Fdet = ℒ.det(luF)
+
+        # Early return if determinant is too small, indicating numerical instability.
+        if Fdet < eps(Float64)
+            return -Inf
+        end
+
+        invF = inv(luF) ###
+
+        if t > presample_periods
+            loglik += log(Fdet) + v' * invF * v###
+        end
+
+        K = P * C' * invF
+
+        P = A * (P - K * C * P) * A' + 𝐁
+
+        u = A * (u + K * v)
+
+        z = C * u
+    end
+
+    zz = -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2
+
+    return zz
+end, 𝐁)
+
+∂B_prod ≈ forgrad_𝐁
+maximum(abs, ∂B_prod - forgrad_𝐁)
+maximum(abs, (∂B_prod - forgrad_𝐁) ./ forgrad_𝐁)
+
+
+
+
+forgrad_data_in_deviations = ForwardDiff.gradient(data_in_deviations -> begin
+    u = zeros(size(C,2))
+
+    z = C * u
+
+    P = deepcopy(PP)
+
+    observables = data_in_deviations
+
+    presample_periods = 0
+
+    loglik = 0.0
+
+    for t in 1:size(data_in_deviations, 2)
+        v = data_in_deviations[:, t] - z
+
+        F = C * P * C'
+
+        luF = ℒ.lu(F, check = false) ###
+
+        if !ℒ.issuccess(luF)
+            return -Inf
+        end
+
+        Fdet = ℒ.det(luF)
+
+        # Early return if determinant is too small, indicating numerical instability.
+        if Fdet < eps(Float64)
+            return -Inf
+        end
+
+        invF = inv(luF) ###
+
+        if t > presample_periods
+            loglik += log(Fdet) + v' * invF * v###
+        end
+
+        K = P * C' * invF
+
+        P = A * (P - K * C * P) * A' + 𝐁
+
+        u = A * (u + K * v)
+
+        z = C * u
+    end
+
+    zz = -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2
+
+    return zz
+end, data_in_deviations)
+
+forgrad_data_in_deviations ≈ ∂observables
+∂observables - forgrad_data_in_deviations
+maximum(abs, ∂observables - forgrad_data_in_deviations)
+maximum(abs, (∂observables - forgrad_data_in_deviations) ./ forgrad_data_in_deviations)
+
+
+
 import FiniteDifferences
 
 fingrad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),
@@ -1069,7 +1264,7 @@ for t in 2:T
     
     invV[t] .= inv(luV)
     
-    innovation[t] .= observables[:, t-1] - z[t-1]
+    innovation[t] .= x[:, t-1] - z[t-1]
     # if t == 4
     loglik += log(Vdet) + innovation[t]' * invV[t] * innovation[t]
     # end
@@ -1083,10 +1278,10 @@ for t in 2:T
 
     z[t] .= C * u_mid[t]
 
-    P_mid[t] .= x * P[t] * x' + B_prod
+    P_mid[t] .= A * P[t] * A' + B_prod
 end
 return -1/2*loglik
-end, A)[1]
+end, observables)[1]
 
 
 
@@ -1160,6 +1355,12 @@ end
 
 
 isapprox(fingrad, ∂A)
+
+maximum(abs, (fingrad - ∂A) ./ ∂A)
+
+isapprox(fingrad, ∂B_prod)
+
+maximum(abs, (fingrad - ∂B_prod) ./ ∂B_prod)
 
 isapprox(fingrad, zyggrad)
 
