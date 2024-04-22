@@ -6072,7 +6072,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
     
-    C = RF.lu(∇₊ * A * Jm + ∇₀, check = false)
+    C = ℒ.lu(∇₊ * A * Jm + ∇₀, check = false)
     
     if !ℒ.issuccess(C)
         return hcat(A, zeros(size(A,1),T.nExo)), solved
@@ -6080,7 +6080,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     
     # ℒ.ldiv!(∇₀, C, ∇ₑ)
     # ℒ.rmul!(∇₀, -1)
-    B = -C \ ∇ₑ
+    B = -inv(C) * ∇ₑ # otherwise Zygote doesnt diff it
 
     return hcat(A, B), solved
 end

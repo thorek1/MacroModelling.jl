@@ -4,6 +4,7 @@
 
 - [ ] ss transition by entering new parameters at given periods
 - [ ] check downgrade tests
+- [ ] try static arrays in KF
 - [ ] have a workspace in the model object. to be accessed for example by the riccati solver at each run (instead of initialising values at each function call)
 - [ ] check why PG samples are off
 - [ ] implement estimation tests for all models
