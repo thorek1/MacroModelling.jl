@@ -1,10 +1,10 @@
 using MacroModelling
 import Turing, Pigeons
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
-import Zygote
+using Zygote
 
 include("../models/Smets_Wouters_2007_linear.jl")
 
@@ -186,6 +186,6 @@ get_loglikelihood(Smets_Wouters_2007_linear, data(observables), parameters_combi
 
 n_samples = 1000
 
-samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = inits)
+samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = inits)
 
 println(mean(samps).nt.mean)
