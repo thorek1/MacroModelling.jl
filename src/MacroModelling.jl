@@ -6072,13 +6072,15 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
     
-    C = ℒ.lu(∇₊ * A * Jm + ∇₀, check = false)
+    C = RF.lu(∇₊ * A * Jm + ∇₀, check = false)
     
     if !ℒ.issuccess(C)
         return hcat(A, zeros(size(A,1),T.nExo)), solved
     end
     
-    B = -inv(C) * ∇ₑ
+    # ℒ.ldiv!(∇₀, C, ∇ₑ)
+    # ℒ.rmul!(∇₀, -1)
+    B = -C \ ∇ₑ
 
     return hcat(A, B), solved
 end
@@ -7757,7 +7759,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         mul!(F, Ctmp, C')
         # F = C * P * C'
 
-        luF = ℒ.lu(F, check = false) ###
+        luF = RF.lu(F, check = false) ###
 
         if !ℒ.issuccess(luF)
             return -Inf
@@ -7895,9 +7897,18 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
         # F[t] .= CP[t] * C'
         mul!(F, CP[t], C')
     
-        luF = ℒ.lu(F, check = false)
+        luF = RF.lu(F, check = false)
     
+        if !ℒ.issuccess(luF)
+            return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
+
         Fdet = ℒ.det(luF)
+
+        # Early return if determinant is too small, indicating numerical instability.
+        if Fdet < eps(Float64)
+            return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
         
         # invF[t] .= inv(luF)
         copy!(invF[t], inv(luF))
@@ -7935,7 +7946,6 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
     # initialise derivative variables
     ∂A = zero(A)
     ∂F = zero(F)
-    ∂F̂ = zero(F)
     ∂Faccum = zero(F)
     ∂P = zero(P̄)
     ∂ū = zero(ū)
@@ -7947,11 +7957,11 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
 
     # pullback
     function kalman_pullback(∂llh)
-        ∂A *= 0
-        ∂Faccum *= 0
-        ∂P *= 0
-        ∂ū *= 0
-        ∂𝐁 *= 0
+        ℒ.rmul!(∂A, 0)
+        ℒ.rmul!(∂Faccum, 0)
+        ℒ.rmul!(∂P, 0)
+        ℒ.rmul!(∂ū, 0)
+        ℒ.rmul!(∂𝐁, 0)
 
         for t in T:-1:2
             if t > presample_periods + 1
@@ -8229,48 +8239,6 @@ end
 
 
 
-
-# function rrule(::typeof(mul!), C::AbstractArray, A, B)
-#     # Perform the operation
-#     mul!(C, A, B)
-    
-#     function mul_pullback(ΔC)
-#         ∂A = @thunk(ΔC * B')
-#         ∂B = @thunk(A' * ΔC)
-#         return (NoTangent(), ∂A, ∂B)
-#     end
-    
-#     return C, mul_pullback
-# end
-
-
-
-# function update_loglikelihood!(loglik::S, P::Matrix{S}, u::Vector{S}, z::Vector{S}, C::Matrix{T}, A::Matrix{S}, 𝐁::Matrix{S}, data_point::Vector{S}) where {S,T}
-#     v = data_point - z
-#     F = C * P * C'
-
-#     F̄ = ℒ.lu(F, check = false)
-
-#     if !ℒ.issuccess(F̄)
-#         return -Inf, P, u, z
-#     end
-
-#     Fdet = ℒ.det(F̄)
-
-#     # Early return if determinant is too small, indicating numerical instability.
-#     if Fdet < eps(S)
-#         return -Inf, P, u, z
-#     end
-
-#     invF = inv(F̄)
-#     loglik_increment = log(Fdet) + v' * invF * v
-#     K = P * C' * invF
-#     P = A * (P - K * C * P) * A' + 𝐁
-#     u = A * (u + K * v)
-#     z = C * u
-
-#     return loglik + loglik_increment, P, u, z
-# end
 
 function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}, 
                                                     𝐒::Union{Matrix{Float64}, Vector{AbstractMatrix{Float64}}}, 
