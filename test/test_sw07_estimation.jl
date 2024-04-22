@@ -1,10 +1,10 @@
 using MacroModelling
+using Zygote
 import Turing, Pigeons
 import Turing: NUTS, sample, logpdf, AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
-using Zygote
 
 include("../models/Smets_Wouters_2007_linear.jl")
 
