@@ -8025,8 +8025,8 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
             mul!(u[1], A', ∂ū) # using u[1] as temporary storage
             mul!(v[1], K[t]', u[1]) # using v[1] as temporary storage
             mul!(∂ū, C', v[1])
-            # mul!(u[1], C', v[1], -1, 1)
-            # copy!(∂ū, u[1])
+            mul!(u[1], C', v[1], -1, 1)
+            copy!(∂ū, u[1])
         
             # ∂llh∂ū
             # loglik += logdet(F[t]) + v[t]' * invF[t] * v[t]
