@@ -788,6 +788,441 @@ end
 
 
 
+# working code -  optimized
+import RecursiveFactorization as RF
+import Octavian: matmul!
+P = get_initial_covariance(Val(:diagonal), vcat(vec(A), vec(collect(-𝐁))), coordinates, dimensions)
+presample_periods = 4
+
+T = size(data_in_deviations, 2) + 1
+
+z = zeros(size(data_in_deviations, 1))
+
+ū = zeros(size(C,2))
+
+P̄ = deepcopy(P) 
+
+temp_N_N = similar(P)
+
+PCtmp = similar(C')
+
+F = similar(C * C')
+
+u = [similar(ū) for _ in 1:T] # used in backward pass
+
+P = [deepcopy(P̄) for _ in 1:T] # used in backward pass
+
+CP = [zero(C) for _ in 1:T] # used in backward pass
+
+K = [similar(C') for _ in 1:T] # used in backward pass
+
+invF = [similar(F) for _ in 1:T] # used in backward pass
+
+v = [zeros(size(data_in_deviations, 1)) for _ in 1:T] # used in backward pass
+
+loglik = 0.0
+
+for t in 2:T
+    v[t] .= data_in_deviations[:, t-1] .- z#[t-1]
+
+    # CP[t] .= C * P̄[t-1]
+    mul!(CP[t], C, P̄)#[t-1])
+
+    # F[t] .= CP[t] * C'
+    mul!(F, CP[t], C')
+
+    luF = RF.lu(F, check = false)
+
+    Fdet = ℒ.det(luF)
+    
+    # invF[t] .= inv(luF)
+    copy!(invF[t], inv(luF))
+    
+    if t - 1 > presample_periods
+        loglik += log(Fdet) + ℒ.dot(v[t], invF[t], v[t])
+    end
+
+    # K[t] .= P̄[t-1] * C' * invF[t]
+    mul!(PCtmp, P̄, C')
+    mul!(K[t], PCtmp, invF[t])
+
+    # P[t] .= P̄[t-1] - K[t] * CP[t]
+    mul!(P[t], -K[t], CP[t])
+    P[t] .+= P̄
+
+    # P̄[t] .= A * P[t] * A' + 𝐁
+    mul!(temp_N_N, P[t], A')
+    mul!(P̄, A, temp_N_N)
+    P̄ .+= 𝐁
+
+    # u[t] .= K[t] * v[t] + ū[t-1]
+    mul!(u[t], K[t], v[t])
+    u[t] .+= ū
+    
+    # ū[t] .= A * u[t]
+    mul!(ū, A, u[t])
+
+    # z[t] .= C * ū[t]
+    mul!(z, C, ū)
+end
+
+llh = -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
+
+∂llh = 1
+
+# initialise derivative variables
+∂A = zero(A)
+∂F = zero(F)
+∂F̂ = zero(F)
+∂Faccum = zero(F)
+∂P = zero(P̄)
+∂ū = zero(ū)
+∂ū∂v = zero(ū)
+∂𝐁 = zero(𝐁)
+∂data_in_deviations = zero(data_in_deviations)
+
+
+# helpers
+vtmp = zero(v[1])
+
+@benchmark begin
+    ∂F = zero(F)
+    ∂F̂ = zero(F)
+    mul!(∂F̂, v[t], v[t]')
+    mul!(∂F, invF[t]', ∂F̂)
+    mul!(∂F̂, ∂F, invF[t]')
+    ∂F .= invF[t]' .- ∂F̂
+end
+
+
+
+@benchmark begin
+    ∂F = zero(F)
+    ∂F̂ = zero(F)
+    mul!(∂F, v[t], v[t]')
+    mul!(∂F̂, invF[t]', ∂F)
+    mul!(∂F, ∂F̂, invF[t]')
+    ℒ.axpby!(1,invF[t]',-1,∂F)
+end
+
+@benchmark begin
+    ∂F = zero(F)
+    ∂F̂ = zero(F)
+    mul!(∂F, v[t], v[t]')
+    mul!(∂F̂, invF[t]', ∂F)
+    mul!(∂F, ∂F̂, invF[t]')
+    ℒ.axpby!(1,invF[t]',-1,∂F)
+end
+
+@benchmark begin
+    ∂P = zero(P̄)
+    ∂P += C' * (∂F + ∂Faccum) * C
+end
+
+@benchmark begin
+    ∂P = zero(P̄)
+    ℒ.axpy!(1, ∂Faccum, ∂F)
+    mul!(PCtmp, C', ∂F) 
+    mul!(∂P, PCtmp, C, 1, 1) # using CP[1] as temporary storage
+end
+
+
+@benchmark ∂ū∂v = C' * (invF[t]' + invF[t]) * v[t]
+
+@benchmark begin
+    # invF[1] .= invF[t]' + invF[t] # using invF[1] as temporary storage
+    copy!(invF[1], invF[t]' + invF[t]) # using invF[1] as temporary storage
+    mul!(v[1], invF[1], v[t]) # using v[1] as temporary storage
+    mul!(∂ū∂v, C', v[1])
+end
+
+
+
+@benchmark begin
+    ∂P = zero(P̄)
+    ∂P += A' * ∂ū * v[t]' * invF[t]' * C
+end
+
+@benchmark begin
+    ∂P = zero(P̄)
+    mul!(CP[1], invF[t]', C) # using CP[1] as temporary storage
+    mul!(PCtmp, ∂ū , v[t]')
+    mul!(P[1], PCtmp , CP[1]) # using P[1] as temporary storage
+    mul!(∂P, A', P[1], 1, 1) 
+end # fastest, least allocs
+
+@benchmark begin
+    ∂P = zero(P̄)
+    matmul!(CP[1], invF[t]', C) # using CP[1] as temporary storage
+    mul!(PCtmp, ∂ū , v[t]')
+    matmul!(P[1], PCtmp , CP[1]) # using P[1] as temporary storage
+    matmul!(∂P, A', P[1], 1, 1) 
+end
+
+
+
+@benchmark begin
+    ∂ū = zero(ū)
+    ∂ū = A' * ∂ū - C' * K[t]' * A' * ∂ū
+end
+
+@benchmark begin
+    ∂ū = zero(ū)
+    ∂ū = (ℒ.I - C' * K[t]') * A' * ∂ū
+end
+
+@benchmark begin
+    ∂ū = zero(ū)
+    mul!(P[1], C', K[t]') # using P[1] as temporary storage
+    mul!(P[1], Imat, Imat, 1 , -1) # using P[1] as temporary storage
+    mul!(u[1], A', ∂ū) # using u[1] as temporary storage
+    mul!(∂ū, P[1], u[1])
+end
+
+
+@benchmark begin
+    ∂ū = zero(ū)
+    mul!(u[1], A', ∂ū) # using u[1] as temporary storage
+    mul!(v[1], K[t]', u[1]) # using u[1] as temporary storage
+    mul!(u[1], C', v[1], -1, 1)
+    copy!(∂ū, u[1])
+end
+
+
+
+@benchmark begin 
+    ∂ū = zero(ū)
+    ∂ū -= ∂ū∂v
+end
+
+@benchmark begin 
+    ∂ū = zero(ū)
+    ℒ.axpy!(-1, ∂ū∂v, ∂ū)
+end
+
+
+
+
+@benchmark ∂data_in_deviations[:,t-1] = -C * ∂ū
+@benchmark mul!(∂data_in_deviations[:,t-1], -C, ∂ū)
+@benchmark mul!(∂data_in_deviations[:,t-1], C, ∂ū, -1, 0)
+
+
+
+@benchmark begin 
+    ∂A = zero(A)
+    ∂A += ∂ū * u[t-1]'
+end
+
+@benchmark begin 
+    ∂A = zero(A)
+    mul!(∂A, ∂ū, u[t-1]', 1, 1)
+end
+
+
+@benchmark begin 
+    ∂A = zero(A)
+    ∂A += ∂P * A * P[t-1]' + ∂P' * A * P[t-1]
+end
+
+
+@benchmark begin 
+    ∂A = zero(A)
+    mul!(P[1], A, P[t-1]')
+    mul!(∂A ,∂P', P[1], 1, 1)
+
+    mul!(P[1], A, P[t-1])
+    mul!(∂A ,∂P, P[1], 1, 1)
+end
+
+
+
+
+
+@benchmark begin 
+    ∂𝐁 = zero(𝐁)
+    ∂𝐁 += ∂P
+end
+
+@benchmark begin 
+    ∂𝐁 = zero(𝐁)
+    ℒ.axpy!(1, ∂P, ∂𝐁)
+end
+
+∂PP = deepcopy(∂P)
+@benchmark begin
+    ∂P = deepcopy(∂PP)
+    ∂P -= C' * K[t-1]' * ∂P + ∂P * K[t-1] * C 
+end
+
+@benchmark begin
+    ∂P = deepcopy(∂PP)
+    mul!(PCtmp, ∂P, K[t-1])
+    mul!(CP[1], K[t-1]', ∂P) # using CP[1] as temporary storage
+    mul!(∂P, PCtmp, C, -1, 1)
+    mul!(∂P, C', CP[1], -1, 1)
+end
+
+
+
+@benchmark ∂Faccum = -invF[t-1]' * CP[t-1] * A' * ∂ū * v[t-1]' * invF[t-1]'
+
+
+@benchmark begin
+    mul!(u[1], A', ∂ū) # using u[1] as temporary storage
+    mul!(v[1], CP[t-1], u[1]) # using v[1] as temporary storage
+    mul!(vtmp, invF[t-1]', v[1], -1, 0)
+    mul!(invF[1], vtmp, v[t-1]') # using invF[1] as temporary storage
+    mul!(∂Faccum, invF[1], invF[t-1]') # using invF[1] as temporary storage
+end
+
+
+
+@benchmark begin
+    ∂Faccum = zero(F)
+    ∂Faccum -= invF[t-1]' * CP[t-1] * ∂P * CP[t-1]' * invF[t-1]'
+end
+
+
+@benchmark begin
+    ∂Faccum = zero(F)
+    mul!(CP[1], invF[t-1]', CP[t-1]) # using CP[1] as temporary storage
+    mul!(PCtmp, CP[t-1]', invF[t-1]')
+    mul!(K[1], ∂P, PCtmp) # using K[1] as temporary storage
+    mul!(∂Faccum, CP[1], K[1], -1, 1)
+end
+
+
+for t in T:-1:2
+    if t > presample_periods + 1
+        # ∂llh∂F
+        # loglik += logdet(F[t]) + v[t]' * invF[t] * v[t]
+        # ∂F = invF[t]' - invF[t]' * v[t] * v[t]' * invF[t]'
+        mul!(∂F, v[t], v[t]')
+        mul!(invF[1], invF[t]', ∂F) # using invF[1] as temporary storage
+        mul!(∂F, invF[1], invF[t]')
+        ℒ.axpby!(1, invF[t]', -1, ∂F)
+
+        # ∂llh∂ū
+        # loglik += logdet(F[t]) + v[t]' * invF[t] * v[t]
+        # z[t] .= C * ū[t]
+        # ∂ū∂v = C' * (invF[t]' + invF[t]) * v[t]
+        copy!(invF[1], invF[t]' + invF[t]) # using invF[1] as temporary storage
+        mul!(v[1], invF[1], v[t]) # using v[1] as temporary storage
+        mul!(∂ū∂v, C', v[1])
+    else
+        ℒ.rmul!(∂F, 0)
+        ℒ.rmul!(∂ū∂v, 0)
+    end
+
+    # ∂F∂P
+    # F[t] .= C * P̄[t-1] * C'
+    # ∂P += C' * (∂F + ∂Faccum) * C
+    ℒ.axpy!(1, ∂Faccum, ∂F)
+    mul!(PCtmp, C', ∂F) 
+    mul!(∂P, PCtmp, C, 1, 1) 
+
+    # ∂ū∂P
+    # K[t] .= P̄[t-1] * C' * invF[t]
+    # u[t] .= K[t] * v[t] + ū[t-1]
+    # ū[t] .= A * u[t]
+    # ∂P += A' * ∂ū * v[t]' * invF[t]' * C
+    mul!(CP[1], invF[t]', C) # using CP[1] as temporary storage
+    mul!(PCtmp, ∂ū , v[t]')
+    mul!(P[1], PCtmp , CP[1]) # using P[1] as temporary storage
+    mul!(∂P, A', P[1], 1, 1) 
+
+    # ∂ū∂ū
+    # z[t] .= C * ū[t]
+    # v[t] .= data_in_deviations[:, t-1] .- z
+    # K[t] .= P̄[t-1] * C' * invF[t]
+    # u[t] .= K[t] * v[t] + ū[t-1]
+    # ū[t] .= A * u[t]
+    # step to next iteration
+    # ∂ū = A' * ∂ū - C' * K[t]' * A' * ∂ū
+    mul!(u[1], A', ∂ū) # using u[1] as temporary storage
+    mul!(v[1], K[t]', u[1]) # using u[1] as temporary storage
+    mul!(u[1], C', v[1], -1, 1)
+    copy!(∂ū, u[1])
+
+    # ∂llh∂ū
+    # loglik += logdet(F[t]) + v[t]' * invF[t] * v[t]
+    # v[t] .= data_in_deviations[:, t-1] .- z
+    # z[t] .= C * ū[t]
+    # ∂ū -= ∂ū∂v
+    ℒ.axpy!(-1, ∂ū∂v, ∂ū)
+
+    # ∂ū∂data
+    # v[t] .= data_in_deviations[:, t-1] .- z
+    # z[t] .= C * ū[t]
+    # ∂data_in_deviations[:,t-1] = -C * ∂ū
+    mul!(∂data_in_deviations[:,t-1], C, ∂ū, -1, 0)
+
+    if t > 2
+        # ∂ū∂A
+        # ū[t] .= A * u[t]
+        # ∂A += ∂ū * u[t-1]'
+        mul!(∂A, ∂ū, u[t-1]', 1, 1)
+
+        # ∂P̄∂A and ∂P̄∂𝐁
+        # P̄[t] .= A * P[t] * A' + 𝐁
+        # ∂A += ∂P * A * P[t-1]' + ∂P' * A * P[t-1]
+        mul!(P[1], A, P[t-1]')
+        mul!(∂A ,∂P', P[1], 1, 1)
+
+        mul!(P[1], A, P[t-1])
+        mul!(∂A ,∂P, P[1], 1, 1)
+
+        # ∂𝐁 += ∂P
+        ℒ.axpy!(1, ∂P, ∂𝐁)
+
+        # ∂P∂P
+        # P[t] .= P̄[t-1] - K[t] * C * P̄[t-1]
+        # P̄[t] .= A * P[t] * A' + 𝐁
+        # step to next iteration
+        # ∂P = A' * ∂P * A
+        mul!(P[1], ∂P, A) # using P[1] as temporary storage
+        mul!(∂P, A', P[1])
+
+        # ∂P̄∂P
+        # K[t] .= P̄[t-1] * C' * invF[t]
+        # P[t] .= P̄[t-1] - K[t] * CP[t]
+        # ∂P -= C' * K[t-1]' * ∂P + ∂P * K[t-1] * C 
+        mul!(PCtmp, ∂P, K[t-1])
+        mul!(CP[1], K[t-1]', ∂P) # using CP[1] as temporary storage
+        mul!(∂P, PCtmp, C, -1, 1)
+        mul!(∂P, C', CP[1], -1, 1)
+
+        # ∂ū∂F
+        # K[t] .= P̄[t-1] * C' * invF[t]
+        # u[t] .= K[t] * v[t] + ū[t-1]
+        # ū[t] .= A * u[t]
+        # ∂Faccum = -invF[t-1]' * CP[t-1] * A' * ∂ū * v[t-1]' * invF[t-1]'
+        mul!(u[1], A', ∂ū) # using u[1] as temporary storage
+        mul!(v[1], CP[t-1], u[1]) # using v[1] as temporary storage
+        mul!(vtmp, invF[t-1]', v[1], -1, 0)
+        mul!(invF[1], vtmp, v[t-1]') # using invF[1] as temporary storage
+        mul!(∂Faccum, invF[1], invF[t-1]')
+
+        # ∂P∂F
+        # K[t] .= P̄[t-1] * C' * invF[t]
+        # P[t] .= P̄[t-1] - K[t] * CP[t]
+        # ∂Faccum -= invF[t-1]' * CP[t-1] * ∂P * CP[t-1]' * invF[t-1]'
+        mul!(CP[1], invF[t-1]', CP[t-1]) # using CP[1] as temporary storage
+        mul!(PCtmp, CP[t-1]', invF[t-1]')
+        mul!(K[1], ∂P, PCtmp) # using K[1] as temporary storage
+        mul!(∂Faccum, CP[1], K[1], -1, 1)
+
+    end
+end
+
+ℒ.rmul!(∂P, -∂llh/2)
+ℒ.rmul!(∂A, -∂llh/2)
+ℒ.rmul!(∂𝐁, -∂llh/2)
+ℒ.rmul!(∂data_in_deviations, -∂llh/2)
+
+    
+
 # try again but with more elemental operations
 
 TT = 4
