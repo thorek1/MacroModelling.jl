@@ -7730,95 +7730,93 @@ end
 
 
 
-# function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}, P::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S <: Float64
-#     u = zeros(S, size(C,2))
-
-#     z = C * u
-
-#     ztmp = similar(z)
-
-#     loglik = S(0.0)
-
-#     utmp = similar(u)
-
-#     Ctmp = similar(C)
-
-#     F = similar(C * C')
-
-#     K = similar(C')
-#     # Ktmp = similar(C')
-
-#     tmp = similar(P)
-#     Ptmp = similar(P)
-
-#     for t in 1:size(data_in_deviations, 2)
-#         ℒ.axpby!(1, data_in_deviations[:, t], -1, z)
-#         # v = data_in_deviations[:, t] - z
-
-#         mul!(Ctmp, C, P) # use Octavian.jl
-#         mul!(F, Ctmp, C')
-#         # F = C * P * C'
-
-#         luF = RF.lu(F, check = false) ###
-
-#         if !ℒ.issuccess(luF)
-#             return -Inf
-#         end
-
-#         Fdet = ℒ.det(luF)
-
-#         # Early return if determinant is too small, indicating numerical instability.
-#         if Fdet < eps(Float64)
-#             return -Inf
-#         end
-
-#         # invF = inv(luF) ###
-
-#         if t > presample_periods
-#             ℒ.ldiv!(ztmp, luF, z)
-#             loglik += log(Fdet) + ℒ.dot(z', ztmp) ###
-#             # loglik += log(Fdet) + z' * invF * z###
-#             # loglik += log(Fdet) + v' * invF * v###
-#         end
-
-#         # mul!(Ktmp, P, C')
-#         # mul!(K, Ktmp, invF)
-#         mul!(K, P, C')
-#         ℒ.rdiv!(K, luF)
-#         # K = P * Ct / luF
-#         # K = P * C' * invF
-
-#         mul!(tmp, K, C)
-#         mul!(Ptmp, tmp, P)
-#         ℒ.axpy!(-1, Ptmp, P)
-
-#         mul!(Ptmp, A, P)
-#         mul!(P, Ptmp, A')
-#         ℒ.axpy!(1, 𝐁, P)
-#         # P = A * (P - K * C * P) * A' + 𝐁
-
-#         mul!(u, K, z, 1, 1)
-#         mul!(utmp, A, u)
-#         u .= utmp
-#         # u = A * (u + K * v)
-
-#         mul!(z, C, u)
-#         # z = C * u
-#     end
-
-#     return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
-# end
-
-
-
-function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{M}, C::Matrix{Float64}, P::Matrix{N}, data_in_deviations::Matrix{Q}; presample_periods::Int = 0) where {S <: Real,M <: Real,N <: Real,Q <: Real}
-    SS = promote_type(S,M,N,Q)
-
-    u = zeros(SS, size(C,2))
+function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}, P::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S <: Float64
+    u = zeros(S, size(C,2))
 
     z = C * u
 
-    loglik = SS(0.0)
+    ztmp = similar(z)
+
+    loglik = S(0.0)
+
+    utmp = similar(u)
+
+    Ctmp = similar(C)
+
+    F = similar(C * C')
+
+    K = similar(C')
+    # Ktmp = similar(C')
+
+    tmp = similar(P)
+    Ptmp = similar(P)
+
+    for t in 1:size(data_in_deviations, 2)
+        ℒ.axpby!(1, data_in_deviations[:, t], -1, z)
+        # v = data_in_deviations[:, t] - z
+
+        mul!(Ctmp, C, P) # use Octavian.jl
+        mul!(F, Ctmp, C')
+        # F = C * P * C'
+
+        luF = RF.lu(F, check = false) ###
+
+        if !ℒ.issuccess(luF)
+            return -Inf
+        end
+
+        Fdet = ℒ.det(luF)
+
+        # Early return if determinant is too small, indicating numerical instability.
+        if Fdet < eps(Float64)
+            return -Inf
+        end
+
+        # invF = inv(luF) ###
+
+        if t > presample_periods
+            ℒ.ldiv!(ztmp, luF, z)
+            loglik += log(Fdet) + ℒ.dot(z', ztmp) ###
+            # loglik += log(Fdet) + z' * invF * z###
+            # loglik += log(Fdet) + v' * invF * v###
+        end
+
+        # mul!(Ktmp, P, C')
+        # mul!(K, Ktmp, invF)
+        mul!(K, P, C')
+        ℒ.rdiv!(K, luF)
+        # K = P * Ct / luF
+        # K = P * C' * invF
+
+        mul!(tmp, K, C)
+        mul!(Ptmp, tmp, P)
+        ℒ.axpy!(-1, Ptmp, P)
+
+        mul!(Ptmp, A, P)
+        mul!(P, Ptmp, A')
+        ℒ.axpy!(1, 𝐁, P)
+        # P = A * (P - K * C * P) * A' + 𝐁
+
+        mul!(u, K, z, 1, 1)
+        mul!(utmp, A, u)
+        u .= utmp
+        # u = A * (u + K * v)
+
+        mul!(z, C, u)
+        # z = C * u
+    end
+
+    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
+end
+
+
+
+function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}, P::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S <: ℱ.Dual
+    u = zeros(S, size(C,2))
+
+    z = C * u
+
+    loglik = S(0.0)
 
     F = similar(C * C')
 
