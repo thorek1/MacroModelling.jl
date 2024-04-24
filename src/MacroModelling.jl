@@ -393,8 +393,33 @@ end
 #     res .= abs2.(conditions[cond_var_idx] - state_update(state, convert(typeof(X), shocks))[cond_var_idx])
 # end
 
+transform_break_points(break_points::Dict{Int, Dict{Symbol, Float64}}) = break_points
 
+function transform_break_points(break_points::KeyedArray{Float64})::Dict{Int, Dict{Symbol, Float64}}
+    dict = Dict{Int, Dict{Symbol, Float64}}()
+    
+    for i in 1:size(break_points,2)
+        time = axiskeys(break_points,2)[i]
 
+        if !haskey(dict, time)
+            dict[time] = Dict{Symbol, Float64}()
+        end
+        
+        for k in 1:size(break_points,1)
+            parameter = axiskeys(break_points,1)[k]
+            value = break_points[k,i]
+            if !(isnothing(value) || !isfinite(value))
+                dict[time][parameter] = value
+            end
+        end
+    end
+    
+    if !haskey(dict, 0)
+        dict[0] = Dict{Symbol, Float64}()
+    end
+
+    return dict
+end
 
 
 function minimize_distance_to_initial_data!(X::Vector{S}, grad::Vector{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
@@ -6299,125 +6324,54 @@ end
 
 
 
-function irf(state_update::Function, 
-    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
-    level::Vector{Float64},
-    T::timings; 
-    periods::Int = 40, 
-    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
-    variables::Union{Symbol_input,String_input} = :all, 
-    negative_shock::Bool = false)
+# function irf(steady_states_and_state_update::Dict{Int, Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}, Function}},
+#     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}},
+#     shock_history::Matrix{Float64},
+#     T::timings)
+function irf(steady_states_and_state_update::Dict{Int, Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}, Function}},
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}},
+    shock_history::Array{Float64,3},
+    shock_idx::Vector{Int},
+    levels::Bool,
+    T::timings)
+
+    periods = size(shock_history, 2)
+
+    Y = zeros(T.nVars, periods, length(shock_idx))
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
-    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
+    periods_of_change = steady_states_and_state_update |> keys |> collect |> sort
 
-    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+    initial_state_copy = [deepcopy(initial_state) for _ in shock_idx]
 
-    if shocks isa Matrix{Float64}
-        @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+    for i in shock_idx
+        for (k,p) in enumerate(periods_of_change)
+            concerned_periods = (k == 1 ? 1 : periods_of_change[k]):(k == length(periods_of_change) ? periods : periods_of_change[k+1] - 1)
 
-        # periods += size(shocks)[2]
+            reference_steady_state, __, SSS_delta, state_update = steady_states_and_state_update[p]
 
-        shock_history = zeros(T.nExo, periods)
+            if k > 1
+                ΔSS = steady_states_and_state_update[periods_of_change[k]][2] - steady_states_and_state_update[periods_of_change[k-1]][2]
 
-        shock_history[:,1:size(shocks)[2]] = shocks
-
-        shock_idx = 1
-    elseif shocks isa KeyedArray{Float64}
-        shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
-
-        # periods += size(shocks)[2]
-
-        @assert length(setdiff(shock_input, T.exo)) == 0 "Provided shocks which are not part of the model."
-        
-        shock_history = zeros(T.nExo, periods)
-
-        shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
-
-        shock_idx = 1
-    else
-        shock_idx = parse_shocks_input_to_index(shocks,T)
-    end
-
-    var_idx = parse_variables_input_to_index(variables, T)
-
-    axis1 = T.var[var_idx]
-        
-    if any(x -> contains(string(x), "◖"), axis1)
-        axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-    end
-
-    if shocks == :simulate
-        shock_history = randn(T.nExo,periods)
-
-        shock_history[contains.(string.(T.exo),"ᵒᵇᶜ"),:] .= 0
-
-        Y = zeros(T.nVars,periods,1)
-
-        initial_state = state_update(initial_state,shock_history[:,1])
-
-        Y[:,1,1] = pruning ? sum(initial_state) : initial_state
-
-        for t in 1:periods-1
-            initial_state = state_update(initial_state,shock_history[:,t+1])
-
-            Y[:,t+1,1] = pruning ? sum(initial_state) : initial_state
-        end
-
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:simulate])
-    elseif shocks == :none
-        Y = zeros(T.nVars,periods,1)
-
-        shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
-
-        initial_state = state_update(initial_state, shck)
-
-        Y[:,1,1] = pruning ? sum(initial_state) : initial_state
-
-        for t in 1:periods-1
-            initial_state = state_update(initial_state, shck)
-
-            Y[:,t+1,1] = pruning ? sum(initial_state) : initial_state
-        end
-
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
-    else
-        Y = zeros(T.nVars,periods,length(shock_idx))
-
-        for (i,ii) in enumerate(shock_idx)
-            initial_state_copy = deepcopy(initial_state)
-            
-            if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
-                shock_history = zeros(T.nExo,periods)
-                shock_history[ii,1] = negative_shock ? -1 : 1
+                if pruning
+                    for j in initial_state_copy[i]
+                        j += ΔSS
+                    end
+                else
+                    initial_state_copy[i] += ΔSS
+                end
             end
 
-            initial_state_copy = state_update(initial_state_copy, shock_history[:,1])
+            for t in concerned_periods
+                initial_state_copy[i] = state_update(initial_state_copy[i], shock_history[:,t,i])
 
-            Y[:,1,i] = pruning ? sum(initial_state_copy) : initial_state_copy
-
-            for t in 1:periods-1
-                initial_state_copy = state_update(initial_state_copy, shock_history[:,t+1])
-
-                Y[:,t+1,i] = pruning ? sum(initial_state_copy) : initial_state_copy
+                Y[:,t,i] = pruning ? sum(initial_state_copy[i]) : initial_state_copy[i] .+ (levels ? reference_steady_state + SSS_delta : SSS_delta)
             end
         end
-
-        axis2 = shocks isa Union{Symbol_input,String_input} ? 
-                    shock_idx isa Int ? 
-                        [T.exo[shock_idx]] : 
-                    T.exo[shock_idx] : 
-                [:Shock_matrix]
-        
-        if any(x -> contains(string(x), "◖"), axis2)
-            axis2_decomposed = decompose_name.(axis2)
-            axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
-        end
-    
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
     end
+
+    return Y
 end
 
 
@@ -6589,9 +6543,9 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
     elseif shocks == :all_excluding_obc
         shock_idx = findall(.!contains.(string.(T.exo),"ᵒᵇᶜ"))
     elseif shocks == :none
-        shock_idx = 1
+        shock_idx = [1]
     elseif shocks == :simulate
-        shock_idx = 1
+        shock_idx = [1]
     elseif shocks isa Matrix{Symbol}
         if length(setdiff(shocks,T.exo)) > 0
             @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
@@ -7964,80 +7918,80 @@ function filter_and_smooth(𝓂::ℳ,
 end
 
 
-if VERSION >= v"1.9"
-    @setup_workload begin
-        # Putting some things in `setup` can reduce the size of the
-        # precompile file and potentially make loading faster.
-        @model FS2000 precompile = true begin
-            dA[0] = exp(gam + z_e_a  *  e_a[x])
-            log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-            - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-            W[0] = l[0] / n[0]
-            - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-            R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-            1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-            c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-            P[0] * c[0] = m[0]
-            m[0] - 1 + d[0] = l[0]
-            e[0] = exp(z_e_a  *  e_a[x])
-            y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-            gy_obs[0] = dA[0] * y[0] / y[-1]
-            gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-            log_gy_obs[0] = log(gy_obs[0])
-            log_gp_obs[0] = log(gp_obs[0])
-        end
+# if VERSION >= v"1.9"
+#     @setup_workload begin
+#         # Putting some things in `setup` can reduce the size of the
+#         # precompile file and potentially make loading faster.
+#         @model FS2000 precompile = true begin
+#             dA[0] = exp(gam + z_e_a  *  e_a[x])
+#             log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#             - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#             W[0] = l[0] / n[0]
+#             - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#             R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#             1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#             c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#             P[0] * c[0] = m[0]
+#             m[0] - 1 + d[0] = l[0]
+#             e[0] = exp(z_e_a  *  e_a[x])
+#             y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#             gy_obs[0] = dA[0] * y[0] / y[-1]
+#             gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#             log_gy_obs[0] = log(gy_obs[0])
+#             log_gp_obs[0] = log(gp_obs[0])
+#         end
 
-        @parameters FS2000 silent = true precompile = true begin  
-            alp     = 0.356
-            bet     = 0.993
-            gam     = 0.0085
-            mst     = 1.0002
-            rho     = 0.129
-            psi     = 0.65
-            del     = 0.01
-            z_e_a   = 0.035449
-            z_e_m   = 0.008862
-        end
+#         @parameters FS2000 silent = true precompile = true begin  
+#             alp     = 0.356
+#             bet     = 0.993
+#             gam     = 0.0085
+#             mst     = 1.0002
+#             rho     = 0.129
+#             psi     = 0.65
+#             del     = 0.01
+#             z_e_a   = 0.035449
+#             z_e_m   = 0.008862
+#         end
         
-        ENV["GKSwstype"] = "nul"
+#         ENV["GKSwstype"] = "nul"
 
-        @compile_workload begin
-            # all calls in this block will be precompiled, regardless of whether
-            # they belong to your package or not (on Julia 1.8 and higher)
-            @model RBC precompile = true begin
-                1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-                c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-                z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-            end
+#         @compile_workload begin
+#             # all calls in this block will be precompiled, regardless of whether
+#             # they belong to your package or not (on Julia 1.8 and higher)
+#             @model RBC precompile = true begin
+#                 1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#                 c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#                 z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#             end
 
-            @parameters RBC silent = true precompile = true begin
-                δ = 0.02
-                α = 0.5
-            end
+#             @parameters RBC silent = true precompile = true begin
+#                 δ = 0.02
+#                 α = 0.5
+#             end
 
-            get_SS(FS2000)
-            get_SS(FS2000, parameters = :alp => 0.36)
-            get_solution(FS2000)
-            get_solution(FS2000, parameters = :alp => 0.35)
-            get_standard_deviation(FS2000)
-            get_correlation(FS2000)
-            get_autocorrelation(FS2000)
-            get_variance_decomposition(FS2000)
-            get_conditional_variance_decomposition(FS2000)
-            get_irf(FS2000)
+#             get_SS(FS2000)
+#             get_SS(FS2000, parameters = :alp => 0.36)
+#             get_solution(FS2000)
+#             get_solution(FS2000, parameters = :alp => 0.35)
+#             get_standard_deviation(FS2000)
+#             get_correlation(FS2000)
+#             get_autocorrelation(FS2000)
+#             get_variance_decomposition(FS2000)
+#             get_conditional_variance_decomposition(FS2000)
+#             get_irf(FS2000)
 
-            data = simulate(FS2000)([:c,:k],:,:simulate)
-            get_loglikelihood(FS2000, data, FS2000.parameter_values)
-            get_mean(FS2000, silent = true)
-            # get_SSS(FS2000, silent = true)
-            # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#             data = simulate(FS2000)([:c,:k],:,:simulate)
+#             get_loglikelihood(FS2000, data, FS2000.parameter_values)
+#             get_mean(FS2000, silent = true)
+#             # get_SSS(FS2000, silent = true)
+#             # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-            # import StatsPlots
-            # plot_irf(FS2000)
-            # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-            # plot_conditional_variance_decomposition(FS2000)
-        end
-    end
-end
+#             # import StatsPlots
+#             # plot_irf(FS2000)
+#             # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#             # plot_conditional_variance_decomposition(FS2000)
+#         end
+#     end
+# end
 
 end
