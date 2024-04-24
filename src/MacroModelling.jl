@@ -6352,21 +6352,24 @@ function irf(steady_states_and_state_update::Dict{Int, Tuple{Vector{Float64}, Ve
             reference_steady_state, __, SSS_delta, state_update = steady_states_and_state_update[p]
 
             if k > 1
-                ΔSS = steady_states_and_state_update[periods_of_change[k]][2] - steady_states_and_state_update[periods_of_change[k-1]][2]
-
+                ΔNSSS = steady_states_and_state_update[periods_of_change[k-1]][2] - steady_states_and_state_update[periods_of_change[k]][2]
+                ΔSSS_delta = steady_states_and_state_update[periods_of_change[k-1]][3] - steady_states_and_state_update[periods_of_change[k]][3]
+                
                 if pruning
-                    for j in initial_state_copy[i]
-                        j += ΔSS
+                    initial_state_copy[i][1] += ΔNSSS
+                    initial_state_copy[i][2] -= ΔSSS_delta
+                    if length(initial_state_copy[i]) > 3
+                        initial_state_copy[i][3] += ΔNSSS
                     end
                 else
-                    initial_state_copy[i] += ΔSS
+                    initial_state_copy[i] += ΔNSSS
                 end
             end
 
             for t in concerned_periods
                 initial_state_copy[i] = state_update(initial_state_copy[i], shock_history[:,t,i])
 
-                Y[:,t,i] = pruning ? sum(initial_state_copy[i]) : initial_state_copy[i] .+ (levels ? reference_steady_state + SSS_delta : SSS_delta)
+                Y[:,t,i] = (pruning ? sum(initial_state_copy[i]) : initial_state_copy[i]) .+ (levels ? reference_steady_state + SSS_delta : SSS_delta)
             end
         end
     end
