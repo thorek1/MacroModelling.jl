@@ -6357,7 +6357,7 @@ function irf(steady_states_and_state_update::Dict{Int, Tuple{Vector{Float64}, Ve
                 
                 if pruning
                     initial_state_copy[i][1] += ΔNSSS
-                    initial_state_copy[i][2] -= ΔSSS_delta
+                    # initial_state_copy[i][2] += ΔNSSS#ΔSSS_delta
                     if length(initial_state_copy[i]) > 3
                         initial_state_copy[i][3] += ΔNSSS
                     end
