@@ -1,31 +1,72 @@
 
-using MacroModelling
+using MacroModelling, StatsPlots
 
-function transform_break_points(break_points)
-    dict = Dict{Int, Dict{Symbol, Float64}}()
+include("../models/Smets_Wouters_2003.jl")
+
+SSS(Smets_Wouters_2003, parameters = [:std_scaling_factor => 50, :alpha => .3], algorithm = :pruned_second_order)
+
+# break_points = KeyedArray([.35,.33,.34]', Variable = [:alpha], Time = [3,15,30])
+
+break_points = KeyedArray([.37]', Variable = [:alpha], Time = [50])
+
+# SSS(Smets_Wouters_2003, algorithm = :pruned_second_order)
+
+# SS(Smets_Wouters_2003, parameters = [:std_scaling_factor => 10, :alpha => .3])
+
+
+irfs = get_irf(Smets_Wouters_2003, parameters = break_points, shocks = :none, levels = true, algorithm = :pruned_second_order, periods = 40)
+
+
+plot_irf(Smets_Wouters_2003, parameters = break_points, shocks = :none, algorithm = :pruned_third_order, periods = 80)
+
+plot_irf(Smets_Wouters_2003, parameters = break_points, shocks = :none, algorithm = :third_order, periods = 80)
+
+plot_irf(Smets_Wouters_2003, parameters = break_points, shocks = :none, algorithm = :pruned_second_order, periods = 80, variables = :q_f)
+
+plot_irf(Smets_Wouters_2003, parameters = break_points, shocks = :none, algorithm = :pruned_second_order, periods = 80)
+
+
+plot_irf(Smets_Wouters_2003, parameters = break_points, shocks = :none, algorithm = :second_order, periods = 80)
+
+
+
+# plot_irf(Smets_Wouters_2003, parameters = break_points, shocks = :none, algorithm = :second_order, periods = 400)
+
+# plot_irf(Smets_Wouters_2003, parameters = break_points, shocks = :none, periods = 400)
+
+
+# SSS_delta_old = NSSS_old - reference_steady_state_old
+# SSS_delta_new = NSSS_new - reference_steady_state_new
+
+# ΔSSS_delta = SSS_delta_old - SSS_delta_new
+
+
+# initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta_old]
+# initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta_old - ΔSSS_delta]
+# initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta_old - (SSS_delta_old - SSS_delta_new)]
+# initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta_old - SSS_delta_old + SSS_delta_new]
+# initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - (SSS_delta + SSS_delta2)]
+
+# initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - NSSS + reference_steady_state]
+# initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - ((NSSS - reference_steady_state) + (NSSS2 - reference_steady_state2))]
+
+# state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
+#     aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
+#     aug_state₂ = [pruned_states[2][𝓂.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
     
-    for i in 1:size(break_points,2)
-        time = axiskeys(break_points,2)[i]
+#     return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+# end
 
-        if !haskey(dict, time)
-            dict[time] = Dict{Symbol, Float64}()
-        end
-        
-        for k in 1:size(break_points,1)
-            parameter = axiskeys(break_points,1)[k]
-            value = break_points[k,i]
-            if !(isnothing(value) || !isfinite(value))
-                dict[time][parameter] = value
-            end
-        end
-    end
-    
-    if !haskey(dict, 0)
-        dict[0] = Dict{Symbol, Float64}()
-    end
+SSS(Smets_Wouters_2003, parameters = [:std_scaling_factor => 30, :alpha => .35], algorithm = :second_order)
+SSS(Smets_Wouters_2003, parameters = [:std_scaling_factor => 30, :alpha => .35], algorithm = :pruned_second_order)
 
-    return dict
-end
+
+# get_parameters(Smets_Wouters_2003, values = true)
+
+irfsalt = get_irf(Smets_Wouters_2003, parameters = nothing, shocks = :none, levels = true, algorithm = :pruned_second_order, initial_state = collect(irfs[:,1,1]))
+
+plot_irf(Smets_Wouters_2003, shocks = :none, algorithm = :pruned_second_order, initial_state = collect(irfs[:,1,1]))
+
 
 include("../models/Smets_Wouters_2007.jl")
 
@@ -34,9 +75,11 @@ irfs = get_irf(Smets_Wouters_2007)
 irfs = get_irf(Smets_Wouters_2007, shocks = :none, levels = true)
 get_parameters(Smets_Wouters_2007, values = true)
 
-break_points = KeyedArray([.4,.3,.25]', Variable =[:ctrend], Time = [3,15,30])
+break_points = KeyedArray([.4,.3,.25]', Variable =[:ctrend], Time = [1,5,30])
 
-irfs = get_irf(Smets_Wouters_2007, parameters = break_points, shocks = :none, levels = true)
+irfs = get_irf(Smets_Wouters_2007, parameters = break_points, shocks = :none, levels = true, algorithm = :pruned_second_order)
+
+SSS(Smets_Wouters_2007, algorithm = :pruned_second_order)
 
 starting_vals = get_irf(Smets_Wouters_2007, shocks = :none, levels = true, periods = 1)
 irfalt = get_irf(Smets_Wouters_2007, parameters = :ctrend => .4, shocks = :none, levels = true, initial_state = vec(starting_vals))
