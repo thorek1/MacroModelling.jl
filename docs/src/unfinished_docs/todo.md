@@ -4,6 +4,7 @@
 
 - [ ] ss transition by entering new parameters at given periods
 - [ ] check downgrade tests
+- [ ] obc and conditional forecasting should be the same problem. see if you can use the simple matrix linear algebra from cond fcst in obc
 - [ ] break point estimation, obc, shock decomp
 - [ ] higher ordshock decomps
 - [ ] figure out why PG and IS return basically the prior
