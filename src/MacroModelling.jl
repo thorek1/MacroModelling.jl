@@ -4905,9 +4905,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")),string.(dyn_exo_list))
     
     vars_raw = [dyn_future_list[indexin(sort(future),future)]...,
-            dyn_present_list[indexin(sort(present),present)]...,
-            dyn_past_list[indexin(sort(past),past)]...,
-            dyn_exo_list[indexin(sort(exo),exo)]...]
+                dyn_present_list[indexin(sort(present),present)]...,
+                dyn_past_list[indexin(sort(past),past)]...,
+                dyn_exo_list[indexin(sort(exo),exo)]...]
 
     Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x)
 
@@ -4918,18 +4918,23 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     eqs = Symbolics.parse_expr_to_symbolic.(𝓂.dyn_equations,(@__MODULE__,))
 
-    future_no_lead_lag = Symbol.(replace.(string.(future), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-    present_no_lead_lag = Symbol.(replace.(string.(present), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-    past_no_lead_lag = Symbol.(replace.(string.(past), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    # future_no_lead_lag = Symbol.(replace.(string.(future), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    # present_no_lead_lag = Symbol.(replace.(string.(present), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    # past_no_lead_lag = Symbol.(replace.(string.(past), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
 
-    eval(:(Symbolics.@variables $(Set(vcat(future_no_lead_lag, present_no_lead_lag, past_no_lead_lag))...)))
+    # eval(:(Symbolics.@variables $(Set(vcat(future_no_lead_lag, present_no_lead_lag, past_no_lead_lag))...)))
+    eval(:(Symbolics.@variables $(Set(vcat(future, present, past))...)))
 
-    SS_and_pars = Symbol.(vcat(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""), 𝓂.calibration_equations_parameters))
+    SS_and_pars = Symbol.(vcat(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), 𝓂.calibration_equations_parameters))
 
     # remove time indices
-    vars_no_time_transform = union(Dict(eval.(dyn_future_list) .=> eval.(future_no_lead_lag)), 
-                                    Dict(eval.(dyn_present_list) .=> eval.(present_no_lead_lag)), 
-                                    Dict(eval.(dyn_past_list) .=> eval.(past_no_lead_lag)),
+    # vars_no_time_transform = union(Dict(eval.(dyn_future_list) .=> eval.(future_no_lead_lag)), 
+    #                                 Dict(eval.(dyn_present_list) .=> eval.(present_no_lead_lag)), 
+    #                                 Dict(eval.(dyn_past_list) .=> eval.(past_no_lead_lag)),
+    #                                 Dict(eval.(dyn_exo_list) .=> 0))
+    vars_no_time_transform = union(Dict(eval.(dyn_future_list) .=> eval.(future)), 
+                                    Dict(eval.(dyn_present_list) .=> eval.(present)), 
+                                    Dict(eval.(dyn_past_list) .=> eval.(past)),
                                     Dict(eval.(dyn_exo_list) .=> 0))
 
 
@@ -5172,13 +5177,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     dyn_exo_list         = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎")))
     dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎")))
 
-    dyn_var_future  = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_future_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-    dyn_var_present = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_present_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-    dyn_var_past    = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_past_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-    dyn_exo         = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_exo_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-    dyn_ss          = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_ss_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    dyn_var_future  = Symbol.(string.(sort(collect(reduce(union,dyn_var_future_list)))))
+    dyn_var_present = Symbol.(string.(sort(collect(reduce(union,dyn_var_present_list)))))
+    dyn_var_past    = Symbol.(string.(sort(collect(reduce(union,dyn_var_past_list)))))
+    dyn_exo         = Symbol.(string.(sort(collect(reduce(union,dyn_exo_list)))))
+    dyn_ss          = Symbol.(string.(sort(collect(reduce(union,dyn_ss_list)))))
 
-    SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+    SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
 
 
     dyn_var_future_idx  = indexin(dyn_var_future    , SS_and_pars_names)
