@@ -5073,15 +5073,15 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
 
 
-    mod_func3SSp = :(function model_jacobian_SS_and_pars_vars(X::Vector, params::Vector{Real}, X̄::Vector)
-        $(alll...)
-        $(paras...)
-        # $(𝓂.calibration_equations_no_var...)
-        $(steady_state...)
-        sparse([$(row1SSp...)], [$(column1SSp...)], [$(first_order_SS_and_pars_vars...)], $(length(eqs) * length(vars)), $(length(𝓂.parameters)))
-    end)
+    # mod_func3SSp = :(function model_jacobian_SS_and_pars_vars(X::Vector, params::Vector{Real}, X̄::Vector)
+    #     $(alll...)
+    #     $(paras...)
+    #     # $(𝓂.calibration_equations_no_var...)
+    #     $(steady_state...)
+    #     sparse([$(row1SSp...)], [$(column1SSp...)], [$(first_order_SS_and_pars_vars...)], $(length(eqs) * length(vars)), $(length(𝓂.parameters)))
+    # end)
 
-    𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
+    # 𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
 
 
     if max_perturbation_order >= 2 && 𝓂.model_hessian == Function[]
