@@ -872,10 +872,11 @@ macro model(𝓂,ex...)
 
                         $bounds,
 
-                        x->x,
+                        x->x, # model_jacobian
+                        x->x, # model_jacobian_parameters
                         # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
-                        [],#x->x,
-                        [],#x->x,
+                        [],#x->x, # model_hessian
+                        [],#x->x, # model_third_order_derivatives
 
                         $T,
 

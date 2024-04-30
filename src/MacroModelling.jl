@@ -4903,11 +4903,23 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             dyn_exo_list[indexin(sort(exo),exo)]...]
 
     # overwrite SymPyCall names
-    eval(:(Symbolics.@variables $(reduce(union,get_symbols.(𝓂.dyn_equations))...)))
+    eval(:(Symbolics.@variables $(reduce(union,get_symbols.(vcat(𝓂.dyn_equations, 𝓂.calibration_equations_no_var)))...)))
 
     vars = eval(:(Symbolics.@variables $(vars_raw...)))
 
     eqs = Symbolics.parse_expr_to_symbolic.(𝓂.dyn_equations,(@__MODULE__,))
+
+    # remove time indices
+    vars_no_time_transform = union(Dict(eval.(dyn_future_list) .=> eval.(future)), 
+                                    Dict(eval.(dyn_present_list) .=> eval.(present)), 
+                                    Dict(eval.(dyn_past_list) .=> eval.(past)),
+                                    Dict(eval.(dyn_past_list) .=> eval.(past)),
+                                    Dict(eval.(dyn_exo_list) .=> 0))
+
+    # substitute in calibration equations without targets
+    for calib_eq in reverse(𝓂.calibration_equations_no_var)
+        eqs = [Symbolics.substitute(eq, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2]))) for eq in eqs]
+    end
 
     if max_perturbation_order >= 2 
         nk = length(vars_raw)
@@ -4918,16 +4930,24 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     end
 
     first_order = []
+    first_order_parameter = []
+    first_order_SS_and_par_var = []
     second_order = []
     third_order = []
     row1 = Int[]
+    row1p = Int[]
+    row1SSp = Int[]
     row2 = Int[]
     row3 = Int[]
     column1 = Int[]
+    column1p = Int[]
+    column1SSp = Int[]
     column2 = Int[]
     column3 = Int[]
     # column3ext = Int[]
     i1 = 1
+    i1p = 1
+    i1SSp = 1
     i2 = 1
     i3 = 1
     
@@ -4935,6 +4955,40 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         for (r,eq) in enumerate(eqs)
             if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
                 deriv_first = Symbolics.derivative(eq,var1)
+
+                for (p1,p) in enumerate(𝓂.parameters)
+                    if Symbol(p) ∈ Symbol.(Symbolics.get_variables(deriv_first))
+                        deriv_first_no_time = Symbolics.substitute(deriv_first, vars_no_time_transform)
+
+                        deriv_first_parameters = Symbolics.derivative(deriv_first_no_time, eval(p))
+
+                        deriv_first_parameters_expr = Symbolics.toexpr(deriv_first_parameters)
+
+                        push!(first_order_parameter, deriv_first_parameters_expr)
+                        push!(row1p, r + length(eqs) * (c1 - 1))
+                        push!(column1p, p1)
+
+                        i1p += 1
+                    end
+                end
+
+
+                # for (SSp1,SSp) in enumerate(vcat(𝓂.var, 𝓂.calibration_equations_parameters))
+                #     if Symbol(SSp) ∈ Symbol.(Symbolics.get_variables(deriv_first))
+                #         deriv_first_no_time = Symbolics.substitute(deriv_first, vars_no_time_transform)
+
+                #         deriv_first_SS_and_par_var = Symbolics.derivative(deriv_first_no_time, eval(SSp))
+
+                #         deriv_first_SS_and_par_var_expr = Symbolics.toexpr(deriv_first_SS_and_par_var)
+
+                #         push!(first_order_SS_and_par_var, deriv_first_SS_and_par_var_expr)
+                #         push!(row1SSp, r + length(eqs) * (c1 - 1))
+                #         push!(column1SSp, SSp1)
+
+                #         i1SSp += 1
+                #     end
+                # end
+
                 # if deriv_first != 0 
                 #     deriv_expr = Meta.parse(string(deriv_first.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
                 #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
@@ -4995,7 +5049,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
         $(alll...)
         $(paras...)
-        $(𝓂.calibration_equations_no_var...)
+        # $(𝓂.calibration_equations_no_var...)
         $(steady_state...)
         sparse([$(row1...)], [$(column1...)], [$(first_order...)], $(length(eqs)), $(length(vars)))
     end)
@@ -5004,6 +5058,30 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # 𝓂.model_jacobian = FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(@RuntimeGeneratedFunction(mod_func3))
 
     # 𝓂.model_jacobian = eval(mod_func3)
+
+
+
+    mod_func3p = :(function model_jacobian_parameters(X::Vector, params::Vector{Real}, X̄::Vector)
+        $(alll...)
+        $(paras...)
+        # $(𝓂.calibration_equations_no_var...)
+        $(steady_state...)
+        sparse([$(row1p...)], [$(column1p...)], [$(first_order_parameter...)], $(length(eqs) * length(vars)), $(length(𝓂.parameters)))
+    end)
+
+    𝓂.model_jacobian_parameters = @RuntimeGeneratedFunction(mod_func3p)
+
+
+
+    mod_func3SSp = :(function model_jacobian_SS_and_pars_vars(X::Vector, params::Vector{Real}, X̄::Vector)
+        $(alll...)
+        $(paras...)
+        # $(𝓂.calibration_equations_no_var...)
+        $(steady_state...)
+        sparse([$(row1SSp...)], [$(column1SSp...)], [$(first_order_SS_and_pars_vars...)], $(length(eqs) * length(vars)), $(length(𝓂.parameters)))
+    end)
+
+    𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
 
 
     if max_perturbation_order >= 2 && 𝓂.model_hessian == Function[]
@@ -5025,7 +5103,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
             $(alll...)
             $(paras...)
-            $(𝓂.calibration_equations_no_var...)
+            # $(𝓂.calibration_equations_no_var...)
             $(steady_state...)
             return $second, $(row2[l]), $(column2[l])
             end)
@@ -5058,7 +5136,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
             $(alll...)
             $(paras...)
-            $(𝓂.calibration_equations_no_var...)
+            # $(𝓂.calibration_equations_no_var...)
             $(steady_state...)
             return $third, $(row3[l]), $(column3[l])
             end)
@@ -5755,8 +5833,16 @@ function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64};
     C = similar(A)
     C̄ = similar(A)
 
+    E = similar(C)
+
     sol = @suppress begin
-        speedmapping(zero(A); m! = (C̄, C) -> C̄ .=  A + B * C^2, tol = tol, maps_limit = 10000)
+        speedmapping(zero(A); m! = (C̄, C) -> begin 
+                                                ℒ.mul!(E, C, C)
+                                                ℒ.mul!(C̄, B, E)
+                                                ℒ.axpy!(1, A, C̄)
+                                            end,
+                                            # C̄ .=  A + B * C^2, 
+        tol = tol, maps_limit = 10000)
     end
 
     C = -sol.minimizer
