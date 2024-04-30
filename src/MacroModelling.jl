@@ -4837,34 +4837,41 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     sort!(ss_varss      ,by = x->replace(string(x),r"₍ₛₛ₎$"=>""))
 
     steady_state = []
+    steady_state_no_time = []
     for (i, var) in enumerate(ss_varss)
         push!(steady_state,:($var = X̄[$i]))
+        push!(steady_state_no_time,:($(Symbol(replace(string(var),r"₍ₛₛ₎$"=>""))) = X̄[$i]))
         # ii += 1
     end
-
+    
     ii = 1
-
+    
     alll = []
+    alll_no_time = []
     for var in future_varss
         push!(alll,:($var = X[$ii]))
+        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₁₎$"=>"", r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))) = X[$ii]))
         ii += 1
     end
-
+    
     for var in present_varss
         push!(alll,:($var = X[$ii]))
+        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₀₎$"=>"", r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))) = X[$ii]))
         ii += 1
     end
-
+    
     for var in past_varss
         push!(alll,:($var = X[$ii]))
+        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₋₁₎$"=>"", r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))) = X[$ii]))
         ii += 1
     end
-
+    
     for var in shock_varss
         push!(alll,:($var = X[$ii]))
+        # push!(alll_no_time,:($(Symbol(replace(string(var),r"₍ₛₛ₎$"=>""))) = X[$ii]))
         ii += 1
     end
-
+    
 
     # paras = []
     # push!(paras,:((;$(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)...)) = params))
@@ -4902,6 +4909,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             dyn_past_list[indexin(sort(past),past)]...,
             dyn_exo_list[indexin(sort(exo),exo)]...]
 
+    Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x)
+
     # overwrite SymPyCall names
     eval(:(Symbolics.@variables $(reduce(union,get_symbols.(vcat(𝓂.dyn_equations, 𝓂.calibration_equations_no_var)))...)))
 
@@ -4934,7 +4943,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     first_order = []
     first_order_parameter = []
-    first_order_SS_and_par_var = []
+    first_order_SS_and_pars_var = []
     second_order = []
     third_order = []
     row1 = Int[]
@@ -4955,49 +4964,47 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     i3 = 1
 
 
+
     for (c1,var1) in enumerate(vars)
         for (r,eq) in enumerate(eqs)
             if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
                 deriv_first = Symbolics.derivative(eq,var1)
-
+    
+                deriv_first_subst = copy(deriv_first)
+    
+                # substitute in calibration equations without targets
+                for calib_eq in reverse(𝓂.calibration_equations_no_var)
+                    deriv_first_subst = Symbolics.substitute(deriv_first_subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
+                end
+    
                 for (p1,p) in enumerate(𝓂.parameters)
-                    if Symbol(p) ∈ Symbol.(Symbolics.get_variables(deriv_first))
-                        deriv_first_no_time = Symbolics.substitute(deriv_first, vars_no_time_transform)
-
-                        # substitute in calibration equations without targets
-                        for calib_eq in reverse(𝓂.calibration_equations_no_var)
-                            deriv_first_no_time = [Symbolics.substitute(eq, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2]))) for eq in deriv_first_no_time]
-                        end
-
+                    if Symbol(p) ∈ Symbol.(Symbolics.get_variables(deriv_first_subst))
+                        deriv_first_no_time = Symbolics.substitute(deriv_first_subst, vars_no_time_transform)
+    
                         deriv_first_parameters = Symbolics.derivative(deriv_first_no_time, eval(p))
-
+    
                         deriv_first_parameters_expr = Symbolics.toexpr(deriv_first_parameters)
-
+    
                         push!(first_order_parameter, deriv_first_parameters_expr)
                         push!(row1p, r + length(eqs) * (c1 - 1))
                         push!(column1p, p1)
-
+    
                         i1p += 1
                     end
                 end
-
+    
                 for (SSp1,SSp) in enumerate(SS_and_pars)
-                    if Symbol(SSp) ∈ Symbol.(Symbolics.get_variables(deriv_first))
-                        deriv_first_no_time = Symbolics.substitute(deriv_first, vars_no_time_transform)
-
-                        # substitute in calibration equations without targets
-                        for calib_eq in reverse(𝓂.calibration_equations_no_var)
-                            deriv_first_no_time = [Symbolics.substitute(eq, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2]))) for eq in deriv_first_no_time]
-                        end
-                        
-                        deriv_first_SS_and_par_var = Symbolics.derivative(deriv_first_no_time, eval(SSp))
-
-                        deriv_first_SS_and_par_var_expr = Symbolics.toexpr(deriv_first_SS_and_par_var)
-
-                        push!(first_order_SS_and_par_var, deriv_first_SS_and_par_var_expr)
+                    deriv_first_no_time = Symbolics.substitute(deriv_first_subst, vars_no_time_transform)
+                    
+                    if Symbol(SSp) ∈ Symbol.(Symbolics.get_variables(deriv_first_no_time))
+                        deriv_first_SS_and_pars_var = Symbolics.derivative(deriv_first_no_time, eval(SSp))
+    
+                        deriv_first_SS_and_pars_var_expr = Symbolics.toexpr(deriv_first_SS_and_pars_var)
+    
+                        push!(first_order_SS_and_pars_var, deriv_first_SS_and_pars_var_expr)
                         push!(row1SSp, r + length(eqs) * (c1 - 1))
                         push!(column1SSp, SSp1)
-
+    
                         i1SSp += 1
                     end
                 end
@@ -5012,7 +5019,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                     #                                     x : 
                     #                                 x, 
                     #                         deriv_first_expr)
-
+    
                     push!(first_order, deriv_first_expr)
                     push!(row1,r)
                     push!(column1,c1)
@@ -5057,12 +5064,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             end
         end
     end
-
+        
 
     mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
         $(alll...)
         $(paras...)
-        # $(𝓂.calibration_equations_no_var...)
+        $(𝓂.calibration_equations_no_var...)
         $(steady_state...)
         sparse([$(row1...)], [$(column1...)], [$(first_order...)], $(length(eqs)), $(length(vars)))
     end)
@@ -5073,22 +5080,22 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # 𝓂.model_jacobian = eval(mod_func3)
 
     mod_func3p = :(function model_jacobian_parameters(X::Vector, params::Vector{Real}, X̄::Vector)
-        $(alll...)
+        $(alll_no_time...)
         $(paras...)
         # $(𝓂.calibration_equations_no_var...)
-        $(steady_state...)
+        $(steady_state_no_time...)
         sparse([$(row1p...)], [$(column1p...)], [$(first_order_parameter...)], $(length(eqs) * length(vars)), $(length(𝓂.parameters)))
     end)
 
     𝓂.model_jacobian_parameters = @RuntimeGeneratedFunction(mod_func3p)
 
-    
+
     mod_func3SSp = :(function model_jacobian_SS_and_pars_vars(X::Vector, params::Vector{Real}, X̄::Vector)
-        $(alll...)
+        $(alll_no_time...)
         $(paras...)
         # $(𝓂.calibration_equations_no_var...)
-        $(steady_state...)
-        sparse([$(row1SSp...)], [$(column1SSp...)], [$(first_order_SS_and_pars_vars...)], $(length(eqs) * length(vars)), $(length(𝓂.parameters)))
+        $(steady_state_no_time...)
+        sparse([$(row1SSp...)], [$(column1SSp...)], [$(first_order_SS_and_pars_var...)], $(length(eqs) * length(vars)), $(length(SS_and_pars)))
     end)
 
     𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
