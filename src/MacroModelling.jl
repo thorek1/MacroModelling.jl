@@ -7127,9 +7127,13 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         change = 1
         𝐂  = -C
         𝐂¹ = -C
+        # CA = similar(A)
+        # CA = similar(A)
         while change > eps(Float32) && iter < 500
-            𝐂¹ = A * 𝐂 * A' + 𝐂
-            A *= A
+            # mul!(CA, C, A')
+            # mul!(CA, C, A')
+            𝐂¹ .= A * 𝐂 * A' + 𝐂
+            A .*= A
             if !(A isa DenseMatrix)
                 droptol!(A, eps())
             end
@@ -7837,6 +7841,45 @@ function get_initial_covariance(::Val{:diagonal}, values::Vector{S}, coordinates
 end
 
 
+function rrule(::typeof(get_initial_covariance),
+    ::Val{:theoretical}, 
+    values, 
+    coordinates, 
+    dimensions)
+
+    P, _ = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
+
+    A = reshape(values[1:(dimensions[1][1] * dimensions[1][2])], dimensions[1])
+
+    # pullback
+    function initial_covariance_pullback(∂P)
+        values_pb = vcat(vec(A'), vec(-∂P))
+
+        ∂𝐁, _ = solve_matrix_equation_forward(values_pb, coords = coordinates, dims = dimensions, solver = :doubling)
+        
+        ∂A = ∂𝐁 * A * P' + ∂𝐁' * A * P
+
+        return NoTangent(), NoTangent(), vcat(vec(∂A), vec(-∂𝐁)), NoTangent(), NoTangent()
+    end
+    
+    return P, initial_covariance_pullback
+end
+
+
+
+function rrule(::typeof(get_initial_covariance),
+    ::Val{:diagonal}, 
+    values, 
+    coordinates, 
+    dimensions)
+
+    # pullback
+    function initial_covariance_pullback(∂P)
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+    end
+    
+    return collect(ℒ.I(dimensions[1][1]) * 10.0), initial_covariance_pullback
+end
 
 function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}, P::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S <: Float64
     u = zeros(S, size(C,2))
@@ -8085,7 +8128,9 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
                 # loglik += logdet(F[t]) + v[t]' * invF[t] * v[t]
                 # z[t] .= C * ū[t]
                 # ∂v = (invF[t]' + invF[t]) * v[t]
-                copy!(invF[1], invF[t]' + invF[t]) # using invF[1] as temporary storage
+                copy!(invF[1], invF[t]' + invF[t])
+                # copy!(invF[1], invF[t]) # using invF[1] as temporary storage
+                # ℒ.axpy!(1, invF[t]', invF[1]) # using invF[1] as temporary storage
                 mul!(∂v, invF[1], v[t])
                 # mul!(∂ū∂v, C', v[1])
             else
