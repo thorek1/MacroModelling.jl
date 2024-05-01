@@ -65,7 +65,7 @@
 - [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
 - [ ] write functions to debug (fix_SS.jl...)
 - [ ] model compression (speed up 2nd moment calc (derivatives) for large models; gradient loglikelihood is very slow due to large matmuls) -> model setup as maximisation problem (gEcon) -> HANK models
-- [ ] implement global solution methods
+- [ ] implement global solution methods - Julien Pascal, QuantEcon
 - [ ] add more models
 
 - [ ] use @assert for errors and @test_throws
