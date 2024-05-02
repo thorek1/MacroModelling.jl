@@ -6139,19 +6139,63 @@ end
 
 
 
+# function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
+#     # Forward pass to compute the output and intermediate values needed for the backward pass
+#     𝐒₁, solved, tmp = calculate_jacobian_transpose(∇₁, T = T, explosive = explosive)
+
+#     function calculate_riccati_pullback(Δ𝐒₁)
+#         # Backward pass to compute the derivatives with respect to inputs
+#         # This would involve computing the derivatives for each operation in reverse order
+#         # and applying chain rule to propagate through the function
+#         return NoTangent(), reshape(tmp * sparsevec(Δ𝐒₁[1]), size(∇₁)) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
+#         # return NoTangent(), (reshape(-d𝐒₁a \ d∇₁a * vec(Δ𝐒₁) , size(∇₁))) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
+#     end
+
+#     return (𝐒₁, solved), calculate_riccati_pullback
+# end
+
+
+
 function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
     # Forward pass to compute the output and intermediate values needed for the backward pass
-    𝐒₁, solved, tmp = calculate_jacobian_transpose(∇₁, T = T, explosive = explosive)
+    A, solved = riccati_forward(∇₁, T = T, explosive = explosive)
 
-    function calculate_riccati_pullback(Δ𝐒₁)
-        # Backward pass to compute the derivatives with respect to inputs
-        # This would involve computing the derivatives for each operation in reverse order
-        # and applying chain rule to propagate through the function
-        return NoTangent(), reshape(tmp * sparsevec(Δ𝐒₁[1]), size(∇₁)) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
-        # return NoTangent(), (reshape(-d𝐒₁a \ d∇₁a * vec(Δ𝐒₁) , size(∇₁))) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
+    expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
+                    ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+    Â = A * expand[2]
+    
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    ∇₀ = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+
+    ∂∇₁ = zero(∇₁)
+    
+    invtmp = inv(-Â' * ∇₊' - ∇₀')
+    
+    tmp2 = invtmp * ∇₊'
+
+    function first_order_solution_pullback(∂A)
+        tmp1 = invtmp * ∂A[1] * expand[2]
+
+        coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+
+        values = vcat(vec(tmp2), vec(Â'), vec(tmp1))
+        
+        dimensions = Tuple{Int, Int}[]
+        push!(dimensions,size(tmp2))
+        push!(dimensions,size(Â'))
+        push!(dimensions,size(tmp1))
+        
+        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres)
+        
+        ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (ss * Â' * Â')[:,T.future_not_past_and_mixed_idx]
+        ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .= ss * Â'
+        ∂∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] .= ss[:,T.past_not_future_and_mixed_idx]
+
+        return NoTangent(), ∂∇₁
     end
 
-    return (𝐒₁, solved), calculate_riccati_pullback
+    return (A, solved), first_order_solution_pullback
 end
 
 
@@ -7080,6 +7124,13 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+    elseif length(dims) == 3
+        lengthA = dims[1][1] * dims[1][2]
+        lengthB = dims[2][1] * dims[2][2]
+
+        A = reshape(ABC[1:lengthA], dims[1]...)
+        B = reshape(ABC[lengthA .+ (1:lengthB)], dims[2]...)
+        C = reshape(ABC[lengthA + lengthB + 1:end], dims[3]...)
     else
         lengthA = dims[1][1] * dims[1][2]
         A = reshape(ABC[1:lengthA],dims[1]...)
@@ -7090,12 +7141,25 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     end
     
 
-    if solver ∈ [:gmres, :bicgstab]
+    if solver ∈ [:gmres, :bicgstab]  
+        tmp̂ = similar(C)
+        tmp̄ = similar(C)
+        𝐗 = similar(C)
+
         function sylvester!(sol,𝐱)
-            𝐗 = reshape(𝐱, size(C))
-            sol .= vec(A * 𝐗 * B - 𝐗)
-            return sol
+            copyto!(𝐗, 𝐱)
+            mul!(tmp̄, 𝐗, B)
+            mul!(tmp̂, A, tmp̄)
+            ℒ.axpy!(-1, tmp̂, 𝐗)
+            ℒ.rmul!(𝐗, -1)
+            copyto!(sol, 𝐗)
         end
+
+        # function sylvester!(sol,𝐱)
+        #     𝐗 = reshape(𝐱, size(C))
+        #     sol .= vec(A * 𝐗 * B - 𝐗)
+        #     return sol
+        # end
         
         sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
 
@@ -8144,7 +8208,7 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
                 # loglik += logdet(F[t]) + v[t]' * invF[t] * v[t]
                 # z[t] .= C * ū[t]
                 # ∂v = (invF[t]' + invF[t]) * v[t]
-                copy!(invF[1], invF[t]' + invF[t])
+                copy!(invF[1], invF[t]' .+ invF[t])
                 # copy!(invF[1], invF[t]) # using invF[1] as temporary storage
                 # ℒ.axpy!(1, invF[t]', invF[1]) # using invF[1] as temporary storage
                 mul!(∂v, invF[1], v[t])
