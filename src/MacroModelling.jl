@@ -7127,20 +7127,29 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         change = 1
         𝐂  = -C
         𝐂¹ = -C
-        # CA = similar(A)
-        # CA = similar(A)
+        CA = similar(A)
+        A² = similar(A)
         while change > eps(Float32) && iter < 500
-            # mul!(CA, C, A')
-            # mul!(CA, C, A')
-            𝐂¹ .= A * 𝐂 * A' + 𝐂
-            A .*= A
+            # 𝐂¹ .= A * 𝐂 * A' + 𝐂
+            mul!(CA, 𝐂, A')
+            mul!(𝐂¹, A, CA, 1, 1)
+    
+            # A .*= A
+            mul!(A², A, A)
+            copy!(A, A²)
+    
             if !(A isa DenseMatrix)
                 droptol!(A, eps())
             end
+            
             if iter > 10
-                change = maximum(abs, 𝐂¹ - 𝐂)
+                ℒ.axpy!(-1, 𝐂¹, 𝐂)
+                change = maximum(abs, 𝐂)
             end
-            𝐂 = 𝐂¹
+    
+            # 𝐂 = 𝐂¹
+            copy!(𝐂, 𝐂¹)
+    
             iter += 1
         end
         solved = change < eps(Float32)
@@ -7155,9 +7164,16 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         𝐂 = MatrixEquations.lyapd(collect(A),-C)
         solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = eps(Float32))
     elseif solver == :speedmapping
-        
+        CA = similar(A)
+
         soll = @suppress begin
-            speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
+            speedmapping(collect(-C); 
+                m! = (X, x) -> begin
+                    mul!(CA, x, A')
+                    mul!(X, A, CA)
+                    ℒ.axpy!(1, C, X)
+                end, stabilize = true)
+            # speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
         end
         𝐂 = soll.minimizer
 
