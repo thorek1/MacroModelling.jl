@@ -6238,6 +6238,73 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
 end
 
 
+
+function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = false)
+    # Forward pass to compute the output and intermediate values needed for the backward pass
+    𝐒ᵗ, solved = riccati_forward(∇₁, T = T, explosive = explosive)
+
+    if !solved
+        return (hcat(𝐒ᵗ, zeros(size(𝐒ᵗ,1),T.nExo)), solved), x -> NoTangent(), NoTangent(), NoTangent()
+    end
+
+    expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
+                    ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+    
+    M̂ = RF.lu(∇₊ * 𝐒ᵗ * expand[2] + ∇₀, check = false)
+    
+    if !ℒ.issuccess(M̂)
+        return (hcat(𝐒ᵗ, zeros(size(𝐒ᵗ,1),T.nExo)), solved), x -> NoTangent(), NoTangent(), NoTangent()
+    end
+    
+    M = inv(M̂)
+    
+    𝐒ᵉ = -M * ∇ₑ # otherwise Zygote doesnt diff it
+
+    𝐒̂ᵗ = 𝐒ᵗ * expand[2]
+   
+    ∂∇₁ = zero(∇₁)
+   
+    tmp2 = -M' * ∇₊'
+
+    function first_order_solution_pullback(∂𝐒) 
+        ∂𝐒ᵗ = ∂𝐒[1][:,1:T.nPast_not_future_and_mixed]
+        ∂𝐒ᵉ = ∂𝐒[1][:,T.nPast_not_future_and_mixed + 1:end]
+
+        ∂∇₁[:,T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1:end] .= -M' * ∂𝐒ᵉ
+
+        ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .= M' * ∂𝐒ᵉ * ∇ₑ' * M'
+
+        ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand[2]' * 𝐒ᵗ')[:,T.future_not_past_and_mixed_idx]
+
+        ∂𝐒ᵗ .+= ∇₊' * M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand[2]'
+
+        tmp1 = -M' * ∂𝐒ᵗ * expand[2]
+
+        coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+
+        values = vcat(vec(tmp2), vec(𝐒̂ᵗ'), vec(-tmp1))
+        
+        dimensions = Tuple{Int, Int}[]
+        push!(dimensions,size(tmp2))
+        push!(dimensions,size(𝐒̂ᵗ'))
+        push!(dimensions,size(tmp1))
+        
+        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres)
+        
+        ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
+        ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .+= ss * 𝐒̂ᵗ'
+        ∂∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] .+= ss[:,T.past_not_future_and_mixed_idx]
+
+        return NoTangent(), ∂∇₁, NoTangent()
+    end
+
+    return (hcat(𝐒ᵗ, 𝐒ᵉ), solved), first_order_solution_pullback
+end
+
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}},Bool} where {Z,S,N}
     A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
     # A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
@@ -8107,7 +8174,7 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
 
     u = [similar(ū) for _ in 1:T] # used in backward pass
 
-    P = [deepcopy(P̄) for _ in 1:T] # used in backward pass
+    P = [copy(P̄) for _ in 1:T] # used in backward pass
 
     CP = [zero(C) for _ in 1:T] # used in backward pass
 
