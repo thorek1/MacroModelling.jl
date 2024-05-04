@@ -6186,7 +6186,8 @@ function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
         push!(dimensions,size(Â'))
         push!(dimensions,size(tmp1))
         
-        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester)
+        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester, tol = eps()) # potentially high matrix condition numbers. precision matters
+        
         
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (ss * Â' * Â')[:,T.future_not_past_and_mixed_idx]
         ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .= ss * Â'
@@ -6293,7 +6294,7 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
         push!(dimensions,size(𝐒̂ᵗ'))
         push!(dimensions,size(tmp1))
         
-        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester)
+        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester, tol = eps()) # potentially high matrix condition numbers. precision matters
         
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
         ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .+= ss * 𝐒̂ᵗ'
@@ -7237,7 +7238,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
             𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol)
         end
         solved = info.solved
-    elseif solver == :iterative
+    elseif solver == :iterative # this can still be optimised
         iter = 1
         change = 1
         𝐂  = C
