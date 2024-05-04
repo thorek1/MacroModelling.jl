@@ -7225,7 +7225,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     dims::Vector{Tuple{Int,Int}},
     sparse_output::Bool = false,
     solver::Symbol = :doubling,
-    tol::AbstractFloat = eps(Float32))#::Tuple{Matrix{Float64}, Bool}
+    tol::AbstractFloat = sqrt(eps()))#::Tuple{Matrix{Float64}, Bool}
 
     if length(coords) == 1
         lengthA = length(coords[1][1])
