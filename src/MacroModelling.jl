@@ -7286,9 +7286,9 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
 
         if solver == :gmres
-            𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol)
+            𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = Float64(tol))
         elseif solver == :bicgstab
-            𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol)
+            𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = Float64(tol))
         end
         solved = info.solved
     elseif solver == :iterative # this can still be optimised
