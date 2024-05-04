@@ -5930,32 +5930,66 @@ end
 
 
 function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
+    n₀₊ = zeros(T.nVars, T.nFuture_not_past_and_mixed)
+    n₀₀ = zeros(T.nVars, T.nVars)
+    n₀₋ = zeros(T.nVars, T.nPast_not_future_and_mixed)
+    n₋₋ = zeros(T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
+    nₚ₋ = zeros(T.nPresent_only, T.nPast_not_future_and_mixed)
+    
+    
+    nₜₚ = zeros(T.nVars - T.nPresent_only, T.nPast_not_future_and_mixed)
+    
+    D = zeros(T.nVars - T.nPresent_only + length(T.mixed_in_past_idx), T.nPast_not_future_and_mixed + T.nFuture_not_past_and_mixed)
+    E = zeros(T.nVars - T.nPresent_only + length(T.mixed_in_past_idx), T.nPast_not_future_and_mixed + T.nFuture_not_past_and_mixed)
+    
+    
+    
     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
     ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
-
-    Q    = ℒ.qr(collect(∇₀[:,T.present_only_idx]))
+    
+    Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
     Qinv = Q.Q'
-
-    A₊ = Qinv * ∇₊
-    A₀ = Qinv * ∇₀
-    A₋ = Qinv * ∇₋
-
+    
+    mul!(n₀₊, Qinv, ∇₊)
+    mul!(n₀₀, Qinv, ∇₀)
+    mul!(n₀₋, Qinv, ∇₋)
+    A₊ = n₀₊
+    A₀ = n₀₀
+    A₋ = n₀₋
+    
     dynIndex = T.nPresent_only+1:T.nVars
-
+    
     Ã₊  = @view A₊[dynIndex,:]
     Ã₋  = @view A₋[dynIndex,:]
     Ã₀₊ = @view A₀[dynIndex, T.future_not_past_and_mixed_idx]
-    Ã₀₋ = @views A₀[dynIndex, T.past_not_future_idx] * ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.not_mixed_in_past_idx,:]
+    mul!(nₜₚ, A₀[dynIndex, T.past_not_future_idx], ℒ.I(T.nPast_not_future_and_mixed)[T.not_mixed_in_past_idx,:])
+    Ã₀₋ = nₜₚ
     
-    Z₊ = zeros(T.nMixed,T.nFuture_not_past_and_mixed)
-    I₊ = @view ℒ.diagm(ones(T.nFuture_not_past_and_mixed))[T.mixed_in_future_idx,:]
-
+    Z₊ = zeros(T.nMixed, T.nFuture_not_past_and_mixed)
+    I₊ = @view ℒ.I(T.nFuture_not_past_and_mixed)[T.mixed_in_future_idx,:]
+    
     Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
     I₋ = @view ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.mixed_in_past_idx,:]
-
-    D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
-    E = vcat(hcat(-Ã₋,-Ã₀₊), hcat(Z₋, I₊))
+    
+    D = zeros(T.nVars - T.nPresent_only + length(T.mixed_in_past_idx), T.nPast_not_future_and_mixed + T.nFuture_not_past_and_mixed)
+    
+    # DD = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
+    D[1:(T.nVars - T.nPresent_only), 1:T.nPast_not_future_and_mixed] .= Ã₀₋
+    D[1:(T.nVars - T.nPresent_only), T.nPast_not_future_and_mixed+1:end] .= Ã₊
+    D[T.nVars - T.nPresent_only + 1:end, 1:T.nPast_not_future_and_mixed] .= I₋
+    D[T.nVars - T.nPresent_only + 1:end, T.nPast_not_future_and_mixed+1:end] .= Z₊
+    # D == DD
+    
+    ℒ.rmul!(Ã₋,-1)
+    ℒ.rmul!(Ã₀₊,-1)
+    # EE = vcat(hcat(-Ã₋,-Ã₀₊), hcat(Z₋, I₊))
+    E[1:(T.nVars - T.nPresent_only), 1:T.nPast_not_future_and_mixed] .= Ã₋
+    E[1:(T.nVars - T.nPresent_only), T.nPast_not_future_and_mixed+1:end] .= Ã₀₊
+    E[T.nVars - T.nPresent_only + 1:end, 1:T.nPast_not_future_and_mixed] .= Z₋
+    E[T.nVars - T.nPresent_only + 1:end, T.nPast_not_future_and_mixed+1:end] .= I₊
+    # E == EE
+    
     # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
     schdcmp = try
         ℒ.schur!(D, E)
@@ -5965,70 +5999,85 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     
     if explosive # returns false for NaN gen. eigenvalue which is correct here bc they are > 1
         eigenselect = abs.(schdcmp.β ./ schdcmp.α) .>= 1
-
+    
         ℒ.ordschur!(schdcmp, eigenselect)
-
+    
         Z₂₁ = @view schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
         Z₁₁ = @view schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
+    
         S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
         T₁₁    = @view schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
+    
         Ẑ₁₁ = RF.lu(Z₁₁, check = false)
-
+    
         if !ℒ.issuccess(Ẑ₁₁)
             Ẑ₁₁ = ℒ.svd(Z₁₁, check = false)
         end
-
+    
         if !ℒ.issuccess(Ẑ₁₁)
             return zeros(T.nVars,T.nPast_not_future_and_mixed), false
         end
     else
         eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
-
+    
         try
             ℒ.ordschur!(schdcmp, eigenselect)
         catch
             return zeros(T.nVars,T.nPast_not_future_and_mixed), false
         end
-
+    
         Z₂₁ = @view schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
         Z₁₁ = @view schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
+    
         S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
         T₁₁    = @view schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
-
+    
         Ẑ₁₁ = RF.lu(Z₁₁, check = false)
-
+    
         if !ℒ.issuccess(Ẑ₁₁)
             return zeros(T.nVars,T.nPast_not_future_and_mixed), false
         end
     end
     
-    Ŝ₁₁ = RF.lu(S₁₁, check = false)
-
+    Ŝ₁₁ = RF.lu!(S₁₁, check = false)
+    
     if !ℒ.issuccess(Ŝ₁₁)
         return zeros(T.nVars,T.nPast_not_future_and_mixed), false
     end
     
-    D      = Z₂₁ / Ẑ₁₁
-    L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
-
+    # D      = Z₂₁ / Ẑ₁₁
+    ℒ.rdiv!(Z₂₁, Ẑ₁₁)
+    D = Z₂₁
+    
+    # L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
+    ℒ.ldiv!(Ŝ₁₁, T₁₁)
+    mul!(n₋₋, Z₁₁, T₁₁)
+    ℒ.rdiv!(n₋₋, Ẑ₁₁)
+    L = n₋₋
+    
+    
     sol = @views vcat(L[T.not_mixed_in_past_idx,:], D)
-
+    
     Ā₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_only_idx]
     A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
     Ã₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_but_not_only_idx]
     A₋ᵤ  = @view A₋[1:T.nPresent_only,:]
-
-    Ā̂₀ᵤ = RF.lu(Ā₀ᵤ, check = false)
-
+    
+    Ā̂₀ᵤ = RF.lu!(Ā₀ᵤ, check = false)
+    
     if !ℒ.issuccess(Ā̂₀ᵤ)
-        Ā̂₀ᵤ = ℒ.svd(collect(Ā₀ᵤ))
+        return zeros(T.nVars,T.nPast_not_future_and_mixed), false
+    #     Ā̂₀ᵤ = ℒ.svd(collect(Ā₀ᵤ))
     end
-
-    A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
+    
+    # A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
+    mul!(A₋ᵤ, Ã₀ᵤ, sol[T.dynamic_order,:], 1, 1)
+    mul!(nₚ₋, A₊ᵤ, D)
+    mul!(A₋ᵤ, nₚ₋, L, 1, 1)
+    ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
+    ℒ.rmul!(A₋ᵤ,-1)
+    
+    A    = vcat(A₋ᵤ, sol)
     
     return A[T.reorder,:], true
 end
@@ -6186,7 +6235,8 @@ function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
         push!(dimensions,size(Â'))
         push!(dimensions,size(tmp1))
         
-        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres)
+        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester, tol = eps()) # potentially high matrix condition numbers. precision matters
+        
         
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (ss * Â' * Â')[:,T.future_not_past_and_mixed_idx]
         ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .= ss * Â'
@@ -6224,17 +6274,21 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
     
-    C = ℒ.lu(∇₊ * A * Jm + ∇₀, check = false)
+    M = similar(∇₀)
+    mul!(M, A, Jm)
+    mul!(∇₀, ∇₊, M, 1, 1)
+    C = RF.lu!(∇₀, check = false)
+    # C = RF.lu!(∇₊ * A * Jm + ∇₀, check = false)
     
     if !ℒ.issuccess(C)
         return hcat(A, zeros(size(A,1),T.nExo)), solved
     end
     
-    # ℒ.ldiv!(∇₀, C, ∇ₑ)
-    # ℒ.rmul!(∇₀, -1)
-    B = -inv(C) * ∇ₑ # otherwise Zygote doesnt diff it
+    ℒ.ldiv!(C, ∇ₑ)
+    ℒ.rmul!(∇ₑ, -1)
+    # B = -(C \ ∇ₑ) # otherwise Zygote doesnt diff it
 
-    return hcat(A, B), solved
+    return hcat(A, ∇ₑ), solved
 end
 
 
@@ -6293,7 +6347,7 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
         push!(dimensions,size(𝐒̂ᵗ'))
         push!(dimensions,size(tmp1))
         
-        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres)
+        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester, tol = eps()) # potentially high matrix condition numbers. precision matters
         
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
         ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .+= ss * 𝐒̂ᵗ'
@@ -7170,7 +7224,8 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
     dims::Vector{Tuple{Int,Int}},
     sparse_output::Bool = false,
-    solver::Symbol = :doubling)#::Tuple{Matrix{Float64}, Bool}
+    solver::Symbol = :doubling,
+    tol::AbstractFloat = sqrt(eps()))#::Tuple{Matrix{Float64}, Bool}
 
     if length(coords) == 1
         lengthA = length(coords[1][1])
@@ -7231,17 +7286,17 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
 
         if solver == :gmres
-            𝐂, info = Krylov.gmres(sylvester, [vec(C);])
+            𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = Float64(tol))
         elseif solver == :bicgstab
-            𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])
+            𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = Float64(tol))
         end
         solved = info.solved
-    elseif solver == :iterative
+    elseif solver == :iterative # this can still be optimised
         iter = 1
         change = 1
         𝐂  = C
         𝐂¹ = C
-        while change > eps(Float32) && iter < 10000
+        while change > tol && iter < 10000
             𝐂¹ = A * 𝐂 * B - C
             if !(𝐂¹ isa DenseMatrix)
                 droptol!(𝐂¹, eps())
@@ -7252,7 +7307,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
             𝐂 = 𝐂¹
             iter += 1
         end
-        solved = change < eps(Float32)
+        solved = change < tol
     elseif solver == :doubling
         iter = 1
         change = 1
@@ -7260,7 +7315,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         𝐂¹ = -C
         CA = similar(A)
         A² = similar(A)
-        while change > eps(Float32) && iter < 500
+        while change > tol && iter < 500
             # 𝐂¹ .= A * 𝐂 * A' + 𝐂
             mul!(CA, 𝐂, A')
             mul!(𝐂¹, A, CA, 1, 1)
@@ -7283,7 +7338,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     
             iter += 1
         end
-        solved = change < eps(Float32)
+        solved = change < tol
     elseif solver == :sylvester
         𝐂 = try MatrixEquations.sylvd(collect(-A),collect(B),-C)
         catch
@@ -7295,15 +7350,15 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         𝐂 = MatrixEquations.lyapd(collect(A),-C)
         solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = eps(Float32))
     elseif solver == :speedmapping
-        CA = similar(A)
+        CB = similar(A)
 
         soll = @suppress begin
             speedmapping(collect(-C); 
                 m! = (X, x) -> begin
-                    mul!(CA, x, A')
-                    mul!(X, A, CA)
+                    mul!(CB, x, B)
+                    mul!(X, A, CB)
                     ℒ.axpy!(1, C, X)
-                end, stabilize = true)
+                end, stabilize = false, tol = tol)
             # speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
         end
         𝐂 = soll.minimizer
@@ -8057,7 +8112,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         mul!(F, Ctmp, C')
         # F = C * P * C'
 
-        luF = RF.lu(F, check = false) ###
+        luF = RF.lu!(F, check = false) ###
 
         if !ℒ.issuccess(luF)
             return -Inf
