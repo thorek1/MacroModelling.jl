@@ -6186,7 +6186,7 @@ function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
         push!(dimensions,size(Â'))
         push!(dimensions,size(tmp1))
         
-        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres)
+        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester)
         
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (ss * Â' * Â')[:,T.future_not_past_and_mixed_idx]
         ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .= ss * Â'
@@ -6293,7 +6293,7 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
         push!(dimensions,size(𝐒̂ᵗ'))
         push!(dimensions,size(tmp1))
         
-        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres)
+        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester)
         
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
         ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .+= ss * 𝐒̂ᵗ'
@@ -7170,7 +7170,8 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
     dims::Vector{Tuple{Int,Int}},
     sparse_output::Bool = false,
-    solver::Symbol = :doubling)#::Tuple{Matrix{Float64}, Bool}
+    solver::Symbol = :doubling,
+    tol::AbstractFloat = eps(Float32))#::Tuple{Matrix{Float64}, Bool}
 
     if length(coords) == 1
         lengthA = length(coords[1][1])
@@ -7231,9 +7232,9 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
 
         if solver == :gmres
-            𝐂, info = Krylov.gmres(sylvester, [vec(C);])
+            𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol)
         elseif solver == :bicgstab
-            𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])
+            𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol)
         end
         solved = info.solved
     elseif solver == :iterative
@@ -7241,7 +7242,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         change = 1
         𝐂  = C
         𝐂¹ = C
-        while change > eps(Float32) && iter < 10000
+        while change > tol && iter < 10000
             𝐂¹ = A * 𝐂 * B - C
             if !(𝐂¹ isa DenseMatrix)
                 droptol!(𝐂¹, eps())
@@ -7252,7 +7253,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
             𝐂 = 𝐂¹
             iter += 1
         end
-        solved = change < eps(Float32)
+        solved = change < tol
     elseif solver == :doubling
         iter = 1
         change = 1
@@ -7260,7 +7261,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         𝐂¹ = -C
         CA = similar(A)
         A² = similar(A)
-        while change > eps(Float32) && iter < 500
+        while change > tol && iter < 500
             # 𝐂¹ .= A * 𝐂 * A' + 𝐂
             mul!(CA, 𝐂, A')
             mul!(𝐂¹, A, CA, 1, 1)
@@ -7283,7 +7284,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     
             iter += 1
         end
-        solved = change < eps(Float32)
+        solved = change < tol
     elseif solver == :sylvester
         𝐂 = try MatrixEquations.sylvd(collect(-A),collect(B),-C)
         catch
@@ -7295,15 +7296,15 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         𝐂 = MatrixEquations.lyapd(collect(A),-C)
         solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = eps(Float32))
     elseif solver == :speedmapping
-        CA = similar(A)
+        CB = similar(A)
 
         soll = @suppress begin
             speedmapping(collect(-C); 
                 m! = (X, x) -> begin
-                    mul!(CA, x, A')
-                    mul!(X, A, CA)
+                    mul!(CB, x, B)
+                    mul!(X, A, CB)
                     ℒ.axpy!(1, C, X)
-                end, stabilize = true)
+                end, stabilize = false, tol = tol)
             # speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
         end
         𝐂 = soll.minimizer
