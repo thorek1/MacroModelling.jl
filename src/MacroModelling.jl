@@ -6235,7 +6235,7 @@ function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
         push!(dimensions,size(Â'))
         push!(dimensions,size(tmp1))
         
-        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester, tol = eps()) # potentially high matrix condition numbers. precision matters
+        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester)#, tol = eps()) # potentially high matrix condition numbers. precision matters
         
         
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (ss * Â' * Â')[:,T.future_not_past_and_mixed_idx]
@@ -7224,8 +7224,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
     dims::Vector{Tuple{Int,Int}},
     sparse_output::Bool = false,
-    solver::Symbol = :doubling,
-    tol::AbstractFloat = sqrt(eps()))#::Tuple{Matrix{Float64}, Bool}
+    solver::Symbol = :doubling)#::Tuple{Matrix{Float64}, Bool}
 
     if length(coords) == 1
         lengthA = length(coords[1][1])
@@ -7286,9 +7285,9 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
 
         if solver == :gmres
-            𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = Float64(tol))
+            𝐂, info = Krylov.gmres(sylvester, [vec(C);])#, rtol = Float64(tol))
         elseif solver == :bicgstab
-            𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = Float64(tol))
+            𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])#, rtol = Float64(tol))
         end
         solved = info.solved
     elseif solver == :iterative # this can still be optimised
@@ -7358,7 +7357,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
                     mul!(CB, x, B)
                     mul!(X, A, CB)
                     ℒ.axpy!(1, C, X)
-                end, stabilize = false, tol = tol)
+                end, stabilize = false)#, tol = tol)
             # speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
         end
         𝐂 = soll.minimizer
