@@ -7225,7 +7225,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     dims::Vector{Tuple{Int,Int}},
     sparse_output::Bool = false,
     solver::Symbol = :doubling,
-    tol::AbstractFloat = 1e-12)#::Tuple{Matrix{Float64}, Bool}
+    tol::AbstractFloat = sqrt(eps()))#::Tuple{Matrix{Float64}, Bool}
 
     if length(coords) == 1
         lengthA = length(coords[1][1])
@@ -7296,7 +7296,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         change = 1
         𝐂  = C
         𝐂¹ = C
-        while change > tol && iter < 10000
+        while change > eps(Float32) && iter < 10000
             𝐂¹ = A * 𝐂 * B - C
             if !(𝐂¹ isa DenseMatrix)
                 droptol!(𝐂¹, eps())
@@ -7307,7 +7307,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
             𝐂 = 𝐂¹
             iter += 1
         end
-        solved = change < tol
+        solved = change < eps(Float32)
     elseif solver == :doubling
         iter = 1
         change = 1
@@ -7315,7 +7315,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         𝐂¹ = -C
         CA = similar(A)
         A² = similar(A)
-        while change > tol && iter < 500
+        while change > eps(Float32) && iter < 500
             # 𝐂¹ .= A * 𝐂 * A' + 𝐂
             mul!(CA, 𝐂, A')
             mul!(𝐂¹, A, CA, 1, 1)
@@ -7338,7 +7338,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     
             iter += 1
         end
-        solved = change < tol
+        solved = change < eps(Float32)
     elseif solver == :sylvester
         𝐂 = try MatrixEquations.sylvd(collect(-A),collect(B),-C)
         catch
