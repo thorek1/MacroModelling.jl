@@ -5930,32 +5930,66 @@ end
 
 
 function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
+    n₀₊ = zeros(T.nVars, T.nFuture_not_past_and_mixed)
+    n₀₀ = zeros(T.nVars, T.nVars)
+    n₀₋ = zeros(T.nVars, T.nPast_not_future_and_mixed)
+    n₋₋ = zeros(T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
+    nₚ₋ = zeros(T.nPresent_only, T.nPast_not_future_and_mixed)
+    
+    
+    nₜₚ = zeros(T.nVars - T.nPresent_only, T.nPast_not_future_and_mixed)
+    
+    D = zeros(T.nVars - T.nPresent_only + length(T.mixed_in_past_idx), T.nPast_not_future_and_mixed + T.nFuture_not_past_and_mixed)
+    E = zeros(T.nVars - T.nPresent_only + length(T.mixed_in_past_idx), T.nPast_not_future_and_mixed + T.nFuture_not_past_and_mixed)
+    
+    
+    
     ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
     ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
-
-    Q    = ℒ.qr!(collect(∇₀[:,T.present_only_idx]))
+    
+    Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
     Qinv = Q.Q'
-
-    A₊ = Qinv * ∇₊
-    A₀ = Qinv * ∇₀
-    A₋ = Qinv * ∇₋
-
+    
+    mul!(n₀₊, Qinv, ∇₊)
+    mul!(n₀₀, Qinv, ∇₀)
+    mul!(n₀₋, Qinv, ∇₋)
+    A₊ = n₀₊
+    A₀ = n₀₀
+    A₋ = n₀₋
+    
     dynIndex = T.nPresent_only+1:T.nVars
-
+    
     Ã₊  = @view A₊[dynIndex,:]
     Ã₋  = @view A₋[dynIndex,:]
     Ã₀₊ = @view A₀[dynIndex, T.future_not_past_and_mixed_idx]
-    Ã₀₋ = @views A₀[dynIndex, T.past_not_future_idx] * ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.not_mixed_in_past_idx,:]
+    mul!(nₜₚ, A₀[dynIndex, T.past_not_future_idx], ℒ.I(T.nPast_not_future_and_mixed)[T.not_mixed_in_past_idx,:])
+    Ã₀₋ = nₜₚ
     
-    Z₊ = zeros(T.nMixed,T.nFuture_not_past_and_mixed)
-    I₊ = @view ℒ.diagm(ones(T.nFuture_not_past_and_mixed))[T.mixed_in_future_idx,:]
-
+    Z₊ = zeros(T.nMixed, T.nFuture_not_past_and_mixed)
+    I₊ = @view ℒ.I(T.nFuture_not_past_and_mixed)[T.mixed_in_future_idx,:]
+    
     Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
     I₋ = @view ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.mixed_in_past_idx,:]
-
-    D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
-    E = vcat(hcat(-Ã₋,-Ã₀₊), hcat(Z₋, I₊))
+    
+    D = zeros(T.nVars - T.nPresent_only + length(T.mixed_in_past_idx), T.nPast_not_future_and_mixed + T.nFuture_not_past_and_mixed)
+    
+    # DD = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
+    D[1:(T.nVars - T.nPresent_only), 1:T.nPast_not_future_and_mixed] .= Ã₀₋
+    D[1:(T.nVars - T.nPresent_only), T.nPast_not_future_and_mixed+1:end] .= Ã₊
+    D[T.nVars - T.nPresent_only + 1:end, 1:T.nPast_not_future_and_mixed] .= I₋
+    D[T.nVars - T.nPresent_only + 1:end, T.nPast_not_future_and_mixed+1:end] .= Z₊
+    # D == DD
+    
+    ℒ.rmul!(Ã₋,-1)
+    ℒ.rmul!(Ã₀₊,-1)
+    # EE = vcat(hcat(-Ã₋,-Ã₀₊), hcat(Z₋, I₊))
+    E[1:(T.nVars - T.nPresent_only), 1:T.nPast_not_future_and_mixed] .= Ã₋
+    E[1:(T.nVars - T.nPresent_only), T.nPast_not_future_and_mixed+1:end] .= Ã₀₊
+    E[T.nVars - T.nPresent_only + 1:end, 1:T.nPast_not_future_and_mixed] .= Z₋
+    E[T.nVars - T.nPresent_only + 1:end, T.nPast_not_future_and_mixed+1:end] .= I₊
+    # E == EE
+    
     # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
     schdcmp = try
         ℒ.schur!(D, E)
@@ -5965,70 +5999,85 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     
     if explosive # returns false for NaN gen. eigenvalue which is correct here bc they are > 1
         eigenselect = abs.(schdcmp.β ./ schdcmp.α) .>= 1
-
+    
         ℒ.ordschur!(schdcmp, eigenselect)
-
+    
         Z₂₁ = @view schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
         Z₁₁ = @view schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
+    
         S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
         T₁₁    = @view schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
+    
         Ẑ₁₁ = RF.lu(Z₁₁, check = false)
-
+    
         if !ℒ.issuccess(Ẑ₁₁)
             Ẑ₁₁ = ℒ.svd(Z₁₁, check = false)
         end
-
+    
         if !ℒ.issuccess(Ẑ₁₁)
             return zeros(T.nVars,T.nPast_not_future_and_mixed), false
         end
     else
         eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
-
+    
         try
             ℒ.ordschur!(schdcmp, eigenselect)
         catch
             return zeros(T.nVars,T.nPast_not_future_and_mixed), false
         end
-
+    
         Z₂₁ = @view schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
         Z₁₁ = @view schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
+    
         S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
         T₁₁    = @view schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
+    
         Ẑ₁₁ = RF.lu(Z₁₁, check = false)
-
+    
         if !ℒ.issuccess(Ẑ₁₁)
             return zeros(T.nVars,T.nPast_not_future_and_mixed), false
         end
     end
     
     Ŝ₁₁ = RF.lu!(S₁₁, check = false)
-
+    
     if !ℒ.issuccess(Ŝ₁₁)
         return zeros(T.nVars,T.nPast_not_future_and_mixed), false
     end
     
-    D      = Z₂₁ / Ẑ₁₁
-    L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
-
+    # D      = Z₂₁ / Ẑ₁₁
+    ℒ.rdiv!(Z₂₁, Ẑ₁₁)
+    D = Z₂₁
+    
+    # L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
+    ℒ.ldiv!(Ŝ₁₁, T₁₁)
+    mul!(n₋₋, Z₁₁, T₁₁)
+    ℒ.rdiv!(n₋₋, Ẑ₁₁)
+    L = n₋₋
+    
+    
     sol = @views vcat(L[T.not_mixed_in_past_idx,:], D)
-
+    
     Ā₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_only_idx]
     A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
     Ã₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_but_not_only_idx]
     A₋ᵤ  = @view A₋[1:T.nPresent_only,:]
-
+    
     Ā̂₀ᵤ = RF.lu!(Ā₀ᵤ, check = false)
-
+    
     if !ℒ.issuccess(Ā̂₀ᵤ)
         return zeros(T.nVars,T.nPast_not_future_and_mixed), false
     #     Ā̂₀ᵤ = ℒ.svd(collect(Ā₀ᵤ))
     end
-
-    A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
+    
+    # A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
+    mul!(A₋ᵤ, Ã₀ᵤ, sol[T.dynamic_order,:], 1, 1)
+    mul!(nₚ₋, A₊ᵤ, D)
+    mul!(A₋ᵤ, nₚ₋, L, 1, 1)
+    ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
+    ℒ.rmul!(A₋ᵤ,-1)
+    
+    A    = vcat(A₋ᵤ, sol)
     
     return A[T.reorder,:], true
 end
