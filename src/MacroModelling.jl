@@ -5934,7 +5934,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
     ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
 
-    Q    = ℒ.qr(collect(∇₀[:,T.present_only_idx]))
+    Q    = ℒ.qr!(collect(∇₀[:,T.present_only_idx]))
     Qinv = Q.Q'
 
     A₊ = Qinv * ∇₊
@@ -5998,7 +5998,6 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
         T₁₁    = @view schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
-
         Ẑ₁₁ = RF.lu(Z₁₁, check = false)
 
         if !ℒ.issuccess(Ẑ₁₁)
@@ -6006,7 +6005,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         end
     end
     
-    Ŝ₁₁ = RF.lu(S₁₁, check = false)
+    Ŝ₁₁ = RF.lu!(S₁₁, check = false)
 
     if !ℒ.issuccess(Ŝ₁₁)
         return zeros(T.nVars,T.nPast_not_future_and_mixed), false
@@ -6022,10 +6021,11 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     Ã₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_but_not_only_idx]
     A₋ᵤ  = @view A₋[1:T.nPresent_only,:]
 
-    Ā̂₀ᵤ = RF.lu(Ā₀ᵤ, check = false)
+    Ā̂₀ᵤ = RF.lu!(Ā₀ᵤ, check = false)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
-        Ā̂₀ᵤ = ℒ.svd(collect(Ā₀ᵤ))
+        return zeros(T.nVars,T.nPast_not_future_and_mixed), false
+    #     Ā̂₀ᵤ = ℒ.svd(collect(Ā₀ᵤ))
     end
 
     A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
@@ -6225,17 +6225,21 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
     
-    C = ℒ.lu(∇₊ * A * Jm + ∇₀, check = false)
+    M = similar(∇₀)
+    mul!(M, A, Jm)
+    mul!(∇₀, ∇₊, M, 1, 1)
+    C = RF.lu!(∇₀, check = false)
+    # C = RF.lu!(∇₊ * A * Jm + ∇₀, check = false)
     
     if !ℒ.issuccess(C)
         return hcat(A, zeros(size(A,1),T.nExo)), solved
     end
     
-    # ℒ.ldiv!(∇₀, C, ∇ₑ)
-    # ℒ.rmul!(∇₀, -1)
-    B = -inv(C) * ∇ₑ # otherwise Zygote doesnt diff it
+    ℒ.ldiv!(C, ∇ₑ)
+    ℒ.rmul!(∇ₑ, -1)
+    # B = -(C \ ∇ₑ) # otherwise Zygote doesnt diff it
 
-    return hcat(A, B), solved
+    return hcat(A, ∇ₑ), solved
 end
 
 
@@ -8059,7 +8063,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         mul!(F, Ctmp, C')
         # F = C * P * C'
 
-        luF = RF.lu(F, check = false) ###
+        luF = RF.lu!(F, check = false) ###
 
         if !ℒ.issuccess(luF)
             return -Inf
