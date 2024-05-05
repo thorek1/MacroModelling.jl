@@ -5939,8 +5939,8 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     
     nₜₚ = zeros(T.nVars - T.nPresent_only, T.nPast_not_future_and_mixed)
     
-    D = zeros(T.nVars - T.nPresent_only + length(T.mixed_in_past_idx), T.nPast_not_future_and_mixed + T.nFuture_not_past_and_mixed)
-    E = zeros(T.nVars - T.nPresent_only + length(T.mixed_in_past_idx), T.nPast_not_future_and_mixed + T.nFuture_not_past_and_mixed)
+    # D = zeros(T.nVars - T.nPresent_only + length(T.mixed_in_past_idx), T.nPast_not_future_and_mixed + T.nFuture_not_past_and_mixed)
+    # E = zeros(T.nVars - T.nPresent_only + length(T.mixed_in_past_idx), T.nPast_not_future_and_mixed + T.nFuture_not_past_and_mixed)
     
     
     
@@ -5972,22 +5972,22 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
     I₋ = @view ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.mixed_in_past_idx,:]
     
-    D = zeros(T.nVars - T.nPresent_only + length(T.mixed_in_past_idx), T.nPast_not_future_and_mixed + T.nFuture_not_past_and_mixed)
+    # D = zeros(T.nVars - T.nPresent_only + length(T.mixed_in_past_idx), T.nPast_not_future_and_mixed + T.nFuture_not_past_and_mixed)
     
-    # DD = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
-    D[1:(T.nVars - T.nPresent_only), 1:T.nPast_not_future_and_mixed] .= Ã₀₋
-    D[1:(T.nVars - T.nPresent_only), T.nPast_not_future_and_mixed+1:end] .= Ã₊
-    D[T.nVars - T.nPresent_only + 1:end, 1:T.nPast_not_future_and_mixed] .= I₋
-    D[T.nVars - T.nPresent_only + 1:end, T.nPast_not_future_and_mixed+1:end] .= Z₊
+    D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
+    # D[1:(T.nVars - T.nPresent_only), 1:T.nPast_not_future_and_mixed] .= Ã₀₋
+    # D[1:(T.nVars - T.nPresent_only), T.nPast_not_future_and_mixed+1:end] .= Ã₊
+    # D[T.nVars - T.nPresent_only + 1:end, 1:T.nPast_not_future_and_mixed] .= I₋
+    # D[T.nVars - T.nPresent_only + 1:end, T.nPast_not_future_and_mixed+1:end] .= Z₊
     # D == DD
     
     ℒ.rmul!(Ã₋,-1)
     ℒ.rmul!(Ã₀₊,-1)
-    # EE = vcat(hcat(-Ã₋,-Ã₀₊), hcat(Z₋, I₊))
-    E[1:(T.nVars - T.nPresent_only), 1:T.nPast_not_future_and_mixed] .= Ã₋
-    E[1:(T.nVars - T.nPresent_only), T.nPast_not_future_and_mixed+1:end] .= Ã₀₊
-    E[T.nVars - T.nPresent_only + 1:end, 1:T.nPast_not_future_and_mixed] .= Z₋
-    E[T.nVars - T.nPresent_only + 1:end, T.nPast_not_future_and_mixed+1:end] .= I₊
+    E = vcat(hcat(Ã₋,Ã₀₊), hcat(Z₋, I₊))
+    # E[1:(T.nVars - T.nPresent_only), 1:T.nPast_not_future_and_mixed] .= Ã₋
+    # E[1:(T.nVars - T.nPresent_only), T.nPast_not_future_and_mixed+1:end] .= Ã₀₊
+    # E[T.nVars - T.nPresent_only + 1:end, 1:T.nPast_not_future_and_mixed] .= Z₋
+    # E[T.nVars - T.nPresent_only + 1:end, T.nPast_not_future_and_mixed+1:end] .= I₊
     # E == EE
     
     # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
@@ -6271,8 +6271,8 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     Jm = @view(ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:])
     
     ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:]
-    ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+    ∇₀ = copy(∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)])
+    ∇ₑ = copy(∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end])
     
     M = similar(∇₀)
     mul!(M, A, Jm)
@@ -7307,7 +7307,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
             iter += 1
         end
         solved = change < eps(Float32)
-    elseif solver == :doubling
+    elseif solver == :doubling # cant use higher tol because rersults get weird in some cases
         iter = 1
         change = 1
         𝐂  = -C
