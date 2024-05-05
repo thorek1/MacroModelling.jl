@@ -6347,7 +6347,7 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
         push!(dimensions,size(𝐒̂ᵗ'))
         push!(dimensions,size(tmp1))
         
-        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester, tol = eps()) # potentially high matrix condition numbers. precision matters
+        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester)#, tol = eps()) # potentially high matrix condition numbers. precision matters
         
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
         ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .+= ss * 𝐒̂ᵗ'
