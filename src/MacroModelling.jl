@@ -6052,13 +6052,13 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     end
 
     # A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
-    mul!(A₋ᵤ, Ã₀ᵤ, sol[T.dynamic_order,:], 1, 1)
     if T.nPresent_only > 0
+        mul!(A₋ᵤ, Ã₀ᵤ, sol[T.dynamic_order,:], 1, 1)
         mul!(nₚ₋, A₊ᵤ, D)
         mul!(A₋ᵤ, nₚ₋, L, 1, 1)
+        ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
+        ℒ.rmul!(A₋ᵤ,-1)
     end
-    ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
-    ℒ.rmul!(A₋ᵤ,-1)
 
     A    = vcat(A₋ᵤ, sol)
 
