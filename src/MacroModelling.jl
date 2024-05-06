@@ -6088,17 +6088,20 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         return zeros(T.nVars,T.nPast_not_future_and_mixed), false
     #     Ā̂₀ᵤ = ℒ.svd(collect(Ā₀ᵤ))
     end
-
-    # A    = @views vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
-    if T.nPresent_only > 0
-        mul!(A₋ᵤ, Ã₀ᵤ, sol[T.dynamic_order,:], 1, 1)
-        mul!(nₚ₋, A₊ᵤ, D)
-        mul!(A₋ᵤ, nₚ₋, L, 1, 1)
-        ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
-        ℒ.rmul!(A₋ᵤ,-1)
+    
+    if VERSION >= v"1.9"
+        if T.nPresent_only > 0
+            mul!(A₋ᵤ, Ã₀ᵤ, sol[T.dynamic_order,:], 1, 1)
+            mul!(nₚ₋, A₊ᵤ, D)
+            mul!(A₋ᵤ, nₚ₋, L, 1, 1)
+            ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
+            ℒ.rmul!(A₋ᵤ,-1)
+        end
+        A    = vcat(A₋ᵤ, sol)
+    else
+        A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     end
 
-    A    = vcat(A₋ᵤ, sol)
 
     return A[T.reorder,:], true
 end
