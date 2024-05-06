@@ -5744,25 +5744,19 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
         analytical_jac_parameters = 𝓂.model_jacobian_parameters([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
-        # cols = union(unique(findnz(analytical_jac_SS_and_pars_vars)[2]), unique(findnz(analytical_jac_parameters)[2]))
-        # J = zeros(length(SS_and_pars) + length(parameters), length(cols))
+        cols = union(unique(findnz(analytical_jac_SS_and_pars_vars)[2]), unique(findnz(analytical_jac_parameters)[2]))
+        J = zeros(length(SS_and_pars) + length(parameters), length(cols))
 
-        # J[1:length(SS_and_pars), :] = analytical_jac_SS_and_pars_vars[:,cols]
-        # J[length(SS_and_pars)+1:end, :] = analytical_jac_parameters[:,cols]
+        J[1:length(parameters), :] = analytical_jac_parameters[:,cols]
+        J[length(parameters)+1:end, :] = analytical_jac_SS_and_pars_vars[:,cols]
 
-        sp∂∇₁ = sparsevec(∂∇₁)
-        # v∂∇₁ = ∂∇₁[cols]
+        v∂∇₁ = ∂∇₁[cols]
 
-        # ∂parameters_and_SS_and_pars = J * v∂∇₁
-        # println(sp∂∇₁)
-        # println(analytical_jac_parameters)
-        # println(sp∂∇₁)
-        # v∂∇₁ = vec(∂∇₁)
+        ∂parameters_and_SS_and_pars = J * v∂∇₁
 
-        # possibly speeed this up by doing dense  mat * vec because the zeros are in the same places for the tangent and jacobian. tbc
-
-        # return NoTangent(), ∂parameters_and_SS_and_pars[1:length(SS_and_pars)], ∂parameters_and_SS_and_pars[length(SS_and_pars)+1:end], NoTangent()
-        return NoTangent(), analytical_jac_parameters * sp∂∇₁, analytical_jac_SS_and_pars_vars * sp∂∇₁, NoTangent()
+        return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
+        # sp∂∇₁ = sparsevec(∂∇₁)
+        # return NoTangent(), analytical_jac_parameters * sp∂∇₁, analytical_jac_SS_and_pars_vars * sp∂∇₁, NoTangent()
     end
 
     return jacobian, calculate_jacobian_pullback
