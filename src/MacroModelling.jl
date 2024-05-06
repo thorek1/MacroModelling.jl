@@ -5076,7 +5076,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         $(paras...)
         $(𝓂.calibration_equations_no_var...)
         $(steady_state...)
-        sparse([$(row1...)], [$(column1...)], [$(first_order...)], $(length(eqs)), $(length(vars)))
+        sparse(Int[$(row1...)], Int[$(column1...)], [$(first_order...)], $(length(eqs)), $(length(vars)))
     end)
 
     𝓂.model_jacobian = @RuntimeGeneratedFunction(mod_func3)
@@ -5089,7 +5089,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         $(paras...)
         # $(𝓂.calibration_equations_no_var...)
         $(steady_state_no_time...)
-        sparse([$(row1p...)], [$(column1p...)], [$(first_order_parameter...)], $(length(eqs) * length(vars)), $(length(𝓂.parameters)))
+        sparse(Int[$(column1p...)], Int[$(row1p...)], Float64[$(first_order_parameter...)], $(length(𝓂.parameters)), $(length(eqs) * length(vars)))
     end)
 
     𝓂.model_jacobian_parameters = @RuntimeGeneratedFunction(mod_func3p)
@@ -5100,7 +5100,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         $(paras...)
         # $(𝓂.calibration_equations_no_var...)
         $(steady_state_no_time...)
-        sparse([$(row1SSp...)], [$(column1SSp...)], [$(first_order_SS_and_pars_var...)], $(length(eqs) * length(vars)), $(length(SS_and_pars)))
+        sparse(Int[$(column1SSp...)], Int[$(row1SSp...)], Float64[$(first_order_SS_and_pars_var...)], $(length(SS_and_pars)), $(length(eqs) * length(vars)))
     end)
 
     𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
@@ -5725,6 +5725,50 @@ end
 
 
 
+function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
+    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+    
+    par = vcat(parameters,calibrated_parameters)
+    
+    dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+    dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+    dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+
+    shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
+
+    jacobian =  𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
+
+    function calculate_jacobian_pullback(∂∇₁)
+        analytical_jac_parameters = 𝓂.model_jacobian_parameters([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+
+        # cols = union(unique(findnz(analytical_jac_SS_and_pars_vars)[2]), unique(findnz(analytical_jac_parameters)[2]))
+        # J = zeros(length(SS_and_pars) + length(parameters), length(cols))
+
+        # J[1:length(SS_and_pars), :] = analytical_jac_SS_and_pars_vars[:,cols]
+        # J[length(SS_and_pars)+1:end, :] = analytical_jac_parameters[:,cols]
+
+        sp∂∇₁ = sparsevec(∂∇₁)
+        # v∂∇₁ = ∂∇₁[cols]
+
+        # ∂parameters_and_SS_and_pars = J * v∂∇₁
+        # println(sp∂∇₁)
+        # println(analytical_jac_parameters)
+        # println(sp∂∇₁)
+        # v∂∇₁ = vec(∂∇₁)
+
+        # possibly speeed this up by doing dense  mat * vec because the zeros are in the same places for the tangent and jacobian. tbc
+
+        # return NoTangent(), ∂parameters_and_SS_and_pars[1:length(SS_and_pars)], ∂parameters_and_SS_and_pars[length(SS_and_pars)+1:end], NoTangent()
+        return NoTangent(), analytical_jac_parameters * sp∂∇₁, analytical_jac_SS_and_pars_vars * sp∂∇₁, NoTangent()
+    end
+
+    return jacobian, calculate_jacobian_pullback
+end
+
+
 function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ) where {M,N}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
@@ -6175,12 +6219,12 @@ end
 #     # Forward pass to compute the output and intermediate values needed for the backward pass
 #     𝐒₁, solved, tmp = calculate_jacobian_transpose(∇₁, T = T, explosive = explosive)
 
-#     function calculate_riccati_pullback(Δ𝐒₁)
+#     function calculate_riccati_pullback(∂𝐒₁)
 #         # Backward pass to compute the derivatives with respect to inputs
 #         # This would involve computing the derivatives for each operation in reverse order
 #         # and applying chain rule to propagate through the function
-#         return NoTangent(), reshape(tmp * sparsevec(Δ𝐒₁[1]), size(∇₁)) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
-#         # return NoTangent(), (reshape(-d𝐒₁a \ d∇₁a * vec(Δ𝐒₁) , size(∇₁))) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
+#         return NoTangent(), reshape(tmp * sparsevec(∂𝐒₁[1]), size(∇₁)) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
+#         # return NoTangent(), (reshape(-d𝐒₁a \ d∇₁a * vec(∂𝐒₁) , size(∇₁))) # Return NoTangent() for non-Array inputs or if there's no derivative w.r.t. them
 #     end
 
 #     return (𝐒₁, solved), calculate_riccati_pullback
