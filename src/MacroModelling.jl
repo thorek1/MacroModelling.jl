@@ -3063,7 +3063,7 @@ function write_ss_check_function!(𝓂::ℳ)
 
     unknowns = union(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
 
-    ss_equations = vcat(𝓂.ss_equations,𝓂.calibration_equations)
+    ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
     pars = []
     for (i, p) in enumerate(𝓂.parameters)
@@ -5243,6 +5243,76 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # 𝓂.solution.valid_steady_state_solution = @RuntimeGeneratedFunction(test_func)
 
     # 𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :first_order, :second_order, :third_order])
+
+    # write derivatives of SS equations wrt parameters and SS and parameters for implicit differentiation
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
+
+    unknowns = union(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+
+    ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
+
+    Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x)
+
+    # overwrite SymPyCall names
+    eval(:(Symbolics.@variables $(setdiff(union(𝓂.parameters_in_equations, 𝓂.parameters_as_function_of_parameters), 𝓂.parameters)...)))
+
+    vars = eval(:(Symbolics.@variables $(unknowns...)))
+
+    pars = eval(:(Symbolics.@variables $(𝓂.parameters...)))
+
+    # eqs = Symbolics.parse_expr_to_symbolic.(ss_equations,(@__MODULE__,))
+
+    eqs = Symbolics.Num[]
+    for sse in ss_equations
+        subst = Symbolics.parse_expr_to_symbolic.([sse],(@__MODULE__,))[1]
+        for calib_eq in reverse(𝓂.calibration_equations_no_var)
+            subst = Symbolics.substitute(subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
+        end
+        push!(eqs,subst)
+    end
+
+    ∂SS_equations_∂parameters = Symbolics.sparsejacobian(eqs,pars) |> findnz
+
+    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs,vars) |> findnz
+
+    pars = []
+    for (i, p) in enumerate(𝓂.parameters)
+        push!(pars, :($p = parameters[$i]))
+    end
+
+    unknwns = []
+    for (i, u) in enumerate(union(vars_in_ss_equations, 𝓂.calibration_equations_parameters))
+        push!(unknwns, :($u = unknowns[$i]))
+    end
+
+
+    ∂SS_equations_∂parameters_exp = :(function calculate_∂SS_equations_∂parameters(parameters::Vector{Float64}, unknowns::Vector{Float64})
+        $(pars...)
+        # $(𝓂.calibration_equations_no_var...)
+        $(unknwns...)
+        sparse(Int[$(∂SS_equations_∂parameters[1]...)], 
+                Int[$(∂SS_equations_∂parameters[2]...)], 
+                Float64[$(Symbolics.toexpr.(∂SS_equations_∂parameters[3])...)], 
+                $(length(eqs)), 
+                $(length(pars)))
+    end)
+
+    𝓂.∂SS_equations_∂parameters = @RuntimeGeneratedFunction(∂SS_equations_∂parameters_exp)
+
+
+    ∂SS_equations_∂SS_and_pars_exp = :(function calculate_∂SS_equations_∂SS_and_pars(parameters::Vector{Float64}, unknowns::Vector{Float64})
+        $(pars...)
+        # $(𝓂.calibration_equations_no_var...)
+        $(unknwns...)
+        sparse(Int[$(∂SS_equations_∂SS_and_pars[1]...)], 
+                Int[$(∂SS_equations_∂SS_and_pars[2]...)], 
+                Float64[$(Symbolics.toexpr.(∂SS_equations_∂SS_and_pars[3])...)], 
+                $(length(eqs)), 
+                $(length(vars)))
+    end)
+
+    𝓂.∂SS_equations_∂SS_and_pars = @RuntimeGeneratedFunction(∂SS_equations_∂SS_and_pars_exp)
+
     return nothing
 end
 
@@ -8001,6 +8071,38 @@ end
 function get_non_stochastic_steady_state(𝓂::ℳ, parameter_values::Vector{S}; verbose::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
     𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
 end
+
+
+function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values; verbose = false)
+    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+
+    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+        
+    SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+    
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
+    
+    unknowns = union(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+    
+    ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(𝓂.parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
+    ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(𝓂.parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
+    
+    JVP = -(∂SS_equations_∂SS_and_pars \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
+    jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.parameters))
+    
+    for (i,v) in enumerate(SS_and_pars_names)
+        if v in unknowns
+            jvp[i,:] = JVP[indexin([v], unknowns),:]
+        end
+    end
+    # try block-gmres here
+    function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
+        return NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
+    end
+
+    return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
+end
+    
 
 function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
