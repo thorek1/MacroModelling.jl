@@ -4898,11 +4898,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     dyn_present_list = collect(reduce(union, 𝓂.dyn_present_list))
     dyn_past_list = collect(reduce(union, 𝓂.dyn_past_list))
     dyn_exo_list = collect(reduce(union,𝓂.dyn_exo_list))
+    dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
     
     future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_future_list))
     present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_present_list))
     past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")),string.(dyn_past_list))
     exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")),string.(dyn_exo_list))
+    stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")),string.(dyn_ss_list))
     
     vars_raw = [dyn_future_list[indexin(sort(future),future)]...,
                 dyn_present_list[indexin(sort(present),present)]...,
@@ -4935,6 +4937,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     vars_no_time_transform = union(Dict(eval.(dyn_future_list) .=> eval.(future)), 
                                     Dict(eval.(dyn_present_list) .=> eval.(present)), 
                                     Dict(eval.(dyn_past_list) .=> eval.(past)),
+                                    Dict(eval.(dyn_ss_list) .=> eval.(stst)),
                                     Dict(eval.(dyn_exo_list) .=> 0))
 
 
@@ -5285,7 +5288,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     end
 
     unknwns = []
-    for (i, u) in enumerate(union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters))
+    for (i, u) in enumerate(union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters))
         push!(unknwns, :($u = unknowns[$i]))
     end
 
@@ -8086,8 +8089,8 @@ function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values
         
     SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
     
-    unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
-    
+    unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
+
     ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
     ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
     
