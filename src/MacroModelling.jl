@@ -3059,9 +3059,9 @@ end
 
 
 function write_ss_check_function!(𝓂::ℳ)
-    vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
+    # vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
 
-    unknowns = union(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+    unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
@@ -3071,7 +3071,7 @@ function write_ss_check_function!(𝓂::ℳ)
     end
 
     unknwns = []
-    for (i, u) in enumerate(union(vars_in_ss_equations, 𝓂.calibration_equations_parameters))
+    for (i, u) in enumerate(union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters))
         push!(unknwns, :($u = unknowns[$i]))
     end
 
@@ -5245,9 +5245,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # 𝓂.solution.outdated_algorithms = Set([:linear_time_iteration, :riccati, :quadratic_iteration, :first_order, :second_order, :third_order])
 
     # write derivatives of SS equations wrt parameters and SS and parameters for implicit differentiation
-    vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
+    # vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
 
-    unknowns = union(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+    unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
@@ -5285,7 +5285,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     end
 
     unknwns = []
-    for (i, u) in enumerate(union(vars_in_ss_equations, 𝓂.calibration_equations_parameters))
+    for (i, u) in enumerate(union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters))
         push!(unknwns, :($u = unknowns[$i]))
     end
 
@@ -8086,9 +8086,7 @@ function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values
         
     SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
     
-    vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
-    
-    unknowns = union(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+    unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
     
     ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
     ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
