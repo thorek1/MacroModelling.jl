@@ -6134,16 +6134,18 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         return zeros(T.nVars,T.nPast_not_future_and_mixed), false
     end
 
-    # D      = Z₂₁ / Ẑ₁₁
-    ℒ.rdiv!(Z₂₁, Ẑ₁₁)
-    D = Z₂₁
+    if VERSION >= v"1.9"
+        ℒ.rdiv!(Z₂₁, Ẑ₁₁)
+        D = Z₂₁
 
-    # L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
-    ℒ.ldiv!(Ŝ₁₁, T₁₁)
-    mul!(n₋₋, Z₁₁, T₁₁)
-    ℒ.rdiv!(n₋₋, Ẑ₁₁)
-    L = n₋₋
-
+        ℒ.ldiv!(Ŝ₁₁, T₁₁)
+        mul!(n₋₋, Z₁₁, T₁₁)
+        ℒ.rdiv!(n₋₋, Ẑ₁₁)
+        L = n₋₋
+    else
+        D      = Z₂₁ / Ẑ₁₁
+        L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
+    end
 
     sol = vcat(L[T.not_mixed_in_past_idx,:], D)
 
