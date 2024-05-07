@@ -1075,9 +1075,9 @@ function get_and_check_observables(𝓂::ℳ, data::KeyedArray{Float64})::Vector
 
     @assert length(setdiff(observables_symbols, 𝓂.var)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(observables_symbols,𝓂.var))
 
-    sort!(observables)
+    sort!(observables_symbols)
     
-    return observables
+    return observables_symbols
 end
 
 function bivariate_moment(moment::Vector{Int}, rho::Int)::Int
