@@ -93,6 +93,8 @@ macro model(𝓂,ex...)
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = x->x
     SS_check_func = x->x
+    ∂SS_equations_∂parameters = x->x
+    ∂SS_equations_∂SS_and_pars = x->x
     SS_dependencies = nothing
 
     original_equations = []
@@ -857,6 +859,8 @@ macro model(𝓂,ex...)
                         $NSSS_solver_cache,
                         $SS_solve_func,
                         $SS_check_func,
+                        $∂SS_equations_∂parameters,
+                        $∂SS_equations_∂SS_and_pars,
                         $SS_dependencies,
 
                         $➕_vars,

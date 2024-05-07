@@ -358,6 +358,8 @@ mutable struct ℳ
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func::Function
     SS_check_func::Function
+    ∂SS_equations_∂parameters::Function
+    ∂SS_equations_∂SS_and_pars::Function
     # nonlinear_solution_helper
     SS_dependencies::Any
 
