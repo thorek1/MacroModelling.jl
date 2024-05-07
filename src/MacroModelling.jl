@@ -5254,7 +5254,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x)
 
     # overwrite SymPyCall names
-    eval(:(Symbolics.@variables $(setdiff(union(𝓂.parameters_in_equations, 𝓂.parameters_as_function_of_parameters), 𝓂.parameters)...)))
+    other_pars = setdiff(union(𝓂.parameters_in_equations, 𝓂.parameters_as_function_of_parameters), 𝓂.parameters)
+
+    if length(other_pars) > 0
+        eval(:(Symbolics.@variables $(other_pars...)))
+    end
 
     vars = eval(:(Symbolics.@variables $(unknowns...)))
 
@@ -8099,6 +8103,7 @@ function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values
     end
     # try block-gmres here
     function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
+        # println(∂SS_and_pars)
         return NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
     end
 
