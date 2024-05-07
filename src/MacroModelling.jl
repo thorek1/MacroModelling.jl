@@ -8090,8 +8090,8 @@ function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values
     
     unknowns = union(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
     
-    ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(𝓂.parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-    ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(𝓂.parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
+    ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
+    ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
     
     JVP = -(∂SS_equations_∂SS_and_pars \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
     jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.parameters))
