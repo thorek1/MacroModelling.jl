@@ -2914,6 +2914,8 @@ function get_loglikelihood(𝓂::ℳ,
 
     if !solved return -Inf end
 
+    data = axiskeys(data,1) isa Vector{String} ? rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices) : data
+
     # prepare data
     data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
 
