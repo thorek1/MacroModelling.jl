@@ -3061,7 +3061,7 @@ end
 function write_ss_check_function!(𝓂::ℳ)
     # vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
 
-    unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+    unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
@@ -3071,7 +3071,7 @@ function write_ss_check_function!(𝓂::ℳ)
     end
 
     unknwns = []
-    for (i, u) in enumerate(union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters))
+    for (i, u) in enumerate(unknowns)
         push!(unknwns, :($u = unknowns[$i]))
     end
 
@@ -5250,7 +5250,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # write derivatives of SS equations wrt parameters and SS and parameters for implicit differentiation
     # vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
 
-    unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+    unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
