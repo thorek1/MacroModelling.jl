@@ -48,6 +48,11 @@ n_samples = 1000
 samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
 
 println(mean(samps).nt.mean)
+
+samps = @time sample(FS2000_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true)#, init_params = sol)
+
+println(mean(samps).nt.mean)
+
 sample_nuts = mean(samps).nt.mean
 
 
