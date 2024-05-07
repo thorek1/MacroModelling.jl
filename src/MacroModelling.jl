@@ -6178,7 +6178,7 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         end
         A    = vcat(A₋ᵤ, sol)
     else
-        A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
+        A    = vcat(-(inv(Ā̂₀ᵤ) * (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     end
 
 
