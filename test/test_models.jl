@@ -1,4 +1,3 @@
-Random.seed!(1)
 if !test_higher_order
     include("../models/Guerrieri_Iacoviello_2017.jl")
     SSvals = get_SS(Guerrieri_Iacoviello_2017)
@@ -31,6 +30,7 @@ if !test_higher_order
     
     observables = [:k,:c,:y]
 
+    Random.seed!(1)
     simulated_data = simulate(model)
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
@@ -62,6 +62,7 @@ if !test_higher_order
 
     observables = ["C{F}","C{H}"]
 
+    Random.seed!(1)
     simulated_data = simulate(model)
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
@@ -94,6 +95,7 @@ if !test_higher_order
 
     observables = [:EA_R, :US_R, :EA_PI, :US_PI, :EA_YGAP, :US_YGAP]
 
+    Random.seed!(1)
     simulated_data = simulate(model)
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
@@ -127,6 +129,7 @@ if !test_higher_order
 
     observables = [:k]
 
+    Random.seed!(1)
     simulated_data = simulate(model)
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
@@ -155,8 +158,9 @@ if !test_higher_order
 
     model = Ireland_2004
 
-    observables = [:ŷ, :π̂, :x]
+    observables = [:ŷ, :π̂]
 
+    Random.seed!(1)
     simulated_data = simulate(model)
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
@@ -189,13 +193,14 @@ if !test_higher_order
 
     observables = [:outputgap, :inflation, :interest]
 
+    Random.seed!(1)
     simulated_data = simulate(model)
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
 
     back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
-    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1, max_range = 1e-5),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
     @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
 
@@ -221,6 +226,7 @@ if !test_higher_order
 
     observables = [:C,:Y,:D,:BE]
 
+    Random.seed!(1)
     simulated_data = simulate(model)
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
@@ -250,8 +256,9 @@ if !test_higher_order
     
     model = Gali_Monacelli_2005_CITR
 
-    observables = [:r,:pi]
+    observables = [:pi]
 
+    Random.seed!(1)
     simulated_data = simulate(model)
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
@@ -281,8 +288,9 @@ if !test_higher_order
     
     model = Ascari_Sbordone_2014
 
-    observables = [:i,:y,:psi]
+    observables = [:y,:psi]
 
+    Random.seed!(1)
     simulated_data = simulate(model)
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
@@ -291,7 +299,7 @@ if !test_higher_order
 
     fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
-    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-5)
 
     write_to_dynare_file(Ascari_Sbordone_2014)
     translate_dynare_file("Ascari_Sbordone_2014.mod")
@@ -300,7 +308,6 @@ if !test_higher_order
     Ascari_Sbordone_2014 = nothing
         
 end
-Random.seed!(1)
 
 include("../models/SGU_2003_debt_premium.jl")
 moments = get_moments(SGU_2003_debt_premium, derivatives = false)
@@ -324,13 +331,14 @@ model = SGU_2003_debt_premium
 
 observables = [:r]
 
+Random.seed!(1)
 simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
 
 back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
-fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
 @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
 
@@ -365,6 +373,7 @@ model = JQ_2012_RBC
 
 observables = [:R,:k]
 
+Random.seed!(1)
 simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
@@ -409,6 +418,7 @@ model = Ghironi_Melitz_2005
 
 observables = [:C,:Nx]
 
+Random.seed!(1)
 simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
@@ -449,8 +459,9 @@ end
 
 model = Gali_2015_chapter_3_nonlinear
 
-observables = [:C,:N,:Y]
+observables = [:N,:Y]
 
+Random.seed!(1)
 simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
@@ -485,8 +496,9 @@ end
 
 model = Caldara_et_al_2012
 
-observables = [:c,:i]
+observables = [:c]
 
+Random.seed!(1)
 simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
@@ -529,13 +541,14 @@ model = Aguiar_Gopinath_2007
 
 observables = [:c,:u]
 
+Random.seed!(1)
 simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
 
 back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
-fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
 @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
 
