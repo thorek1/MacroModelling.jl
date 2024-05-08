@@ -1,3 +1,4 @@
+Random.seed!(1)
 if !test_higher_order
     include("../models/Guerrieri_Iacoviello_2017.jl")
     SSvals = get_SS(Guerrieri_Iacoviello_2017)
@@ -299,6 +300,7 @@ if !test_higher_order
     Ascari_Sbordone_2014 = nothing
         
 end
+Random.seed!(1)
 
 include("../models/SGU_2003_debt_premium.jl")
 moments = get_moments(SGU_2003_debt_premium, derivatives = false)
