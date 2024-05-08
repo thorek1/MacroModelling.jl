@@ -1,5 +1,5 @@
 using MacroModelling
-import Turing, Pigeons
+import Turing, Pigeons, Zygote
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
