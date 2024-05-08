@@ -186,7 +186,7 @@ if !test_higher_order
 
     model = QUEST3_2009
 
-    observables = [:outputgap, :inflation :interest]
+    observables = [:outputgap, :inflation, :interest]
 
     simulated_data = simulate(model)
 
