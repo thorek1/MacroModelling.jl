@@ -6135,24 +6135,24 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
         end
     end
 
-    Ŝ₁₁ = RF.lu!(S₁₁, check = false)
-
+    if VERSION >= v"1.9"
+        Ŝ₁₁ = RF.lu!(S₁₁, check = false)
+    else
+        Ŝ₁₁ = RF.lu!(S₁₁, check = false)
+    end
     if !ℒ.issuccess(Ŝ₁₁)
         return zeros(T.nVars,T.nPast_not_future_and_mixed), false
     end
 
-    if VERSION >= v"1.9"
-        ℒ.rdiv!(Z₂₁, Ẑ₁₁)
-        D = Z₂₁
+    # D      = Z₂₁ / Ẑ₁₁
+    ℒ.rdiv!(Z₂₁, Ẑ₁₁)
+    D = Z₂₁
 
-        ℒ.ldiv!(Ŝ₁₁, T₁₁)
-        mul!(n₋₋, Z₁₁, T₁₁)
-        ℒ.rdiv!(n₋₋, Ẑ₁₁)
-        L = n₋₋
-    else
-        D      = Z₂₁ / Ẑ₁₁
-        L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
-    end
+    # L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
+    ℒ.ldiv!(Ŝ₁₁, T₁₁)
+    mul!(n₋₋, Z₁₁, T₁₁)
+    ℒ.rdiv!(n₋₋, Ẑ₁₁)
+    L = n₋₋
 
     sol = vcat(L[T.not_mixed_in_past_idx,:], D)
 
@@ -6161,26 +6161,27 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     Ã₀ᵤ  = A₀[1:T.nPresent_only, T.present_but_not_only_idx]
     A₋ᵤ  = A₋[1:T.nPresent_only,:]
 
-    Ā̂₀ᵤ = RF.lu!(Ā₀ᵤ, check = false)
+    
+    if VERSION >= v"1.9"
+        Ā̂₀ᵤ = RF.lu!(Ā₀ᵤ, check = false)
+    else
+        Ā̂₀ᵤ = RF.lu(Ā₀ᵤ, check = false)
+    end
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
         return zeros(T.nVars,T.nPast_not_future_and_mixed), false
     #     Ā̂₀ᵤ = ℒ.svd(collect(Ā₀ᵤ))
     end
-    
-    if VERSION >= v"1.9"
-        if T.nPresent_only > 0
-            mul!(A₋ᵤ, Ã₀ᵤ, sol[T.dynamic_order,:], 1, 1)
-            mul!(nₚ₋, A₊ᵤ, D)
-            mul!(A₋ᵤ, nₚ₋, L, 1, 1)
-            ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
-            ℒ.rmul!(A₋ᵤ,-1)
-        end
-        A    = vcat(A₋ᵤ, sol)
-    else
-        A    = vcat(-(inv(Ā̂₀ᵤ) * (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
-    end
 
+    # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
+    if T.nPresent_only > 0
+        mul!(A₋ᵤ, Ã₀ᵤ, sol[T.dynamic_order,:], 1, 1)
+        mul!(nₚ₋, A₊ᵤ, D)
+        mul!(A₋ᵤ, nₚ₋, L, 1, 1)
+        ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
+        ℒ.rmul!(A₋ᵤ,-1)
+    end
+    A    = vcat(A₋ᵤ, sol)
 
     return A[T.reorder,:], true
 end
