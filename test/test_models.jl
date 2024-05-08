@@ -89,6 +89,20 @@ if !test_higher_order
     @test isapprox(var_dec(:EA_Y,[:EA_EPSR,:EA_EPSZ,:US_EPSZ]) * 100, [50.02, 13.54, 4.35],rtol = 1e-3)
     @test isapprox(var_dec(:US_K,[:EA_EPSRP,:US_EPSR,:US_EPSZ]) * 100, [17.48, 26.83, 27.76],rtol = 1e-3)
 
+    model = NAWM_EAUS_2008
+
+    observables = [:EA_R, :US_R, :EA_PI, :US_PI, :EA_YGAP, :US_YGAP]
+
+    simulated_data = simulate(model)
+
+    get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+    @profview back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-3)
+
     write_to_dynare_file(NAWM_EAUS_2008)
     translate_dynare_file("NAWM_EAUS_2008.mod")
     include("NAWM_EAUS_2008.jl")
