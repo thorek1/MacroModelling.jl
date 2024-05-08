@@ -228,3 +228,5 @@ get_loglikelihood(Smets_Wouters_2007, data(observables), parameters_combined, pr
 n_samples = 1000
 
 samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = inits)
+
+println(mean(samps).nt.mean)
