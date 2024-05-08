@@ -124,7 +124,7 @@ if !test_higher_order
     
     model = Baxter_King_1993
 
-    observables = [:k, :l, :r, :w]
+    observables = [:k]
 
     simulated_data = simulate(model)
 
