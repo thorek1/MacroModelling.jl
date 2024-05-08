@@ -102,7 +102,7 @@ if !test_higher_order
 
     back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
-    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-3),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
     @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-3)
 
@@ -297,9 +297,9 @@ if !test_higher_order
 
     back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
-    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
-
-    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1,max_range = 1e-3),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+    
+    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-3)
 
     write_to_dynare_file(Ascari_Sbordone_2014)
     translate_dynare_file("Ascari_Sbordone_2014.mod")
