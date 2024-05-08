@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] ss transition by entering new parameters at given periods
+- [ ] fix this inference errors for large fuctions. they are slow. fix derivatives in general.
 - [ ] check downgrade tests
 - [ ] try static arrays in KF
 - [ ] check derivatives of erfcinv with Symbolics. seems off
