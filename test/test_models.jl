@@ -122,7 +122,7 @@ if !test_higher_order
     
     corrr = get_correlation(Baxter_King_1993)
     
-    @test isapprox(corrr(:k,:l),0.855(3,rtol = 1e-3)
+    @test isapprox(corrr(:k,:l),0.8553,rtol = 1e-3)
     @test isapprox(corrr(:r,:w),-0.9898,rtol = 1e-3)
     
     model = Baxter_King_1993
