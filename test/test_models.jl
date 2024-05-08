@@ -97,9 +97,9 @@ if !test_higher_order
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
 
-    @profview back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+    back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
-    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1, max_range = 1e-3),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
     @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-3)
 
@@ -122,6 +122,20 @@ if !test_higher_order
     @test isapprox(corrr(:k,:l),0.8553,rtol = 1e-3)
     @test isapprox(corrr(:r,:w),-0.9898,rtol = 1e-3)
     
+    model = Baxter_King_1993
+
+    observables = [:k, :l, :r, :w]
+
+    simulated_data = simulate(model)
+
+    get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+    back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+
     write_to_dynare_file(Baxter_King_1993)
     translate_dynare_file("Baxter_King_1993.mod")
     include("Baxter_King_1993.jl")
@@ -137,6 +151,20 @@ if !test_higher_order
     var_dec = get_variance_decomposition(Ireland_2004)
 
     @test isapprox(var_dec(:π̂,:) * 100, [4.51, 0.91, 87.44, 7.14],rtol = 1e-4)
+
+    model = Ireland_2004
+
+    observables = [:ŷ, :π̂, :x]
+
+    simulated_data = simulate(model)
+
+    get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+    back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
 
     write_to_dynare_file(Ireland_2004)
     translate_dynare_file("Ireland_2004.mod")
@@ -156,6 +184,20 @@ if !test_higher_order
 
     @test isapprox(var_dec(:E_BGYN,:) * 100, [3.00, 0.23, 0.54, 0.01, 0.08, 0.38, 0.14, 0.10, 83.60, 3.28, 1.11, 3.36, 0.01, 1.56, 0.17, 0.17, 0.00, 2.24, 0.01], rtol = 1e-3)
 
+    model = QUEST3_2009
+
+    observables = [:outputgap, :inflation :interest]
+
+    simulated_data = simulate(model)
+
+    get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+    back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+
     write_to_dynare_file(QUEST3_2009)
     translate_dynare_file("QUEST3_2009.mod") # fix BGADJ1 = 0.001BGADJ2;
     include("QUEST3_2009.jl")
@@ -174,6 +216,20 @@ if !test_higher_order
 
     @test isapprox(var_dec(:B,:) * 100, [42.97, 19.31, 11.70,  0.36,  4.45,  1.41,  0.70,  0.00,  0.61,  12.54, 2.85, 2.72,  0.38],rtol = 1e-3)
 
+    model = GNSS_2010
+
+    observables = [:C,:Y,:D,:BE]
+
+    simulated_data = simulate(model)
+
+    get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+    back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+
     write_to_dynare_file(GNSS_2010)
     translate_dynare_file("GNSS_2010.mod")
     include("GNSS_2010.jl")
@@ -191,6 +247,20 @@ if !test_higher_order
     @test isapprox(var_dec(:pih,:) * 100, [62.06, 37.94],rtol = 1e-3)
     @test isapprox(var_dec(:x,:) * 100, [56.22, 43.78],rtol = 1e-3)
     
+    model = Gali_Monacelli_2005_CITR
+
+    observables = [:r,:pi]
+
+    simulated_data = simulate(model)
+
+    get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+    back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+
     write_to_dynare_file(Gali_Monacelli_2005_CITR)
     translate_dynare_file("Gali_Monacelli_2005_CITR.mod")
     # include("Gali_Monacelli_2005_CITR.jl") # cannot do this because the model contains Gamma
@@ -208,6 +278,20 @@ if !test_higher_order
     @test isapprox(var_dec(:w,:) * 100, [2.02, 95.18, 2.80],rtol = 1e-3)
     @test isapprox(var_dec(:y,:) * 100, [0.47, 99.41, 0.12],rtol = 1e-3)
     
+    model = Ascari_Sbordone_2014
+
+    observables = [:i,:y,:psi]
+
+    simulated_data = simulate(model)
+
+    get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+    back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+
     write_to_dynare_file(Ascari_Sbordone_2014)
     translate_dynare_file("Ascari_Sbordone_2014.mod")
     include("Ascari_Sbordone_2014.jl")
@@ -233,6 +317,20 @@ if test_higher_order
     @test isapprox(mean_2nd(:r),exp(-3.2194),rtol = 1e-3)
     @test isapprox(autocorr_3rd(:c,5),0.4784,rtol = 1e-3)
 end
+
+model = SGU_2003_debt_premium
+
+observables = [:r]
+
+simulated_data = simulate(model)
+
+get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+@test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
 
 write_to_dynare_file(SGU_2003_debt_premium)
 translate_dynare_file("SGU_2003_debt_premium.mod")
@@ -260,6 +358,20 @@ if test_higher_order
     @test isapprox(mean_2nd(:k),10.0762,rtol = 1e-3)
     @test isapprox(autocorr_3rd(:r,5),0.2927,rtol = 1e-3)
 end
+
+model = JQ_2012_RBC
+
+observables = [:R,:k]
+
+simulated_data = simulate(model)
+
+get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+@test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
 
 write_to_dynare_file(JQ_2012_RBC)
 translate_dynare_file("JQ_2012_RBC.mod")
@@ -291,6 +403,20 @@ if test_higher_order
     @test isapprox(autocorr_3rd(:C,5),0.9178,rtol = 1e-3)
 end
 
+model = Ghironi_Melitz_2005
+
+observables = [:C,:Nx]
+
+simulated_data = simulate(model)
+
+get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+@test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+
 write_to_dynare_file(Ghironi_Melitz_2005)
 translate_dynare_file("Ghironi_Melitz_2005.mod")
 include("Ghironi_Melitz_2005.jl")
@@ -319,6 +445,20 @@ if test_higher_order
     @test isapprox(mean_2nd(:C),0.9156,rtol = 1e-3)
 end
 
+model = Gali_2015_chapter_3_nonlinear
+
+observables = [:C,:N,:Y]
+
+simulated_data = simulate(model)
+
+get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+@test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+
 write_to_dynare_file(Gali_2015_chapter_3_nonlinear)
 translate_dynare_file("Gali_2015_chapter_3_nonlinear.mod")
 include("Gali_2015_chapter_3_nonlinear.jl")
@@ -340,6 +480,20 @@ if test_higher_order
 
     @test isapprox(autocorr_3rd(:c,5),0.9424,rtol = 1e-3)
 end
+
+model = Caldara_et_al_2012
+
+observables = [:c,:i]
+
+simulated_data = simulate(model)
+
+get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+@test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
 
 write_to_dynare_file(Caldara_et_al_2012)
 translate_dynare_file("Caldara_et_al_2012.mod")
@@ -368,6 +522,20 @@ if test_higher_order
     @test isapprox(mean_2nd(:k),2.5946,rtol = 1e-3)
     @test isapprox(autocorr_3rd(:c,5),0.9299,rtol = 1e-3)
 end
+
+model = Aguiar_Gopinath_2007
+
+observables = [:c,:u]
+
+simulated_data = simulate(model)
+
+get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+@test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
 
 write_to_dynare_file(Aguiar_Gopinath_2007)
 translate_dynare_file("Aguiar_Gopinath_2007.mod")
