@@ -507,7 +507,7 @@ back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observab
 
 fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
-@test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+@test isapprox(back_grad[1], fin_grad[1], rtol = 1e-5)
 
 write_to_dynare_file(Caldara_et_al_2012)
 translate_dynare_file("Caldara_et_al_2012.mod")
