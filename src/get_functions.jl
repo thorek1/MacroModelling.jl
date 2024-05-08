@@ -2918,8 +2918,10 @@ function get_loglikelihood(𝓂::ℳ,
         data = @ignore_derivatives rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
     end
 
+    dt = @ignore_derivatives collect(data(observables))
+
     # prepare data
-    data_in_deviations = collect(data(observables)) .- SS_and_pars[obs_indices]
+    data_in_deviations = dt .- SS_and_pars[obs_indices]
 
     return calculate_loglikelihood(Val(filter), observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations)
 end
