@@ -153,6 +153,7 @@ end
 
 if test_set == "plots"
     plots = true
+		Random.seed!(1)
 
     @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
         include("../models/Backus_Kehoe_Kydland_1992.jl")
