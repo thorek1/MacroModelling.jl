@@ -42,10 +42,6 @@ Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 ThreadedSparseArrays = "59d54670-b8ac-4d81-ab7a-bb56233e17ab"
 Unicode = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
-[weakdeps]
-StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
-Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
-
 [compat]
 AbstractDifferentiation = "^0.5, 0.6"
 Aqua = "^0.8"
@@ -58,7 +54,7 @@ DataFrames = "^1"
 DataStructures = "^0.18"
 DocStringExtensions = "^0.8, 0.9"
 DynamicPPL = "0.23, 0.24, 0.25, 0.26"
-DynarePreprocessor_jll = "^6.2"
+DynarePreprocessor_jll = "6"
 FiniteDifferences = "^0.12"
 ForwardDiff = "^0.10"
 ImplicitDifferentiation = "^0.5"
@@ -76,7 +72,7 @@ NLopt = "0.6, =1.0.1"
 Optim = "^1"
 Pigeons = "0.3, 0.4"
 PrecompileTools = "^1"
-PythonCall = "0.9.0 - 0.9.15"
+PythonCall = "0.9"
 REPL = "^1"
 Random = "^1"
 RecursiveFactorization = "^0.2"
@@ -85,7 +81,7 @@ Requires = "^1"
 RuntimeGeneratedFunctions = "^0.5"
 SparseArrays = "^1"
 SpecialFunctions = "^2"
-SpeedMapping = "^0.3"
+SpeedMapping = "0.3, 0.4"
 StatsPlots = "^0.15"
 Subscripts = "0.1.3"
 Suppressor = "^0.2"
@@ -116,3 +112,7 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
 test = ["Aqua", "JET", "CSV", "DataFrames", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "Zygote", "StatsPlots"]
+
+[weakdeps]
+StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
+Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
