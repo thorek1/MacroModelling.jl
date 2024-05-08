@@ -26,6 +26,20 @@ if !test_higher_order
     @test isapprox(var_dec([:y,:yflex,:labobs],:ea) * 100, [10.10, 89.47, 0.53],rtol = 1e-3)
     @test isapprox(var_dec([:y,:r,:c],:epinf) * 100, [36.42, 29.30, 22.62],rtol = 1e-3)
 
+    model = SW07_nonlinear
+    
+    observables = [:k,:c,:y]
+
+    simulated_data = simulate(model)
+
+    get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+    back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+
     write_to_dynare_file(SW07_nonlinear)
     translate_dynare_file("SW07_nonlinear.mod")
     include("SW07_nonlinear.jl")
@@ -42,6 +56,20 @@ if !test_higher_order
 
     @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{F}") * 100, [51.34, 42.44, 52.59],rtol = 1e-3)
     @test isapprox(var_dec(["K{F}","Y{H}","Z{F}"],"E{H}") * 100, [48.66, 57.56, 47.41],rtol = 1e-3)
+
+    model = Backus_Kehoe_Kydland_1992
+
+    observables = ["C{F}","C{H}"]
+
+    simulated_data = simulate(model)
+
+    get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+    back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+
+    @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
 
     write_to_dynare_file(Backus_Kehoe_Kydland_1992)
     translate_dynare_file("Backus_Kehoe_Kydland_1992.mod")

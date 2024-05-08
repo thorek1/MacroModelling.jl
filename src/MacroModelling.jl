@@ -4850,19 +4850,19 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     alll_no_time = []
     for var in future_varss
         push!(alll,:($var = X[$ii]))
-        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₁₎$"=>"", r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))) = X[$ii]))
+        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₁₎$"=>""))) = X[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
         ii += 1
     end
     
     for var in present_varss
         push!(alll,:($var = X[$ii]))
-        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₀₎$"=>"", r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))) = X[$ii]))
+        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₀₎$"=>""))) = X[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
         ii += 1
     end
     
     for var in past_varss
         push!(alll,:($var = X[$ii]))
-        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₋₁₎$"=>"", r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))) = X[$ii]))
+        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₋₁₎$"=>""))) = X[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
         ii += 1
     end
     
