@@ -7333,7 +7333,13 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     if length(coords) == 1
         lengthA = length(coords[1][1])
         vA = ABC[1:lengthA]
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        
+        if VERSION >= v"1.9"
+            A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        else
+            A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        end
+        
         C = reshape(ABC[lengthA+1:end],dims[2]...)
         if solver != :doubling
             B = A'
@@ -7346,9 +7352,16 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         vB = ABC[lengthA .+ (1:lengthB)]
         vC = ABC[lengthA + lengthB + 1:end]
 
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        if VERSION >= v"1.9"
+            A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+            B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+            C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        else
+            A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+            B = sparse(coords[2]...,vB,dims[2]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+            C = sparse(coords[3]...,vC,dims[3]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        end
+
     elseif length(dims) == 3
         lengthA = dims[1][1] * dims[1][2]
         lengthB = dims[2][1] * dims[2][2]

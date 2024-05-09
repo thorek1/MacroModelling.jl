@@ -100,9 +100,9 @@ if !test_higher_order
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
 
-    back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+    back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), vcat(x,model.parameter_values[11:end])), model.parameter_values[1:10])
 
-    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-3),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(5,1, max_range = 1e-3),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), vcat(x,model.parameter_values[11:end])), model.parameter_values[1:10])
 
     @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-2)
 
@@ -505,7 +505,7 @@ get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parame
 
 back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
-fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-5),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(5,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
 
 @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-3)
 
