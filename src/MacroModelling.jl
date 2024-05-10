@@ -5975,7 +5975,8 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
         analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
         cols_unique = union(unique(findnz(analytical_jac_SS_and_pars_vars)[2]), unique(findnz(analytical_jac_parameters)[2]))
-        J = zeros(length(SS_and_pars) + length(parameters), length(cols))
+
+        J = zeros(length(SS_and_pars) + length(parameters), length(cols_unique))
 
         J[1:length(parameters), :] = analytical_jac_parameters[:,cols_unique]
         J[length(parameters)+1:end, :] = analytical_jac_SS_and_pars_vars[:,cols_unique]
