@@ -21,7 +21,7 @@ import ForwardDiff as ℱ
 import NLopt
 import Optim, LineSearches
 # import Zygote
-import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray#, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
+import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, sparse! #, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import LinearAlgebra: mul!
 # import Octavian: matmul!
@@ -4949,164 +4949,252 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         end
     end
 
-    first_order = []
-    first_order_parameter = []
-    first_order_SS_and_pars_var = []
-    second_order = []
-    third_order = []
-    row1 = Int[]
-    row1p = Int[]
-    row1SSp = Int[]
-    row2 = Int[]
-    row3 = Int[]
-    column1 = Int[]
-    column1p = Int[]
-    column1SSp = Int[]
-    column2 = Int[]
-    column3 = Int[]
-    # column3ext = Int[]
-    i1 = 1
-    i1p = 1
-    i1SSp = 1
-    i2 = 1
-    i3 = 1
 
+    ∂SS_equations_∂vars = Symbolics.sparsejacobian(eqs, vars, simplify = false) |> findnz
 
-
-    for (c1,var1) in enumerate(vars)
-        for (r,eq) in enumerate(eqs)
-            if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
-                deriv_first = Symbolics.derivative(eq,var1)
-    
-                deriv_first_subst = copy(deriv_first)
-    
-                # substitute in calibration equations without targets
-                for calib_eq in reverse(𝓂.calibration_equations_no_var)
-                    deriv_first_subst = Symbolics.substitute(deriv_first_subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
-                end
-    
-                for (p1,p) in enumerate(𝓂.parameters)
-                    if Symbol(p) ∈ Symbol.(Symbolics.get_variables(deriv_first_subst))
-                        deriv_first_no_time = Symbolics.substitute(deriv_first_subst, vars_no_time_transform)
-    
-                        deriv_first_parameters = Symbolics.derivative(deriv_first_no_time, eval(p))
-    
-                        deriv_first_parameters_expr = Symbolics.toexpr(deriv_first_parameters)
-    
-                        push!(first_order_parameter, deriv_first_parameters_expr)
-                        push!(row1p, r + length(eqs) * (c1 - 1))
-                        push!(column1p, p1)
-    
-                        i1p += 1
-                    end
-                end
-    
-                for (SSp1,SSp) in enumerate(SS_and_pars)
-                    deriv_first_no_time = Symbolics.substitute(deriv_first_subst, vars_no_time_transform)
-                    
-                    if Symbol(SSp) ∈ Symbol.(Symbolics.get_variables(deriv_first_no_time))
-                        deriv_first_SS_and_pars_var = Symbolics.derivative(deriv_first_no_time, eval(SSp))
-    
-                        deriv_first_SS_and_pars_var_expr = Symbolics.toexpr(deriv_first_SS_and_pars_var)
-    
-                        push!(first_order_SS_and_pars_var, deriv_first_SS_and_pars_var_expr)
-                        push!(row1SSp, r + length(eqs) * (c1 - 1))
-                        push!(column1SSp, SSp1)
-    
-                        i1SSp += 1
-                    end
-                end
-                
-                # if deriv_first != 0 
-                #     deriv_expr = Meta.parse(string(deriv_first.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
-                #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                    deriv_first_expr = Symbolics.toexpr(deriv_first)
-                    # deriv_first_expr_safe = postwalk(x -> x isa Expr ? 
-                    #                                     x.args[1] == :^ ? 
-                    #                                         :(NaNMath.pow($(x.args[2:end]...))) : 
-                    #                                     x : 
-                    #                                 x, 
-                    #                         deriv_first_expr)
-    
-                    push!(first_order, deriv_first_expr)
-                    push!(row1,r)
-                    push!(column1,c1)
-                    i1 += 1
-                    if max_perturbation_order >= 2 
-                        for (c2,var2) in enumerate(vars)
-                            # if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
-                            if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
-                                deriv_second = Symbolics.derivative(deriv_first,var2)
-                                # if deriv_second != 0 
-                                #     deriv_expr = Meta.parse(string(deriv_second.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
-                                #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                                    push!(second_order,Symbolics.toexpr(deriv_second))
-                                    push!(row2,r)
-                                    # push!(column2,(c1 - 1) * length(vars) + c2)
-                                    push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
-                                    i2 += 1
-                                    if max_perturbation_order == 3
-                                        for (c3,var3) in enumerate(vars)
-                                            # if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
-                                                # push!(column3ext,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
-                                                if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
-                                                    deriv_third = Symbolics.derivative(deriv_second,var3)
-                                                    # if deriv_third != 0 
-                                                    #     deriv_expr = Meta.parse(string(deriv_third.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
-                                                    #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                                                        push!(third_order,Symbolics.toexpr(deriv_third))
-                                                        push!(row3,r)
-                                                        # push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
-                                                        push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
-                                                        i3 += 1
-                                                    # end
-                                                end
-                                            # end
-                                        end
-                                    end
-                                # end
-                            end
-                        end
-                    end
-                # end
-            end
-        end
-    end
-        
+    # for i in zip(∂SS_equations_∂vars...)
+    #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
+    #     $(alll...)
+    #     $(paras...)
+    #     $(𝓂.calibration_equations_no_var...)
+    #     $(steady_state...)
+    #     return $(Symbolics.toexpr(i[3])), $(i[1]), $(i[2])
+    #     end)
+    #     push!(𝓂.model_jacobian, @RuntimeGeneratedFunction(exx))
+    # end
 
     mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
         $(alll...)
         $(paras...)
         $(𝓂.calibration_equations_no_var...)
         $(steady_state...)
-        sparse(Int[$(row1...)], Int[$(column1...)], [$(first_order...)], $(length(eqs)), $(length(vars)))
+        sparse(Int[$(∂SS_equations_∂vars[1]...)], Int[$(∂SS_equations_∂vars[2]...)], [$(Symbolics.toexpr.(∂SS_equations_∂vars[3])...)], $(length(eqs)), $(length(vars)))
     end)
 
     𝓂.model_jacobian = @RuntimeGeneratedFunction(mod_func3)
-    # 𝓂.model_jacobian = FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(@RuntimeGeneratedFunction(mod_func3))
 
-    # 𝓂.model_jacobian = eval(mod_func3)
+    calib_eqs = [(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)]
+
+    eqs_static = Symbolics.Num[]
+    for sse in ∂SS_equations_∂vars[3]
+        subst = sse
+        for calib_eq in calib_eqs
+            # subst = Symbolics.substitute(subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
+            subst = Symbolics.substitute(subst, calib_eq)
+        end
+        subst = Symbolics.substitute(subst, vars_no_time_transform)
+        # subst = Symbolics.simplify(subst) # takes long
+        push!(eqs_static, subst)
+    end
+
+    ∂SS_equations_∂pars = Symbolics.sparsejacobian(eqs_static, eval.(𝓂.parameters), simplify = false) |> findnz
+
+    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(SS_and_pars), simplify = false) |> findnz
+
+    idx_conversion = (∂SS_equations_∂vars[1] + length(eqs) * (∂SS_equations_∂vars[2] .- 1))
+
+    # for i in zip(∂SS_equations_∂pars...)
+    #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
+    #     $(alll...)
+    #     $(paras...)
+    #     # $(𝓂.calibration_equations_no_var...)
+    #     $(steady_state...)
+    #     return $(Symbolics.toexpr(i[3])), $(idx_conversion[i[1]]), $(i[2])
+    #     end)
+    #     push!(𝓂.model_jacobian_parameters, @RuntimeGeneratedFunction(exx))
+    # end
 
     mod_func3p = :(function model_jacobian_parameters(X::Vector, params::Vector{Real}, X̄::Vector)
         $(alll_no_time...)
         $(paras...)
         # $(𝓂.calibration_equations_no_var...)
         $(steady_state_no_time...)
-        sparse(Int[$(column1p...)], Int[$(row1p...)], Float64[$(first_order_parameter...)], $(length(𝓂.parameters)), $(length(eqs) * length(vars)))
+        sparse(Int[$(idx_conversion[∂SS_equations_∂pars[1]]...)], Int[$(∂SS_equations_∂pars[2]...)], Float64[$(Symbolics.toexpr.(∂SS_equations_∂pars[3])...)], $(length(𝓂.parameters)), $(length(eqs) * length(vars)))
     end)
 
     𝓂.model_jacobian_parameters = @RuntimeGeneratedFunction(mod_func3p)
 
+    # for i in zip(∂SS_equations_∂SS_and_pars...)
+    #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
+    #     $(alll...)
+    #     $(paras...)
+    #     # $(𝓂.calibration_equations_no_var...)
+    #     $(steady_state...)
+    #     return $(Symbolics.toexpr(i[3])), $(idx_conversion[i[1]]), $(i[2])
+    #     end)
+    #     push!(𝓂.model_jacobian_SS_and_pars_vars, @RuntimeGeneratedFunction(exx))
+    # end
 
     mod_func3SSp = :(function model_jacobian_SS_and_pars_vars(X::Vector, params::Vector{Real}, X̄::Vector)
         $(alll_no_time...)
         $(paras...)
         # $(𝓂.calibration_equations_no_var...)
         $(steady_state_no_time...)
-        sparse(Int[$(column1SSp...)], Int[$(row1SSp...)], Float64[$(first_order_SS_and_pars_var...)], $(length(SS_and_pars)), $(length(eqs) * length(vars)))
+        sparse(Int[$(idx_conversion[∂SS_equations_∂SS_and_pars[1]]...)], Int[$(∂SS_equations_∂SS_and_pars[2]...)], Float64[$(Symbolics.toexpr.(∂SS_equations_∂SS_and_pars[3])...)], $(length(SS_and_pars)), $(length(eqs) * length(vars)))
     end)
 
     𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
+
+
+    if max_perturbation_order >= 2 
+        first_order = []
+        first_order_parameter = []
+        first_order_SS_and_pars_var = []
+        second_order = []
+        third_order = []
+        row1 = Int[]
+        row1p = Int[]
+        row1SSp = Int[]
+        row2 = Int[]
+        row3 = Int[]
+        column1 = Int[]
+        column1p = Int[]
+        column1SSp = Int[]
+        column2 = Int[]
+        column3 = Int[]
+        # column3ext = Int[]
+        i1 = 1
+        i1p = 1
+        i1SSp = 1
+        i2 = 1
+        i3 = 1
+
+
+
+        for (c1,var1) in enumerate(vars)
+            for (r,eq) in enumerate(eqs)
+                if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
+                    deriv_first = Symbolics.derivative(eq,var1)
+        
+                    deriv_first_subst = copy(deriv_first)
+        
+                    # substitute in calibration equations without targets
+                    for calib_eq in reverse(𝓂.calibration_equations_no_var)
+                        deriv_first_subst = Symbolics.substitute(deriv_first_subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
+                    end
+        
+                    # for (p1,p) in enumerate(𝓂.parameters)
+                    #     if Symbol(p) ∈ Symbol.(Symbolics.get_variables(deriv_first_subst))
+                    #         deriv_first_no_time = Symbolics.substitute(deriv_first_subst, vars_no_time_transform)
+        
+                    #         deriv_first_parameters = Symbolics.derivative(deriv_first_no_time, eval(p))
+        
+                    #         deriv_first_parameters_expr = Symbolics.toexpr(deriv_first_parameters)
+        
+                    #         push!(first_order_parameter, deriv_first_parameters_expr)
+                    #         push!(row1p, r + length(eqs) * (c1 - 1))
+                    #         push!(column1p, p1)
+        
+                    #         i1p += 1
+                    #     end
+                    # end
+        
+                    # for (SSp1,SSp) in enumerate(SS_and_pars)
+                    #     deriv_first_no_time = Symbolics.substitute(deriv_first_subst, vars_no_time_transform)
+                        
+                    #     if Symbol(SSp) ∈ Symbol.(Symbolics.get_variables(deriv_first_no_time))
+                    #         deriv_first_SS_and_pars_var = Symbolics.derivative(deriv_first_no_time, eval(SSp))
+        
+                    #         deriv_first_SS_and_pars_var_expr = Symbolics.toexpr(deriv_first_SS_and_pars_var)
+        
+                    #         push!(first_order_SS_and_pars_var, deriv_first_SS_and_pars_var_expr)
+                    #         push!(row1SSp, r + length(eqs) * (c1 - 1))
+                    #         push!(column1SSp, SSp1)
+        
+                    #         i1SSp += 1
+                    #     end
+                    # end
+                    
+                    # if deriv_first != 0 
+                    #     deriv_expr = Meta.parse(string(deriv_first.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
+                    #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                        # deriv_first_expr = Symbolics.toexpr(deriv_first)
+                        # # deriv_first_expr_safe = postwalk(x -> x isa Expr ? 
+                        # #                                     x.args[1] == :^ ? 
+                        # #                                         :(NaNMath.pow($(x.args[2:end]...))) : 
+                        # #                                     x : 
+                        # #                                 x, 
+                        # #                         deriv_first_expr)
+        
+                        # push!(first_order, deriv_first_expr)
+                        # push!(row1,r)
+                        # push!(column1,c1)
+                        i1 += 1
+                        if max_perturbation_order >= 2 
+                            for (c2,var2) in enumerate(vars)
+                                # if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
+                                if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
+                                    deriv_second = Symbolics.derivative(deriv_first,var2)
+                                    # if deriv_second != 0 
+                                    #     deriv_expr = Meta.parse(string(deriv_second.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
+                                    #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                                        push!(second_order,Symbolics.toexpr(deriv_second))
+                                        push!(row2,r)
+                                        # push!(column2,(c1 - 1) * length(vars) + c2)
+                                        push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
+                                        i2 += 1
+                                        if max_perturbation_order == 3
+                                            for (c3,var3) in enumerate(vars)
+                                                # if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
+                                                    # push!(column3ext,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
+                                                    if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
+                                                        deriv_third = Symbolics.derivative(deriv_second,var3)
+                                                        # if deriv_third != 0 
+                                                        #     deriv_expr = Meta.parse(string(deriv_third.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
+                                                        #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                                                            push!(third_order,Symbolics.toexpr(deriv_third))
+                                                            push!(row3,r)
+                                                            # push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
+                                                            push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
+                                                            i3 += 1
+                                                        # end
+                                                    end
+                                                # end
+                                            end
+                                        end
+                                    # end
+                                end
+                            end
+                        end
+                    # end
+                end
+            end
+        end
+    end
+
+    # mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
+    #     $(alll...)
+    #     $(paras...)
+    #     $(𝓂.calibration_equations_no_var...)
+    #     $(steady_state...)
+    #     sparse(Int[$(row1...)], Int[$(column1...)], [$(first_order...)], $(length(eqs)), $(length(vars)))
+    # end)
+
+    # 𝓂.model_jacobian = @RuntimeGeneratedFunction(mod_func3)
+    # # 𝓂.model_jacobian = FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(@RuntimeGeneratedFunction(mod_func3))
+
+    # # 𝓂.model_jacobian = eval(mod_func3)
+
+    # mod_func3p = :(function model_jacobian_parameters(X::Vector, params::Vector{Real}, X̄::Vector)
+    #     $(alll_no_time...)
+    #     $(paras...)
+    #     # $(𝓂.calibration_equations_no_var...)
+    #     $(steady_state_no_time...)
+    #     sparse(Int[$(column1p...)], Int[$(row1p...)], Float64[$(first_order_parameter...)], $(length(𝓂.parameters)), $(length(eqs) * length(vars)))
+    # end)
+
+    # 𝓂.model_jacobian_parameters = @RuntimeGeneratedFunction(mod_func3p)
+
+
+    # mod_func3SSp = :(function model_jacobian_SS_and_pars_vars(X::Vector, params::Vector{Real}, X̄::Vector)
+    #     $(alll_no_time...)
+    #     $(paras...)
+    #     # $(𝓂.calibration_equations_no_var...)
+    #     $(steady_state_no_time...)
+    #     sparse(Int[$(column1SSp...)], Int[$(row1SSp...)], Float64[$(first_order_SS_and_pars_var...)], $(length(SS_and_pars)), $(length(eqs) * length(vars)))
+    # end)
+
+    # 𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
 
 
     if max_perturbation_order >= 2 && 𝓂.model_hessian == Function[]
@@ -5254,7 +5342,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
-    Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x)
+    # Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x)
 
     # overwrite SymPyCall names
     other_pars = setdiff(union(𝓂.parameters_in_equations, 𝓂.parameters_as_function_of_parameters), 𝓂.parameters)
@@ -5272,8 +5360,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     eqs = Symbolics.Num[]
     for sse in ss_equations
         subst = Symbolics.parse_expr_to_symbolic.([sse],(@__MODULE__,))[1]
-        for calib_eq in reverse(𝓂.calibration_equations_no_var)
-            subst = Symbolics.substitute(subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
+        for calib_eq in calib_eqs
+            subst = Symbolics.substitute(subst, calib_eq)
         end
         push!(eqs,subst)
     end
@@ -5782,7 +5870,7 @@ end
 
 
 
-function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{M}, 𝓂::ℳ)::SparseMatrixCSC{M} where M <: Real
+function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::SparseMatrixCSC{M} where {M,N}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     # par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
@@ -5798,6 +5886,26 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{M}, 𝓂:
     # return 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
     # return Matrix(𝓂.model_jacobian(([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])))
     return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
+
+
+    # first_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian]
+    
+    # vals = M[i[1] for i in first_out]
+    # rows = Int[i[2] for i in first_out]
+    # cols = Int[i[3] for i in first_out]
+
+    # # vals = convert(Vector{M}, vals)
+
+    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+    # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^2)
+    
+    # if VERSION >= v"1.10"
+    #     jacobian = sparse!(rows, cols, vals, length(𝓂.dyn_equations), nk)
+    # else
+    #     jacobian = sparse(rows, cols, vals, length(𝓂.dyn_equations), nk)
+    # end
+
+    # return jacobian
 end
 
 
@@ -5814,20 +5922,65 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
     dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
-
+    
     jacobian =  𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
 
+    # jacobian_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian]
+    
+    # vals = Float64[i[1] for i in jacobian_out]
+    # rows = Int[i[2] for i in jacobian_out]
+    # cols = Int[i[3] for i in jacobian_out]
+
+    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+
+    # if VERSION >= v"1.10"
+    #     jacobian = sparse!(rows, cols, vals, length(𝓂.dyn_equations), nk)
+    # else
+    #     jacobian = sparse(rows, cols, vals, length(𝓂.dyn_equations), nk)
+    # end
+
     function calculate_jacobian_pullback(∂∇₁)
+        # analytical_jac_parameters_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian_parameters]
+        
+        # vals = Float64[i[1] for i in analytical_jac_parameters_out]
+        # rows = Int[i[2] for i in analytical_jac_parameters_out]
+        # colsp = Int[i[3] for i in analytical_jac_parameters_out]
+
+        # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+
+        # if VERSION >= v"1.10"
+        #     analytical_jac_parameters = sparse!(rows, colsp, vals, length(𝓂.dyn_equations) * nk, length(𝓂.parameters)) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        # else
+        #     analytical_jac_parameters = sparse(rows, colsp, vals, length(𝓂.dyn_equations) * nk, length(𝓂.parameters)) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        # end
+        
+
+        # analytical_jac_SS_and_pars_vars_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian_SS_and_pars_vars]
+        
+        # vals = Float64[i[1] for i in analytical_jac_SS_and_pars_vars_out]
+        # rows = Int[i[2] for i in analytical_jac_SS_and_pars_vars_out]
+        # cols = Int[i[3] for i in analytical_jac_SS_and_pars_vars_out]
+
+        # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+
+        # if VERSION >= v"1.10"
+        #     analytical_jac_SS_and_pars_vars = sparse!(rows, cols, vals, length(𝓂.dyn_equations) * nk, length(SS_and_pars)) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        # else
+        #     analytical_jac_SS_and_pars_vars = sparse(rows, cols, vals, length(𝓂.dyn_equations) * nk, length(SS_and_pars)) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        # end
+        
+        # cols_unique = union(unique(colsp), unique(cols))
+        # TODO: combine the two sparse arrays in creation and here
         analytical_jac_parameters = 𝓂.model_jacobian_parameters([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
         cols = union(unique(findnz(analytical_jac_SS_and_pars_vars)[2]), unique(findnz(analytical_jac_parameters)[2]))
         J = zeros(length(SS_and_pars) + length(parameters), length(cols))
 
-        J[1:length(parameters), :] = analytical_jac_parameters[:,cols]
-        J[length(parameters)+1:end, :] = analytical_jac_SS_and_pars_vars[:,cols]
+        J[1:length(parameters), :] = analytical_jac_parameters[:,cols_unique]
+        J[length(parameters)+1:end, :] = analytical_jac_SS_and_pars_vars[:,cols_unique]
 
-        v∂∇₁ = ∂∇₁[cols]
+        v∂∇₁ = ∂∇₁[cols_unique]
 
         ∂parameters_and_SS_and_pars = J * v∂∇₁
 
@@ -7339,7 +7492,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         else
             A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         end
-        
+
         C = reshape(ABC[lengthA+1:end],dims[2]...)
         if solver != :doubling
             B = A'
