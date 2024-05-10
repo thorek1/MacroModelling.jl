@@ -5009,7 +5009,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         $(paras...)
         # $(𝓂.calibration_equations_no_var...)
         $(steady_state_no_time...)
-        sparse(Int[$(idx_conversion[∂SS_equations_∂pars[1]]...)], Int[$(∂SS_equations_∂pars[2]...)], Float64[$(Symbolics.toexpr.(∂SS_equations_∂pars[3])...)], $(length(𝓂.parameters)), $(length(eqs) * length(vars)))
+        sparse(Int[$(idx_conversion[∂SS_equations_∂pars[1]]...)], Int[$(∂SS_equations_∂pars[2]...)], Float64[$(Symbolics.toexpr.(∂SS_equations_∂pars[3])...)], $(length(eqs) * length(vars)), $(length(𝓂.parameters)))
     end)
 
     𝓂.model_jacobian_parameters = @RuntimeGeneratedFunction(mod_func3p)
@@ -5030,7 +5030,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         $(paras...)
         # $(𝓂.calibration_equations_no_var...)
         $(steady_state_no_time...)
-        sparse(Int[$(idx_conversion[∂SS_equations_∂SS_and_pars[1]]...)], Int[$(∂SS_equations_∂SS_and_pars[2]...)], Float64[$(Symbolics.toexpr.(∂SS_equations_∂SS_and_pars[3])...)], $(length(SS_and_pars)), $(length(eqs) * length(vars)))
+        sparse(Int[$(idx_conversion[∂SS_equations_∂SS_and_pars[1]]...)], Int[$(∂SS_equations_∂SS_and_pars[2]...)], Float64[$(Symbolics.toexpr.(∂SS_equations_∂SS_and_pars[3])...)], $(length(eqs) * length(vars)), $(length(SS_and_pars)))
     end)
 
     𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
@@ -5257,7 +5257,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         end
 
         𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
-
+        # TODO: write these as one big function instead of many small ones. might help with compilation
     end
 
 
@@ -5393,7 +5393,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     end)
 
     𝓂.∂SS_equations_∂parameters = @RuntimeGeneratedFunction(∂SS_equations_∂parameters_exp)
-
+    # TODO: comine these two functions
 
     ∂SS_equations_∂SS_and_pars_exp = :(function calculate_∂SS_equations_∂SS_and_pars(parameters::Vector{Float64}, unknowns::Vector{Float64})
         $(pars...)
@@ -5974,7 +5974,7 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
         analytical_jac_parameters = 𝓂.model_jacobian_parameters([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
         analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
-        cols = union(unique(findnz(analytical_jac_SS_and_pars_vars)[2]), unique(findnz(analytical_jac_parameters)[2]))
+        cols_unique = union(unique(findnz(analytical_jac_SS_and_pars_vars)[2]), unique(findnz(analytical_jac_parameters)[2]))
         J = zeros(length(SS_and_pars) + length(parameters), length(cols))
 
         J[1:length(parameters), :] = analytical_jac_parameters[:,cols_unique]
