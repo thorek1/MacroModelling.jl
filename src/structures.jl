@@ -382,7 +382,7 @@ mutable struct ℳ
     bounds::Dict{Symbol,Tuple{Float64,Float64}}
 
     model_jacobian::Function
-    model_jacobian_parameters::Function
+    # model_jacobian_parameters::Function
     model_jacobian_SS_and_pars_vars::Function
     # model_jacobian::FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}#{typeof(model_jacobian)}
     model_hessian::Vector{Function}
