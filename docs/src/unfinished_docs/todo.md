@@ -4,6 +4,7 @@
 
 - [ ] ss transition by entering new parameters at given periods
 - [ ] speed up sensitivity by caching matrix inversion from implicit diff with LRUcache
+- [ ] FastDifferentiation is faster in tkaing derivatives and more efficient in writing functions but does not support custom functions (e.g. normlogpdf)
 - [ ] fix this inference errors for large fuctions. they are slow. fix derivatives in general.
 - [ ] check downgrade tests
 - [ ] try static arrays in KF
