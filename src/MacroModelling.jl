@@ -5030,7 +5030,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         $(paras...)
         # $(𝓂.calibration_equations_no_var...)
         $(steady_state_no_time...)
-        sparse(Int[$(∂SS_equations_∂SS_and_pars[2]...)], Int[$(idx_conversion[∂SS_equations_∂SS_and_pars[1]]...)], Float64[$(Symbolics.toexpr.(∂SS_equations_∂SS_and_pars[3])...)], $(length(SS_and_pars)), $(length(eqs) * length(vars)))
+        sparse(Int[$(∂SS_equations_∂SS_and_pars[2]...)], Int[$(idx_conversion[∂SS_equations_∂SS_and_pars[1]]...)], Float64[$(Symbolics.toexpr.(∂SS_equations_∂SS_and_pars[3])...)], $(length(SS_and_pars) + length(𝓂.parameters)), $(length(eqs) * length(vars)))
     end)
 
     𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
