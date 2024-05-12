@@ -4978,10 +4978,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     eqs_static = Symbolics.Num[]
     for sse in ∂SS_equations_∂vars[3]
         subst = sse
-        # for calib_eq in calib_eqs
-            # subst = Symbolics.substitute(subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
-        subst = Symbolics.fixpoint_sub(subst, calib_eqs)
-        # end
+        for calib_eq in calib_eqs
+            subst = Symbolics.substitute(subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
+        end
+        # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
+        # subst = Symbolics.fast_substitute(subst, vars_no_time_transform_pair) # actually slower
         subst = Symbolics.substitute(subst, vars_no_time_transform)
         # subst = Symbolics.simplify(subst) # takes long
         push!(eqs_static, subst)
@@ -5360,8 +5361,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     eqs = Symbolics.Num[]
     for sse in ss_equations
         subst = Symbolics.parse_expr_to_symbolic.([sse],(@__MODULE__,))[1]
-        subst = Symbolics.fixpoint_sub(subst, calib_eqs)
-        push!(eqs,subst)
+        for calib_eq in calib_eqs
+            subst = Symbolics.substitute(subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
+        end
+        # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
     end
 
     ∂SS_equations_∂parameters = Symbolics.sparsejacobian(eqs,pars) |> findnz
