@@ -4973,12 +4973,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     𝓂.model_jacobian = @RuntimeGeneratedFunction(mod_func3)
 
-    calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
+    # calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
 
     eqs_static = Symbolics.Num[]
     for sse in ∂SS_equations_∂vars[3]
         subst = sse
-        for calib_eq in calib_eqs
+        for calib_eq in reverse(𝓂.calibration_equations_no_var)
             subst = Symbolics.substitute(subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
         end
         # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
@@ -5361,7 +5361,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     eqs = Symbolics.Num[]
     for sse in ss_equations
         subst = Symbolics.parse_expr_to_symbolic.([sse],(@__MODULE__,))[1]
-        for calib_eq in calib_eqs
+        for calib_eq in reverse(𝓂.calibration_equations_no_var)
             subst = Symbolics.substitute(subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
         end
         # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
