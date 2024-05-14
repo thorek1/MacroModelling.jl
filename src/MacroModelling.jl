@@ -4950,8 +4950,29 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     end
 
 
-    ∂SS_equations_∂vars = Symbolics.sparsejacobian(eqs, vars, simplify = false) |> findnz
+    calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
 
+    eqs_sub = Symbolics.Num[]
+    for subst in eqs
+        for calib_eq in calib_eqs
+            subst = Symbolics.substitute(subst, calib_eq)
+        end
+        push!(eqs_sub, subst)
+    end
+    
+    ∂SS_equations_∂vars = Symbolics.sparsejacobian(eqs_sub, vars, simplify = false)# |> findnz
+    
+    input_args = vcat(future_varss,
+                        present_varss,
+                        past_varss,
+                        shock_varss,
+                        𝓂.parameters,
+                        𝓂.calibration_equations_parameters,
+                        ss_varss)
+
+    funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false)
+
+    𝓂.model_jacobian = funcs[1]
     # for i in zip(∂SS_equations_∂vars...)
     #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
     #     $(alll...)
@@ -4963,37 +4984,40 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     #     push!(𝓂.model_jacobian, @RuntimeGeneratedFunction(exx))
     # end
 
-    mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
-        $(alll...)
-        $(paras...)
-        $(𝓂.calibration_equations_no_var...)
-        $(steady_state...)
-        sparse(Int[$(∂SS_equations_∂vars[1]...)], Int[$(∂SS_equations_∂vars[2]...)], [$(Symbolics.toexpr.(∂SS_equations_∂vars[3])...)], $(length(eqs)), $(length(vars)))
-    end)
+    # mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
+    #     $(alll...)
+    #     $(paras...)
+    #     $(𝓂.calibration_equations_no_var...)
+    #     $(steady_state...)
+    #     sparse(Int[$(∂SS_equations_∂vars[1]...)], Int[$(∂SS_equations_∂vars[2]...)], [$(Symbolics.toexpr.(∂SS_equations_∂vars[3])...)], $(length(eqs)), $(length(vars)))
+    # end)
 
-    𝓂.model_jacobian = @RuntimeGeneratedFunction(mod_func3)
+    # 𝓂.model_jacobian = @RuntimeGeneratedFunction(mod_func3)
 
-    calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
+    # calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
 
-    eqs_static = Symbolics.Num[]
-    for subst in ∂SS_equations_∂vars[3]
-        # subst = sse
-        for calib_eq in calib_eqs
-            subst = Symbolics.substitute(subst, calib_eq)
-        end
-        # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
-        # subst = Symbolics.fast_substitute(subst, vars_no_time_transform_pair) # actually slower
-        subst = Symbolics.substitute(subst, vars_no_time_transform)
-        # subst = Symbolics.simplify(subst) # takes long
-        push!(eqs_static, subst)
-    end
+    eqs_static = map(x -> Symbolics.substitute(x, vars_no_time_transform), findnz(∂SS_equations_∂vars)[3])
 
-    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(vcat(𝓂.parameters, SS_and_pars)), simplify = false) |> findnz
-
-    # ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(SS_and_pars), simplify = false) |> findnz
-
-    idx_conversion = (∂SS_equations_∂vars[1] + length(eqs) * (∂SS_equations_∂vars[2] .- 1))
-
+    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(vcat(𝓂.parameters, SS_and_pars)), simplify = false) # |> findnz
+    
+    idx_conversion = (findnz(∂SS_equations_∂vars)[1] + length(eqs) * (findnz(∂SS_equations_∂vars)[2] .- 1))
+    
+    rows, cols, vals = findnz(∂SS_equations_∂SS_and_pars)
+    
+    ∂SS_equations_∂SS_and_pars_ext = sparse(cols, idx_conversion[rows], vals, (length(SS_and_pars) + length(𝓂.parameters)), (length(eqs) * length(vars)))
+    
+    input_args = vcat(Symbol.(replace.(string.(future_varss), r"₍₁₎$"=>"")),
+                        Symbol.(replace.(string.(present_varss), r"₍₀₎$"=>"")),
+                        Symbol.(replace.(string.(past_varss), r"₍₋₁₎$"=>"")),
+                        𝓂.parameters,
+                        𝓂.calibration_equations_parameters,
+                        Symbol.(replace.(string.(ss_varss),r"₍ₛₛ₎$"=>"")))
+    
+    
+    funcs = Symbolics.build_function(∂SS_equations_∂SS_and_pars_ext, eval.(input_args), expression = false)
+    
+    𝓂.model_jacobian_SS_and_pars_vars = funcs[1]
+    
     # for i in zip(∂SS_equations_∂pars...)
     #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
     #     $(alll...)
@@ -5026,15 +5050,15 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     #     push!(𝓂.model_jacobian_SS_and_pars_vars, @RuntimeGeneratedFunction(exx))
     # end
 
-    mod_func3SSp = :(function model_jacobian_SS_and_pars_vars(X::Vector, params::Vector{Real}, X̄::Vector)
-        $(alll_no_time...)
-        $(paras...)
-        # $(𝓂.calibration_equations_no_var...)
-        $(steady_state_no_time...)
-        sparse(Int[$(∂SS_equations_∂SS_and_pars[2]...)], Int[$(idx_conversion[∂SS_equations_∂SS_and_pars[1]]...)], Float64[$(Symbolics.toexpr.(∂SS_equations_∂SS_and_pars[3])...)], $(length(SS_and_pars) + length(𝓂.parameters)), $(length(eqs) * length(vars)))
-    end)
+    # mod_func3SSp = :(function model_jacobian_SS_and_pars_vars(X::Vector, params::Vector{Real}, X̄::Vector)
+    #     $(alll_no_time...)
+    #     $(paras...)
+    #     # $(𝓂.calibration_equations_no_var...)
+    #     $(steady_state_no_time...)
+    #     sparse(Int[$(∂SS_equations_∂SS_and_pars[2]...)], Int[$(idx_conversion[∂SS_equations_∂SS_and_pars[1]]...)], Float64[$(Symbolics.toexpr.(∂SS_equations_∂SS_and_pars[3])...)], $(length(SS_and_pars) + length(𝓂.parameters)), $(length(eqs) * length(vars)))
+    # end)
 
-    𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
+    # 𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
 
 
     if max_perturbation_order >= 2 
@@ -5887,7 +5911,8 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
 
     # return 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
     # return Matrix(𝓂.model_jacobian(([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])))
-    return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
+    # return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
+    return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]])
 
 
     # first_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian]
@@ -5925,8 +5950,8 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
     
-    jacobian =  𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
-
+    # jacobian =  𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
+    jacobian =  𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]])
     # jacobian_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian]
     
     # vals = Float64[i[1] for i in jacobian_out]
@@ -5974,7 +5999,7 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
         # cols_unique = union(unique(colsp), unique(cols))
         # TODO: combine the two sparse arrays in creation and here
         # analytical_jac_parameters = 𝓂.model_jacobian_parameters([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; par; SS[dyn_ss_idx]]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
         # cols_unique = union(unique(findnz(analytical_jac_SS_and_pars_vars)[2]), unique(findnz(analytical_jac_parameters)[2]))
         cols_unique = unique(findnz(analytical_jac_SS_and_pars_vars)[2])
