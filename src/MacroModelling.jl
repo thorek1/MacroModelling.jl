@@ -4415,7 +4415,8 @@ function solve!(𝓂::ℳ;
     
     write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    if 𝓂.model_hessian == Function[] && algorithm ∈ [:second_order, :pruned_second_order]
+    if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && 
+        algorithm ∈ [:second_order, :pruned_second_order]
         start_time = time()
         write_functions_mapping!(𝓂, 2)
         if !silent println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds") end
@@ -5004,7 +5005,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     
     rows, cols, vals = findnz(∂SS_equations_∂SS_and_pars)
     
-    ∂SS_equations_∂SS_and_pars_ext = sparse(cols, idx_conversion[rows], vals, (length(SS_and_pars) + length(𝓂.parameters)), (length(eqs) * length(vars)))
+    ∂SS_equations_∂SS_and_pars_ext = sparse!(cols, idx_conversion[rows], vals, (length(SS_and_pars) + length(𝓂.parameters)), (length(eqs) * length(vars)))
     
     input_args = vcat(Symbol.(replace.(string.(future_varss), r"₍₁₎$"=>"")),
                         Symbol.(replace.(string.(present_varss), r"₍₀₎$"=>"")),
@@ -5222,7 +5223,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # 𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
 
 
-    if max_perturbation_order >= 2 && 𝓂.model_hessian == Function[]
+    if max_perturbation_order >= 2 && 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
         # if length(row2) == 0 
         #     out = :(spzeros($(length(eqs)), $(length(second_order_idxs))))
         # else 
@@ -5237,22 +5238,45 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         #     $out
         # end)
 
-        for (l,second) in enumerate(second_order)
-            exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
-            $(alll...)
-            $(paras...)
-            $(𝓂.calibration_equations_no_var...)
-            $(steady_state...)
-            return $second, $(row2[l]), $(column2[l])
-            end)
-            push!(𝓂.model_hessian,@RuntimeGeneratedFunction(exx))
+        # for (l,second) in enumerate(second_order)
+        #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
+        #     $(alll...)
+        #     $(paras...)
+        #     $(𝓂.calibration_equations_no_var...)
+        #     $(steady_state...)
+        #     return $second, $(row2[l]), $(column2[l])
+        #     end)
+        #     push!(𝓂.model_hessian,@RuntimeGeneratedFunction(exx))
+        # end
+        
+        
+        hessian_rows = Int[]
+        hessian_cols = Int[]
+        hessian_vals = []
+
+        for (i,eq) in enumerate(eqs_sub)
+            hessian = Symbolics.sparsehessian(eq, vars, simplify = false, full = false) |> findnz
+
+            push!(hessian_rows, fill(i, length(hessian[3]))...)
+            push!(hessian_cols, indexin((hessian[1] .- 1) .* length(vars) .+ hessian[2], second_order_idxs)...)
+            push!(hessian_vals, hessian[3]...)
         end
 
+        ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(second_order_idxs))
+
+        input_args = vcat(future_varss,
+                            present_varss,
+                            past_varss,
+                            shock_varss,
+                            𝓂.parameters,
+                            𝓂.calibration_equations_parameters,
+                            ss_varss)
+        
+        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false)
+        
+        𝓂.model_hessian = funcs[1]
+
         𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
-
-
-        # 𝓂.model_hessian = @RuntimeGeneratedFunction(mod_func4)
-        # 𝓂.model_hessian = eval(mod_func4)
     end
 
     if max_perturbation_order == 3 && 𝓂.model_third_order_derivatives == Function[]
@@ -6038,19 +6062,19 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
         
     # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
-    # return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
+    return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]])
 
-    second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_hessian]
+    # second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_hessian]
     
-    vals = [i[1] for i in second_out]
-    rows = [i[2] for i in second_out]
-    cols = [i[3] for i in second_out]
+    # vals = [i[1] for i in second_out]
+    # rows = [i[2] for i in second_out]
+    # cols = [i[3] for i in second_out]
 
-    vals = convert(Vector{M}, vals)
+    # vals = convert(Vector{M}, vals)
 
-    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-    # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^2)
-    sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+    # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+    # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^2)
+    # sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 end
 
 
