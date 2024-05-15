@@ -4955,9 +4955,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     eqs_sub = Symbolics.Num[]
     for subst in eqs
-        for calib_eq in calib_eqs
-            subst = Symbolics.substitute(subst, calib_eq)
-        end
+        # for calib_eq in calib_eqs
+        #     subst = Symbolics.substitute(subst, calib_eq)
+        # end
+        subst = Symbolics.fixpoint_sub(subst, calib_eqs)
         push!(eqs_sub, subst)
     end
     
@@ -5409,10 +5410,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     eqs = Symbolics.Num[]
     for subst in ss_eqs
         # subst = Symbolics.parse_expr_to_symbolic.([sse],(@__MODULE__,))[1]
-        for calib_eq in calib_eqs
-            subst = Symbolics.substitute(subst, calib_eq)
-        end
-        # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
+        # for calib_eq in calib_eqs
+        #     subst = Symbolics.substitute(subst, calib_eq)
+        # end
+        subst = Symbolics.fixpoint_sub(subst, calib_eqs)
         push!(eqs, subst)
     end
 
