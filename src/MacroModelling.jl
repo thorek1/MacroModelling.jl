@@ -5013,7 +5013,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                         Symbol.(replace.(string.(past_varss), r"₍₋₁₎$"=>"")),
                         𝓂.parameters,
                         𝓂.calibration_equations_parameters,
-                        Symbol.(replace.(string.(ss_varss),r"₍ₛₛ₎$"=>"")))
+                        Symbol.(replace.(string.(ss_varss), r"₍ₛₛ₎$"=>"")))
     
     
     funcs = Symbolics.build_function(∂SS_equations_∂SS_and_pars_ext, eval.(input_args), expression = false)
@@ -5256,14 +5256,16 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         hessian_vals = []
 
         for (i,eq) in enumerate(eqs_sub)
-            hessian = Symbolics.sparsehessian(eq, vars, simplify = false, full = false) |> findnz
+            hessian = Symbolics.sparsehessian(eq, vars, simplify = false, full = true) |> findnz
 
             push!(hessian_rows, fill(i, length(hessian[3]))...)
-            push!(hessian_cols, indexin((hessian[1] .- 1) .* length(vars) .+ hessian[2], second_order_idxs)...)
+            # push!(hessian_cols, indexin((hessian[1] .- 1) .* length(vars) .+ hessian[2], second_order_idxs)...)
+            push!(hessian_cols, ((hessian[1] .- 1) .* length(vars) .+ hessian[2])...)
             push!(hessian_vals, hessian[3]...)
         end
 
-        ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(second_order_idxs))
+        # ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(second_order_idxs))
+        ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(vars)^2)
 
         input_args = vcat(future_varss,
                             present_varss,
@@ -6063,7 +6065,7 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
         
     # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
-    return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+    return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]])# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 
     # second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_hessian]
     
