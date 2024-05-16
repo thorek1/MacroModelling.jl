@@ -4420,7 +4420,7 @@ function solve!(𝓂::ℳ;
         start_time = time()
         write_functions_mapping!(𝓂, 2)
         if !silent println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds") end
-    elseif 𝓂.model_third_order_derivatives == Function[] && algorithm ∈ [:third_order, :pruned_third_order]
+    elseif 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && algorithm ∈ [:third_order, :pruned_third_order]
         start_time = time()
         write_functions_mapping!(𝓂, 3)
         if !silent println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds") end
@@ -4942,13 +4942,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                                     Dict(eval.(dyn_exo_list) .=> 0))
 
 
-    if max_perturbation_order >= 2 
-        nk = length(vars_raw)
-        second_order_idxs = [nk * (i-1) + k for i in 1:nk for k in 1:i]
-        if max_perturbation_order == 3
-            third_order_idxs = [nk^2 * (i-1) + nk * (k-1) + l for i in 1:nk for k in 1:i for l in 1:k]
-        end
-    end
+    # if max_perturbation_order >= 2 
+    #     nk = length(vars_raw)
+    #     second_order_idxs = [nk * (i-1) + k for i in 1:nk for k in 1:i]
+    #     if max_perturbation_order == 3
+    #         third_order_idxs = [nk^2 * (i-1) + nk * (k-1) + l for i in 1:nk for k in 1:i for l in 1:k]
+    #     end
+    # end
 
 
     calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
@@ -5063,131 +5063,131 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # 𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
 
 
-    if max_perturbation_order >= 2 
-        first_order = []
-        first_order_parameter = []
-        first_order_SS_and_pars_var = []
-        second_order = []
-        third_order = []
-        row1 = Int[]
-        row1p = Int[]
-        row1SSp = Int[]
-        row2 = Int[]
-        row3 = Int[]
-        column1 = Int[]
-        column1p = Int[]
-        column1SSp = Int[]
-        column2 = Int[]
-        column3 = Int[]
-        # column3ext = Int[]
-        i1 = 1
-        i1p = 1
-        i1SSp = 1
-        i2 = 1
-        i3 = 1
+    # if max_perturbation_order >= 2 
+    #     first_order = []
+    #     first_order_parameter = []
+    #     first_order_SS_and_pars_var = []
+    #     second_order = []
+    #     third_order = []
+    #     row1 = Int[]
+    #     row1p = Int[]
+    #     row1SSp = Int[]
+    #     row2 = Int[]
+    #     row3 = Int[]
+    #     column1 = Int[]
+    #     column1p = Int[]
+    #     column1SSp = Int[]
+    #     column2 = Int[]
+    #     column3 = Int[]
+    #     # column3ext = Int[]
+    #     i1 = 1
+    #     i1p = 1
+    #     i1SSp = 1
+    #     i2 = 1
+    #     i3 = 1
 
 
 
-        for (c1,var1) in enumerate(vars)
-            for (r,eq) in enumerate(eqs)
-                if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
-                    deriv_first = Symbolics.derivative(eq,var1)
+    #     for (c1,var1) in enumerate(vars)
+    #         for (r,eq) in enumerate(eqs)
+    #             if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
+    #                 deriv_first = Symbolics.derivative(eq,var1)
         
-                    deriv_first_subst = copy(deriv_first)
+    #                 deriv_first_subst = copy(deriv_first)
         
-                    # substitute in calibration equations without targets
-                    for calib_eq in reverse(𝓂.calibration_equations_no_var)
-                        deriv_first_subst = Symbolics.substitute(deriv_first_subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
-                    end
+    #                 # substitute in calibration equations without targets
+    #                 for calib_eq in reverse(𝓂.calibration_equations_no_var)
+    #                     deriv_first_subst = Symbolics.substitute(deriv_first_subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
+    #                 end
         
-                    # for (p1,p) in enumerate(𝓂.parameters)
-                    #     if Symbol(p) ∈ Symbol.(Symbolics.get_variables(deriv_first_subst))
-                    #         deriv_first_no_time = Symbolics.substitute(deriv_first_subst, vars_no_time_transform)
+    #                 # for (p1,p) in enumerate(𝓂.parameters)
+    #                 #     if Symbol(p) ∈ Symbol.(Symbolics.get_variables(deriv_first_subst))
+    #                 #         deriv_first_no_time = Symbolics.substitute(deriv_first_subst, vars_no_time_transform)
         
-                    #         deriv_first_parameters = Symbolics.derivative(deriv_first_no_time, eval(p))
+    #                 #         deriv_first_parameters = Symbolics.derivative(deriv_first_no_time, eval(p))
         
-                    #         deriv_first_parameters_expr = Symbolics.toexpr(deriv_first_parameters)
+    #                 #         deriv_first_parameters_expr = Symbolics.toexpr(deriv_first_parameters)
         
-                    #         push!(first_order_parameter, deriv_first_parameters_expr)
-                    #         push!(row1p, r + length(eqs) * (c1 - 1))
-                    #         push!(column1p, p1)
+    #                 #         push!(first_order_parameter, deriv_first_parameters_expr)
+    #                 #         push!(row1p, r + length(eqs) * (c1 - 1))
+    #                 #         push!(column1p, p1)
         
-                    #         i1p += 1
-                    #     end
-                    # end
+    #                 #         i1p += 1
+    #                 #     end
+    #                 # end
         
-                    # for (SSp1,SSp) in enumerate(SS_and_pars)
-                    #     deriv_first_no_time = Symbolics.substitute(deriv_first_subst, vars_no_time_transform)
+    #                 # for (SSp1,SSp) in enumerate(SS_and_pars)
+    #                 #     deriv_first_no_time = Symbolics.substitute(deriv_first_subst, vars_no_time_transform)
                         
-                    #     if Symbol(SSp) ∈ Symbol.(Symbolics.get_variables(deriv_first_no_time))
-                    #         deriv_first_SS_and_pars_var = Symbolics.derivative(deriv_first_no_time, eval(SSp))
+    #                 #     if Symbol(SSp) ∈ Symbol.(Symbolics.get_variables(deriv_first_no_time))
+    #                 #         deriv_first_SS_and_pars_var = Symbolics.derivative(deriv_first_no_time, eval(SSp))
         
-                    #         deriv_first_SS_and_pars_var_expr = Symbolics.toexpr(deriv_first_SS_and_pars_var)
+    #                 #         deriv_first_SS_and_pars_var_expr = Symbolics.toexpr(deriv_first_SS_and_pars_var)
         
-                    #         push!(first_order_SS_and_pars_var, deriv_first_SS_and_pars_var_expr)
-                    #         push!(row1SSp, r + length(eqs) * (c1 - 1))
-                    #         push!(column1SSp, SSp1)
+    #                 #         push!(first_order_SS_and_pars_var, deriv_first_SS_and_pars_var_expr)
+    #                 #         push!(row1SSp, r + length(eqs) * (c1 - 1))
+    #                 #         push!(column1SSp, SSp1)
         
-                    #         i1SSp += 1
-                    #     end
-                    # end
+    #                 #         i1SSp += 1
+    #                 #     end
+    #                 # end
                     
-                    # if deriv_first != 0 
-                    #     deriv_expr = Meta.parse(string(deriv_first.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
-                    #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                        # deriv_first_expr = Symbolics.toexpr(deriv_first)
-                        # # deriv_first_expr_safe = postwalk(x -> x isa Expr ? 
-                        # #                                     x.args[1] == :^ ? 
-                        # #                                         :(NaNMath.pow($(x.args[2:end]...))) : 
-                        # #                                     x : 
-                        # #                                 x, 
-                        # #                         deriv_first_expr)
+    #                 # if deriv_first != 0 
+    #                 #     deriv_expr = Meta.parse(string(deriv_first.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
+    #                 #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+    #                     # deriv_first_expr = Symbolics.toexpr(deriv_first)
+    #                     # # deriv_first_expr_safe = postwalk(x -> x isa Expr ? 
+    #                     # #                                     x.args[1] == :^ ? 
+    #                     # #                                         :(NaNMath.pow($(x.args[2:end]...))) : 
+    #                     # #                                     x : 
+    #                     # #                                 x, 
+    #                     # #                         deriv_first_expr)
         
-                        # push!(first_order, deriv_first_expr)
-                        # push!(row1,r)
-                        # push!(column1,c1)
-                        i1 += 1
-                        if max_perturbation_order >= 2 
-                            for (c2,var2) in enumerate(vars)
-                                # if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
-                                if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
-                                    deriv_second = Symbolics.derivative(deriv_first,var2)
-                                    # if deriv_second != 0 
-                                    #     deriv_expr = Meta.parse(string(deriv_second.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
-                                    #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                                        push!(second_order,Symbolics.toexpr(deriv_second))
-                                        push!(row2,r)
-                                        # push!(column2,(c1 - 1) * length(vars) + c2)
-                                        push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
-                                        i2 += 1
-                                        if max_perturbation_order == 3
-                                            for (c3,var3) in enumerate(vars)
-                                                # if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
-                                                    # push!(column3ext,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
-                                                    if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
-                                                        deriv_third = Symbolics.derivative(deriv_second,var3)
-                                                        # if deriv_third != 0 
-                                                        #     deriv_expr = Meta.parse(string(deriv_third.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
-                                                        #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-                                                            push!(third_order,Symbolics.toexpr(deriv_third))
-                                                            push!(row3,r)
-                                                            # push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
-                                                            push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
-                                                            i3 += 1
-                                                        # end
-                                                    end
-                                                # end
-                                            end
-                                        end
-                                    # end
-                                end
-                            end
-                        end
-                    # end
-                end
-            end
-        end
-    end
+    #                     # push!(first_order, deriv_first_expr)
+    #                     # push!(row1,r)
+    #                     # push!(column1,c1)
+    #                     i1 += 1
+    #                     if max_perturbation_order >= 2 
+    #                         for (c2,var2) in enumerate(vars)
+    #                             # if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
+    #                             if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
+    #                                 deriv_second = Symbolics.derivative(deriv_first,var2)
+    #                                 # if deriv_second != 0 
+    #                                 #     deriv_expr = Meta.parse(string(deriv_second.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
+    #                                 #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+    #                                     push!(second_order,Symbolics.toexpr(deriv_second))
+    #                                     push!(row2,r)
+    #                                     # push!(column2,(c1 - 1) * length(vars) + c2)
+    #                                     push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
+    #                                     i2 += 1
+    #                                     if max_perturbation_order == 3
+    #                                         for (c3,var3) in enumerate(vars)
+    #                                             # if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
+    #                                                 # push!(column3ext,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
+    #                                                 if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
+    #                                                     deriv_third = Symbolics.derivative(deriv_second,var3)
+    #                                                     # if deriv_third != 0 
+    #                                                     #     deriv_expr = Meta.parse(string(deriv_third.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
+    #                                                     #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+    #                                                         push!(third_order,Symbolics.toexpr(deriv_third))
+    #                                                         push!(row3,r)
+    #                                                         # push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
+    #                                                         push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
+    #                                                         i3 += 1
+    #                                                     # end
+    #                                                 end
+    #                                             # end
+    #                                         end
+    #                                     end
+    #                                 # end
+    #                             end
+    #                         end
+    #                     end
+    #                 # end
+    #             end
+    #         end
+    #     end
+    # end
 
     # mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
     #     $(alll...)
@@ -5282,7 +5282,21 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
     end
 
-    if max_perturbation_order == 3 && 𝓂.model_third_order_derivatives == Function[]
+    if max_perturbation_order == 3 && 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+        third_order_derivatives = Symbolics.sparsejacobian(hessian_vals, vars) |> findnz
+
+        third_order_rows = hessian_rows[third_order_derivatives[1]]
+        third_order_cols = (hessian_cols[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
+        third_order_vals = third_order_derivatives[3]
+
+        ∂SS_equations_∂vars_∂vars_∂vars = SparseArrays.sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
+
+        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false)
+        
+        𝓂.model_third_order_derivatives = funcs[1]
+
+        𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
+        
         # if length(row3) == 0 
         #     out = :(spzeros($(length(eqs)), $(length(third_order_idxs))))
         # else 
@@ -5297,18 +5311,18 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         #     $out
         # end)
 
-        for (l,third) in enumerate(third_order)
-            exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
-            $(alll...)
-            $(paras...)
-            $(𝓂.calibration_equations_no_var...)
-            $(steady_state...)
-            return $third, $(row3[l]), $(column3[l])
-            end)
-            push!(𝓂.model_third_order_derivatives,@RuntimeGeneratedFunction(exx))
-        end
+        # for (l,third) in enumerate(third_order)
+        #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
+        #     $(alll...)
+        #     $(paras...)
+        #     $(𝓂.calibration_equations_no_var...)
+        #     $(steady_state...)
+        #     return $third, $(row3[l]), $(column3[l])
+        #     end)
+        #     push!(𝓂.model_third_order_derivatives,@RuntimeGeneratedFunction(exx))
+        # end
 
-        𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
+        # 𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
         # TODO: write these as one big function instead of many small ones. might help with compilation
     end
 
@@ -6097,20 +6111,20 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
     # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
-    # return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
+    return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]])
     
     
-    third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
+    # third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
     
-    vals = [i[1] for i in third_out]
-    rows = [i[2] for i in third_out]
-    cols = [i[3] for i in third_out]
+    # vals = [i[1] for i in third_out]
+    # rows = [i[2] for i in third_out]
+    # cols = [i[3] for i in third_out]
 
-    vals = convert(Vector{M}, vals)
+    # vals = convert(Vector{M}, vals)
 
-    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-    # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
-    sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+    # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
+    # sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 end
 
 
