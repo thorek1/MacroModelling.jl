@@ -5224,7 +5224,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # 𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
 
 
-    if max_perturbation_order >= 2 && 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+    if max_perturbation_order >= 2 && (𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) || 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
         # if length(row2) == 0 
         #     out = :(spzeros($(length(eqs)), $(length(second_order_idxs))))
         # else 
@@ -5280,50 +5280,51 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         𝓂.model_hessian = funcs[1]
 
         𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
-    end
+    # end
 
-    if max_perturbation_order == 3 && 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-        third_order_derivatives = Symbolics.sparsejacobian(hessian_vals, vars) |> findnz
+        if max_perturbation_order == 3 && 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+            third_order_derivatives = Symbolics.sparsejacobian(hessian_vals, vars) |> findnz
 
-        third_order_rows = hessian_rows[third_order_derivatives[1]]
-        third_order_cols = (hessian_cols[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
-        third_order_vals = third_order_derivatives[3]
+            third_order_rows = hessian_rows[third_order_derivatives[1]]
+            third_order_cols = (hessian_cols[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
+            third_order_vals = third_order_derivatives[3]
 
-        ∂SS_equations_∂vars_∂vars_∂vars = SparseArrays.sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
+            ∂SS_equations_∂vars_∂vars_∂vars = SparseArrays.sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
 
-        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false)
-        
-        𝓂.model_third_order_derivatives = funcs[1]
+            funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false)
+            
+            𝓂.model_third_order_derivatives = funcs[1]
 
-        𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
-        
-        # if length(row3) == 0 
-        #     out = :(spzeros($(length(eqs)), $(length(third_order_idxs))))
-        # else 
-        #     out = :(sparse([$(row3...)], [$(column3...)], [$(third_order...)], $(length(eqs)), $(length(third_order_idxs))))
-        # end
+            𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
+            
+            # if length(row3) == 0 
+            #     out = :(spzeros($(length(eqs)), $(length(third_order_idxs))))
+            # else 
+            #     out = :(sparse([$(row3...)], [$(column3...)], [$(third_order...)], $(length(eqs)), $(length(third_order_idxs))))
+            # end
 
-        # mod_func5 = :(function model_hessian(X::Vector, params::Vector{Real}, X̄::Vector)
-        #     $(alll...)
-        #     $(paras...)
-        #     $(𝓂.calibration_equations_no_var...)
-        #     $(steady_state...)
-        #     $out
-        # end)
+            # mod_func5 = :(function model_hessian(X::Vector, params::Vector{Real}, X̄::Vector)
+            #     $(alll...)
+            #     $(paras...)
+            #     $(𝓂.calibration_equations_no_var...)
+            #     $(steady_state...)
+            #     $out
+            # end)
 
-        # for (l,third) in enumerate(third_order)
-        #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
-        #     $(alll...)
-        #     $(paras...)
-        #     $(𝓂.calibration_equations_no_var...)
-        #     $(steady_state...)
-        #     return $third, $(row3[l]), $(column3[l])
-        #     end)
-        #     push!(𝓂.model_third_order_derivatives,@RuntimeGeneratedFunction(exx))
-        # end
+            # for (l,third) in enumerate(third_order)
+            #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
+            #     $(alll...)
+            #     $(paras...)
+            #     $(𝓂.calibration_equations_no_var...)
+            #     $(steady_state...)
+            #     return $third, $(row3[l]), $(column3[l])
+            #     end)
+            #     push!(𝓂.model_third_order_derivatives,@RuntimeGeneratedFunction(exx))
+            # end
 
-        # 𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
-        # TODO: write these as one big function instead of many small ones. might help with compilation
+            # 𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
+            # TODO: write these as one big function instead of many small ones. might help with compilation
+        end
     end
 
 
