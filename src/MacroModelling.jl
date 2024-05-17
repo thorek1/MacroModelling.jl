@@ -5264,6 +5264,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             push!(hessian_vals, hessian[3]...)
         end
 
+        hessian_rows_copy = copy(hessian_rows) # otherwise modified with sparse!
+
         # ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(second_order_idxs))
         ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(vars)^2)
 
@@ -5288,8 +5290,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     if max_perturbation_order == 3 # && 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
         third_order_derivatives = Symbolics.sparsejacobian(hessian_vals, vars) |> findnz
 
-        third_order_rows = hessian_rows[third_order_derivatives[1]]
-        third_order_cols = (hessian_cols[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
+        third_order_rows = hessian_cols[third_order_derivatives[1]]
+        third_order_cols = (hessian_rows_copy[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
         third_order_vals = third_order_derivatives[3]
 
         ∂SS_equations_∂vars_∂vars_∂vars = sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
