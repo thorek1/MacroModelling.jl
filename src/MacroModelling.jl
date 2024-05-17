@@ -4974,10 +4974,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                         
     max_exprs_per_func = 200
 
-    if (length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func) < 2
+    if (length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func) == 0
         funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false)
     else
-        funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func))
+        funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func + 1))
     end
 
     𝓂.model_jacobian = funcs[1]
@@ -5021,10 +5021,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                         𝓂.calibration_equations_parameters,
                         Symbol.(replace.(string.(ss_varss), r"₍ₛₛ₎$"=>"")))
     
-    if (length(∂SS_equations_∂SS_and_pars_ext.nzval) ÷ max_exprs_per_func) < 2
+    if (length(∂SS_equations_∂SS_and_pars_ext.nzval) ÷ max_exprs_per_func) == 0
         funcs = Symbolics.build_function(∂SS_equations_∂SS_and_pars_ext, eval.(input_args), expression = false)
     else
-        funcs = Symbolics.build_function(∂SS_equations_∂SS_and_pars_ext, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, length(∂SS_equations_∂SS_and_pars_ext.nzval) ÷ max_exprs_per_func))
+        funcs = Symbolics.build_function(∂SS_equations_∂SS_and_pars_ext, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, length(∂SS_equations_∂SS_and_pars_ext.nzval) ÷ max_exprs_per_func + 1))
     end
 
     𝓂.model_jacobian_SS_and_pars_vars = funcs[1]
@@ -5274,6 +5274,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         end
 
         hessian_rows_copy = copy(hessian_rows) # otherwise modified with sparse!
+				hessian_cols_copy = copy(hessian_cols) # otherwise modified with sparse!
+				hessian_vals_copy = copy(hessian_vals) # otherwise modified with sparse!
 
         # ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(second_order_idxs))
         ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(vars)^2)
@@ -5286,10 +5288,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                             𝓂.calibration_equations_parameters,
                             ss_varss)
         
-    if (length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func) < 2
+    if (length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func) == 0
         funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false)
     else
-        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func))
+        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func + 1))
     end
 
         𝓂.model_hessian = funcs[1]
@@ -5301,18 +5303,18 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
 
     if max_perturbation_order == 3 # && 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-        third_order_derivatives = Symbolics.sparsejacobian(hessian_vals, vars) |> findnz
+        third_order_derivatives = Symbolics.sparsejacobian(hessian_vals_copy, vars) |> findnz
 
-        third_order_rows = hessian_cols[third_order_derivatives[1]]
+        third_order_rows = hessian_cols_copy[third_order_derivatives[1]]
         third_order_cols = (hessian_rows_copy[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
         third_order_vals = third_order_derivatives[3]
 
         ∂SS_equations_∂vars_∂vars_∂vars = sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
 
-        if (length(∂SS_equations_∂vars_∂vars_∂vars.nzval) ÷ max_exprs_per_func) < 2
+        if (length(∂SS_equations_∂vars_∂vars_∂vars.nzval) ÷ max_exprs_per_func) == 0
             funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false)
         else
-            funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, length(∂SS_equations_∂vars_∂vars_∂vars.nzval) ÷ max_exprs_per_func))
+            funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, length(∂SS_equations_∂vars_∂vars_∂vars.nzval) ÷ max_exprs_per_func + 1))
         end
 
         𝓂.model_third_order_derivatives = funcs[1]
