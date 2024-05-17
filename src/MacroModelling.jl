@@ -4978,8 +4978,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             
     if min_n_funcs == 0
         parallel = Symbolics.SerialForm()
-    elseif min_n_funcs == 1
-        parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+    elseif min_n_funcs < 10
+        parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs)
     else
         parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
     end
@@ -5031,8 +5031,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     if min_n_funcs == 0
         parallel = Symbolics.SerialForm()
-    elseif min_n_funcs == 1
-        parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+    elseif min_n_funcs < 10
+        parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs)
     else
         parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
     end
@@ -5295,15 +5295,15 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
                 𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, Int.(indexin(intersect(third_order_idxs, unique(third_order_cols)), third_order_idxs)))
             end
-            
+
             ∂SS_equations_∂vars_∂vars_∂vars = sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
 
             min_n_funcs = length(∂SS_equations_∂vars_∂vars_∂vars.nzval) ÷ max_exprs_per_func
             
             if min_n_funcs == 0
                 parallel = Symbolics.SerialForm()
-            elseif min_n_funcs == 1
-                parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+            elseif min_n_funcs < 10
+                parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs)
             else
                 parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
             end
@@ -5356,8 +5356,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
         if min_n_funcs == 0
             parallel = Symbolics.SerialForm()
-        elseif min_n_funcs == 1
-            parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+        elseif min_n_funcs < 10
+            parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs)
         else
             parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
         end
