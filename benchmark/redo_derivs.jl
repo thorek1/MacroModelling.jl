@@ -1,24 +1,50 @@
 
+# import Pkg; Pkg.add(["Turing","CSV","DataFrames","AxisKeys","FiniteDifferences","Zygote","DynamicPPL","StatsPlots","BenchmarkTools"])
+
+# import Pkg; Pkg.add(["Turing","CSV","DataFrames","AxisKeys","FiniteDifferences","Zygote","StatsPlots","BenchmarkTools"])
 using MacroModelling
-# import Turing: NUTS, HMC, PG, IS, sample, logpdf, Truncated#, Normal, Beta, Gamma, InverseGamma,
-# using CSV, DataFrames, AxisKeys
+import Turing: NUTS, HMC, PG, IS, sample, logpdf, Truncated#, Normal, Beta, Gamma, InverseGamma,
+using CSV, DataFrames, AxisKeys
 import Zygote
 import ForwardDiff
 import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent, @thunk
 using Random
 import FiniteDifferences
-import FastDifferentiation
+# import FastDifferentiation
 import BenchmarkTools: @benchmark
 import LinearAlgebra as ℒ
 Random.seed!(1)
 import Symbolics
-import MacroModelling: get_and_check_observables, get_symbols, solve!, create_symbols_eqs!, remove_redundant_SS_vars!, check_bounds, write_functions_mapping!, get_relevant_steady_state_and_state_update, calculate_loglikelihood, get_initial_covariance, riccati_forward, match_pattern
+import SparseArrays: sparse!, SparseMatrixCSC
+import MacroModelling: get_and_check_observables, create_third_order_auxilliary_matrices, create_second_order_auxilliary_matrices, get_symbols, solve!, create_symbols_eqs!, remove_redundant_SS_vars!, check_bounds, write_functions_mapping!, get_relevant_steady_state_and_state_update, calculate_loglikelihood, get_initial_covariance, riccati_forward, match_pattern
+
+
+
+# m = SGU_2003_debt_premium
+
+include("../models/Ghironi_Melitz_2005.jl")
+m = Ghironi_Melitz_2005
+
+
+autocorr_3rd = get_autocorrelation(m, algorithm = :pruned_third_order)
+
+
+include("../models/JQ_2012_RBC.jl")
+m = JQ_2012_RBC
+
+SS(m, algorithm = :pruned_second_order)
+SS(m, algorithm = :pruned_third_order)
+
 
 include("../models/RBC_baseline.jl")
 m = RBC_baseline
 
-@profview include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+# @profview include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
 
+# todos: use Symbolics function writer 
+# use analytical derivatives for SS derivs output and the non_stochastic_steady_state function for that purpose
+SS(Ghironi_Melitz_2005, algorithm = :pruned_second_order)
+SS(m, algorithm = :pruned_third_order)
 
 get_irf(m)
 
@@ -28,24 +54,25 @@ ForwardDiff.jacobian(x -> get_non_stochastic_steady_state(m, x)[1], m.parameter_
 
 SS(m)
 
-m.model_jacobian_parameters
-
-Zygote.jacobian(x -> begin 
-# model = m
-
 observables = [:y]
 
 Random.seed!(1)
 simulated_data = simulate(m)
 
-get_loglikelihood(m, simulated_data(observables, :, :simulate), x)
-end, m.parameter_values)[1]
+get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
 
-@profview include("../models/NAWM_EAUS_2008.jl")
+Zygote.jacobian(x -> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)[1]
+
+SSS(m)
+
+include("../models/NAWM_EAUS_2008.jl")
 
 
+SS(NAWM_EAUS_2008, algorithm = :pruned_second_order)
+SS(NAWM_EAUS_2008, algorithm = :pruned_third_order)
 
 
+m = NAWM_EAUS_2008
 
 model = NAWM_EAUS_2008
 
@@ -56,8 +83,12 @@ simulated_data = simulate(model)
 
 get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
 
+
+Zygote.jacobian(x -> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)[1]
+
 using BenchmarkTools
 @benchmark get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+@benchmark Zygote.jacobian(x -> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)[1]
 @profview get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
 
 
@@ -133,6 +164,7 @@ for var in shock_varss
 end
 
 
+
 # paras = []
 # push!(paras,:((;$(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)...)) = params))
 
@@ -174,7 +206,7 @@ vars_raw = [dyn_future_list[indexin(sort(future),future)]...,
 Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x)
 
 # overwrite SymPyCall names
-eval(:(Symbolics.@variables $(reduce(union,get_symbols.(vcat(𝓂.dyn_equations, 𝓂.calibration_equations_no_var, 𝓂.calibration_equations)))...)))
+eval(:(Symbolics.@variables $(reduce(union,get_symbols.(vcat(𝓂.dyn_equations, 𝓂.calibration_equations_no_var)))...)))
 
 vars = eval(:(Symbolics.@variables $(vars_raw...)))
 
@@ -185,7 +217,7 @@ eqs = Symbolics.parse_expr_to_symbolic.(𝓂.dyn_equations,(@__MODULE__,))
 # past_no_lead_lag = Symbol.(replace.(string.(past), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
 
 # eval(:(Symbolics.@variables $(Set(vcat(future_no_lead_lag, present_no_lead_lag, past_no_lead_lag))...)))
-eval(:(Symbolics.@variables $(Set(vcat(future, present, past))...)))
+eval(:(Symbolics.@variables $(Set(vcat(future, present, past, 𝓂.parameters))...)))
 
 SS_and_pars = Symbol.(vcat(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), 𝓂.calibration_equations_parameters))
 
@@ -200,9 +232,7 @@ vars_no_time_transform = union(Dict(eval.(dyn_future_list) .=> eval.(future)),
                                 Dict(eval.(dyn_ss_list) .=> eval.(stst)),
                                 Dict(eval.(dyn_exo_list) .=> 0))
 
-
-vars_no_time_transform_pair = eval.(vcat(dyn_future_list, dyn_present_list, dyn_past_list, dyn_ss_list, dyn_exo_list)) => vcat(eval.(vcat(future, present, past, stst)),zeros(length(dyn_exo_list)))
-
+                                max_perturbation_order = 3
 if max_perturbation_order >= 2 
     nk = length(vars_raw)
     second_order_idxs = [nk * (i-1) + k for i in 1:nk for k in 1:i]
@@ -210,6 +240,467 @@ if max_perturbation_order >= 2
         third_order_idxs = [nk^2 * (i-1) + nk * (k-1) + l for i in 1:nk for k in 1:i for l in 1:k]
     end
 end
+
+max_exprs_per_func = 80
+
+calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
+
+eqs_sub = Symbolics.Num[]
+for subst in eqs
+    for calib_eq in calib_eqs
+        subst = Symbolics.substitute(subst, calib_eq)
+    end
+    push!(eqs_sub, subst)
+end
+
+∂SS_equations_∂vars = Symbolics.sparsejacobian(eqs_sub, vars, simplify = false)# |> findnz
+
+input_args = vcat(future_varss,
+                    present_varss,
+                    past_varss,
+                    shock_varss,
+                    𝓂.parameters,
+                    𝓂.calibration_equations_parameters,
+                    ss_varss)
+
+funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(50, Threads.nthreads()))
+
+𝓂.model_jacobian = funcs[1]
+# for i in zip(∂SS_equations_∂vars...)
+#     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
+#     $(alll...)
+#     $(paras...)
+#     $(𝓂.calibration_equations_no_var...)
+#     $(steady_state...)
+#     return $(Symbolics.toexpr(i[3])), $(i[1]), $(i[2])
+#     end)
+#     push!(𝓂.model_jacobian, @RuntimeGeneratedFunction(exx))
+# end
+
+# mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
+#     $(alll...)
+#     $(paras...)
+#     $(𝓂.calibration_equations_no_var...)
+#     $(steady_state...)
+#     sparse(Int[$(∂SS_equations_∂vars[1]...)], Int[$(∂SS_equations_∂vars[2]...)], [$(Symbolics.toexpr.(∂SS_equations_∂vars[3])...)], $(length(eqs)), $(length(vars)))
+# end)
+
+# 𝓂.model_jacobian = @RuntimeGeneratedFunction(mod_func3)
+
+# calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
+
+eqs_static = map(x -> Symbolics.substitute(x, vars_no_time_transform), findnz(∂SS_equations_∂vars)[3])
+
+∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(vcat(𝓂.parameters, SS_and_pars)), simplify = false) # |> findnz
+
+idx_conversion = (findnz(∂SS_equations_∂vars)[1] + length(eqs) * (findnz(∂SS_equations_∂vars)[2] .- 1))
+
+rows, cols, vals = findnz(∂SS_equations_∂SS_and_pars)
+
+∂SS_equations_∂SS_and_pars_ext = sparse(cols, idx_conversion[rows], vals, (length(SS_and_pars) + length(𝓂.parameters)), (length(eqs) * length(vars)))
+
+input_args_no_time = vcat(Symbol.(replace.(string.(future_varss), r"₍₁₎$"=>"")),
+                    Symbol.(replace.(string.(present_varss), r"₍₀₎$"=>"")),
+                    Symbol.(replace.(string.(past_varss), r"₍₋₁₎$"=>"")),
+                    𝓂.parameters,
+                    𝓂.calibration_equations_parameters,
+                    Symbol.(replace.(string.(ss_varss),r"₍ₛₛ₎$"=>"")))
+
+
+funcs = Symbolics.build_function(∂SS_equations_∂SS_and_pars_ext, eval.(input_args_no_time), expression = false)
+
+𝓂.model_jacobian_SS_and_pars_vars = funcs[1]
+
+
+# max_perturbation_order = 2
+
+# hessian_rows = Int[]
+# hessian_cols = Int[]
+# hessian_vals = []
+
+# for (i,eq) in enumerate(eqs_sub)
+#     hessian = Symbolics.sparsehessian(eq, vars, simplify = false, full = true) |> findnz
+#     if length(hessian[1]) > 0
+#         push!(hessian_rows, fill(i, length(hessian[3]))...)
+#         # push!(hessian_cols, indexin((hessian[1] .- 1) .* length(vars) .+ hessian[2], second_order_idxs)...)
+#         push!(hessian_cols, ((hessian[1] .- 1) .* length(vars) .+ hessian[2])...)
+#         push!(hessian_vals, hessian[3]...)
+#     end
+# end
+
+
+
+# if max_perturbation_order >= 2
+    
+    hessian_rows = Int[]
+    hessian_cols = Int[]
+    hessian_vals = []
+
+    for (i,eq) in enumerate(eqs_sub)
+        hessian = Symbolics.sparsehessian(eq, vars, simplify = false, full = true) |> findnz
+
+        push!(hessian_rows, fill(i, length(hessian[3]))...)
+        # push!(hessian_cols, indexin((hessian[1] .- 1) .* length(vars) .+ hessian[2], second_order_idxs)...)
+        push!(hessian_cols, ((hessian[1] .- 1) .* length(vars) .+ hessian[2])...)
+        push!(hessian_vals, hessian[3]...)
+    end
+
+    # if max_perturbation_order == 3 # && 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+        third_order_derivatives = Symbolics.sparsejacobian(hessian_vals, vars) |> findnz
+
+        third_order_rows = hessian_rows[third_order_derivatives[1]]
+        third_order_cols = (hessian_cols[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
+        third_order_vals = third_order_derivatives[3]
+
+        reducer³ = [i ∈ third_order_idxs for i in third_order_cols]
+
+        reduced_third_order_rows = third_order_rows[reducer³]
+        reduced_third_order_cols = Int.(indexin(third_order_cols[reducer³], third_order_idxs))
+        reduced_third_order_vals = third_order_vals[reducer³]
+
+        ∂SS_equations_∂vars_∂vars_∂vars = sparse!(reduced_third_order_rows, reduced_third_order_cols, reduced_third_order_vals, length(eqs), length(third_order_idxs))
+
+        min_n_funcs = length(∂SS_equations_∂vars_∂vars_∂vars.nzval) ÷ max_exprs_per_func
+        
+        if min_n_funcs == 0
+            parallel = Symbolics.SerialForm()
+        # elseif min_n_funcs == 1
+        #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+        else
+            # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
+            parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs + 1)
+        end
+        
+        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false, parallel = parallel)
+
+        𝓂.model_third_order_derivatives = funcs[1]
+
+        if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+            𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, Int.(indexin(intersect(third_order_idxs, unique(third_order_cols)), third_order_idxs)))
+        end
+    # end
+    
+    
+        reducer² = [i ∈ second_order_idxs for i in hessian_cols]
+        
+        reduced_hessian_rows = hessian_rows[reducer²]
+        reduced_hessian_cols = Int.(indexin(hessian_cols[reducer²], second_order_idxs))
+        reduced_hessian_vals = hessian_vals[reducer²]
+
+        ∂SS_equations_∂vars_∂vars = sparse(reduced_hessian_rows, reduced_hessian_cols, reduced_hessian_vals, length(eqs), length(second_order_idxs))
+
+
+    # ∂SS_equations_∂vars_∂vars = sparse(hessian_rows[hessian_cols .∈ second_order_idxs], hessian_cols[hessian_cols .∈ second_order_idxs], hessian_vals[hessian_cols .∈ second_order_idxs], length(eqs), length(second_order_idxs))
+
+    input_args = vcat(future_varss,
+                        present_varss,
+                        past_varss,
+                        shock_varss,
+                        𝓂.parameters,
+                        𝓂.calibration_equations_parameters,
+                        ss_varss)
+    
+    min_n_funcs = length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func
+
+    if min_n_funcs == 0
+        parallel = Symbolics.SerialForm()
+    # elseif min_n_funcs == 1
+    #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+    else
+        # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
+        parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs + 1)
+    end
+    
+    funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = parallel)
+
+    𝓂.model_hessian = funcs[1];
+
+
+
+
+
+
+parameters = 𝓂.parameter_values
+SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, false, 𝓂.solver_parameters)
+
+SSSS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+# par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
+par = vcat(parameters,calibrated_parameters)
+
+dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+
+shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
+
+𝓂.model_hessian([SSSS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SSSS[dyn_ss_idx]])
+
+@benchmark 𝓂.model_hessian([SSSS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SSSS[dyn_ss_idx]])
+
+𝓂.model_third_order_derivatives([SSSS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SSSS[dyn_ss_idx]])
+
+
+
+
+
+# import SparseArrays
+∂SS_equations_∂vars_∂vars = SparseArrays.sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(vars)^2)
+
+# ∂SS_equations_∂vars_∂vars * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+
+
+input_args = vcat(future_varss,
+                    present_varss,
+                    past_varss,
+                    shock_varss,
+                    𝓂.parameters,
+                    𝓂.calibration_equations_parameters,
+                    ss_varss)
+
+funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(50, Threads.nthreads()));
+
+funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.ShardedForm(50,4));
+
+𝓂.model_hessian = funcs[1];
+
+
+
+parameters = 𝓂.parameter_values
+SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, false, 𝓂.solver_parameters)
+
+
+SSSS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+# par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
+par = vcat(parameters,calibrated_parameters)
+
+dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+
+shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
+
+𝓂.model_hessian([SSSS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SSSS[dyn_ss_idx]])
+
+@benchmark 𝓂.model_hessian([SSSS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SSSS[dyn_ss_idx]])
+
+𝓂.model_third_order_derivatives([SSSS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SSSS[dyn_ss_idx]])
+
+
+
+funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(50, Threads.nthreads()));
+
+max_exprs_per_func = 200
+funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func));
+
+# funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.ShardedForm(50,2*Threads.nthreads()));
+
+𝓂.model_hessian = funcs[1];
+
+
+@benchmark funcs[1]([SSSS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SSSS[dyn_ss_idx]])
+
+@profview funcs[1]([SSSS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SSSS[dyn_ss_idx]])
+
+
+
+# third order derivs
+third_order_derivatives = Symbolics.sparsejacobian(∂SS_equations_∂vars_∂vars.nzval, vars) |> findnz
+
+hessian = ∂SS_equations_∂vars_∂vars |> findnz
+third_order_rows = hessian[1][third_order_derivatives[1]]
+third_order_cols = (hessian[2][third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
+third_order_vals = third_order_derivatives[3]
+
+
+hessian_cols == hessian[1]
+
+hessian_rows == hessian[2]
+
+third_order_derivatives = Symbolics.sparsejacobian(hessian_vals, vars) |> findnz
+
+third_order_rows = hessian_cols[third_order_derivatives[1]]
+third_order_cols = (hessian_rows[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
+third_order_vals = third_order_derivatives[3]
+
+
+∂SS_equations_∂vars_∂vars_∂vars = SparseArrays.sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
+
+
+sort(findnz(∂SS_equations_∂vars_∂vars_∂vars)[1]) == sort(findnz(∇₃)[1])
+sort(findnz(∂SS_equations_∂vars_∂vars_∂vars)[2]) == sort(findnz(∇₃)[2])
+∇₃ = calculate_third_order_derivatives(𝓂.parameter_values, SS_and_pars, 𝓂)
+
+unique(third_order_cols)
+Int.(indexin(intersect(third_order_idxs,unique(third_order_cols)),third_order_idxs))
+
+unique((indexin(third_order_cols, third_order_idxs)))
+import MacroModelling: create_third_order_auxilliary_matrices
+create_third_order_auxilliary_matrices(𝓂.timings, Int.(indexin(intersect(third_order_idxs,unique(third_order_cols)),third_order_idxs)))
+    
+
+third_order_rows = Int[]
+third_order_cols = Int[]
+third_order_vals = []
+
+for (i,eq) in enumerate(eqs_sub)
+    third_order = Symbolics.sparsehessian(eq, vars, simplify = false, full = true) |> findnz
+
+    push!(third_order_rows, fill(i, length(hessian[3]))...)
+    # push!(third_order_cols, indexin((hessian[1] .- 1) .* length(vars) .+ hessian[2], second_order_idxs)...)
+    push!(third_order_cols, ((hessian[1] .- 1) .* length(vars) .+ hessian[2])...)
+    push!(third_order_vals, hessian[3]...)
+end
+
+bb =sparse(row2, column2, second_order, length(eqs), length(second_order_idxs))
+
+
+
+aa - bb
+aa.nzval
+bb.nzval
+# if max_perturbation_order >= 2 
+    first_order = []
+    first_order_parameter = []
+    first_order_SS_and_pars_var = []
+    second_order = []
+    third_order = []
+    row1 = Int[]
+    row1p = Int[]
+    row1SSp = Int[]
+    row2 = Int[]
+    row3 = Int[]
+    column1 = Int[]
+    column1p = Int[]
+    column1SSp = Int[]
+    column2 = Int[]
+    column3 = Int[]
+    # column3ext = Int[]
+    i1 = 1
+    i1p = 1
+    i1SSp = 1
+    i2 = 1
+    i3 = 1
+
+
+
+    for (c1,var1) in enumerate(vars)
+        for (r,eq) in enumerate(eqs)
+            if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
+                deriv_first = Symbolics.derivative(eq,var1)
+    
+                deriv_first_subst = copy(deriv_first)
+    
+                # substitute in calibration equations without targets
+                for calib_eq in reverse(𝓂.calibration_equations_no_var)
+                    deriv_first_subst = Symbolics.substitute(deriv_first_subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
+                end
+                    i1 += 1
+                    if max_perturbation_order >= 2 
+                        for (c2,var2) in enumerate(vars)
+                            # if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
+                            if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
+                                deriv_second = Symbolics.derivative(deriv_first,var2)
+                                # if deriv_second != 0 
+                                #     deriv_expr = Meta.parse(string(deriv_second.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
+                                #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                                    # push!(second_order,Symbolics.toexpr(deriv_second))
+                                    push!(second_order,(deriv_second))
+                                    push!(row2,r)
+                                    # push!(column2,(c1 - 1) * length(vars) + c2)
+                                    push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
+                                    i2 += 1
+                                    if max_perturbation_order == 3
+                                        for (c3,var3) in enumerate(vars)
+                                            # if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
+                                                # push!(column3ext,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
+                                                if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
+                                                    deriv_third = Symbolics.derivative(deriv_second,var3)
+                                                    # if deriv_third != 0 
+                                                    #     deriv_expr = Meta.parse(string(deriv_third.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
+                                                    #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
+                                                        push!(third_order,Symbolics.toexpr(deriv_third))
+                                                        push!(row3,r)
+                                                        # push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
+                                                        push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
+                                                        i3 += 1
+                                                    # end
+                                                end
+                                            # end
+                                        end
+                                    end
+                                # end
+                            end
+                        end
+                    end
+                # end
+            end
+        end
+    end
+# end
+
+
+
+sparse(row2, column2, second_order, length(eqs), length(second_order_idxs))
+
+
+
+
+input_vals = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]
+tmp = funcs[1](input_vals)
+findnz(tmp)
+funcs[2](tmp, input_vals)
+findnz(tmp)
+
+jacc ≈ tmp
+parameters = 𝓂.parameter_values
+SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, false, 𝓂.solver_parameters)
+
+
+
+SSS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+# par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
+par = vcat(parameters,calibrated_parameters)
+
+dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+
+shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
+
+# return 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
+# return Matrix(𝓂.model_jacobian(([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])))
+jacc = 𝓂.model_jacobian([SSS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SSS[dyn_ss_idx])
+
+
+
+
+
+
+
+# for i in zip(∂SS_equations_∂vars...)
+#     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
+#     $(alll...)
+#     $(paras...)
+#     $(𝓂.calibration_equations_no_var...)
+#     $(steady_state...)
+#     return $(Symbolics.toexpr(i[3])), $(i[1]), $(i[2])
+#     end)
+#     push!(𝓂.model_jacobian, @RuntimeGeneratedFunction(exx))
+# end
+
+mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
+    $(alll...)
+    $(paras...)
+    $(𝓂.calibration_equations_no_var...)
+    $(steady_state...)
+    sparse(Int[$(∂SS_equations_∂vars[1]...)], Int[$(∂SS_equations_∂vars[2]...)], [$(Symbolics.toexpr.(∂SS_equations_∂vars[3])...)], $(length(eqs)), $(length(vars)))
+end)
 
 # @benchmark begin
 # eval(:(FastDifferentiation.@variables $(vars_raw...)))
