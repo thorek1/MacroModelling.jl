@@ -5294,11 +5294,19 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             third_order_cols = (hessian_cols[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
             third_order_vals = third_order_derivatives[3]
 
+            reducer³ = [i ∈ third_order_idxs for i in third_order_cols]
+        
+            reduced_third_order_rows = third_order_rows[reducer³]
+            reduced_third_order_cols = Int.(indexin(third_order_cols[reducer³], third_order_idxs))
+            reduced_third_order_vals = third_order_vals[reducer³]
+        
             if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
                 𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, Int.(indexin(intersect(third_order_idxs, unique(third_order_cols)), third_order_idxs)))
             end
             
-            ∂SS_equations_∂vars_∂vars_∂vars = sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
+            ∂SS_equations_∂vars_∂vars_∂vars = sparse!(reduced_third_order_rows, reduced_third_order_cols, reduced_third_order_vals, length(eqs), length(third_order_idxs))
+
+            # ∂SS_equations_∂vars_∂vars_∂vars = sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
 
             min_n_funcs = length(∂SS_equations_∂vars_∂vars_∂vars.nzval) ÷ max_exprs_per_func
             
@@ -5344,8 +5352,16 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             # TODO: write these as one big function instead of many small ones. might help with compilation
         # end
 
+        reducer² = [i ∈ second_order_idxs for i in hessian_cols]
+        
+        reduced_hessian_rows = hessian_rows[reducer²]
+        reduced_hessian_cols = Int.(indexin(hessian_cols[reducer²], second_order_idxs))
+        reduced_hessian_vals = hessian_vals[reducer²]
+
+        ∂SS_equations_∂vars_∂vars = sparse!(reduced_hessian_rows, reduced_hessian_cols, reduced_hessian_vals, length(eqs), length(second_order_idxs))
+
         # ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(second_order_idxs))
-        ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(vars)^2)
+        # ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(vars)^2)
 
         input_args = vcat(future_varss,
                             present_varss,
@@ -6132,7 +6148,7 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
         
     # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
-    return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]])# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+    return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 
     # second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_hessian]
     
@@ -6163,7 +6179,7 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
     # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
-    return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]])
+    return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
     
     
     # third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
