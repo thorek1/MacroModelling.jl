@@ -4974,7 +4974,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                         
     max_exprs_per_func = 200
 
-    funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, max(1,length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func)))
+    funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, max(2,length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func)))
 
     𝓂.model_jacobian = funcs[1]
     # for i in zip(∂SS_equations_∂vars...)
@@ -5018,7 +5018,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                         Symbol.(replace.(string.(ss_varss), r"₍ₛₛ₎$"=>"")))
     
     
-    funcs = Symbolics.build_function(∂SS_equations_∂SS_and_pars_ext, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, max(1,length(∂SS_equations_∂SS_and_pars_ext.nzval) ÷ max_exprs_per_func)))
+    funcs = Symbolics.build_function(∂SS_equations_∂SS_and_pars_ext, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, max(2,length(∂SS_equations_∂SS_and_pars_ext.nzval) ÷ max_exprs_per_func)))
     
     𝓂.model_jacobian_SS_and_pars_vars = funcs[1]
     
@@ -5279,7 +5279,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                             𝓂.calibration_equations_parameters,
                             ss_varss)
         
-        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, max(1,length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func)))
+        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, max(2,length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func)))
         
         𝓂.model_hessian = funcs[1]
 
@@ -5298,7 +5298,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
         ∂SS_equations_∂vars_∂vars_∂vars = sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
 
-        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, max(1,length(∂SS_equations_∂vars_∂vars_∂vars.nzval) ÷ max_exprs_per_func)))
+        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, max(2,length(∂SS_equations_∂vars_∂vars_∂vars.nzval) ÷ max_exprs_per_func)))
         
         𝓂.model_third_order_derivatives = funcs[1]
 
