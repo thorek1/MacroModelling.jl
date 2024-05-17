@@ -4972,7 +4972,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                         𝓂.calibration_equations_parameters,
                         ss_varss)
                         
-    max_exprs_per_func = 200
+    max_exprs_per_func = 250
 
     if (length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func) == 0
         funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false)
@@ -5273,40 +5273,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             push!(hessian_vals, hessian[3]...)
         end
 
-        hessian_rows_copy = copy(hessian_rows) # otherwise modified with sparse!
-				hessian_cols_copy = copy(hessian_cols) # otherwise modified with sparse!
-				hessian_vals_copy = copy(hessian_vals) # otherwise modified with sparse!
+        if max_perturbation_order == 3 # && 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+        third_order_derivatives = Symbolics.sparsejacobian(hessian_vals, vars) |> findnz
 
-        # ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(second_order_idxs))
-        ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(vars)^2)
-
-        input_args = vcat(future_varss,
-                            present_varss,
-                            past_varss,
-                            shock_varss,
-                            𝓂.parameters,
-                            𝓂.calibration_equations_parameters,
-                            ss_varss)
-        
-    if (length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func) == 0
-        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false)
-    else
-        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func + 1))
-    end
-
-        𝓂.model_hessian = funcs[1]
-
-        if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-            𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
-        end
-    end
-
-
-    if max_perturbation_order == 3 # && 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-        third_order_derivatives = Symbolics.sparsejacobian(hessian_vals_copy, vars) |> findnz
-
-        third_order_rows = hessian_cols_copy[third_order_derivatives[1]]
-        third_order_cols = (hessian_rows_copy[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
+        third_order_rows = hessian_cols[third_order_derivatives[1]]
+        third_order_cols = (hessian_rows[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
         third_order_vals = third_order_derivatives[3]
 
         ∂SS_equations_∂vars_∂vars_∂vars = sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
@@ -5351,6 +5322,33 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         # 𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
         # TODO: write these as one big function instead of many small ones. might help with compilation
     end
+
+        # ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(second_order_idxs))
+        ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(vars)^2)
+
+        input_args = vcat(future_varss,
+                            present_varss,
+                            past_varss,
+                            shock_varss,
+                            𝓂.parameters,
+                            𝓂.calibration_equations_parameters,
+                            ss_varss)
+        
+		    if (length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func) == 0
+		        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false)
+		    else
+		        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm(max_exprs_per_func, length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func + 1))
+		    end
+
+        𝓂.model_hessian = funcs[1]
+
+        if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+            𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
+        end
+    end
+
+
+    
     # end
 
 
