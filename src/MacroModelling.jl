@@ -5275,7 +5275,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                             𝓂.calibration_equations_parameters,
                             ss_varss)
         
-        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false)
+        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm())
         
         𝓂.model_hessian = funcs[1]
 
@@ -5294,7 +5294,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
         ∂SS_equations_∂vars_∂vars_∂vars = sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
 
-        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false)
+        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false, parallel = Symbolics.MultithreadedForm())
         
         𝓂.model_third_order_derivatives = funcs[1]
 
