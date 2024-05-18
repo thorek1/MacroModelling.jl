@@ -389,17 +389,25 @@ function plot_irf(𝓂::ℳ;
     generalised_irf::Bool = false,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
     ignore_obc::Bool = false,
-    verbose::Bool = false)
+    verbose::Bool = false,
+    size=(700,500),
+    plot_titlefont = 10,
+    titlefont = 10, 
+    guidefont = 8, 
+    legendfontsize = 8, 
+    tickfontsize = 8,
+    framestyle = :box
+    )
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
-    StatsPlots.default(size=(700,500),
-                    plot_titlefont = 10, 
-                    titlefont = 10, 
-                    guidefont = 8, 
-                    legendfontsize = 8, 
-                    tickfontsize = 8,
-                    framestyle = :box)
+    StatsPlots.default(size=size,
+                       plot_titlefont=plot_titlefont, 
+                       titlefont=titlefont, 
+                       guidefont=guidefont, 
+                       legendfontsize=legendfontsize, 
+                       tickfontsize=tickfontsize,
+                       framestyle=framestyle)
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
