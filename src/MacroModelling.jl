@@ -5204,7 +5204,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
             exx = :(function(X::Vector)
                 $(alll...)
-                return [$(Symbolics.toexpr(i)) for i in second_order[indices]], $(row2[indices]), $(column2[indices])
+                return  [$(Symbolics.toexpr.(second_order[indices])...)], $(row2[indices]), $(column2[indices])
             end)
 
             push!(𝓂.model_hessian, @RuntimeGeneratedFunction(exx))
@@ -5246,7 +5246,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
                 exx = :(function(X::Vector)
                     $(alll...)
-                    return [$(Symbolics.toexpr(i)) for i in third_order[indices]], $(row3[indices]), $(column3[indices])
+                    return  [$(Symbolics.toexpr.(third_order[indices])...)], $(row3[indices]), $(column3[indices])
                 end)
 
                 push!(𝓂.model_third_order_derivatives, @RuntimeGeneratedFunction(exx))
@@ -6501,8 +6501,9 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     if VERSION >= v"1.9"
         Ŝ₁₁ = RF.lu!(S₁₁, check = false)
     else
-        Ŝ₁₁ = RF.lu!(S₁₁, check = false)
+        Ŝ₁₁ = RF.lu(S₁₁, check = false)
     end
+
     if !ℒ.issuccess(Ŝ₁₁)
         return zeros(T.nVars,T.nPast_not_future_and_mixed), false
     end
