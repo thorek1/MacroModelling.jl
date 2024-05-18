@@ -5156,7 +5156,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                         ss_varss)
 
     # first order
-    ∂SS_equations_∂vars = sparse!(row1, column1, first_order, length(eqs_sub), length(var))
+    ∂SS_equations_∂vars = sparse!(row1, column1, first_order, length(eqs_sub), length(vars))
                         
     min_n_funcs = length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func
             
@@ -5204,7 +5204,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
             exx = :(function(X::Vector)
                 $(alll...)
-                return $(Symbolics.toexpr.(second_order[indices])), $(row2[indices]), $(column2[indices])
+                return [$(Symbolics.toexpr(i)) for i in second_order[indices]], $(row2[indices]), $(column2[indices])
             end)
 
             push!(𝓂.model_hessian, @RuntimeGeneratedFunction(exx))
@@ -5246,7 +5246,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
                 exx = :(function(X::Vector)
                     $(alll...)
-                    return $(Symbolics.toexpr.(third_order[indices])), $(row3[indices]), $(column3[indices])
+                    return [$(Symbolics.toexpr(i)) for i in third_order[indices]], $(row3[indices]), $(column3[indices])
                 end)
 
                 push!(𝓂.model_third_order_derivatives, @RuntimeGeneratedFunction(exx))
@@ -6209,9 +6209,9 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     for f in 𝓂.model_hessian
         output = f(input)
 
-        push!(vals, output[1])
-        push!(rows, output[2])
-        push!(cols, output[3])
+        push!(vals, output[1]...)
+        push!(rows, output[2]...)
+        push!(cols, output[3]...)
     end
 
     # vals = convert(Vector{M}, vals)
@@ -6257,9 +6257,9 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
     for f in 𝓂.model_third_order_derivatives
         output = f(input)
 
-        push!(vals, output[1])
-        push!(rows, output[2])
-        push!(cols, output[3])
+        push!(vals, output[1]...)
+        push!(rows, output[2]...)
+        push!(cols, output[3]...)
     end
 
     # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
