@@ -4836,14 +4836,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     sort!(past_varss    ,by = x->replace(string(x),r"₍₋₁₎$"=>""))
     sort!(shock_varss   ,by = x->replace(string(x),r"₍ₓ₎$"=>""))
     sort!(ss_varss      ,by = x->replace(string(x),r"₍ₛₛ₎$"=>""))
-
-    steady_state = []
-    steady_state_no_time = []
-    for (i, var) in enumerate(ss_varss)
-        push!(steady_state,:($var = X̄[$i]))
-        push!(steady_state_no_time,:($(Symbol(replace(string(var),r"₍ₛₛ₎$"=>""))) = X̄[$i]))
-        # ii += 1
-    end
     
     ii = 1
     
@@ -4880,6 +4872,18 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     paras = []
     for (i, parss) in enumerate(vcat(𝓂.parameters,𝓂.calibration_equations_parameters))
         push!(paras,:($parss = params[$i]))
+        push!(alll,:($parss = X[$ii]))
+        ii += 1
+    end
+
+
+    steady_state = []
+    steady_state_no_time = []
+    for (i, var) in enumerate(ss_varss)
+        push!(steady_state,:($var = X̄[$i]))
+        push!(steady_state_no_time,:($(Symbol(replace(string(var),r"₍ₛₛ₎$"=>""))) = X̄[$i]))
+        push!(alll,:($var = X[$ii]))
+        ii += 1
     end
 
     # # watch out with naming of parameters in model and functions
@@ -4890,7 +4894,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     #     $(steady_state...)
     #     [$(𝓂.dyn_equations...)]
     # end)
-
 
     # 𝓂.model_function = @RuntimeGeneratedFunction(mod_func2)
     # 𝓂.model_function = eval(mod_func2)
@@ -4941,7 +4944,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                                     Dict(eval.(dyn_ss_list) .=> eval.(stst)),
                                     Dict(eval.(dyn_exo_list) .=> 0))
 
-
     if max_perturbation_order >= 2 
         nk = length(vars_raw)
         second_order_idxs = [nk * (i-1) + k for i in 1:nk for k in 1:i]
@@ -4949,7 +4951,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             third_order_idxs = [nk^2 * (i-1) + nk * (k-1) + l for i in 1:nk for k in 1:i for l in 1:k]
         end
     end
-
 
     calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
 
@@ -4962,32 +4963,32 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         push!(eqs_sub, subst)
     end
     
-    ∂SS_equations_∂vars = Symbolics.sparsejacobian(eqs_sub, vars, simplify = false)# |> findnz
+    # ∂SS_equations_∂vars = Symbolics.sparsejacobian(eqs_sub, vars, simplify = false)# |> findnz
     
-    input_args = vcat(future_varss,
-                        present_varss,
-                        past_varss,
-                        shock_varss,
-                        𝓂.parameters,
-                        𝓂.calibration_equations_parameters,
-                        ss_varss)
+    # input_args = vcat(future_varss,
+    #                     present_varss,
+    #                     past_varss,
+    #                     shock_varss,
+    #                     𝓂.parameters,
+    #                     𝓂.calibration_equations_parameters,
+    #                     ss_varss)
                         
-    max_exprs_per_func = 50
+    # max_exprs_per_func = 50
      
-    min_n_funcs = length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func
+    # min_n_funcs = length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func
             
-    if min_n_funcs == 0
-        parallel = Symbolics.SerialForm()
-    # elseif min_n_funcs == 1
-    #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
-    else
-        # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
-        parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs + 1)
-    end
+    # if min_n_funcs == 0
+    #     parallel = Symbolics.SerialForm()
+    # # elseif min_n_funcs == 1
+    # #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+    # else
+    #     # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
+    #     parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs + 1)
+    # end
     
-    funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false, parallel = parallel)
+    # funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false, parallel = parallel)
 
-    𝓂.model_jacobian = funcs[1]
+    # 𝓂.model_jacobian = funcs[1]
     # for i in zip(∂SS_equations_∂vars...)
     #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
     #     $(alll...)
@@ -5011,38 +5012,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     # calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
 
-    eqs_static = map(x -> Symbolics.substitute(x, vars_no_time_transform), findnz(∂SS_equations_∂vars)[3])
-
-    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(vcat(𝓂.parameters, SS_and_pars)), simplify = false) # |> findnz
-    
-    idx_conversion = (findnz(∂SS_equations_∂vars)[1] + length(eqs) * (findnz(∂SS_equations_∂vars)[2] .- 1))
-    
-    rows, cols, vals = findnz(∂SS_equations_∂SS_and_pars)
-    
-    ∂SS_equations_∂SS_and_pars_ext = sparse!(cols, idx_conversion[rows], vals, (length(SS_and_pars) + length(𝓂.parameters)), (length(eqs) * length(vars)))
-    
-    input_args_no_time = vcat(Symbol.(replace.(string.(future_varss), r"₍₁₎$"=>"")),
-                        Symbol.(replace.(string.(present_varss), r"₍₀₎$"=>"")),
-                        Symbol.(replace.(string.(past_varss), r"₍₋₁₎$"=>"")),
-                        𝓂.parameters,
-                        𝓂.calibration_equations_parameters,
-                        Symbol.(replace.(string.(ss_varss), r"₍ₛₛ₎$"=>"")))
-    
-    min_n_funcs = length(∂SS_equations_∂SS_and_pars_ext.nzval) ÷ max_exprs_per_func
-
-    if min_n_funcs == 0
-        parallel = Symbolics.SerialForm()
-    # elseif min_n_funcs == 1
-    #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
-    else
-        # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
-        parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs + 1)
-    end
-    
-    funcs = Symbolics.build_function(∂SS_equations_∂SS_and_pars_ext, eval.(input_args_no_time), expression = false, parallel = parallel)
-
-    𝓂.model_jacobian_SS_and_pars_vars = funcs[1]
-    
     # for i in zip(∂SS_equations_∂pars...)
     #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
     #     $(alll...)
@@ -5085,133 +5054,206 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     # 𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
 
+    first_order = []
+    second_order = []
+    third_order = []
+    row1 = Int[]
+    row2 = Int[]
+    row3 = Int[]
+    column1 = Int[]
+    column2 = Int[]
+    column3 = Int[]
+    i1 = 1
+    i2 = 1
+    i3 = 1
 
-    # if max_perturbation_order >= 2 
-    #     first_order = []
-    #     first_order_parameter = []
-    #     first_order_SS_and_pars_var = []
-    #     second_order = []
-    #     third_order = []
-    #     row1 = Int[]
-    #     row1p = Int[]
-    #     row1SSp = Int[]
-    #     row2 = Int[]
-    #     row3 = Int[]
-    #     column1 = Int[]
-    #     column1p = Int[]
-    #     column1SSp = Int[]
-    #     column2 = Int[]
-    #     column3 = Int[]
-    #     # column3ext = Int[]
-    #     i1 = 1
-    #     i1p = 1
-    #     i1SSp = 1
-    #     i2 = 1
-    #     i3 = 1
+    for (c1, var1) in enumerate(vars)
+        for (r, eq) in enumerate(eqs_sub)
+            if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
+                deriv_first = Symbolics.derivative(eq, var1)
+                
+                push!(first_order, deriv_first)
+                push!(row1, r)
+                push!(column1, c1)
+                
+                i1 += 1
 
+                if max_perturbation_order >= 2 
+                    for (c2, var2) in enumerate(vars)
+                        if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
+                            deriv_second = Symbolics.derivative(deriv_first, var2)
+                            
+                            push!(second_order, deriv_second)
+                            push!(row2, r)
+                            push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
+                            
+                            i2 += 1
 
+                            if max_perturbation_order == 3
+                                for (c3, var3) in enumerate(vars)
+                                    if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
+                                        deriv_third = Symbolics.derivative(deriv_second,var3)
 
-    #     for (c1,var1) in enumerate(vars)
-    #         for (r,eq) in enumerate(eqs)
-    #             if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
-    #                 deriv_first = Symbolics.derivative(eq,var1)
-        
-    #                 deriv_first_subst = copy(deriv_first)
-        
-    #                 # substitute in calibration equations without targets
-    #                 for calib_eq in reverse(𝓂.calibration_equations_no_var)
-    #                     deriv_first_subst = Symbolics.substitute(deriv_first_subst, Dict(eval(calib_eq.args[1]) => eval(calib_eq.args[2])))
-    #                 end
-        
-    #                 # for (p1,p) in enumerate(𝓂.parameters)
-    #                 #     if Symbol(p) ∈ Symbol.(Symbolics.get_variables(deriv_first_subst))
-    #                 #         deriv_first_no_time = Symbolics.substitute(deriv_first_subst, vars_no_time_transform)
-        
-    #                 #         deriv_first_parameters = Symbolics.derivative(deriv_first_no_time, eval(p))
-        
-    #                 #         deriv_first_parameters_expr = Symbolics.toexpr(deriv_first_parameters)
-        
-    #                 #         push!(first_order_parameter, deriv_first_parameters_expr)
-    #                 #         push!(row1p, r + length(eqs) * (c1 - 1))
-    #                 #         push!(column1p, p1)
-        
-    #                 #         i1p += 1
-    #                 #     end
-    #                 # end
-        
-    #                 # for (SSp1,SSp) in enumerate(SS_and_pars)
-    #                 #     deriv_first_no_time = Symbolics.substitute(deriv_first_subst, vars_no_time_transform)
+                                        push!(third_order, deriv_third)
+                                        push!(row3, r)
+                                        push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
+                                        
+                                        i3 += 1
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    
+    max_exprs_per_func = 50
+
+    # derivative of jacobian wrt SS_and_pars and parameters
+    eqs_static = map(x -> Symbolics.substitute(x, vars_no_time_transform), first_order)
+
+    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(vcat(𝓂.parameters, SS_and_pars)), simplify = false) # |> findnz
+    
+    idx_conversion = (row1 + length(eqs) * (column1 .- 1))
+    
+    rows, cols, vals = findnz(∂SS_equations_∂SS_and_pars)
+    
+    ∂SS_equations_∂SS_and_pars_ext = sparse!(cols, idx_conversion[rows], vals, (length(SS_and_pars) + length(𝓂.parameters)), (length(eqs) * length(vars)))
+    
+    input_args_no_time = vcat(Symbol.(replace.(string.(future_varss), r"₍₁₎$"=>"")),
+                        Symbol.(replace.(string.(present_varss), r"₍₀₎$"=>"")),
+                        Symbol.(replace.(string.(past_varss), r"₍₋₁₎$"=>"")),
+                        𝓂.parameters,
+                        𝓂.calibration_equations_parameters,
+                        Symbol.(replace.(string.(ss_varss), r"₍ₛₛ₎$"=>"")))
+    
+    min_n_funcs = length(∂SS_equations_∂SS_and_pars_ext.nzval) ÷ max_exprs_per_func
+
+    if min_n_funcs == 0
+        parallel = Symbolics.SerialForm()
+    # elseif min_n_funcs == 1
+    #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+    else
+        # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
+        parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs)
+    end
+    
+    funcs = Symbolics.build_function(∂SS_equations_∂SS_and_pars_ext, eval.(input_args_no_time), expression = false, parallel = parallel)
+
+    𝓂.model_jacobian_SS_and_pars_vars = funcs[1]
+    
+
+    # create derivative functions
+    input_args = vcat(future_varss,
+                        present_varss,
+                        past_varss,
+                        shock_varss,
+                        𝓂.parameters,
+                        𝓂.calibration_equations_parameters,
+                        ss_varss)
+
+    # first order
+    ∂SS_equations_∂vars = sparse!(row1, column1, first_order, length(eqs_sub), length(var))
                         
-    #                 #     if Symbol(SSp) ∈ Symbol.(Symbolics.get_variables(deriv_first_no_time))
-    #                 #         deriv_first_SS_and_pars_var = Symbolics.derivative(deriv_first_no_time, eval(SSp))
-        
-    #                 #         deriv_first_SS_and_pars_var_expr = Symbolics.toexpr(deriv_first_SS_and_pars_var)
-        
-    #                 #         push!(first_order_SS_and_pars_var, deriv_first_SS_and_pars_var_expr)
-    #                 #         push!(row1SSp, r + length(eqs) * (c1 - 1))
-    #                 #         push!(column1SSp, SSp1)
-        
-    #                 #         i1SSp += 1
-    #                 #     end
-    #                 # end
-                    
-    #                 # if deriv_first != 0 
-    #                 #     deriv_expr = Meta.parse(string(deriv_first.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
-    #                 #     push!(first_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-    #                     # deriv_first_expr = Symbolics.toexpr(deriv_first)
-    #                     # # deriv_first_expr_safe = postwalk(x -> x isa Expr ? 
-    #                     # #                                     x.args[1] == :^ ? 
-    #                     # #                                         :(NaNMath.pow($(x.args[2:end]...))) : 
-    #                     # #                                     x : 
-    #                     # #                                 x, 
-    #                     # #                         deriv_first_expr)
-        
-    #                     # push!(first_order, deriv_first_expr)
-    #                     # push!(row1,r)
-    #                     # push!(column1,c1)
-    #                     i1 += 1
-    #                     if max_perturbation_order >= 2 
-    #                         for (c2,var2) in enumerate(vars)
-    #                             # if Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first))
-    #                             if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
-    #                                 deriv_second = Symbolics.derivative(deriv_first,var2)
-    #                                 # if deriv_second != 0 
-    #                                 #     deriv_expr = Meta.parse(string(deriv_second.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
-    #                                 #     push!(second_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-    #                                     push!(second_order,Symbolics.toexpr(deriv_second))
-    #                                     push!(row2,r)
-    #                                     # push!(column2,(c1 - 1) * length(vars) + c2)
-    #                                     push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
-    #                                     i2 += 1
-    #                                     if max_perturbation_order == 3
-    #                                         for (c3,var3) in enumerate(vars)
-    #                                             # if Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second))
-    #                                                 # push!(column3ext,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
-    #                                                 if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
-    #                                                     deriv_third = Symbolics.derivative(deriv_second,var3)
-    #                                                     # if deriv_third != 0 
-    #                                                     #     deriv_expr = Meta.parse(string(deriv_third.subs(SPyPyC.PI,SPyPyC.N(SPyPyC.PI))))
-    #                                                     #     push!(third_order, :($(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, deriv_expr))))
-    #                                                         push!(third_order,Symbolics.toexpr(deriv_third))
-    #                                                         push!(row3,r)
-    #                                                         # push!(column3,(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3)
-    #                                                         push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
-    #                                                         i3 += 1
-    #                                                     # end
-    #                                                 end
-    #                                             # end
-    #                                         end
-    #                                     end
-    #                                 # end
-    #                             end
-    #                         end
-    #                     end
-    #                 # end
-    #             end
-    #         end
-    #     end
-    # end
+    min_n_funcs = length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func
+            
+    if min_n_funcs == 0
+        parallel = Symbolics.SerialForm()
+    # elseif min_n_funcs == 1
+    #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+    else
+        # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
+        parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs)
+    end
+    
+    funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false, parallel = parallel)
 
+    𝓂.model_jacobian = funcs[1]
+
+    
+    max_exprs_per_func = 20
+
+    if max_perturbation_order >= 2
+    # second order
+        if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+            𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
+        end
+
+        min_n_funcs = length(second_order) ÷ max_exprs_per_func
+
+        # ∂SS_equations_∂vars_∂vars = sparse!(row2, column2, second_order, length(eqs), length(second_order_idxs))
+
+        # if min_n_funcs == 0
+        #     parallel = Symbolics.SerialForm()
+        # # elseif min_n_funcs == 1
+        # #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+        # else
+        #     # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
+        #     parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs)
+        # end
+        
+        # funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = parallel)
+
+        # 𝓂.model_hessian = funcs[1]
+        
+        for i in 1:min_n_funcs
+            indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
+
+            exx = :(function(X::Vector)
+                $(alll...)
+                return $(Symbolics.toexpr.(second_order[indices])), $(row2[indices]), $(column2[indices])
+            end)
+
+            push!(𝓂.model_hessian, @RuntimeGeneratedFunction(exx))
+        end
+        
+        # for (l,second) in enumerate(second_order)
+        #     exx = :(function(X::Vector)
+        #     $(alll...)
+        #     return $second, $(row2[l]), $(column2[l])
+        #     end)
+        #     push!(𝓂.model_hessian,@RuntimeGeneratedFunction(exx))
+        # end
+
+        if max_perturbation_order == 3
+        # third order
+            if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+                𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
+            end
+            
+            min_n_funcs = length(third_order) ÷ max_exprs_per_func
+            
+            # ∂SS_equations_∂vars_∂vars_∂vars = sparse!(row3, column3, third_order, length(eqs), length(third_order_idxs))
+
+            # if min_n_funcs == 0
+            #     parallel = Symbolics.SerialForm()
+            # # elseif min_n_funcs == 1
+            # #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+            # else
+            #     # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
+            #     parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs)
+            # end
+            
+            # funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false, parallel = parallel)
+
+            # 𝓂.model_third_order_derivatives = funcs[1]
+            
+            for i in 1:min_n_funcs
+                indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
+
+                exx = :(function(X::Vector)
+                    $(alll...)
+                    return $(Symbolics.toexpr.(third_order[indices])), $(row3[indices]), $(column3[indices])
+                end)
+
+                push!(𝓂.model_third_order_derivatives, @RuntimeGeneratedFunction(exx))
+            end
+        end
+    end
+    
     # mod_func3 = :(function model_jacobian(X::Vector, params::Vector{Real}, X̄::Vector)
     #     $(alll...)
     #     $(paras...)
@@ -5247,149 +5289,149 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # 𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
 
 
-    if max_perturbation_order >= 2 # && (𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) || 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
-        # if length(row2) == 0 
-        #     out = :(spzeros($(length(eqs)), $(length(second_order_idxs))))
-        # else 
-        #     out = :(sparse([$(row2...)], [$(column2...)], [$(second_order...)], $(length(eqs)), $(length(second_order_idxs))))
-        # end
+    # if max_perturbation_order >= 2 # && (𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) || 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
+    #     # if length(row2) == 0 
+    #     #     out = :(spzeros($(length(eqs)), $(length(second_order_idxs))))
+    #     # else 
+    #     #     out = :(sparse([$(row2...)], [$(column2...)], [$(second_order...)], $(length(eqs)), $(length(second_order_idxs))))
+    #     # end
 
-        # mod_func4 = :(function model_hessian(X::Vector, params::Vector{Real}, X̄::Vector)
-        #     $(alll...)
-        #     $(paras...)
-        #     $(𝓂.calibration_equations_no_var...)
-        #     $(steady_state...)
-        #     $out
-        # end)
+    #     # mod_func4 = :(function model_hessian(X::Vector, params::Vector{Real}, X̄::Vector)
+    #     #     $(alll...)
+    #     #     $(paras...)
+    #     #     $(𝓂.calibration_equations_no_var...)
+    #     #     $(steady_state...)
+    #     #     $out
+    #     # end)
 
-        # for (l,second) in enumerate(second_order)
-        #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
-        #     $(alll...)
-        #     $(paras...)
-        #     $(𝓂.calibration_equations_no_var...)
-        #     $(steady_state...)
-        #     return $second, $(row2[l]), $(column2[l])
-        #     end)
-        #     push!(𝓂.model_hessian,@RuntimeGeneratedFunction(exx))
-        # end
+    #     # for (l,second) in enumerate(second_order)
+    #     #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
+    #     #     $(alll...)
+    #     #     $(paras...)
+    #     #     $(𝓂.calibration_equations_no_var...)
+    #     #     $(steady_state...)
+    #     #     return $second, $(row2[l]), $(column2[l])
+    #     #     end)
+    #     #     push!(𝓂.model_hessian,@RuntimeGeneratedFunction(exx))
+    #     # end
         
         
-        hessian_rows = Int[]
-        hessian_cols = Int[]
-        hessian_vals = []
+    #     hessian_rows = Int[]
+    #     hessian_cols = Int[]
+    #     hessian_vals = []
 
-        for (i,eq) in enumerate(eqs_sub)
-            hessian = Symbolics.sparsehessian(eq, vars, simplify = false, full = true) |> findnz
+    #     for (i,eq) in enumerate(eqs_sub)
+    #         hessian = Symbolics.sparsehessian(eq, vars, simplify = false, full = true) |> findnz
 
-            push!(hessian_rows, fill(i, length(hessian[3]))...)
-            # push!(hessian_cols, indexin((hessian[1] .- 1) .* length(vars) .+ hessian[2], second_order_idxs)...)
-            push!(hessian_cols, ((hessian[1] .- 1) .* length(vars) .+ hessian[2])...)
-            push!(hessian_vals, hessian[3]...)
-        end
+    #         push!(hessian_rows, fill(i, length(hessian[3]))...)
+    #         # push!(hessian_cols, indexin((hessian[1] .- 1) .* length(vars) .+ hessian[2], second_order_idxs)...)
+    #         push!(hessian_cols, ((hessian[1] .- 1) .* length(vars) .+ hessian[2])...)
+    #         push!(hessian_vals, hessian[3]...)
+    #     end
 
-        if max_perturbation_order == 3 # && 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-            third_order_derivatives = Symbolics.sparsejacobian(hessian_vals, vars) |> findnz
+    #     if max_perturbation_order == 3 # && 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+    #         third_order_derivatives = Symbolics.sparsejacobian(hessian_vals, vars) |> findnz
 
-            third_order_rows = hessian_rows[third_order_derivatives[1]]
-            third_order_cols = (hessian_cols[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
-            third_order_vals = third_order_derivatives[3]
+    #         third_order_rows = hessian_rows[third_order_derivatives[1]]
+    #         third_order_cols = (hessian_cols[third_order_derivatives[1]] .- 1) .* length(vars) .+ third_order_derivatives[2]
+    #         third_order_vals = third_order_derivatives[3]
 
-            reducer³ = [i ∈ third_order_idxs for i in third_order_cols]
+    #         reducer³ = [i ∈ third_order_idxs for i in third_order_cols]
         
-            reduced_third_order_rows = third_order_rows[reducer³]
-            reduced_third_order_cols = Int.(indexin(third_order_cols[reducer³], third_order_idxs))
-            reduced_third_order_vals = third_order_vals[reducer³]
+    #         reduced_third_order_rows = third_order_rows[reducer³]
+    #         reduced_third_order_cols = Int.(indexin(third_order_cols[reducer³], third_order_idxs))
+    #         reduced_third_order_vals = third_order_vals[reducer³]
         
-            if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-                𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, Int.(indexin(intersect(third_order_idxs, unique(third_order_cols)), third_order_idxs)))
-            end
+    #         if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+    #             𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, Int.(indexin(intersect(third_order_idxs, unique(third_order_cols)), third_order_idxs)))
+    #         end
             
-            ∂SS_equations_∂vars_∂vars_∂vars = sparse!(reduced_third_order_rows, reduced_third_order_cols, reduced_third_order_vals, length(eqs), length(third_order_idxs))
+    #         ∂SS_equations_∂vars_∂vars_∂vars = sparse!(reduced_third_order_rows, reduced_third_order_cols, reduced_third_order_vals, length(eqs), length(third_order_idxs))
 
-            # ∂SS_equations_∂vars_∂vars_∂vars = sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
+    #         # ∂SS_equations_∂vars_∂vars_∂vars = sparse!(third_order_rows, third_order_cols, third_order_vals, length(eqs), length(vars)^3)
 
-            min_n_funcs = length(∂SS_equations_∂vars_∂vars_∂vars.nzval) ÷ max_exprs_per_func
+    #         min_n_funcs = length(∂SS_equations_∂vars_∂vars_∂vars.nzval) ÷ max_exprs_per_func
             
-            if min_n_funcs == 0
-                parallel = Symbolics.SerialForm()
-            # elseif min_n_funcs == 1
-            #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
-            else
-                # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
-                parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs + 1)
-            end
+    #         if min_n_funcs == 0
+    #             parallel = Symbolics.SerialForm()
+    #         # elseif min_n_funcs == 1
+    #         #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+    #         else
+    #             # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
+    #             parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs + 1)
+    #         end
             
-            funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false, parallel = parallel)
+    #         funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars_∂vars, eval.(input_args), expression = false, parallel = parallel)
 
-            𝓂.model_third_order_derivatives = funcs[1]
-        end
-            # if length(row3) == 0 
-            #     out = :(spzeros($(length(eqs)), $(length(third_order_idxs))))
-            # else 
-            #     out = :(sparse([$(row3...)], [$(column3...)], [$(third_order...)], $(length(eqs)), $(length(third_order_idxs))))
-            # end
+    #         𝓂.model_third_order_derivatives = funcs[1]
+    #     end
+    #         # if length(row3) == 0 
+    #         #     out = :(spzeros($(length(eqs)), $(length(third_order_idxs))))
+    #         # else 
+    #         #     out = :(sparse([$(row3...)], [$(column3...)], [$(third_order...)], $(length(eqs)), $(length(third_order_idxs))))
+    #         # end
 
-            # mod_func5 = :(function model_hessian(X::Vector, params::Vector{Real}, X̄::Vector)
-            #     $(alll...)
-            #     $(paras...)
-            #     $(𝓂.calibration_equations_no_var...)
-            #     $(steady_state...)
-            #     $out
-            # end)
+    #         # mod_func5 = :(function model_hessian(X::Vector, params::Vector{Real}, X̄::Vector)
+    #         #     $(alll...)
+    #         #     $(paras...)
+    #         #     $(𝓂.calibration_equations_no_var...)
+    #         #     $(steady_state...)
+    #         #     $out
+    #         # end)
 
-            # for (l,third) in enumerate(third_order)
-            #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
-            #     $(alll...)
-            #     $(paras...)
-            #     $(𝓂.calibration_equations_no_var...)
-            #     $(steady_state...)
-            #     return $third, $(row3[l]), $(column3[l])
-            #     end)
-            #     push!(𝓂.model_third_order_derivatives,@RuntimeGeneratedFunction(exx))
-            # end
+    #         # for (l,third) in enumerate(third_order)
+    #         #     exx = :(function(X::Vector, params::Vector{Real}, X̄::Vector)
+    #         #     $(alll...)
+    #         #     $(paras...)
+    #         #     $(𝓂.calibration_equations_no_var...)
+    #         #     $(steady_state...)
+    #         #     return $third, $(row3[l]), $(column3[l])
+    #         #     end)
+    #         #     push!(𝓂.model_third_order_derivatives,@RuntimeGeneratedFunction(exx))
+    #         # end
 
-            # 𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
-            # TODO: write these as one big function instead of many small ones. might help with compilation
-        # end
+    #         # 𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
+    #         # TODO: write these as one big function instead of many small ones. might help with compilation
+    #     # end
 
-        reducer² = [i ∈ second_order_idxs for i in hessian_cols]
+    #     reducer² = [i ∈ second_order_idxs for i in hessian_cols]
         
-        reduced_hessian_rows = hessian_rows[reducer²]
-        reduced_hessian_cols = Int.(indexin(hessian_cols[reducer²], second_order_idxs))
-        reduced_hessian_vals = hessian_vals[reducer²]
+    #     reduced_hessian_rows = hessian_rows[reducer²]
+    #     reduced_hessian_cols = Int.(indexin(hessian_cols[reducer²], second_order_idxs))
+    #     reduced_hessian_vals = hessian_vals[reducer²]
 
-        ∂SS_equations_∂vars_∂vars = sparse!(reduced_hessian_rows, reduced_hessian_cols, reduced_hessian_vals, length(eqs), length(second_order_idxs))
+    #     ∂SS_equations_∂vars_∂vars = sparse!(reduced_hessian_rows, reduced_hessian_cols, reduced_hessian_vals, length(eqs), length(second_order_idxs))
 
-        # ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(second_order_idxs))
-        # ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(vars)^2)
+    #     # ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(second_order_idxs))
+    #     # ∂SS_equations_∂vars_∂vars = sparse!(hessian_rows, hessian_cols, hessian_vals, length(eqs), length(vars)^2)
 
-        input_args = vcat(future_varss,
-                            present_varss,
-                            past_varss,
-                            shock_varss,
-                            𝓂.parameters,
-                            𝓂.calibration_equations_parameters,
-                            ss_varss)
+    #     input_args = vcat(future_varss,
+    #                         present_varss,
+    #                         past_varss,
+    #                         shock_varss,
+    #                         𝓂.parameters,
+    #                         𝓂.calibration_equations_parameters,
+    #                         ss_varss)
         
-        min_n_funcs = length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func
+    #     min_n_funcs = length(∂SS_equations_∂vars_∂vars.nzval) ÷ max_exprs_per_func
 
-        if min_n_funcs == 0
-            parallel = Symbolics.SerialForm()
-        # elseif min_n_funcs == 1
-        #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
-        else
-            # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
-            parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs + 1)
-        end
+    #     if min_n_funcs == 0
+    #         parallel = Symbolics.SerialForm()
+    #     # elseif min_n_funcs == 1
+    #     #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+    #     else
+    #         # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
+    #         parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs + 1)
+    #     end
         
-        funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = parallel)
+    #     funcs = Symbolics.build_function(∂SS_equations_∂vars_∂vars, eval.(input_args), expression = false, parallel = parallel)
 
-        𝓂.model_hessian = funcs[1]
+    #     𝓂.model_hessian = funcs[1]
 
-        if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-            𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
-        end
-    end
+    #     if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+    #         𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
+    #     end
+    # end
 
 
     
@@ -5473,6 +5515,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # write derivatives of SS equations wrt parameters and SS and parameters for implicit differentiation
     # vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
 
+
+    # derivative of SS equations wrt parameters and SS_and_pars
     unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
@@ -6148,19 +6192,33 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
         
     # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
-    return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+    # return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 
-    # second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_hessian]
+    # second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) for f in 𝓂.model_hessian]
     
     # vals = [i[1] for i in second_out]
     # rows = [i[2] for i in second_out]
     # cols = [i[3] for i in second_out]
 
+    input = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]
+
+    vals = M[]
+    rows = Int[]
+    cols = Int[]
+
+    for f in 𝓂.model_hessian
+        output = f(input)
+
+        push!(vals, output[1])
+        push!(rows, output[2])
+        push!(cols, output[3])
+    end
+
     # vals = convert(Vector{M}, vals)
 
     # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
     # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^2)
-    # sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+    sparse!(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 end
 
 
@@ -6179,7 +6237,7 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
     # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
-    return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    # return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
     
     
     # third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
@@ -6189,10 +6247,24 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
     # cols = [i[3] for i in third_out]
 
     # vals = convert(Vector{M}, vals)
+    
+    input = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]
+
+    vals = M[]
+    rows = Int[]
+    cols = Int[]
+
+    for f in 𝓂.model_third_order_derivatives
+        output = f(input)
+
+        push!(vals, output[1])
+        push!(rows, output[2])
+        push!(cols, output[3])
+    end
 
     # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
     # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
-    # sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 end
 
 
