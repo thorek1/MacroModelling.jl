@@ -5126,9 +5126,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     input_args_no_time = vcat(Symbol.(replace.(string.(future_varss), r"₍₁₎$"=>"")),
                         Symbol.(replace.(string.(present_varss), r"₍₀₎$"=>"")),
                         Symbol.(replace.(string.(past_varss), r"₍₋₁₎$"=>"")),
+                        Symbol.(replace.(string.(ss_varss), r"₍ₛₛ₎$"=>"")),
                         𝓂.parameters,
-                        𝓂.calibration_equations_parameters,
-                        Symbol.(replace.(string.(ss_varss), r"₍ₛₛ₎$"=>"")))
+                        𝓂.calibration_equations_parameters)
     
     min_n_funcs = length(∂SS_equations_∂SS_and_pars_ext.nzval) ÷ max_exprs_per_func
 
@@ -5150,10 +5150,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     input_args = vcat(future_varss,
                         present_varss,
                         past_varss,
-                        shock_varss,
+                        ss_varss,
                         𝓂.parameters,
                         𝓂.calibration_equations_parameters,
-                        ss_varss)
+                        shock_varss)
 
     # first order
     ∂SS_equations_∂vars = sparse!(row1, column1, first_order, length(eqs_sub), length(vars))
@@ -6066,7 +6066,7 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
     # return 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
     # return Matrix(𝓂.model_jacobian(([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])))
     # return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
-    return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]])
+    return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss])
 
 
     # first_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian]
@@ -6105,7 +6105,7 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
     
     # jacobian =  𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
-    jacobian =  𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]])
+    jacobian =  𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss])
     # jacobian_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian]
     
     # vals = Float64[i[1] for i in jacobian_out]
@@ -6153,7 +6153,7 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
         # cols_unique = union(unique(colsp), unique(cols))
         # TODO: combine the two sparse arrays in creation and here
         # analytical_jac_parameters = 𝓂.model_jacobian_parameters([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; par; SS[dyn_ss_idx]]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
         # cols_unique = union(unique(findnz(analytical_jac_SS_and_pars_vars)[2]), unique(findnz(analytical_jac_parameters)[2]))
         cols_unique = unique(findnz(analytical_jac_SS_and_pars_vars)[2])
@@ -6200,7 +6200,7 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     # rows = [i[2] for i in second_out]
     # cols = [i[3] for i in second_out]
 
-    input = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]
+    input = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
 
     vals = M[]
     rows = Int[]
@@ -6248,7 +6248,7 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
 
     # vals = convert(Vector{M}, vals)
     
-    input = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]
+    input = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
 
     vals = M[]
     rows = Int[]
