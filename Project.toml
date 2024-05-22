@@ -5,6 +5,7 @@ version = "0.1.36"
 
 [deps]
 AbstractDifferentiation = "c29ec348-61ec-40c8-8164-b8c60e9d9f3d"
+Accessors = "7d9f7c33-5ae7-4f3b-8dc6-eff91059b697"
 AxisKeys = "94b1ba4f-4ee9-5380-92f1-94cde586c3c5"
 BlockTriangularForm = "adeb47b7-70bf-415a-bb24-c358563e873a"
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
@@ -44,6 +45,7 @@ Unicode = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [compat]
 AbstractDifferentiation = "0.5, 0.6"
+Accessors = "0.1"
 Aqua = "0.8"
 AxisKeys = "0.2"
 BlockTriangularForm = "0.1"

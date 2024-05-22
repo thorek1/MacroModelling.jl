@@ -8,6 +8,7 @@ using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SymPyPythonCall as SPyPyC
 import Symbolics
+import Accessors
 # import NaNMath
 # import Memoization: @memoize
 # import LRUCache: LRU
@@ -4841,6 +4842,13 @@ function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int
     )
 end
 
+function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:string})
+    vals_expr = Meta.parse(string(values))
+
+    vals_expr.args[1] = :Float64
+
+    @RuntimeGeneratedFunction(:(X -> $vals_expr))
+end
 
 function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int},values::Vector{Symbolics.Num},nrows::Int,ncolumns::Int,::Val{:string})
     vals_expr = Meta.parse(string(values))
@@ -5241,13 +5249,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false, parallel = parallel)
 
     # 𝓂.model_jacobian = funcs[1]
-
-    𝓂.model_jacobian = write_sparse_derivatives_function(row1, 
-                                                            column1, 
-                                                            first_order, 
-                                                            length(eqs_sub), 
-                                                            length(vars), 
-                                                            Val(:string))
+    # 𝓂.model_jacobian = (row1, column1, [write_derivatives_function(first_order, Val(:string))], length(eqs_sub), length(vars))
+    𝓂.model_jacobian = ([write_derivatives_function(first_order, Val(:string))], sparse(row1, column1, zero(column1), length(eqs_sub), length(vars)))
+    # 𝓂.model_jacobian = write_sparse_derivatives_function(row1, 
+    #                                                         column1, 
+    #                                                         first_order, 
+    #                                                         length(eqs_sub), 
+    #                                                         length(vars), 
+    #                                                         Val(:string))
     
     max_exprs_per_func = 20
 
@@ -6118,8 +6127,28 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
     # return 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
     # return Matrix(𝓂.model_jacobian(([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])))
     # return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
-    return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss])
+    # return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss])
 
+    X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
+    # vals = mapreduce(f -> f(X), vcat, 𝓂.model_jacobian)
+    vals = M[]
+
+    for f in 𝓂.model_jacobian[1]
+        push!(vals, f(X)...)
+    end
+
+    Accessors.@reset 𝓂.model_jacobian[2].nzval = vals
+
+    return 𝓂.model_jacobian[2]
+    # rows = 𝓂.model_jacobian[1]
+    # cols = 𝓂.model_jacobian[2]
+    
+    # nrows = 𝓂.model_jacobian[4]
+    # ncols = 𝓂.model_jacobian[5]
+
+    # jacobian = sparse(rows, cols, vals, nrows, ncols)
+    
+    # return jacobian
 
     # first_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian]
     
