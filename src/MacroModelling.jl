@@ -4824,6 +4824,41 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
     return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
 end
 
+
+
+function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int},values::Vector{Symbolics.Num},nrows::Int,ncolumns::Int,::Val{:Symbolics})
+    vals_expr = Symbolics.toexpr.(values)
+
+    @RuntimeGeneratedFunction(
+        :(X -> sparse(
+                        $rows, 
+                        $columns, 
+                        [$(vals_expr...)], 
+                        $nrows, 
+                        $ncolumns
+                    )
+        )
+    )
+end
+
+
+function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int},values::Vector{Symbolics.Num},nrows::Int,ncolumns::Int,::Val{:string})
+    vals_expr = Meta.parse(string(values))
+
+    vals_expr.args[1] = :Float64
+
+    @RuntimeGeneratedFunction(
+        :(X -> sparse(
+                        $rows, 
+                        $columns,
+                        $vals_expr, 
+                        $nrows, 
+                        $ncolumns
+                    )
+        )
+    )
+end
+
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
@@ -4938,11 +4973,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     #                                 Dict(eval.(dyn_present_list) .=> eval.(present_no_lead_lag)), 
     #                                 Dict(eval.(dyn_past_list) .=> eval.(past_no_lead_lag)),
     #                                 Dict(eval.(dyn_exo_list) .=> 0))
-    vars_no_time_transform = union(Dict(eval.(dyn_future_list) .=> eval.(future)), 
-                                    Dict(eval.(dyn_present_list) .=> eval.(present)), 
-                                    Dict(eval.(dyn_past_list) .=> eval.(past)),
-                                    Dict(eval.(dyn_ss_list) .=> eval.(stst)),
-                                    Dict(eval.(dyn_exo_list) .=> 0))
 
     if max_perturbation_order >= 2 
         nk = length(vars_raw)
@@ -4952,6 +4982,37 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         end
     end
 
+    final_indices = vcat(Symbol.(replace.(string.(present_varss), r"₍₀₎$"=>"")), 𝓂.parameters, 𝓂.calibration_equations_parameters)
+
+    input_args = vcat(future_varss,
+                        present_varss,
+                        past_varss,
+                        ss_varss,
+                        𝓂.parameters,
+                        𝓂.calibration_equations_parameters,
+                        shock_varss)
+
+    Symbolics.@variables X[1:length(input_args)]
+
+    input_X = Pair{Symbolics.Num, Symbolics.Num}[]
+    input_X_no_time = Pair{Symbolics.Num, Symbolics.Num}[]
+    
+    for (v,input) in enumerate(input_args)
+        push!(input_X, eval(input) => eval(X[v]))
+    
+        if input ∈ shock_varss
+            push!(input_X_no_time, eval(X[v]) => 0)
+        else
+            input_no_time = Symbol(replace(string(input), r"₍₁₎$"=>"", r"₍₀₎$"=>"" , r"₍₋₁₎$"=>"", r"₍ₛₛ₎$"=>""))
+    
+            vv = indexin([input_no_time], final_indices)
+        
+            push!(input_X_no_time, eval(X[v]) => eval(X[Int(vv[1])]))
+        end
+    end
+
+    vars_X = map(x -> Symbolics.substitute(x, input_X), vars)
+
     calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
 
     eqs_sub = Symbolics.Num[]
@@ -4960,6 +5021,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         #     subst = Symbolics.substitute(subst, calib_eq)
         # end
         subst = Symbolics.fixpoint_sub(subst, calib_eqs)
+        subst = Symbolics.substitute(subst, input_X)
         push!(eqs_sub, subst)
     end
     
@@ -5054,9 +5116,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     # 𝓂.model_jacobian_SS_and_pars_vars = @RuntimeGeneratedFunction(mod_func3SSp)
 
-    first_order = []
-    second_order = []
-    third_order = []
+    first_order = Symbolics.Num[]
+    second_order = Symbolics.Num[]
+    third_order = Symbolics.Num[]
     row1 = Int[]
     row2 = Int[]
     row3 = Int[]
@@ -5067,7 +5129,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     i2 = 1
     i3 = 1
 
-    for (c1, var1) in enumerate(vars)
+    for (c1, var1) in enumerate(vars_X)
         for (r, eq) in enumerate(eqs_sub)
             if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
                 deriv_first = Symbolics.derivative(eq, var1)
@@ -5079,7 +5141,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                 i1 += 1
 
                 if max_perturbation_order >= 2 
-                    for (c2, var2) in enumerate(vars)
+                    for (c2, var2) in enumerate(vars_X)
                         if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
                             deriv_second = Symbolics.derivative(deriv_first, var2)
                             
@@ -5090,7 +5152,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                             i2 += 1
 
                             if max_perturbation_order == 3
-                                for (c3, var3) in enumerate(vars)
+                                for (c3, var3) in enumerate(vars_X)
                                     if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
                                         deriv_third = Symbolics.derivative(deriv_second,var3)
 
@@ -5110,69 +5172,82 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     end
     
     
-    max_exprs_per_func = 50
+    # max_exprs_per_func = 50
 
     # derivative of jacobian wrt SS_and_pars and parameters
-    eqs_static = map(x -> Symbolics.substitute(x, vars_no_time_transform), first_order)
+    eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), first_order)
 
-    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(vcat(𝓂.parameters, SS_and_pars)), simplify = false) # |> findnz
-    
+    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(X[1:(length(present_varss) + length(𝓂.parameters))]), simplify = false) # |> findnz
+
     idx_conversion = (row1 + length(eqs) * (column1 .- 1))
-    
+
     rows, cols, vals = findnz(∂SS_equations_∂SS_and_pars)
-    
-    ∂SS_equations_∂SS_and_pars_ext = sparse!(cols, idx_conversion[rows], vals, (length(SS_and_pars) + length(𝓂.parameters)), (length(eqs) * length(vars)))
-    
-    input_args_no_time = vcat(Symbol.(replace.(string.(future_varss), r"₍₁₎$"=>"")),
-                        Symbol.(replace.(string.(present_varss), r"₍₀₎$"=>"")),
-                        Symbol.(replace.(string.(past_varss), r"₍₋₁₎$"=>"")),
-                        Symbol.(replace.(string.(ss_varss), r"₍ₛₛ₎$"=>"")),
-                        𝓂.parameters,
-                        𝓂.calibration_equations_parameters)
-    
-    min_n_funcs = length(∂SS_equations_∂SS_and_pars_ext.nzval) ÷ max_exprs_per_func
 
-    if min_n_funcs == 0
-        parallel = Symbolics.SerialForm()
-    # elseif min_n_funcs == 1
-    #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
-    else
-        # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
-        parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs)
-    end
-    
-    funcs = Symbolics.build_function(∂SS_equations_∂SS_and_pars_ext, eval.(input_args_no_time), expression = false, parallel = parallel)
+    𝓂.model_jacobian_SS_and_pars_vars = write_sparse_derivatives_function(cols, 
+                                                                            idx_conversion[rows], 
+                                                                            vals,
+                                                                            (length(SS_and_pars) + length(𝓂.parameters)), 
+                                                                            (length(eqs) * length(vars)), 
+                                                                            Val(:string));
 
-    𝓂.model_jacobian_SS_and_pars_vars = funcs[1]
-    
 
+    # ∂SS_equations_∂SS_and_pars_ext = sparse!(cols, idx_conversion[rows], vals, (length(SS_and_pars) + length(𝓂.parameters)), (length(eqs) * length(vars)))
+    
+    # input_args_no_time = vcat(Symbol.(replace.(string.(future_varss), r"₍₁₎$"=>"")),
+    #                     Symbol.(replace.(string.(present_varss), r"₍₀₎$"=>"")),
+    #                     Symbol.(replace.(string.(past_varss), r"₍₋₁₎$"=>"")),
+    #                     Symbol.(replace.(string.(ss_varss), r"₍ₛₛ₎$"=>"")),
+    #                     𝓂.parameters,
+    #                     𝓂.calibration_equations_parameters)
+    
+    # min_n_funcs = length(∂SS_equations_∂SS_and_pars_ext.nzval) ÷ max_exprs_per_func
+
+    # if min_n_funcs == 0
+    #     parallel = Symbolics.SerialForm()
+    # # elseif min_n_funcs == 1
+    # #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+    # else
+    #     # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
+    #     parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs)
+    # end
+    
+    # funcs = Symbolics.build_function(∂SS_equations_∂SS_and_pars_ext, eval.(input_args_no_time), expression = false, parallel = parallel)
+
+    # 𝓂.model_jacobian_SS_and_pars_vars = funcs[1]
+    
     # create derivative functions
-    input_args = vcat(future_varss,
-                        present_varss,
-                        past_varss,
-                        ss_varss,
-                        𝓂.parameters,
-                        𝓂.calibration_equations_parameters,
-                        shock_varss)
+    # input_args = vcat(future_varss,
+    #                     present_varss,
+    #                     past_varss,
+    #                     ss_varss,
+    #                     𝓂.parameters,
+    #                     𝓂.calibration_equations_parameters,
+    #                     shock_varss)
 
     # first order
-    ∂SS_equations_∂vars = sparse!(row1, column1, first_order, length(eqs_sub), length(vars))
+    # ∂SS_equations_∂vars = sparse!(row1, column1, first_order, length(eqs_sub), length(vars))
                         
-    min_n_funcs = length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func
+    # min_n_funcs = length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func
             
-    if min_n_funcs == 0
-        parallel = Symbolics.SerialForm()
-    # elseif min_n_funcs == 1
-    #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
-    else
-        # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
-        parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs)
-    end
+    # if min_n_funcs == 0
+    #     parallel = Symbolics.SerialForm()
+    # # elseif min_n_funcs == 1
+    # #     parallel = Symbolics.ShardedForm(max_exprs_per_func, 2)
+    # else
+    #     # parallel = Symbolics.MultithreadedForm(max_exprs_per_func, min_n_funcs)
+    #     parallel = Symbolics.ShardedForm(max_exprs_per_func, min_n_funcs)
+    # end
     
-    funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false, parallel = parallel)
+    # funcs = Symbolics.build_function(∂SS_equations_∂vars, eval.(input_args), expression = false, parallel = parallel)
 
-    𝓂.model_jacobian = funcs[1]
+    # 𝓂.model_jacobian = funcs[1]
 
+    𝓂.model_jacobian = write_sparse_derivatives_function(row1, 
+                                                            column1, 
+                                                            first_order, 
+                                                            length(eqs_sub), 
+                                                            length(vars), 
+                                                            Val(:string))
     
     max_exprs_per_func = 20
 
@@ -5202,9 +5277,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         for i in 1:min_n_funcs
             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
 
-            exx = :(function(X::Vector)
+            exx = :(function(X::Vector{T}) where T
                 $(alll...)
-                return  [$(Symbolics.toexpr.(second_order[indices])...)], $(row2[indices]), $(column2[indices])
+                return  [$(Meta.parse.(string.(second_order[indices]))...)], $(row2[indices]), $(column2[indices])
             end)
 
             push!(𝓂.model_hessian, @RuntimeGeneratedFunction(exx))
@@ -5244,9 +5319,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             for i in 1:min_n_funcs
                 indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
 
-                exx = :(function(X::Vector)
+                exx = :(function(X::Vector{T}) where T
                     $(alll...)
-                    return  [$(Symbolics.toexpr.(third_order[indices])...)], $(row3[indices]), $(column3[indices])
+                    return  [$(Meta.parse.(string.(third_order[indices]))...)], $(row3[indices]), $(column3[indices])
                 end)
 
                 push!(𝓂.model_third_order_derivatives, @RuntimeGeneratedFunction(exx))
@@ -5437,33 +5512,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     
     # end
 
-
-    # write indices in auxiliary objects
-    dyn_var_future_list  = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎")))
-    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎")))
-    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎")))
-    dyn_exo_list         = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎")))
-    dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎")))
-
-    dyn_var_future  = Symbol.(string.(sort(collect(reduce(union,dyn_var_future_list)))))
-    dyn_var_present = Symbol.(string.(sort(collect(reduce(union,dyn_var_present_list)))))
-    dyn_var_past    = Symbol.(string.(sort(collect(reduce(union,dyn_var_past_list)))))
-    dyn_exo         = Symbol.(string.(sort(collect(reduce(union,dyn_exo_list)))))
-    dyn_ss          = Symbol.(string.(sort(collect(reduce(union,dyn_ss_list)))))
-
-    SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-
-
-    dyn_var_future_idx  = indexin(dyn_var_future    , SS_and_pars_names)
-    dyn_var_present_idx = indexin(dyn_var_present   , SS_and_pars_names)
-    dyn_var_past_idx    = indexin(dyn_var_past      , SS_and_pars_names)
-    dyn_ss_idx          = indexin(dyn_ss            , SS_and_pars_names)
-
-    shocks_ss = zeros(length(dyn_exo))
-
-    𝓂.solution.perturbation.auxilliary_indices = auxilliary_indices(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx, dyn_ss_idx, shocks_ss)
-
-
     # 𝓂.model_third_order_derivatives = @RuntimeGeneratedFunction(mod_func5)
     # 𝓂.model_third_order_derivatives = eval(mod_func5)
 
@@ -5515,13 +5563,21 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # write derivatives of SS equations wrt parameters and SS and parameters for implicit differentiation
     # vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
 
+    write_auxilliary_indices!(𝓂)
 
+    write_derivatives_of_ss_equations!(𝓂::ℳ)
+
+    return nothing
+end
+
+
+function write_derivatives_of_ss_equations!(𝓂::ℳ)
     # derivative of SS equations wrt parameters and SS_and_pars
     unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
-    # Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x)
+    Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x)
 
     # overwrite SymPyCall names
     other_pars = setdiff(union(𝓂.parameters_in_equations, 𝓂.parameters_as_function_of_parameters), 𝓂.parameters)
@@ -5536,62 +5592,58 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     ss_eqs = Symbolics.parse_expr_to_symbolic.(ss_equations,(@__MODULE__,))
 
+    calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
+
     eqs = Symbolics.Num[]
     for subst in ss_eqs
-        # subst = Symbolics.parse_expr_to_symbolic.([sse],(@__MODULE__,))[1]
-        # for calib_eq in calib_eqs
-        #     subst = Symbolics.substitute(subst, calib_eq)
-        # end
         subst = Symbolics.fixpoint_sub(subst, calib_eqs)
         push!(eqs, subst)
     end
 
     ∂SS_equations_∂parameters = Symbolics.sparsejacobian(eqs,pars) |> findnz
 
+    𝓂.∂SS_equations_∂parameters = write_sparse_derivatives_function(∂SS_equations_∂parameters[1], 
+                                                                        ∂SS_equations_∂parameters[2], 
+                                                                        ∂SS_equations_∂parameters[3],
+                                                                        length(eqs), 
+                                                                        length(pars),
+                                                                        Val(:string));
+
     ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs,vars) |> findnz
 
-    pars = []
-    for (i, p) in enumerate(𝓂.parameters)
-        push!(pars, :($p = parameters[$i]))
-    end
-
-    unknwns = []
-    for (i, u) in enumerate(union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters))
-        push!(unknwns, :($u = unknowns[$i]))
-    end
-
-
-    ∂SS_equations_∂parameters_exp = :(function calculate_∂SS_equations_∂parameters(parameters::Vector{Float64}, unknowns::Vector{Float64})
-        $(pars...)
-        # $(𝓂.calibration_equations_no_var...)
-        $(unknwns...)
-        sparse(Int[$(∂SS_equations_∂parameters[1]...)], 
-                Int[$(∂SS_equations_∂parameters[2]...)], 
-                Float64[$(Symbolics.toexpr.(∂SS_equations_∂parameters[3])...)], 
-                $(length(eqs)), 
-                $(length(pars)))
-    end)
-
-    𝓂.∂SS_equations_∂parameters = @RuntimeGeneratedFunction(∂SS_equations_∂parameters_exp)
-    # TODO: comine these two functions
-
-    ∂SS_equations_∂SS_and_pars_exp = :(function calculate_∂SS_equations_∂SS_and_pars(parameters::Vector{Float64}, unknowns::Vector{Float64})
-        $(pars...)
-        # $(𝓂.calibration_equations_no_var...)
-        $(unknwns...)
-        sparse(Int[$(∂SS_equations_∂SS_and_pars[1]...)], 
-                Int[$(∂SS_equations_∂SS_and_pars[2]...)], 
-                Float64[$(Symbolics.toexpr.(∂SS_equations_∂SS_and_pars[3])...)], 
-                $(length(eqs)), 
-                $(length(vars)))
-    end)
-
-    𝓂.∂SS_equations_∂SS_and_pars = @RuntimeGeneratedFunction(∂SS_equations_∂SS_and_pars_exp)
-
-    return nothing
+    𝓂.∂SS_equations_∂SS_and_pars = write_sparse_derivatives_function(∂SS_equations_∂SS_and_pars[1], 
+                                                                        ∂SS_equations_∂SS_and_pars[2], 
+                                                                        ∂SS_equations_∂SS_and_pars[3],
+                                                                        length(eqs), 
+                                                                        length(vars),
+                                                                        Val(:string));
 end
 
+function write_auxilliary_indices!(𝓂::ℳ)
+    # write indices in auxiliary objects
+    dyn_var_future_list  = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎")))
+    dyn_var_present_list = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₀₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎")))
+    dyn_var_past_list    = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍₋₁₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎")))
+    dyn_exo_list         = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎")))
+    dyn_ss_list          = map(x->Set{Symbol}(map(x->Symbol(replace(string(x),"₍ₛₛ₎" => "")),x)),collect.(match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎")))
 
+    dyn_var_future  = Symbol.(string.(sort(collect(reduce(union,dyn_var_future_list)))))
+    dyn_var_present = Symbol.(string.(sort(collect(reduce(union,dyn_var_present_list)))))
+    dyn_var_past    = Symbol.(string.(sort(collect(reduce(union,dyn_var_past_list)))))
+    dyn_exo         = Symbol.(string.(sort(collect(reduce(union,dyn_exo_list)))))
+    dyn_ss          = Symbol.(string.(sort(collect(reduce(union,dyn_ss_list)))))
+
+    SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+
+    dyn_var_future_idx  = indexin(dyn_var_future    , SS_and_pars_names)
+    dyn_var_present_idx = indexin(dyn_var_present   , SS_and_pars_names)
+    dyn_var_past_idx    = indexin(dyn_var_past      , SS_and_pars_names)
+    dyn_ss_idx          = indexin(dyn_ss            , SS_and_pars_names)
+
+    shocks_ss = zeros(length(dyn_exo))
+
+    𝓂.solution.perturbation.auxilliary_indices = auxilliary_indices(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx, dyn_ss_idx, shocks_ss)
+end
 
 write_parameters_input!(𝓂::ℳ, parameters::Nothing; verbose::Bool = true) = return parameters
 write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
