@@ -4197,7 +4197,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
@@ -4343,7 +4343,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
@@ -4442,7 +4442,7 @@ function solve!(𝓂::ℳ;
                 @warn "Could not find non stochastic steady steady."
             end
 
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
             S₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
             
@@ -4457,7 +4457,7 @@ function solve!(𝓂::ℳ;
             if obc
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
 
-                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
                 Ŝ₁, solved = calculate_first_order_solution(∇̂₁; T = 𝓂.timings)
 
@@ -4628,7 +4628,7 @@ function solve!(𝓂::ℳ;
                 @warn "Could not find non stochastic steady steady."
             end
 
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)#|> Matrix
             
             S₁, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
             
@@ -4641,7 +4641,7 @@ function solve!(𝓂::ℳ;
             if obc
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
 
-                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
                 Ŝ₁, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
             
@@ -4673,7 +4673,7 @@ function solve!(𝓂::ℳ;
                 @warn "Could not find non stochastic steady steady."
             end
 
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
             S₁ = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
             
@@ -4686,7 +4686,7 @@ function solve!(𝓂::ℳ;
             if obc
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1)
 
-                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
                 Ŝ₁, converged = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
             
@@ -5250,7 +5250,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     # 𝓂.model_jacobian = funcs[1]
     # 𝓂.model_jacobian = (row1, column1, [write_derivatives_function(first_order, Val(:string))], length(eqs_sub), length(vars))
-    𝓂.model_jacobian = ([write_derivatives_function(first_order, Val(:string))], sparse(row1, column1, zero(column1), length(eqs_sub), length(vars)))
+    # 𝓂.model_jacobian = ([write_derivatives_function(first_order, Val(:string))], sparse(row1, column1, zero(column1), length(eqs_sub), length(vars)))
+    𝓂.model_jacobian = ([write_derivatives_function(first_order, Val(:string))], row1 .+ (column1 .- 1) .* length(eqs_sub),  zeros(length(eqs_sub), length(vars)))
     # 𝓂.model_jacobian = write_sparse_derivatives_function(row1, 
     #                                                         column1, 
     #                                                         first_order, 
@@ -6111,7 +6112,7 @@ end
 
 
 
-function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::SparseMatrixCSC{M} where {M,N}
+function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::Matrix{M} where {M,N}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     # par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
@@ -6137,9 +6138,14 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
         push!(vals, f(X)...)
     end
 
-    Accessors.@reset 𝓂.model_jacobian[2].nzval = vals
+    𝓂.model_jacobian[3][𝓂.model_jacobian[2]] .= vals
 
-    return 𝓂.model_jacobian[2]
+    return 𝓂.model_jacobian[3]
+
+    # Accessors.@reset 𝓂.model_jacobian[2].nzval = vals
+
+    # return 𝓂.model_jacobian[2]
+    
     # rows = 𝓂.model_jacobian[1]
     # cols = 𝓂.model_jacobian[2]
     
@@ -7670,7 +7676,7 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
-    sol, solved = calculate_first_order_solution(Matrix(∇₁); T = 𝓂.timings)
+    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
     # covar_raw, solved_cov = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
 
@@ -7707,7 +7713,7 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
         return SS_and_pars[1:𝓂.timings.nVars], solution_error
     end
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
@@ -9149,9 +9155,9 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order}, paramet
         return TT, SS_and_pars, zeros(S, 0, 0), [state], false
     end
 
-    sp∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂)# |> Matrix
+    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    ∇₁ = Matrix{S}(sp∇₁)
+    # ∇₁ = Matrix{S}(sp∇₁)
 
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = TT)
 
@@ -9485,7 +9491,7 @@ function inversion_filter(𝓂::ℳ,
 
         state = zeros(𝓂.timings.nVars)
 
-        ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+        ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
         𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
         
@@ -9599,7 +9605,7 @@ function filter_and_smooth(𝓂::ℳ,
     
     @assert solution_error < tol "Could not solve non stochastic steady state." 
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 

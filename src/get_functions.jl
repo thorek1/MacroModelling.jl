@@ -861,7 +861,7 @@ function get_irf(𝓂::ℳ,
 
     reference_steady_state, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
-	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂) |> Matrix
+	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)# |> Matrix
 								
     sol_mat, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
@@ -1668,7 +1668,7 @@ function get_solution(𝓂::ℳ,
         end
     end
 
-	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) |> Matrix
+	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
@@ -1796,7 +1796,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
     
-	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
     𝑺₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
@@ -1938,7 +1938,7 @@ function get_variance_decomposition(𝓂::ℳ;
 
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
     
-	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂) |> Matrix
+	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     

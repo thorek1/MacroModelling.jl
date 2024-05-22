@@ -876,7 +876,8 @@ macro model(𝓂,ex...)
 
                         $bounds,
 
-                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
+                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
+                        ([], Int[], zeros(1,1)), # model_jacobian
                         # x->x, # model_jacobian_parameters
                         x->x, # model_jacobian_SS_and_pars_vars
                         # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
