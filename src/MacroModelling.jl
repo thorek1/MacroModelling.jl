@@ -4998,6 +4998,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                         𝓂.calibration_equations_parameters,
                         shock_varss)
 
+    eval(:(Symbolics.@variables $(input_args...)))
+
     Symbolics.@variables 𝔛[1:length(input_args)]
 
     input_X = Pair{Symbolics.Num, Symbolics.Num}[]
