@@ -6233,10 +6233,6 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
         push!(vals, f(X)...)
     end
 
-    if eltype(𝓂.model_jacobian[3]) ≠ Float64
-        Accessors.@reset 𝓂.model_jacobian[3] = convert(Matrix{M}, 𝓂.model_jacobian[3])
-    end
-
     𝓂.model_jacobian[3][𝓂.model_jacobian[2]] .= vals
 
     jacobian =  𝓂.model_jacobian[3]
