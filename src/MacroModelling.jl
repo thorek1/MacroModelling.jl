@@ -4988,7 +4988,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
         end
     end
 
-    final_indices = vcat(Symbol.(replace.(string.(present_varss), r"₍₀₎$"=>"")), 𝓂.parameters, 𝓂.calibration_equations_parameters)
+    final_indices = vcat(𝓂.parameters, SS_and_pars)
 
     input_args = vcat(future_varss,
                         present_varss,
@@ -5010,10 +5010,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             push!(input_X_no_time, eval(𝔛[v]) => 0)
         else
             input_no_time = Symbol(replace(string(input), r"₍₁₎$"=>"", r"₍₀₎$"=>"" , r"₍₋₁₎$"=>"", r"₍ₛₛ₎$"=>""))
-    
+            
             vv = indexin([input_no_time], final_indices)
-
-            if vv isa Int
+            
+            if vv[1] isa Int
                 push!(input_X_no_time, eval(𝔛[v]) => eval(𝔛[vv[1]]))
             end
         end
@@ -5181,11 +5181,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     
     
     # max_exprs_per_func = 50
-
+    
     # derivative of jacobian wrt SS_and_pars and parameters
     eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), first_order)
 
-    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(present_varss) + length(𝓂.parameters))]), simplify = false) # |> findnz
+    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(SS_and_pars) + length(𝓂.parameters))]), simplify = false) # |> findnz
 
     idx_conversion = (row1 + length(eqs) * (column1 .- 1))
 
@@ -6287,7 +6287,7 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
         # cols_unique = union(unique(colsp), unique(cols))
         # TODO: combine the two sparse arrays in creation and here
         # analytical_jac_parameters = 𝓂.model_jacobian_parameters([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par]
+        X = [parameters; SS_and_pars]
 
         vals = Float64[]
 
