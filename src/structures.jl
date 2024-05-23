@@ -358,8 +358,8 @@ mutable struct ℳ
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func::Function
     SS_check_func::Function
-    ∂SS_equations_∂parameters::Function
-    ∂SS_equations_∂SS_and_pars::Function
+    ∂SS_equations_∂parameters::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    ∂SS_equations_∂SS_and_pars::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
     # nonlinear_solution_helper
     SS_dependencies::Any
 
@@ -384,7 +384,7 @@ mutable struct ℳ
     # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
     model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
     # model_jacobian_parameters::Function
-    model_jacobian_SS_and_pars_vars::Function
+    model_jacobian_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
     # model_jacobian::FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}#{typeof(model_jacobian)}
     model_hessian::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
     model_third_order_derivatives::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}

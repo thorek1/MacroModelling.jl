@@ -4878,54 +4878,54 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     sort!(shock_varss   ,by = x->replace(string(x),r"₍ₓ₎$"=>""))
     sort!(ss_varss      ,by = x->replace(string(x),r"₍ₛₛ₎$"=>""))
     
-    ii = 1
+    # ii = 1
     
-    alll = []
-    alll_no_time = []
-    for var in future_varss
-        push!(alll,:($var = 𝔛[$ii]))
-        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₁₎$"=>""))) = 𝔛[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
-        ii += 1
-    end
+    # alll = []
+    # alll_no_time = []
+    # for var in future_varss
+    #     push!(alll,:($var = 𝔛[$ii]))
+    #     push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₁₎$"=>""))) = 𝔛[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
+    #     ii += 1
+    # end
     
-    for var in present_varss
-        push!(alll,:($var = 𝔛[$ii]))
-        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₀₎$"=>""))) = 𝔛[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
-        ii += 1
-    end
+    # for var in present_varss
+    #     push!(alll,:($var = 𝔛[$ii]))
+    #     push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₀₎$"=>""))) = 𝔛[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
+    #     ii += 1
+    # end
     
-    for var in past_varss
-        push!(alll,:($var = 𝔛[$ii]))
-        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₋₁₎$"=>""))) = 𝔛[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
-        ii += 1
-    end
+    # for var in past_varss
+    #     push!(alll,:($var = 𝔛[$ii]))
+    #     push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₋₁₎$"=>""))) = 𝔛[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
+    #     ii += 1
+    # end
     
-    for var in shock_varss
-        push!(alll,:($var = 𝔛[$ii]))
-        # push!(alll_no_time,:($(Symbol(replace(string(var),r"₍ₛₛ₎$"=>""))) = 𝔛[$ii]))
-        ii += 1
-    end
+    # for var in shock_varss
+    #     push!(alll,:($var = 𝔛[$ii]))
+    #     # push!(alll_no_time,:($(Symbol(replace(string(var),r"₍ₛₛ₎$"=>""))) = 𝔛[$ii]))
+    #     ii += 1
+    # end
     
 
     # paras = []
     # push!(paras,:((;$(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)...)) = params))
 
-    paras = []
-    for (i, parss) in enumerate(vcat(𝓂.parameters,𝓂.calibration_equations_parameters))
-        push!(paras,:($parss = params[$i]))
-        push!(alll,:($parss = 𝔛[$ii]))
-        ii += 1
-    end
+    # paras = []
+    # for (i, parss) in enumerate(vcat(𝓂.parameters,𝓂.calibration_equations_parameters))
+    #     push!(paras,:($parss = params[$i]))
+    #     push!(alll,:($parss = 𝔛[$ii]))
+    #     ii += 1
+    # end
 
 
-    steady_state = []
-    steady_state_no_time = []
-    for (i, var) in enumerate(ss_varss)
-        push!(steady_state,:($var = X̄[$i]))
-        push!(steady_state_no_time,:($(Symbol(replace(string(var),r"₍ₛₛ₎$"=>""))) = X̄[$i]))
-        push!(alll,:($var = 𝔛[$ii]))
-        ii += 1
-    end
+    # steady_state = []
+    # steady_state_no_time = []
+    # for (i, var) in enumerate(ss_varss)
+    #     push!(steady_state,:($var = X̄[$i]))
+    #     push!(steady_state_no_time,:($(Symbol(replace(string(var),r"₍ₛₛ₎$"=>""))) = X̄[$i]))
+    #     push!(alll,:($var = 𝔛[$ii]))
+    #     ii += 1
+    # end
 
     # # watch out with naming of parameters in model and functions
     # mod_func2 = :(function model_function_uni_redux(X::Vector, params::Vector{Number}, X̄::Vector)
@@ -4943,13 +4943,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     dyn_present_list = collect(reduce(union, 𝓂.dyn_present_list))
     dyn_past_list = collect(reduce(union, 𝓂.dyn_past_list))
     dyn_exo_list = collect(reduce(union,𝓂.dyn_exo_list))
-    dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
+    # dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
     
     future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_future_list))
     present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_present_list))
     past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")),string.(dyn_past_list))
     exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")),string.(dyn_exo_list))
-    stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")),string.(dyn_ss_list))
+    # stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")),string.(dyn_ss_list))
     
     vars_raw = [dyn_future_list[indexin(sort(future),future)]...,
                 dyn_present_list[indexin(sort(present),present)]...,
@@ -5191,12 +5191,17 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
     rows, cols, vals = findnz(∂SS_equations_∂SS_and_pars)
 
-    𝓂.model_jacobian_SS_and_pars_vars = write_sparse_derivatives_function(cols, 
-                                                                            idx_conversion[rows], 
-                                                                            vals,
-                                                                            (length(SS_and_pars) + length(𝓂.parameters)), 
-                                                                            (length(eqs) * length(vars)), 
-                                                                            Val(:string));
+    perm_vals = sortperm(idx_conversion[rows]) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
+
+    𝓂.model_jacobian_SS_and_pars_vars = ([write_derivatives_function(vals[perm_vals], Val(:string))], sparse(cols, idx_conversion[rows], zero(cols), length(SS_and_pars) + length(𝓂.parameters), length(eqs) * length(vars)))
+
+
+    # 𝓂.model_jacobian_SS_and_pars_vars = write_sparse_derivatives_function(cols, 
+    #                                                                         idx_conversion[rows], 
+    #                                                                         vals,
+    #                                                                         (length(SS_and_pars) + length(𝓂.parameters)), 
+    #                                                                         (length(eqs) * length(vars)), 
+    #                                                                         Val(:string));
 
 
     # ∂SS_equations_∂SS_and_pars_ext = sparse!(cols, idx_conversion[rows], vals, (length(SS_and_pars) + length(𝓂.parameters)), (length(eqs) * length(vars)))
@@ -5608,6 +5613,16 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ)
 
     pars = eval(:(Symbolics.@variables $(𝓂.parameters...)))
 
+    input_X_no_time = Pair{Symbolics.Num, Symbolics.Num}[]
+
+    input_args = vcat(𝓂.parameters, unknowns)
+    
+    Symbolics.@variables 𝔛[1:length(input_args)]
+
+    for (v,input) in enumerate(input_args)
+        push!(input_X_no_time, eval(input) => eval(𝔛[v[1]]))
+    end
+
     ss_eqs = Symbolics.parse_expr_to_symbolic.(ss_equations,(@__MODULE__,))
 
     calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
@@ -5615,26 +5630,31 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ)
     eqs = Symbolics.Num[]
     for subst in ss_eqs
         subst = Symbolics.fixpoint_sub(subst, calib_eqs)
+        subst = Symbolics.substitute(subst, input_X_no_time)
         push!(eqs, subst)
     end
+    
+    ∂SS_equations_∂parameters = Symbolics.sparsejacobian(eqs, 𝔛[1:length(pars)]) |> findnz
 
-    ∂SS_equations_∂parameters = Symbolics.sparsejacobian(eqs,pars) |> findnz
+    𝓂.∂SS_equations_∂parameters = ([write_derivatives_function(∂SS_equations_∂parameters[3], Val(:string))],  sparse(∂SS_equations_∂parameters[1], ∂SS_equations_∂parameters[2], zeros(Float64,length(∂SS_equations_∂parameters[3])), length(eqs), length(pars)))
 
-    𝓂.∂SS_equations_∂parameters = write_sparse_derivatives_function(∂SS_equations_∂parameters[1], 
-                                                                        ∂SS_equations_∂parameters[2], 
-                                                                        ∂SS_equations_∂parameters[3],
-                                                                        length(eqs), 
-                                                                        length(pars),
-                                                                        Val(:string));
+    # 𝓂.∂SS_equations_∂parameters = write_sparse_derivatives_function(∂SS_equations_∂parameters[1], 
+    #                                                                     ∂SS_equations_∂parameters[2], 
+    #                                                                     ∂SS_equations_∂parameters[3],
+    #                                                                     length(eqs), 
+    #                                                                     length(pars),
+    #                                                                     Val(:string));
 
-    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs,vars) |> findnz
+    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs, 𝔛[length(pars)+1:end]) |> findnz
 
-    𝓂.∂SS_equations_∂SS_and_pars = write_sparse_derivatives_function(∂SS_equations_∂SS_and_pars[1], 
-                                                                        ∂SS_equations_∂SS_and_pars[2], 
-                                                                        ∂SS_equations_∂SS_and_pars[3],
-                                                                        length(eqs), 
-                                                                        length(vars),
-                                                                        Val(:string));
+    𝓂.∂SS_equations_∂SS_and_pars = ([write_derivatives_function(∂SS_equations_∂SS_and_pars[3], Val(:string))], ∂SS_equations_∂SS_and_pars[1] .+ (∂SS_equations_∂SS_and_pars[2] .- 1) .* length(eqs), zeros(length(eqs), length(vars)))
+
+    # 𝓂.∂SS_equations_∂SS_and_pars = write_sparse_derivatives_function(∂SS_equations_∂SS_and_pars[1], 
+    #                                                                     ∂SS_equations_∂SS_and_pars[2], 
+    #                                                                     ∂SS_equations_∂SS_and_pars[3],
+    #                                                                     length(eqs), 
+    #                                                                     length(vars),
+    #                                                                     Val(:string));
 end
 
 function write_auxilliary_indices!(𝓂::ℳ)
@@ -6204,7 +6224,22 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
     
     # jacobian =  𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
-    jacobian =  𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss])
+    
+    X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
+    
+    vals = Float64[]
+
+    for f in 𝓂.model_jacobian[1]
+        push!(vals, f(X)...)
+    end
+
+    if eltype(𝓂.model_jacobian[3]) ≠ Float64
+        Accessors.@reset 𝓂.model_jacobian[3] = convert(Matrix{M}, 𝓂.model_jacobian[3])
+    end
+
+    𝓂.model_jacobian[3][𝓂.model_jacobian[2]] .= vals
+
+    jacobian =  𝓂.model_jacobian[3]
     # jacobian_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian]
     
     # vals = Float64[i[1] for i in jacobian_out]
@@ -6252,7 +6287,17 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
         # cols_unique = union(unique(colsp), unique(cols))
         # TODO: combine the two sparse arrays in creation and here
         # analytical_jac_parameters = 𝓂.model_jacobian_parameters([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par]
+
+        vals = Float64[]
+
+        for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
+            push!(vals, f(X)...)
+        end
+        
+        Accessors.@reset 𝓂.model_jacobian_SS_and_pars_vars[2].nzval = vals
+        
+        analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
         # cols_unique = union(unique(findnz(analytical_jac_SS_and_pars_vars)[2]), unique(findnz(analytical_jac_parameters)[2]))
         cols_unique = unique(findnz(analytical_jac_SS_and_pars_vars)[2])
@@ -8597,8 +8642,32 @@ function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values
     #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     # end
 
-    ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-    ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
+    X = [parameter_values; SS_and_pars]
+    
+    vals = Float64[]
+
+    for f in 𝓂.∂SS_equations_∂parameters[1]
+        push!(vals, f(X)...)
+    end
+
+    Accessors.@reset 𝓂.∂SS_equations_∂parameters[2].nzval = vals
+    
+    ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
+
+    
+    vals = Float64[]
+
+    for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+        push!(vals, f(X)...)
+    end
+
+    𝓂.∂SS_equations_∂SS_and_pars[3] .*= 0
+    𝓂.∂SS_equations_∂SS_and_pars[3][𝓂.∂SS_equations_∂SS_and_pars[2]] .+= vals
+
+    ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
+
+    # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
+    # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
     
     ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
 

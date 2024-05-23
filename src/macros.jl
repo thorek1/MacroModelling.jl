@@ -93,8 +93,8 @@ macro model(𝓂,ex...)
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = x->x
     SS_check_func = x->x
-    ∂SS_equations_∂parameters = x->x
-    ∂SS_equations_∂SS_and_pars = x->x
+    ∂SS_equations_∂parameters = ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
+    ∂SS_equations_∂SS_and_pars = ([], Int[], zeros(1,1))
     SS_dependencies = nothing
 
     original_equations = []
@@ -879,7 +879,7 @@ macro model(𝓂,ex...)
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
                         ([], Int[], zeros(1,1)), # model_jacobian
                         # x->x, # model_jacobian_parameters
-                        x->x, # model_jacobian_SS_and_pars_vars
+                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian_SS_and_pars_vars
                         # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
                         ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_hessian
                         ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives
