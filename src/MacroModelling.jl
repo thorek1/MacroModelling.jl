@@ -5014,8 +5014,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             input_no_time = Symbol(replace(string(input), r"₍₁₎$"=>"", r"₍₀₎$"=>"" , r"₍₋₁₎$"=>"", r"₍ₛₛ₎$"=>""))
     
             vv = indexin([input_no_time], final_indices)
-        
-            push!(input_X_no_time, eval(𝔛[v]) => eval(𝔛[Int(vv[1])]))
+            
+            if vv isa Int
+                push!(input_X_no_time, eval(𝔛[v]) => eval(𝔛[vv[1]]))
+            end
         end
     end
 
