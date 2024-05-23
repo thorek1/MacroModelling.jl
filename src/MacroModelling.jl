@@ -4831,7 +4831,7 @@ function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int
     vals_expr = Symbolics.toexpr.(values)
 
     @RuntimeGeneratedFunction(
-        :(X -> sparse(
+        :(𝔛 -> sparse(
                         $rows, 
                         $columns, 
                         [$(vals_expr...)], 
@@ -4847,7 +4847,7 @@ function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:string
 
     vals_expr.args[1] = :Float64
 
-    @RuntimeGeneratedFunction(:(X -> $vals_expr))
+    @RuntimeGeneratedFunction(:(𝔛 -> $vals_expr))
 end
 
 function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int},values::Vector{Symbolics.Num},nrows::Int,ncolumns::Int,::Val{:string})
@@ -4856,7 +4856,7 @@ function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int
     vals_expr.args[1] = :Float64
 
     @RuntimeGeneratedFunction(
-        :(X -> sparse(
+        :(𝔛 -> sparse(
                         $rows, 
                         $columns,
                         $vals_expr, 
@@ -4961,7 +4961,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x)
 
     # overwrite SymPyCall names
-    eval(:(Symbolics.@variables $(reduce(union,get_symbols.(vcat(𝓂.dyn_equations, 𝓂.calibration_equations_no_var)))...)))
+    eval(:(Symbolics.@variables $(reduce(union,get_symbols.(vcat(𝓂.dyn_equations, 𝓂.calibration_equations_no_var, 𝓂.calibration_equations)))...)))
 
     vars = eval(:(Symbolics.@variables $(vars_raw...)))
 
@@ -5000,22 +5000,22 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                         𝓂.calibration_equations_parameters,
                         shock_varss)
 
-    Symbolics.@variables X[1:length(input_args)]
+    Symbolics.@variables 𝔛[1:length(input_args)]
 
     input_X = Pair{Symbolics.Num, Symbolics.Num}[]
     input_X_no_time = Pair{Symbolics.Num, Symbolics.Num}[]
     
     for (v,input) in enumerate(input_args)
-        push!(input_X, eval(input) => eval(X[v]))
+        push!(input_X, eval(input) => eval(𝔛[v]))
     
         if input ∈ shock_varss
-            push!(input_X_no_time, eval(X[v]) => 0)
+            push!(input_X_no_time, eval(𝔛[v]) => 0)
         else
             input_no_time = Symbol(replace(string(input), r"₍₁₎$"=>"", r"₍₀₎$"=>"" , r"₍₋₁₎$"=>"", r"₍ₛₛ₎$"=>""))
     
             vv = indexin([input_no_time], final_indices)
         
-            push!(input_X_no_time, eval(X[v]) => eval(X[Int(vv[1])]))
+            push!(input_X_no_time, eval(𝔛[v]) => eval(𝔛[Int(vv[1])]))
         end
     end
 
@@ -5185,7 +5185,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     # derivative of jacobian wrt SS_and_pars and parameters
     eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), first_order)
 
-    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(X[1:(length(present_varss) + length(𝓂.parameters))]), simplify = false) # |> findnz
+    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(present_varss) + length(𝓂.parameters))]), simplify = false) # |> findnz
 
     idx_conversion = (row1 + length(eqs) * (column1 .- 1))
 
@@ -5331,7 +5331,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             for i in 1:min_n_funcs
                 indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
 
-                exx = :(function(X::Vector{T}) where T
+                exx = :(function(𝔛::Vector{T}) where T
                     $(alll...)
                     return  [$(Meta.parse.(string.(third_order[indices]))...)], $(row3[indices]), $(column3[indices])
                 end)
