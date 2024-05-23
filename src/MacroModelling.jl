@@ -4982,8 +4982,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
     # eval(:(Symbolics.@variables $(Set(vcat(future_no_lead_lag, present_no_lead_lag, past_no_lead_lag))...)))
 
-    SS_and_pars = Symbol.(vcat(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), 𝓂.calibration_equations_parameters))
-
+    SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+    
     eval(:(Symbolics.@variables $(SS_and_pars...)))
 
     # remove time indices
@@ -5258,7 +5258,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     
     min_n_funcs = length(first_order) ÷ max_exprs_per_func
 
-    funcs = Vector{Function}[]
+    funcs = Function[]
 
     for i in 1:min_n_funcs
         indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
@@ -5285,7 +5285,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
         min_n_funcs = length(second_order) ÷ max_exprs_per_func
 
-        funcs = Vector{Function}[]
+        funcs = Function[]
     
         for i in 1:min_n_funcs
             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
@@ -5341,7 +5341,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
             min_n_funcs = length(third_order) ÷ max_exprs_per_func
 
-            funcs = Vector{Function}[]
+            funcs = Function[]
         
             for i in 1:min_n_funcs
                 indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
@@ -5625,7 +5625,8 @@ end
 
 function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int = 200)
     # derivative of SS equations wrt parameters and SS_and_pars
-    unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
+    # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
+    SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
@@ -5638,13 +5639,13 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
         eval(:(Symbolics.@variables $(other_pars...)))
     end
 
-    vars = eval(:(Symbolics.@variables $(unknowns...)))
+    vars = eval(:(Symbolics.@variables $(SS_and_pars...)))
 
     pars = eval(:(Symbolics.@variables $(𝓂.parameters...)))
 
     input_X_no_time = Pair{Symbolics.Num, Symbolics.Num}[]
 
-    input_args = vcat(𝓂.parameters, unknowns)
+    input_args = vcat(𝓂.parameters, SS_and_pars)
     
     Symbolics.@variables 𝔛[1:length(input_args)]
 
@@ -5667,7 +5668,7 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
 
     min_n_funcs = length(∂SS_equations_∂parameters[3]) ÷ max_exprs_per_func
 
-    funcs = Vector{Function}[]
+    funcs = Function[]
 
     for i in 1:min_n_funcs
         indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂parameters[3]) : i * max_exprs_per_func)
@@ -5688,7 +5689,7 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
 
     min_n_funcs = length(∂SS_equations_∂SS_and_pars[3]) ÷ max_exprs_per_func
 
-    funcs = Vector{Function}[]
+    funcs = Function[]
 
     for i in 1:min_n_funcs
         indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂SS_and_pars[3]) : i * max_exprs_per_func)
