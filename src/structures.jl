@@ -386,7 +386,7 @@ mutable struct ℳ
     # model_jacobian_parameters::Function
     model_jacobian_SS_and_pars_vars::Function
     # model_jacobian::FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}#{typeof(model_jacobian)}
-    model_hessian::Vector{Function}
+    model_hessian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
     model_third_order_derivatives::Vector{Function}
 
     timings::timings

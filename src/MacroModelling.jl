@@ -5267,7 +5267,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
         end
 
-        min_n_funcs = length(second_order) ÷ max_exprs_per_func
+        𝓂.model_hessian = ([write_derivatives_function(second_order, Val(:string))], sparse(row2, column2, zero(column2), length(eqs_sub), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
+
+        # min_n_funcs = length(second_order) ÷ max_exprs_per_func
 
         # ∂SS_equations_∂vars_∂vars = sparse!(row2, column2, second_order, length(eqs), length(second_order_idxs))
 
@@ -5284,16 +5286,16 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
         # 𝓂.model_hessian = funcs[1]
         
-        for i in 1:min_n_funcs
-            indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
+        # for i in 1:min_n_funcs
+        #     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
 
-            exx = :(function(X::Vector{T}) where T
-                $(alll...)
-                return  [$(Meta.parse.(string.(second_order[indices]))...)], $(row2[indices]), $(column2[indices])
-            end)
+        #     exx = :(function(X::Vector{T}) where T
+        #         $(alll...)
+        #         return  [$(Meta.parse.(string.(second_order[indices]))...)], $(row2[indices]), $(column2[indices])
+        #     end)
 
-            push!(𝓂.model_hessian, @RuntimeGeneratedFunction(exx))
-        end
+        #     push!(𝓂.model_hessian, @RuntimeGeneratedFunction(exx))
+        # end
         
         # for (l,second) in enumerate(second_order)
         #     exx = :(function(X::Vector)
@@ -6145,7 +6147,7 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
     # Accessors.@reset 𝓂.model_jacobian[2].nzval = vals
 
     # return 𝓂.model_jacobian[2]
-    
+
     # rows = 𝓂.model_jacobian[1]
     # cols = 𝓂.model_jacobian[2]
     
@@ -6287,25 +6289,35 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     # rows = [i[2] for i in second_out]
     # cols = [i[3] for i in second_out]
 
-    input = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
-
+    X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
+    
     vals = M[]
-    rows = Int[]
-    cols = Int[]
 
-    for f in 𝓂.model_hessian
-        output = f(input)
-
-        push!(vals, output[1]...)
-        push!(rows, output[2]...)
-        push!(cols, output[3]...)
+    for f in 𝓂.model_hessian[1]
+        push!(vals, f(X)...)
     end
+    
+    Accessors.@reset 𝓂.model_hessian[2].nzval = vals
+
+    return 𝓂.model_hessian[2] * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+
+    # vals = M[]
+    # rows = Int[]
+    # cols = Int[]
+
+    # for f in 𝓂.model_hessian
+    #     output = f(input)
+
+    #     push!(vals, output[1]...)
+    #     push!(rows, output[2]...)
+    #     push!(cols, output[3]...)
+    # end
 
     # vals = convert(Vector{M}, vals)
 
     # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
     # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^2)
-    sparse!(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+    # sparse!(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 end
 
 

@@ -881,7 +881,7 @@ macro model(𝓂,ex...)
                         # x->x, # model_jacobian_parameters
                         x->x, # model_jacobian_SS_and_pars_vars
                         # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
-                        [],#x->x, # model_hessian
+                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_hessian
                         [],#x->x, # model_third_order_derivatives
 
                         $T,
