@@ -4845,9 +4845,7 @@ end
 function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:string})
     vals_expr = Meta.parse(string(values))
 
-    vals_expr.args[1] = :Float64
-
-    @RuntimeGeneratedFunction(:(𝔛 -> $vals_expr))
+    @RuntimeGeneratedFunction(:(𝔛 -> $(Expr(:vect, vals_expr.args[2:end]...))))
 end
 
 function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int},values::Vector{Symbolics.Num},nrows::Int,ncolumns::Int,::Val{:string})
@@ -4885,26 +4883,26 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     alll = []
     alll_no_time = []
     for var in future_varss
-        push!(alll,:($var = X[$ii]))
-        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₁₎$"=>""))) = X[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
+        push!(alll,:($var = 𝔛[$ii]))
+        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₁₎$"=>""))) = 𝔛[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
         ii += 1
     end
     
     for var in present_varss
-        push!(alll,:($var = X[$ii]))
-        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₀₎$"=>""))) = X[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
+        push!(alll,:($var = 𝔛[$ii]))
+        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₀₎$"=>""))) = 𝔛[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
         ii += 1
     end
     
     for var in past_varss
-        push!(alll,:($var = X[$ii]))
-        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₋₁₎$"=>""))) = X[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
+        push!(alll,:($var = 𝔛[$ii]))
+        push!(alll_no_time,:($(Symbol(replace(string(var), r"₍₋₁₎$"=>""))) = 𝔛[$ii])) # , r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""
         ii += 1
     end
     
     for var in shock_varss
-        push!(alll,:($var = X[$ii]))
-        # push!(alll_no_time,:($(Symbol(replace(string(var),r"₍ₛₛ₎$"=>""))) = X[$ii]))
+        push!(alll,:($var = 𝔛[$ii]))
+        # push!(alll_no_time,:($(Symbol(replace(string(var),r"₍ₛₛ₎$"=>""))) = 𝔛[$ii]))
         ii += 1
     end
     
@@ -4915,7 +4913,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     paras = []
     for (i, parss) in enumerate(vcat(𝓂.parameters,𝓂.calibration_equations_parameters))
         push!(paras,:($parss = params[$i]))
-        push!(alll,:($parss = X[$ii]))
+        push!(alll,:($parss = 𝔛[$ii]))
         ii += 1
     end
 
@@ -4925,7 +4923,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
     for (i, var) in enumerate(ss_varss)
         push!(steady_state,:($var = X̄[$i]))
         push!(steady_state_no_time,:($(Symbol(replace(string(var),r"₍ₛₛ₎$"=>""))) = X̄[$i]))
-        push!(alll,:($var = X[$ii]))
+        push!(alll,:($var = 𝔛[$ii]))
         ii += 1
     end
 
@@ -5014,7 +5012,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             input_no_time = Symbol(replace(string(input), r"₍₁₎$"=>"", r"₍₀₎$"=>"" , r"₍₋₁₎$"=>"", r"₍ₛₛ₎$"=>""))
     
             vv = indexin([input_no_time], final_indices)
-            
+
             if vv isa Int
                 push!(input_X_no_time, eval(𝔛[v]) => eval(𝔛[vv[1]]))
             end
@@ -5269,7 +5267,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
             𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
         end
 
-        𝓂.model_hessian = ([write_derivatives_function(second_order, Val(:string))], sparse(row2, column2, zero(column2), length(eqs_sub), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
+        perm_vals = sortperm(column2) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
+
+        𝓂.model_hessian = ([write_derivatives_function(second_order[perm_vals], Val(:string))], sparse(row2, column2, zero(column2), length(eqs_sub), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
 
         # min_n_funcs = length(second_order) ÷ max_exprs_per_func
 
@@ -6142,6 +6142,10 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
         push!(vals, f(X)...)
     end
 
+    if eltype(𝓂.model_jacobian[3]) ≠ M
+        Accessors.@reset 𝓂.model_jacobian[3] = convert(Matrix{M}, 𝓂.model_jacobian[3])
+    end
+
     𝓂.model_jacobian[3][𝓂.model_jacobian[2]] .= vals
 
     return 𝓂.model_jacobian[3]
@@ -6300,7 +6304,7 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     end
     
     Accessors.@reset 𝓂.model_hessian[2].nzval = vals
-
+    
     return 𝓂.model_hessian[2] * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 
     # vals = M[]
