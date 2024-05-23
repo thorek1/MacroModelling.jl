@@ -5313,7 +5313,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
                 𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
             end
             
-            min_n_funcs = length(third_order) ÷ max_exprs_per_func
+            perm_vals = sortperm(column3) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
+
+            𝓂.model_third_order_derivatives = ([write_derivatives_function(third_order[perm_vals], Val(:string))], sparse(row3, column3, zero(column3), length(eqs_sub), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)))
+
+            # min_n_funcs = length(third_order) ÷ max_exprs_per_func
             
             # ∂SS_equations_∂vars_∂vars_∂vars = sparse!(row3, column3, third_order, length(eqs), length(third_order_idxs))
 
@@ -5330,16 +5334,16 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int)
 
             # 𝓂.model_third_order_derivatives = funcs[1]
             
-            for i in 1:min_n_funcs
-                indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
+            # for i in 1:min_n_funcs
+            #     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
 
-                exx = :(function(𝔛::Vector{T}) where T
-                    $(alll...)
-                    return  [$(Meta.parse.(string.(third_order[indices]))...)], $(row3[indices]), $(column3[indices])
-                end)
+            #     exx = :(function(𝔛::Vector{T}) where T
+            #         $(alll...)
+            #         return  [$(Meta.parse.(string.(third_order[indices]))...)], $(row3[indices]), $(column3[indices])
+            #     end)
 
-                push!(𝓂.model_third_order_derivatives, @RuntimeGeneratedFunction(exx))
-            end
+            #     push!(𝓂.model_third_order_derivatives, @RuntimeGeneratedFunction(exx))
+            # end
         end
     end
     
@@ -6353,23 +6357,33 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
 
     # vals = convert(Vector{M}, vals)
     
-    input = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
-
+    X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
+    
     vals = M[]
-    rows = Int[]
-    cols = Int[]
 
-    for f in 𝓂.model_third_order_derivatives
-        output = f(input)
-
-        push!(vals, output[1]...)
-        push!(rows, output[2]...)
-        push!(cols, output[3]...)
+    for f in 𝓂.model_third_order_derivatives[1]
+        push!(vals, f(X)...)
     end
+    
+    Accessors.@reset 𝓂.model_third_order_derivatives[2].nzval = vals
+    
+    return 𝓂.model_third_order_derivatives[2] * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 
-    # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-    # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
-    sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    # vals = M[]
+    # rows = Int[]
+    # cols = Int[]
+
+    # for f in 𝓂.model_third_order_derivatives
+    #     output = f(input)
+
+    #     push!(vals, output[1]...)
+    #     push!(rows, output[2]...)
+    #     push!(cols, output[3]...)
+    # end
+
+    # # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+    # # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
+    # sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 end
 
 
