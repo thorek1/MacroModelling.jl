@@ -4842,12 +4842,6 @@ function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int
     )
 end
 
-function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-
-    @RuntimeGeneratedFunction(:(𝔛 -> $(Expr(:vect, vals_expr.args[2:end]...))))
-end
-
 function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int},values::Vector{Symbolics.Num},nrows::Int,ncolumns::Int,::Val{:string})
     vals_expr = Meta.parse(string(values))
 
@@ -4863,6 +4857,19 @@ function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int
                     )
         )
     )
+end
+
+
+function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:string})
+    vals_expr = Meta.parse(string(values))
+
+    @RuntimeGeneratedFunction(:(𝔛 -> $(Expr(:vect, vals_expr.args[2:end]...))))
+end
+
+function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:Symbolics})
+    vals_expr = Symbolics.toexpr.(values)
+
+    @RuntimeGeneratedFunction(:(𝔛 -> [$(vals_expr...)]))
 end
 
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_exprs_per_func::Int = 200)
@@ -4956,7 +4963,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
                 dyn_past_list[indexin(sort(past),past)]...,
                 dyn_exo_list[indexin(sort(exo),exo)]...]
 
-    Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x)
+    Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x) erfc(x) erfcinv(x)
 
     # overwrite SymPyCall names
     input_args = vcat(future_varss,
@@ -4983,8 +4990,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     # eval(:(Symbolics.@variables $(Set(vcat(future_no_lead_lag, present_no_lead_lag, past_no_lead_lag))...)))
 
     SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+
+    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
     
-    eval(:(Symbolics.@variables $(SS_and_pars...)))
+    eval(:(Symbolics.@variables $(SS_and_pars_names_lead_lag...)))
 
     # remove time indices
     # vars_no_time_transform = union(Dict(eval.(dyn_future_list) .=> eval.(future_no_lead_lag)), 
@@ -5000,7 +5009,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
         end
     end
 
-    final_indices = vcat(𝓂.parameters, SS_and_pars)
+    final_indices = vcat(𝓂.parameters, SS_and_pars_names_lead_lag)
 
     input_X = Pair{Symbolics.Num, Symbolics.Num}[]
     input_X_no_time = Pair{Symbolics.Num, Symbolics.Num}[]
@@ -5011,8 +5020,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
         if input ∈ shock_varss
             push!(input_X_no_time, eval(𝔛[v]) => 0)
         else
-            input_no_time = Symbol(replace(string(input), r"₍₁₎$"=>"", r"₍₀₎$"=>"" , r"₍₋₁₎$"=>"", r"₍ₛₛ₎$"=>""))
-            
+            input_no_time = Symbol(replace(string(input), r"₍₁₎$"=>"", r"₍₀₎$"=>"" , r"₍₋₁₎$"=>"", r"₍ₛₛ₎$"=>"", r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+
             vv = indexin([input_no_time], final_indices)
             
             if vv[1] isa Int
@@ -5046,7 +5055,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     #                     ss_varss)
                         
     # max_exprs_per_func = 50
-     
+    
     # min_n_funcs = length(∂SS_equations_∂vars.nzval) ÷ max_exprs_per_func
             
     # if min_n_funcs == 0
@@ -5184,15 +5193,17 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     # derivative of jacobian wrt SS_and_pars and parameters
     eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), first_order)
 
-    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(SS_and_pars) + length(𝓂.parameters))]), simplify = false) # |> findnz
+    ∂jacobian_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(final_indices))]), simplify = false) # |> findnz
 
     idx_conversion = (row1 + length(eqs) * (column1 .- 1))
 
-    rows, cols, vals = findnz(∂SS_equations_∂SS_and_pars)
+    cols, rows, vals = findnz(∂jacobian_∂SS_and_pars) #transposed
 
-    perm_vals = sortperm(idx_conversion[rows]) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
+    converted_cols = idx_conversion[cols]
 
-    𝓂.model_jacobian_SS_and_pars_vars = ([write_derivatives_function(vals[perm_vals], Val(:string))], sparse(cols, idx_conversion[rows], zero(cols), length(SS_and_pars) + length(𝓂.parameters), length(eqs) * length(vars)))
+    perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
+
+    𝓂.model_jacobian_SS_and_pars_vars = ([write_derivatives_function(vals[perm_vals], Val(:Symbolics))], sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * length(vars)))
 
 
     # 𝓂.model_jacobian_SS_and_pars_vars = write_sparse_derivatives_function(cols, 
@@ -5260,10 +5271,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
     funcs = Function[]
 
-    for i in 1:min_n_funcs
-        indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
+    if min_n_funcs == 0
+        push!(funcs, write_derivatives_function(first_order, Val(:Symbolics)))
+    else
+        for i in 1:min_n_funcs
+            indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
 
-        push!(funcs, write_derivatives_function(first_order[indices], Val(:string)))
+            push!(funcs, write_derivatives_function(first_order[indices], Val(:Symbolics)))
+        end
     end
 
     𝓂.model_jacobian = (funcs, row1 .+ (column1 .- 1) .* length(eqs_sub),  zeros(length(eqs_sub), length(vars)))
@@ -5287,10 +5302,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
         funcs = Function[]
     
-        for i in 1:min_n_funcs
-            indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
-    
-            push!(funcs, write_derivatives_function(second_order[perm_vals][indices], Val(:string)))
+        if min_n_funcs == 0
+            push!(funcs, write_derivatives_function(second_order[perm_vals], Val(:Symbolics)))
+        else
+            for i in 1:min_n_funcs
+                indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
+        
+                push!(funcs, write_derivatives_function(second_order[perm_vals][indices], Val(:Symbolics)))
+            end
         end
 
         𝓂.model_hessian = (funcs, sparse(row2, column2, zero(column2), length(eqs_sub), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
@@ -5343,10 +5362,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
             funcs = Function[]
         
-            for i in 1:min_n_funcs
-                indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
-        
-                push!(funcs, write_derivatives_function(third_order[perm_vals][indices], Val(:string)))
+            if min_n_funcs == 0
+                push!(funcs, write_derivatives_function(third_order[perm_vals], Val(:Symbolics)))
+            else
+                for i in 1:min_n_funcs
+                    indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
+            
+                    push!(funcs, write_derivatives_function(third_order[perm_vals][indices], Val(:Symbolics)))
+                end
             end
 
             𝓂.model_third_order_derivatives = (funcs, sparse(row3, column3, zero(column3), length(eqs_sub), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)))
@@ -5630,7 +5653,7 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
-    Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x)
+    Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x) erfc(x) erfcinv(x)
 
     # overwrite SymPyCall names
     other_pars = setdiff(union(𝓂.parameters_in_equations, 𝓂.parameters_as_function_of_parameters), 𝓂.parameters)
@@ -5643,14 +5666,14 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
 
     pars = eval(:(Symbolics.@variables $(𝓂.parameters...)))
 
-    input_X_no_time = Pair{Symbolics.Num, Symbolics.Num}[]
-
     input_args = vcat(𝓂.parameters, SS_and_pars)
     
     Symbolics.@variables 𝔛[1:length(input_args)]
 
+    input_X_no_time = Pair{Symbolics.Num, Symbolics.Num}[]
+
     for (v,input) in enumerate(input_args)
-        push!(input_X_no_time, eval(input) => eval(𝔛[v[1]]))
+        push!(input_X_no_time, eval(input) => eval(𝔛[v]))
     end
 
     ss_eqs = Symbolics.parse_expr_to_symbolic.(ss_equations,(@__MODULE__,))
@@ -5664,19 +5687,22 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
         push!(eqs, subst)
     end
     
-    ∂SS_equations_∂parameters = Symbolics.sparsejacobian(eqs, 𝔛[1:length(pars)]) |> findnz
+    ∂SS_equations_∂parameters = Symbolics.sparsejacobian(eqs, eval.(𝔛[1:length(pars)])) |> findnz
 
     min_n_funcs = length(∂SS_equations_∂parameters[3]) ÷ max_exprs_per_func
 
     funcs = Function[]
 
-    for i in 1:min_n_funcs
-        indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂parameters[3]) : i * max_exprs_per_func)
-
-        push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3][indices], Val(:string)))
+    if min_n_funcs == 0
+        push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3], Val(:Symbolics)))
+    else
+        for i in 1:min_n_funcs
+            indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂parameters[3]) : i * max_exprs_per_func)
+            push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3][indices], Val(:Symbolics)))
+        end
     end
 
-    𝓂.∂SS_equations_∂parameters = (funcs,  sparse(∂SS_equations_∂parameters[1], ∂SS_equations_∂parameters[2], zeros(Float64,length(∂SS_equations_∂parameters[3])), length(eqs), length(pars)))
+    𝓂.∂SS_equations_∂parameters = (funcs, sparse(∂SS_equations_∂parameters[1], ∂SS_equations_∂parameters[2], zeros(Float64,length(∂SS_equations_∂parameters[3])), length(eqs), length(pars)))
 
     # 𝓂.∂SS_equations_∂parameters = write_sparse_derivatives_function(∂SS_equations_∂parameters[1], 
     #                                                                     ∂SS_equations_∂parameters[2], 
@@ -5685,19 +5711,23 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     #                                                                     length(pars),
     #                                                                     Val(:string));
 
-    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs, 𝔛[length(pars)+1:end]) |> findnz
+    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs, eval.(𝔛[length(pars)+1:end])) |> findnz
 
     min_n_funcs = length(∂SS_equations_∂SS_and_pars[3]) ÷ max_exprs_per_func
 
     funcs = Function[]
 
-    for i in 1:min_n_funcs
-        indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂SS_and_pars[3]) : i * max_exprs_per_func)
+    if min_n_funcs == 0
+        push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3], Val(:Symbolics)))
+    else
+        for i in 1:min_n_funcs
+            indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂SS_and_pars[3]) : i * max_exprs_per_func)
 
-        push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3][indices], Val(:string)))
+            push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3][indices], Val(:Symbolics)))
+        end
     end
 
-    𝓂.∂SS_equations_∂SS_and_pars = ([write_derivatives_function(∂SS_equations_∂SS_and_pars[3], Val(:string))], ∂SS_equations_∂SS_and_pars[1] .+ (∂SS_equations_∂SS_and_pars[2] .- 1) .* length(eqs), zeros(length(eqs), length(vars)))
+    𝓂.∂SS_equations_∂SS_and_pars = (funcs, ∂SS_equations_∂SS_and_pars[1] .+ (∂SS_equations_∂SS_and_pars[2] .- 1) .* length(eqs), zeros(length(eqs), length(vars)))
 
     # 𝓂.∂SS_equations_∂SS_and_pars = write_sparse_derivatives_function(∂SS_equations_∂SS_and_pars[1], 
     #                                                                     ∂SS_equations_∂SS_and_pars[2], 
@@ -6333,7 +6363,17 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
         # cols_unique = union(unique(colsp), unique(cols))
         # TODO: combine the two sparse arrays in creation and here
         # analytical_jac_parameters = 𝓂.model_jacobian_parameters([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        X = [parameters; SS_and_pars]
+
+        # SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+        
+        # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
+        # unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+        # ∂SS_equations_∂parameters = try 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
+        # catch
+        #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        # end
+
+        X = [parameters; SS_and_pars]#[indexin(unknowns, SS_and_pars_names_lead_lag)]]
 
         vals = Float64[]
 
@@ -8688,7 +8728,7 @@ function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values
     #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     # end
 
-    X = [parameter_values; SS_and_pars]
+    X = [parameter_values; SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]]
     
     vals = Float64[]
 
