@@ -5203,7 +5203,21 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
     perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
 
-    𝓂.model_jacobian_SS_and_pars_vars = ([write_derivatives_function(vals[perm_vals], Val(:Symbolics))], sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * length(vars)))
+    min_n_funcs = length(vals) ÷ max_exprs_per_func
+
+    funcs = Function[]
+
+    if min_n_funcs == 0
+        push!(funcs, write_derivatives_function(vals[perm_vals], Val(:Symbolics)))
+    else
+        for i in 1:min_n_funcs
+            indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
+
+            push!(funcs, write_derivatives_function(vals[perm_vals][indices], Val(:Symbolics)))
+        end
+    end
+
+    𝓂.model_jacobian_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * length(vars)))
 
 
     # 𝓂.model_jacobian_SS_and_pars_vars = write_sparse_derivatives_function(cols, 
