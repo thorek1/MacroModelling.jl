@@ -5037,10 +5037,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
     eqs_sub = Symbolics.Num[]
     for subst in eqs
-        # for calib_eq in calib_eqs
-        #     subst = Symbolics.substitute(subst, calib_eq)
-        # end
-        subst = Symbolics.fixpoint_sub(subst, calib_eqs)
+        for calib_eq in calib_eqs
+            subst = Symbolics.substitute(subst, calib_eq)
+        end
+        # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
         subst = Symbolics.substitute(subst, input_X)
         push!(eqs_sub, subst)
     end
@@ -5697,7 +5697,10 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
 
     eqs = Symbolics.Num[]
     for subst in ss_eqs
-        subst = Symbolics.fixpoint_sub(subst, calib_eqs)
+        for calib_eq in calib_eqs
+            subst = Symbolics.substitute(subst, calib_eq)
+        end
+        # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
         subst = Symbolics.substitute(subst, input_X_no_time)
         push!(eqs, subst)
     end
