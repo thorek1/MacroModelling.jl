@@ -20,6 +20,7 @@ import ForwardDiff as ℱ
 𝒷 = 𝒜.ForwardDiffBackend
 # 𝒷 = Diffractor.DiffractorForwardBackend
 
+import Polyester
 import NLopt
 import Optim, LineSearches
 # import Zygote
@@ -4869,6 +4870,12 @@ function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:string
     @RuntimeGeneratedFunction(:(𝔛 -> $(Expr(:vect, vals_expr.args[2:end]...))))
 end
 
+function write_derivatives_function(values::Vector{Symbolics.Num}, position::Union{UnitRange{Int},Vector{Int}}, ::Val{:string})
+    vals_expr = Meta.parse(string(values))
+
+    @RuntimeGeneratedFunction(:(𝔛 -> ($(Expr(:vect, vals_expr.args[2:end]...)), $position)))
+end
+
 function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:Symbolics})
     vals_expr = Symbolics.toexpr.(values)
 
@@ -5054,12 +5061,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             funcs = Function[]
 
             if min_n_funcs == 1
-                push!(funcs, write_derivatives_function(vals[perm_vals], Val(:string)))
+                push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
             else
-                for i in 1:min_n_funcs
+                for i in 1:min(min_n_funcs, length(vals))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
 
-                    push!(funcs, write_derivatives_function(vals[perm_vals][indices], Val(:string)))
+                    push!(funcs, write_derivatives_function(vals[perm_vals][indices], indices, Val(:string)))
                 end
             end
 
@@ -5071,12 +5078,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             funcs = Function[]
 
             if min_n_funcs == 1
-                push!(funcs, write_derivatives_function(first_order, Val(:string)))
+                push!(funcs, write_derivatives_function(first_order, 1:length(first_order), Val(:string)))
             else
-                for i in 1:min_n_funcs
+                for i in 1:min(min_n_funcs, length(first_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
 
-                    push!(funcs, write_derivatives_function(first_order[indices], Val(:string)))
+                    push!(funcs, write_derivatives_function(first_order[indices], indices, Val(:string)))
                 end
             end
 
@@ -5096,12 +5103,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             funcs = Function[]
         
             if min_n_funcs == 1
-                push!(funcs, write_derivatives_function(second_order[perm_vals], Val(:string)))
+                push!(funcs, write_derivatives_function(second_order[perm_vals], 1:length(second_order), Val(:string)))
             else
-                for i in 1:min_n_funcs
+                for i in 1:min(min_n_funcs, length(second_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
             
-                    push!(funcs, write_derivatives_function(second_order[perm_vals][indices], Val(:string)))
+                    push!(funcs, write_derivatives_function(second_order[perm_vals][indices], indices, Val(:string)))
                 end
             end
 
@@ -5121,12 +5128,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             funcs = Function[]
         
             if min_n_funcs == 1
-                push!(funcs, write_derivatives_function(third_order[perm_vals], Val(:string)))
+                push!(funcs, write_derivatives_function(third_order[perm_vals], 1:length(third_order), Val(:string)))
             else
-                for i in 1:min_n_funcs
+                for i in 1:min(min_n_funcs, length(third_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
             
-                    push!(funcs, write_derivatives_function(third_order[perm_vals][indices], Val(:string)))
+                    push!(funcs, write_derivatives_function(third_order[perm_vals][indices], indices, Val(:string)))
                 end
             end
 
@@ -5735,11 +5742,11 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     funcs = Function[]
 
     if min_n_funcs == 1
-        push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3], Val(:string)))
+        push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3], 1:length(∂SS_equations_∂parameters[3]), Val(:string)))
     else
-        for i in 1:min_n_funcs
+        for i in 1:min(min_n_funcs, length(∂SS_equations_∂parameters[3]))
             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂parameters[3]) : i * max_exprs_per_func)
-            push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3][indices], Val(:string)))
+            push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3][indices], indices, Val(:string)))
         end
     end
 
@@ -5759,12 +5766,12 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     funcs = Function[]
 
     if min_n_funcs == 1
-        push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3], Val(:string)))
+        push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3], 1:length(∂SS_equations_∂SS_and_pars[3]), Val(:string)))
     else
-        for i in 1:min_n_funcs
+        for i in 1:min(min_n_funcs, length(∂SS_equations_∂SS_and_pars[3]))
             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂SS_and_pars[3]) : i * max_exprs_per_func)
 
-            push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3][indices], Val(:string)))
+            push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3][indices], indices, Val(:string)))
         end
     end
 
@@ -6276,10 +6283,17 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
 
     X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
     
-    vals = M[]
+    # vals = M[]
 
-    for f in 𝓂.model_jacobian[1]
-        push!(vals, f(X)...)
+    # for f in 𝓂.model_jacobian[1]
+    #     push!(vals, f(X)...)
+    # end
+
+    vals = zeros(M, length(𝓂.model_jacobian[1]))
+
+    Polyester.@batch for f in 𝓂.model_jacobian[1]
+        out = f(X)
+        vals[out[2]] .= out[1]
     end
 
     if eltype(𝓂.model_jacobian[3]) ≠ M
@@ -6298,12 +6312,19 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
     function calculate_jacobian_pullback(∂∇₁)
         X = [parameters; SS_and_pars]
 
-        vals = Float64[]
+        # vals = Float64[]
 
-        for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
-            push!(vals, f(X)...)
+        # for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
+        #     push!(vals, f(X)...)
+        # end
+
+        vals = zeros(Float64, length(𝓂.model_jacobian_SS_and_pars_vars[1]))
+
+        Polyester.@batch for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
+            out = f(X)
+            vals[out[2]] .= out[1]
         end
-        
+    
         Accessors.@reset 𝓂.model_jacobian_SS_and_pars_vars[2].nzval = vals
         
         analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
@@ -6347,12 +6368,19 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
 
     X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
     
-    vals = M[]
+    # vals = M[]
 
-    for f in 𝓂.model_hessian[1]
-        push!(vals, f(X)...)
+    # for f in 𝓂.model_hessian[1]
+    #     push!(vals, f(X)...)
+    # end
+
+    vals = zeros(M, length(𝓂.model_hessian[1]))
+
+    Polyester.@batch for f in 𝓂.model_hessian[1]
+        out = f(X)
+        vals[out[2]] .= out[1]
     end
-    
+
     Accessors.@reset 𝓂.model_hessian[2].nzval = vals
     
     return 𝓂.model_hessian[2] * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
@@ -6405,12 +6433,19 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
     
     X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
     
-    vals = M[]
+    # vals = M[]
 
-    for f in 𝓂.model_third_order_derivatives[1]
-        push!(vals, f(X)...)
-    end
+    # for f in 𝓂.model_third_order_derivatives[1]
+    #     push!(vals, f(X)...)
+    # end
     
+    vals = zeros(M, length(𝓂.model_third_order_derivatives[1]))
+
+    Polyester.@batch for f in 𝓂.model_third_order_derivatives[1]
+        out = f(X)
+        vals[out[2]] .= out[1]
+    end
+
     Accessors.@reset 𝓂.model_third_order_derivatives[2].nzval = vals
     
     return 𝓂.model_third_order_derivatives[2] * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
@@ -8645,21 +8680,34 @@ function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values
 
     X = [parameter_values; SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]]
     
-    vals = Float64[]
+    # vals = Float64[]
 
-    for f in 𝓂.∂SS_equations_∂parameters[1]
-        push!(vals, f(X)...)
+    # for f in 𝓂.∂SS_equations_∂parameters[1]
+    #     push!(vals, f(X)...)
+    # end
+    
+    vals = zeros(Float64, length(𝓂.∂SS_equations_∂parameters[1]))
+
+    Polyester.@batch for f in 𝓂.∂SS_equations_∂parameters[1]
+        out = f(X)
+        vals[out[2]] .= out[1]
     end
 
     Accessors.@reset 𝓂.∂SS_equations_∂parameters[2].nzval = vals
     
     ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
 
-    
-    vals = Float64[]
+    # vals = Float64[]
 
-    for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-        push!(vals, f(X)...)
+    # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+    #     push!(vals, f(X)...)
+    # end
+
+    vals = zeros(Float64, length(𝓂.∂SS_equations_∂SS_and_pars[1]))
+
+    Polyester.@batch for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+        out = f(X)
+        vals[out[2]] .= out[1]
     end
 
     𝓂.∂SS_equations_∂SS_and_pars[3] .*= 0

@@ -2263,7 +2263,7 @@ function get_moments(𝓂::ℳ;
     algorithm::Symbol = :first_order,
     dependencies_tol::AbstractFloat = 1e-12,
     verbose::Bool = false,
-    silent::Bool = true)#limit output by selecting pars and vars like for plots and irfs!?
+    silent::Bool = false)#limit output by selecting pars and vars like for plots and irfs!?
     
     solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, silent = silent)
 
