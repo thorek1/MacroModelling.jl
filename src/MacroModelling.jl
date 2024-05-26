@@ -4872,7 +4872,7 @@ function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:Symbol
     @RuntimeGeneratedFunction(:(𝔛 -> [$(vals_expr...)]))
 end
 
-function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_exprs_per_func::Int = 200)
+function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_exprs_per_func::Int = 100)
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
     past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
@@ -5679,7 +5679,7 @@ end
 # end
 
 
-function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int = 200)
+function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int = 100)
     # derivative of SS equations wrt parameters and SS_and_pars
     # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
     SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
