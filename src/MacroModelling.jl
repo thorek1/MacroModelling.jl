@@ -6241,7 +6241,7 @@ end
 function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::Matrix{M} where {M,N}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-    # par = ComponentVector(vcat(parameters,calibrated_parameters),Axis(vcat(𝓂.parameters,𝓂.calibration_equations_parameters)))
+    
     par = vcat(parameters,calibrated_parameters)
     
     dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
@@ -6251,13 +6251,8 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    # return 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), [SS_future; SS_present; SS_past; shocks_ss])#, SS_and_pars
-    # return Matrix(𝓂.model_jacobian(([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])))
-    # return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
-    # return 𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss])
-
     X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
-    # vals = mapreduce(f -> f(X), vcat, 𝓂.model_jacobian)
+    
     vals = M[]
 
     for f in 𝓂.model_jacobian[1]
@@ -6271,127 +6266,14 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
     𝓂.model_jacobian[3][𝓂.model_jacobian[2]] .= vals
 
     return 𝓂.model_jacobian[3]
-
-    # Accessors.@reset 𝓂.model_jacobian[2].nzval = vals
-
-    # return 𝓂.model_jacobian[2]
-
-    # rows = 𝓂.model_jacobian[1]
-    # cols = 𝓂.model_jacobian[2]
-    
-    # nrows = 𝓂.model_jacobian[4]
-    # ncols = 𝓂.model_jacobian[5]
-
-    # jacobian = sparse(rows, cols, vals, nrows, ncols)
-    
-    # return jacobian
-
-    # first_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian]
-    
-    # vals = M[i[1] for i in first_out]
-    # rows = Int[i[2] for i in first_out]
-    # cols = Int[i[3] for i in first_out]
-
-    # # vals = convert(Vector{M}, vals)
-
-    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-    # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^2)
-    
-    # if VERSION >= v"1.10"
-    #     jacobian = sparse!(rows, cols, vals, length(𝓂.dyn_equations), nk)
-    # else
-    #     jacobian = sparse(rows, cols, vals, length(𝓂.dyn_equations), nk)
-    # end
-
-    # return jacobian
 end
 
 
-
 function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
-    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-    
-    par = vcat(parameters,calibrated_parameters)
-    
-    dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
-
-    shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
-    
-    # jacobian =  𝓂.model_jacobian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx])
-    
-    X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
-    
-    vals = Float64[]
-
-    for f in 𝓂.model_jacobian[1]
-        push!(vals, f(X)...)
-    end
-
-    𝓂.model_jacobian[3][𝓂.model_jacobian[2]] .= vals
-
-    jacobian =  𝓂.model_jacobian[3]
-    # jacobian_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian]
-    
-    # vals = Float64[i[1] for i in jacobian_out]
-    # rows = Int[i[2] for i in jacobian_out]
-    # cols = Int[i[3] for i in jacobian_out]
-
-    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-
-    # if VERSION >= v"1.10"
-    #     jacobian = sparse!(rows, cols, vals, length(𝓂.dyn_equations), nk)
-    # else
-    #     jacobian = sparse(rows, cols, vals, length(𝓂.dyn_equations), nk)
-    # end
+    jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
     function calculate_jacobian_pullback(∂∇₁)
-        # analytical_jac_parameters_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian_parameters]
-        
-        # vals = Float64[i[1] for i in analytical_jac_parameters_out]
-        # rows = Int[i[2] for i in analytical_jac_parameters_out]
-        # colsp = Int[i[3] for i in analytical_jac_parameters_out]
-
-        # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-
-        # if VERSION >= v"1.10"
-        #     analytical_jac_parameters = sparse!(rows, colsp, vals, length(𝓂.dyn_equations) * nk, length(𝓂.parameters)) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        # else
-        #     analytical_jac_parameters = sparse(rows, colsp, vals, length(𝓂.dyn_equations) * nk, length(𝓂.parameters)) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        # end
-        
-
-        # analytical_jac_SS_and_pars_vars_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_jacobian_SS_and_pars_vars]
-        
-        # vals = Float64[i[1] for i in analytical_jac_SS_and_pars_vars_out]
-        # rows = Int[i[2] for i in analytical_jac_SS_and_pars_vars_out]
-        # cols = Int[i[3] for i in analytical_jac_SS_and_pars_vars_out]
-
-        # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-
-        # if VERSION >= v"1.10"
-        #     analytical_jac_SS_and_pars_vars = sparse!(rows, cols, vals, length(𝓂.dyn_equations) * nk, length(SS_and_pars)) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        # else
-        #     analytical_jac_SS_and_pars_vars = sparse(rows, cols, vals, length(𝓂.dyn_equations) * nk, length(SS_and_pars)) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        # end
-        
-        # cols_unique = union(unique(colsp), unique(cols))
-        # TODO: combine the two sparse arrays in creation and here
-        # analytical_jac_parameters = 𝓂.model_jacobian_parameters([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-
-        # SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-        
-        # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
-        # unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-        # ∂SS_equations_∂parameters = try 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-        # catch
-        #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-        # end
-
-        X = [parameters; SS_and_pars]#[indexin(unknowns, SS_and_pars_names_lead_lag)]]
+        X = [parameters; SS_and_pars]
 
         vals = Float64[]
 
@@ -6403,21 +6285,13 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
         
         analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
-        # cols_unique = union(unique(findnz(analytical_jac_SS_and_pars_vars)[2]), unique(findnz(analytical_jac_parameters)[2]))
         cols_unique = unique(findnz(analytical_jac_SS_and_pars_vars)[2])
-
-        # J = zeros(length(SS_and_pars) + length(parameters), length(cols_unique))
-
-        # J[1:length(parameters), :] = analytical_jac_parameters[:,cols_unique]
-        # J[length(parameters)+1:end, :] = analytical_jac_SS_and_pars_vars[:,cols_unique]
 
         v∂∇₁ = ∂∇₁[cols_unique]
 
         ∂parameters_and_SS_and_pars = analytical_jac_SS_and_pars_vars[:,cols_unique] * v∂∇₁
 
         return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
-        # sp∂∇₁ = sparsevec(∂∇₁)
-        # return NoTangent(), analytical_jac_parameters * sp∂∇₁, analytical_jac_SS_and_pars_vars * sp∂∇₁, NoTangent()
     end
 
     return jacobian, calculate_jacobian_pullback
