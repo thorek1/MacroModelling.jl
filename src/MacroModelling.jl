@@ -4420,12 +4420,14 @@ function solve!(𝓂::ℳ;
     if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && 
         algorithm ∈ [:second_order, :pruned_second_order]
         start_time = time()
+        if !silent print("Take symbolic derivatives up to second order:\t\t\t\t") end
         write_functions_mapping!(𝓂, 2)
-        if !silent println("Take symbolic derivatives up to second order:\t",round(time() - start_time, digits = 3), " seconds") end
+        if !silent println(round(time() - start_time, digits = 3), " seconds") end
     elseif 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && algorithm ∈ [:third_order, :pruned_third_order]
         start_time = time()
+        if !silent print("Take symbolic derivatives up to third order:\t\t\t\t") end
         write_functions_mapping!(𝓂, 3)
-        if !silent println("Take symbolic derivatives up to third order:\t",round(time() - start_time, digits = 3), " seconds") end
+        if !silent println(round(time() - start_time, digits = 3), " seconds") end
     end
 
     if dynamics
@@ -4873,7 +4875,7 @@ function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:Symbol
     @RuntimeGeneratedFunction(:(𝔛 -> [$(vals_expr...)]))
 end
 
-function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_exprs_per_func::Int = 100)
+function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_exprs_per_func::Int = 1)
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
     past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
@@ -5047,11 +5049,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
             perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
 
-            min_n_funcs = length(vals) ÷ max_exprs_per_func
+            min_n_funcs = length(vals) ÷ max_exprs_per_func + 1
 
             funcs = Function[]
 
-            if min_n_funcs == 0
+            if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(vals[perm_vals], Val(:string)))
             else
                 for i in 1:min_n_funcs
@@ -5064,11 +5066,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             𝓂.model_jacobian_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * length(vars)))
 
             # first order
-            min_n_funcs = length(first_order) ÷ max_exprs_per_func
+            min_n_funcs = length(first_order) ÷ max_exprs_per_func + 1
 
             funcs = Function[]
 
-            if min_n_funcs == 0
+            if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(first_order, Val(:string)))
             else
                 for i in 1:min_n_funcs
@@ -5089,11 +5091,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
             perm_vals = sortperm(column2) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
 
-            min_n_funcs = length(second_order) ÷ max_exprs_per_func
+            min_n_funcs = length(second_order) ÷ max_exprs_per_func + 1
 
             funcs = Function[]
         
-            if min_n_funcs == 0
+            if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(second_order[perm_vals], Val(:string)))
             else
                 for i in 1:min_n_funcs
@@ -5114,11 +5116,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
         
             perm_vals = sortperm(column3) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
 
-            min_n_funcs = length(third_order) ÷ max_exprs_per_func
+            min_n_funcs = length(third_order) ÷ max_exprs_per_func + 1
 
             funcs = Function[]
         
-            if min_n_funcs == 0
+            if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(third_order[perm_vals], Val(:string)))
             else
                 for i in 1:min_n_funcs
@@ -5680,7 +5682,7 @@ end
 # end
 
 
-function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int = 100)
+function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int = 1)
     # derivative of SS equations wrt parameters and SS_and_pars
     # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
     SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
@@ -5728,11 +5730,11 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     
     ∂SS_equations_∂parameters = Symbolics.sparsejacobian(eqs, eval.(𝔛[1:length(pars)])) |> findnz
 
-    min_n_funcs = length(∂SS_equations_∂parameters[3]) ÷ max_exprs_per_func
+    min_n_funcs = length(∂SS_equations_∂parameters[3]) ÷ max_exprs_per_func + 1
 
     funcs = Function[]
 
-    if min_n_funcs == 0
+    if min_n_funcs == 1
         push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3], Val(:string)))
     else
         for i in 1:min_n_funcs
@@ -5752,11 +5754,11 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
 
     ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs, eval.(𝔛[length(pars)+1:end])) |> findnz
 
-    min_n_funcs = length(∂SS_equations_∂SS_and_pars[3]) ÷ max_exprs_per_func
+    min_n_funcs = length(∂SS_equations_∂SS_and_pars[3]) ÷ max_exprs_per_func + 1
 
     funcs = Function[]
 
-    if min_n_funcs == 0
+    if min_n_funcs == 1
         push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3], Val(:string)))
     else
         for i in 1:min_n_funcs
