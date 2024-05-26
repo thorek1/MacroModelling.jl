@@ -4954,8 +4954,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
     eqs_sub = Symbolics.Num[]
     for subst in eqs
-        for calib_eq in calib_eqs
-            subst = Symbolics.substitute(subst, calib_eq)
+        for _ in calib_eqs
+            for calib_eq in calib_eqs
+                subst = Symbolics.substitute(subst, calib_eq)
+            end
         end
         # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
         subst = Symbolics.substitute(subst, input_X)
@@ -4969,7 +4971,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             third_order_idxs = [nk^2 * (i-1) + nk * (k-1) + l for i in 1:nk for k in 1:i for l in 1:k]
         end
     end
-    
+
     first_order = Symbolics.Num[]
     second_order = Symbolics.Num[]
     third_order = Symbolics.Num[]
@@ -5713,8 +5715,10 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
 
     eqs = Symbolics.Num[]
     for subst in ss_eqs
-        for calib_eq in calib_eqs
-            subst = Symbolics.substitute(subst, calib_eq)
+        for _ in calib_eqs # to completely substitute all calibration equations
+            for calib_eq in calib_eqs
+                subst = Symbolics.substitute(subst, calib_eq)
+            end
         end
         # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
         subst = Symbolics.substitute(subst, input_X_no_time)
