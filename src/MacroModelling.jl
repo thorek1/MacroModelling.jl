@@ -4991,9 +4991,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     column1 = Int[]
     column2 = Int[]
     column3 = Int[]
-    i1 = 1
-    i2 = 1
-    i3 = 1
 
     for (c1, var1) in enumerate(vars_X)
         for (r, eq) in enumerate(eqs_sub)
@@ -5003,9 +5000,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
                 push!(first_order, deriv_first)
                 push!(row1, r)
                 push!(column1, c1)
-                
-                i1 += 1
-
                 if max_perturbation_order >= 2 
                     for (c2, var2) in enumerate(vars_X)
                         if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
@@ -5014,9 +5008,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
                             push!(second_order, deriv_second)
                             push!(row2, r)
                             push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
-                            
-                            i2 += 1
-
                             if max_perturbation_order == 3
                                 for (c3, var3) in enumerate(vars_X)
                                     if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
@@ -5025,8 +5016,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
                                         push!(third_order, deriv_third)
                                         push!(row3, r)
                                         push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
-                                        
-                                        i3 += 1
                                     end
                                 end
                             end
@@ -9899,9 +9888,9 @@ end
 #                 α = 0.5
 #             end
 
-#             get_SS(FS2000)
-#             get_SS(FS2000, parameters = :alp => 0.36)
-#             get_solution(FS2000)
+#             get_SS(FS2000, silent = true)
+#             get_SS(FS2000, parameters = :alp => 0.36, silent = true)
+#             get_solution(FS2000, silent = true)
 #             get_solution(FS2000, parameters = :alp => 0.35)
 #             get_standard_deviation(FS2000)
 #             get_correlation(FS2000)

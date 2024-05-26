@@ -1275,7 +1275,7 @@ function get_steady_state(𝓂::ℳ;
     parameter_derivatives::Union{Symbol_input,String_input} = :all,
     return_variables_only::Bool = false,
     verbose::Bool = false,
-    silent::Bool = true,
+    silent::Bool = false,
     tol::AbstractFloat = 1e-12)
 
     if !(algorithm == :first_order) stochastic = true end
@@ -1528,9 +1528,10 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
 function get_solution(𝓂::ℳ; 
     parameters::ParameterType = nothing,
     algorithm::Symbol = :first_order, 
+    silent::Bool = false,
     verbose::Bool = false)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, silent = silent, algorithm = algorithm)
 
     if algorithm == :linear_time_iteration
         solution_matrix = 𝓂.solution.perturbation.linear_time_iteration.solution_matrix
