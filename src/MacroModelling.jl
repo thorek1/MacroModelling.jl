@@ -6,6 +6,7 @@ import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDF
 import ThreadedSparseArrays
 using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
+import SpecialFunctions
 import SymPyPythonCall as SPyPyC
 import Symbolics
 import Accessors
@@ -5051,12 +5052,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             funcs = Function[]
 
             if min_n_funcs == 0
-                push!(funcs, write_derivatives_function(vals[perm_vals], Val(:Symbolics)))
+                push!(funcs, write_derivatives_function(vals[perm_vals], Val(:string)))
             else
                 for i in 1:min_n_funcs
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
 
-                    push!(funcs, write_derivatives_function(vals[perm_vals][indices], Val(:Symbolics)))
+                    push!(funcs, write_derivatives_function(vals[perm_vals][indices], Val(:string)))
                 end
             end
 
@@ -5068,12 +5069,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             funcs = Function[]
 
             if min_n_funcs == 0
-                push!(funcs, write_derivatives_function(first_order, Val(:Symbolics)))
+                push!(funcs, write_derivatives_function(first_order, Val(:string)))
             else
                 for i in 1:min_n_funcs
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
 
-                    push!(funcs, write_derivatives_function(first_order[indices], Val(:Symbolics)))
+                    push!(funcs, write_derivatives_function(first_order[indices], Val(:string)))
                 end
             end
 
@@ -5093,12 +5094,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             funcs = Function[]
         
             if min_n_funcs == 0
-                push!(funcs, write_derivatives_function(second_order[perm_vals], Val(:Symbolics)))
+                push!(funcs, write_derivatives_function(second_order[perm_vals], Val(:string)))
             else
                 for i in 1:min_n_funcs
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
             
-                    push!(funcs, write_derivatives_function(second_order[perm_vals][indices], Val(:Symbolics)))
+                    push!(funcs, write_derivatives_function(second_order[perm_vals][indices], Val(:string)))
                 end
             end
 
@@ -5118,12 +5119,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             funcs = Function[]
         
             if min_n_funcs == 0
-                push!(funcs, write_derivatives_function(third_order[perm_vals], Val(:Symbolics)))
+                push!(funcs, write_derivatives_function(third_order[perm_vals], Val(:string)))
             else
                 for i in 1:min_n_funcs
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
             
-                    push!(funcs, write_derivatives_function(third_order[perm_vals][indices], Val(:Symbolics)))
+                    push!(funcs, write_derivatives_function(third_order[perm_vals][indices], Val(:string)))
                 end
             end
 
@@ -5732,11 +5733,11 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     funcs = Function[]
 
     if min_n_funcs == 0
-        push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3], Val(:Symbolics)))
+        push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3], Val(:string)))
     else
         for i in 1:min_n_funcs
             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂parameters[3]) : i * max_exprs_per_func)
-            push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3][indices], Val(:Symbolics)))
+            push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3][indices], Val(:string)))
         end
     end
 
@@ -5756,12 +5757,12 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     funcs = Function[]
 
     if min_n_funcs == 0
-        push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3], Val(:Symbolics)))
+        push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3], Val(:string)))
     else
         for i in 1:min_n_funcs
             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂SS_and_pars[3]) : i * max_exprs_per_func)
 
-            push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3][indices], Val(:Symbolics)))
+            push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3][indices], Val(:string)))
         end
     end
 
