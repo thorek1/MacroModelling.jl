@@ -7940,24 +7940,25 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     
 
     if solver ∈ [:gmres, :bicgstab]  
-        tmp̂ = similar(C)
-        tmp̄ = similar(C)
-        𝐗 = similar(C)
+        # tmp̂ = similar(C)
+        # tmp̄ = similar(C)
+        # 𝐗 = similar(C)
 
-        function sylvester!(sol,𝐱)
-            copyto!(𝐗, 𝐱)
-            mul!(tmp̄, 𝐗, B)
-            mul!(tmp̂, A, tmp̄)
-            ℒ.axpy!(-1, tmp̂, 𝐗)
-            ℒ.rmul!(𝐗, -1)
-            copyto!(sol, 𝐗)
-        end
-        # TODO: check whether this deteriorates performance for large sparse matrices
         # function sylvester!(sol,𝐱)
-        #     𝐗 = reshape(𝐱, size(C))
-        #     sol .= vec(A * 𝐗 * B - 𝐗)
-        #     return sol
+        #     copyto!(𝐗, 𝐱)
+        #     mul!(tmp̄, 𝐗, B)
+        #     mul!(tmp̂, A, tmp̄)
+        #     ℒ.axpy!(-1, tmp̂, 𝐗)
+        #     ℒ.rmul!(𝐗, -1)
+        #     copyto!(sol, 𝐗)
         # end
+        # TODO: above is slower. below is fastest
+        function sylvester!(sol,𝐱)
+            𝐗 = reshape(𝐱, size(C))
+            copyto!(sol, A * 𝐗 * B - 𝐗)
+            # sol .= vec(A * 𝐗 * B - 𝐗)
+            # return sol
+        end
         
         sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
 
