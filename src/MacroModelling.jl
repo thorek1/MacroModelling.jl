@@ -4882,6 +4882,7 @@ function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:Symbol
     @RuntimeGeneratedFunction(:(𝔛 -> [$(vals_expr...)]))
 end
 
+# TODO: check why this takes so much longer than previous implementation
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_exprs_per_func::Int = 1)
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
@@ -7951,7 +7952,7 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
             ℒ.rmul!(𝐗, -1)
             copyto!(sol, 𝐗)
         end
-
+        # TODO: check whether this deteriorates performance for large sparse matrices
         # function sylvester!(sol,𝐱)
         #     𝐗 = reshape(𝐱, size(C))
         #     sol .= vec(A * 𝐗 * B - 𝐗)
