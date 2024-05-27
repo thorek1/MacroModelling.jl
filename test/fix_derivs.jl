@@ -1,3 +1,4 @@
+
 # TODO: speedtesting multithreaded execution and toexpr vs string performance, and simplification
 using Revise
 
@@ -13,9 +14,9 @@ import MacroModelling: get_non_stochastic_steady_state, get_symbols, write_deriv
 # include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
 # include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
 
-# include("models/RBC_CME.jl")
+include("models/RBC_CME.jl")
 
-# model = m
+model = m
 
 # get_moments(model, parameter_derivatives = :alpha)
 
@@ -38,19 +39,27 @@ import MacroModelling: get_non_stochastic_steady_state, get_symbols, write_deriv
 
 
 
-include("../models/QUEST3_2009.jl")
-model = QUEST3_2009
+# include("../models/QUEST3_2009.jl")
+# model = QUEST3_2009
 
-SS(QUEST3_2009)
-SSS(QUEST3_2009, algorithm = :pruned_second_order)
+# # SS(model)
+# SSS(model, algorithm = :pruned_second_order)
+# # @time SSS(model, algorithm = :pruned_second_order, parameters = :STD_EPS_ETA => 0.145)
 
-SSS(QUEST3_2009, algorithm = :pruned_third_order)
+# SSS(model, algorithm = :pruned_third_order)
 
-QUEST3_2009.model_hessian[1]|>length
+# get_irf(model, algorithm = :pruned_third_order)
 
-include("../models/NAWM_EAUS_2008.jl")
-model = NAWM_EAUS_2008
+# model.model_hessian[2]
+# model.model_hessian[1]|>length
 
+# include("../models/NAWM_EAUS_2008.jl")
+# model = NAWM_EAUS_2008
+
+# get_parameters(model, values = true)
+# SSS(model, algorithm = :pruned_second_order)
+# @time SSS(model, algorithm = :pruned_second_order, parameters = :σ_EA_R => .98)
+# SSS(model, algorithm = :pruned_third_order)
 # include("../models/Ghironi_Melitz_2005.jl")
 # model = Ghironi_Melitz_2005
 
@@ -171,17 +180,19 @@ column1 = Int[]
 column2 = Int[]
 column3 = Int[]
 
-# Polyester.@batch for (c1, var1) in enumerate(vars_X)
-Polyester.@batch for c1 in 1:length(vars_X)
-    var1 = vars_X[c1]
+# Polyester.@batch for rc1 in 0:length(vars_X) * length(eqs_sub) - 1
+# for rc1 in 0:length(vars_X) * length(eqs_sub) - 1
+for (c1, var1) in enumerate(vars_X)
     for (r, eq) in enumerate(eqs_sub)
-    # Polyester.@batch for r in 1:length(eqs_sub)
-        # eq = eqs_sub[r]
+    # r, c1 = divrem(rc1, length(vars_X)) .+ 1
+    # var1 = vars_X[c1]
+    # eq = eqs_sub[r]
         if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
             deriv_first = Symbolics.derivative(eq, var1)
             
             push!(first_order, deriv_first)
-            push!(row1, r...)
+            push!(row1, r)
+            # push!(row1, r...)
             push!(column1, c1)
             if max_perturbation_order >= 2 
                 for (c2, var2) in enumerate(vars_X)
@@ -208,6 +219,7 @@ Polyester.@batch for c1 in 1:length(vars_X)
         end
     end
 end
+    
 
 if max_perturbation_order >= 1
     if 𝓂.model_jacobian[2] == Int[]
@@ -302,16 +314,259 @@ if max_perturbation_order == 3
         if min_n_funcs == 1
             push!(funcs, write_derivatives_function(third_order[perm_vals], 1:length(third_order), Val(:string)))
         else
-            Polyester.@batch for i in 1:min(min_n_funcs, length(third_order))
+            # Polyester.@batch for i in 1:min(min_n_funcs, length(third_order))
+            for i in 1:min(min_n_funcs, length(third_order))
+                println(i)
                 indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
         
-                push!(funcs, write_derivatives_function(third_order[perm_vals][indices], indices, Val(:Symbolics)))
+                push!(funcs, write_derivatives_function(third_order[perm_vals][indices], indices, Val(:string)))
             end
         end
 
         𝓂.model_third_order_derivatives = (funcs, sparse(row3, column3, zero(column3), length(eqs_sub), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)))
     end
 end
+
+
+
+import MacroModelling: expand_steady_state
+parameters = 𝓂.parameter_values
+verbose = true
+tol = 1e-12
+
+SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
+    
+all_SS = expand_steady_state(SS_and_pars,𝓂)
+
+∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
+
+𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+
+∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+
+𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings)
+sum(abs.(𝐒₂) .< eps())
+∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
+
+import MacroModelling: A_mult_kron_power_3_B, mat_mult_kron
+𝑺₁ = 𝐒₁
+M₂ = 𝓂.solution.perturbation.second_order_auxilliary_matrices
+M₃ = 𝓂.solution.perturbation.third_order_auxilliary_matrices
+T = 𝓂.timings
+
+
+    # Indices and number of variables
+    i₊ = T.future_not_past_and_mixed_idx;
+    i₋ = T.past_not_future_and_mixed_idx;
+
+    n₋ = T.nPast_not_future_and_mixed
+    n₊ = T.nFuture_not_past_and_mixed
+    nₑ = T.nExo;
+    n = T.nVars
+    nₑ₋ = n₋ + 1 + nₑ
+
+    # 1st order solution
+    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]] |> sparse
+    droptol!(𝐒₁,tol)
+
+    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) spdiagm(ones(nₑ + 1))[1,:] zeros(nₑ + 1, nₑ)];
+
+    ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
+                                𝐒₁
+                                spdiagm(ones(nₑ₋))[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]];
+
+    𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
+                    zeros(n₋ + n + nₑ, nₑ₋)];
+
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+
+
+    ∇₁₊ = @views sparse(∇₁[:,1:n₊] * spdiagm(ones(n))[i₊,:])
+
+    spinv = sparse(inv(∇₁₊𝐒₁➕∇₁₀))
+    droptol!(spinv,tol)
+
+    B = spinv * ∇₁₊
+    droptol!(B,tol)
+
+    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + 𝐒₁ * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
+            𝐒₂
+            zeros(n₋ + nₑ, nₑ₋^2)];
+        
+    𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:] 
+            zeros(n₋ + n + nₑ, nₑ₋^2)];
+
+    aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
+
+    # 𝐗₃ = -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
+    𝐗₃ = -A_mult_kron_power_3_B(∇₃, aux)
+
+    tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
+    out = - ∇₃ * tmpkron - ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ - ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
+    𝐗₃ += out
+    
+    # tmp𝐗₃ = -∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
+    tmp𝐗₃ = -mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
+
+    tmpkron1 = -∇₂ *  ℒ.kron(𝐒₁₊╱𝟎,𝐒₂₊╱𝟎)
+    tmpkron2 = ℒ.kron(M₂.𝛔,𝐒₁₋╱𝟏ₑ)
+    out2 = tmpkron1 * tmpkron2 +  tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
+    
+    𝐗₃ += (tmp𝐗₃ + out2 + -∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)) * M₃.𝐏# |> findnz
+    
+    𝐗₃ += @views -∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]) * M₃.𝐏
+    droptol!(𝐗₃,tol)
+    
+    X = spinv * 𝐗₃ * M₃.𝐂₃
+    droptol!(X,tol)
+    
+    tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
+    
+    C = M₃.𝐔₃ * tmpkron + M₃.𝐔₃ * M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐔₃ * M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
+    C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) # no speed up here from A_mult_kron_power_3_B
+    C *= M₃.𝐂₃
+    droptol!(C,tol)
+    M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
+
+    findnz(M₃.𝐔₃)
+    findnz(M₃.𝐂₃)
+rows, cols, vals = findnz(𝐒₁₋╱𝟏ₑ)
+
+combination(rows,3)
+rows = 1:6
+
+nk = n₋ + nₑ + 1
+third_order_idxs = [nk^2 * (i-1) + nk * (k-1) + l for i in 1:nk for k in 1:i for l in 1:k]
+
+third_order_idxs = [((i,k,l), length(unique((i,k,l))) == 1 ? 1 : length(unique((i,k,l))) == 2 ? 3 : 6) for i in 1:nk for k in 1:i for l in 1:k]
+
+
+third_order_idxs = Dict{Tuple{Int,Int,Int},Tuple{Int,Int}}()
+idx = 1
+for i in 1:nk 
+    for k in 1:i 
+        for l in 1:k
+            factor = length(unique((i,k,l))) == 1 ? 1 : length(unique((i,k,l))) == 2 ? 3 : 6
+            third_order_idxs[(i,k,l)] = (factor,idx)
+            idx += 1
+        end
+    end
+end
+
+valls = []
+for (r1, c1) in zip(rows,cols)
+    for (r2, c2) in zip(rows,cols)
+        for (r3, c3) in zip(rows,cols)
+            sorted_rows = Tuple(sort([r1,r2,r3],rev=true))
+            sorted_cols = (c1,c2,c3) # Tuple(sort([c1,c2,c3],rev=true))
+            if haskey(third_order_idxs, sorted_rows) && haskey(third_order_idxs, sorted_cols)
+                push!(valls,third_order_idxs[sorted_rows][1])
+            end
+        end
+    end
+end
+
+idxs = Set{Vector{Int}}()
+for k in unique(rows)
+    for j in unique(rows)
+        for i in unique(rows)
+            sorted_ids = sort([k,j,i])
+            push!(idxs, sorted_ids)
+        end
+    end
+end
+idxs|>typeof
+
+
+S = 𝐒₁₋╱𝟏ₑ
+
+M₃.𝐔₃[5,:]
+result = spzeros(size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
+
+for (r1, c1, v1) in zip(rows,cols,vals)
+    for (r2, c2 ,v2) in zip(rows,cols,vals)
+        for (r3, c3, v3) in zip(rows,cols,vals)
+# for i in 1:length(vals)
+#     for k in 1:i
+#         for l in 1:k
+#             r1, c1, v1 = [rows[i],cols[i],vals[i]]
+#             r2, c2, v2 = [rows[k],cols[k],vals[k]]
+#             r3, c3, v3 = [rows[l],cols[l],vals[l]]
+            # sorted_rows = (r1, r2, r3) # Tuple(sort([r1,r2,r3],rev=true))
+            # sorted_cols = (c1, c2, c3) # Tuple(sort([c1,c2,c3],rev=true))
+            sorted_rows = Tuple(sort([r1,r2,r3],rev=true))
+            sorted_cols = Tuple(sort([c1,c2,c3],rev=true))
+            if haskey(third_order_idxs, sorted_rows) && haskey(third_order_idxs, sorted_cols)# && result[third_order_idxs[sorted_rows][2], third_order_idxs[sorted_cols][2]] == 0
+                result[third_order_idxs[sorted_rows][2], third_order_idxs[sorted_cols][2]] += v1*v2*v3# * min(third_order_idxs[sorted_rows][1], third_order_idxs[sorted_cols][1])
+            end
+        end
+    end
+end
+
+vals[1] * vals[1] * vals[3]
+
+third_order_idxs[(3,1,1)]
+findnz(result)[1] == findnz(M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃)[1]
+findnz(result)[2] == findnz(M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃)[2]
+findnz(result)[3]  - findnz(M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃)[3]
+
+isapprox(result, M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃)
+# Fill in the result matrix by iterating over the elements of S
+for i in 1:size(S, 1)
+    for j in 1:size(S, 2)
+        if S[i, j] != 0
+            for k in 1:size(S, 1)
+                if S[k, j] != 0
+                    for l in 1:size(S, 1)
+                        if S[l, j] != 0
+                            sorted_ids = sort([i, k, l])
+                            row_index = (sorted_ids[3] - 1) * nₑ₋^2 + (sorted_ids[2] - 1) * nₑ₋ + sorted_ids[1]
+                            col_index = nₑ₋^2 * (i - 1) + nₑ₋ * (k - 1) + l
+                            result[col_index, row_index] += S[i, j] * S[k, j] * S[l, j]
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+
+
+
+
+    r1,c1,v1 = findnz(B)
+    r2,c2,v2 = findnz(C)
+    r3,c3,v3 = findnz(X)
+
+    coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    push!(coordinates,(r1,c1))
+    push!(coordinates,(r2,c2))
+    push!(coordinates,(r3,c3))
+    
+    values = vcat(v1, v2, v3)
+
+    dimensions = Tuple{Int, Int}[]
+    push!(dimensions,size(B))
+    push!(dimensions,size(C))
+    push!(dimensions,size(X))
+
+    𝐒₃, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres, sparse_output = true)
+
+    if !solved
+        return 𝐒₃, solved
+    end
+
+    𝐒₃ *= M₃.𝐔₃
+
+
+
+
+𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+
+𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+
+
 
 
 𝓂.model_third_order_derivatives[1] |> length
