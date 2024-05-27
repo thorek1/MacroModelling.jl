@@ -4992,13 +4992,18 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     column2 = Int[]
     column3 = Int[]
 
-    for (c1, var1) in enumerate(vars_X)
-        for (r, eq) in enumerate(eqs_sub)
+    Polyester.@batch for rc1 in 0:length(vars_X) * length(eqs_sub) - 1
+    # for rc1 in 0:length(vars_X) * length(eqs_sub) - 1
+    # for (c1, var1) in enumerate(vars_X)
+        # for (r, eq) in enumerate(eqs_sub)
+        r, c1 = divrem(rc1, length(vars_X)) .+ 1
+        var1 = vars_X[c1]
             if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
                 deriv_first = Symbolics.derivative(eq, var1)
                 
                 push!(first_order, deriv_first)
-                push!(row1, r)
+                # push!(row1, r)
+                push!(row1, r...)
                 push!(column1, c1)
                 if max_perturbation_order >= 2 
                     for (c2, var2) in enumerate(vars_X)
@@ -5023,7 +5028,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
                     end
                 end
             end
-        end
+        # end
     end
     
     if max_perturbation_order >= 1
