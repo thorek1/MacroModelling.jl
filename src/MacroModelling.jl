@@ -4746,6 +4746,13 @@ end
 
 
 
+function add_sparse_entries!(P, perm)
+    n = size(P, 1)
+    for i in 1:n
+        P[perm[i], i] += 1.0
+    end
+end
+
 
 function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::Vector{Int})    
     # Indices and number of variables
@@ -4761,7 +4768,7 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
     colls3 = [nₑ₋^2 * (i-1) + nₑ₋ * (k-1) + l for i in 1:nₑ₋ for k in 1:i for l in 1:k]
     𝐂∇₃ = sparse(colls3, 1:length(colls3) , 1.0)
     
-    idxs = []
+    idxs = Int[]
     for k in 1:nₑ₋
         for j in 1:nₑ₋
             for i in 1:nₑ₋
@@ -4778,7 +4785,7 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
     colls3 = [nₑ₋^2 * (i-1) + nₑ₋ * (k-1) + l for i in 1:nₑ₋ for k in 1:i for l in 1:k]
     𝐂₃ = sparse(colls3, 1:length(colls3) , 1.0)
     
-    idxs = []
+    idxs = Int[]
     for k in 1:nₑ₋
         for j in 1:nₑ₋
             for i in 1:nₑ₋
@@ -4792,9 +4799,17 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
     
     # permutation matrices
     M = reshape(1:nₑ₋^3,1,nₑ₋,nₑ₋,nₑ₋)
-    𝐏 = @views sparse(reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 4, 2, 3])],nₑ₋^3,nₑ₋^3)
-                        + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 4, 3])],nₑ₋^3,nₑ₋^3)
-                        + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 3, 4])],nₑ₋^3,nₑ₋^3))
+
+    𝐏 = spzeros(nₑ₋^3, nₑ₋^3)  # Preallocate the sparse matrix
+
+    # Create the permutations directly
+    add_sparse_entries!(𝐏, PermutedDimsArray(M, (1, 4, 2, 3)))
+    add_sparse_entries!(𝐏, PermutedDimsArray(M, (1, 2, 4, 3)))
+    add_sparse_entries!(𝐏, PermutedDimsArray(M, (1, 2, 3, 4)))
+
+    # 𝐏 = @views sparse(reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 4, 2, 3])],nₑ₋^3,nₑ₋^3)
+    #                     + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 4, 3])],nₑ₋^3,nₑ₋^3)
+    #                     + reshape(spdiagm(ones(nₑ₋^3))[:,PermutedDimsArray(M,[1, 2, 3, 4])],nₑ₋^3,nₑ₋^3))
 
     𝐏₁ₗ = sparse(spdiagm(ones(nₑ₋^3))[vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(2,1,3))),:])
     𝐏₁ᵣ = sparse(spdiagm(ones(nₑ₋^3))[:,vec(permutedims(reshape(1:nₑ₋^3,nₑ₋,nₑ₋,nₑ₋),(2,1,3)))])
@@ -4811,7 +4826,7 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
 
     ∇₃_col_indices_extended = findnz(sparse(ones(Int,length(∇₃_col_indices)),∇₃_col_indices,ones(Int,length(∇₃_col_indices)),1,size(𝐔∇₃,1)) * 𝐔∇₃)[2]
 
-    nonnull_columns = Set()
+    nonnull_columns = Set{Int}()
     for i in 1:n̄ 
         for j in i:n̄ 
             for k in j:n̄ 
