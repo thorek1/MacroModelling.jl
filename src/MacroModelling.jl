@@ -772,6 +772,8 @@ function kron³(A::SparseMatrixCSC{T}, M₃::third_order_auxilliary_matrices) wh
     # Using a single iteration over non-zero elements
     nvals = length(vals)
 
+    lk = ReentrantLock()
+
     Polyester.@batch for i in 1:nvals
         for j in 1:nvals
             for k in 1:nvals
@@ -788,10 +790,17 @@ function kron³(A::SparseMatrixCSC{T}, M₃::third_order_auxilliary_matrices) wh
 
                     key = (row_idx, col_idx)
 
-                    if haskey(result_dict, key)
-                        result_dict[key] += v1 * v2 * v3
-                    else
-                        result_dict[key] = v1 * v2 * v3
+                    begin
+                        lock(lk)
+                        try
+                            if haskey(result_dict, key)
+                                result_dict[key] += v1 * v2 * v3
+                            else
+                                result_dict[key] = v1 * v2 * v3
+                            end
+                        finally
+                            unlock(lk)
+                        end
                     end
                 end
             end
