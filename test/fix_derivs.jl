@@ -481,6 +481,8 @@ idxs|>typeof
 S = 𝐒₁₋╱𝟏ₑ
 
 M₃.𝐔₃[5,:]
+
+
 result = spzeros(size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
 
 for (r1, c1, v1) in zip(rows,cols,vals)
@@ -493,9 +495,9 @@ for (r1, c1, v1) in zip(rows,cols,vals)
 #             r2, c2, v2 = [rows[k],cols[k],vals[k]]
 #             r3, c3, v3 = [rows[l],cols[l],vals[l]]
             # sorted_rows = (r1, r2, r3) # Tuple(sort([r1,r2,r3],rev=true))
-            # sorted_cols = (c1, c2, c3) # Tuple(sort([c1,c2,c3],rev=true))
+            sorted_cols = (c1, c2, c3) # Tuple(sort([c1,c2,c3],rev=true))
             sorted_rows = Tuple(sort([r1,r2,r3],rev=true))
-            sorted_cols = Tuple(sort([c1,c2,c3],rev=true))
+            # sorted_cols = Tuple(sort([c1,c2,c3],rev=true))
             if haskey(third_order_idxs, sorted_rows) && haskey(third_order_idxs, sorted_cols)# && result[third_order_idxs[sorted_rows][2], third_order_idxs[sorted_cols][2]] == 0
                 result[third_order_idxs[sorted_rows][2], third_order_idxs[sorted_cols][2]] += v1*v2*v3# * min(third_order_idxs[sorted_rows][1], third_order_idxs[sorted_cols][1])
             end
