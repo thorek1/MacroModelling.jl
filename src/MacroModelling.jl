@@ -8079,27 +8079,37 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
         CA = similar(A)
         A² = similar(A)
         while change > eps(Float32) && iter < 500
-            # 𝐂¹ .= A * 𝐂 * A' + 𝐂
-            mul!(CA, 𝐂, A')
-            mul!(𝐂¹, A, CA, 1, 1)
-    
-            # A .*= A
-            mul!(A², A, A)
-            copy!(A, A²)
-    
-            if !(A isa DenseMatrix)
+            if A isa DenseMatrix
+                
+                mul!(CA, 𝐂, A')
+                mul!(𝐂¹, A, CA, 1, 1)
+        
+                mul!(A², A, A)
+                copy!(A, A²)
+                
+                if iter > 10
+                    ℒ.axpy!(-1, 𝐂¹, 𝐂)
+                    change = maximum(abs, 𝐂)
+                end
+        
+                copy!(𝐂, 𝐂¹)
+        
+                iter += 1
+            else
+                𝐂¹ = A * 𝐂 * A' + 𝐂
+        
+                A *= A
+                
                 droptol!(A, eps())
+
+                if iter > 10
+                    change = maximum(abs, 𝐂¹ - 𝐂)
+                end
+        
+                𝐂 = 𝐂¹
+                
+                iter += 1
             end
-            
-            if iter > 10
-                ℒ.axpy!(-1, 𝐂¹, 𝐂)
-                change = maximum(abs, 𝐂)
-            end
-    
-            # 𝐂 = 𝐂¹
-            copy!(𝐂, 𝐂¹)
-    
-            iter += 1
         end
         solved = change < eps(Float32)
     elseif solver == :sylvester
