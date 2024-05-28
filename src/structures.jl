@@ -166,7 +166,8 @@ end
 struct third_order_auxilliary_matrices
     𝐂₃::SparseMatrixCSC{Int}
     𝐔₃::SparseMatrixCSC{Int}
-
+    𝐈₃::Dict{Vector{Int}, Int}
+    
     𝐔∇₃::SparseMatrixCSC{Int}
 
     𝐏::SparseMatrixCSC{Int}

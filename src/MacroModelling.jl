@@ -763,6 +763,55 @@ function mat_mult_kron(A::AbstractArray{T},B::AbstractArray{T},C::AbstractArray{
     sparse(rows,cols,vals,size(A,1),n_colB*n_colC)
 end
 
+function kron³(A::SparseMatrixCSC{T}, M₃::third_order_auxilliary_matrices) where T <: Real
+    rows, cols, vals = findnz(A)
+
+    # Dictionary to accumulate sums of values for each coordinate
+    result_dict = Dict{Tuple{Int, Int}, T}()
+
+    # Using a single iteration over non-zero elements
+    nvals = length(vals)
+
+    Polyester.@batch for i in 1:nvals
+        for j in 1:nvals
+            for k in 1:nvals
+                r1, c1, v1 = rows[i], cols[i], vals[i]
+                r2, c2, v2 = rows[j], cols[j], vals[j]
+                r3, c3, v3 = rows[k], cols[k], vals[k]
+                
+                sorted_cols = [c1, c2, c3]
+                sorted_rows = sort([r1, r2, r3], rev = true)
+                
+                if haskey(M₃.𝐈₃, sorted_rows) && haskey(M₃.𝐈₃, sorted_cols)
+                    row_idx = M₃.𝐈₃[sorted_rows]
+                    col_idx = M₃.𝐈₃[sorted_cols]
+
+                    key = (row_idx, col_idx)
+
+                    if haskey(result_dict, key)
+                        result_dict[key] += v1 * v2 * v3
+                    else
+                        result_dict[key] = v1 * v2 * v3
+                    end
+                end
+            end
+        end
+    end
+
+    # Extract indices and values from the dictionary
+    result_rows = Int[]
+    result_cols = Int[]
+    result_vals = T[]
+
+    for (ks, valu) in result_dict
+        push!(result_rows, ks[1])
+        push!(result_cols, ks[2])
+        push!(result_vals, valu)
+    end
+    
+    # Create the sparse matrix from the collected indices and values
+    sparse!(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
+end
 
 function A_mult_kron_power_3_B(A::AbstractArray{R},B::AbstractArray{T}; tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
     n_row = size(B,1)
@@ -4797,6 +4846,18 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
     
     𝐔₃ = 𝐂₃' * sparse(idxs,1:nₑ₋ ^ 3, 1)
     
+    # Precompute 𝐈₃
+    𝐈₃ = Dict{Vector{Int}, Int}()
+    idx = 1
+    for i in 1:nₑ₋
+        for k in 1:i 
+            for l in 1:k
+                𝐈₃[[i,k,l]] = idx
+                idx += 1
+            end
+        end
+    end
+
     # permutation matrices
     M = reshape(1:nₑ₋^3,1,nₑ₋,nₑ₋,nₑ₋)
 
@@ -4841,7 +4902,7 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
             
     𝐒𝐏 = sparse(collect(nonnull_columns), collect(nonnull_columns), 1, n̄, n̄)
 
-    return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
+    return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐈₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
 end
 
 
@@ -7245,8 +7306,9 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
     
     C = M₃.𝐔₃ * tmpkron + M₃.𝐔₃ * M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐔₃ * M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
-    C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) # no speed up here from A_mult_kron_power_3_B; this is the bottleneck. ideally have this return reduced space directly. TODO: write compressed kron3
     C *= M₃.𝐂₃
+    # C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) # no speed up here from A_mult_kron_power_3_B; this is the bottleneck. ideally have this return reduced space directly. TODO: write compressed kron3
+    C += kron³(𝐒₁₋╱𝟏ₑ, M₃)
     droptol!(C,tol)
 
     r1,c1,v1 = findnz(B)
