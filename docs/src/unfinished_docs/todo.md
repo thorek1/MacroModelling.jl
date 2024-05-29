@@ -7,6 +7,8 @@
 - [ ] FastDifferentiation is faster in tkaing derivatives and more efficient in writing functions but does not support custom functions (e.g. normlogpdf)
 - [ ] fix this inference errors for large fuctions. they are slow. fix derivatives in general.
 - [ ] check downgrade tests
+- [ ] put write_derivatives_function and lock structure inside function
+- [ ] take apart solve_matrix_equation for various cases
 - [ ] try static arrays in KF
 - [ ] check derivatives of erfcinv with Symbolics. seems off
 - [ ] have a workspace in the model object. to be accessed for example by the riccati solver at each run (instead of initialising values at each function call)
@@ -47,6 +49,7 @@
 - [ ] make inversion filter / higher order sols suitable for HMC (forward and reverse diff!!, currently only analytical pushforward, no implicitdiff) | analytic derivatives
 - [ ] speed up sparse matrix calcs in implicit diff of higher order funcs
 - [ ] compressed higher order derivatives and sparsity of jacobian
+- [ ] dont use SS_solve_func but the wrapper instead (write forwarddiff wrapper)
 - [ ] add user facing option to choose sylvester solver
 - [ ] autocorr and covariance with derivatives. return 3d array
 - [ ] use ID for sparse output sylvester solvers (filed issue)
