@@ -782,9 +782,10 @@ function kron³(A::SparseMatrixCSC{T}, M₃::third_order_auxilliary_matrices) wh
                 r3, c3, v3 = rows[k], cols[k], vals[k]
                 
                 sorted_cols = [c1, c2, c3]
-                sorted_rows = sort([r1, r2, r3], rev = true)
+                sorted_rows = [r1, r2, r3] # a lot of time spent here
+                sort!(sorted_rows, rev = true) # a lot of time spent here
                 
-                if haskey(M₃.𝐈₃, sorted_rows) && haskey(M₃.𝐈₃, sorted_cols)
+                if haskey(M₃.𝐈₃, sorted_cols) # && haskey(M₃.𝐈₃, sorted_rows) # a lot of time spent here
                     row_idx = M₃.𝐈₃[sorted_rows]
                     col_idx = M₃.𝐈₃[sorted_cols]
 
