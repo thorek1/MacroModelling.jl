@@ -820,7 +820,7 @@ function kron³(A::SparseMatrixCSC{T}, M₃::third_order_auxilliary_matrices) wh
     end
     
     # Create the sparse matrix from the collected indices and values
-    if VERSION > v"1.9"
+    if VERSION => v"1.10"
         return sparse!(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
     else
         return sparse(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
