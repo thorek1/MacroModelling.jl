@@ -104,7 +104,7 @@ function plot_model_estimates(𝓂::ℳ,
                     guidefont = 8, 
                     legendfontsize = 8, 
                     tickfontsize = 8,
-                    framestyle = :box)
+                    framestyle = :semi)
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
@@ -399,7 +399,7 @@ function plot_irf(𝓂::ℳ;
                     guidefont = 8, 
                     legendfontsize = 8, 
                     tickfontsize = 8,
-                    framestyle = :box)
+                    framestyle = :semi)
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -850,7 +850,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                     guidefont = 8, 
                     legendfontsize = 8, 
                     tickfontsize = 8,
-                    framestyle = :box)
+                    framestyle = :semi)
 
     fevds = get_conditional_variance_decomposition(𝓂,
                                                     periods = 1:periods,
@@ -1028,7 +1028,7 @@ function plot_solution(𝓂::ℳ,
                     guidefont = 8, 
                     legendfontsize = 8, 
                     tickfontsize = 8,
-                    framestyle = :box)
+                    framestyle = :semi)
 
     state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
 
@@ -1378,7 +1378,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                     guidefont = 8, 
                     legendfontsize = 8, 
                     tickfontsize = 8,
-                    framestyle = :box)
+                    framestyle = :semi)
 
     conditions = conditions isa KeyedArray ? axiskeys(conditions,1) isa Vector{String} ? rekey(conditions, 1 => axiskeys(conditions,1) .|> Meta.parse .|> replace_indices) : conditions : conditions
 

@@ -188,6 +188,7 @@ n_samples = 1000
 
 samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = inits)
 
+println(samps)
 println(mean(samps).nt.mean)
 
 # estimate nonlinear model
@@ -229,4 +230,5 @@ n_samples = 1000
 
 samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = inits)
 
+println(samps)
 println(mean(samps).nt.mean)
