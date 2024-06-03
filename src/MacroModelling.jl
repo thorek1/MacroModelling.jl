@@ -278,7 +278,7 @@ function reverse_transformation(transformed_expr::Expr, reverse_dict::Dict{Symbo
 end
 
 
-function transform_obc(ex::Expr)
+function transform_obc(ex::Expr; avoid_solve::Bool = false)
     transformed_expr, reverse_dict = transform_expression(ex)
 
     for symbs in get_symbols(transformed_expr)
@@ -287,8 +287,12 @@ function transform_obc(ex::Expr)
 
     eq = eval(transformed_expr)
 
-    soll = try SPyPyC.solve(eq, eval(:minmax__P))
-    catch
+    if avoid_solve && count_ops(Meta.parse(string(eq))) > 15
+        soll = nothing
+    else
+        soll = try SPyPyC.solve(eq, eval(:minmax__P))
+        catch
+        end
     end
 
     if length(soll) == 1
@@ -1296,8 +1300,20 @@ function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
     return filter(r -> match(pattern, string(r)) !== nothing, strings)
 end
 
+
+function count_ops(expr)
+    op_count = 0
+    postwalk(x -> begin
+        if x isa Expr && x.head == :call
+            op_count += 1
+        end
+        x
+    end, expr)
+    return op_count
+end
+
 # try: run optim only if there is a violation / capture case with small shocks and set them to zero
-function parse_occasionally_binding_constraints(equations_block; max_obc_horizon::Int = 40)
+function parse_occasionally_binding_constraints(equations_block; max_obc_horizon::Int = 40, avoid_solve::Bool = false)
     # precision_factor = 1e  #factor to force the optimiser to have non-relevatn shocks at zero
 
     eqs = []
@@ -2076,7 +2092,7 @@ end
 
 
 
-function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
+function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve::Bool = false)
     ss_equations = Symbolics.ss_equations
 
     # check variables which appear in two time periods. they might be redundant in steady state
@@ -2094,11 +2110,15 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics)
     redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(Symbolics.var_list) .> 1))
 
     for i in redundant_idx
-        for var_to_solve_for in redundant_vars[i]
-            soll = try SPyPyC.solve(ss_equations[i],var_to_solve_for)
-            catch
+        for var_to_solve_for in redundant_vars[i]            
+            if avoid_solve && count_ops(Meta.parse(string(ss_equations[i]))) > 15
+                soll = nothing
+            else
+                soll = try SPyPyC.solve(ss_equations[i],var_to_solve_for)
+                catch
+                end
             end
-            
+
             if isnothing(soll)
                 continue
             end
@@ -2517,7 +2537,7 @@ end
 
 
 
-function partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset)
+function partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset; avoid_solve::Bool = false)
     for n in length(eqs_to_solve)-1:-1:2
         for eq_combo in combinations(1:length(eqs_to_solve), n)
             var_indices_to_select_from = findall([sum(incidence_matrix_subset[:,eq_combo],dims = 2)...] .> 0)
@@ -2527,9 +2547,13 @@ function partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset)
             for var_combo in combinations(var_indices_to_select_from, n)
                 remaining_vars_in_remaining_eqs = setdiff(var_indices_in_remaining_eqs, var_combo)
                 # println("Solving for: ",vars_to_solve[var_combo]," in: ",eqs_to_solve[eq_combo])
-                if length(remaining_vars_in_remaining_eqs) == length(eqs_to_solve) - n # not sure whether this condition needs to be there. could be because if the last remaining vars not solved for in the block is not present in the remaining block he will not be able to solve it for the same reasons he wasnt able to solve the unpartitioned block
-                    soll = try SPyPyC.solve(eqs_to_solve[eq_combo], vars_to_solve[var_combo])
-                    catch
+                if length(remaining_vars_in_remaining_eqs) == length(eqs_to_solve) - n # not sure whether this condition needs to be there. could be because if the last remaining vars not solved for in the block is not present in the remaining block he will not be able to solve it for the same reasons he wasnt able to solve the unpartitioned block 
+                    if avoid_solve && count_ops(Meta.parse(string(eqs_to_solve[eq_combo]))) > 15
+                        soll = nothing
+                    else
+                        soll = try SPyPyC.solve(eqs_to_solve[eq_combo], vars_to_solve[var_combo])
+                        catch
+                        end
                     end
                     
                     if !(isnothing(soll) || length(soll) == 0)
@@ -3152,7 +3176,7 @@ function write_ss_check_function!(𝓂::ℳ)
 end
 
 
-function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false)
+function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false, avoid_solve::Bool = false)
     write_ss_check_function!(𝓂)
 
     unknowns = union(Symbolics.vars_in_ss_equations, Symbolics.calibration_equations_parameters)
@@ -3231,9 +3255,13 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 push!(min_max_errors,:(solution_error += abs($parsed_eq_to_solve_for)))
                 eq_to_solve = eval(minmax_fixed_eqs)
             end
-
-            soll = try SPyPyC.solve(eq_to_solve,var_to_solve_for)
-            catch
+            
+            if avoid_solve && count_ops(Meta.parse(string(eq_to_solve))) > 15
+                soll = nothing
+            else
+                soll = try SPyPyC.solve(eq_to_solve,var_to_solve_for)
+                catch
+                end
             end
             
             if isnothing(soll) || isempty(soll)
@@ -3292,8 +3320,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             numerical_sol = false
             
             if symbolic_SS
-                soll = try SPyPyC.solve(eqs_to_solve,vars_to_solve)
-                catch
+                if avoid_solve && count_ops(Meta.parse(string(eqs_to_solve))) > 15
+                    soll = nothing
+                else
+                    soll = try SPyPyC.solve(eqs_to_solve,vars_to_solve)
+                    catch
+                    end
                 end
 
                 if isnothing(soll) || length(soll) == 0 || length(intersect((union(SPyPyC.free_symbols.(soll[1])...) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
@@ -3330,7 +3362,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
                     # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)
                 else
-                    solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe])
+                    solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe], avoid_solve = avoid_solve)
                     
                     # if !isnothing(solved_system) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "LambertW")) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "Heaviside")) 
                     #     write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, 

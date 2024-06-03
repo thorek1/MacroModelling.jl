@@ -962,6 +962,7 @@ Parameters can be defined in either of the following ways:
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
 - `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. In case you want to work with higher order perturbation later on, respective derivatives will be taken at that stage.
+- `simplify` [Default: `true`, Type: `Bool`]: whether to elminiate redundant variables and simplify the non stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
 
 
 
@@ -1037,6 +1038,7 @@ macro parameters(𝓂,ex...)
     precompile = false
     perturbation_order = 1
     guess = Dict{Symbol,Float64}()
+    simplify = true
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -1054,6 +1056,8 @@ macro parameters(𝓂,ex...)
                         perturbation_order = x.args[2] :
                     x.args[1] == :guess && (isa(eval(x.args[2]), Dict{Symbol, <:Real}) || isa(eval(x.args[2]), Dict{String, <:Real})) ?
                         guess = x.args[2] :
+                    x.args[1] == :simplify && x.args[2] isa Bool ?
+                        simplify = x.args[2] :
                     begin
                         @warn "Invalid options. See docs: `?@parameters` for valid options." 
                         x
@@ -1455,7 +1459,7 @@ macro parameters(𝓂,ex...)
 
             symbolics = create_symbols_eqs!(mod.$𝓂)
 
-            remove_redundant_SS_vars!(mod.$𝓂, symbolics) 
+            remove_redundant_SS_vars!(mod.$𝓂, symbolics, avoid_solve = !$simplify) 
 
             if !$silent println(round(time() - start_time, digits = 3), " seconds") end
 
@@ -1464,7 +1468,7 @@ macro parameters(𝓂,ex...)
     
             if !$silent print("Set up non stochastic steady state problem:\t\t\t\t") end
 
-            solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 2nd argument is SS_symbolic
+            solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose, avoid_solve = !$simplify) # 2nd argument is SS_symbolic
 
             mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
             
