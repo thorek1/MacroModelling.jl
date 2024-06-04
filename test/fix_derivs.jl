@@ -38,14 +38,17 @@ model = m
 
 
 
+include("../models/Smets_Wouters_2007.jl")
+model = Smets_Wouters_2007
+
 # include("../models/QUEST3_2009.jl")
 # model = QUEST3_2009
 
 # # SS(model)
-# SSS(model, algorithm = :pruned_second_order)
+get_mean(model, algorithm = :pruned_second_order)
 # # @time SSS(model, algorithm = :pruned_second_order, parameters = :STD_EPS_ETA => 0.145)
 
-# SSS(model, algorithm = :pruned_third_order)
+SSS(model, algorithm = :pruned_third_order)
 
 get_std(model, algorithm = :pruned_third_order)
 
@@ -53,6 +56,8 @@ get_mean(model, algorithm = :pruned_second_order)
 
 get_irf(model, algorithm = :pruned_third_order)
 
+get_std(model, algorithm = :pruned_third_order)
+model.model_third_order_derivatives[2]
 # model.model_hessian[2]
 # model.model_hessian[1]|>length
 
@@ -332,7 +337,7 @@ end
 
 
 
-import MacroModelling: expand_steady_state
+import MacroModelling: expand_steady_state, kron³
 parameters = 𝓂.parameter_values
 verbose = true
 tol = 1e-12
@@ -351,7 +356,7 @@ all_SS = expand_steady_state(SS_and_pars,𝓂)
 sum(abs.(𝐒₂) .< eps())
 ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
 
-import MacroModelling: A_mult_kron_power_3_B, mat_mult_kron
+import MacroModelling: A_mult_kron_power_3_B, mat_mult_kron, kron³, solve_matrix_equation_forward
 𝑺₁ = 𝐒₁
 M₂ = 𝓂.solution.perturbation.second_order_auxilliary_matrices
 M₃ = 𝓂.solution.perturbation.third_order_auxilliary_matrices
@@ -428,8 +433,42 @@ T = 𝓂.timings
     C = M₃.𝐔₃ * tmpkron + M₃.𝐔₃ * M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐔₃ * M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
     # C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) # no speed up here from A_mult_kron_power_3_B
     C *= M₃.𝐂₃
+    # C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) # no speed up here from A_mult_kron_power_3_B; this is the bottleneck. ideally have this return reduced space directly. TODO: write compressed kron3
+    C += kron³(𝐒₁₋╱𝟏ₑ, M₃)
     droptol!(C,tol)
-    M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
+    
+    using BenchmarkTools
+    @benchmark kron³(𝐒₁₋╱𝟏ₑ, M₃)
+    @benchmark M₃.𝐔₃ * kron(𝐒₁₋╱𝟏ₑ,kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
+    
+    r1,c1,v1 = findnz(B)
+    r2,c2,v2 = findnz(C)
+    r3,c3,v3 = findnz(X)
+
+    coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    push!(coordinates,(r1,c1))
+    push!(coordinates,(r2,c2))
+    push!(coordinates,(r3,c3))
+    
+    values = vcat(v1, v2, v3)
+
+    dimensions = Tuple{Int, Int}[]
+    push!(dimensions,size(B))
+    push!(dimensions,size(C))
+    push!(dimensions,size(X))
+
+    𝐒₃, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres, sparse_output = true)
+
+    if !solved
+        return 𝐒₃, solved
+    end
+
+    𝐒₃ *= M₃.𝐔₃
+
+
+
+
+
 
     findnz(M₃.𝐔₃)
     findnz(M₃.𝐂₃)
