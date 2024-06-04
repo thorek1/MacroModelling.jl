@@ -15,7 +15,6 @@ import MacroModelling: get_non_stochastic_steady_state, get_symbols, write_deriv
 # include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
 
 include("models/RBC_CME.jl")
-
 model = m
 
 # get_moments(model, parameter_derivatives = :alpha)
@@ -48,7 +47,11 @@ model = m
 
 # SSS(model, algorithm = :pruned_third_order)
 
-# get_irf(model, algorithm = :pruned_third_order)
+get_std(model, algorithm = :pruned_third_order)
+
+get_mean(model, algorithm = :pruned_second_order)
+
+get_irf(model, algorithm = :pruned_third_order)
 
 # model.model_hessian[2]
 # model.model_hessian[1]|>length
@@ -423,87 +426,241 @@ T = 𝓂.timings
     tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
     
     C = M₃.𝐔₃ * tmpkron + M₃.𝐔₃ * M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐔₃ * M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
-    C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) # no speed up here from A_mult_kron_power_3_B
+    # C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) # no speed up here from A_mult_kron_power_3_B
     C *= M₃.𝐂₃
     droptol!(C,tol)
     M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
 
     findnz(M₃.𝐔₃)
     findnz(M₃.𝐂₃)
+
+
+
+
+# nk = n₋ + nₑ + 1
+# third_order_idxs = [nk^2 * (i-1) + nk * (k-1) + l for i in 1:nk for k in 1:i for l in 1:k]
+
+# third_order_idxs = [((i,k,l), length(unique((i,k,l))) == 1 ? 1 : length(unique((i,k,l))) == 2 ? 3 : 6) for i in 1:nk for k in 1:i for l in 1:k]
+
+import Polyester
+
+# Assuming nk is defined somewhere in your code
+# rows, cols, vals should be precomputed from findnz(𝐒₁₋╱𝟏ₑ)
 rows, cols, vals = findnz(𝐒₁₋╱𝟏ₑ)
 
-combination(rows,3)
-rows = 1:6
-
-nk = n₋ + nₑ + 1
-third_order_idxs = [nk^2 * (i-1) + nk * (k-1) + l for i in 1:nk for k in 1:i for l in 1:k]
-
-third_order_idxs = [((i,k,l), length(unique((i,k,l))) == 1 ? 1 : length(unique((i,k,l))) == 2 ? 3 : 6) for i in 1:nk for k in 1:i for l in 1:k]
-
-
-third_order_idxs = Dict{Tuple{Int,Int,Int},Tuple{Int,Int}}()
+# Precompute third_order_idxs
+third_order_idxs = Dict{Vector{Int}, Int}()
 idx = 1
 for i in 1:nk 
     for k in 1:i 
         for l in 1:k
-            factor = length(unique((i,k,l))) == 1 ? 1 : length(unique((i,k,l))) == 2 ? 3 : 6
-            third_order_idxs[(i,k,l)] = (factor,idx)
+            third_order_idxs[[i,k,l]] = idx
+            idx += 1
+        end
+    end
+end
+using BenchmarkTools
+import SparseArrays
+
+
+ 
+𝐈₃ = Dict{Vector{Int}, Int}()
+idxs = Int[]
+idx = 1
+for k in 1:nₑ₋
+    for j in 1:nₑ₋
+        for i in 1:nₑ₋
+            sorted_ids = sort([k,j,i])
+
+            if !haskey(𝐈₃, reverse(sorted_ids))
+                𝐈₃[reverse(sorted_ids)] = idx
+                idx += 1
+            end
+
+            push!(idxs, (sorted_ids[3] - 1) * nₑ₋ ^ 2 + (sorted_ids[2] - 1) * nₑ₋ + sorted_ids[1])
+        end
+    end
+end
+
+
+    # Dictionary to accumulate sums of values for each coordinate
+    result_dict = Dict{Tuple{Int, Int}, Float64}()
+
+    # Using a single iteration over non-zero elements
+    nvals = length(vals)
+    Polyester.@batch for i in 1:nvals
+        for j in 1:nvals
+            for k in 1:nvals
+                r1, c1, v1 = rows[i], cols[i], vals[i]
+                r2, c2, v2 = rows[j], cols[j], vals[j]
+                r3, c3, v3 = rows[k], cols[k], vals[k]
+                
+                sorted_cols = [c1, c2, c3]
+                sorted_rows = sort([r1, r2, r3], rev = true)
+                
+                if haskey(𝐈₃, sorted_rows) && haskey(𝐈₃, sorted_cols)
+                    row_idx = 𝐈₃[sorted_rows]
+                    col_idx = 𝐈₃[sorted_cols]
+
+                    key = (row_idx, col_idx)
+
+                    if haskey(result_dict, key)
+                        result_dict[key] += v1 * v2 * v3
+                    else
+                        result_dict[key] = v1 * v2 * v3
+                    end
+                end
+            end
+        end
+    end
+
+    # Extract indices and values from the dictionary
+    result_rows = Int[]
+    result_cols = Int[]
+    result_vals = Float64[]
+
+    for (ks, valu) in result_dict
+        push!(result_rows, ks[1])
+        push!(result_cols, ks[2])
+        push!(result_vals, valu)
+    end
+    
+    # Create the sparse matrix from the collected indices and values
+    SparseArrays.sparse!(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
+
+    
+
+
+@benchmark begin
+    # Dictionary to accumulate sums of values for each coordinate
+    result_dict = Dict{Tuple{Int, Int}, Float64}()
+
+    # Using a single iteration over non-zero elements
+    nvals = length(vals)
+    Polyester.@batch for i in 1:nvals
+        for j in 1:nvals
+            for k in 1:nvals
+                r1, c1, v1 = rows[i], cols[i], vals[i]
+                r2, c2, v2 = rows[j], cols[j], vals[j]
+                r3, c3, v3 = rows[k], cols[k], vals[k]
+                
+                sorted_cols = [c1, c2, c3]
+                sorted_rows = sort([r1, r2, r3], rev = true)
+                
+                if haskey(third_order_idxs, sorted_rows) && haskey(third_order_idxs, sorted_cols)
+                    row_idx = third_order_idxs[sorted_rows]
+                    col_idx = third_order_idxs[sorted_cols]
+
+                    key = (row_idx, col_idx)
+
+                    if haskey(result_dict, key)
+                        result_dict[key] += v1 * v2 * v3
+                    else
+                        result_dict[key] = v1 * v2 * v3
+                    end
+                end
+            end
+        end
+    end
+
+    # Extract indices and values from the dictionary
+    result_rows = Int[]
+    result_cols = Int[]
+    result_vals = Float64[]
+
+    for (ks, valu) in result_dict
+        push!(result_rows, ks[1])
+        push!(result_cols, ks[2])
+        push!(result_vals, valu)
+    end
+    
+    # Create the sparse matrix from the collected indices and values
+    SparseArrays.sparse!(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
+end 
+
+
+
+@benchmark begin
+# Initialize the result matrix
+result = spzeros(size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
+
+# Using a single iteration over non-zero elements
+nvals = length(vals)
+for i in 1:nvals
+    for j in 1:nvals
+        for k in 1:nvals
+            r1, c1, v1 = rows[i], cols[i], vals[i]
+            r2, c2, v2 = rows[j], cols[j], vals[j]
+            r3, c3, v3 = rows[k], cols[k], vals[k]
+            
+            sorted_cols = [c1, c2, c3]
+            sorted_rows = sort([r1, r2, r3], rev = true)
+            
+            if haskey(third_order_idxs, sorted_rows) && haskey(third_order_idxs, sorted_cols)
+                result[third_order_idxs[sorted_rows], third_order_idxs[sorted_cols]] += v1 * v2 * v3
+            end
+        end
+    end
+end
+
+end
+
+rows, cols, vals = findnz(𝐒₁₋╱𝟏ₑ)
+
+
+
+third_order_idxs = Dict{Vector{Int}, Int}()
+idx = 1
+for i in 1:nk 
+    for k in 1:i 
+        for l in 1:k
+            third_order_idxs[[i,k,l]] = idx
             idx += 1
         end
     end
 end
 
-valls = []
-for (r1, c1) in zip(rows,cols)
-    for (r2, c2) in zip(rows,cols)
-        for (r3, c3) in zip(rows,cols)
-            sorted_rows = Tuple(sort([r1,r2,r3],rev=true))
-            sorted_cols = (c1,c2,c3) # Tuple(sort([c1,c2,c3],rev=true))
-            if haskey(third_order_idxs, sorted_rows) && haskey(third_order_idxs, sorted_cols)
-                push!(valls,third_order_idxs[sorted_rows][1])
-            end
-        end
-    end
-end
-
-idxs = Set{Vector{Int}}()
-for k in unique(rows)
-    for j in unique(rows)
-        for i in unique(rows)
-            sorted_ids = sort([k,j,i])
-            push!(idxs, sorted_ids)
-        end
-    end
-end
-idxs|>typeof
-
-
-S = 𝐒₁₋╱𝟏ₑ
-
-M₃.𝐔₃[5,:]
-
-
+@benchmark begin
 result = spzeros(size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
 
 for (r1, c1, v1) in zip(rows,cols,vals)
     for (r2, c2 ,v2) in zip(rows,cols,vals)
         for (r3, c3, v3) in zip(rows,cols,vals)
-# for i in 1:length(vals)
-#     for k in 1:i
-#         for l in 1:k
-#             r1, c1, v1 = [rows[i],cols[i],vals[i]]
-#             r2, c2, v2 = [rows[k],cols[k],vals[k]]
-#             r3, c3, v3 = [rows[l],cols[l],vals[l]]
-            # sorted_rows = (r1, r2, r3) # Tuple(sort([r1,r2,r3],rev=true))
-            sorted_cols = (c1, c2, c3) # Tuple(sort([c1,c2,c3],rev=true))
-            sorted_rows = Tuple(sort([r1,r2,r3],rev=true))
-            # sorted_cols = Tuple(sort([c1,c2,c3],rev=true))
-            if haskey(third_order_idxs, sorted_rows) && haskey(third_order_idxs, sorted_cols)# && result[third_order_idxs[sorted_rows][2], third_order_idxs[sorted_cols][2]] == 0
-                result[third_order_idxs[sorted_rows][2], third_order_idxs[sorted_cols][2]] += v1*v2*v3# * min(third_order_idxs[sorted_rows][1], third_order_idxs[sorted_cols][1])
+            sorted_cols = [c1, c2, c3]
+            sorted_rows = sort([r1, r2, r3], rev = true)
+            if haskey(third_order_idxs, sorted_rows) && haskey(third_order_idxs, sorted_cols)
+                result[third_order_idxs[sorted_rows], third_order_idxs[sorted_cols]] += v1 * v2 * v3
             end
         end
     end
 end
+
+end
+
+sort_rows = sortperm(rows)
+result = spzeros(size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
+
+# for (r1, c1, v1) in zip(rows,cols,vals)
+#     for (r2, c2 ,v2) in zip(rows,cols,vals)
+#         for (r3, c3, v3) in zip(rows,cols,vals)
+for i in 1:length(vals)
+    for k in 1:length(vals)
+        for l in 1:length(vals)
+            r1, c1, v1 = (rows[sort_rows][i],cols[sort_rows][i],vals[sort_rows][i])
+            r2, c2, v2 = (rows[sort_rows][k],cols[sort_rows][k],vals[sort_rows][k])
+            r3, c3, v3 = (rows[sort_rows][l],cols[sort_rows][l],vals[sort_rows][l])
+            sorted_cols = (c1, c2, c3)
+            sorted_rows = (r1, r2, r3) # Tuple(sort([r1,r2,r3],rev=true))
+            if haskey(third_order_idxs, sorted_cols) && haskey(third_order_idxs, sorted_rows)
+                factor = length(unique(sorted_rows)) == 1 ? 1 : length(unique(sorted_rows)) == 2 ? 3 : 6
+                result[third_order_idxs[sorted_rows], third_order_idxs[sorted_cols]] += factor * v1 * v2 * v3# * min(third_order_idxs[sorted_rows][1], third_order_idxs[sorted_cols][1])
+            end
+        end
+    end
+end
+
+
+
 
 vals[1] * vals[1] * vals[3]
 
