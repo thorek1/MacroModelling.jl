@@ -2974,7 +2974,6 @@ And data, 5-element Vector{Float64}:
  (:Equation₃)             0.0
  (:Equation₄)             0.0
  (:CalibrationEquation₁)  0.0
-```
 
 get_non_stochastic_steady_state_residuals(RBC, [1.1641597, 3.0635781, 1.2254312, 0.0, 0.18157895])
 # output
