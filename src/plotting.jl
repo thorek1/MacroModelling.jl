@@ -142,22 +142,7 @@ function plot_model_estimates(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    # filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
-
-    # variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
-    # shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
-    # decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
-
-
-    if filter == :kalman
-        filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
-
-        variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
-        shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
-        decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
-    elseif filter == :inversion
-        variables_to_plot, shocks_to_plot = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
-    end
+    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
 
     return_plots = []
 

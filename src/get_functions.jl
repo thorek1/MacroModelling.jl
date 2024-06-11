@@ -65,7 +65,10 @@ And data, 4×2×40 Array{Float64, 3}:
 function get_shock_decomposition(𝓂::ℳ,
     data::KeyedArray{Float64};
     parameters::ParameterType = nothing,
+    filter::Symbol = :kalman,
+    algorithm::Symbol = :first_order,
     data_in_levels::Bool = true,
+    warmup_iterations::Int = 0,
     smooth::Bool = true,
     verbose::Bool = false)
 
@@ -87,8 +90,8 @@ function get_shock_decomposition(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
-
+    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
+    
     axis1 = 𝓂.timings.var
 
     if any(x -> contains(string(x), "◖"), axis1)
@@ -106,7 +109,7 @@ function get_shock_decomposition(𝓂::ℳ,
         axis2 = vcat(map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), :Initial_values)
     end
 
-    return KeyedArray(filtered_and_smoothed[smooth ? 4 : 8][:,1:end-1,:];  Variables = axis1, Shocks = axis2, Periods = 1:size(data,2))
+    return KeyedArray(shocks[:,1:end-1,:];  Variables = axis1, Shocks = axis2, Periods = 1:size(data,2))
 end
 
 
@@ -193,13 +196,8 @@ function get_estimated_shocks(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    if filter == :kalman
-        filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
-        shocks = filtered_and_smoothed[smooth ? 3 : 7]
-    elseif filter == :inversion
-        states, shocks = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
-    end
-
+    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
+    
     axis1 = 𝓂.timings.exo
 
     if any(x -> contains(string(x), "◖"), axis1)
@@ -304,12 +302,7 @@ function get_estimated_variables(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    if filter == :kalman
-        filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
-        states = filtered_and_smoothed[smooth ? 1 : 5]
-    elseif filter == :inversion
-        states, shocks = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
-    end
+    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
 
     axis1 = 𝓂.timings.var
 
@@ -318,7 +311,7 @@ function get_estimated_variables(𝓂::ℳ,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    return KeyedArray(levels ? states .+ reference_steady_state[1:length(𝓂.var)] : states;  Variables = axis1, Periods = 1:size(data,2))
+    return KeyedArray(levels ? variables .+ reference_steady_state[1:length(𝓂.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
 end
 
 
@@ -397,7 +390,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(:first_order), Val(:kalman), smooth = smooth, verbose = verbose)
 
     axis1 = 𝓂.timings.var
 
@@ -406,7 +399,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    return KeyedArray(filtered_and_smoothed[smooth ? 2 : 6];  Standard_deviations = axis1, Periods = 1:size(data,2))
+    return KeyedArray(standard_deviations;  Standard_deviations = axis1, Periods = 1:size(data,2))
 end
 
 

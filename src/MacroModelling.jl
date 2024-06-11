@@ -6697,7 +6697,10 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
         push!(dimensions,size(tmp1))
         
         ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester)#, tol = eps()) # potentially high matrix condition numbers. precision matters
-        
+        if !solved
+            NoTangent(), NoTangent(), NoTangent()
+        end
+
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
         ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .+= ss * 𝐒̂ᵗ'
         ∂∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] .+= ss[:,T.past_not_future_and_mixed_idx]
@@ -9379,7 +9382,7 @@ function inversion_filter(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))
 
-    states = zeros(𝓂.timings.nVars, n_obs)
+    states = zeros(𝓂.timings.nVars, n_obs + 1)
     shocks = zeros(𝓂.timings.nExo, n_obs)
 
     precision_factor = 1.0
@@ -9414,6 +9417,8 @@ function inversion_filter(𝓂::ℳ,
         end
     end
     
+    states[:,1] = pruning ? sum(state) : state
+
     for i in axes(data_in_deviations,2)
         res = @suppress begin Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
                             zeros(𝓂.timings.nExo), 
@@ -9439,11 +9444,103 @@ function inversion_filter(𝓂::ℳ,
     
         state = state_update(state, x)
 
-        states[:,i] = pruning ? sum(state) : state
+        states[:,i+1] = pruning ? sum(state) : state
         shocks[:,i] = x
     end
         
     return states, shocks
+end
+
+
+function filter_data_with_model(𝓂::ℳ,
+    data_in_deviations::KeyedArray{Float64},
+    ::Val{:first_order}, # algo
+    ::Val{:kalman}; # filter
+    warmup_iterations::Int = 0,
+    smooth::Bool = true,
+    verbose::Bool = false)
+
+    obs_axis = collect(axiskeys(data_in_deviations,1))
+
+    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+
+    variables           = filtered_and_smoothed[smooth ? 1 : 5]
+    standard_deviations = filtered_and_smoothed[smooth ? 2 : 6]
+    shocks              = filtered_and_smoothed[smooth ? 3 : 7]
+    decomposition       = filtered_and_smoothed[smooth ? 4 : 8]
+
+    return variables, shocks, standard_deviations, decomposition
+end
+
+
+function filter_data_with_model(𝓂::ℳ,
+    data_in_deviations::KeyedArray{Float64},
+    ::Val{:first_order}, # algo
+    ::Val{:inversion}; # filter
+    warmup_iterations::Int = 0,
+    smooth::Bool = true,
+    verbose::Bool = false)
+
+    variables, shocks = inversion_filter(𝓂, data_in_deviations, :first_order, warmup_iterations = warmup_iterations)
+
+    return variables, shocks, [], []
+end
+
+
+function filter_data_with_model(𝓂::ℳ,
+    data_in_deviations::KeyedArray{Float64},
+    ::Val{:second_order}, # algo
+    ::Val{:inversion}; # filter
+    warmup_iterations::Int = 0,
+    smooth::Bool = true,
+    verbose::Bool = false)
+
+    variables, shocks = inversion_filter(𝓂, data_in_deviations, :second_order, warmup_iterations = warmup_iterations)
+
+    return variables, shocks, [], []
+end
+
+
+function filter_data_with_model(𝓂::ℳ,
+    data_in_deviations::KeyedArray{Float64},
+    ::Val{:pruned_second_order}, # algo
+    ::Val{:inversion}; # filter
+    warmup_iterations::Int = 0,
+    smooth::Bool = true,
+    verbose::Bool = false)
+
+    variables, shocks = inversion_filter(𝓂, data_in_deviations, :pruned_second_order, warmup_iterations = warmup_iterations)
+
+    return variables, shocks, [], []
+end
+
+function filter_data_with_model(𝓂::ℳ,
+    data_in_deviations::KeyedArray{Float64},
+    ::Val{:third_order}, # algo
+    ::Val{:inversion}; # filter
+    warmup_iterations::Int = 0,
+    smooth::Bool = true,
+    verbose::Bool = false)
+
+    variables, shocks = inversion_filter(𝓂, data_in_deviations, :third_order, warmup_iterations = warmup_iterations)
+
+    return variables, shocks, [], []
+end
+
+
+function filter_data_with_model(𝓂::ℳ,
+    data_in_deviations::KeyedArray{Float64},
+    ::Val{:pruned_third_order}, # algo
+    ::Val{:inversion}; # filter
+    warmup_iterations::Int = 0,
+    smooth::Bool = true,
+    verbose::Bool = false)
+
+    variables, shocks = inversion_filter(𝓂, data_in_deviations, :pruned_third_order, warmup_iterations = warmup_iterations)
+
+    return variables, shocks, [], []
 end
 
 
