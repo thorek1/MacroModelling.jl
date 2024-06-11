@@ -114,7 +114,7 @@ function plot_model_estimates(𝓂::ℳ,
         filter = :inversion
     end
 
-    if filter == :inversion
+    if filter == :inversion && algorithm ∈ [:second_order,:third_order]
         shock_decomposition = false
     end
 

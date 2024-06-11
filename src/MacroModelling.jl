@@ -9483,9 +9483,38 @@ function filter_data_with_model(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    variables, shocks = inversion_filter(𝓂, data_in_deviations, :first_order, warmup_iterations = warmup_iterations)
+    algorithm = :first_order
 
-    return variables, shocks, [], []
+    variables, shocks = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
+
+    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+
+    decomposition = zeros(𝓂.timings.nVars, 𝓂.timings.nExo + 2, size(data_in_deviations, 2))
+
+    initial_state = variables[:,1]
+
+    decomposition[:,end,:] .= variables[:,2:end]
+    for i in 1:𝓂.timings.nExo
+        sck = zeros(𝓂.timings.nExo)
+        sck[i] = shocks[i, 1]
+        decomposition[:,i,1] = state_update(initial_state , sck)
+    end
+
+    decomposition[:,end - 1,1] .= decomposition[:,end,1] - sum(decomposition[:,1:end-2,1], dims=2)
+
+    for i in 2:size(data_in_deviations,2)
+        for ii in 1:𝓂.timings.nExo
+            sck = zeros(𝓂.timings.nExo)
+            sck[ii] = shocks[ii, i]
+            decomposition[:,ii,i] = state_update(decomposition[:,ii, i-1], sck)
+        end
+
+        decomposition[:,end - 1,i] .= decomposition[:,end,i] - sum(decomposition[:,1:end-2,i], dims=2)
+    end
+
+    return variables, shocks, [], decomposition
 end
 
 
