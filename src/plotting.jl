@@ -107,6 +107,10 @@ function plot_model_estimates(𝓂::ℳ,
 
     attributes = merge(default_attributes, plot_attributes)
 
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
+
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
@@ -244,7 +248,8 @@ function plot_model_estimates(𝓂::ℳ,
                                         legend = :inside)
                                     end, 
                                     layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                    plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                    attributes_redux...)
 
             push!(return_plots,p)
 
@@ -285,7 +290,8 @@ function plot_model_estimates(𝓂::ℳ,
                                     legend = :inside)
                                 end, 
                                 layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-            plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                attributes_redux...)
 
         push!(return_plots,p)
 
@@ -381,6 +387,10 @@ function plot_irf(𝓂::ℳ;
     verbose::Bool = false)
 
     attributes = merge(default_attributes, plot_attributes)
+
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
@@ -673,7 +683,7 @@ function plot_irf(𝓂::ℳ;
                         shock_name = "shock_matrix"
                     end
 
-                    p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes...)
+                    p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
 
                     push!(return_plots,p)
 
@@ -707,7 +717,7 @@ function plot_irf(𝓂::ℳ;
                 shock_name = "shock_matrix"
             end
 
-            p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes...)
+            p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
 
             push!(return_plots,p)
 
@@ -828,6 +838,10 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
 
     attributes = merge(default_attributes, plot_attributes)
 
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
+
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     fevds = get_conditional_variance_decomposition(𝓂,
@@ -874,7 +888,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                         legend = :inside, 
                                         legend_columns = -1), 
                                         layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
 
             push!(return_plots,gr_back ? p : ppp)
 
@@ -901,7 +915,8 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                     legend = :inside, 
                                     legend_columns = -1), 
                                     layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                                    plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                    plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                    attributes_redux...)
 
         push!(return_plots,gr_back ? p : ppp)
 
@@ -1002,6 +1017,10 @@ function plot_solution(𝓂::ℳ,
     verbose::Bool = false)
 
     attributes = merge(default_attributes, plot_attributes)
+
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
 
     state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
 
@@ -1204,7 +1223,8 @@ function plot_solution(𝓂::ℳ,
             p = StatsPlots.plot(ppp,
                             legend_plot, 
                             layout = StatsPlots.grid(2, 1, heights = length(algorithm) > 3 ? [0.65, 0.35] : [0.8, 0.2]),
-                            plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+                            plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                            attributes_redux...
             )
 
             push!(return_plots,p)
@@ -1228,7 +1248,8 @@ function plot_solution(𝓂::ℳ,
         p = StatsPlots.plot(ppp,
                         legend_plot, 
                         layout = StatsPlots.grid(2, 1, heights = length(algorithm) > 3 ? [0.65, 0.35] : [0.8, 0.2]),
-                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                        attributes_redux...
         )
 
         push!(return_plots,p)
@@ -1345,6 +1366,10 @@ function plot_conditional_forecast(𝓂::ℳ,
     verbose::Bool = false)
 
     attributes = merge(default_attributes, plot_attributes)
+
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
@@ -1516,7 +1541,8 @@ function plot_conditional_forecast(𝓂::ℳ,
                                             legend = :inside)
                                         end, 
                                             layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                                            plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  ("*string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                            plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  ("*string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                            attributes_redux...)
                 
                 push!(return_plots,p)
 
@@ -1561,7 +1587,8 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 legend = :inside)
                                 end, 
                                     layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                    attributes_redux...)
         
         push!(return_plots,p)
 
