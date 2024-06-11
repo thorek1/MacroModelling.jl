@@ -1,5 +1,13 @@
 import LaTeXStrings
 
+const default_attributes = Dict(:size=>(700,500),
+                                :plot_titlefont => 10, 
+                                :titlefont => 10, 
+                                :guidefont => 8, 
+                                :legendfontsize => 8, 
+                                :tickfontsize => 8,
+                                :framestyle => :semi)
+
 """
 ```
 gr_backend()
@@ -94,17 +102,12 @@ function plot_model_estimates(𝓂::ℳ,
     save_plots_path::String = ".",
     plots_per_page::Int = 9,
     transparency::Float64 = .6,
+    plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    attributes = merge(default_attributes, plot_attributes)
 
-    StatsPlots.default(size=(700,500),
-                    plot_titlefont = 10, 
-                    titlefont = 10, 
-                    guidefont = 8, 
-                    legendfontsize = 8, 
-                    tickfontsize = 8,
-                    framestyle = :semi)
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
@@ -217,7 +220,7 @@ function plot_model_estimates(𝓂::ℳ,
         else
             plot_count = 1
 
-            ppp = StatsPlots.plot(pp...)
+            ppp = StatsPlots.plot(pp...; attributes...)
 
             # Legend
             p = StatsPlots.plot(ppp,begin
@@ -259,7 +262,7 @@ function plot_model_estimates(𝓂::ℳ,
     end
 
     if length(pp) > 0
-        ppp = StatsPlots.plot(pp...)
+        ppp = StatsPlots.plot(pp...; attributes...)
 
         p = StatsPlots.plot(ppp,begin
                                     StatsPlots.plot(framestyle = :none)
@@ -374,17 +377,12 @@ function plot_irf(𝓂::ℳ;
     generalised_irf::Bool = false,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
     ignore_obc::Bool = false,
+    plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    attributes = merge(default_attributes, plot_attributes)
 
-    StatsPlots.default(size=(700,500),
-                    plot_titlefont = 10, 
-                    titlefont = 10, 
-                    guidefont = 8, 
-                    legendfontsize = 8, 
-                    tickfontsize = 8,
-                    framestyle = :semi)
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -675,7 +673,7 @@ function plot_irf(𝓂::ℳ;
                         shock_name = "shock_matrix"
                     end
 
-                    p = StatsPlots.plot(pp...,plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                    p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes...)
 
                     push!(return_plots,p)
 
@@ -709,7 +707,7 @@ function plot_irf(𝓂::ℳ;
                 shock_name = "shock_matrix"
             end
 
-            p = StatsPlots.plot(pp...,plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")")
+            p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes...)
 
             push!(return_plots,p)
 
@@ -825,17 +823,12 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
     plots_per_page::Int = 9, 
+    plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    attributes = merge(default_attributes, plot_attributes)
 
-    StatsPlots.default(size=(700,500),
-                    plot_titlefont = 10, 
-                    titlefont = 10, 
-                    guidefont = 8, 
-                    legendfontsize = 8, 
-                    tickfontsize = 8,
-                    framestyle = :semi)
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     fevds = get_conditional_variance_decomposition(𝓂,
                                                     periods = 1:periods,
@@ -872,7 +865,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         else
             plot_count = 1
 
-            ppp = StatsPlots.plot(pp...)
+            ppp = StatsPlots.plot(pp...; attributes...)
 
             p = StatsPlots.plot(ppp,StatsPlots.bar(fill(0,1,length(shocks_to_plot)), 
                                         label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
@@ -899,7 +892,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     end
 
     if length(pp) > 0
-        ppp = StatsPlots.plot(pp...)
+        ppp = StatsPlots.plot(pp...; attributes...)
 
         p = StatsPlots.plot(ppp,StatsPlots.bar(fill(0,1,length(shocks_to_plot)), 
                                     label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
@@ -1005,15 +998,10 @@ function plot_solution(𝓂::ℳ,
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
     plots_per_page::Int = 6,
+    plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    StatsPlots.default(size=(700,500),
-                    plot_titlefont = 10, 
-                    titlefont = 10, 
-                    guidefont = 8, 
-                    legendfontsize = 8, 
-                    tickfontsize = 8,
-                    framestyle = :semi)
+    attributes = merge(default_attributes, plot_attributes)
 
     state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
 
@@ -1211,7 +1199,7 @@ function plot_solution(𝓂::ℳ,
         else
             plot_count = 1
 
-            ppp = StatsPlots.plot(pp...)
+            ppp = StatsPlots.plot(pp...; attributes...)
             
             p = StatsPlots.plot(ppp,
                             legend_plot, 
@@ -1235,7 +1223,7 @@ function plot_solution(𝓂::ℳ,
     end
 
     if length(pp) > 0
-        ppp = StatsPlots.plot(pp...)
+        ppp = StatsPlots.plot(pp...; attributes...)
             
         p = StatsPlots.plot(ppp,
                         legend_plot, 
@@ -1353,17 +1341,12 @@ function plot_conditional_forecast(𝓂::ℳ,
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
     plots_per_page::Int = 9,
+    plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    attributes = merge(default_attributes, plot_attributes)
 
-    StatsPlots.default(size=(700,500),
-                    plot_titlefont = 10, 
-                    titlefont = 10, 
-                    guidefont = 8, 
-                    legendfontsize = 8, 
-                    tickfontsize = 8,
-                    framestyle = :semi)
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     conditions = conditions isa KeyedArray ? axiskeys(conditions,1) isa Vector{String} ? rekey(conditions, 1 => axiskeys(conditions,1) .|> Meta.parse .|> replace_indices) : conditions : conditions
 
@@ -1509,7 +1492,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
                 shock_string = "Conditional forecast"
 
-                ppp = StatsPlots.plot(pp...)
+                ppp = StatsPlots.plot(pp...; attributes...)
 
                 p = StatsPlots.plot(ppp,begin
                                             StatsPlots.scatter(fill(0,1,1), 
@@ -1554,7 +1537,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
         shock_string = "Conditional forecast"
 
-        ppp = StatsPlots.plot(pp...)
+        ppp = StatsPlots.plot(pp...; attributes...)
 
         p = StatsPlots.plot(ppp,begin
                                 StatsPlots.scatter(fill(0,1,1), 
