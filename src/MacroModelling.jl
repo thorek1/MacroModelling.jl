@@ -9382,7 +9382,7 @@ function inversion_filter(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))
 
-    states = zeros(𝓂.timings.nVars, n_obs + 1)
+    states = zeros(𝓂.timings.nVars, n_obs)
     shocks = zeros(𝓂.timings.nExo, n_obs)
 
     precision_factor = 1.0
@@ -9417,7 +9417,7 @@ function inversion_filter(𝓂::ℳ,
         end
     end
     
-    states[:,1] = pruning ? sum(state) : state
+    initial_state = state
 
     for i in axes(data_in_deviations,2)
         res = @suppress begin Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
@@ -9444,11 +9444,11 @@ function inversion_filter(𝓂::ℳ,
     
         state = state_update(state, x)
 
-        states[:,i+1] = pruning ? sum(state) : state
+        states[:,i] = pruning ? sum(state) : state
         shocks[:,i] = x
     end
         
-    return states, shocks
+    return states, shocks, initial_state
 end
 
 
@@ -9485,17 +9485,14 @@ function filter_data_with_model(𝓂::ℳ,
 
     algorithm = :first_order
 
-    variables, shocks = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
+    variables, shocks, initial_state = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
 
     state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
-
     decomposition = zeros(𝓂.timings.nVars, 𝓂.timings.nExo + 2, size(data_in_deviations, 2))
 
-    initial_state = variables[:,1]
-
     decomposition[:,end,:] .= variables[:,2:end]
+
     for i in 1:𝓂.timings.nExo
         sck = zeros(𝓂.timings.nExo)
         sck[i] = shocks[i, 1]
@@ -9526,7 +9523,7 @@ function filter_data_with_model(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    variables, shocks = inversion_filter(𝓂, data_in_deviations, :second_order, warmup_iterations = warmup_iterations)
+    variables, shocks, initial_state = inversion_filter(𝓂, data_in_deviations, :second_order, warmup_iterations = warmup_iterations)
 
     return variables, shocks, [], []
 end
@@ -9540,9 +9537,45 @@ function filter_data_with_model(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    variables, shocks = inversion_filter(𝓂, data_in_deviations, :pruned_second_order, warmup_iterations = warmup_iterations)
+    algorithm = :pruned_second_order
 
-    return variables, shocks, [], []
+    variables, shocks, initial_state = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
+
+    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+
+    states = [initial_state for _ in 1:𝓂.timings.nExo + 1]
+
+    decomposition = zeros(𝓂.timings.nVars, 𝓂.timings.nExo + 3, size(data_in_deviations, 2))
+
+    decomposition[:, end, :] .= variables
+
+    for i in 1:𝓂.timings.nExo
+        sck = zeros(𝓂.timings.nExo)
+        sck[i] = shocks[i, 1]
+        states[i] = state_update(initial_state , sck)
+        decomposition[:,i,1] = sum(states[i])
+    end
+
+    states[end] = state_update(initial_state, shocks[:, 1])
+
+    decomposition[:,end - 2, 1] = sum(states[end]) - sum(decomposition[:,1:end - 3, 1], dims = 2)
+    decomposition[:,end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:,1:end - 2, 1], dims = 2)
+
+    for i in 2:size(data_in_deviations, 2)
+        for ii in 1:𝓂.timings.nExo
+            sck = zeros(𝓂.timings.nExo)
+            sck[ii] = shocks[ii, i]
+            states[ii] = state_update(states[ii] , sck)
+            decomposition[:, ii, i] = sum(states[ii])
+        end
+
+        states[end] = state_update(states[end] , shocks[:, i])
+
+        decomposition[:,end - 2, i] = sum(states[end]) - sum(decomposition[:,1:end - 3, i], dims = 2)
+        decomposition[:,end - 1, i] .= decomposition[:, end, i] - sum(decomposition[:,1:end - 2, i], dims = 2)
+    end
+
+    return variables, shocks, [], decomposition
 end
 
 function filter_data_with_model(𝓂::ℳ,
@@ -9553,7 +9586,7 @@ function filter_data_with_model(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    variables, shocks = inversion_filter(𝓂, data_in_deviations, :third_order, warmup_iterations = warmup_iterations)
+    variables, shocks, initial_state = inversion_filter(𝓂, data_in_deviations, :third_order, warmup_iterations = warmup_iterations)
 
     return variables, shocks, [], []
 end
@@ -9567,9 +9600,45 @@ function filter_data_with_model(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    variables, shocks = inversion_filter(𝓂, data_in_deviations, :pruned_third_order, warmup_iterations = warmup_iterations)
+    algorithm = :pruned_third_order
 
-    return variables, shocks, [], []
+    variables, shocks, initial_state = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
+
+    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+
+    states = [initial_state for _ in 1:𝓂.timings.nExo + 1]
+
+    decomposition = zeros(𝓂.timings.nVars, 𝓂.timings.nExo + 3, size(data_in_deviations, 2))
+
+    decomposition[:, end, :] .= variables
+
+    for i in 1:𝓂.timings.nExo
+        sck = zeros(𝓂.timings.nExo)
+        sck[i] = shocks[i, 1]
+        states[i] = state_update(initial_state , sck)
+        decomposition[:,i,1] = sum(states[i])
+    end
+
+    states[end] = state_update(initial_state, shocks[:, 1])
+
+    decomposition[:,end - 2, 1] = sum(states[end]) - sum(decomposition[:,1:end - 3, 1], dims = 2)
+    decomposition[:,end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:,1:end - 2, 1], dims = 2)
+
+    for i in 2:size(data_in_deviations, 2)
+        for ii in 1:𝓂.timings.nExo
+            sck = zeros(𝓂.timings.nExo)
+            sck[ii] = shocks[ii, i]
+            states[ii] = state_update(states[ii] , sck)
+            decomposition[:, ii, i] = sum(states[ii])
+        end
+
+        states[end] = state_update(states[end] , shocks[:, i])
+        
+        decomposition[:,end - 2, i] = sum(states[end]) - sum(decomposition[:,1:end - 3, i], dims = 2)
+        decomposition[:,end - 1, i] .= decomposition[:, end, i] - sum(decomposition[:,1:end - 2, i], dims = 2)
+    end
+
+    return variables, shocks, [], decomposition
 end
 
 
