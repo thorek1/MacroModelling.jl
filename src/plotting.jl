@@ -102,6 +102,8 @@ function plot_model_estimates(𝓂::ℳ,
     save_plots_path::String = ".",
     plots_per_page::Int = 9,
     transparency::Float64 = .6,
+    max_elements_per_legend_row::Int = 4,
+    extra_legend_space::Float64 = 0.0,
     plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
@@ -142,6 +144,20 @@ function plot_model_estimates(𝓂::ℳ,
     obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) 
     shock_idx   = parse_shocks_input_to_index(shocks,𝓂.timings)
+
+    legend_columns = 1
+
+    legend_items = length(shock_idx) + 3
+
+    max_columns = min(legend_items, max_elements_per_legend_row)
+    
+    # Try from max_columns down to 1 to find the optimal solution
+    for cols in max_columns:-1:1
+        if legend_items % cols == 0 || legend_items % cols <= max_elements_per_legend_row
+            legend_columns = cols
+            break
+        end
+    end
 
     if data_in_levels
         data_in_deviations = data .- reference_steady_state[obs_idx]
@@ -236,7 +252,7 @@ function plot_model_estimates(𝓂::ℳ,
                                                                     alpha = transparency,
                                                                     lw = 0,
                                                                     legend = :inside, 
-                                                                    legend_columns = -1)
+                                                                    legend_columns = legend_columns)
                                         end
                                         StatsPlots.plot!(fill(0,1,1), 
                                         label = "Estimate", 
@@ -247,7 +263,7 @@ function plot_model_estimates(𝓂::ℳ,
                                         color = shock_decomposition ? data_color : :auto,
                                         legend = :inside)
                                     end, 
-                                    layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
+                                    layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
                                     plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                                     attributes_redux...)
 
@@ -278,7 +294,7 @@ function plot_model_estimates(𝓂::ℳ,
                                                                 alpha = transparency,
                                                                 lw = 0,
                                                                 legend = :inside, 
-                                                                legend_columns = -1)
+                                                                legend_columns = legend_columns)
                                     end
                                     StatsPlots.plot!(fill(0,1,1), 
                                     label = "Estimate", 
@@ -289,7 +305,7 @@ function plot_model_estimates(𝓂::ℳ,
                                     color = shock_decomposition ? :darkred : :auto,
                                     legend = :inside)
                                 end, 
-                                layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
+                                layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
                                 plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                                 attributes_redux...)
 
@@ -834,6 +850,8 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     save_plots_path::String = ".",
     plots_per_page::Int = 9, 
     plot_attributes::Dict = Dict(),
+    max_elements_per_legend_row::Int = 4,
+    extra_legend_space::Float64 = 0.0,
     verbose::Bool = false)
 
     attributes = merge(default_attributes, plot_attributes)
@@ -861,6 +879,20 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     
     shocks_to_plot = axiskeys(fevds)[2]
 
+    legend_columns = 1
+
+    legend_items = length(shocks_to_plot)
+
+    max_columns = min(legend_items, max_elements_per_legend_row)
+    
+    # Try from max_columns down to 1 to find the optimal solution
+    for cols in max_columns:-1:1
+        if legend_items % cols == 0 || legend_items % cols <= max_elements_per_legend_row
+            legend_columns = cols
+            break
+        end
+    end
+
     n_subplots = length(var_idx)
     pp = []
     pane = 1
@@ -886,8 +918,8 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                         linewidth = 0 , 
                                         framestyle = :none, 
                                         legend = :inside, 
-                                        legend_columns = -1), 
-                                        layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
+                                        legend_columns = legend_columns), 
+                                        layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
                                         plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
 
             push!(return_plots,gr_back ? p : ppp)
@@ -913,8 +945,8 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                     linewidth = 0 , 
                                     framestyle = :none, 
                                     legend = :inside, 
-                                    legend_columns = -1), 
-                                    layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
+                                    legend_columns = legend_columns), 
+                                    layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
                                     plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                                     attributes_redux...)
 
