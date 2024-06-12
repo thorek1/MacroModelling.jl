@@ -9491,7 +9491,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     decomposition = zeros(𝓂.timings.nVars, 𝓂.timings.nExo + 2, size(data_in_deviations, 2))
 
-    decomposition[:,end,:] .= variables[:,2:end]
+    decomposition[:,end,:] .= variables
 
     for i in 1:𝓂.timings.nExo
         sck = zeros(𝓂.timings.nExo)
