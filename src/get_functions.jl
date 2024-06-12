@@ -99,7 +99,11 @@ function get_shock_decomposition(𝓂::ℳ,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    axis2 = vcat(𝓂.timings.exo, :Initial_values)
+    if algorithm ∈ [:pruned_second_order, :pruned_third_order]
+        axis2 = vcat(𝓂.timings.var, :Nonlinearities, :Initial_values)
+    else
+        axis2 = vcat(𝓂.timings.exo, :Initial_values)
+    end
 
     if any(x -> contains(string(x), "◖"), axis2)
         axis2_decomposed = decompose_name.(axis2)
@@ -109,7 +113,7 @@ function get_shock_decomposition(𝓂::ℳ,
         axis2 = vcat(map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), :Initial_values)
     end
 
-    return KeyedArray(shocks[:,1:end-1,:];  Variables = axis1, Shocks = axis2, Periods = 1:size(data,2))
+    return KeyedArray(decomposition[:,1:end-1,:];  Variables = axis1, Shocks = axis2, Periods = 1:size(data,2))
 end
 
 
