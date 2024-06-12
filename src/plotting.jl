@@ -119,12 +119,12 @@ function plot_model_estimates(𝓂::ℳ,
 
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
-    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
+    if algorithm ∈ [:second_order, :third_order]
         filter = :inversion
-    end
-
-    if filter == :inversion && algorithm ∈ [:second_order,:third_order]
         shock_decomposition = false
+    elseif algorithm ∈ [:pruned_second_order, :pruned_third_order]
+        filter = :inversion
+        pruning = true
     end
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
@@ -147,7 +147,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     legend_columns = 1
 
-    legend_items = length(shock_idx) + 3
+    legend_items = length(shock_idx) + 3 + pruning
 
     max_columns = min(legend_items, max_elements_per_legend_row)
     
@@ -200,7 +200,9 @@ function plot_model_estimates(𝓂::ℳ,
             push!(pp,begin
                     StatsPlots.plot()
                     if shock_decomposition
-                        StatsPlots.groupedbar!(decomposition[var_idx[i],[end-1,shock_idx...],:]', 
+                        additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
+
+                        StatsPlots.groupedbar!(decomposition[var_idx[i],[additional_indices..., shock_idx...],:]', 
                             bar_position = :stack, 
                             lw = 0,
                             legend = :none, 
@@ -246,8 +248,10 @@ function plot_model_estimates(𝓂::ℳ,
             p = StatsPlots.plot(ppp,begin
                                         StatsPlots.plot(framestyle = :none)
                                         if shock_decomposition
-                                            StatsPlots.bar!(fill(0,1,length(shock_idx)+1), 
-                                                                    label = reshape(vcat("Initial value",string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))),1,length(shock_idx)+1), 
+                                            additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
+
+                                            StatsPlots.bar!(fill(0, 1, length(shock_idx) + 1 + pruning), 
+                                                                    label = reshape(vcat(additional_labels..., string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))), 1, length(shock_idx) + 1 + pruning), 
                                                                     linewidth = 0,
                                                                     alpha = transparency,
                                                                     lw = 0,
