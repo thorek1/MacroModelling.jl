@@ -1,6 +1,6 @@
 """
 $(SIGNATURES)
-Return the shock decomposition in absolute deviations from the non stochastic steady state based on the Kalman smoother or filter (depending on the `smooth` keyword argument) using the provided data and first order solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+Return the shock decomposition in absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state) based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 # Arguments
 - $MODEL
@@ -83,7 +83,7 @@ function get_shock_decomposition(𝓂::ℳ,
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
-    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
 
     data = data(sort(axiskeys(data,1)))
 
@@ -94,7 +94,7 @@ function get_shock_decomposition(𝓂::ℳ,
     obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
 
     if data_in_levels
-        data_in_deviations = data .- reference_steady_state[obs_idx]
+        data_in_deviations = data .- NSSS[obs_idx]
     else
         data_in_deviations = data
     end
@@ -125,7 +125,12 @@ function get_shock_decomposition(𝓂::ℳ,
             axis2 = vcat(map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), :Initial_values)
         end
     end
-    
+
+    if pruning
+        decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
+        decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
+    end
+
     return KeyedArray(decomposition[:,1:end-1,:];  Variables = axis1, Shocks = axis2, Periods = 1:size(data,2))
 end
 
@@ -197,7 +202,7 @@ function get_estimated_shocks(𝓂::ℳ,
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
     
-    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -208,7 +213,7 @@ function get_estimated_shocks(𝓂::ℳ,
     obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
 
     if data_in_levels
-        data_in_deviations = data .- reference_steady_state[obs_idx]
+        data_in_deviations = data .- NSSS[obs_idx]
     else
         data_in_deviations = data
     end
@@ -303,7 +308,7 @@ function get_estimated_variables(𝓂::ℳ,
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
     
-    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -314,7 +319,7 @@ function get_estimated_variables(𝓂::ℳ,
     obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
 
     if data_in_levels
-        data_in_deviations = data .- reference_steady_state[obs_idx]
+        data_in_deviations = data .- NSSS[obs_idx]
     else
         data_in_deviations = data
     end
@@ -328,7 +333,7 @@ function get_estimated_variables(𝓂::ℳ,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    return KeyedArray(levels ? variables .+ reference_steady_state[1:length(𝓂.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
+    return KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
 end
 
 
@@ -391,7 +396,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
-    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -402,7 +407,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
     obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
 
     if data_in_levels
-        data_in_deviations = data .- reference_steady_state[obs_idx]
+        data_in_deviations = data .- NSSS[obs_idx]
     else
         data_in_deviations = data
     end

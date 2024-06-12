@@ -131,7 +131,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
 
-    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -162,12 +162,19 @@ function plot_model_estimates(𝓂::ℳ,
     end
 
     if data_in_levels
-        data_in_deviations = data .- reference_steady_state[obs_idx]
+        data_in_deviations = data .- NSSS[obs_idx]
     else
         data_in_deviations = data
     end
 
     variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
+    
+    if pruning
+        decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
+        decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
+        variables_to_plot                           .+= SSS_delta
+        data_in_deviations                          .+= SSS_delta[obs_idx]
+    end
 
     return_plots = []
 
@@ -253,7 +260,7 @@ function plot_model_estimates(𝓂::ℳ,
                                             additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
 
                                             StatsPlots.bar!(fill(0, 1, length(shock_idx) + 1 + pruning), 
-                                                                    label = reshape(vcat(additional_labels..., string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))), 1, length(shock_idx) + 1 + pruning), 
+                                                                    label = reshape(vcat(additional_labels, string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))), 1, length(shock_idx) + 1 + pruning), 
                                                                     linewidth = 0,
                                                                     alpha = transparency,
                                                                     lw = 0,

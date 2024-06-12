@@ -9558,8 +9558,8 @@ function filter_data_with_model(𝓂::ℳ,
 
     states[end] = state_update(initial_state, shocks[:, 1])
 
-    decomposition[:,end - 2, 1] = sum(states[end]) - sum(decomposition[:,1:end - 3, 1], dims = 2)
-    decomposition[:,end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:,1:end - 2, 1], dims = 2)
+    decomposition[:, end - 2, 1] = sum(states[end]) - sum(decomposition[:, 1:end - 3, 1], dims = 2)
+    decomposition[:, end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:, 1:end - 2, 1], dims = 2)
 
     for i in 2:size(data_in_deviations, 2)
         for ii in 1:𝓂.timings.nExo
@@ -9571,8 +9571,8 @@ function filter_data_with_model(𝓂::ℳ,
 
         states[end] = state_update(states[end] , shocks[:, i])
 
-        decomposition[:,end - 2, i] = sum(states[end]) - sum(decomposition[:,1:end - 3, i], dims = 2)
-        decomposition[:,end - 1, i] .= decomposition[:, end, i] - sum(decomposition[:,1:end - 2, i], dims = 2)
+        decomposition[:, end - 2, i] = sum(states[end]) - sum(decomposition[:, 1:end - 3, i], dims = 2)
+        decomposition[:, end - 1, i] .= decomposition[:, end, i] - sum(decomposition[:, 1:end - 2, i], dims = 2)
     end
 
     return variables, shocks, [], decomposition
