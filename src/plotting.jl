@@ -118,6 +118,8 @@ function plot_model_estimates(𝓂::ℳ,
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
+    
+    pruning = false
 
     if algorithm ∈ [:second_order, :third_order]
         filter = :inversion
