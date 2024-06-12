@@ -118,7 +118,7 @@ function plot_model_estimates(𝓂::ℳ,
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-    
+
     pruning = false
 
     if algorithm ∈ [:second_order, :third_order]
@@ -294,8 +294,10 @@ function plot_model_estimates(𝓂::ℳ,
         p = StatsPlots.plot(ppp,begin
                                     StatsPlots.plot(framestyle = :none)
                                     if shock_decomposition
-                                        StatsPlots.bar!(fill(0,1,length(shock_idx)+1), 
-                                                                label = reshape(vcat("Initial value",string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))),1,length(shock_idx)+1), 
+                                        additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
+                                        
+                                        StatsPlots.bar!(fill(0,1,length(shock_idx) + 1 + pruning), 
+                                                                label = reshape(vcat(additional_labels..., string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))),1,length(shock_idx) + 1 + pruning), 
                                                                 linewidth = 0,
                                                                 alpha = transparency,
                                                                 lw = 0,
