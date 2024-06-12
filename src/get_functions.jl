@@ -72,7 +72,16 @@ function get_shock_decomposition(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
+    pruning = false
+
+    if algorithm ∈ [:second_order, :third_order]
+        filter = :inversion
+    elseif algorithm ∈ [:pruned_second_order, :pruned_third_order]
+        filter = :inversion
+        pruning = true
+    end
+
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
 
     reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
@@ -99,8 +108,8 @@ function get_shock_decomposition(𝓂::ℳ,
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    if algorithm ∈ [:pruned_second_order, :pruned_third_order]
-        axis2 = vcat(𝓂.timings.var, :Nonlinearities, :Initial_values)
+    if pruning
+        axis2 = vcat(𝓂.timings.exo, :Nonlinearities, :Initial_values)
     else
         axis2 = vcat(𝓂.timings.exo, :Initial_values)
     end
@@ -110,9 +119,13 @@ function get_shock_decomposition(𝓂::ℳ,
         axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
         axis2[1:length(𝓂.timings.exo)] = axis2[1:length(𝓂.timings.exo)] .* "₍ₓ₎"
     else
-        axis2 = vcat(map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), :Initial_values)
+        if pruning
+            axis2 = vcat(map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), :Nonlinearities, :Initial_values)
+        else
+            axis2 = vcat(map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), :Initial_values)
+        end
     end
-
+    
     return KeyedArray(decomposition[:,1:end-1,:];  Variables = axis1, Shocks = axis2, Periods = 1:size(data,2))
 end
 
