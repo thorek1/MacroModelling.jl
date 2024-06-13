@@ -6,9 +6,10 @@
 - [ ] load create parts of derivatives later and not directly after parameters block
 - [ ] fix model estimate plot. data not above estimate (should be red but is blue)
 - [ ] make plotting options as dynamic setting instead of default, accept kwargs
+- [ ] implement higher order (pruned) variance decomposition
 - [ ] try slicesampler instead of pigeons
 - [ ] speed up sensitivity by caching matrix inversion from implicit diff with LRUcache
-- [ ] FastDifferentiation is faster in tkaing derivatives and more efficient in writing functions but does not support custom functions (e.g. normlogpdf)
+- [ ] FastDifferentiation is faster in taking derivatives and more efficient in writing functions but does not support custom functions (e.g. normlogpdf)
 - [ ] fix this inference errors for large fuctions. they are slow. fix derivatives in general.
 - [ ] check downgrade tests
 - [ ] put write_derivatives_function and lock structure inside function
