@@ -394,6 +394,8 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
     smooth::Bool = true,
     verbose::Bool = false)
 
+    algorithm = :first_order
+
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
