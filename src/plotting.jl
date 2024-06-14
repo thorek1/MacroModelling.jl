@@ -93,6 +93,7 @@ function plot_model_estimates(𝓂::ℳ,
     warmup_iterations::Int = 0,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     shocks::Union{Symbol_input,String_input} = :all, 
+    periods::Union{Symbol,UnitRange{Int},Vector{Int}} = :all,
     data_in_levels::Bool = true,
     shock_decomposition::Bool = false,
     smooth::Bool = true,
@@ -167,6 +168,10 @@ function plot_model_estimates(𝓂::ℳ,
         data_in_deviations = data
     end
 
+    if periods == :all
+        periods = 1:size(data_in_deviations,2)
+    end
+
     variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
     
     if pruning
@@ -191,7 +196,7 @@ function plot_model_estimates(𝓂::ℳ,
         if i > length(var_idx) # Shock decomposition
             push!(pp,begin
                     StatsPlots.plot()
-                    StatsPlots.plot!(shocks_to_plot[shock_idx[i - length(var_idx)],:],
+                    StatsPlots.plot!(shocks_to_plot[shock_idx[i - length(var_idx)],periods],
                         title = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[i - length(var_idx)]]) * "₍ₓ₎", 
                         ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
                         color = shock_decomposition ? estimate_color : :auto)
@@ -211,18 +216,19 @@ function plot_model_estimates(𝓂::ℳ,
                     if shock_decomposition
                         additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
 
-                        StatsPlots.groupedbar!(decomposition[var_idx[i],[additional_indices..., shock_idx...],:]', 
+                        StatsPlots.groupedbar!(decomposition[var_idx[i],[additional_indices..., shock_idx...],periods]', 
                             bar_position = :stack, 
-                            lw = 0,
+                            lc = :transparent,  # Line color set to transparent
+                            lw = 0,  # This removes the lines around the bars
                             legend = :none, 
                             alpha = transparency)
                     end
-                    StatsPlots.plot!(variables_to_plot[var_idx[i],:] .+ SS,
+                    StatsPlots.plot!(variables_to_plot[var_idx[i],periods] .+ SS,
                         title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
                         ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
                         color = shock_decomposition ? estimate_color : :auto)
                     if var_idx[i] ∈ obs_idx 
-                        StatsPlots.plot!(data_in_deviations[indexin([var_idx[i]],obs_idx),:]' .+ SS,
+                        StatsPlots.plot!(data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
                             title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
                             ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
                             label = "", 
@@ -230,12 +236,12 @@ function plot_model_estimates(𝓂::ℳ,
                     end
                     if can_dual_axis 
                         StatsPlots.plot!(StatsPlots.twinx(),
-                            100*((variables_to_plot[var_idx[i],:] .+ SS) ./ SS .- 1), 
+                            100*((variables_to_plot[var_idx[i],periods] .+ SS) ./ SS .- 1), 
                             ylabel = LaTeXStrings.L"\% \Delta", 
                             label = "") 
                         if var_idx[i] ∈ obs_idx 
                             StatsPlots.plot!(StatsPlots.twinx(),
-                                100*((data_in_deviations[indexin([var_idx[i]],obs_idx),:]' .+ SS) ./ SS .- 1), 
+                                100*((data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS) ./ SS .- 1), 
                                 ylabel = LaTeXStrings.L"\% \Delta", 
                                 label = "") 
                         end
