@@ -172,6 +172,16 @@ function plot_model_estimates(𝓂::ℳ,
         periods = 1:size(data_in_deviations,2)
     end
 
+    date_axis = axiskeys(data,2)
+    if typeof(periods) ∈ [Vector{Int}, UnitRange{Int}]
+        date_axis = date_axis[periods]
+    elseif eltype(periods) == eltype(date_axis)
+        periods = indexin(length(periods) > 1 ? periods : [periods], date_axis)
+        date_axis = date_axis[periods]
+    else
+        @error "Input to periods argument must be either of the same type as that of the columns of the KeyedArray provided in the data argument or consist of Integers."
+    end
+
     variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
     
     if pruning
@@ -196,7 +206,7 @@ function plot_model_estimates(𝓂::ℳ,
         if i > length(var_idx) # Shock decomposition
             push!(pp,begin
                     StatsPlots.plot()
-                    StatsPlots.plot!(shocks_to_plot[shock_idx[i - length(var_idx)],periods],
+                    StatsPlots.plot!(date_axis, shocks_to_plot[shock_idx[i - length(var_idx)],periods],
                         title = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[i - length(var_idx)]]) * "₍ₓ₎", 
                         ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
                         color = shock_decomposition ? estimate_color : :auto)
@@ -213,39 +223,51 @@ function plot_model_estimates(𝓂::ℳ,
 
             push!(pp,begin
                     StatsPlots.plot()
+
                     if shock_decomposition
                         additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
 
-                        StatsPlots.groupedbar!(decomposition[var_idx[i],[additional_indices..., shock_idx...],periods]', 
+                        StatsPlots.groupedbar!(date_axis, 
+                            decomposition[var_idx[i],[additional_indices..., shock_idx...],periods]', 
                             bar_position = :stack, 
                             lc = :transparent,  # Line color set to transparent
                             lw = 0,  # This removes the lines around the bars
                             legend = :none, 
                             alpha = transparency)
                     end
-                    StatsPlots.plot!(variables_to_plot[var_idx[i],periods] .+ SS,
+
+                    StatsPlots.plot!(date_axis, 
+                        variables_to_plot[var_idx[i],periods] .+ SS,
                         title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
-                        ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
+                        ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
+                        label = "", 
                         color = shock_decomposition ? estimate_color : :auto)
+
                     if var_idx[i] ∈ obs_idx 
-                        StatsPlots.plot!(data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
+                        StatsPlots.plot!(date_axis, 
+                            data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
                             title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
                             ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
                             label = "", 
                             color = shock_decomposition ? data_color : :auto) 
                     end
+
                     if can_dual_axis 
                         StatsPlots.plot!(StatsPlots.twinx(),
+                            date_axis, 
                             100*((variables_to_plot[var_idx[i],periods] .+ SS) ./ SS .- 1), 
                             ylabel = LaTeXStrings.L"\% \Delta", 
                             label = "") 
+
                         if var_idx[i] ∈ obs_idx 
                             StatsPlots.plot!(StatsPlots.twinx(),
+                                date_axis, 
                                 100*((data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS) ./ SS .- 1), 
                                 ylabel = LaTeXStrings.L"\% \Delta", 
                                 label = "") 
                         end
                     end
+                    
                     StatsPlots.hline!(can_dual_axis ? [SS 0] : [SS],
                         color = :black,
                         label = "")                               
