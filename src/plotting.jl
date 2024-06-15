@@ -227,28 +227,32 @@ function plot_model_estimates(𝓂::ℳ,
                     if shock_decomposition
                         additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
 
-                        StatsPlots.groupedbar!(date_axis, 
+                        StatsPlots.groupedbar!(1:length(periods),
                             decomposition[var_idx[i],[additional_indices..., shock_idx...],periods]', 
                             bar_position = :stack, 
                             lc = :transparent,  # Line color set to transparent
                             lw = 0,  # This removes the lines around the bars
                             legend = :none, 
+                            # yformatter = y -> round(y + SS, digits = 1), # rm Absolute Δ in this case and fix SS additions
+                            xformatter = x -> string(date_axis[Int(x)]),
                             alpha = transparency)
                     end
 
-                    StatsPlots.plot!(date_axis, 
+                    StatsPlots.plot!(1:length(periods),
                         variables_to_plot[var_idx[i],periods] .+ SS,
                         title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
                         ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
                         label = "", 
+                        xformatter = x -> string(date_axis[Int(x)]),
                         color = shock_decomposition ? estimate_color : :auto)
 
                     if var_idx[i] ∈ obs_idx 
-                        StatsPlots.plot!(date_axis, 
+                        StatsPlots.plot!(1:length(periods),
                             data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
                             title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
                             ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
                             label = "", 
+                            xformatter = x -> string(date_axis[Int(x)]),
                             color = shock_decomposition ? data_color : :auto) 
                     end
 
