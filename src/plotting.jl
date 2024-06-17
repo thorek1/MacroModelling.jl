@@ -93,7 +93,7 @@ function plot_model_estimates(𝓂::ℳ,
     warmup_iterations::Int = 0,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     shocks::Union{Symbol_input,String_input} = :all, 
-    periods::Union{Symbol,UnitRange{Int},Vector{Int}} = :all,
+    presample_periods::Int = 0,
     data_in_levels::Bool = true,
     shock_decomposition::Bool = false,
     smooth::Bool = true,
@@ -168,19 +168,13 @@ function plot_model_estimates(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    if periods == :all
-        periods = 1:size(data_in_deviations,2)
-    end
-
     date_axis = axiskeys(data,2)
-    if typeof(periods) ∈ [Vector{Int}, UnitRange{Int}]
-        date_axis = date_axis[periods]
-    elseif eltype(periods) == eltype(date_axis)
-        periods = indexin(length(periods) > 1 ? periods : [periods], date_axis)
-        date_axis = date_axis[periods]
-    else
-        @error "Input to periods argument must be either of the same type as that of the columns of the KeyedArray provided in the data argument or consist of Integers."
-    end
+
+    @assert presample_periods < size(data,2) "The number of presample periods must be less than the number of periods in the data."
+
+    periods = presample_periods+1:size(data,2)
+
+    date_axis = date_axis[periods]
 
     variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
     
@@ -227,32 +221,32 @@ function plot_model_estimates(𝓂::ℳ,
                     if shock_decomposition
                         additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
 
-                        StatsPlots.groupedbar!(1:length(periods),
+                        StatsPlots.groupedbar!(date_axis,
                             decomposition[var_idx[i],[additional_indices..., shock_idx...],periods]', 
                             bar_position = :stack, 
                             lc = :transparent,  # Line color set to transparent
                             lw = 0,  # This removes the lines around the bars
                             legend = :none, 
                             # yformatter = y -> round(y + SS, digits = 1), # rm Absolute Δ in this case and fix SS additions
-                            xformatter = x -> string(date_axis[Int(x)]),
+                            # xformatter = x -> string(date_axis[Int(x)]),
                             alpha = transparency)
                     end
 
-                    StatsPlots.plot!(1:length(periods),
+                    StatsPlots.plot!(date_axis,
                         variables_to_plot[var_idx[i],periods] .+ SS,
                         title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
                         ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
                         label = "", 
-                        xformatter = x -> string(date_axis[Int(x)]),
+                        # xformatter = x -> string(date_axis[Int(x)]),
                         color = shock_decomposition ? estimate_color : :auto)
 
                     if var_idx[i] ∈ obs_idx 
-                        StatsPlots.plot!(1:length(periods),
+                        StatsPlots.plot!(date_axis,
                             data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
                             title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
                             ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
                             label = "", 
-                            xformatter = x -> string(date_axis[Int(x)]),
+                            # xformatter = x -> string(date_axis[Int(x)]),
                             color = shock_decomposition ? data_color : :auto) 
                     end
 

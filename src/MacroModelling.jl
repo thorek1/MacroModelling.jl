@@ -9241,6 +9241,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
         match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
 
         if i > presample_periods
+            # due to change of variables: jacobian determinant adjustment
             if T.nExo == length(observables)
                 logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
             else
@@ -9253,6 +9254,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
         state = state_update(state, x)
     end
 
+    # See: https://pcubaborda.net/documents/CGIZ-final.pdf
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
