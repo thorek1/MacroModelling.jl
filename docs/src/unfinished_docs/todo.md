@@ -8,6 +8,7 @@
 - [ ] make plotting options as dynamic setting instead of default, accept kwargs
 - [ ] implement higher order (pruned) variance decomposition
 - [ ] try slicesampler instead of pigeons
+- [ ] use faster derivatives for SS solver (currently forward diff)
 - [ ] speed up sensitivity by caching matrix inversion from implicit diff with LRUcache
 - [ ] FastDifferentiation is faster in taking derivatives and more efficient in writing functions but does not support custom functions (e.g. normlogpdf)
 - [ ] fix this inference errors for large fuctions. they are slow. fix derivatives in general.
