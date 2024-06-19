@@ -9078,27 +9078,131 @@ end
 
 
 
+
+
+
+    
 function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}, 
-                                                    𝐒::Union{Matrix{Float64}, Vector{AbstractMatrix{Float64}}}, 
+                                                    𝐒::Matrix{Float64}, 
                                                     data_in_deviations::Matrix{Float64}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0)
-    if 𝐒 isa Matrix{Float64} # first order  
-        function first_order_state_update(state::Vector{U}, shock::Vector{S}) where {U <: Real,S <: Real}
-        # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
-            aug_state = [state[T.past_not_future_and_mixed_idx]
-                        shock]
-            return 𝐒 * aug_state # you need a return statement for forwarddiff to work
+
+    function first_order_state_update(state::Vector{U}, shock::Vector{S}) where {U <: Real,S <: Real}
+    # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
+        aug_state = [state[T.past_not_future_and_mixed_idx]
+                    shock]
+        return 𝐒 * aug_state # you need a return statement for forwarddiff to work
+    end
+
+    state_update = first_order_state_update
+
+    state = state[1]
+
+    pruning = false
+
+    precision_factor = 1.0
+
+    n_obs = size(data_in_deviations,2)
+
+    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+
+    shocks² = 0.0
+    logabsdets = 0.0
+
+    jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
+
+    if warmup_iterations > 0
+        res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+                            zeros(T.nExo * warmup_iterations), 
+                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                            autodiff = :forward)
+
+        matched = Optim.minimum(res) < 1e-12
+
+        if !matched # for robustness try other linesearch
+            res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
+                            zeros(T.nExo * warmup_iterations), 
+                            Optim.LBFGS(), 
+                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                            autodiff = :forward)
+        
+            matched = Optim.minimum(res) < 1e-12
         end
 
-        state_update = first_order_state_update
+        if !matched return -Inf end
 
-        state = state[1]
+        x = Optim.minimizer(res)
 
-        pruning = false
-    elseif length(𝐒) == 2 && length(state) == 1 # second order
+        warmup_shocks = reshape(x, T.nExo, warmup_iterations)
+
+        for i in 1:warmup_iterations-1
+            state = state_update(state, warmup_shocks[:,i])
+        end
+        
+        res = zeros(0)
+
+        jacc = zeros(T.nExo * warmup_iterations, length(observables))
+
+        match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
+
+        for i in 1:warmup_iterations
+            if T.nExo == length(observables)
+                logabsdets += ℒ.logabsdet(jacc[(i - 1) * T.nExo .+ (1:2),:] ./ precision_factor)[1]
+            else
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[(i - 1) * T.nExo .+ (1:2),:] ./ precision_factor))
+            end
+        end
+
+        shocks² += sum(abs2,x)
+    end
+
+    y = zeros(length(cond_var_idx))
+    x = zeros(T.nExo)
+
+    if T.nExo == length(observables)
+        logabsdets = ℒ.logabsdet(-jac' ./ precision_factor)[1]
+        jacdecomp = ℒ.lu!(jac)
+        invjac = inv(jacdecomp)
+    else
+        logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(-jac' ./ precision_factor))
+        jacdecomp = ℒ.svd!(jac)
+        invjac = inv(jacdecomp)
+    end
+
+    logabsdets *= size(data_in_deviations,2) - presample_periods
+    
+    @views 𝐒obs = 𝐒[cond_var_idx,1:end-T.nExo]
+
+    for i in axes(data_in_deviations,2)
+        @views ℒ.mul!(y, 𝐒obs, state[T.past_not_future_and_mixed_idx])
+        @views ℒ.axpby!(1, data_in_deviations[:,i], -1, y)
+        ℒ.mul!(x,invjac,y)
+        # x = invjac * (data_in_deviations[:,i] - 𝐒[cond_var_idx,1:end-T.nExo] * state[T.past_not_future_and_mixed_idx])
+
+        if i > presample_periods
+            shocks² += sum(abs2,x)
+        end
+
+        ℒ.mul!(state, 𝐒, vcat(state[T.past_not_future_and_mixed_idx], x))
+        # state = state_update(state, x)
+    end
+
+    return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+end
+
+
+function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}, 
+                                                    𝐒::Vector{AbstractMatrix{Float64}}, 
+                                                    data_in_deviations::Matrix{Float64}, 
+                                                    observables::Union{Vector{String}, Vector{Symbol}},
+                                                    T::timings; 
+                                                    warmup_iterations::Int = 0,
+                                                    presample_periods::Int = 0)
+    if length(𝐒) == 2 && length(state) == 1 # second order
         function second_order_state_update(state::Vector{U}, shock::Vector{S}) where {U <: Real,S <: Real}
         # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
             aug_state = [state[T.past_not_future_and_mixed_idx]

@@ -6,6 +6,7 @@
 - [ ] load create parts of derivatives later and not directly after parameters block
 - [ ] fix model estimate plot. data not above estimate (should be red but is blue)
 - [ ] make plotting options as dynamic setting instead of default, accept kwargs
+- [ ] analytical derivatives of inversion filter
 - [ ] implement higher order (pruned) variance decomposition
 - [ ] try slicesampler instead of pigeons
 - [ ] use faster derivatives for SS solver (currently forward diff)
