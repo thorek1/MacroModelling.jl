@@ -9132,12 +9132,12 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
         for i in 1:warmup_iterations-1
             state = state_update(state, warmup_shocks[:,i])
         end
-        
+
         for i in 1:warmup_iterations
             if T.nExo == length(observables)
-                logabsdets += ℒ.logabsdet(-jac[:,(i - 1) * T.nExo+1:i*T.nExo]' ./ precision_factor)[1]
+                logabsdets += ℒ.logabsdet(jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor)[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(-jac[:,(i - 1) * T.nExo+1:i*T.nExo]' ./ precision_factor))
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor))
             end
         end
     
@@ -9149,11 +9149,11 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
 
     if T.nExo == length(observables)
-        logabsdets = ℒ.logabsdet(-jac' ./ precision_factor)[1]
+        logabsdets = ℒ.logabsdet(jac ./ precision_factor)[1]
         jacdecomp = ℒ.lu!(jac)
         invjac = inv(jacdecomp)
     else
-        logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(-jac' ./ precision_factor))
+        logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac ./ precision_factor))
         jacdecomp = ℒ.svd!(jac)
         invjac = inv(jacdecomp)
     end
