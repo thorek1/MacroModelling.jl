@@ -9125,7 +9125,13 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
             end
         end
     
-        x = jac \ data_in_deviations[:,1]
+        jacdecomp = ℒ.svd!(jac, check = false)
+        
+        if !ℒ.issuccess(jacdecomp)
+            return -Inf
+        end
+
+        x = jacdecomp \ data_in_deviations[:,1]
     
         warmup_shocks = reshape(x, T.nExo, warmup_iterations)
     
@@ -9149,12 +9155,18 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
 
     if T.nExo == length(observables)
+        jacdecomp = ℒ.lu!(jac, check = false)
+        if !ℒ.issuccess(jacdecomp)
+            return -Inf
+        end
         logabsdets = ℒ.logabsdet(jac ./ precision_factor)[1]
-        jacdecomp = ℒ.lu!(jac)
         invjac = inv(jacdecomp)
     else
+        jacdecomp = ℒ.svd!(jac, check = false)
+        if !ℒ.issuccess(jacdecomp)
+            return -Inf
+        end
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac ./ precision_factor))
-        jacdecomp = ℒ.svd!(jac)
         invjac = inv(jacdecomp)
     end
 
