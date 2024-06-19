@@ -9101,8 +9101,6 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
 
     state = state[1]
 
-    pruning = false
-
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -9111,57 +9109,44 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
 
     shocks² = 0.0
     logabsdets = 0.0
-
-    jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
-
+    
     if warmup_iterations > 0
-        res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
-                            zeros(T.nExo * warmup_iterations), 
-                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward)
-
-        matched = Optim.minimum(res) < 1e-12
-
-        if !matched # for robustness try other linesearch
-            res = Optim.optimize(x -> minimize_distance_to_initial_data(x, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor, pruning), 
-                            zeros(T.nExo * warmup_iterations), 
-                            Optim.LBFGS(), 
-                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward)
-        
-            matched = Optim.minimum(res) < 1e-12
+        if warmup_iterations >= 1
+            jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
+            if warmup_iterations >= 2
+                jac = hcat(𝐒[cond_var_idx,1:T.nPast_not_future_and_mixed] * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
+                if warmup_iterations >= 3
+                    Sᵉ = 𝐒[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+                    for e in 1:warmup_iterations-2
+                        jac = hcat(𝐒[cond_var_idx,1:T.nPast_not_future_and_mixed] * Sᵉ * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
+                        Sᵉ *= 𝐒[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+                    end
+                end
+            end
         end
-
-        if !matched return -Inf end
-
-        x = Optim.minimizer(res)
-
+    
+        x = jac \ data_in_deviations[:,1]
+    
         warmup_shocks = reshape(x, T.nExo, warmup_iterations)
-
+    
         for i in 1:warmup_iterations-1
             state = state_update(state, warmup_shocks[:,i])
         end
         
-        res = zeros(0)
-
-        jacc = zeros(T.nExo * warmup_iterations, length(observables))
-
-        match_initial_data!(res, x, jacc, data_in_deviations[:,1], state, state_update, warmup_iterations, cond_var_idx, precision_factor), zeros(size(data_in_deviations, 1))
-
         for i in 1:warmup_iterations
             if T.nExo == length(observables)
-                logabsdets += ℒ.logabsdet(jacc[(i - 1) * T.nExo .+ (1:2),:] ./ precision_factor)[1]
+                logabsdets += ℒ.logabsdet(-jac[:,(i - 1) * T.nExo+1:i*T.nExo]' ./ precision_factor)[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[(i - 1) * T.nExo .+ (1:2),:] ./ precision_factor))
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(-jac[:,(i - 1) * T.nExo+1:i*T.nExo]' ./ precision_factor))
             end
         end
-
+    
         shocks² += sum(abs2,x)
     end
 
     y = zeros(length(cond_var_idx))
     x = zeros(T.nExo)
+    jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
 
     if T.nExo == length(observables)
         logabsdets = ℒ.logabsdet(-jac' ./ precision_factor)[1]
@@ -9306,9 +9291,9 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
 
         for i in 1:warmup_iterations
             if T.nExo == length(observables)
-                logabsdets += ℒ.logabsdet(jacc[(i - 1) * T.nExo .+ (1:2),:] ./ precision_factor)[1]
+                logabsdets += ℒ.logabsdet(jacc[(i - 1) * T.nExo+1:i*T.nExo,:] ./ precision_factor)[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[(i - 1) * T.nExo .+ (1:2),:] ./ precision_factor))
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[(i - 1) * T.nExo+1:i*T.nExo,:] ./ precision_factor))
             end
         end
 
