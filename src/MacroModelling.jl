@@ -5934,7 +5934,7 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
 
     lk = ReentrantLock()
 
-    Polyester.@batch for f in 𝓂.model_jacobian[1]
+    Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian[1]
         out = f(X)
 
         begin
@@ -5973,7 +5973,7 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
 
         lk = ReentrantLock()
 
-        Polyester.@batch for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
+        Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
             out = f(X)
 
             begin
@@ -6039,7 +6039,7 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
 
     lk = ReentrantLock()
 
-    Polyester.@batch for f in 𝓂.model_hessian[1]
+    Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian[1]
         out = f(X)
         
         begin
@@ -6114,7 +6114,7 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
 
     lk = ReentrantLock()
 
-    Polyester.@batch for f in 𝓂.model_third_order_derivatives[1]
+    Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives[1]
         out = f(X)
         
         begin
@@ -8386,7 +8386,7 @@ function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values
 
     lk = ReentrantLock()
 
-    Polyester.@batch for f in 𝓂.∂SS_equations_∂parameters[1]
+    Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
         out = f(X)
         
         begin
@@ -8413,7 +8413,7 @@ function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values
 
     lk = ReentrantLock()
 
-    Polyester.@batch for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+    Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
         out = f(X)
         
         begin
