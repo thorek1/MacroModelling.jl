@@ -9160,12 +9160,12 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
 
     logabsdets *= size(data_in_deviations,2) - presample_periods
     
-    @views 𝐒obs = 𝐒[cond_var_idx,1:end-T.nExo]
+    𝐒obs = 𝐒[cond_var_idx,1:end-T.nExo]
 
     for i in axes(data_in_deviations,2)
         @views ℒ.mul!(y, 𝐒obs, state[T.past_not_future_and_mixed_idx])
         @views ℒ.axpby!(1, data_in_deviations[:,i], -1, y)
-        ℒ.mul!(x,invjac,y)
+        ℒ.mul!(x, invjac, y)
         # x = invjac * (data_in_deviations[:,i] - 𝐒[cond_var_idx,1:end-T.nExo] * state[T.past_not_future_and_mixed_idx])
 
         if i > presample_periods
