@@ -1930,8 +1930,10 @@ function levenberg_marquardt(f::Function,
 
                 α̂ = min(α̂, ϕ̄ * α)
                 α = max(α̂, ϕ̂ * α)
-
-                current_guess .= previous_guess + α * guess_update
+                
+                copy!(current_guess, previous_guess)
+                ℒ.axpy!(α, guess_update, current_guess)
+                # current_guess .= previous_guess + α * guess_update
                 minmax!(current_guess, lower_bounds, upper_bounds)
                 
                 P = P̋
@@ -9089,16 +9091,6 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0)
-
-    function first_order_state_update(state::Vector{U}, shock::Vector{S}) where {U <: Real,S <: Real}
-    # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
-        aug_state = [state[T.past_not_future_and_mixed_idx]
-                    shock]
-        return 𝐒 * aug_state # you need a return statement for forwarddiff to work
-    end
-
-    state_update = first_order_state_update
-
     state = state[1]
 
     precision_factor = 1.0
@@ -9126,7 +9118,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
         end
     
         jacdecomp = ℒ.svd!(jac, check = false)
-        
+
         if !ℒ.issuccess(jacdecomp)
             return -Inf
         end
@@ -9136,7 +9128,8 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
         warmup_shocks = reshape(x, T.nExo, warmup_iterations)
     
         for i in 1:warmup_iterations-1
-            state = state_update(state, warmup_shocks[:,i])
+            ℒ.mul!(state, 𝐒, vcat(state[T.past_not_future_and_mixed_idx], warmup_shocks[:,i]))
+            # state = state_update(state, warmup_shocks[:,i])
         end
 
         for i in 1:warmup_iterations
@@ -9155,7 +9148,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
 
     if T.nExo == length(observables)
-        jacdecomp = ℒ.lu!(jac, check = false)
+        jacdecomp = RF.lu!(jac, check = false)
         if !ℒ.issuccess(jacdecomp)
             return -Inf
         end
