@@ -5185,7 +5185,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
             else
-                Polyester.@batch for i in 1:min(min_n_funcs, length(vals))
+                Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
                     
                     func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
@@ -5213,7 +5213,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(first_order, 1:length(first_order), Val(:string)))
             else
-                Polyester.@batch for i in 1:min(min_n_funcs, length(first_order))
+                Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(first_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
 
                     func = write_derivatives_function(first_order[indices], indices, Val(:string))
@@ -5249,7 +5249,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(second_order[perm_vals], 1:length(second_order), Val(:string)))
             else
-                Polyester.@batch for i in 1:min(min_n_funcs, length(second_order))
+                Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(second_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
             
                     func = write_derivatives_function(second_order[perm_vals][indices], indices, Val(:string))
@@ -5285,7 +5285,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(third_order[perm_vals], 1:length(third_order), Val(:string)))
             else
-                Polyester.@batch for i in 1:min(min_n_funcs, length(third_order))
+                Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(third_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
             
                     func = write_derivatives_function(third_order[perm_vals][indices], indices, Val(:string))
@@ -5366,7 +5366,7 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     if min_n_funcs == 1
         push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3], 1:length(∂SS_equations_∂parameters[3]), Val(:string)))
     else
-        Polyester.@batch for i in 1:min(min_n_funcs, length(∂SS_equations_∂parameters[3]))
+        Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(∂SS_equations_∂parameters[3]))
             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂parameters[3]) : i * max_exprs_per_func)
 
             func = write_derivatives_function(∂SS_equations_∂parameters[3][indices], indices, Val(:string))
@@ -5402,7 +5402,7 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     if min_n_funcs == 1
         push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3], 1:length(∂SS_equations_∂SS_and_pars[3]), Val(:string)))
     else
-        Polyester.@batch for i in 1:min(min_n_funcs, length(∂SS_equations_∂SS_and_pars[3]))
+        Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(∂SS_equations_∂SS_and_pars[3]))
             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂SS_and_pars[3]) : i * max_exprs_per_func)
 
             func = write_derivatives_function(∂SS_equations_∂SS_and_pars[3][indices], indices, Val(:string))
@@ -5933,20 +5933,21 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
     # end
 
     vals = zeros(M, length(𝓂.model_jacobian[1]))
-
-    lk = ReentrantLock()
+    
+    # lk = ReentrantLock()
 
     Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian[1]
-        out = f(X)
-
-        begin
-            lock(lk)
-            try
-                vals[out[2]] .= out[1]
-            finally
-                unlock(lk)
-            end
-        end
+    # for f in 𝓂.model_jacobian[1]
+        out = f(X)#::Tuple{Vector{<: Real}, UnitRange{Int64}}
+        
+        # begin
+        #     lock(lk)
+        #     try
+                @inbounds vals[out[2]] = out[1]
+        #     finally
+        #         unlock(lk)
+        #     end
+        # end
     end
 
     if eltype(𝓂.model_jacobian[3]) ≠ M
@@ -5973,19 +5974,19 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
 
         vals = zeros(Float64, length(𝓂.model_jacobian_SS_and_pars_vars[1]))
 
-        lk = ReentrantLock()
+        # lk = ReentrantLock()
 
         Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
             out = f(X)
 
-            begin
-                lock(lk)
-                try
-                    vals[out[2]] .= out[1]
-                finally
-                    unlock(lk)
-                end
-            end
+            # begin
+            #     lock(lk)
+            #     try
+                    @inbounds vals[out[2]] = out[1]
+            #     finally
+            #         unlock(lk)
+            #     end
+            # end
         end
     
         Accessors.@reset 𝓂.model_jacobian_SS_and_pars_vars[2].nzval = vals
@@ -6039,19 +6040,19 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
 
     vals = zeros(M, length(𝓂.model_hessian[1]))
 
-    lk = ReentrantLock()
+    # lk = ReentrantLock()
 
     Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian[1]
         out = f(X)
         
-        begin
-            lock(lk)
-            try
-                vals[out[2]] .= out[1]
-            finally
-                unlock(lk)
-            end
-        end
+        # begin
+        #     lock(lk)
+        #     try
+                @inbounds vals[out[2]] = out[1]
+        #     finally
+        #         unlock(lk)
+        #     end
+        # end
     end
 
     Accessors.@reset 𝓂.model_hessian[2].nzval = vals
@@ -6114,19 +6115,19 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
     
     vals = zeros(M, length(𝓂.model_third_order_derivatives[1]))
 
-    lk = ReentrantLock()
+    # lk = ReentrantLock()
 
     Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives[1]
         out = f(X)
         
-        begin
-            lock(lk)
-            try
-                vals[out[2]] .= out[1]
-            finally
-                unlock(lk)
-            end
-        end
+        # begin
+        #     lock(lk)
+        #     try
+                @inbounds vals[out[2]] = out[1]
+        #     finally
+        #         unlock(lk)
+        #     end
+        # end
     end
 
     Accessors.@reset 𝓂.model_third_order_derivatives[2].nzval = vals
@@ -8386,19 +8387,19 @@ function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values
     
     vals = zeros(Float64, length(𝓂.∂SS_equations_∂parameters[1]))
 
-    lk = ReentrantLock()
+    # lk = ReentrantLock()
 
     Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
         out = f(X)
         
-        begin
-            lock(lk)
-            try
-                vals[out[2]] .= out[1]
-            finally
-                unlock(lk)
-            end
-        end
+        # begin
+        #     lock(lk)
+        #     try
+                @inbounds vals[out[2]] = out[1]
+        #     finally
+        #         unlock(lk)
+        #     end
+        # end
     end
 
     Accessors.@reset 𝓂.∂SS_equations_∂parameters[2].nzval = vals
@@ -8413,19 +8414,19 @@ function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values
 
     vals = zeros(Float64, length(𝓂.∂SS_equations_∂SS_and_pars[1]))
 
-    lk = ReentrantLock()
+    # lk = ReentrantLock()
 
     Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
         out = f(X)
         
-        begin
-            lock(lk)
-            try
-                vals[out[2]] .= out[1]
-            finally
-                unlock(lk)
-            end
-        end
+        # begin
+        #     lock(lk)
+        #     try
+                @inbounds vals[out[2]] = out[1]
+        #     finally
+        #         unlock(lk)
+        #     end
+        # end
     end
 
     𝓂.∂SS_equations_∂SS_and_pars[3] .*= 0
