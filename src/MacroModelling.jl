@@ -1881,10 +1881,11 @@ function levenberg_marquardt(f::Function,
             # return undo_transform(current_guess,transformation_level,shift), (iter, Inf, Inf, upper_bounds)
         end
 
-        ∇̄ = RF.lu(∇̂, check = false)
+        ∇̄ = RF.lu!(∇̂, check = false)
 
         if !ℒ.issuccess(∇̄)
-            ∇̄ = ℒ.svd(∇̂)
+            return undo_transform(current_guess,transformation_level), (iter, Inf, Inf, upper_bounds)
+            # ∇̄ = ℒ.svd(∇̂)
         end
 
         current_guess .-= ∇̄ \ ∇' * f̂(current_guess)
@@ -4990,8 +4991,14 @@ end
 
 function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:string})
     vals_expr = Meta.parse(string(values))
-
+    
     @RuntimeGeneratedFunction(:(𝔛 -> $(Expr(:vect, vals_expr.args[2:end]...))))
+end
+
+function write_derivatives_function(values::Symbolics.Num, ::Val{:string})
+    vals_expr = Meta.parse(string(values))
+    
+    @RuntimeGeneratedFunction(:(𝔛 -> $vals_expr.args))
 end
 
 function write_derivatives_function(values::Vector{Symbolics.Num}, position::Union{UnitRange{Int},Vector{Int}}, ::Val{:string})
@@ -5000,10 +5007,22 @@ function write_derivatives_function(values::Vector{Symbolics.Num}, position::Uni
     @RuntimeGeneratedFunction(:(𝔛 -> ($(Expr(:vect, vals_expr.args[2:end]...)), $position)))
 end
 
+function write_derivatives_function(values::Symbolics.Num, position::Int, ::Val{:string})
+    vals_expr = Meta.parse(string(values))
+
+    @RuntimeGeneratedFunction(:(𝔛 -> ($vals_expr, $position)))
+end
+
 function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:Symbolics})
     vals_expr = Symbolics.toexpr.(values)
 
     @RuntimeGeneratedFunction(:(𝔛 -> [$(vals_expr...)]))
+end
+
+function write_derivatives_function(values::Symbolics.Num, ::Val{:Symbolics})
+    vals_expr = Symbolics.toexpr.(values)
+
+    @RuntimeGeneratedFunction(:(𝔛 -> $vals_expr))
 end
 
 # TODO: check why this takes so much longer than previous implementation
@@ -5187,7 +5206,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             else
                 Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
-                    
+
+                    indices = length(indices) == 1 ? indices[1] : indices
+
                     func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
 
                     begin
@@ -5215,6 +5236,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             else
                 Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(first_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
+
+                    indices = length(indices) == 1 ? indices[1] : indices
 
                     func = write_derivatives_function(first_order[indices], indices, Val(:string))
 
@@ -5252,6 +5275,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
                 Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(second_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
             
+                    indices = length(indices) == 1 ? indices[1] : indices
+
                     func = write_derivatives_function(second_order[perm_vals][indices], indices, Val(:string))
 
                     begin
@@ -5288,6 +5313,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
                 Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(third_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
             
+                    indices = length(indices) == 1 ? indices[1] : indices
+
                     func = write_derivatives_function(third_order[perm_vals][indices], indices, Val(:string))
 
                     begin
@@ -5369,6 +5396,8 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
         Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(∂SS_equations_∂parameters[3]))
             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂parameters[3]) : i * max_exprs_per_func)
 
+            indices = length(indices) == 1 ? indices[1] : indices
+
             func = write_derivatives_function(∂SS_equations_∂parameters[3][indices], indices, Val(:string))
 
             begin
@@ -5404,6 +5433,8 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     else
         Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(∂SS_equations_∂SS_and_pars[3]))
             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂SS_and_pars[3]) : i * max_exprs_per_func)
+
+            indices = length(indices) == 1 ? indices[1] : indices
 
             func = write_derivatives_function(∂SS_equations_∂SS_and_pars[3][indices], indices, Val(:string))
 
@@ -5938,12 +5969,14 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
 
     Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian[1]
     # for f in 𝓂.model_jacobian[1]
+        # val, idx = f(X)#::Tuple{<: Real, Int}
         out = f(X)#::Tuple{Vector{<: Real}, UnitRange{Int64}}
         
         # begin
         #     lock(lk)
         #     try
                 @inbounds vals[out[2]] = out[1]
+                # @inbounds vals[idx] = val
         #     finally
         #         unlock(lk)
         #     end
