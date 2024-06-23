@@ -5001,7 +5001,13 @@ function write_derivatives_function(values::Symbolics.Num, ::Val{:string})
     @RuntimeGeneratedFunction(:(𝔛 -> $vals_expr.args))
 end
 
-function write_derivatives_function(values::Vector{Symbolics.Num}, position::Union{UnitRange{Int},Vector{Int}}, ::Val{:string})
+function write_derivatives_function(values::Vector{Symbolics.Num}, position::UnitRange{Int}, ::Val{:string})
+    vals_expr = Meta.parse(string(values))
+
+    @RuntimeGeneratedFunction(:(𝔛 -> ($(Expr(:vect, vals_expr.args[2:end]...)), $position)))
+end # needed for JET tests
+
+function write_derivatives_function(values::Vector{Symbolics.Num}, position::Int, ::Val{:string})
     vals_expr = Meta.parse(string(values))
 
     @RuntimeGeneratedFunction(:(𝔛 -> ($(Expr(:vect, vals_expr.args[2:end]...)), $position)))
@@ -5012,6 +5018,12 @@ function write_derivatives_function(values::Symbolics.Num, position::Int, ::Val{
 
     @RuntimeGeneratedFunction(:(𝔛 -> ($vals_expr, $position)))
 end
+
+function write_derivatives_function(values::Symbolics.Num, position::UnitRange{Int}, ::Val{:string})
+    vals_expr = Meta.parse(string(values))
+    position  = position[1]
+    @RuntimeGeneratedFunction(:(𝔛 -> ($vals_expr, $position)))
+end # needed for JET tests
 
 function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:Symbolics})
     vals_expr = Symbolics.toexpr.(values)
@@ -5313,7 +5325,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
                 Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(third_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
             
-                    indices = length(indices) == 1 ? indices[1] : indices
+                    if length(indices) == 1
+                        indices = indices[1]
+                    end
 
                     func = write_derivatives_function(third_order[perm_vals][indices], indices, Val(:string))
 
@@ -9125,6 +9139,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0)
+    # first order
     state = state[1]
 
     precision_factor = 1.0
@@ -9154,7 +9169,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
         jacdecomp = ℒ.svd!(jac, check = false)
 
         if !ℒ.issuccess(jacdecomp)
-            return -Inf
+            return -1e307#Inf
         end
 
         x = jacdecomp \ data_in_deviations[:,1]
@@ -9184,14 +9199,14 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     if T.nExo == length(observables)
         jacdecomp = RF.lu!(jac, check = false)
         if !ℒ.issuccess(jacdecomp)
-            return -Inf
+            return -1e307#Inf
         end
         logabsdets = ℒ.logabsdet(jac ./ precision_factor)[1]
         invjac = inv(jacdecomp)
     else
         jacdecomp = ℒ.svd!(jac, check = false)
         if !ℒ.issuccess(jacdecomp)
-            return -Inf
+            return -1e307#Inf
         end
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac ./ precision_factor))
         invjac = inv(jacdecomp)
