@@ -2922,7 +2922,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     bounds_violated = @ignore_derivatives check_bounds(parameter_values, 𝓂)
 
-    if bounds_violated return -Inf end
+    if bounds_violated return -1e307 end#Inf end
 
     NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
 
@@ -2930,7 +2930,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol)
 
-    if !solved return -Inf end
+    if !solved return -1e307 end#Inf end
 
     if collect(axiskeys(data,1)) isa Vector{String}
         data = @ignore_derivatives rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
