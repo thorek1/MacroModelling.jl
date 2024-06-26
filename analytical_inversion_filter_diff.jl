@@ -212,14 +212,14 @@ end
 𝐒exo = 𝐒[cond_var_idx, end-T.nExo+1:end]
 
 
-∂state = zero(state[1])
+# ∂state = zero(state[1])
 ∂x = zero(x[1])
 ∂𝐒 = zero(𝐒)
 ∂v = zero(data_in_deviations[:,1])
 ∂data_in_deviations∂x = zero(data_in_deviations)
 
 
-for i in 1:-1:1#reverse(axes(data_in_deviations,2))
+for i in 2:-1:1 # reverse(axes(data_in_deviations,2))
     # ∂∂data_in_deviations∂shock²
     ∂x = 2*x[i]
  
@@ -231,10 +231,24 @@ for i in 1:-1:1#reverse(axes(data_in_deviations,2))
         ∂data_in_deviations∂x[:,i] -= invjac' * (𝐒[T.past_not_future_and_mixed_idx,:]' * 𝐒endo' * invjac' * 2 * x[i+1])[end-T.nExo+1:end]
     end
 
+
+    ∂𝐒[cond_var_idx, end-T.nExo+1:end] -= invjac' * 2 * x[i] * x[i]' # [cond_var_idx, end-T.nExo+1:end]
+
+    # ∂𝐒[cond_var_idx, end-T.nExo+1:end] -= invjac' * 2 * x[i+1] * x[i+1]' # [cond_var_idx, end-T.nExo+1:end]
+
+    if i > 1
+        ∂𝐒[cond_var_idx, 1:end-T.nExo] -= (𝐒[st,:] * vcat(state[i-1][st], x[i-1]))' .* (invjac' * 2 * x[i])
+        ∂𝐒[cond_var_idx, 1:end-T.nExo] -= invjac' * (𝐒[st,:]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[i])[end-T.nExo+1:end] * state[i-1][st]'
+
+        ∂𝐒[st,:] -= vcat(state[i-1][st], x[i-1])' .* (𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[i])
+
+        ∂𝐒[cond_var_idx, end-T.nExo+1:end] += invjac' * (𝐒[st,:]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[i])[end-T.nExo+1:end] * x[i-1]'
+
+    end
     # ∂𝐒∂shock²
     # v = (data_in_deviations[:,i] - 𝐒[cond_var_idx,1:end-T.nExo] * state[i][T.past_not_future_and_mixed_idx])
     
-    ∂𝐒[cond_var_idx,end-T.nExo+1:end] -= ∂v * x[i]'# - (v - jac * x[i]) * ∂v' * invjac' - invjac' * x[i] * (∂x' - ∂v' * jac)
+    # ∂𝐒[cond_var_idx,end-T.nExo+1:end] -= ∂v * x[i]'# - (v - jac * x[i]) * ∂v' * invjac' - invjac' * x[i] * (∂x' - ∂v' * jac)
 
     ### state = 𝐒 * vcat(state[T.past_not_future_and_mixed_idx], x)
 
@@ -242,7 +256,7 @@ for i in 1:-1:1#reverse(axes(data_in_deviations,2))
     #     ∂𝐒 += ∂state * vcat(state[i][T.past_not_future_and_mixed_idx], x[i+1])'
     # end
 
-    ∂state[T.past_not_future_and_mixed_idx] += 𝐒[:,1:end-T.nExo]' * ∂state
+    # ∂state[T.past_not_future_and_mixed_idx] += 𝐒[:,1:end-T.nExo]' * ∂state
 
     # ∂x += 𝐒[:,end-T.nExo+1:end]' * ∂state
 
@@ -251,8 +265,29 @@ for i in 1:-1:1#reverse(axes(data_in_deviations,2))
 
     # ∂𝐒[cond_var_idx,1:end-T.nExo] -= invjac' * ∂x * state[i][T.past_not_future_and_mixed_idx]'
 
-    ∂state[T.past_not_future_and_mixed_idx] -= 𝐒[cond_var_idx,1:end-T.nExo]' * invjac' * ∂x
+    # ∂state[T.past_not_future_and_mixed_idx] -= 𝐒[cond_var_idx,1:end-T.nExo]' * invjac' * ∂x
 end
+
+
+
+res = FiniteDiff.finite_difference_gradient(𝐒 -> begin
+# ForwardDiff.gradient(x->begin
+# Zygote.gradient(x->begin
+    shocks² = 0.0
+    for i in 1:2 # axes(data_in_deviations,2)
+        X = 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][T.past_not_future_and_mixed_idx])
+
+        state[i+1] = 𝐒 * vcat(state[i][T.past_not_future_and_mixed_idx], X)
+
+        shocks² += sum(abs2,X)
+    end
+
+    return shocks²
+end, 𝐒)#_in_deviations[:,1:2])
+
+isapprox(res, ∂𝐒, rtol = eps(Float32))
+
+res - ∂𝐒
 
 
 FiniteDiff.finite_difference_gradient(𝐒exo -> sum(abs2, 𝐒exo \ (data_in_deviations[:,i] - 𝐒endo * state[i][st])), 𝐒exo)# + ∂v
@@ -364,7 +399,9 @@ i = 1
 
 ∂uuuu∂uuu * (∂uuu∂uu * ∂uu∂u * ∂u∂x * ∂x∂shocks²)[end-T.nExo+1:end] * ∂𝐒∂uuuu
 
-∂𝐒[cond_var_idx, 1:end-T.nExo] += ∂uuuu∂uuu * (∂uuu∂uu * ∂uu∂u * ∂u∂x * ∂x∂shocks²)[end-T.nExo+1:end] * ∂𝐒∂uuuu
+# ∂𝐒[cond_var_idx, 1:end-T.nExo] += ∂uuuu∂uuu * (∂uuu∂uu * ∂uu∂u * ∂u∂x * ∂x∂shocks²)[end-T.nExo+1:end] * ∂𝐒∂uuuu
+
+∂𝐒[cond_var_idx, 1:end-T.nExo] -= invjac' * (𝐒[st,:]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[i+1])[end-T.nExo+1:end] * state[i][st]'
 
 
 
@@ -416,7 +453,7 @@ res = FiniteDiff.finite_difference_gradient(𝐒 -> begin
 # ForwardDiff.gradient(x->begin
 # Zygote.gradient(x->begin
     shocks² = 0.0
-    for i in 1:2#axes(data_in_deviations,2)
+    for i in 1:2 # axes(data_in_deviations,2)
         X = 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][T.past_not_future_and_mixed_idx])
 
         state[i+1] = 𝐒 * vcat(state[i][T.past_not_future_and_mixed_idx], X)
