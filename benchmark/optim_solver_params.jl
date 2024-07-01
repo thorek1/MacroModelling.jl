@@ -39,6 +39,7 @@ include("../models/Ireland_2004.jl")
 include("../models/Caldara_et_al_2012.jl")
 include("../models/Gali_Monacelli_2005_CITR.jl")
 include("../models/Gali_2015_chapter_3_nonlinear.jl")
+# include("../models/Gali_2015_chapter_3_obc.jl")
 include("../models/Aguiar_Gopinath_2007.jl")
 include("../models/Ascari_Sbordone_2014.jl") # stands out
 include("../models/FS2000.jl")
@@ -314,6 +315,18 @@ all_models = [
 
 # all_models[1].NSSS_solver_cache
 pars = [2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688]
+
+
+
+par_inputs = MacroModelling.solver_parameters(eps(), eps(), eps(), maxiters, pars..., transformation, 0.0, 2)
+
+SS(Guerrieri_Iacoviello_2017)
+get_solution(Guerrieri_Iacoviello_2017)
+simulate(Guerrieri_Iacoviello_2017)
+model = Guerrieri_Iacoviello_2017
+
+model.SS_solve_func(model.parameter_values, model, false, true, [par_inputs])
+
 
 evaluate_multi_pars_loglikelihood(pars, all_models)
 

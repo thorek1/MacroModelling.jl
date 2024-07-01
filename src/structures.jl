@@ -166,7 +166,8 @@ end
 struct third_order_auxilliary_matrices
     𝐂₃::SparseMatrixCSC{Int}
     𝐔₃::SparseMatrixCSC{Int}
-
+    𝐈₃::Dict{Vector{Int}, Int}
+    
     𝐔∇₃::SparseMatrixCSC{Int}
 
     𝐏::SparseMatrixCSC{Int}
@@ -358,6 +359,8 @@ mutable struct ℳ
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func::Function
     SS_check_func::Function
+    ∂SS_equations_∂parameters::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    ∂SS_equations_∂SS_and_pars::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
     # nonlinear_solution_helper
     SS_dependencies::Any
 
@@ -379,10 +382,13 @@ mutable struct ℳ
 
     bounds::Dict{Symbol,Tuple{Float64,Float64}}
 
-    model_jacobian::Function
+    # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
+    model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
+    # model_jacobian_parameters::Function
+    model_jacobian_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
     # model_jacobian::FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}#{typeof(model_jacobian)}
-    model_hessian::Vector{Function}
-    model_third_order_derivatives::Vector{Function}
+    model_hessian::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    model_third_order_derivatives::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
 
     timings::timings
 
@@ -396,4 +402,5 @@ mutable struct ℳ
     solution::solution
     # symbolics::symbolics
 
+    estimation_helper::Dict{Vector{Symbol}, timings}
 end

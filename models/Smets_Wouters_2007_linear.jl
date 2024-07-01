@@ -72,11 +72,11 @@
 
 	dinve[0] = ctrend + inve[0] - inve[-1]
 
-	dw[0] = ctrend + w[0] - w[-1]
-
 	pinfobs[0] = constepinf + pinf[0]
 
 	robs[0] = r[0] + conster
+
+	dwobs[0] = ctrend + w[0] - w[-1]
 
 	labobs[0] = lab[0] + constelab
 
