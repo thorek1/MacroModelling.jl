@@ -208,6 +208,8 @@ end
 #     shocks² += sum(abs2,x[i])
 # end
 # return shocks²
+
+st = T.past_not_future_and_mixed_idx
 𝐒endo = 𝐒[cond_var_idx, 1:end-T.nExo]
 𝐒exo = 𝐒[cond_var_idx, end-T.nExo+1:end]
 
@@ -280,6 +282,7 @@ res = FiniteDiff.finite_difference_gradient(𝐒 -> begin
         state[i+1] = 𝐒 * vcat(state[i][T.past_not_future_and_mixed_idx], X)
 
         shocks² += sum(abs2,X)
+        # shocks² += sum(abs2,state[i+1])
     end
 
     return shocks²
@@ -288,6 +291,381 @@ end, 𝐒)#_in_deviations[:,1:2])
 isapprox(res, ∂𝐒, rtol = eps(Float32))
 
 res - ∂𝐒
+
+i = 1
+
+𝐒¹ = 𝐒[cond_var_idx, end-T.nExo+1:end]
+𝐒² = 𝐒[cond_var_idx, 1:end-T.nExo]
+𝐒³ = 𝐒[st,:]
+sum(abs2, 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st]))
+sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st]))))
+
+
+
+
+state[i+1] = 𝐒[:,1:end-T.nExo] * state[i][st]   +   𝐒[:,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st]))
+
+state[i+2] = 𝐒[:,1:end-T.nExo] * (𝐒[:,1:end-T.nExo] * state[i][st]   +   𝐒[:,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))[st]   +   𝐒[:,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * (𝐒[:,1:end-T.nExo] * state[i][st]   +   𝐒[:,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))[st]))
+
+
+state[i+2] = 𝐒[:,1:end-T.nExo] * (𝐒[:,1:end-T.nExo] * state[i][st]   
++   𝐒[:,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))[st]   
+
++   𝐒[:,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * (𝐒[:,1:end-T.nExo] * state[i][st]   
++   𝐒[:,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))[st]))
+
+
+
+𝐒[:,1:end-T.nExo] * 𝐒[st,1:end-T.nExo] * state[i][st]   
++  𝐒[:,1:end-T.nExo] * 𝐒[st,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])) 
+
++   𝐒[:,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * (𝐒[st,1:end-T.nExo] * state[i][st]   
++   𝐒[st,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))))
+
+
+
+
+# res = FiniteDiff.finite_difference_gradient(stat -> begin
+ForwardDiff.gradient(stat->begin
+shocks² = 0.0
+# stat = zero(state[1])
+for i in 1:2 # axes(data_in_deviations,2)
+    stat = 𝐒[:,1:end-T.nExo] * stat[T.past_not_future_and_mixed_idx] + 𝐒[:,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * stat[T.past_not_future_and_mixed_idx]))
+
+    # shocks² += sum(abs2,X)
+    shocks² += sum(abs2,stat)
+end
+
+return shocks²
+end, state[1])[st]#_in_deviations[:,1:2])
+
+
+
+
+
+xxx =  𝐒[st,1:end-T.nExo]' * 𝐒[:,1:end-T.nExo]' * 2 * state[i+2]
+xxx += 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[st,end - T.nExo + 1:end]' * 𝐒[:,1:end-T.nExo]' * 2 * state[i+2]
+xxx -= 𝐒[st,1:end-T.nExo]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[:,end - T.nExo + 1:end]' * 2 * state[i+2]
+xxx -= 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[st,end - T.nExo + 1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[:,end - T.nExo + 1:end]' * 2 * state[i+2]
+
+
+xxx +=  𝐒[:,1:end-T.nExo]' * 2 * state[i+1]
+xxx -= 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[:,end - T.nExo + 1:end]' * 2 * state[i+1]
+
+
+xxx * ∂state∂shocks²
+# 𝐒[:,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * (𝐒[st,1:end-T.nExo] * state[i][st]   +   𝐒[st,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))))
+
+
+
+
+state[i+2] = 𝐒[:,1:end-T.nExo] * (𝐒[:,1:end-T.nExo] * state[i][st])[st] 
+
+∂state∂X * ∂X∂stt * ∂state∂state * ∂state∂shocks²
+
+
+
+∂state = zero(state[i])
+
+∂state∂shocks² = 2 * state[i+1]#[st]
+
+
+∂state∂state = 𝐒[:,1:end-T.nExo]'# * ∂state∂shocks²
+
+∂state∂state -= 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[:,end-T.nExo+1:end]'
+
+∂state[st] += ∂state∂state * ∂state∂shocks²
+
+∂state[st] += ∂state∂state * ∂state
+
+∂state∂state * ∂state∂shocks²
+
+
+∂state∂state * 2 * state[i+1] + ∂stt∂stt * ∂state∂state * 2 * state[i+2]
+∂state∂shocks² += 2 * state[i+2]#[st]
+
+out = zero(state[i+2][st])
+
+for i in 2:-1:1
+    out .= ∂stt∂stt * out
+    out += (∂state∂state * 2 * state[i+1])
+end
+
+
+𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[1]
+
+
+out = zero(state[i][st])
+
+for i in 1:-1:1
+    out .= 𝐒[st,1:end-T.nExo]' * out
+    out -= 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[1]
+end
+out
+
+
+
+∂state = zero(state[i][st])
+
+for i in reverse(axes(data_in_deviations,2))
+    # out .= (𝐒[st,1:end-T.nExo]' - 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[st,end-T.nExo+1:end]') * out
+    ∂state .= (𝐒[st,1:end-T.nExo] - 𝐒[st,end-T.nExo+1:end] * invjac * 𝐒[cond_var_idx, 1:end-T.nExo])' * ∂state
+    ∂state -= (invjac * 𝐒[cond_var_idx, 1:end-T.nExo])' * 2 * x[i]
+end
+
+∂state
+
+
+
+∂data_in_deviations = zero(data_in_deviations)
+
+for i in reverse(axes(data_in_deviations,2))
+    if i < size(data_in_deviations,2)
+        ∂data_in_deviations[:,i] -= invjac' * ((invjac * 𝐒[cond_var_idx, 1:end-T.nExo] * 𝐒[T.past_not_future_and_mixed_idx,:])' * 2 * x[i+1])[end-T.nExo+1:end]
+    end
+    ∂data_in_deviations[:,i] += invjac' * 2 * x[i]
+end
+
+
+
+
+∂𝐒 = zero(𝐒)
+
+for i in 2:-1:1#reverse(axes(data_in_deviations,2))
+    ∂𝐒[cond_var_idx, end-T.nExo+1:end] -= invjac' * 2 * x[i] * x[i]' # [cond_var_idx, end-T.nExo+1:end]
+
+    if i > 1
+        ∂𝐒[cond_var_idx, 1:end-T.nExo] -= (𝐒[st,:] * vcat(state[i-1][st], x[i-1]))' .* (invjac' * 2 * x[i])
+        ∂𝐒[cond_var_idx, end-T.nExo+1:end]  += 2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * x[i-1]'
+        
+        ∂𝐒[st,:] -= 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * vcat(state[i-1][st], x[i-1])'
+
+        # ∂𝐒[cond_var_idx, :] += invjac' * (𝐒[st,:]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[i])[end-T.nExo+1:end] * vcat(-state[i-1][st], x[i-1])'
+    end
+end
+
+maximum(abs, (res - ∂𝐒) ./ res)
+
+unique((res - ∂𝐒) ./ ∂𝐒) .|> abs |> sort
+
+(𝐒[st,:] * vcat(state[i-1][st], x[i-1]))' .* (invjac' * 2 * x[i])
+
+
+
+
+∂𝐒 = zero(𝐒)
+
+for i in 3:-1:1#reverse(axes(data_in_deviations,2))
+    ∂𝐒[cond_var_idx, :]         -= 2 * invjac' * x[i] * vcat(state[i][st], x[i])' # [cond_var_idx, end-T.nExo+1:end]
+
+    if i > 1
+        ∂𝐒[cond_var_idx, :]     += 2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * vcat(state[i-1][st], x[i-1])'
+        ∂𝐒[st,:]                -= 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * vcat(state[i-1][st], x[i-1])'
+    end
+
+    if i > 2
+        ∂𝐒[st,:]    += 2 * (𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[st,end-T.nExo+1:end]' - 𝐒[st,1:end-T.nExo]') * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * vcat(state[1][st], x[1])'
+    end
+end
+
+
+
+𝐒⁰ = 𝐒[cond_var_idx,:]'
+𝐒¹ = 𝐒[cond_var_idx, end-T.nExo+1:end]
+𝐒² = 𝐒[cond_var_idx, 1:end-T.nExo]'
+𝐒³ = 𝐒[st,1:end-T.nExo]'
+𝐒³̂ = 𝐒[st,end-T.nExo+1:end]'
+
+∂𝐒 = zero(𝐒)
+
+cond_var_idx∂𝐒 = copy(∂𝐒[cond_var_idx, :])
+
+for i in 4:-1:1#reverse(axes(data_in_deviations,2))
+    ∂𝐒[cond_var_idx, :]     -= 2 * invjac' * x[i] * vcat(state[i][st], x[i])' # [cond_var_idx, end-T.nExo+1:end]
+
+    if i > 1
+        # cond_var_idx∂𝐒      += invjac' * 𝐒³̂ * 𝐒² * ∂𝐒[cond_var_idx, :] / vcat(state[i][st], x[i])' * vcat(state[i-1][st], x[i-1])'
+        ∂𝐒[cond_var_idx, :] += 2 * invjac' * 𝐒³̂ * 𝐒² * invjac' * x[i] * vcat(state[i-1][st], x[i-1])'
+        ∂𝐒[st,:]            -= 2 * 𝐒² * invjac' * x[i] * vcat(state[i-1][st], x[i-1])'
+    end
+
+    if i > 2
+        # ∂𝐒[st,:]    += 2 * (𝐒² * invjac' * 𝐒³̂ - 𝐒³) * 𝐒² * invjac' * x[i] * vcat(state[1][st], x[1])'
+        ∂𝐒[st,:]    -= (𝐒² * invjac' * 𝐒³̂ - 𝐒³) * ∂𝐒[st,:] / vcat(state[i-1][st], x[i-1])' * vcat(state[1][st], x[1])'
+    end
+end
+
+sum(abs, res - ∂𝐒, dims = 2)[19]
+maximum(abs, res - ∂𝐒)
+
+
+# terms for i = 3
+∂𝐒[st,:]                += 2 * (𝐒² * invjac' * 𝐒³̂ - 𝐒³) * 𝐒² * invjac' * x[3] * vcat(state[1][st], x[1])'
+∂𝐒[st,:]                -= 2 * 𝐒² * invjac' * x[3] * vcat(state[2][st], x[2])'
+
+∂𝐒[cond_var_idx, :]     += 2 * invjac' * 𝐒³̂ * 𝐒² * invjac' * x[3] * vcat(state[2][st], x[2])'
+∂𝐒[cond_var_idx, :]     -= 2 * invjac' * x[3] * vcat(state[3][st], x[3])'
+
+
+# terms for i = 2
+∂𝐒[st,:]                -= 2 * 𝐒² * invjac' * x[2] * vcat(state[1][st], x[1])'
+
+∂𝐒[cond_var_idx, :]     += 2 * invjac' * 𝐒³̂ * 𝐒² * invjac' * x[2] * vcat(state[1][st], x[1])'
+∂𝐒[cond_var_idx, :]     -= 2 * invjac' * x[2] * vcat(state[2][st], x[2])'
+
+
+# terms for i = 1
+∂𝐒[cond_var_idx, :]     -= 2 * invjac' * x[1] * vcat(state[1][st], x[1])'
+
+
+
+32
+31
+
+21
+
+
+𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[st,end-T.nExo+1:end]' - 𝐒[st,1:end-T.nExo]'
+
+maximum(abs, res - ∂𝐒)
+
+∂𝐒 = zero(𝐒)
+
+i = 1
+
+∂𝐒[cond_var_idx, end-T.nExo+1:end]  -= invjac' * 2 * x[i] * x[i]'
+
+
+∂𝐒[cond_var_idx, end-T.nExo+1:end]  += 2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+1] * x[i]'
+# ∂𝐒[cond_var_idx, end-T.nExo+1:end]  -= 2 * invjac' * x[i+1] * x[i+1]'
+∂𝐒[cond_var_idx,:]                  -= 2 * invjac' * x[i+1] * vcat(state[i+1][st], x[i+1])'
+∂𝐒[st,:]                            -= 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+1] * vcat(state[i][st], x[i])'
+
+
+∂𝐒[cond_var_idx, :] -= 2 * invjac' * x[i+2] * vcat(state[i+2][st], x[i+2])'
+∂𝐒[cond_var_idx, :] += 2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * vcat(state[i+1][st], x[i+1])'
+
+# 𝐒³
+∂𝐒[st,:]            -= 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * vcat(state[i+1][st], x[i+1])'
+∂𝐒[st,:]            -= 2 * 𝐒[st,1:end-T.nExo]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * vcat(state[i][st], x[i])'
+∂𝐒[st,:]            += 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[st,end-T.nExo+1:end]'  * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * vcat(state[i][st], x[i])'
+
+
+
+
+res = FiniteDiff.finite_difference_gradient(𝐒 -> begin
+# ForwardDiff.gradient(x->begin
+# Zygote.gradient(x->begin
+    shocks² = 0.0
+    for i in 1:4 # axes(data_in_deviations,2)
+        X = 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][T.past_not_future_and_mixed_idx])
+
+        state[i+1] = 𝐒 * vcat(state[i][T.past_not_future_and_mixed_idx], X)
+
+        shocks² += sum(abs2,X)
+        # shocks² += sum(abs2,state[i+1])
+    end
+
+    return shocks²
+end, 𝐒)#_in_deviations[:,1:2])
+
+maximum(abs, res - ∂𝐒)
+
+∂state
+
+
+
+
+Xx = 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,1] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[1][T.past_not_future_and_mixed_idx])
+
+Xx = 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,2] - 𝐒[cond_var_idx, 1:end-T.nExo] * 𝐒[T.past_not_future_and_mixed_idx,:] * 
+vcat(
+    state[1][T.past_not_future_and_mixed_idx], 
+    𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,1] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[1][T.past_not_future_and_mixed_idx])
+    ))
+
+
+
+- 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[1]   +  𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[2] -  𝐒[T.past_not_future_and_mixed_idx,1:end-T.nExo]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[2] 
+# 𝐒[T.past_not_future_and_mixed_idx,1:end-T.nExo]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[1]
+
+
+out = zero(state[i][st])
+
+for i in reverse(axes(data_in_deviations,2))
+    out .= (𝐒[T.past_not_future_and_mixed_idx,1:end-T.nExo]' - 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end]') * out
+    out -= 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[i]
+end
+out
+
+
+(invjac * 𝐒[cond_var_idx, 1:end-T.nExo])'
+
+
+
+res = FiniteDiff.finite_difference_gradient(stat -> begin
+# ForwardDiff.gradient(x->begin
+# Zygote.gradient(x->begin
+    shocks² = 0.0
+    state[1] = stat
+    for i in axes(data_in_deviations,2)
+        X = 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])
+
+        state[i+1] = 𝐒 * vcat(state[i][st], X)
+
+        shocks² += sum(abs2,X)
+        # shocks² += sum(abs2,state[i+1])
+    end
+
+    return shocks²
+end, state[1])[st]#_in_deviations[:,1:2])
+
+
+
+
+(∂state∂X * ∂X∂state + ∂state∂state) * ∂state∂shocks²
+
+
+∂state∂state[:,st] * ∂state∂state * ∂state∂shocks²
+
+∂stt∂stt = 𝐒[st,1:end-T.nExo]'# * ∂state∂shocks²
+
+∂X∂state = 𝐒[:,end-T.nExo+1:end]'# * ∂state∂shocks²
+
+∂X∂stt = 𝐒[st,end-T.nExo+1:end]'# * ∂state∂shocks²
+
+∂state∂X = -𝐒[cond_var_idx, 1:end-T.nExo]' * invjac'
+
+∂stt∂stt*(∂state∂X * ∂X∂state * ∂state∂shocks² + ∂state∂state * ∂state∂shocks²)
+
+∂state∂X * ∂X∂stt * ∂state∂state * ∂state∂shocks² + ∂stt∂stt * ∂state∂state * ∂state∂shocks² + (∂state∂X * ∂X∂state * ∂state∂shocks² + ∂state∂state * ∂state∂shocks²)
+
+
+
+
+∂stt∂stt * ∂state∂X * ∂X∂state * ∂state∂shocks²
+
+∂stt∂stt * ∂state∂state * ∂state∂shocks²
+
+res = FiniteDiff.finite_difference_gradient(stat -> begin
+# ForwardDiff.gradient(x->begin
+# Zygote.gradient(x->begin
+    shocks² = 0.0
+    state[1] .= stat
+    for i in 1:2 # axes(data_in_deviations,2)
+        # X = 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][T.past_not_future_and_mixed_idx])
+
+        # state[i+1] = 𝐒 * vcat(state[i][T.past_not_future_and_mixed_idx], X)
+
+        state[i+1] = 𝐒[:,1:end-T.nExo] * state[i][T.past_not_future_and_mixed_idx] + 𝐒[:,end - T.nExo + 1:end] * (𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][T.past_not_future_and_mixed_idx]))
+
+        # shocks² += sum(abs2,X)
+        shocks² += sum(abs2,state[i+1])
+    end
+
+    return shocks²
+end, state[1])[st]#_in_deviations[:,1:2])
+
 
 
 FiniteDiff.finite_difference_gradient(𝐒exo -> sum(abs2, 𝐒exo \ (data_in_deviations[:,i] - 𝐒endo * state[i][st])), 𝐒exo)# + ∂v
@@ -329,7 +707,183 @@ Zygote.gradient(x -> sum(abs2,  x \ (data_in_deviations[:,i] - 𝐒[cond_var_idx
 
 Zygote.gradient(x -> sum(abs2, x \ (data_in_deviations[:,i+1] - 𝐒[cond_var_idx, 1:end-T.nExo] *  𝐒[st,:] * vcat(state[i][st], x \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))), 𝐒[cond_var_idx, end-T.nExo+1:end])[1]
 
+Zygote.gradient(𝐒 -> sum(abs2, 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i+1] - 𝐒[cond_var_idx, 1:end-T.nExo] *  𝐒[st,:] * vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))), 𝐒)[1]
 
+# derivative wrt S for two periods
+ForwardDiff.gradient(𝐒 -> sum(abs2,  𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])) + sum(abs2, 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i+1] - 𝐒[cond_var_idx, 1:end-T.nExo] *  𝐒[st,:] * vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))), 𝐒) - ∂𝐒
+
+
+
+ForwardDiff.gradient(𝐒 -> sum(abs2,  𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])) + sum(abs2, 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i+1] - 𝐒[cond_var_idx, 1:end-T.nExo] *  𝐒[st,:] * vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))) + sum(abs2, 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i+2] - 𝐒[cond_var_idx, 1:end-T.nExo] * 𝐒[st,:] * vcat(𝐒[st,:] * vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])), 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i+1] - 𝐒[cond_var_idx, 1:end-T.nExo] * 𝐒[st,:] * vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))))), 𝐒)
+
+
+
+ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i+2] - 𝐒[cond_var_idx, 1:end-T.nExo] * 𝐒[st,:] * vcat(𝐒[st,:] * vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])), 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i+1] - 𝐒[cond_var_idx, 1:end-T.nExo] * 𝐒[st,:] * vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))))), 𝐒)
+
+
+
+res = FiniteDiff.finite_difference_gradient(𝐒 -> begin
+# ForwardDiff.gradient(x->begin
+# Zygote.gradient(x->begin
+    shocks² = 0.0
+    for i in 1:3 # axes(data_in_deviations,2)
+        X = 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][T.past_not_future_and_mixed_idx])
+
+        state[i+1] = 𝐒 * vcat(state[i][T.past_not_future_and_mixed_idx], X)
+
+        shocks² += sum(abs2,X)
+        # shocks² += sum(abs2,state[i+1])
+    end
+
+    return shocks²
+end, 𝐒) - ∂𝐒#_in_deviations[:,1:2])
+
+res3 = res1-res2
+
+
+𝐒¹ = 𝐒[cond_var_idx, end-T.nExo+1:end]
+𝐒² = 𝐒[cond_var_idx, 1:end-T.nExo]
+𝐒³ = 𝐒[st,:]
+
+sum(abs2, 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st]))
+
+sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st]))))
+
+sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st]))))))
+
+
+ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒 * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st]))))
+, 𝐒²)
+
+ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒 * state[i][st]))))
+, 𝐒²)
+
+
+ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒 \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st]))))))
+, 𝐒[cond_var_idx, end-T.nExo+1:end])
+
+ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒 \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒 \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒 \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒 \ (data_in_deviations[:,i] - 𝐒² * state[i][st]))))))
+, 𝐒[cond_var_idx, end-T.nExo+1:end])
+
+
+ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i+2] - 𝐒[cond_var_idx, 1:end-T.nExo] * 𝐒[st,:] * vcat(𝐒[st,:] * vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])), 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i+1] - 𝐒[cond_var_idx, 1:end-T.nExo] * 𝐒[st,:] * vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))))), 𝐒)
+
+
+∂𝐒 = zero(𝐒)
+
+i = 1
+
+# 𝐒¹
+∂𝐒[cond_var_idx, end-T.nExo+1:end]  -= 2 * invjac' * x[i+2] * x[i+2]'
+# ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒 \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒[cond_var_idx, end-T.nExo+1:end])
+
+
+# ∂𝐒[cond_var_idx, end-T.nExo+1:end]  += 2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * x[i]'
+# ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒 \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒[cond_var_idx, end-T.nExo+1:end])
+
+
+
+∂𝐒[cond_var_idx, end-T.nExo+1:end]  += 2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * x[i+1]'
+# Zygote.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒 \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒[cond_var_idx, end-T.nExo+1:end])[1]
+
+
+
+# ∂𝐒[cond_var_idx, end-T.nExo+1:end]  -= 2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * x[i]'
+# Zygote.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒 \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒[cond_var_idx, end-T.nExo+1:end])[1]
+
+
+
+
+# 𝐒²
+∂𝐒[cond_var_idx, 1:end-T.nExo]  -= 2 * invjac' * x[i+2] * state[i+2][st]'
+# ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒 * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒[cond_var_idx, 1:end-T.nExo])
+
+# 0
+# ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒 * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒[cond_var_idx, 1:end-T.nExo])
+
+
+∂𝐒[cond_var_idx, 1:end-T.nExo]  += 2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * state[i+1][st]'
+# ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒 * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒²)
+
+# 0
+# ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒 * state[i][st])))))), 𝐒[cond_var_idx, 1:end-T.nExo])
+
+
+ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒 * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒²) + ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒 * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒[cond_var_idx, 1:end-T.nExo])
+
+ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒 * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒 * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒 * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒 * state[i][st])))))), 𝐒²)
+
+
+# 𝐒³
+∂𝐒[st,:]                            -= 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * vcat(state[i+1][st], x[i+1])'
+# ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒 * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒³)
+
+
+∂𝐒[st,:]                            -= 2 * 𝐒[st,1:end-T.nExo]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * vcat(state[i][st], x[i])'
+# ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒 * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒³)
+
+
+
+
+∂𝐒[st,:]                            += 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[st,end-T.nExo+1:end]'  * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * vcat(state[i][st], x[i])'
+# ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒³ * vcat(𝐒³ * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒 * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒³)
+
+
+ForwardDiff.gradient(𝐒 -> sum(abs2, 𝐒¹ \ (data_in_deviations[:,i+2] - 𝐒² * 𝐒 * vcat(𝐒 * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])), 𝐒¹ \ (data_in_deviations[:,i+1] - 𝐒² * 𝐒 * vcat(state[i][st], 𝐒¹ \ (data_in_deviations[:,i] - 𝐒² * state[i][st])))))), 𝐒³)
+
+
+
+# ∂𝐒[cond_var_idx, end-T.nExo+1:end]  -= 2 * invjac' * x[i+1] * x[i+1]'
+∂𝐒[cond_var_idx,:]                  -= 2 * invjac' * x[i+2] * vcat(state[i+2][st], x[i+2])'
+∂𝐒[st,:]                            -= 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * vcat(state[i][st], x[i])'
+
+
+∂𝐒 = zero(𝐒)
+
+i = 1
+
+∂𝐒[cond_var_idx, end-T.nExo+1:end]  -= invjac' * 2 * x[i] * x[i]'
+
+∂𝐒[cond_var_idx, end-T.nExo+1:end]  += 2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+1] * x[i]'
+# ∂𝐒[cond_var_idx, end-T.nExo+1:end]  -= 2 * invjac' * x[i+1] * x[i+1]'
+∂𝐒[cond_var_idx,:]                  -= 2 * invjac' * x[i+1] * vcat(state[i+1][st], x[i+1])'
+∂𝐒[st,:]                            -= 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+1] * vcat(state[i][st], x[i])'
+
+
+
+# 𝐒¹
+# ∂𝐒[cond_var_idx, end-T.nExo+1:end]  -= 2 * invjac' * x[i+2] * x[i+2]'
+# ∂𝐒[cond_var_idx, end-T.nExo+1:end]  += 2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * x[i+1]'
+
+# 𝐒²
+# ∂𝐒[cond_var_idx, 1:end-T.nExo]      -= 2 * invjac' * x[i+2] * state[i+2][st]'
+# ∂𝐒[cond_var_idx, 1:end-T.nExo]      -= 2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * state[i+1][st]'
+
+
+∂𝐒[cond_var_idx, :] -= 2 * invjac' * x[i+2] * vcat(state[i+2][st], x[i+2])'
+∂𝐒[cond_var_idx, :] += 2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * vcat(state[i+1][st], x[i+1])'
+
+# 𝐒³
+∂𝐒[st,:]            -= 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * vcat(state[i+1][st], x[i+1])'
+∂𝐒[st,:]            -= 2 * 𝐒[st,1:end-T.nExo]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * vcat(state[i][st], x[i])'
+∂𝐒[st,:]            += 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[st,end-T.nExo+1:end]'  * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+2] * vcat(state[i][st], x[i])'
+
+
+
+
+
+2 * invjac' * x[i+1] * x[i+1]' * inv(ℒ.svd(x[i+1]))'
+
+2 * invjac' * x[i+1] * x[i+1]' / x[i+1]' * x[i]'
+
+invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * 2 * invjac' * x[i+1] * x[i+1]' * (x[i+1]' \ x[i]')
+
+
+2 * invjac' * x[i+1] * x[i]'
+
+2 * invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+1] * x[i]' - 2 * invjac' * x[i+1] * x[i+1]'
+
+2 * invjac' * (𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i+1] * x[i]' - x[i+1] * x[i+1]')
 
 ∂𝐒 = zero(𝐒)
 
@@ -354,8 +908,9 @@ i = 1
 
 ∂𝐒2∂shocks² = - (𝐒[st,:] * vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))' .* (∂u∂x * ∂x∂shocks²)
 
-∂𝐒[cond_var_idx, 1:end-T.nExo] -= (𝐒[st,:] * vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))' .* (invjac' * 2 * x[i+1])
-
+# ∂𝐒[cond_var_idx, 1:end-T.nExo] -= (state[i+1][st] * (invjac' * 2 * x[i+1])')'
+# ∂𝐒[cond_var_idx, 1:end-T.nExo] -= (state[i+1][st] * x[i+1]' * invjac * 2)'
+∂𝐒[cond_var_idx, 1:end-T.nExo] -= invjac' * x[i+1] * state[i+1][st]' * 2
 
 # next S
 ∂uu∂u = - 𝐒[cond_var_idx, 1:end-T.nExo]'
@@ -364,7 +919,10 @@ i = 1
 
 ∂𝐒2∂shocks² = ∂𝐒∂uu .* (∂uu∂u * ∂u∂x * ∂x∂shocks²)
 
-∂𝐒[st,:] += (vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))' .* (- 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[i+1])
+# ∂𝐒[st,:] -= (vcat(state[i][st], x[i]) * (𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[i+1])')'
+∂𝐒[st,:] -= 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[i+1] * vcat(state[i][st], x[i])'
+
+
 
 
 # next S
@@ -379,7 +937,11 @@ i = 1
 
 ∂𝐒∂shocks² = invjac' * (∂uuu∂uu * ∂uu∂u * ∂u∂x * ∂x∂shocks²)[end-T.nExo+1:end] * x[i]'
 
-∂𝐒[cond_var_idx, end-T.nExo+1:end] += invjac' * (𝐒[st,:]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[i+1])[end-T.nExo+1:end] * x[i]'
+∂𝐒[cond_var_idx, end-T.nExo+1:end] += invjac' * 𝐒[st,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 2 * x[i+1] * x[i]'
+
+
+ForwardDiff.gradient(𝐒 -> sum(abs2,  𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])) + sum(abs2, 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i+1] - 𝐒[cond_var_idx, 1:end-T.nExo] *  𝐒[st,:] * vcat(state[i][st], 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][st])))), 𝐒) - ∂𝐒
+
 
 
 
