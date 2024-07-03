@@ -56,7 +56,7 @@ The package contains the following models in the `models` folder:
 **Host language**|julia|MATLAB|julia|Python|julia|julia|julia|MATLAB|MATLAB|MATLAB|R|MATLAB|MATLAB|
 **Non stochastic steady state solver**|*symbolic* or numerical solver of independent blocks; symbolic removal of variables redundant in steady state; inclusion of calibration equations in problem|numerical solver of independent blocks or user-supplied values/functions||numerical solver of independent blocks or user-supplied values/functions|numerical solver|numerical solver or user supplied values/equations|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|user-supplied steady state file or numerical solver|numerical solver; inclusion of calibration equations in problem|||
 **Automatic declaration of variables and parameters**|yes|||||||||||||
-**Derivatives (Automatic Differentiation) wrt parameters**|yes|||||yes - for all 1st, 2nd order perturbation solution related output *if user supplied steady state equations*|||||||
+**Derivatives (Automatic Differentiation) wrt parameters**|yes|||||yes|||||||
 **Perturbation solution order**|1, 2, 3|k|1|1, 2, 3|1, 2, 3|1, 2|1|1|1 to 5|1|1||1 to 5|
 **Pruning**|yes|yes||||yes|||yes|||||
 **Automatic derivation of first order conditions**|||||||||||yes||
