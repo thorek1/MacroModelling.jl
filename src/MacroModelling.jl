@@ -9245,21 +9245,23 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    obs_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+
+    t⁻ = T.past_not_future_and_mixed_idx
 
     shocks² = 0.0
     logabsdets = 0.0
 
     if warmup_iterations > 0
         if warmup_iterations >= 1
-            jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
+            jac = 𝐒[obs_idx,end-T.nExo+1:end]
             if warmup_iterations >= 2
-                jac = hcat(𝐒[cond_var_idx,1:T.nPast_not_future_and_mixed] * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
+                jac = hcat(𝐒[obs_idx,1:T.nPast_not_future_and_mixed] * 𝐒[t⁻,end-T.nExo+1:end], jac)
                 if warmup_iterations >= 3
-                    Sᵉ = 𝐒[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+                    Sᵉ = 𝐒[t⁻,1:T.nPast_not_future_and_mixed]
                     for e in 1:warmup_iterations-2
-                        jac = hcat(𝐒[cond_var_idx,1:T.nPast_not_future_and_mixed] * Sᵉ * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
-                        Sᵉ *= 𝐒[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+                        jac = hcat(𝐒[obs_idx,1:T.nPast_not_future_and_mixed] * Sᵉ * 𝐒[t⁻,end-T.nExo+1:end], jac)
+                        Sᵉ *= 𝐒[t⁻,1:T.nPast_not_future_and_mixed]
                     end
                 end
             end
@@ -9276,7 +9278,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
         warmup_shocks = reshape(x, T.nExo, warmup_iterations)
 
         for i in 1:warmup_iterations-1
-            ℒ.mul!(state, 𝐒, vcat(state[T.past_not_future_and_mixed_idx], warmup_shocks[:,i]))
+            ℒ.mul!(state, 𝐒, vcat(state[t⁻], warmup_shocks[:,i]))
             # state = state_update(state, warmup_shocks[:,i])
         end
 
@@ -9294,10 +9296,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
     state = [copy(state) for _ in 1:size(data_in_deviations,2)+1]
     shocks² = 0.0
     logabsdets = 0.0
-    y = zeros(length(cond_var_idx))
+    y = zeros(length(obs_idx))
     x = [zeros(T.nExo) for _ in 1:size(data_in_deviations,2)]
 
-    jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
+    jac = 𝐒[obs_idx,end-T.nExo+1:end]
 
     if T.nExo == length(observables)
         logabsdets = ℒ.logabsdet(-jac' ./ precision_factor)[1]
@@ -9311,78 +9313,85 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
 
     logabsdets *= size(data_in_deviations,2) - presample_periods
 
-    @views 𝐒obs = 𝐒[cond_var_idx,1:end-T.nExo]
+    @views 𝐒obs = 𝐒[obs_idx,1:end-T.nExo]
 
     for i in axes(data_in_deviations,2)
-        @views ℒ.mul!(y, 𝐒obs, state[i][T.past_not_future_and_mixed_idx])
+        @views ℒ.mul!(y, 𝐒obs, state[i][t⁻])
         @views ℒ.axpby!(1, data_in_deviations[:,i], -1, y)
         ℒ.mul!(x[i],invjac,y)
         
-        # x = invjac * (data_in_deviations[:,i] - 𝐒[cond_var_idx,1:end-T.nExo] * state[T.past_not_future_and_mixed_idx])
-        # x = 𝐒[cond_var_idx,end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx,1:end-T.nExo] * state[T.past_not_future_and_mixed_idx])
+        # x = invjac * (data_in_deviations[:,i] - 𝐒[obs_idx,1:end-T.nExo] * state[t⁻])
+        # x = 𝐒[obs_idx,end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[obs_idx,1:end-T.nExo] * state[t⁻])
 
         if i > presample_periods
             shocks² += sum(abs2,x[i])
         end
 
-        # # copyto!(state_reduced, 1, state, T.past_not_future_and_mixed_idx)
-        # for (i,v) in enumerate(T.past_not_future_and_mixed_idx)
+        # # copyto!(state_reduced, 1, state, t⁻)
+        # for (i,v) in enumerate(t⁻)
         #     state_reduced[i] = state[v]
         # end
         # copyto!(state_reduced, T.nPast_not_future_and_mixed + 1, x, 1, T.nExo)
         
-        ℒ.mul!(state[i+1], 𝐒, vcat(state[i][T.past_not_future_and_mixed_idx], x[i]))
-        # state[i+1] =  𝐒 * vcat(state[i][T.past_not_future_and_mixed_idx], x[i])
+        ℒ.mul!(state[i+1], 𝐒, vcat(state[i][t⁻], x[i]))
+        # state[i+1] =  𝐒 * vcat(state[i][t⁻], x[i])
         # state = state_update(state, x)
     end
 
     llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
-    # llh = -(logabsdets + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
-
-    # println(llh)
     
+    
+
     ∂𝐒 = zero(𝐒)
     
-    ∂𝐒st = copy(∂𝐒[T.past_not_future_and_mixed_idx,:])
+    ∂𝐒ᵗ⁻ = copy(∂𝐒[t⁻,:])
 
     ∂data_in_deviations = zero(data_in_deviations)
 
     ∂state = zero(state[1])
-    
+
+    # precomputed matrices
+    M¹  = 𝐒[obs_idx, 1:end-T.nExo]' * invjac' 
+    M²  = 𝐒[t⁻,1:end-T.nExo]' - M¹ * 𝐒[t⁻,end-T.nExo+1:end]'
+    M³  = invjac' * 𝐒[t⁻,end-T.nExo+1:end]' * M¹
+    M⁴  = M² * M¹
+
     # pullback
     function inversion_pullback(∂llh)
         for i in reverse(axes(data_in_deviations,2))
-            ∂state[T.past_not_future_and_mixed_idx] .= (𝐒[T.past_not_future_and_mixed_idx,1:end-T.nExo] - 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end] * invjac * 𝐒[cond_var_idx, 1:end-T.nExo])' * ∂state[T.past_not_future_and_mixed_idx]
-            ∂state[T.past_not_future_and_mixed_idx] += 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i]
+            ∂state[t⁻]  .= M² * ∂state[t⁻]
+            ∂state[t⁻]  += M¹ * x[i]
 
+
+            ∂data_in_deviations[:,i]        -= invjac' * x[i]
+            
             if i < size(data_in_deviations,2)
-                ∂data_in_deviations[:,i] += invjac' * ((invjac * 𝐒[cond_var_idx, 1:end-T.nExo] * 𝐒[T.past_not_future_and_mixed_idx,:])' * x[i+1])[end-T.nExo+1:end]
+                ∂data_in_deviations[:,i]    += M³ * x[i+1]
             end
-            ∂data_in_deviations[:,i] -= invjac' * x[i]
 
-            ∂𝐒[cond_var_idx, end-T.nExo + 1:end]     -= 2 * invjac' * x[i] * x[i]'
+
+            ∂𝐒[obs_idx, end-T.nExo + 1:end]         += invjac' * x[i] * x[i]'
 
             if i > 1
-                ∂𝐒[cond_var_idx, 1:end-T.nExo]     -= 2 * invjac' * x[i] * state[i][T.past_not_future_and_mixed_idx]'
-                ∂𝐒[cond_var_idx, end-T.nExo + 1:end] += 2 * invjac' * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * x[i-1]'
-                ∂𝐒[T.past_not_future_and_mixed_idx,end-T.nExo + 1:end]            -= 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * x[i-1]'
+                ∂𝐒[obs_idx, 1:end-T.nExo]           += invjac' * x[i] * state[i][t⁻]'
+                ∂𝐒[obs_idx, end-T.nExo + 1:end]     -= M³ * x[i] * x[i-1]'
+                ∂𝐒[t⁻,end-T.nExo + 1:end]           += M¹ * x[i] * x[i-1]'
             end
 
             if i > 2
-                ∂𝐒[T.past_not_future_and_mixed_idx,1:end-T.nExo]            -= 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * state[i-1][T.past_not_future_and_mixed_idx]'
-                ∂𝐒[cond_var_idx, 1:end-T.nExo] += 2 * invjac' * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * state[i-1][T.past_not_future_and_mixed_idx]'
-                ∂𝐒st                .= 𝐒[T.past_not_future_and_mixed_idx,1:end-T.nExo]' * ∂𝐒st * (vcat(state[i-1][T.past_not_future_and_mixed_idx], x[i-1])' \ vcat(state[i-2][T.past_not_future_and_mixed_idx], x[i-2])')
-                ∂𝐒st                += 2 * (𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end]' - 𝐒[T.past_not_future_and_mixed_idx,1:end-T.nExo]') * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * vcat(state[i-2][T.past_not_future_and_mixed_idx], x[i-2])'
-                ∂𝐒[T.past_not_future_and_mixed_idx,:]            += ∂𝐒st
+                ∂𝐒[t⁻,1:end-T.nExo]         += M¹ * x[i] * state[i-1][t⁻]'
+                ∂𝐒[obs_idx, 1:end-T.nExo]   -= M³ * x[i] * state[i-1][t⁻]'
+
+                ∂𝐒ᵗ⁻                        .= 𝐒[t⁻,1:end-T.nExo]' * ∂𝐒ᵗ⁻ / vcat(state[i-1][t⁻], x[i-1])' * vcat(state[i-2][t⁻], x[i-2])'
+                ∂𝐒ᵗ⁻                        += M⁴ * x[i] * vcat(state[i-2][t⁻], x[i-2])'
+                
+                ∂𝐒[t⁻,:]                    += ∂𝐒ᵗ⁻
             end
         end
 
-        # ∂state *= 0
-        # ∂data_in_deviations *= 0
-        # ∂𝐒 *= 0 
-        ∂𝐒[cond_var_idx,end-T.nExo+1:end] += (size(data_in_deviations,2) - presample_periods) * invjac'
+        ∂𝐒[obs_idx,end-T.nExo+1:end] -= (size(data_in_deviations,2) - presample_periods) * invjac' / 2
 
-        return NoTangent(), [∂state * ∂llh], -∂𝐒 * ∂llh / 2, ∂data_in_deviations * ∂llh, NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return NoTangent(), [∂state * ∂llh], ∂𝐒 * ∂llh, ∂data_in_deviations * ∂llh, NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
     
     return llh, inversion_pullback
