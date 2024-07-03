@@ -479,7 +479,7 @@ end
 ∂𝐒st = copy(∂𝐒[st,:])
 # cond_var_idx∂𝐒 = copy(∂𝐒[cond_var_idx, :])
 
-for i in 4:-1:1#reverse(axes(data_in_deviations,2))
+for i in reverse(axes(data_in_deviations,2))
     ∂𝐒[cond_var_idx, :]     -= 2 * invjac' * x[i] * vcat(state[i][st], x[i])' # [cond_var_idx, end-T.nExo+1:end]
     
     if i > 1
@@ -488,21 +488,72 @@ for i in 4:-1:1#reverse(axes(data_in_deviations,2))
     end
 
     if i > 2
-        ∂𝐒st                += 𝐒³̃ * ∂𝐒st / vcat(state[i-1][st], x[i-1])' * vcat(state[i-2][st], x[i-2])'
+        ∂𝐒st                 = 𝐒³̃ * ∂𝐒st * (vcat(state[i-1][st], x[i-1])' \ vcat(state[i-2][st], x[i-2])')
         ∂𝐒st                += 2 * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[i] * vcat(state[i-2][st], x[i-2])'
+        ∂𝐒[st,:]            += ∂𝐒st
+        # ∂𝐒st                += 𝐒³̃ * ∂𝐒st * (vcat(state[i-1][st], x[i-1])' \ vcat(state[i-2][st], x[i-2])')
+        # ∂𝐒st                += 2 * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[i] * vcat(state[i-2][st], x[i-2])'
     end
 end
-∂𝐒[st,:] += ∂𝐒st
+# ∂𝐒[st,:] += ∂𝐒st
+
+maximum(abs, res - ∂𝐒)
 
 maximum(abs, Base.filter(isfinite, (res - ∂𝐒) ./ res))
+
+
+maximum(abs, Base.filter(isfinite, (res5 - ∂𝐒) ./ res5))
+
+
+# i = 5
+
+∂𝐒st = zero(∂𝐒[st,:])
+∂𝐒stl = zero(∂𝐒[st,:])
+
+i = 5
+# ∂𝐒st                += 𝐒³̃ * ∂𝐒st * (vcat(state[i-1][st], x[i-1])' \ vcat(state[i-2][st], x[i-2])')
+∂𝐒st                 += 2 * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[i] * vcat(state[i-2][st], x[i-2])'
+∂𝐒stl                += ∂𝐒st
+
+i = 4
+∂𝐒st                  = 𝐒³̃ * ∂𝐒st * (vcat(state[i-1][st], x[i-1])' \ vcat(state[i-2][st], x[i-2])')
+∂𝐒st                 += 2 * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[i] * vcat(state[i-2][st], x[i-2])'
+∂𝐒stl                += ∂𝐒st
+
+i = 3
+∂𝐒st                  = 𝐒³̃ * ∂𝐒st * (vcat(state[i-1][st], x[i-1])' \ vcat(state[i-2][st], x[i-2])')
+∂𝐒st                 += 2 * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[i] * vcat(state[i-2][st], x[i-2])'
+∂𝐒stl                += ∂𝐒st
+
+∂𝐒st + ∂𝐒stl
+
+
+∂𝐒 = zero(𝐒)
+∂𝐒[st,:]                += 2 * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[5] * vcat(state[3][st], x[3])'
+∂𝐒[st,:]                += 2 * 𝐒³̃ * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[5] * vcat(state[2][st], x[2])'
+∂𝐒[st,:]                += 2 * 𝐒³̃ * 𝐒³̃ * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[5] * vcat(state[1][st], x[1])'
+
+
+∂𝐒[st,:]                += 2 * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[4] * vcat(state[2][st], x[2])'
+∂𝐒[st,:]                += 2 * 𝐒³̃ * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[4] * vcat(state[1][st], x[1])'
+
+∂𝐒[st,:]                += 2 * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[3] * vcat(state[1][st], x[1])'
+
+∂𝐒 - res5
+
 
 
 ∂𝐒 = zero(𝐒)
 
 
+# terms for i = 5
+∂𝐒[st,:]                -= 2 * 𝐒²̂ * invjac' * x[5] * vcat(state[4][st], x[4])'
 ∂𝐒[st,:]                += 2 * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[5] * vcat(state[3][st], x[3])'
 ∂𝐒[st,:]                += 2 * 𝐒³̃ * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[5] * vcat(state[2][st], x[2])'
 ∂𝐒[st,:]                += 2 * 𝐒³̃ * 𝐒³̃ * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[5] * vcat(state[1][st], x[1])'
+
+∂𝐒[cond_var_idx, :]     -= 2 * invjac' * x[5] * vcat(state[5][st], x[5])'
+∂𝐒[cond_var_idx, :]     += 2 * invjac' * 𝐒³̂ * 𝐒²̂ * invjac' * x[5] * vcat(state[4][st], x[4])'
 
 
 
@@ -517,27 +568,27 @@ maximum(abs, Base.filter(isfinite, (res - ∂𝐒) ./ res))
 
 
 # terms for i = 3
-∂𝐒[st,:]                += 2 * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[3] * vcat(state[1][st], x[1])'
 ∂𝐒[st,:]                -= 2 * 𝐒²̂ * invjac' * x[3] * vcat(state[2][st], x[2])'
+∂𝐒[st,:]                += 2 * (𝐒²̂ * invjac' * 𝐒³̂ - 𝐒³̃) * 𝐒²̂ * invjac' * x[3] * vcat(state[1][st], x[1])'
 
-∂𝐒[cond_var_idx, :]     += 2 * invjac' * 𝐒³̂ * 𝐒²̂ * invjac' * x[3] * vcat(state[2][st], x[2])'
 ∂𝐒[cond_var_idx, :]     -= 2 * invjac' * x[3] * vcat(state[3][st], x[3])'
+∂𝐒[cond_var_idx, :]     += 2 * invjac' * 𝐒³̂ * 𝐒²̂ * invjac' * x[3] * vcat(state[2][st], x[2])'
 
 
 # terms for i = 2
 ∂𝐒[st,:]                -= 2 * 𝐒²̂ * invjac' * x[2] * vcat(state[1][st], x[1])'
 
-∂𝐒[cond_var_idx, :]     += 2 * invjac' * 𝐒³̂ * 𝐒²̂ * invjac' * x[2] * vcat(state[1][st], x[1])'
 ∂𝐒[cond_var_idx, :]     -= 2 * invjac' * x[2] * vcat(state[2][st], x[2])'
+∂𝐒[cond_var_idx, :]     += 2 * invjac' * 𝐒³̂ * 𝐒²̂ * invjac' * x[2] * vcat(state[1][st], x[1])'
 
 
 # terms for i = 1
 ∂𝐒[cond_var_idx, :]     -= 2 * invjac' * x[1] * vcat(state[1][st], x[1])'
 
 
+maximum(abs, res - ∂𝐒)
 
-
-maximum(abs, Base.filter(isfinite, (res - ∂𝐒) ./ res))
+maximum(abs, Base.filter(isfinite, (res - ∂𝐒) ./ ∂𝐒))
 
 
 32
@@ -573,12 +624,12 @@ i = 1
 
 
 
-
-res = FiniteDiff.finite_difference_gradient(𝐒 -> begin
+using FiniteDifferences
+res = FiniteDifferences.grad(central_fdm(4,1), 𝐒 -> begin
 # ForwardDiff.gradient(x->begin
 # Zygote.gradient(x->begin
     shocks² = 0.0
-    for i in 1:4 # axes(data_in_deviations,2)
+    for i in axes(data_in_deviations,2)
         X = 𝐒[cond_var_idx, end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx, 1:end-T.nExo] * state[i][T.past_not_future_and_mixed_idx])
 
         state[i+1] = 𝐒 * vcat(state[i][T.past_not_future_and_mixed_idx], X)
@@ -588,7 +639,10 @@ res = FiniteDiff.finite_difference_gradient(𝐒 -> begin
     end
 
     return shocks²
-end, 𝐒)#_in_deviations[:,1:2])
+end, 𝐒)[1]#_in_deviations[:,1:2])
+
+res4 = -res+rest
+res5 = res-rest
 
 maximum(abs, res - ∂𝐒)
 
