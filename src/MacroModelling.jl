@@ -9252,46 +9252,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
     shocks² = 0.0
     logabsdets = 0.0
 
-    if warmup_iterations > 0
-        if warmup_iterations >= 1
-            jac = 𝐒[obs_idx,end-T.nExo+1:end]
-            if warmup_iterations >= 2
-                jac = hcat(𝐒[obs_idx,1:T.nPast_not_future_and_mixed] * 𝐒[t⁻,end-T.nExo+1:end], jac)
-                if warmup_iterations >= 3
-                    Sᵉ = 𝐒[t⁻,1:T.nPast_not_future_and_mixed]
-                    for e in 1:warmup_iterations-2
-                        jac = hcat(𝐒[obs_idx,1:T.nPast_not_future_and_mixed] * Sᵉ * 𝐒[t⁻,end-T.nExo+1:end], jac)
-                        Sᵉ *= 𝐒[t⁻,1:T.nPast_not_future_and_mixed]
-                    end
-                end
-            end
-        end
-
-        jacdecomp = ℒ.svd(jac)
-
-        # if !ℒ.issuccess(jacdecomp)
-        #     return -1e307#Inf
-        # end
-
-        x = jacdecomp \ data_in_deviations[:,1]
-
-        warmup_shocks = reshape(x, T.nExo, warmup_iterations)
-
-        for i in 1:warmup_iterations-1
-            ℒ.mul!(state, 𝐒, vcat(state[t⁻], warmup_shocks[:,i]))
-            # state = state_update(state, warmup_shocks[:,i])
-        end
-
-        for i in 1:warmup_iterations
-            if T.nExo == length(observables)
-                logabsdets += ℒ.logabsdet(jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor)[1]
-            else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor))
-            end
-        end
-
-        shocks² += sum(abs2,x)
-    end
+    @assert warmup_iterations == 0 "Warmup iterations not yet implemented for reverse-mode automatic differentiation."
+    # TODO: implement warmup iterations
 
     state = [copy(state) for _ in 1:size(data_in_deviations,2)+1]
     shocks² = 0.0
@@ -9319,27 +9281,17 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
         @views ℒ.mul!(y, 𝐒obs, state[i][t⁻])
         @views ℒ.axpby!(1, data_in_deviations[:,i], -1, y)
         ℒ.mul!(x[i],invjac,y)
-        
-        # x = invjac * (data_in_deviations[:,i] - 𝐒[obs_idx,1:end-T.nExo] * state[t⁻])
         # x = 𝐒[obs_idx,end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[obs_idx,1:end-T.nExo] * state[t⁻])
 
         if i > presample_periods
             shocks² += sum(abs2,x[i])
         end
 
-        # # copyto!(state_reduced, 1, state, t⁻)
-        # for (i,v) in enumerate(t⁻)
-        #     state_reduced[i] = state[v]
-        # end
-        # copyto!(state_reduced, T.nPast_not_future_and_mixed + 1, x, 1, T.nExo)
-        
         ℒ.mul!(state[i+1], 𝐒, vcat(state[i][t⁻], x[i]))
         # state[i+1] =  𝐒 * vcat(state[i][t⁻], x[i])
-        # state = state_update(state, x)
     end
 
     llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
-    
     
 
     ∂𝐒 = zero(𝐒)
@@ -9356,20 +9308,21 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
     M³  = invjac' * 𝐒[t⁻,end-T.nExo+1:end]' * M¹
     M⁴  = M² * M¹
 
+    # TODO: optimize allocations
     # pullback
     function inversion_pullback(∂llh)
         for t in reverse(axes(data_in_deviations,2))
-            ∂state[t⁻]  .= M² * ∂state[t⁻]
+            ∂state[t⁻]                                  .= M² * ∂state[t⁻]
 
             if t > presample_periods
-                ∂state[t⁻]  += M¹ * x[t]
+                ∂state[t⁻]                              += M¹ * x[t]
 
-                ∂data_in_deviations[:,t]        -= invjac' * x[t]
+                ∂data_in_deviations[:,t]                -= invjac' * x[t]
 
                 ∂𝐒[obs_idx, end-T.nExo + 1:end]         += invjac' * x[t] * x[t]'
 
                 if t > 1
-                    ∂data_in_deviations[:,t-1]    += M³ * x[t]
+                    ∂data_in_deviations[:,t-1]          += M³ * x[t]
 
                     ∂𝐒[obs_idx, 1:end-T.nExo]           += invjac' * x[t] * state[t][t⁻]'
                     ∂𝐒[obs_idx, end-T.nExo + 1:end]     -= M³ * x[t] * x[t-1]'
@@ -9377,8 +9330,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
                 end
 
                 if t > 2
-                    ∂𝐒[t⁻,1:end-T.nExo]         += M¹ * x[t] * state[t-1][t⁻]'
-                    ∂𝐒[obs_idx, 1:end-T.nExo]   -= M³ * x[t] * state[t-1][t⁻]'
+                    ∂𝐒[t⁻,1:end-T.nExo]                 += M¹ * x[t] * state[t-1][t⁻]'
+                    ∂𝐒[obs_idx, 1:end-T.nExo]           -= M³ * x[t] * state[t-1][t⁻]'
                 end
             end
 
