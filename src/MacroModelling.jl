@@ -9358,34 +9358,38 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
 
     # pullback
     function inversion_pullback(∂llh)
-        for i in reverse(axes(data_in_deviations,2))
+        for t in reverse(axes(data_in_deviations,2))
             ∂state[t⁻]  .= M² * ∂state[t⁻]
-            ∂state[t⁻]  += M¹ * x[i]
 
+            if t > presample_periods
+                ∂state[t⁻]  += M¹ * x[t]
 
-            ∂data_in_deviations[:,i]        -= invjac' * x[i]
-            
-            if i < size(data_in_deviations,2)
-                ∂data_in_deviations[:,i]    += M³ * x[i+1]
+                ∂data_in_deviations[:,t]        -= invjac' * x[t]
+
+                ∂𝐒[obs_idx, end-T.nExo + 1:end]         += invjac' * x[t] * x[t]'
+
+                if t > 1
+                    ∂data_in_deviations[:,t-1]    += M³ * x[t]
+
+                    ∂𝐒[obs_idx, 1:end-T.nExo]           += invjac' * x[t] * state[t][t⁻]'
+                    ∂𝐒[obs_idx, end-T.nExo + 1:end]     -= M³ * x[t] * x[t-1]'
+                    ∂𝐒[t⁻,end-T.nExo + 1:end]           += M¹ * x[t] * x[t-1]'
+                end
+
+                if t > 2
+                    ∂𝐒[t⁻,1:end-T.nExo]         += M¹ * x[t] * state[t-1][t⁻]'
+                    ∂𝐒[obs_idx, 1:end-T.nExo]   -= M³ * x[t] * state[t-1][t⁻]'
+                end
             end
 
-
-            ∂𝐒[obs_idx, end-T.nExo + 1:end]         += invjac' * x[i] * x[i]'
-
-            if i > 1
-                ∂𝐒[obs_idx, 1:end-T.nExo]           += invjac' * x[i] * state[i][t⁻]'
-                ∂𝐒[obs_idx, end-T.nExo + 1:end]     -= M³ * x[i] * x[i-1]'
-                ∂𝐒[t⁻,end-T.nExo + 1:end]           += M¹ * x[i] * x[i-1]'
-            end
-
-            if i > 2
-                ∂𝐒[t⁻,1:end-T.nExo]         += M¹ * x[i] * state[i-1][t⁻]'
-                ∂𝐒[obs_idx, 1:end-T.nExo]   -= M³ * x[i] * state[i-1][t⁻]'
-
-                ∂𝐒ᵗ⁻                        .= 𝐒[t⁻,1:end-T.nExo]' * ∂𝐒ᵗ⁻ / vcat(state[i-1][t⁻], x[i-1])' * vcat(state[i-2][t⁻], x[i-2])'
-                ∂𝐒ᵗ⁻                        += M⁴ * x[i] * vcat(state[i-2][t⁻], x[i-2])'
+            if t > 2
+                ∂𝐒ᵗ⁻        .= 𝐒[t⁻,1:end-T.nExo]' * ∂𝐒ᵗ⁻ / vcat(state[t-1][t⁻], x[t-1])' * vcat(state[t-2][t⁻], x[t-2])'
                 
-                ∂𝐒[t⁻,:]                    += ∂𝐒ᵗ⁻
+                if t > presample_periods
+                    ∂𝐒ᵗ⁻    += M⁴ * x[t] * vcat(state[t-2][t⁻], x[t-2])'
+                end
+
+                ∂𝐒[t⁻,:]    += ∂𝐒ᵗ⁻
             end
         end
 
