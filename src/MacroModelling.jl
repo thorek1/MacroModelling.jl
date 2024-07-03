@@ -8398,7 +8398,7 @@ end
 
 # Specialization for :inversion filter
 function calculate_loglikelihood(::Val{:inversion}, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations)
-    return @ignore_derivatives calculate_inversion_filter_loglikelihood(state, 𝐒, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods)
+    return calculate_inversion_filter_loglikelihood(state, 𝐒, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods)
 end
 
 function get_non_stochastic_steady_state(𝓂::ℳ, parameter_values::Vector{S}; verbose::Bool = false, tol::AbstractFloat = 1e-12)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
@@ -9140,7 +9140,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0)
     # first order
-    state = state[1]
+    state = copy(state[1])
 
     precision_factor = 1.0
 
@@ -9166,11 +9166,11 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
             end
         end
     
-        jacdecomp = ℒ.svd!(jac, check = false)
+        jacdecomp = ℒ.svd(jac)
 
-        if !ℒ.issuccess(jacdecomp)
-            return -1e307#Inf
-        end
+        # if !ℒ.issuccess(jacdecomp)
+        #     return -1e307#Inf
+        # end
 
         x = jacdecomp \ data_in_deviations[:,1]
     
@@ -9197,17 +9197,17 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
 
     if T.nExo == length(observables)
-        jacdecomp = RF.lu!(jac, check = false)
+        jacdecomp = RF.lu(jac, check = false)
         if !ℒ.issuccess(jacdecomp)
             return -1e307#Inf
         end
         logabsdets = ℒ.logabsdet(jac ./ precision_factor)[1]
         invjac = inv(jacdecomp)
     else
-        jacdecomp = ℒ.svd!(jac, check = false)
-        if !ℒ.issuccess(jacdecomp)
-            return -1e307#Inf
-        end
+        jacdecomp = ℒ.svd(jac)
+        # if !ℒ.issuccess(jacdecomp)
+        #     return -1e307#Inf
+        # end
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac ./ precision_factor))
         invjac = inv(jacdecomp)
     end
@@ -9220,6 +9220,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
         @views ℒ.mul!(y, 𝐒obs, state[T.past_not_future_and_mixed_idx])
         @views ℒ.axpby!(1, data_in_deviations[:,i], -1, y)
         ℒ.mul!(x, invjac, y)
+
         # x = invjac * (data_in_deviations[:,i] - 𝐒[cond_var_idx,1:end-T.nExo] * state[T.past_not_future_and_mixed_idx])
 
         if i > presample_periods
@@ -9231,6 +9232,160 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     end
 
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    # return -(logabsdets + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+end
+
+
+
+function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector{Vector{Float64}}, 𝐒::Matrix{Float64}, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, T::timings; warmup_iterations::Int = 0, presample_periods::Int = 0)
+    # first order
+    state = state[1]
+
+    precision_factor = 1.0
+
+    n_obs = size(data_in_deviations,2)
+
+    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+
+    shocks² = 0.0
+    logabsdets = 0.0
+
+    if warmup_iterations > 0
+        if warmup_iterations >= 1
+            jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
+            if warmup_iterations >= 2
+                jac = hcat(𝐒[cond_var_idx,1:T.nPast_not_future_and_mixed] * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
+                if warmup_iterations >= 3
+                    Sᵉ = 𝐒[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+                    for e in 1:warmup_iterations-2
+                        jac = hcat(𝐒[cond_var_idx,1:T.nPast_not_future_and_mixed] * Sᵉ * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
+                        Sᵉ *= 𝐒[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+                    end
+                end
+            end
+        end
+
+        jacdecomp = ℒ.svd(jac)
+
+        # if !ℒ.issuccess(jacdecomp)
+        #     return -1e307#Inf
+        # end
+
+        x = jacdecomp \ data_in_deviations[:,1]
+
+        warmup_shocks = reshape(x, T.nExo, warmup_iterations)
+
+        for i in 1:warmup_iterations-1
+            ℒ.mul!(state, 𝐒, vcat(state[T.past_not_future_and_mixed_idx], warmup_shocks[:,i]))
+            # state = state_update(state, warmup_shocks[:,i])
+        end
+
+        for i in 1:warmup_iterations
+            if T.nExo == length(observables)
+                logabsdets += ℒ.logabsdet(jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor)[1]
+            else
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jac[:,(i - 1) * T.nExo+1:i*T.nExo] ./ precision_factor))
+            end
+        end
+
+        shocks² += sum(abs2,x)
+    end
+
+    state = [copy(state) for _ in 1:size(data_in_deviations,2)+1]
+    shocks² = 0.0
+    logabsdets = 0.0
+    y = zeros(length(cond_var_idx))
+    x = [zeros(T.nExo) for _ in 1:size(data_in_deviations,2)]
+
+    jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
+
+    if T.nExo == length(observables)
+        logabsdets = ℒ.logabsdet(-jac' ./ precision_factor)[1]
+        jacdecomp = ℒ.lu(jac)
+        invjac = inv(jacdecomp)
+    else
+        logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(-jac' ./ precision_factor))
+        jacdecomp = ℒ.svd(jac)
+        invjac = inv(jacdecomp)
+    end
+
+    logabsdets *= size(data_in_deviations,2) - presample_periods
+
+    @views 𝐒obs = 𝐒[cond_var_idx,1:end-T.nExo]
+
+    for i in axes(data_in_deviations,2)
+        @views ℒ.mul!(y, 𝐒obs, state[i][T.past_not_future_and_mixed_idx])
+        @views ℒ.axpby!(1, data_in_deviations[:,i], -1, y)
+        ℒ.mul!(x[i],invjac,y)
+        
+        # x = invjac * (data_in_deviations[:,i] - 𝐒[cond_var_idx,1:end-T.nExo] * state[T.past_not_future_and_mixed_idx])
+        # x = 𝐒[cond_var_idx,end-T.nExo+1:end] \ (data_in_deviations[:,i] - 𝐒[cond_var_idx,1:end-T.nExo] * state[T.past_not_future_and_mixed_idx])
+
+        if i > presample_periods
+            shocks² += sum(abs2,x[i])
+        end
+
+        # # copyto!(state_reduced, 1, state, T.past_not_future_and_mixed_idx)
+        # for (i,v) in enumerate(T.past_not_future_and_mixed_idx)
+        #     state_reduced[i] = state[v]
+        # end
+        # copyto!(state_reduced, T.nPast_not_future_and_mixed + 1, x, 1, T.nExo)
+        
+        ℒ.mul!(state[i+1], 𝐒, vcat(state[i][T.past_not_future_and_mixed_idx], x[i]))
+        # state[i+1] =  𝐒 * vcat(state[i][T.past_not_future_and_mixed_idx], x[i])
+        # state = state_update(state, x)
+    end
+
+    llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+    # llh = -(logabsdets + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
+
+    # println(llh)
+    
+    ∂𝐒 = zero(𝐒)
+    
+    ∂𝐒st = copy(∂𝐒[T.past_not_future_and_mixed_idx,:])
+
+    ∂data_in_deviations = zero(data_in_deviations)
+
+    ∂state = zero(state[1])
+    
+    # pullback
+    function inversion_pullback(∂llh)
+        for i in reverse(axes(data_in_deviations,2))
+            ∂state[T.past_not_future_and_mixed_idx] .= (𝐒[T.past_not_future_and_mixed_idx,1:end-T.nExo] - 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end] * invjac * 𝐒[cond_var_idx, 1:end-T.nExo])' * ∂state[T.past_not_future_and_mixed_idx]
+            ∂state[T.past_not_future_and_mixed_idx] += 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i]
+
+            if i < size(data_in_deviations,2)
+                ∂data_in_deviations[:,i] += invjac' * ((invjac * 𝐒[cond_var_idx, 1:end-T.nExo] * 𝐒[T.past_not_future_and_mixed_idx,:])' * x[i+1])[end-T.nExo+1:end]
+            end
+            ∂data_in_deviations[:,i] -= invjac' * x[i]
+
+            ∂𝐒[cond_var_idx, end-T.nExo + 1:end]     -= 2 * invjac' * x[i] * x[i]'
+
+            if i > 1
+                ∂𝐒[cond_var_idx, 1:end-T.nExo]     -= 2 * invjac' * x[i] * state[i][T.past_not_future_and_mixed_idx]'
+                ∂𝐒[cond_var_idx, end-T.nExo + 1:end] += 2 * invjac' * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * x[i-1]'
+                ∂𝐒[T.past_not_future_and_mixed_idx,end-T.nExo + 1:end]            -= 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * x[i-1]'
+            end
+
+            if i > 2
+                ∂𝐒[T.past_not_future_and_mixed_idx,1:end-T.nExo]            -= 2 * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * state[i-1][T.past_not_future_and_mixed_idx]'
+                ∂𝐒[cond_var_idx, 1:end-T.nExo] += 2 * invjac' * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end]' * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * state[i-1][T.past_not_future_and_mixed_idx]'
+                ∂𝐒st                .= 𝐒[T.past_not_future_and_mixed_idx,1:end-T.nExo]' * ∂𝐒st * (vcat(state[i-1][T.past_not_future_and_mixed_idx], x[i-1])' \ vcat(state[i-2][T.past_not_future_and_mixed_idx], x[i-2])')
+                ∂𝐒st                += 2 * (𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * 𝐒[T.past_not_future_and_mixed_idx,end-T.nExo+1:end]' - 𝐒[T.past_not_future_and_mixed_idx,1:end-T.nExo]') * 𝐒[cond_var_idx, 1:end-T.nExo]' * invjac' * x[i] * vcat(state[i-2][T.past_not_future_and_mixed_idx], x[i-2])'
+                ∂𝐒[T.past_not_future_and_mixed_idx,:]            += ∂𝐒st
+            end
+        end
+
+        # ∂state *= 0
+        # ∂data_in_deviations *= 0
+        # ∂𝐒 *= 0 
+        ∂𝐒[cond_var_idx,end-T.nExo+1:end] += (size(data_in_deviations,2) - presample_periods) * invjac'
+
+        return NoTangent(), [∂state * ∂llh], -∂𝐒 * ∂llh / 2, ∂data_in_deviations * ∂llh, NoTangent(), NoTangent(), NoTangent(), NoTangent()
+    end
+    
+    return llh, inversion_pullback
 end
 
 
