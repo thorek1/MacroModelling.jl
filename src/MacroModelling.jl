@@ -9307,8 +9307,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
     # precomputed matrices
     M¹  = 𝐒[obs_idx, 1:end-T.nExo]' * invjac' 
     M²  = 𝐒[t⁻,1:end-T.nExo]' - M¹ * 𝐒[t⁻,end-T.nExo+1:end]'
-    M³  = invjac' * 𝐒[t⁻,end-T.nExo+1:end]' * M¹
-    M⁴  = M² * M¹
+    M³  = invjac' * 𝐒[t⁻,end-T.nExo+1:end]'
 
     # TODO: optimize allocations
     # pullback
@@ -9321,35 +9320,25 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
 
                 ∂data_in_deviations[:,t]                -= invjac' * x[t]
 
-                ∂𝐒[obs_idx, end-T.nExo + 1:end]         += invjac' * x[t] * x[t]'
+                ∂𝐒[obs_idx, :]                          += invjac' * x[t] * vcat(state[t][t⁻], x[t])'
 
                 if t > 1
                     ∂data[:,t:end]                      .= M² * ∂data[:,t:end]
                     
                     ∂data[:,t-1]                        += M¹ * x[t]
             
-                    ∂data_in_deviations[:,t-1]          += invjac' * 𝐒[t⁻,end-T.nExo+1:end]' * ∂data[:,t-1:end] * ones(size(data_in_deviations,2) - t + 1)
+                    ∂data_in_deviations[:,t-1]          += M³ * ∂data[:,t-1:end] * ones(size(data_in_deviations,2) - t + 1)
 
+                    M²mult = ℒ.I(size(M²,1))
 
-                    ∂𝐒[obs_idx, 1:end-T.nExo]           += invjac' * x[t] * state[t][t⁻]'
-                    ∂𝐒[obs_idx, end-T.nExo + 1:end]     -= M³ * x[t] * x[t-1]'
-                    ∂𝐒[t⁻,end-T.nExo + 1:end]           += M¹ * x[t] * x[t-1]'
+                    for tt in t-1:-1:1
+                        ∂𝐒[obs_idx, :]                      -= M³ * M²mult * M¹ * x[t] * vcat(state[tt][t⁻], x[tt])'
+            
+                        ∂𝐒[t⁻,:]                            += M²mult * M¹ * x[t] * vcat(state[tt][t⁻], x[tt])'
+        
+                        M²mult                              *= M²
+                    end
                 end
-
-                if t > 2
-                    ∂𝐒[t⁻,1:end-T.nExo]                 += M¹ * x[t] * state[t-1][t⁻]'
-                    ∂𝐒[obs_idx, 1:end-T.nExo]           -= M³ * x[t] * state[t-1][t⁻]'
-                end
-            end
-
-            if t > 2
-                ∂𝐒ᵗ⁻        .= 𝐒[t⁻,1:end-T.nExo]' * ∂𝐒ᵗ⁻ / vcat(state[t-1][t⁻], x[t-1])' * vcat(state[t-2][t⁻], x[t-2])'
-                
-                if t > presample_periods
-                    ∂𝐒ᵗ⁻    += M⁴ * x[t] * vcat(state[t-2][t⁻], x[t-2])'
-                end
-
-                ∂𝐒[t⁻,:]    += ∂𝐒ᵗ⁻
             end
         end
 
