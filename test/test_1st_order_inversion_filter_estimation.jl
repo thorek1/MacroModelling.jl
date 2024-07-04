@@ -1,6 +1,7 @@
 using MacroModelling
 import Turing
 import Pigeons
+import Zygote
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
@@ -31,16 +32,28 @@ dists = [
     InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, m)
+Turing.@model function FS2000_loglikelihood_function(data, m, filter)
     all_params ~ Turing.arraydist(dists)
 
-    Turing.@addlogprob! get_loglikelihood(m, data, all_params, filter = :inversion)
+    Turing.@addlogprob! get_loglikelihood(m, data, all_params, filter = filter)
 end
+
+modeFS2000i = Turing.maximum_likelihood(FS2000_loglikelihood_function(data, FS2000, :inversion), Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), adtype = Turing.AutoZygote())
+
+println(modeFS2000i.values)
+
+n_samples = 1000
+
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, init_params = modeFS2000i.values)
+
+println(mean(samps).nt.mean)
+
+sample_nuts = mean(samps).nt.mean
 
 Random.seed!(30)
 
 # generate a Pigeons log potential
-FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000))
+FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :inversion))
 
 # find a feasible starting point
 pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1)
