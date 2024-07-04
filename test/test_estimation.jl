@@ -94,27 +94,18 @@ println(mean(samps).nt.mean)
 sample_pigeons = mean(samps).nt.mean
 
 
-Random.seed!(30)
-
-
-function calculate_posterior_loglikelihood(parameters, prior_distribuions)
-    log_lik = 0
-
-    for (dist, val) in zip(prior_distribuions, parameters)
-        log_lik -= logpdf(dist, val)
-    end
-
-    log_lik -= get_loglikelihood(FS2000, data, parameters)
-
-    return log_lik
-end
-
-sol = Optim.optimize(x -> calculate_posterior_loglikelihood(x, dists), 
-[0,0,-10,-10,0,0,0,0,0], [1,1,10,10,1,1,1,100,100] ,FS2000.parameter_values, 
-Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
+modeFS2000 = Turing.maximum_likelihood(FS2000_loglikelihood, 
+                                        # Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), 
+                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                                        # Optim.NelderMead(), 
+                                        adtype = AutoZygote(), 
+                                        # maxiters = 100,
+                                        # lb = [0,0,-10,-10,0,0,0,0,0], 
+                                        # ub = [1,1,10,10,1,1,1,100,100], 
+                                        initial_params = FS2000.parameter_values)
 
 @testset "Estimation results" begin
-    @test isapprox(sol.minimum, -1343.7491257498598, rtol = eps(Float32))
+    @test isapprox(modeFS2000.lp, 1281.669108730447, rtol = eps(Float32))
     @test isapprox(sample_nuts, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
     @test isapprox(sample_pigeons[1:length(sample_nuts)], [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
 end
