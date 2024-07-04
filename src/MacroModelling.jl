@@ -9309,6 +9309,19 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
     M²  = 𝐒[t⁻,1:end-T.nExo]' - M¹ * 𝐒[t⁻,end-T.nExo+1:end]'
     M³  = invjac' * 𝐒[t⁻,end-T.nExo+1:end]'
 
+    ∂Stmp = [M¹ for _ in 1:size(data_in_deviations,2)-1]
+
+    for t in 2:size(data_in_deviations,2)-1
+        ∂Stmp[t] = M² * ∂Stmp[t-1]
+    end
+
+    tmp1 = zeros(Float64, T.nExo, length(t⁻) + T.nExo)
+    tmp2 = zeros(Float64, length(t⁻), length(t⁻) + T.nExo)
+    tmp3 = zeros(Float64, length(t⁻) + T.nExo)
+
+    ∂𝐒t⁻        = copy(tmp2)
+    # ∂𝐒obs_idx   = copy(tmp1)
+
     # TODO: optimize allocations
     # pullback
     function inversion_pullback(∂llh)
@@ -9329,19 +9342,26 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
             
                     ∂data_in_deviations[:,t-1]          += M³ * ∂data[:,t-1:end] * ones(size(data_in_deviations,2) - t + 1)
 
-                    M²mult = ℒ.I(size(M²,1))
-
                     for tt in t-1:-1:1
-                        ∂𝐒[obs_idx, :]                      -= M³ * M²mult * M¹ * x[t] * vcat(state[tt][t⁻], x[tt])'
-            
-                        ∂𝐒[t⁻,:]                            += M²mult * M¹ * x[t] * vcat(state[tt][t⁻], x[tt])'
-        
-                        M²mult                              *= M²
+                        for (i,v) in enumerate(t⁻)
+                            copyto!(tmp3::Vector{Float64}, i::Int, state[tt]::Vector{Float64}, v::Int, 1)
+                        end
+                        
+                        copyto!(tmp3, length(t⁻) + 1, x[tt], 1, T.nExo)
+
+                        mul!(tmp1,  x[t], tmp3')
+
+                        mul!(∂𝐒t⁻,  ∂Stmp[t-tt], tmp1, 1, 1)
+                        
                     end
                 end
             end
         end
 
+        ∂𝐒[t⁻,:]                            += ∂𝐒t⁻
+                        
+        ∂𝐒[obs_idx, :]                      -= M³ * ∂𝐒t⁻
+        
         ∂𝐒[obs_idx,end-T.nExo+1:end] -= (size(data_in_deviations,2) - presample_periods) * invjac' / 2
 
         return NoTangent(), [∂state * ∂llh], ∂𝐒 * ∂llh, ∂data_in_deviations * ∂llh, NoTangent(), NoTangent(), NoTangent(), NoTangent()
