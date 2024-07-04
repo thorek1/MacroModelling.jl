@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] ss transition by entering new parameters at given periods
+- [ ] use sobol random numbers (gives you uniform but then use norminvcdf to get norm) to integrate out future randomness when solving with neural nets
 - [ ] do proper testing of ss solver with random set of params, equal across configs
 - [ ] load create parts of derivatives later and not directly after parameters block
 - [ ] fix model estimate plot. data not above estimate (should be red but is blue)
