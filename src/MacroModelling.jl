@@ -8645,14 +8645,14 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         luF = RF.lu!(F, check = false) ###
 
         if !ℒ.issuccess(luF)
-            return -1e307#Inf
+            return -Inf
         end
 
         Fdet = ℒ.det(luF)
 
         # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
-            return -1e307#Inf
+            return -Inf
         end
 
         # invF = inv(luF) ###
@@ -8713,14 +8713,14 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         luF = ℒ.lu(F, check = false) ###
 
         if !ℒ.issuccess(luF)
-            return -1e307#Inf
+            return -Inf
         end
 
         Fdet = ℒ.det(luF)
 
         # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
-            return -1e307#Inf
+            return -Inf
         end
 
         invF = inv(luF) ###
@@ -9168,10 +9168,6 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     
         jacdecomp = ℒ.svd(jac)
 
-        # if !ℒ.issuccess(jacdecomp)
-        #     return -1e307#Inf
-        # end
-
         x = jacdecomp \ data_in_deviations[:,1]
     
         warmup_shocks = reshape(x, T.nExo, warmup_iterations)
@@ -9464,7 +9460,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
             matched = Optim.minimum(res) < 1e-12
         end
 
-        if !matched return -1e307 end#Inf end
+        if !matched return -Inf end
 
         x = Optim.minimizer(res)
 
@@ -9510,7 +9506,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
             matched = Optim.minimum(res) < 1e-12
         end
 
-        if !matched return -1e307 end#Inf end
+        if !matched return -Inf end
 
         x = Optim.minimizer(res)
 
