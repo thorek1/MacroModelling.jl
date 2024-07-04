@@ -38,7 +38,10 @@ Turing.@model function FS2000_loglikelihood_function(data, m, filter)
     Turing.@addlogprob! get_loglikelihood(m, data, all_params, filter = filter)
 end
 
-modeFS2000i = Turing.maximum_likelihood(FS2000_loglikelihood_function(data, FS2000, :inversion), Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), adtype = Turing.AutoZygote())
+modeFS2000i = Turing.maximum_likelihood(FS2000_loglikelihood_function(data, FS2000, :inversion), 
+                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                                        adtype = Turing.AutoZygote(), 
+                                        initial_params = FS2000.parameter_values)
 
 println(modeFS2000i.values)
 
