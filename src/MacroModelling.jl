@@ -9199,15 +9199,13 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     if T.nExo == length(observables)
         jacdecomp = RF.lu(jac, check = false)
         if !ℒ.issuccess(jacdecomp)
-            return -1e307#Inf
+            return -Inf
         end
         logabsdets = ℒ.logabsdet(jac ./ precision_factor)[1]
         invjac = inv(jacdecomp)
     else
         jacdecomp = ℒ.svd(jac)
-        # if !ℒ.issuccess(jacdecomp)
-        #     return -1e307#Inf
-        # end
+        
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac ./ precision_factor))
         invjac = inv(jacdecomp)
     end
@@ -9239,7 +9237,7 @@ end
 
 function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector{Vector{Float64}}, 𝐒::Matrix{Float64}, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, T::timings; warmup_iterations::Int = 0, presample_periods::Int = 0)
     # first order
-    state = state[1]
+    state = copy(state[1])
 
     precision_factor = 1.0
 
@@ -9256,8 +9254,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
     # TODO: implement warmup iterations
 
     state = [copy(state) for _ in 1:size(data_in_deviations,2)+1]
+
     shocks² = 0.0
     logabsdets = 0.0
+
     y = zeros(length(obs_idx))
     x = [zeros(T.nExo) for _ in 1:size(data_in_deviations,2)]
 
@@ -9299,6 +9299,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
     ∂𝐒ᵗ⁻ = copy(∂𝐒[t⁻,:])
 
     ∂data_in_deviations = zero(data_in_deviations)
+    
+    ∂data = zeros(length(t⁻), size(data_in_deviations,2) - 1)
 
     ∂state = zero(state[1])
 
@@ -9322,7 +9324,12 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
                 ∂𝐒[obs_idx, end-T.nExo + 1:end]         += invjac' * x[t] * x[t]'
 
                 if t > 1
-                    ∂data_in_deviations[:,t-1]          += M³ * x[t]
+                    ∂data[:,t:end]                      .= M² * ∂data[:,t:end]
+                    
+                    ∂data[:,t-1]                        += M¹ * x[t]
+            
+                    ∂data_in_deviations[:,t-1]          += invjac' * 𝐒[t⁻,end-T.nExo+1:end]' * ∂data[:,t-1:end] * ones(size(data_in_deviations,2) - t + 1)
+
 
                     ∂𝐒[obs_idx, 1:end-T.nExo]           += invjac' * x[t] * state[t][t⁻]'
                     ∂𝐒[obs_idx, end-T.nExo + 1:end]     -= M³ * x[t] * x[t-1]'
