@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] ss transition by entering new parameters at given periods
+- [ ] use IrrationalConstants for log2pi...
 - [ ] checkout this invalidation precompile trick and g dalle part on precompilation
 - [ ] use sobol random numbers (gives you uniform but then use norminvcdf to get norm) to integrate out future randomness when solving with neural nets
 - [ ] do proper testing of ss solver with random set of params, equal across configs
