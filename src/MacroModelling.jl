@@ -9289,6 +9289,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector
 
     llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
     
+    if llh < -1e10
+        return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+    end
 
     ∂𝐒 = zero(𝐒)
     
