@@ -85,15 +85,14 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
     end
 end
 
-fixed_parameters = Smets_Wouters_2007_linear.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw],Smets_Wouters_2007_linear.parameters)]
+fixed_parameters = Smets_Wouters_2007_linear.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007_linear.parameters)]
 
 SS(Smets_Wouters_2007_linear, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01,:cmap => 0.01,:cmaw => 0.01])
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear, observables, fixed_parameters, :kalman)
 
-# modeSW2007 = Turing.maximum_likelihood(SW07_loglikelihood, Optim.LBFGS(), adtype = Turing.AutoZygote())
-modeSW2007 = Turing.maximum_likelihood(SW07_loglikelihood, Optim.NelderMead(), adtype = Turing.AutoZygote())
-
+# modeSW2007 = Turing.maximum_likelihood(SW07_loglikelihood, Optim.LBFGS(), adtype = AutoZygote())
+modeSW2007 = Turing.maximum_likelihood(SW07_loglikelihood, Optim.NelderMead())
 
 n_samples = 1000
 
@@ -106,13 +105,13 @@ println(mean(samps).nt.mean)
 
 include("../models/Smets_Wouters_2007.jl")
 
-fixed_parameters = Smets_Wouters_2007.parameter_values[indexin([:ctou,:clandaw,:cg,:curvp,:curvw],Smets_Wouters_2007.parameters)]
+fixed_parameters = Smets_Wouters_2007.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007.parameters)]
+
+SS(Smets_Wouters_2007, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01, :cmap => 0.01, :cmaw => 0.01])(observables)
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :kalman)
 
-SS(Smets_Wouters_2007, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01,:cmap => 0.01,:cmaw => 0.01])(observables)
-
-modeSW2007 = Turing.maximum_likelihood(SW07_loglikelihood, Optim.NelderMead(), adtype = Turing.AutoZygote())
+modeSW2007 = Turing.maximum_likelihood(SW07_loglikelihood, Optim.NelderMead())
 
 n_samples = 1000
 
