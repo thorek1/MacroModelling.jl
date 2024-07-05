@@ -90,16 +90,24 @@ fixed_parameters = Smets_Wouters_2007_linear.parameter_values[indexin([:ctou, :c
 SS(Smets_Wouters_2007_linear, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01,:cmap => 0.01,:cmaw => 0.01])
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear, observables, fixed_parameters, :kalman)
+# inversion filter delivers similar results
 
-# modeSW2007 = Turing.maximum_likelihood(SW07_loglikelihood, Optim.LBFGS(), adtype = AutoZygote())
-modeSW2007 = Turing.maximum_likelihood(SW07_loglikelihood, Optim.NelderMead())
+par_names = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+inits = [Dict(get_parameters(Smets_Wouters_2007_linear, values = true))[string(i)] for i in par_names]
 
 n_samples = 1000
 
-samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = modeSW2007.values)
+samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = inits)
 
 println(samps)
-println(mean(samps).nt.mean)
+println("Mean variable values (linear): $(mean(samps).nt.mean)")
+
+modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                                        adtype = AutoZygote(),
+                                        initial_params = inits)
+
+println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
 # estimate nonlinear model
 
@@ -111,11 +119,19 @@ SS(Smets_Wouters_2007, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow 
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :kalman)
 
-modeSW2007 = Turing.maximum_likelihood(SW07_loglikelihood, Optim.NelderMead())
+par_names = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+inits = [Dict(get_parameters(Smets_Wouters_2007, values = true))[string(i)] for i in par_names]
 
 n_samples = 1000
 
-samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = modeSW2007.values)
+samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = inits)
 
 println(samps)
-println(mean(samps).nt.mean)
+println("Mean variable values (nonlinear): $(mean(samps).nt.mean)")
+
+modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                                        adtype = AutoZygote(),
+                                        initial_params = inits)
+
+println("Mode variable values (nonlinear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")

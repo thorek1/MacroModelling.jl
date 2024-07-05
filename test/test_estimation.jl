@@ -47,11 +47,11 @@ n_samples = 1000
 # Turing.setadbackend(:zygote)
 samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
-println(mean(samps).nt.mean)
+println("Mean variable values (ForwardDiff): $(mean(samps).nt.mean)")
 
 samps = @time sample(FS2000_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
-println(mean(samps).nt.mean)
+println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
 sample_nuts = mean(samps).nt.mean
 
@@ -89,20 +89,22 @@ pt = @time Pigeons.pigeons(target = FS2000_lp,
 
 samps = MCMCChains.Chains(pt)
 
-println(mean(samps).nt.mean)
+println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 
 sample_pigeons = mean(samps).nt.mean
 
 
-# modeFS2000 = Turing.maximum_likelihood(FS2000_loglikelihood, 
-#                                         # Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), 
-#                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-#                                         # Optim.NelderMead(), 
-#                                         adtype = AutoZygote(), 
-#                                         # maxiters = 100,
-#                                         # lb = [0,0,-10,-10,0,0,0,0,0], 
-#                                         # ub = [1,1,10,10,1,1,1,100,100], 
-#                                         initial_params = FS2000.parameter_values)
+modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
+                                        # Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), 
+                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                                        # Optim.NelderMead(), 
+                                        adtype = AutoZygote(), 
+                                        # maxiters = 100,
+                                        # lb = [0,0,-10,-10,0,0,0,0,0], 
+                                        # ub = [1,1,10,10,1,1,1,100,100], 
+                                        initial_params = FS2000.parameter_values)
+
+println("Mode variable values: $(modeFS2000.values); Mode loglikelihood: $(modeFS2000.lp)")
 
 @testset "Estimation results" begin
     # @test isapprox(modeFS2000.lp, 1281.669108730447, rtol = eps(Float32))

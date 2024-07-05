@@ -42,16 +42,16 @@ n_samples = 1000
 
 samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, init_params = FS2000.parameter_values)
 
-println(mean(samps).nt.mean)
+println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
 sample_nuts = mean(samps).nt.mean
 
-modeFS2000i = Turing.maximum_likelihood(FS2000_loglikelihood_function(data, FS2000, :inversion), 
+modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS2000, :inversion), 
                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                                         adtype = Turing.AutoZygote(), 
                                         initial_params = FS2000.parameter_values)
 
-println(modeFS2000i.values)
+println("Mode variable values: $(modeFS2000i.values); Mode loglikelihood: $(modeFS2000i.lp)")
 
 Random.seed!(30)
 
@@ -88,8 +88,7 @@ pt = @time Pigeons.pigeons(target = FS2000_lp,
 
 samps = MCMCChains.Chains(pt)
 
-
-println(mean(samps).nt.mean)
+println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 
 
 # # estimate highly nonlinear model
