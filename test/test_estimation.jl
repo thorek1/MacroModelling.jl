@@ -1,6 +1,6 @@
 using MacroModelling
 import Turing, Pigeons, Zygote
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL: logjoint
@@ -45,11 +45,11 @@ n_samples = 1000
 
 # using Zygote
 # Turing.setadbackend(:zygote)
-samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true)#, init_params = sol)
+samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 println(mean(samps).nt.mean)
 
-samps = @time sample(FS2000_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true)#, init_params = sol)
+samps = @time sample(FS2000_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 println(mean(samps).nt.mean)
 
