@@ -90,7 +90,7 @@ Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(Caldara_et_al_2012_lo
 pt = @time Pigeons.pigeons(target = Caldara_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
-            n_rounds = 6,
+            n_rounds = 7,
             multithreaded = true)
 
 samps = MCMCChains.Chains(pt)

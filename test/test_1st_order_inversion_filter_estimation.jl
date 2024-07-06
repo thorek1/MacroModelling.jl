@@ -84,7 +84,7 @@ Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_
 
 pt = @time Pigeons.pigeons(target = FS2000_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 1,
+            n_chains = 2,
             n_rounds = 10,
             multithreaded = true)
 
