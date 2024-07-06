@@ -4,7 +4,7 @@ import Pigeons
 import Turing: NUTS, sample, logpdf, PG, IS
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
-import DynamicPPL: logjoint
+import DynamicPPL
 
 # estimate highly nonlinear model
 
@@ -47,7 +47,9 @@ dists = [
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
     all_params ~ Turing.arraydist(dists)
 
-    Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_third_order)
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_third_order)
+    end
 end
 
 

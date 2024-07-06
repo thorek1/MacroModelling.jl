@@ -4,7 +4,7 @@ import Pigeons
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
-import DynamicPPL: logjoint
+import DynamicPPL
 
 include("../models/FS2000.jl")
 
@@ -35,7 +35,9 @@ dists = [
 Turing.@model function FS2000_loglikelihood_function(data, m)
     all_params ~ Turing.arraydist(dists)
 
-    Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_second_order)
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_second_order)
+    end
 end
 
 

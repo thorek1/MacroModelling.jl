@@ -5,7 +5,7 @@ import Zygote
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
-import DynamicPPL: logjoint
+import DynamicPPL
 
 include("../models/FS2000.jl")
 
@@ -35,7 +35,9 @@ dists = [
 Turing.@model function FS2000_loglikelihood_function(data, m, filter)
     all_params ~ Turing.arraydist(dists)
 
-    Turing.@addlogprob! get_loglikelihood(m, data, all_params, filter = filter)
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        Turing.@addlogprob! get_loglikelihood(m, data, all_params, filter = filter)
+    end
 end
 
 n_samples = 1000
