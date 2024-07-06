@@ -92,17 +92,20 @@ SS(Smets_Wouters_2007_linear, parameters = [:crhoms => 0.01, :crhopinf => 0.01, 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear, observables, fixed_parameters, :kalman)
 # inversion filter delivers similar results
 
-par_names = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+# par_names = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
 
-inits = [Dict(get_parameters(Smets_Wouters_2007_linear, values = true))[string(i)] for i in par_names]
+# inits = [Dict(get_parameters(Smets_Wouters_2007_linear, values = true))[string(i)] for i in par_names]
+
+# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+#                                         Optim.SimulatedAnnealing(),
+#                                         initial_params = inits)
+
+# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+#                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+#                                         initial_params = modeSW2007.values)
 
 modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-                                        Optim.SimulatedAnnealing(),
-                                        initial_params = inits)
-
-modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                        initial_params = modeSW2007.values)
+                                        Optim.NelderMead())
 
 println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
@@ -123,16 +126,20 @@ SS(Smets_Wouters_2007, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow 
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :kalman)
 
-par_names = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
-inits = [Dict(get_parameters(Smets_Wouters_2007, values = true))[string(i)] for i in par_names]
+# par_names = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+
+# inits = [Dict(get_parameters(Smets_Wouters_2007, values = true))[string(i)] for i in par_names]
+
+# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+#                                         Optim.SimulatedAnnealing(),
+#                                         initial_params = inits)
+
+# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+#                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+#                                         initial_params = modeSW2007.values)
 
 modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-                                        Optim.SimulatedAnnealing(),
-                                        initial_params = inits)
-
-modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                        initial_params = modeSW2007.values)
+                                        Optim.NelderMead())
 
 println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
