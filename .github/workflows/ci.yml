@@ -53,19 +53,19 @@ jobs:
           #   test_set: "solver3"
           - version: '1.10'
             os: macos-latest
-            arch: x64
+            arch: arm64
             test_set: "estimate_sw07"
           - version: '1.10'
             os: macos-latest
-            arch: x64
+            arch: arm64
             test_set: "1st_order_inversion_estimation"
           - version: '1.10'
             os: macos-latest
-            arch: x64
+            arch: arm64
             test_set: "2nd_order_estimation"
           - version: '1.10'
             os: macos-latest
-            arch: x64
+            arch: arm64
             test_set: "3rd_order_estimation"
           # - version: '1.10'
           #   os: macOS-latest
@@ -73,7 +73,7 @@ jobs:
           #   test_set: "basic"
           - version: 'nightly'
             os: macos-latest
-            arch: x64
+            arch: arm64
             test_set: "basic"
             allow_failure: true
           - version: '^1.11.0-0'
