@@ -77,7 +77,7 @@ pt = @time Pigeons.pigeons(target = FS2000_lp,
 samps = MCMCChains.Chains(pt)
 
 
-println(mean(samps).nt.mean)
+println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 
 
 # # estimate highly nonlinear model

@@ -96,7 +96,7 @@ pt = @time Pigeons.pigeons(target = Caldara_lp,
 samps = MCMCChains.Chains(pt)
 
 
-println(mean(samps).nt.mean)
+println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 
 
 # include("../models/FS2000.jl")
