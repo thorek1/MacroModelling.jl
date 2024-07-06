@@ -3,7 +3,7 @@ import Turing, Pigeons, Zygote
 import Turing: NUTS, sample, logpdf, AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
-import DynamicPPL: logjoint
+import DynamicPPL
 
 include("../models/FS2000.jl")
 
