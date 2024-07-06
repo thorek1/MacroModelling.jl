@@ -72,8 +72,8 @@ jobs:
           #   arch: x64
           #   test_set: "basic"
           - version: 'nightly'
-            os: macos-latest
-            arch: arm64
+            os: ubuntu-latest
+            arch: x64
             test_set: "basic"
             allow_failure: true
           - version: '^1.11.0-0'
