@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] ss transition by entering new parameters at given periods
+- [ ] add argument to plotting functions to replace names in plots (e.g input a dictionnary: Dict(:dinve => "Investment growth"))
 - [ ] programmatic model writing: accept {i}[0] as definition for variable
 - [ ] use IrrationalConstants for log2pi...
 - [ ] checkout this invalidation precompile trick and g dalle part on precompilation
