@@ -6,8 +6,6 @@ import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
 
-include("../models/Smets_Wouters_2007_linear.jl")
-
 # load data
 dat = CSV.read("data/usmodel.csv", DataFrame)
 
@@ -84,6 +82,10 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
         Turing.@addlogprob! llh
     end
 end
+
+# estimate linear model
+
+include("../models/Smets_Wouters_2007_linear.jl")
 
 fixed_parameters = Smets_Wouters_2007_linear.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007_linear.parameters)]
 
