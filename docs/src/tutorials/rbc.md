@@ -85,7 +85,7 @@ z_{t} = \rho^z z_{t-1} + \sigma^z \epsilon^z_{t}
 
 The first step is always to name the model and write down the equations. Taking the RBC model described above this would go as follows.
 
-First, we load the package and then use the [`@model`](@ref) macro to define our model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which we write down between `begin` and `end`. One equation per line and timing of endogenous variables are expressed in the squared brackets following the variable name. Exogenous variables (shocks) are followed by a keyword in squared brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julias unicode capabilities (`alpha` can be written as `α`).
+First, we load the package and then use the [`@model`](@ref) macro to define our model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which we write down between `begin` and `end`. One equation per line and timing of endogenous variables are expressed in the square brackets following the variable name. Exogenous variables (shocks) are followed by a keyword in square brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julias unicode capabilities (`alpha` can be written as `α`).
 
 ```@setup tutorial_1
 ENV["GKSwstype"] = "100"

@@ -15,7 +15,7 @@ Parses the model equations and assigns them to an object.
 # Optional arguments to be placed between `𝓂` and `ex`
 - `max_obc_horizon` [Default: `40`, Type: `Int`]: maximum length of anticipated shocks and corresponding unconditional forecast horizon over which the occasionally binding constraint is to be enforced. Increase this number if no solution is found to enforce the constraint.
 
-Variables must be defined with their time subscript in squared brackets.
+Variables must be defined with their time subscript in square brackets.
 Endogenous variables can have the following:
 - present: `c[0]`
 - non-stcohastic steady state: `c[ss]` instead of `ss` any of the following is also a valid flag for the non-stochastic steady state: `ss`, `stst`, `steady`, `steadystate`, `steady_state`, and the parser is case-insensitive (`SS` or `sTst` will work as well).
@@ -28,7 +28,7 @@ Exogenous variables (shocks) can have the following:
 - past: `eps_z[x-1]`
 - future: `eps_z[x+1]`
 
-Parameters enter the equations without squared brackets.
+Parameters enter the equations without square brackets.
 
 If an equation contains a `max` or `min` operator, then the default dynamic (first order) solution of the model will enforce the occasionally binding constraint. You can choose to ignore it by setting `ignore_obc = true` in the relevant function calls.
 
