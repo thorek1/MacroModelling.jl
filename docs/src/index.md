@@ -62,7 +62,7 @@ The package contains the following models in the `models` folder:
 **Automatic derivation of first order conditions**|||||||||||yes||
 **Handles occasionally binding constraints**|yes|yes|yes|yes|yes||||yes|||yes||
 **Global solution**||||yes|yes|||||||yes||
-**Estimation**|yes|yes|yes|||||yes|yes|yes|yes|||
+**Estimation**|yes|yes|yes|||yes||yes|yes|yes|yes|||
 **Balanced growth path**||yes|yes||||yes|yes|yes|yes|||||
 **Model input**|macro (julia)|text file|text file|text file|text file|macro (julia)|module (julia)|text file|text file|text file|text file|text file|text file|
 **Timing convention**|end-of-period|end-of-period||end-of-period|start-of-period|start-of-period|end-of-period|end-of-period|end-of-period|end-of-period|end-of-period|start-of-period|start-of-period|
