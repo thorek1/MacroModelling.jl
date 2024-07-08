@@ -319,7 +319,7 @@ get_statistics(Gali_2015, sol.minimizer, algorithm = :pruned_third_order, parame
 
 The solution does not match the standard deviation of inflation very well.
 
-Potentially the partial derivatives change a lot for small changes in parameters and even though the partial derivatives for standard deviation of inflation were large wrt `std_a` they might be small for value returned from the optimisation. We can check this with:
+Potentially the partial derivatives change a lot for small changes in parameters and even though the partial derivatives for standard deviation of inflation were large wrt `std_a` they might be small for values returned from the optimisation. We can check this with:
 
 ```@repl tutorial_3
 get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_third_order, parameters = [:α, :std_a] .=> sol.minimizer)
