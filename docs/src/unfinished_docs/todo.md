@@ -6,7 +6,9 @@
 - [ ] add argument to plotting functions to replace names in plots (e.g input a dictionnary: Dict(:dinve => "Investment growth"))
 - [ ] programmatic model writing: accept {i}[0] as definition for variable
 - [ ] check out dense sparse matmul on transposed matrices
-- [ ] check out DiffInter face for NSSS solver
+- [ ] check out DiffInterface for NSSS solver
+- [ ] write more tests for the plots
+- [ ] juliacon followup: checkout alloccheck, infiltrator, bestie, DifferentiableInterface, DepotDelivery, Interfaces, ThreadedDenseparseMul, Optimization Ensemble, redo Kalman filter with PDMats
 - [ ] use IrrationalConstants for log2pi...
 - [ ] checkout this invalidation precompile trick and g dalle part on precompilation
 - [ ] use sobol random numbers (gives you uniform but then use norminvcdf to get norm) to integrate out future randomness when solving with neural nets
