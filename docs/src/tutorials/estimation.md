@@ -50,7 +50,7 @@ using MacroModelling
 end
 ```
 
-First, we load the package and then use the [`@model`](@ref) macro to define our model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which we write down between `begin` and `end`. Equations can contain an equality sign or the expression is assumed to equal 0. Equations cannot span multiple lines (unless you wrap the expression in brackets) and the timing of endogenous variables are expressed in the squared brackets following the variable name (e.g. `[-1]` for the past period). Exogenous variables (shocks) are followed by a keyword in squared brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julia's unicode capabilities (e.g. alpha can be written as α).
+First, we load the package and then use the [`@model`](@ref) macro to define our model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which we write down between `begin` and `end`. Equations can contain an equality sign or the expression is assumed to equal 0. Equations cannot span multiple lines (unless you wrap the expression in brackets) and the timing of endogenous variables are expressed in the square brackets following the variable name (e.g. `[-1]` for the past period). Exogenous variables (shocks) are followed by a keyword in square brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julia's unicode capabilities (e.g. alpha can be written as α).
 
 ## Define the parameters
 
@@ -99,8 +99,10 @@ data = data(observables,:)
 Next we define the parameter priors using the Turing package. The `@model` macro of the Turing package allows us to define the prior distributions over the parameters and combine it with the (Kalman filter) loglikelihood of the model and parameters given the data with the help of the `get_loglikelihood` function. We define the prior distributions in an array and pass it on to the `arraydist` function inside the `@model` macro from the Turing package. It is also possible to define the prior distributions inside the macro but especially for reverse mode auto differentiation the `arraydist` function is substantially faster. When defining the prior distributions we can rely n the distribution implemented in the Distributions package. Note that the `μσ` parameter allows us to hand over the moments (`μ` and `σ`) of the distribution as parameters in case of the non-normal distributions (Gamma, Beta, InverseGamma), and we can also define upper and lower bounds truncating the distribution as third and fourth arguments to the distribution functions. Last but not least, we define the loglikelihood and add it to the posterior loglikelihood with the help of the `@addlogprob!` macro.
 
 ```@repl tutorial_2
+import Zygote
+import DynamicPPL
 import Turing
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, AutoZygote
 
 prior_distributions = [
     Beta(0.356, 0.02, μσ = true),           # alp
@@ -117,7 +119,9 @@ prior_distributions = [
 Turing.@model function FS2000_loglikelihood_function(data, model)
     parameters ~ Turing.arraydist(prior_distributions)
 
-    Turing.@addlogprob! get_loglikelihood(model, data, parameters)
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        Turing.@addlogprob! get_loglikelihood(model, data, parameters)
+    end
 end
 ```
 
@@ -132,7 +136,7 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000);
 
 n_samples = 1000
 
-chain_NUTS  = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false);
+chain_NUTS  = sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = false);
 ```
 
 ### Inspect posterior
@@ -141,7 +145,7 @@ In order to understand the posterior distribution and the sequence of sample we 
 
 ```@repl tutorial_2; setup = :(chain_NUTS = read("../assets/chain_FS2000.jls", Chains))
 using StatsPlots
-StatsPlots.plot(chain_NUTS);
+plot(chain_NUTS);
 ```
 
 ![NUTS chain](../assets/FS2000_chain_NUTS.png)
@@ -149,7 +153,8 @@ StatsPlots.plot(chain_NUTS);
 Next, we are plotting the posterior loglikelihood along two parameters dimensions, with the other parameters ket at the posterior mean, and add the samples to the visualisation. This visualisation allows us to understand the curvature of the posterior and puts the samples in context.
 
 ```@repl tutorial_2
-using ComponentArrays, MCMCChains, DynamicPPL
+using ComponentArrays, MCMCChains
+import DynamicPPL: logjoint
 
 parameter_mean = mean(chain_NUTS)
 
@@ -201,35 +206,12 @@ p
 
 ## Find posterior mode
 
-Other than the mean and median of the posterior distribution we can also calculate the mode. To this end we will use L-BFGS optimisation routines from the Optim package.
-
-First, we define the posterior loglikelihood function, similar to how we defined it for the Turing model macro.
+Other than the mean and median of the posterior distribution we can also calculate the mode as follows:
 
 ```@repl tutorial_2
-function calculate_posterior_loglikelihood(parameters, prior_distribuions)
-    alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
-    log_lik = 0
-    log_lik -= get_loglikelihood(FS2000, data, parameters)
-
-    for (dist, val) in zip(prior_distribuions, parameters)
-        log_lik -= logpdf(dist, val)
-    end
-
-    return log_lik
-end
-```
-
-Next, we set up the optimisation problem, parameter bounds, and use the optimizer L-BFGS.
-
-```@repl tutorial_2
-using Optim, LineSearches
-
-lbs = [0,0,-10,-10,0,0,0,0,0];
-ubs = [1,1,10,10,1,1,1,100,100];
-
-sol = optimize(x -> calculate_posterior_loglikelihood(x, prior_distributions), lbs, ubs , FS2000.parameter_values, Fminbox(LBFGS(linesearch = LineSearches.BackTracking(order = 3))); autodiff = :forward)
-
-sol.minimum
+modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
+                                        adtype = AutoZygote(), 
+                                        initial_params = FS2000.parameter_values)
 ```
 
 ## Model estimates given the data and the model solution
@@ -237,7 +219,7 @@ sol.minimum
 Having found the parameters at the posterior mode we can retrieve model estimates of the shocks which explain the data used to estimate it. This can be done with the `get_estimated_shocks` function:
 
 ```@repl tutorial_2
-get_estimated_shocks(FS2000, data, parameters = sol.minimizer)
+get_estimated_shocks(FS2000, data, parameters = collect(modeFS2000.values))
 ```
 
 As the first argument we pass the model, followed by the data (in levels), and then we pass the parameters at the posterior mode. The model is solved with this parameterisation and the shocks are calculated using the Kalman smoother.

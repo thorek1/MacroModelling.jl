@@ -4,7 +4,7 @@ import Pigeons
 import Turing: NUTS, sample, logpdf, PG, IS
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
-import DynamicPPL: logjoint
+import DynamicPPL
 
 # estimate highly nonlinear model
 
@@ -47,7 +47,9 @@ dists = [
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
     all_params ~ Turing.arraydist(dists)
 
-    Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_third_order)
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_third_order)
+    end
 end
 
 
@@ -88,13 +90,13 @@ Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(Caldara_et_al_2012_lo
 pt = @time Pigeons.pigeons(target = Caldara_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
-            n_rounds = 6,
+            n_rounds = 6, # 7 fails with out of support error
             multithreaded = true)
 
 samps = MCMCChains.Chains(pt)
 
 
-println(mean(samps).nt.mean)
+println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 
 
 # include("../models/FS2000.jl")

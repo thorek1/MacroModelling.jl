@@ -15,7 +15,7 @@ Parses the model equations and assigns them to an object.
 # Optional arguments to be placed between `𝓂` and `ex`
 - `max_obc_horizon` [Default: `40`, Type: `Int`]: maximum length of anticipated shocks and corresponding unconditional forecast horizon over which the occasionally binding constraint is to be enforced. Increase this number if no solution is found to enforce the constraint.
 
-Variables must be defined with their time subscript in squared brackets.
+Variables must be defined with their time subscript in square brackets.
 Endogenous variables can have the following:
 - present: `c[0]`
 - non-stcohastic steady state: `c[ss]` instead of `ss` any of the following is also a valid flag for the non-stochastic steady state: `ss`, `stst`, `steady`, `steadystate`, `steady_state`, and the parser is case-insensitive (`SS` or `sTst` will work as well).
@@ -28,7 +28,7 @@ Exogenous variables (shocks) can have the following:
 - past: `eps_z[x-1]`
 - future: `eps_z[x+1]`
 
-Parameters enter the equations without squared brackets.
+Parameters enter the equations without square brackets.
 
 If an equation contains a `max` or `min` operator, then the default dynamic (first order) solution of the model will enforce the occasionally binding constraint. You can choose to ignore it by setting `ignore_obc = true` in the relevant function calls.
 
@@ -93,6 +93,8 @@ macro model(𝓂,ex...)
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = x->x
     SS_check_func = x->x
+    ∂SS_equations_∂parameters = ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
+    ∂SS_equations_∂SS_and_pars = ([], Int[], zeros(1,1))
     SS_dependencies = nothing
 
     original_equations = []
@@ -857,6 +859,8 @@ macro model(𝓂,ex...)
                         $NSSS_solver_cache,
                         $SS_solve_func,
                         $SS_check_func,
+                        $∂SS_equations_∂parameters,
+                        $∂SS_equations_∂SS_and_pars,
                         $SS_dependencies,
 
                         $➕_vars,
@@ -872,10 +876,13 @@ macro model(𝓂,ex...)
 
                         $bounds,
 
-                        x->x,
+                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
+                        ([], Int[], zeros(1,1)), # model_jacobian
+                        # x->x, # model_jacobian_parameters
+                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian_SS_and_pars_vars
                         # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
-                        [],#x->x,
-                        [],#x->x,
+                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_hessian
+                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives
 
                         $T,
 
@@ -916,14 +923,16 @@ macro model(𝓂,ex...)
                                             third_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [], (x,y)->nothing, nothing),
                                             auxilliary_indices(Int[],Int[],Int[],Int[],Int[]),
                                             second_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
-                                            third_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
+                                            third_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
                             ),
                             Float64[], 
                             Set([:first_order]),
                             Set(all_available_algorithms),
                             true,
                             false
-                        )
+                        ),
+
+                        Dict{Vector{Symbol}, timings}() # estimation_helper
                     );
     end
 end
@@ -953,6 +962,7 @@ Parameters can be defined in either of the following ways:
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
 - `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. In case you want to work with higher order perturbation later on, respective derivatives will be taken at that stage.
+- `simplify` [Default: `true`, Type: `Bool`]: whether to elminiate redundant variables and simplify the non stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
 
 
 
@@ -1028,6 +1038,7 @@ macro parameters(𝓂,ex...)
     precompile = false
     perturbation_order = 1
     guess = Dict{Symbol,Float64}()
+    simplify = true
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -1045,6 +1056,8 @@ macro parameters(𝓂,ex...)
                         perturbation_order = x.args[2] :
                     x.args[1] == :guess && (isa(eval(x.args[2]), Dict{Symbol, <:Real}) || isa(eval(x.args[2]), Dict{String, <:Real})) ?
                         guess = x.args[2] :
+                    x.args[1] == :simplify && x.args[2] isa Bool ?
+                        simplify = x.args[2] :
                     begin
                         @warn "Invalid options. See docs: `?@parameters` for valid options." 
                         x
@@ -1446,7 +1459,7 @@ macro parameters(𝓂,ex...)
 
             symbolics = create_symbols_eqs!(mod.$𝓂)
 
-            remove_redundant_SS_vars!(mod.$𝓂, symbolics) 
+            remove_redundant_SS_vars!(mod.$𝓂, symbolics, avoid_solve = !$simplify) 
 
             if !$silent println(round(time() - start_time, digits = 3), " seconds") end
 
@@ -1455,7 +1468,7 @@ macro parameters(𝓂,ex...)
     
             if !$silent print("Set up non stochastic steady state problem:\t\t\t\t") end
 
-            solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose) # 2nd argument is SS_symbolic
+            solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose, avoid_solve = !$simplify) # 2nd argument is SS_symbolic
 
             mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
             

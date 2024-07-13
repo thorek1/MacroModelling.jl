@@ -7,21 +7,21 @@
 
 	kp[0] = inve[0] * qs[0] * (1 - Sfunc[0]) + kp[-1] * (1 - ctou) / cgamma
 
-	pdot[0] = (1 - cprobp) * (Pratio[0] / dp[0]) ^ (( - cfc) * (1 + curvP) / (cfc - 1)) + pdot[-1] * cprobp * (dp[-1] / dp[0] * pinf[-1] ^ cindp * pinf[ss] ^ (1 - cindp) / pinf[0]) ^ (( - cfc) * (1 + curvP) / (cfc - 1))
+	pdot[0] = (1 - cprobp) * (Pratio[0] / dp[0]) ^ (( - cfc) * (1 + curvP) / (cfc - 1)) + pdot[-1] * cprobp * (dp[-1] / dp[0] * pinf[-1] ^ cindp * cpie ^ (1 - cindp) / pinf[0]) ^ (( - cfc) * (1 + curvP) / (cfc - 1))
 
-	wdot[0] = (1 - cprobw) * (wnew[0] / dw[0]) ^ (( - clandaw) * (1 + curvW) / (clandaw - 1)) + wdot[-1] * cprobw * (dw[-1] / dw[0] * pinf[-1] ^ cindw * pinf[ss] ^ (1 - cindw) / pinf[0]) ^ (( - clandaw) * (1 + curvW) / (clandaw - 1))
+	wdot[0] = (1 - cprobw) * (wnew[0] / dw[0]) ^ (( - clandaw) * (1 + curvW) / (clandaw - 1)) + wdot[-1] * cprobw * (dw[-1] / dw[0] * pinf[-1] ^ cindw * cpie ^ (1 - cindw) / pinf[0]) ^ (( - clandaw) * (1 + curvW) / (clandaw - 1))
 
-	1 = (1 - cprobp) * (Pratio[0] / dp[0]) ^ (( - (1 + curvp * (1 - cfc))) / (cfc - 1)) + cprobp * (dp[-1] / dp[0] * pinf[-1] ^ cindp * pinf[ss] ^ (1 - cindp) / pinf[0]) ^ (( - (1 + curvp * (1 - cfc))) / (cfc - 1))
+	1 = (1 - cprobp) * (Pratio[0] / dp[0]) ^ (( - (1 + curvp * (1 - cfc))) / (cfc - 1)) + cprobp * (dp[-1] / dp[0] * pinf[-1] ^ cindp * cpie ^ (1 - cindp) / pinf[0]) ^ (( - (1 + curvp * (1 - cfc))) / (cfc - 1))
 
-	1 = (1 - cprobw) * (wnew[0] / dw[0]) ^ (( - (1 + curvw * (1 - clandaw))) / (clandaw - 1)) + cprobw * (dw[-1] / dw[0] * pinf[-1] ^ cindw * pinf[ss] ^ (1 - cindw) / pinf[0]) ^ (( - (1 + curvw * (1 - clandaw))) / (clandaw - 1))
+	1 = (1 - cprobw) * (wnew[0] / dw[0]) ^ (( - (1 + curvw * (1 - clandaw))) / (clandaw - 1)) + cprobw * (dw[-1] / dw[0] * pinf[-1] ^ cindw * cpie ^ (1 - cindw) / pinf[0]) ^ (( - (1 + curvw * (1 - clandaw))) / (clandaw - 1))
 
 	1 = dp[0] * (1 + pdotl[0] * curvP) / (1 + curvP)
 
 	w[0] = dw[0] * (1 + curvW * wdotl[0]) / (1 + curvW)
 
-	pdotl[0] = (1 - cprobp) * Pratio[0] / dp[0] + cprobp * dp[-1] / dp[0] * pinf[-1] ^ cindp * pinf[ss] ^ (1 - cindp) / pinf[0] * pdotl[-1]
+	pdotl[0] = (1 - cprobp) * Pratio[0] / dp[0] + cprobp * dp[-1] / dp[0] * pinf[-1] ^ cindp * cpie ^ (1 - cindp) / pinf[0] * pdotl[-1]
 
-	wdotl[0] = (1 - cprobw) * wnew[0] / dw[0] + cprobw * dw[-1] / dw[0] * pinf[-1] ^ cindw * pinf[ss] ^ (1 - cindw) / pinf[0] * wdotl[-1]
+	wdotl[0] = (1 - cprobw) * wnew[0] / dw[0] + cprobw * dw[-1] / dw[0] * pinf[-1] ^ cindw * cpie ^ (1 - cindw) / pinf[0] * wdotl[-1]
 
 	xi[0] = exp((csigma - 1) / (1 + csigl) * (lab[0] * (curvW + wdot[0]) / (1 + curvW)) ^ (1 + csigl)) * (c[0] - c[-1] * chabb / cgamma) ^ (-csigma)
 
@@ -39,19 +39,19 @@
 
 	wnew[0] * gamw1[0] * (1 + curvw * (1 - clandaw)) / (1 + curvW) = clandaw * gamw2[0] + gamw3[0] * curvW * (clandaw - 1) / (1 + curvW) * wnew[0] ^ (1 + clandaw * (1 + curvW) / (clandaw - 1))
 
-	gamw1[0] = lab[0] * dw[0] ^ (clandaw * (1 + curvW) / (clandaw - 1)) + gamw1[1] * (pinf[ss] ^ (1 - cindw) * pinf[0] ^ cindw / pinf[1]) ^ (( - (1 + curvw * (1 - clandaw))) / (clandaw - 1)) * xi[1] / xi[0] * cgamma * cprobw * cbetabar
+	gamw1[0] = lab[0] * dw[0] ^ (clandaw * (1 + curvW) / (clandaw - 1)) + gamw1[1] * (cpie ^ (1 - cindw) * pinf[0] ^ cindw / pinf[1]) ^ (( - (1 + curvw * (1 - clandaw))) / (clandaw - 1)) * xi[1] / xi[0] * cgamma * cprobw * cbetabar
 
-	gamw2[0] = (c[0] - c[-1] * chabb / cgamma) * lab[0] * sw[0] * dw[0] ^ (clandaw * (1 + curvW) / (clandaw - 1)) * (lab[0] * (curvW + wdot[0]) / (1 + curvW)) ^ csigl + gamw2[1] * (pinf[ss] ^ (1 - cindw) * pinf[0] ^ cindw / pinf[1]) ^ (( - clandaw) * (1 + curvW) / (clandaw - 1)) * xi[1] / xi[0] * cgamma * cprobw * cbetabar
+	gamw2[0] = (c[0] - c[-1] * chabb / cgamma) * lab[0] * sw[0] * dw[0] ^ (clandaw * (1 + curvW) / (clandaw - 1)) * (lab[0] * (curvW + wdot[0]) / (1 + curvW)) ^ csigl + gamw2[1] * (cpie ^ (1 - cindw) * pinf[0] ^ cindw / pinf[1]) ^ (( - clandaw) * (1 + curvW) / (clandaw - 1)) * xi[1] / xi[0] * cgamma * cprobw * cbetabar
 
-	gamw3[0] = lab[0] + gamw3[1] * pinf[ss] ^ (1 - cindw) * pinf[0] ^ cindw / pinf[1] * xi[1] / xi[0] * cgamma * cprobw * cbetabar
+	gamw3[0] = lab[0] + gamw3[1] * cpie ^ (1 - cindw) * pinf[0] ^ cindw / pinf[1] * xi[1] / xi[0] * cgamma * cprobw * cbetabar
 
 	Pratio[0] * gam1[0] * (1 + curvp * (1 - cfc)) / (1 + curvP) = cfc * gam2[0] + gam3[0] * (cfc - 1) * curvP / (1 + curvP) * Pratio[0] ^ (1 + cfc * (1 + curvP) / (cfc - 1))
 
-	gam1[0] = y[0] * dp[0] ^ (cfc * (1 + curvP) / (cfc - 1)) + gam1[1] * xi[1] / xi[0] * cgamma * cprobp * cbetabar * (pinf[ss] ^ (1 - cindp) * pinf[0] ^ cindp / pinf[1]) ^ (( - (1 + curvp * (1 - cfc))) / (cfc - 1))
+	gam1[0] = y[0] * dp[0] ^ (cfc * (1 + curvP) / (cfc - 1)) + gam1[1] * xi[1] / xi[0] * cgamma * cprobp * cbetabar * (cpie ^ (1 - cindp) * pinf[0] ^ cindp / pinf[1]) ^ (( - (1 + curvp * (1 - cfc))) / (cfc - 1))
 
-	gam2[0] = y[0] * mc[0] * spinf[0] * dp[0] ^ (cfc * (1 + curvP) / (cfc - 1)) + gam2[1] * xi[1] / xi[0] * cgamma * cprobp * cbetabar * (pinf[ss] ^ (1 - cindp) * pinf[0] ^ cindp / pinf[1]) ^ (( - cfc) * (1 + curvP) / (cfc - 1))
+	gam2[0] = y[0] * mc[0] * spinf[0] * dp[0] ^ (cfc * (1 + curvP) / (cfc - 1)) + gam2[1] * xi[1] / xi[0] * cgamma * cprobp * cbetabar * (cpie ^ (1 - cindp) * pinf[0] ^ cindp / pinf[1]) ^ (( - cfc) * (1 + curvP) / (cfc - 1))
 
-	gam3[0] = y[0] + gam3[1] * pinf[ss] ^ (1 - cindp) * pinf[0] ^ cindp / pinf[1] * xi[1] / xi[0] * cgamma * cprobp * cbetabar
+	gam3[0] = y[0] + gam3[1] * cpie ^ (1 - cindp) * pinf[0] ^ cindp / pinf[1] * xi[1] / xi[0] * cgamma * cprobp * cbetabar
 
 	qsaux[0] = qs[1]
 
@@ -67,23 +67,23 @@
 
 	SfuncD[0] = csadjcost * (cgamma * inve[0] / inve[-1] - cgamma)
 
-	a[0] = 1 - crhoa + crhoa * a[-1] + z_ea * ea[x]
+	a[0] = 1 - crhoa + crhoa * a[-1] + z_ea / 100 * ea[x]
 
-	b[0] = 1 - crhob + crhob * b[-1] +  z_eb * eb[x]
+	b[0] = 1 - crhob + crhob * b[-1] +  z_eb / 100 * SCALE1_eb * eb[x]
 
-	gy[0] - cg = crhog * (gy[-1] - cg) + z_eg * eg[x] + z_ea * ea[x] * cgy
+	gy[0] - cg = crhog * (gy[-1] - cg) + z_eg / 100 * eg[x] + z_ea / 100 * ea[x] * cgy
 
-	qs[0] = 1 - crhoqs + crhoqs * qs[-1] + z_eqs * eqs[x]
+	qs[0] = 1 - crhoqs + crhoqs * qs[-1] + z_eqs / 100 * SCALE1_eqs * eqs[x]
 
-	ms[0] = 1 - crhoms + crhoms * ms[-1] + z_em * em[x]
+	ms[0] = 1 - crhoms + crhoms * ms[-1] + z_em / 100 * em[x]
 
 	spinf[0] = 1 - crhopinf + crhopinf * spinf[-1] + epinfma[0] - cmap * epinfma[-1]
 
-	epinfma[0] = z_epinf * epinf[x]
+	epinfma[0] = z_epinf / 100 * SCALE1_epinf * epinf[x]
 
 	sw[0] = 1 - crhow + crhow * sw[-1] + ewma[0] - cmaw * ewma[-1]
 
-	ewma[0] = z_ew * ew[x]
+	ewma[0] = z_ew / 100 * SCALE1_ew * ew[x]
 
 	yflex[0] = cflex[0] + inveflex[0] + gy[0] * yflex[ss] + afuncflex[0] * kpflex[-1] / cgamma
 
@@ -127,18 +127,26 @@
 
 	dinve[0] = ctrend + 100 * (inve[0] / inve[-1] - 1)
 
-	pinfobs[0] = 100 * (pinf[0] - pinf[ss]) + constepinf
+	pinfobs[0] = 100 * (pinf[0] - 1)
 
 	robs[0] = 100 * (r[0] - 1)
 
 	dwobs[0] = ctrend + 100 * (w[0] / w[-1] - 1)
 
-	labobs[0] = 100 * (lab[0] / lab[ss] - 1)
+	labobs[0] = constelab + 100 * (lab[0] / lab[ss] - 1)
 
 end
 
 
 @parameters Smets_Wouters_2007 begin
+	SCALE1_eb = -((1 - chabb / cgamma) / (csigma * (1 + chabb / cgamma))) ^ (-1)
+
+	SCALE1_eqs = (cgamma ^ 2 * csadjcost) * (1 + cbeta * cgamma ^ (1 - csigma))
+
+	SCALE1_epinf = 1 / ((1 / (1 + cbetabar * cgamma * cindp)) * ((1 - cprobp) * (1 - cbetabar * cgamma * cprobp) / cprobp) / ((cfc - 1) * curvp + 1))
+
+	SCALE1_ew = 1 / ((1 - cprobw) * (1 - cbetabar * cgamma * cprobw) / ((1 + cbetabar * cgamma) * cprobw) * (1 / ((clandaw - 1) * curvw + 1)))
+
 	cgamma 	= 1 + ctrend / 100          							# gross growth rate
 	
 	cbeta 	= 1 / (1 + constebeta / 100)    						# discount factor
