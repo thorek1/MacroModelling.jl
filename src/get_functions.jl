@@ -1211,20 +1211,20 @@ get_IRF = get_irf
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
 """
-simulate(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
+simulate(args...; kwargs...) =  get_irf(args...; kwargs..., shocks = :simulate, levels = get(kwargs, :levels, true))#[:,:,1]
 
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
 """
-get_simulation(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
+get_simulation(args...; kwargs...) =  get_irf(args...; kwargs..., shocks = :simulate, levels = get(kwargs, :levels, true))#[:,:,1]
 
 """
 Wrapper for [`get_irf`](@ref) with `shocks = :simulate`. Function returns values in levels by default.
 """
-get_simulations(args...; kwargs...) =  get_irf(args...; levels = true, kwargs..., shocks = :simulate)#[:,:,1]
+get_simulations(args...; kwargs...) =  get_irf(args...; kwargs..., shocks = :simulate, levels = get(kwargs, :levels, true))#[:,:,1]
 
 """
-Wrapper for [`get_irf`](@ref) with `shocks = :simulate`.
+Wrapper for [`get_irf`](@ref) with `generalised_irf = true`.
 """
 get_girf(args...; kwargs...) =  get_irf(args...; kwargs..., generalised_irf = true)
 

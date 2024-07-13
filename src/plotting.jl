@@ -815,12 +815,12 @@ plot_irfs = plot_irf
 """
 Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
 """
-plot_simulations(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate)
+plot_simulations(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = get(kwargs, :periods, 100))
 
 """
 Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
 """
-plot_simulation(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate)
+plot_simulation(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = get(kwargs, :periods, 100))
 
 
 """
