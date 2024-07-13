@@ -7,6 +7,7 @@
 - [ ] programmatic model writing: accept {i}[0] as definition for variable
 - [ ] check out dense sparse matmul on transposed matrices
 - [ ] check out DiffInterface for NSSS solver
+- [ ] write plotting callback for NSSS solder
 - [ ] write more tests for the plots
 - [ ] juliacon followup: checkout alloccheck, infiltrator, bestie, DifferentiableInterface, DepotDelivery, Interfaces, ThreadedDenseparseMul, Optimization Ensemble, redo Kalman filter with PDMats
 - [ ] use IrrationalConstants for log2pi...

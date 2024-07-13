@@ -231,7 +231,8 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
         sol = get_solution(m)
 
         if length(m.exo) > 1
-            var_idxs = findall(vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1)) .== length(m.exo))[1:2]
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[1:2]
         else
             var_idxs = [1]
         end
@@ -280,7 +281,8 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     shocknames = axiskeys(new_sub_irfs_all,3)
     sol = get_solution(m)
     # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
-    var_idxs = findall(vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1)) .== length(m.exo))[[1,end]]
+    n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+    var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,end]]
 
     conditions = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
     conditions[var_idxs[1],1] = .01
@@ -374,7 +376,8 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     sol = get_solution(m)
 
     if length(m.exo) > 1
-        var_idxs = findall(vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1)) .== length(m.exo))[1:2]
+        n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+        var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[1:2]
         var_idxs_kalman = var_idxs
         # var_idxs = findall(vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> 1e-10,dims = 1)) .> 1)[1:2]
         # var_idxs_kalman = findall(vec(sum(sol[end-length(m.exo)+1:end,:] .!= 0,dims = 1)) .> 0)[1:2]
@@ -804,7 +807,8 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
             if length(m.exo) > 1
                 # var_idxs = findall(vec(sum(sol[end-length(m.exo)+1:end,:] .!= 0,dims = 1)) .> 0)[1:2]
-                var_idxs = findall(vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1)) .== length(m.exo))[1:2]
+                n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[1:2]
             else
                 var_idxs = [1]
             end
