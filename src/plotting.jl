@@ -122,10 +122,9 @@ function plot_model_estimates(𝓂::ℳ,
 
     pruning = false
 
-    if algorithm ∈ [:second_order, :third_order]
-        filter = :inversion
-        shock_decomposition = false
-    elseif algorithm ∈ [:pruned_second_order, :pruned_third_order]
+    @assert !(algorithm ∈ [:second_order, :third_order]) "Decomposition  implemented for first order, pruned second and third order. Second and third order solution decomposition is not yet implemented."
+    
+    if algorithm ∈ [:pruned_second_order, :pruned_third_order]
         filter = :inversion
         pruning = true
     end
