@@ -117,7 +117,9 @@ prior_distributions = [
 Turing.@model function FS2000_loglikelihood_function(data, model)
     parameters ~ Turing.arraydist(prior_distributions)
 
-    Turing.@addlogprob! get_loglikelihood(model, data, parameters)
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        Turing.@addlogprob! get_loglikelihood(model, data, parameters)
+    end
 end
 ```
 
@@ -132,7 +134,7 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000);
 
 n_samples = 1000
 
-chain_NUTS  = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false);
+chain_NUTS  = sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = false);
 ```
 
 ### Inspect posterior
