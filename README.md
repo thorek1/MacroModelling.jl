@@ -15,7 +15,7 @@
 
 These kinds of models describe the behavior of a macroeconomy and are particularly suited for counterfactual analysis (economic policy evaluation) and exploring / quantifying specific mechanisms (academic research). Due to the complexity of these models, efficient numerical tools are required, as analytical solutions are often unavailable. `MacroModelling.jl` serves as a tool for handling the complexities involved, such as forward-looking expectations, nonlinearity, and high dimensionality.
 
-The goal of this package is to reduce coding time and speed up model development by providing functions for working with discrete-time DSGE models. The user-friendly syntax, automatic variable declaration, and effective steady state solver facilitate fast prototyping of models. Furthermore, the package allows the user to work with nonlinear model solutions (up to third order (pruned) perturbation) and estimate the model using gradient based samplers (e.g. NUTS, or HMC). Currently, `DifferentiableStateSpaceModels.jl` is the only other package providing functionality to estimate using gradient based samplers but the use is limited to models with an analytical solution of the non stochastic steady state (NSSS). Larger models tend to not have an analytical solution of the NSSS and `MacroModelling.jl` can also use gradient based sampler in this case. The target audience for the package includes central bankers, regulators, graduate students, and others working in academia with an interest in DSGE modelling.
+The goal of this package is to reduce coding time and speed up model development by providing functions for working with discrete-time DSGE models. The user-friendly syntax, automatic variable declaration, and effective steady state solver facilitate fast prototyping of models. Furthermore, the package allows the user to work with nonlinear model solutions (up to third order (pruned) perturbation) and estimate the model using gradient based samplers (e.g. NUTS, or HMC). Currently, `DifferentiableStateSpaceModels.jl` is the only other package providing functionality to estimate using gradient based samplers but they use the start-of-period timing convention instead of the end-of-period timing convention used in most other packages. The target audience for the package includes central bankers, regulators, graduate students, and others working in academia with an interest in DSGE modelling.
 
 As of now the package can:
 
@@ -103,13 +103,13 @@ The package contains the following models in the `models` folder:
 **Host language**|julia|MATLAB|julia|Python|julia|julia|julia|MATLAB|MATLAB|MATLAB|R|MATLAB|MATLAB|
 **Non stochastic steady state solver**|*symbolic* or numerical solver of independent blocks; symbolic removal of variables redundant in steady state; inclusion of calibration equations in problem|numerical solver of independent blocks or user-supplied values/functions||numerical solver of independent blocks or user-supplied values/functions|numerical solver|numerical solver or user supplied values/equations|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|user-supplied steady state file or numerical solver|numerical solver; inclusion of calibration equations in problem|||
 **Automatic declaration of variables and parameters**|yes|||||||||||||
-**Derivatives (Automatic Differentiation) wrt parameters**|yes|||||yes - for all 1st, 2nd order perturbation solution related output *if user supplied steady state equations*|||||||
+**Derivatives wrt parameters**|yes|||||yes|||||||
 **Perturbation solution order**|1, 2, 3|k|1|1, 2, 3|1, 2, 3|1, 2|1|1|1 to 5|1|1||1 to 5|
 **Pruning**|yes|yes||||yes|||yes|||||
 **Automatic derivation of first order conditions**|||||||||||yes||
-**Handles occasionally binding constraints**|yes|yes|yes|yes|yes||||yes|||yes||
+**Occasionally binding constraints**|yes|yes|yes|yes|yes||||yes|||yes||
 **Global solution**||||yes|yes|||||||yes||
-**Estimation**|yes|yes|yes|||||yes|yes|yes|yes|||
+**Estimation**|yes|yes|yes|||yes||yes|yes|yes|yes|||
 **Balanced growth path**||yes|yes||||yes|yes|yes|yes|||||
 **Model input**|macro (julia)|text file|text file|text file|text file|macro (julia)|module (julia)|text file|text file|text file|text file|text file|text file|
 **Timing convention**|end-of-period|end-of-period||end-of-period|start-of-period|start-of-period|end-of-period|end-of-period|end-of-period|end-of-period|end-of-period|start-of-period|start-of-period|

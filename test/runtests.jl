@@ -2,6 +2,7 @@ using Test
 using MacroModelling
 using Random
 using AxisKeys, SparseArrays
+import Zygote, FiniteDifferences
 import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
 using JET
@@ -30,6 +31,10 @@ include("functionality_tests.jl")
 #     transform = 3
 #     include("optim_solver_params.jl")
 # end
+
+if test_set == "estimate_sw07"
+    include("test_sw07_estimation.jl")
+end
 
 if test_set == "estimation"
     include("test_estimation.jl")
@@ -148,6 +153,7 @@ end
 
 if test_set == "plots"
     plots = true
+		Random.seed!(1)
 
     @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
         include("../models/Backus_Kehoe_Kydland_1992.jl")
@@ -187,6 +193,19 @@ if test_set == "plots"
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
         functionality_test(m, plots = plots)
+        
+        observables = [:R, :k]
+
+        Random.seed!(1)
+        simulated_data = simulate(m)
+
+        get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
+
+        back_grad = Zygote.gradient(x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
     end
     m = nothing
     GC.gc()
@@ -196,6 +215,19 @@ if test_set == "plots"
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables numerical SS" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
         functionality_test(m, plots = plots)
+        
+        observables = [:R, :k]
+
+        Random.seed!(1)
+        simulated_data = simulate(m)
+
+        get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
+
+        back_grad = Zygote.gradient(x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1, max_range = 1e-4),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
     end
     m = nothing
     GC.gc()
@@ -203,6 +235,19 @@ if test_set == "plots"
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, and special functions" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
         functionality_test(m, plots = plots)
+
+        observables = [:R, :k]
+
+        Random.seed!(1)
+        simulated_data = simulate(m)
+
+        get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
+
+        back_grad = Zygote.gradient(x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
     end
     m = nothing
     GC.gc()
@@ -210,6 +255,19 @@ if test_set == "plots"
     @testset verbose = true "RBC_CME with calibration equations and parameter definitions" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
         functionality_test(m, plots = plots)
+
+        observables = [:R, :k]
+
+        Random.seed!(1)
+        simulated_data = simulate(m)
+
+        get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
+
+        back_grad = Zygote.gradient(x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
     end
     m = nothing
     GC.gc()
@@ -218,6 +276,19 @@ if test_set == "plots"
     @testset verbose = true "RBC_CME with calibration equations" begin
         include("models/RBC_CME_calibration_equations.jl")
         functionality_test(m, plots = plots)
+        
+        observables = [:R, :k]
+
+        Random.seed!(1)
+        simulated_data = simulate(m)
+
+        get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
+
+        back_grad = Zygote.gradient(x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
     end
     m = nothing
     GC.gc()
@@ -227,6 +298,19 @@ if test_set == "plots"
     @testset verbose = true "RBC_CME" begin
         include("models/RBC_CME.jl")
         functionality_test(m, plots = plots)
+
+        observables = [:R, :k]
+
+        Random.seed!(1)
+        simulated_data = simulate(m)
+
+        get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
+
+        back_grad = Zygote.gradient(x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
     end
     m = nothing
     GC.gc()
