@@ -100,7 +100,7 @@ Next we define the parameter priors using the Turing package. The `@model` macro
 
 ```@repl tutorial_2
 import Zygote
-using DynamicPPL
+import DynamicPPL
 import Turing
 import Turing: NUTS, sample, logpdf, AutoZygote
 
@@ -154,6 +154,7 @@ Next, we are plotting the posterior loglikelihood along two parameters dimension
 
 ```@repl tutorial_2
 using ComponentArrays, MCMCChains
+import DynamicPPL: logjoint
 
 parameter_mean = mean(chain_NUTS)
 
@@ -209,7 +210,7 @@ Other than the mean and median of the posterior distribution we can also calcula
 
 ```@repl tutorial_2
 modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
-                                        adtype = Turing.AutoZygote(), 
+                                        adtype = AutoZygote(), 
                                         initial_params = FS2000.parameter_values)
 ```
 
