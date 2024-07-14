@@ -7,8 +7,10 @@
 - [ ] programmatic model writing: accept {i}[0] as definition for variable
 - [ ] check out dense sparse matmul on transposed matrices
 - [ ] check out DiffInterface for NSSS solver
-- [ ] write plotting callback for NSSS solder
+- [ ] write plotting callback for NSSS solver
+- [ ] append forecast (no shocks) after estimated variables
 - [ ] write more tests for the plots
+- [ ] add background part in docs on NSSS solver (use material from presentation)
 - [ ] juliacon followup: checkout alloccheck, infiltrator, bestie, DifferentiableInterface, DepotDelivery, Interfaces, ThreadedDenseparseMul, Optimization Ensemble, redo Kalman filter with PDMats
 - [ ] use IrrationalConstants for log2pi...
 - [ ] checkout this invalidation precompile trick and g dalle part on precompilation
@@ -16,8 +18,7 @@
 - [ ] do proper testing of ss solver with random set of params, equal across configs
 - [ ] load create parts of derivatives later and not directly after parameters block
 - [ ] fix model estimate plot. data not above estimate (should be red but is blue)
-- [ ] make plotting options as dynamic setting instead of default, accept kwargs
-- [ ] analytical derivatives of inversion filter
+- [ ] analytical derivatives of inversion filter (higher order)
 - [ ] implement higher order (pruned) variance decomposition
 - [ ] try slicesampler instead of pigeons
 - [ ] use faster derivatives for SS solver (currently forward diff)
@@ -31,7 +32,6 @@
 - [ ] check derivatives of erfcinv with Symbolics. seems off
 - [ ] have a workspace in the model object. to be accessed for example by the riccati solver at each run (instead of initialising values at each function call)
 - [ ] check why PG samples are off
-- [ ] implement estimation tests for all models
 - [ ] optimise vanilla loglikelihood calculation and gradient thereof (incl comp time)
 - [ ] checkout dynamic perturbation for obc solution: https://www.southampton.ac.uk/~alexmen/dynamic_perturbation.pdf
 - [ ] checkout schedule free ADAM for global methods: https://github.com/facebookresearch/schedule_free
@@ -50,9 +50,9 @@
 - [ ] check whether its possible to run parameters macro/block without rerunning model block
 - [ ] eliminate possible log, ^ terms in parameters block equations - because of nonnegativity errors
 - [ ] throw error when equations appear more than once
-- [ ] plot multiple solutions or models - multioptions in one graph
+- [ ] plot multiple solutions of models - multioptions in one graph
 - [ ] make SS calc faster (func and optim, maybe inplace ops)
-- [ ] try preallocation tools for forwarddiff
+- [ ] try preallocation tools for forwarddiff (DiffInterface)
 - [ ] add nonlinear shock decomposition
 - [ ] check obc once more
 - [ ] rm obc vars from get_SS
@@ -103,6 +103,8 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] weed out SS solver and saved objects
 
+- [x] implement estimation tests for all models
+- [x] make plotting options as dynamic setting instead of default, accept kwargs
 - [x] streamline estimation part (dont do string matching... but rely on precomputed indices...)
 - [x] estimation: run auto-tune before and use solver treating parameters as given
 - [x] use arraydist in tests and docs
