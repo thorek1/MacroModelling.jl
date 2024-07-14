@@ -8,6 +8,8 @@ Reads in a `dynare` .mod-file, adapts the syntax, tries to capture parameter def
 
 The recommended workflow is to use this function to translate a .mod-file, and then adapt the output so that it runs and corresponds to the input.
 
+Note that this function copies the .mod-file to a temporary folder and executes it there. All references within that .mod-file are therefore not valid (because those filesare not copied) and must be made copied into the .mod-file.
+
 # Arguments
 - `path_to_mod_file` [Type: `AbstractString`]: path including filename of the .mod-file to be translated
 """
@@ -32,12 +34,18 @@ function translate_mod_file(path_to_mod_file::AbstractString)
     dynare_preprocessor_path = dynare_preprocessor()
 
     function parse_model()
-        run(pipeline(`$dynare_preprocessor_path $args`, stdout = "log.txt"))
+        try
+            run(pipeline(`$dynare_preprocessor_path $args`, stdout = "log.txt"))
+        catch
+            error("Failed to parse the model. Dynare preprocessor output:\n\n", read("log.txt", String))
+        end
     end
 
     cd(parse_model, tmp)
 
     son = JSON.parsefile(tmp * "/" * directory_2 * "/model/json/modfile.json")
+
+    @assert son isa Dict "Failed to parse the model."
 
     vars = [i["name"] for i in son["endogenous"]]
     shocks = [i["name"] for i in son["exogenous"]]

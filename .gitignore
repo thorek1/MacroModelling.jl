@@ -56,3 +56,8 @@ estimation__*
 results
 
 octave*
+*.jls
+samples*
+*samples.csv
+skewness*.png
+conditional_forecast*.png

@@ -1,10 +1,10 @@
 using MacroModelling
 import Turing
 import Pigeons
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, PG, IS
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
-import DynamicPPL: logjoint
+import DynamicPPL
 
 # estimate highly nonlinear model
 
@@ -30,34 +30,73 @@ include("models/Caldara_et_al_2012_estim.jl")
 
 # get_parameters(Caldara_et_al_2012_estim, values = true)
 
-Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
-    dȳ  ~ Normal(0, 1)
-    dc̄  ~ Normal(0, 1)
-    β   ~ Beta(0.95, 0.005, μσ = true)
-    ζ   ~ Beta(0.33, 0.05, μσ = true)
-    δ   ~ Beta(0.02, 0.01, μσ = true)
-    λ   ~ Beta(0.75, 0.01, μσ = true)
-    ψ   ~ Normal(1, .25)#, μσ = true)
-    σ̄   ~ InverseGamma(0.021, Inf, μσ = true)
-    η   ~ InverseGamma(0.1, Inf, μσ = true)
-    ρ   ~ Beta(0.75, 0.02, μσ = true)
+# Handling distributions with varying parameters using arraydist
+dists = [
+    Normal(0, 1),                           # dȳ
+    Normal(0, 1),                           # dc̄
+    Beta(0.95, 0.005, μσ = true),           # β
+    Beta(0.33, 0.05, μσ = true),            # ζ
+    Beta(0.02, 0.01, μσ = true),            # δ
+    Beta(0.75, 0.01, μσ = true),            # λ
+    Normal(1, .25),                         # ψ
+    InverseGamma(0.021, Inf, μσ = true),    # σ̄
+    InverseGamma(0.1, Inf, μσ = true),      # η
+    Beta(0.75, 0.02, μσ = true)             # ρ
+]
 
-    Turing.@addlogprob! get_loglikelihood(m, data, [dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ], algorithm = :pruned_third_order)
+Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
+    all_params ~ Turing.arraydist(dists)
+
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_third_order)
+    end
 end
 
 
 Random.seed!(3)
 
-pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)),
+# Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)
+
+# samps = @time sample(Caldara_et_al_2012_loglikelihood, PG(100), 10, progress = true)#, init_params = sol)
+
+# samps = sample(Caldara_et_al_2012_loglikelihood, IS(), 1000, progress = true)#, init_params = sol)
+
+
+# generate a Pigeons log potential
+Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim))
+
+# find a feasible starting point
+pt = Pigeons.pigeons(target = Caldara_lp, n_rounds = 0, n_chains = 1)
+
+replica = pt.replicas[end]
+XMAX = deepcopy(replica.state)
+LPmax = Caldara_lp(XMAX)
+
+i = 0
+
+while !isfinite(LPmax) && i < 1000
+    Pigeons.sample_iid!(Caldara_lp, replica, pt.shared)
+    new_LP = Caldara_lp(replica.state)
+    if new_LP > LPmax
+        LPmax = new_LP
+        XMAX  = deepcopy(replica.state)
+    end
+    i += 1
+end
+
+# define a specific initialization for this model
+Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(Caldara_et_al_2012_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
+
+pt = @time Pigeons.pigeons(target = Caldara_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
-            n_rounds = 6,
+            n_rounds = 6, # 7 fails with out of support error
             multithreaded = true)
 
-samps = MCMCChains.Chains(Pigeons.get_sample(pt))
+samps = MCMCChains.Chains(pt)
 
 
-println(mean(samps).nt.mean)
+println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 
 
 # include("../models/FS2000.jl")

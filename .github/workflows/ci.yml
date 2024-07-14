@@ -7,7 +7,7 @@ jobs:
     env: 
       GKS_ENCODING: "utf8"
       GKSwstype: "nul"
-    name: ${{ matrix.test_set }} - ${{ matrix.version }} - ${{ matrix.os }}
+    name: ${{ matrix.test_set }} - ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.version == 'nightly' || matrix.version == '^1.11.0-0' }}
     strategy:
@@ -15,40 +15,70 @@ jobs:
       matrix:
         test_set: ["basic", "plots", "higher_order", "estimation"]
         version: ['1.8', '1.9', '1.10']
-        os: [ubuntu-latest, macOS-latest, windows-latest]
-        arch: [x64]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        arch: [x64, arm64]
         exclude:
           - version: '1.8'
-            os: macOS-latest
+            os: ubuntu-latest
           - version: '1.8'
             os: windows-latest
           - version: '1.9'
-            os: macOS-latest
+            os: ubuntu-latest
           - version: '1.9'
             os: windows-latest
+          - arch: arm64
+            os: ubuntu-latest
+          - arch: arm64
+            os: windows-latest
+          - arch: x64
+            os: macos-latest
         include:
           - os: ubuntu-latest
             prefix: xvfb-run
+          # - version: '1.10'
+          #   os: macos-latest
+          #   arch: x64
+          #   test_set: "solver0"
+          # - version: '1.10'
+          #   os: macos-latest
+          #   arch: x64
+          #   test_set: "solver1"
+          # - version: '1.10'
+          #   os: macos-latest
+          #   arch: x64
+          #   test_set: "solver2"
+          # - version: '1.10'
+          #   os: macos-latest
+          #   arch: x64
+          #   test_set: "solver3"
           - version: '1.10'
-            os: ubuntu-latest
-            arch: x64
+            os: macos-latest
+            arch: arm64
+            test_set: "estimate_sw07"
+          - version: '1.10'
+            os: macos-latest
+            arch: arm64
             test_set: "1st_order_inversion_estimation"
           - version: '1.10'
-            os: ubuntu-latest
-            arch: x64
+            os: macos-latest
+            arch: arm64
             test_set: "2nd_order_estimation"
           - version: '1.10'
-            os: ubuntu-latest
-            arch: x64
+            os: macos-latest
+            arch: arm64
             test_set: "3rd_order_estimation"
+          # - version: '1.10'
+          #   os: macOS-latest
+          #   arch: x64
+          #   test_set: "basic"
           - version: 'nightly'
             os: ubuntu-latest
             arch: x64
             test_set: "basic"
             allow_failure: true
           - version: '^1.11.0-0'
-            os: ubuntu-latest
-            arch: x64
+            os: macos-latest
+            arch: arm64
             test_set: "basic"
             allow_failure: true
     steps:
@@ -57,14 +87,14 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}  
-      - name: Set Custom Test Environment Variable
+      - name: Set Custom Test Environment Variable (Windows)
         if: matrix.os == 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
-      - name: Set Custom Test Environment Variable (Unix)
+      - name: Set Custom Test Environment Variable (non-Windows)
         if: matrix.os != 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" >> $GITHUB_ENV
-      - name: Set JULIA_NUM_THREADS for Julia 1.10 on Ubuntu
-        if: matrix.version == '1.10' && matrix.os == 'ubuntu-latest' && (matrix.test_set == 'hmc_estimation' || matrix.test_set == 'tempering_estimation' || matrix.test_set == '2nd_order_estimation' || matrix.test_set == '3rd_order_estimation')
+      - name: Set JULIA_NUM_THREADS for estimation tests
+        if: (matrix.version == '1.10' && (matrix.test_set == 'estimation' || matrix.test_set == 'estimate_sw07' || matrix.test_set == '1st_order_inversion_estimation' || matrix.test_set == '2nd_order_estimation' || matrix.test_set == '3rd_order_estimation'))
         run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
       - uses: actions/cache@v4
         env:
