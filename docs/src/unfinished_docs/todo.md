@@ -8,6 +8,7 @@
 - [ ] check out dense sparse matmul on transposed matrices
 - [ ] check out DiffInterface for NSSS solver
 - [ ] write plotting callback for NSSS solver
+- [ ] append forecast (no shocks) after estimated variables
 - [ ] write more tests for the plots
 - [ ] add background part in docs on NSSS solver (use material from presentation)
 - [ ] juliacon followup: checkout alloccheck, infiltrator, bestie, DifferentiableInterface, DepotDelivery, Interfaces, ThreadedDenseparseMul, Optimization Ensemble, redo Kalman filter with PDMats
