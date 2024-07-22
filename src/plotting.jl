@@ -1,5 +1,13 @@
 import LaTeXStrings
 
+const default_attributes = Dict(:size=>(700,500),
+                                :plot_titlefont => 10, 
+                                :titlefont => 10, 
+                                :guidefont => 8, 
+                                :legendfontsize => 8, 
+                                :tickfontsize => 8,
+                                :framestyle => :semi)
+
 """
 ```
 gr_backend()
@@ -85,6 +93,7 @@ function plot_model_estimates(𝓂::ℳ,
     warmup_iterations::Int = 0,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     shocks::Union{Symbol_input,String_input} = :all, 
+    presample_periods::Int = 0,
     data_in_levels::Bool = true,
     shock_decomposition::Bool = false,
     smooth::Bool = true,
@@ -94,33 +103,35 @@ function plot_model_estimates(𝓂::ℳ,
     save_plots_path::String = ".",
     plots_per_page::Int = 9,
     transparency::Float64 = .6,
+    max_elements_per_legend_row::Int = 4,
+    extra_legend_space::Float64 = 0.0,
+    plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    attributes = merge(default_attributes, plot_attributes)
 
-    StatsPlots.default(size=(700,500),
-                    plot_titlefont = 10, 
-                    titlefont = 10, 
-                    guidefont = 8, 
-                    legendfontsize = 8, 
-                    tickfontsize = 8,
-                    framestyle = :box)
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
+
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
-    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
-        filter = :inversion
-    end
+    pruning = false
 
-    if filter == :inversion
-        shock_decomposition = false
+    @assert !(algorithm ∈ [:second_order, :third_order]) "Decomposition  implemented for first order, pruned second and third order. Second and third order solution decomposition is not yet implemented."
+    
+    if algorithm ∈ [:pruned_second_order, :pruned_third_order]
+        filter = :inversion
+        pruning = true
     end
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
 
-    reference_steady_state, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -136,27 +147,41 @@ function plot_model_estimates(𝓂::ℳ,
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) 
     shock_idx   = parse_shocks_input_to_index(shocks,𝓂.timings)
 
+    legend_columns = 1
+
+    legend_items = length(shock_idx) + 3 + pruning
+
+    max_columns = min(legend_items, max_elements_per_legend_row)
+    
+    # Try from max_columns down to 1 to find the optimal solution
+    for cols in max_columns:-1:1
+        if legend_items % cols == 0 || legend_items % cols <= max_elements_per_legend_row
+            legend_columns = cols
+            break
+        end
+    end
+
     if data_in_levels
-        data_in_deviations = data .- reference_steady_state[obs_idx]
+        data_in_deviations = data .- NSSS[obs_idx]
     else
         data_in_deviations = data
     end
 
-    # filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+    date_axis = axiskeys(data,2)
 
-    # variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
-    # shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
-    # decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
+    @assert presample_periods < size(data,2) "The number of presample periods must be less than the number of periods in the data."
 
+    periods = presample_periods+1:size(data,2)
 
-    if filter == :kalman
-        filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+    date_axis = date_axis[periods]
 
-        variables_to_plot  = filtered_and_smoothed[smooth ? 1 : 5]
-        shocks_to_plot     = filtered_and_smoothed[smooth ? 3 : 7]
-        decomposition      = filtered_and_smoothed[smooth ? 4 : 8]
-    elseif filter == :inversion
-        variables_to_plot, shocks_to_plot = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
+    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
+    
+    if pruning
+        decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
+        decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
+        variables_to_plot                           .+= SSS_delta
+        data_in_deviations                          .+= SSS_delta[obs_idx]
     end
 
     return_plots = []
@@ -174,7 +199,7 @@ function plot_model_estimates(𝓂::ℳ,
         if i > length(var_idx) # Shock decomposition
             push!(pp,begin
                     StatsPlots.plot()
-                    StatsPlots.plot!(shocks_to_plot[shock_idx[i - length(var_idx)],:],
+                    StatsPlots.plot!(date_axis, shocks_to_plot[shock_idx[i - length(var_idx)],periods],
                         title = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[i - length(var_idx)]]) * "₍ₓ₎", 
                         ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
                         color = shock_decomposition ? estimate_color : :auto)
@@ -191,36 +216,55 @@ function plot_model_estimates(𝓂::ℳ,
 
             push!(pp,begin
                     StatsPlots.plot()
+
                     if shock_decomposition
-                        StatsPlots.groupedbar!(decomposition[var_idx[i],[end-1,shock_idx...],:]', 
+                        additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
+
+                        StatsPlots.groupedbar!(date_axis,
+                            decomposition[var_idx[i],[additional_indices..., shock_idx...],periods]', 
                             bar_position = :stack, 
-                            lw = 0,
+                            lc = :transparent,  # Line color set to transparent
+                            lw = 0,  # This removes the lines around the bars
                             legend = :none, 
+                            # yformatter = y -> round(y + SS, digits = 1), # rm Absolute Δ in this case and fix SS additions
+                            # xformatter = x -> string(date_axis[Int(x)]),
                             alpha = transparency)
                     end
-                    StatsPlots.plot!(variables_to_plot[var_idx[i],:] .+ SS,
+
+                    StatsPlots.plot!(date_axis,
+                        variables_to_plot[var_idx[i],periods] .+ SS,
                         title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
-                        ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
+                        ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
+                        label = "", 
+                        # xformatter = x -> string(date_axis[Int(x)]),
                         color = shock_decomposition ? estimate_color : :auto)
+
                     if var_idx[i] ∈ obs_idx 
-                        StatsPlots.plot!(data_in_deviations[indexin([var_idx[i]],obs_idx),:]' .+ SS,
+                        StatsPlots.plot!(date_axis,
+                            data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
                             title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
                             ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
                             label = "", 
+                            # xformatter = x -> string(date_axis[Int(x)]),
                             color = shock_decomposition ? data_color : :auto) 
                     end
+
                     if can_dual_axis 
                         StatsPlots.plot!(StatsPlots.twinx(),
-                            100*((variables_to_plot[var_idx[i],:] .+ SS) ./ SS .- 1), 
+                            date_axis, 
+                            100*((variables_to_plot[var_idx[i],periods] .+ SS) ./ SS .- 1), 
                             ylabel = LaTeXStrings.L"\% \Delta", 
                             label = "") 
+
                         if var_idx[i] ∈ obs_idx 
                             StatsPlots.plot!(StatsPlots.twinx(),
-                                100*((data_in_deviations[indexin([var_idx[i]],obs_idx),:]' .+ SS) ./ SS .- 1), 
+                                date_axis, 
+                                100*((data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS) ./ SS .- 1), 
                                 ylabel = LaTeXStrings.L"\% \Delta", 
                                 label = "") 
                         end
                     end
+                    
                     StatsPlots.hline!(can_dual_axis ? [SS 0] : [SS],
                         color = :black,
                         label = "")                               
@@ -232,19 +276,21 @@ function plot_model_estimates(𝓂::ℳ,
         else
             plot_count = 1
 
-            ppp = StatsPlots.plot(pp...)
+            ppp = StatsPlots.plot(pp...; attributes...)
 
             # Legend
             p = StatsPlots.plot(ppp,begin
                                         StatsPlots.plot(framestyle = :none)
                                         if shock_decomposition
-                                            StatsPlots.bar!(fill(0,1,length(shock_idx)+1), 
-                                                                    label = reshape(vcat("Initial value",string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))),1,length(shock_idx)+1), 
+                                            additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
+
+                                            StatsPlots.bar!(fill(0, 1, length(shock_idx) + 1 + pruning), 
+                                                                    label = reshape(vcat(additional_labels, string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))), 1, length(shock_idx) + 1 + pruning), 
                                                                     linewidth = 0,
                                                                     alpha = transparency,
                                                                     lw = 0,
                                                                     legend = :inside, 
-                                                                    legend_columns = -1)
+                                                                    legend_columns = legend_columns)
                                         end
                                         StatsPlots.plot!(fill(0,1,1), 
                                         label = "Estimate", 
@@ -255,8 +301,9 @@ function plot_model_estimates(𝓂::ℳ,
                                         color = shock_decomposition ? data_color : :auto,
                                         legend = :inside)
                                     end, 
-                                    layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                    layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
+                                    plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                    attributes_redux...)
 
             push!(return_plots,p)
 
@@ -274,18 +321,20 @@ function plot_model_estimates(𝓂::ℳ,
     end
 
     if length(pp) > 0
-        ppp = StatsPlots.plot(pp...)
+        ppp = StatsPlots.plot(pp...; attributes...)
 
         p = StatsPlots.plot(ppp,begin
                                     StatsPlots.plot(framestyle = :none)
                                     if shock_decomposition
-                                        StatsPlots.bar!(fill(0,1,length(shock_idx)+1), 
-                                                                label = reshape(vcat("Initial value",string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))),1,length(shock_idx)+1), 
+                                        additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
+                                        
+                                        StatsPlots.bar!(fill(0,1,length(shock_idx) + 1 + pruning), 
+                                                                label = reshape(vcat(additional_labels..., string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))),1,length(shock_idx) + 1 + pruning), 
                                                                 linewidth = 0,
                                                                 alpha = transparency,
                                                                 lw = 0,
                                                                 legend = :inside, 
-                                                                legend_columns = -1)
+                                                                legend_columns = legend_columns)
                                     end
                                     StatsPlots.plot!(fill(0,1,1), 
                                     label = "Estimate", 
@@ -296,8 +345,9 @@ function plot_model_estimates(𝓂::ℳ,
                                     color = shock_decomposition ? :darkred : :auto,
                                     legend = :inside)
                                 end, 
-                                layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-            plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
+                                plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                attributes_redux...)
 
         push!(return_plots,p)
 
@@ -389,17 +439,16 @@ function plot_irf(𝓂::ℳ;
     generalised_irf::Bool = false,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
     ignore_obc::Bool = false,
+    plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    attributes = merge(default_attributes, plot_attributes)
 
-    StatsPlots.default(size=(700,500),
-                    plot_titlefont = 10, 
-                    titlefont = 10, 
-                    guidefont = 8, 
-                    legendfontsize = 8, 
-                    tickfontsize = 8,
-                    framestyle = :box)
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
+
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -420,11 +469,17 @@ function plot_irf(𝓂::ℳ;
     elseif shocks isa KeyedArray{Float64}
         shock_idx = 1
 
-        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(𝓂.timings.exo,axiskeys(shocks,1)),:)) > 1e-10
+        obc_shocks = 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]
+
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(obc_shocks, axiskeys(shocks,1)),:)) > 1e-10
     else
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
 
         obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
+    end
+
+    if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
+        periods = max(periods, size(shocks)[2])
     end
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
@@ -469,7 +524,7 @@ function plot_irf(𝓂::ℳ;
     if occasionally_binding_constraints
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     elseif obc_shocks_included
-        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks witout enforcing the constraint is only compatible with first order perturbation solutions."
+        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks without enforcing the constraint is only compatible with first order perturbation solutions."
 
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     else
@@ -616,10 +671,6 @@ function plot_irf(𝓂::ℳ;
         end
     end
 
-    if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
-            periods += size(shocks)[2]
-    end
-
     shock_dir = negative_shock ? "Shock⁻" : "Shock⁺"
 
     if shocks == :none
@@ -688,7 +739,7 @@ function plot_irf(𝓂::ℳ;
                         shock_name = "shock_matrix"
                     end
 
-                    p = StatsPlots.plot(pp...,plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                    p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
 
                     push!(return_plots,p)
 
@@ -722,7 +773,7 @@ function plot_irf(𝓂::ℳ;
                 shock_name = "shock_matrix"
             end
 
-            p = StatsPlots.plot(pp...,plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")")
+            p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
 
             push!(return_plots,p)
 
@@ -764,12 +815,12 @@ plot_irfs = plot_irf
 """
 Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
 """
-plot_simulations(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
+plot_simulations(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = get(kwargs, :periods, 100))
 
 """
 Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
 """
-plot_simulation(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = 100)
+plot_simulation(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = get(kwargs, :periods, 100))
 
 
 """
@@ -838,17 +889,18 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
     plots_per_page::Int = 9, 
+    plot_attributes::Dict = Dict(),
+    max_elements_per_legend_row::Int = 4,
+    extra_legend_space::Float64 = 0.0,
     verbose::Bool = false)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    attributes = merge(default_attributes, plot_attributes)
 
-    StatsPlots.default(size=(700,500),
-                    plot_titlefont = 10, 
-                    titlefont = 10, 
-                    guidefont = 8, 
-                    legendfontsize = 8, 
-                    tickfontsize = 8,
-                    framestyle = :box)
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
+
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     fevds = get_conditional_variance_decomposition(𝓂,
                                                     periods = 1:periods,
@@ -866,6 +918,20 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     vars_to_plot = intersect(axiskeys(fevds)[1],𝓂.timings.var[var_idx])
     
     shocks_to_plot = axiskeys(fevds)[2]
+
+    legend_columns = 1
+
+    legend_items = length(shocks_to_plot)
+
+    max_columns = min(legend_items, max_elements_per_legend_row)
+    
+    # Try from max_columns down to 1 to find the optimal solution
+    for cols in max_columns:-1:1
+        if legend_items % cols == 0 || legend_items % cols <= max_elements_per_legend_row
+            legend_columns = cols
+            break
+        end
+    end
 
     n_subplots = length(var_idx)
     pp = []
@@ -885,16 +951,16 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         else
             plot_count = 1
 
-            ppp = StatsPlots.plot(pp...)
+            ppp = StatsPlots.plot(pp...; attributes...)
 
             p = StatsPlots.plot(ppp,StatsPlots.bar(fill(0,1,length(shocks_to_plot)), 
                                         label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
                                         linewidth = 0 , 
                                         framestyle = :none, 
                                         legend = :inside, 
-                                        legend_columns = -1), 
-                                        layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                        legend_columns = legend_columns), 
+                                        layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
+                                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
 
             push!(return_plots,gr_back ? p : ppp)
 
@@ -912,16 +978,17 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     end
 
     if length(pp) > 0
-        ppp = StatsPlots.plot(pp...)
+        ppp = StatsPlots.plot(pp...; attributes...)
 
         p = StatsPlots.plot(ppp,StatsPlots.bar(fill(0,1,length(shocks_to_plot)), 
                                     label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
                                     linewidth = 0 , 
                                     framestyle = :none, 
                                     legend = :inside, 
-                                    legend_columns = -1), 
-                                    layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                                    plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                    legend_columns = legend_columns), 
+                                    layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
+                                    plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                    attributes_redux...)
 
         push!(return_plots,gr_back ? p : ppp)
 
@@ -1018,15 +1085,14 @@ function plot_solution(𝓂::ℳ,
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
     plots_per_page::Int = 6,
+    plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    StatsPlots.default(size=(700,500),
-                    plot_titlefont = 10, 
-                    titlefont = 10, 
-                    guidefont = 8, 
-                    legendfontsize = 8, 
-                    tickfontsize = 8,
-                    framestyle = :box)
+    attributes = merge(default_attributes, plot_attributes)
+
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
 
     state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
 
@@ -1224,12 +1290,13 @@ function plot_solution(𝓂::ℳ,
         else
             plot_count = 1
 
-            ppp = StatsPlots.plot(pp...)
+            ppp = StatsPlots.plot(pp...; attributes...)
             
             p = StatsPlots.plot(ppp,
                             legend_plot, 
                             layout = StatsPlots.grid(2, 1, heights = length(algorithm) > 3 ? [0.65, 0.35] : [0.8, 0.2]),
-                            plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+                            plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                            attributes_redux...
             )
 
             push!(return_plots,p)
@@ -1248,12 +1315,13 @@ function plot_solution(𝓂::ℳ,
     end
 
     if length(pp) > 0
-        ppp = StatsPlots.plot(pp...)
+        ppp = StatsPlots.plot(pp...; attributes...)
             
         p = StatsPlots.plot(ppp,
                         legend_plot, 
                         layout = StatsPlots.grid(2, 1, heights = length(algorithm) > 3 ? [0.65, 0.35] : [0.8, 0.2]),
-                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                        attributes_redux...
         )
 
         push!(return_plots,p)
@@ -1366,17 +1434,16 @@ function plot_conditional_forecast(𝓂::ℳ,
     save_plots_format::Symbol = :pdf,
     save_plots_path::String = ".",
     plots_per_page::Int = 9,
+    plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    attributes = merge(default_attributes, plot_attributes)
 
-    StatsPlots.default(size=(700,500),
-                    plot_titlefont = 10, 
-                    titlefont = 10, 
-                    guidefont = 8, 
-                    legendfontsize = 8, 
-                    tickfontsize = 8,
-                    framestyle = :box)
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
+
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     conditions = conditions isa KeyedArray ? axiskeys(conditions,1) isa Vector{String} ? rekey(conditions, 1 => axiskeys(conditions,1) .|> Meta.parse .|> replace_indices) : conditions : conditions
 
@@ -1522,7 +1589,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
                 shock_string = "Conditional forecast"
 
-                ppp = StatsPlots.plot(pp...)
+                ppp = StatsPlots.plot(pp...; attributes...)
 
                 p = StatsPlots.plot(ppp,begin
                                             StatsPlots.scatter(fill(0,1,1), 
@@ -1546,7 +1613,8 @@ function plot_conditional_forecast(𝓂::ℳ,
                                             legend = :inside)
                                         end, 
                                             layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                                            plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  ("*string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                            plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  ("*string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                            attributes_redux...)
                 
                 push!(return_plots,p)
 
@@ -1567,7 +1635,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
         shock_string = "Conditional forecast"
 
-        ppp = StatsPlots.plot(pp...)
+        ppp = StatsPlots.plot(pp...; attributes...)
 
         p = StatsPlots.plot(ppp,begin
                                 StatsPlots.scatter(fill(0,1,1), 
@@ -1591,7 +1659,8 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 legend = :inside)
                                 end, 
                                     layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")")
+                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                    attributes_redux...)
         
         push!(return_plots,p)
 

@@ -1,6 +1,6 @@
 # Write your first model - simple RBC
 
-The following tutorial will walk you through the steps of writing down a model (not explained here / taken as given) and analysing it. Prior knowledge of DSGE models and their solution in practical terms (e.g. having used a mod file with dynare) is useful in understanding this tutorial. For the purpose of this tutorial we will work with a simplified version of a real business cycle (RBC) model. The model laid out below examines capital accumulation, consumption, and random technological progress. Households maximize lifetime utility from consumption, weighing current against future consumption. Firms produce using capital and a stochastic technology factor, setting capital rental rates based on marginal productivity. The model integrates households' decisions, firms' production, and random technological shifts to understand economic growth and dynamics.
+The following tutorial will walk you through the steps of writing down a model and analysing it. Prior knowledge of DSGE models and their solution in practical terms (e.g. having used a mod file with dynare) is useful in understanding this tutorial. For the purpose of this tutorial we will work with a simplified version of a real business cycle (RBC) model. The model laid out below examines capital accumulation, consumption, and random technological progress. Households maximize lifetime utility from consumption, weighing current against future consumption. Firms produce using capital and a stochastic technology factor, setting capital rental rates based on marginal productivity. The model integrates households' decisions, firms' production, and random technological shifts to understand economic growth and dynamics.
 
 ## RBC - derivation of model equations
 
@@ -85,7 +85,7 @@ z_{t} = \rho^z z_{t-1} + \sigma^z \epsilon^z_{t}
 
 The first step is always to name the model and write down the equations. Taking the RBC model described above this would go as follows.
 
-First, we load the package and then use the [`@model`](@ref) macro to define our model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which we write down between `begin` and `end`. One equation per line and timing of endogenous variables are expressed in the squared brackets following the variable name. Exogenous variables (shocks) are followed by a keyword in squared brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julias unicode capabilities (`alpha` can be written as `α`).
+First, we load the package and then use the [`@model`](@ref) macro to define our model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which we write down between `begin` and `end`. One equation per line and timing of endogenous variables are expressed in the square brackets following the variable name. Exogenous variables (shocks) are followed by a keyword in square brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julias unicode capabilities (`alpha` can be written as `α`).
 
 ```@setup tutorial_1
 ENV["GKSwstype"] = "100"
@@ -122,9 +122,11 @@ end
 
 Parameter definitions are similar to assigning values in julia. Note that we have to write one parameter definition per line.
 
+Given the equations and parameters, the package will first attempt to solve the system of nonlinear equations symbolically (including possible calibration equations - see next tutorial for an example). If an analytical solution is not possible, numerical solution methods are used to try and solve it. There is no guarantee that a solution can be found, but it is highly likely, given that a solution exists. The problem setup tries to incorporate parts of the structure of the problem, e.g. bounds on variables: if one equation contains `log(k)` it must be that `k > 0`. Nonetheless, the user can also provide useful information such as variable bounds or initial guesses. Bounds can be set by adding another expression to the parameter block e.g.: `c > 0`. Large values are typically a problem for numerical solvers. Therefore, providing a guess for these values will increase the speed of the solver. Guesses can be provided as a `Dict` after the model name and before the parameter definitions block, e.g.: `@parameters RBC guess = Dict(k => 10) begin ... end`.
+
 ## Plot impulse response functions (IRFs)
 
-Given the equations and parameters, we have everything to solve the model and do some analysis. A common output are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non stochastic steady state (SS) and calculates the first order perturbation solution.
+A useful output to analyze are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non stochastic steady state (SS) and calculates the first order perturbation solution.
 
 ```@repl tutorial_1
 import StatsPlots

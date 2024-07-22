@@ -2,59 +2,95 @@
 
 ## High priority
 
-- [ ] add technical details about SS solver, obc solver, and other algorithms
+- [ ] ss transition by entering new parameters at given periods
+- [ ] add argument to plotting functions to replace names in plots (e.g input a dictionnary: Dict(:dinve => "Investment growth"))
+- [ ] programmatic model writing: accept {i}[0] as definition for variable
+- [ ] check out dense sparse matmul on transposed matrices
+- [ ] check out DiffInterface for NSSS solver
+- [ ] write plotting callback for NSSS solver
+- [ ] append forecast (no shocks) after estimated variables
+- [ ] write more tests for the plots
+- [ ] add background part in docs on NSSS solver (use material from presentation)
+- [ ] juliacon followup: checkout alloccheck, infiltrator, bestie, DifferentiableInterface, DepotDelivery, Interfaces, ThreadedDenseparseMul, Optimization Ensemble, redo Kalman filter with PDMats
+- [ ] use IrrationalConstants for log2pi...
+- [ ] checkout this invalidation precompile trick and g dalle part on precompilation
+- [ ] use sobol random numbers (gives you uniform but then use norminvcdf to get norm) to integrate out future randomness when solving with neural nets
+- [ ] do proper testing of ss solver with random set of params, equal across configs
+- [ ] load create parts of derivatives later and not directly after parameters block
+- [ ] fix model estimate plot. data not above estimate (should be red but is blue)
+- [ ] analytical derivatives of inversion filter (higher order)
+- [ ] implement higher order (pruned) variance decomposition
+- [ ] try slicesampler instead of pigeons
+- [ ] use faster derivatives for SS solver (currently forward diff)
+- [ ] speed up sensitivity by caching matrix inversion from implicit diff with LRUcache
+- [ ] FastDifferentiation is faster in taking derivatives and more efficient in writing functions but does not support custom functions (e.g. normlogpdf)
+- [ ] fix this inference errors for large fuctions. they are slow. fix derivatives in general.
+- [ ] check downgrade tests
+- [ ] put write_derivatives_function and lock structure inside function
+- [ ] take apart solve_matrix_equation for various cases
+- [ ] try static arrays in KF
+- [ ] check derivatives of erfcinv with Symbolics. seems off
+- [ ] have a workspace in the model object. to be accessed for example by the riccati solver at each run (instead of initialising values at each function call)
+- [ ] check why PG samples are off
+- [ ] optimise vanilla loglikelihood calculation and gradient thereof (incl comp time)
+- [ ] checkout dynamic perturbation for obc solution: https://www.southampton.ac.uk/~alexmen/dynamic_perturbation.pdf
+- [ ] checkout schedule free ADAM for global methods: https://github.com/facebookresearch/schedule_free
+- [ ] figure out why PG and IS return basically the prior
+- [ ] allow external functions to calculate the steady state (and hand it over via SS or get_loglikelihood function) - need to use the check function for implicit derivatives and cannot use it to get him a guess from which he can use internal solver going forward
+- [ ] go through custom SS solver once more and try to find parameters and logic that achieves best results
+- [ ] SS solver with less equations than variables
+- [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
+- [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
+- [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
+- [ ] recheck function examples and docs (include output description)
+- [ ] Docs: document outputs and associated functions to work with function
+- [ ] write documentation/docstrings using copilot
+- [ ] feedback: sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
+- [ ] NaNMath pow does not work (is not substituted)
+- [ ] check whether its possible to run parameters macro/block without rerunning model block
+- [ ] eliminate possible log, ^ terms in parameters block equations - because of nonnegativity errors
+- [ ] throw error when equations appear more than once
+- [ ] plot multiple solutions of models - multioptions in one graph
 - [ ] make SS calc faster (func and optim, maybe inplace ops)
-- [ ] try preallocation tools for forwarddiff
+- [ ] try preallocation tools for forwarddiff (DiffInterface)
 - [ ] add nonlinear shock decomposition
 - [ ] check obc once more
+- [ ] rm obc vars from get_SS
 - [ ] check why warmup_iterations = 0 makes estimated shocks larger
-- [ ] make inversion filter / higher order sols suitable for HMC (forward and reverse diff!!, currently only analytical pushforward, no implicitdiff)
 - [ ] use analytical derivatives also for shocks matching optim (and HMC - implicit diff)
 - [ ] info on when what filter is used and chosen options are overridden
 - [ ] check warnings, errors throughout. check suppress not interfering with pigeons
-- [ ] rm obc vars from get_SS
-- [ ] write tests/docs for nonlinear obc and forecasting
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
 - [ ] cover nested case: min(50,a+b+max(c,10))
 - [ ] add balanced growth path handling
-- [ ] feedback: provide option for external SS guess, sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
 - [ ] higher order solutions: some kron matrix mults are later compressed. write custom compressed kron mult; check if sometimes dense mult is faster? (e.g. GNSS2010 seems dense at higher order)
-- [ ] recheck function examples and docs (include output description)
-- [ ] riccati with analytical derivatives (much faster if sparse) instead of implicit diff
+- [ ] make inversion filter / higher order sols suitable for HMC (forward and reverse diff!!, currently only analytical pushforward, no implicitdiff) | analytic derivatives
+- [ ] speed up sparse matrix calcs in implicit diff of higher order funcs
+- [ ] compressed higher order derivatives and sparsity of jacobian
+- [ ] dont use SS_solve_func but the wrapper instead (write forwarddiff wrapper)
 - [ ] add user facing option to choose sylvester solver
 - [ ] autocorr and covariance with derivatives. return 3d array
-- [ ] Docs: document outputs and associated functions to work with function
 - [ ] use ID for sparse output sylvester solvers (filed issue)
 - [ ] add pydsge and econpizza to overview
 - [ ] add for loop parser in @parameters
-- [ ] compressed higher order derivatives and sparsity of jacobian
 - [ ] implement more multi country models
 - [ ] speed benchmarking (focus on ImplicitDiff part)
-- [ ] write docs for (non-linear) solution algorithms
-- [ ] have initial_state accept SS and SSS as arguments
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
 - [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
 - [ ] when doing calibration with optimiser have better return values when he doesnt find a solution (probably NaN)
 - [ ] sampler returned negative std. investigate and come up with solution ensuring sampler can continue
-- [ ] automatically adjust plots for different legend widhts and heights
+- [ ] automatically adjust plots for different legend widths and heights
 - [ ] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
 - [ ] have get_std take variables as an input
 - [ ] more informative errors when something goes wrong when writing a model
-- [ ] initial state accept keyed array
+- [ ] initial state accept keyed array, SS and SSS as arguments
 - [ ] plot_model_estimates with unconditional forecast at the end
-- [ ] check if you can do analytic derivatives for higher order derivatives
 - [ ] kick out unused parameters from m.parameters
 - [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
-- [ ] speed up sparse matrix calcs in implicit diff of higher order funcs
-- [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
-- [ ] streamline estimation part (dont do string matching... but rely on precomputed indices...)
-- [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
 - [ ] write functions to debug (fix_SS.jl...)
 - [ ] model compression (speed up 2nd moment calc (derivatives) for large models; gradient loglikelihood is very slow due to large matmuls) -> model setup as maximisation problem (gEcon) -> HANK models
-- [ ] implement global solution methods
+- [ ] implement global solution methods - Julien Pascal, QuantEcon
 - [ ] add more models
-- [ ] plot multiple solutions or models - multioptions in one graph
-- [ ] write documentation/docstrings
 
 - [ ] use @assert for errors and @test_throws
 - [ ] print SS dependencies (get parameters (in function of parameters) into the dependencies), show SS solver
@@ -65,10 +101,22 @@
 - [ ] clean up printouts/reporting
 - [ ] clean up function inputs and harmonise AD and standard commands
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
-- [ ] Find any SS by optimising over both SS guesses and parameter inputs
 - [ ] weed out SS solver and saved objects
 
-
+- [x] implement estimation tests for all models
+- [x] make plotting options as dynamic setting instead of default, accept kwargs
+- [x] streamline estimation part (dont do string matching... but rely on precomputed indices...)
+- [x] estimation: run auto-tune before and use solver treating parameters as given
+- [x] use arraydist in tests and docs
+- [x] include guess in docs
+- [x] Find any SS by optimising over both SS guesses and parameter inputs
+- [x] riccati with analytical derivatives (much faster if sparse) instead of implicit diff; done for ChainRules; ForwardDiff only feasible for smaller problems -> ID is fine there
+- [x] log in parameters block is recognized as variable
+- [x] add termination condition if relative change in ss solver is smaller than tol (relevant when values get very large)
+- [x] provide option for external SS guess; provided in parameters macro
+- [x] make it possible to run multiple ss solver parameter combination including starting points when solving a model
+- [x] automatically put the combi first which solves it fastest the first time
+- [x] write auto-tune in case he cant find SS (add it to the warning when he cant find the SS)
 - [x] nonlinear conditional forecasts for higher order and obc
 - [x] for cond forecasting and kalman, get rid of observables input and use axis key of data input
 - [x] fix translate dynare mod file from file written using write to dynare file (see test models): added retranslation to test

@@ -53,3 +53,11 @@ conditional_fcst*.png
 estimation__*
 
 .micromamba/
+results
+
+octave*
+*.jls
+samples*
+*samples.csv
+skewness*.png
+conditional_forecast*.png

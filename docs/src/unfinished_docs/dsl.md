@@ -10,7 +10,7 @@ MacroModelling parses models written using a user-friendly syntax:
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end
 ```
-The most important rule is that variables are followed by the timing in squared brackets for endogenous variables, e.g. `Y[0]`, exogenous variables are marked by certain keywords (see below), e.g. `ϵ[x]`, and parameters need no further syntax, e.g. `α`.
+The most important rule is that variables are followed by the timing in square brackets for endogenous variables, e.g. `Y[0]`, exogenous variables are marked by certain keywords (see below), e.g. `ϵ[x]`, and parameters need no further syntax, e.g. `α`.
 
 A model written with this syntax allows the parser to identify, endogenous and exogenous variables and their timing as well as parameters.
 

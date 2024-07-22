@@ -1,10 +1,11 @@
 using MacroModelling
 import Turing
 import Pigeons
+import Zygote
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
-import DynamicPPL: logjoint
+import DynamicPPL
 
 include("../models/FS2000.jl")
 
@@ -19,34 +20,77 @@ observables = sort(Symbol.("log_".*names(dat)))
 # subset observables in data
 data = data(observables,:)
 
+dists = [
+    Beta(0.356, 0.02, μσ = true),           # alp
+    Beta(0.993, 0.002, μσ = true),          # bet
+    Normal(0.0085, 0.003),                  # gam
+    Normal(1.0002, 0.007),                  # mst
+    Beta(0.129, 0.223, μσ = true),          # rho
+    Beta(0.65, 0.05, μσ = true),            # psi
+    Beta(0.01, 0.005, μσ = true),           # del
+    InverseGamma(0.035449, Inf, μσ = true), # z_e_a
+    InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
+]
 
-Turing.@model function FS2000_loglikelihood_function(data, m)
-    alp     ~ Beta(0.356, 0.02, μσ = true)
-    bet     ~ Beta(0.993, 0.002, μσ = true)
-    gam     ~ Normal(0.0085, 0.003)
-    mst     ~ Normal(1.0002, 0.007)
-    rho     ~ Beta(0.129, 0.223, μσ = true)
-    psi     ~ Beta(0.65, 0.05, μσ = true)
-    del     ~ Beta(0.01, 0.005, μσ = true)
-    z_e_a   ~ InverseGamma(0.035449, Inf, μσ = true)
-    z_e_m   ~ InverseGamma(0.008862, Inf, μσ = true)
-    # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
-    Turing.@addlogprob! get_loglikelihood(m, data, [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m], filter = :inversion)
+Turing.@model function FS2000_loglikelihood_function(data, m, filter)
+    all_params ~ Turing.arraydist(dists)
+
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        Turing.@addlogprob! get_loglikelihood(m, data, all_params, filter = filter)
+    end
 end
 
+n_samples = 1000
+
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, init_params = FS2000.parameter_values)
+
+println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
+
+sample_nuts = mean(samps).nt.mean
+
+modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS2000, :inversion), 
+                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                                        adtype = Turing.AutoZygote(), 
+                                        initial_params = FS2000.parameter_values)
+
+println("Mode variable values: $(modeFS2000i.values); Mode loglikelihood: $(modeFS2000i.lp)")
 
 Random.seed!(30)
 
-pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000)),
+# generate a Pigeons log potential
+FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :inversion))
+
+# find a feasible starting point
+pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1)
+
+replica = pt.replicas[end]
+XMAX = deepcopy(replica.state)
+LPmax = FS2000_lp(XMAX)
+
+i = 0
+
+while !isfinite(LPmax) && i < 1000
+    Pigeons.sample_iid!(FS2000_lp, replica, pt.shared)
+    new_LP = FS2000_lp(replica.state)
+    if new_LP > LPmax
+        LPmax = new_LP
+        XMAX  = deepcopy(replica.state)
+    end
+    i += 1
+end
+
+# define a specific initialization for this model
+Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
+
+pt = @time Pigeons.pigeons(target = FS2000_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 1,
+            n_chains = 2,
             n_rounds = 10,
             multithreaded = true)
 
-samps = MCMCChains.Chains(Pigeons.get_sample(pt))
+samps = MCMCChains.Chains(pt)
 
-
-println(mean(samps).nt.mean)
+println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 
 
 # # estimate highly nonlinear model
