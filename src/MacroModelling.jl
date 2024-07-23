@@ -9491,33 +9491,11 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     end
 
     for i in axes(data_in_deviations,2)
-        res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
-                        zeros(T.nExo), 
-                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                        Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                        autodiff = :forward)
-
-        matched = Optim.minimum(res) < 1e-12
-
-        if !matched # for robustness try other linesearch
-            res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor, pruning), 
-                            zeros(T.nExo), 
-                            Optim.LBFGS(), 
-                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward)
-        
-            matched = Optim.minimum(res) < 1e-12
+        x, jacc, matched = find_shocks(Val(:fixed_point), state, 𝐒, data_in_deviations[:,i], observables, T)
+   
+        if !matched 
+            return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive  
         end
-
-        if !matched return -Inf end
-
-        x = Optim.minimizer(res)
-
-        res  = zeros(0)
-
-        jacc = zeros(T.nExo, length(observables))
-
-        match_data_sequence!(res, x, jacc, data_in_deviations[:,i], state, state_update, cond_var_idx, precision_factor)
 
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
@@ -9538,6 +9516,305 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
 end
 
 
+function find_shocks(::Val{:Newton},
+    state::Vector{Vector{Float64}}, 
+    𝐒::Vector{AbstractMatrix{Float64}}, 
+    data_in_deviations::Vector{Float64}, 
+    observables::Union{Vector{String}, Vector{Symbol}},
+    T::timings;
+    tol::Float64 = 1e-12)
+
+    cond_var_idx = indexin(observables,sort(union(T.aux, T.var, T.exo_present)))
+
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    
+    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
+    shock_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+    shock²_idxs = tmp.nzind
+    
+    shockvar_idxs = setdiff(shock_idxs, shock²_idxs)
+    
+    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
+    var_idxs = tmp.nzind
+
+    state_vol = vcat(state[1][T.past_not_future_and_mixed_idx],1)
+
+    shock_independent = data_in_deviations
+    ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed], state[2][T.past_not_future_and_mixed_idx], -1, 1)
+    ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1], state_vol, -1, 1)
+    ℒ.mul!(shock_independent, 𝐒[2][cond_var_idx, var_idxs], ℒ.kron(state_vol, state_vol), -.5, 1)
+
+    shock_independent = 𝐒[1][cond_var_idx,end-T.nExo+1:end] \ shock_independent
+    # 𝐒ᶠ = ℒ.factorize(𝐒[1][cond_var_idx,end-T.nExo+1:end])
+    # ℒ.ldiv!(𝐒ᶠ, shock_independent)
+    
+    𝐒ⁱ = (𝐒[1][cond_var_idx, end-T.nExo+1:end] + 𝐒[2][cond_var_idx, shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol)) \ 𝐒[2][cond_var_idx, shock²_idxs] / 2
+   
+    res = zero(shock_independent) .+ 1
+    
+    J = zeros(T.nExo, T.nExo)
+
+    x = zeros(T.nExo)
+ 
+    kron_buffer = ℒ.kron(x, x)
+    kron_buffer2 = ℒ.kron(J, x)
+
+    max_iter = 100
+    i = 0
+
+    while maximum(abs, res) > tol && i < max_iter
+        ℒ.kron!(kron_buffer, x, x)
+        ℒ.mul!(res, 𝐒ⁱ, kron_buffer)
+        ℒ.axpby!(1, shock_independent, -1, res)
+        ℒ.axpy!(-1, x, res)
+        # res = shock_independent - 𝐒ⁱ * ℒ.kron(x, x) - x
+
+        J *= 0
+        for i in 1:T.nExo
+            J[i,i] += 1
+        end
+
+        ℒ.kron!(kron_buffer2, J, x)
+        ℒ.mul!(J, 𝐒ⁱ, kron_buffer2, 2, 1)
+        # J = 𝐒ⁱ * 2 * ℒ.kron(ℒ.I(T.nExo), x) + ℒ.I(T.nExo)
+
+        ℒ.ldiv!(ℒ.factorize(J), res)
+        ℒ.axpy!(1, res, x)
+        # x += J \ res
+        i += 1
+    end
+
+    jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒[2][cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol) + 𝐒[2][cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(T.nExo), x))
+
+    return x, jacc, maximum(abs, shock_independent - 𝐒ⁱ * ℒ.kron!(kron_buffer, x, x) - x) < tol
+end
+
+
+function find_shocks(::Val{:speedmapping},
+    state::Vector{Vector{Float64}}, 
+    𝐒::Vector{AbstractMatrix{Float64}}, 
+    data_in_deviations::Vector{Float64}, 
+    observables::Union{Vector{String}, Vector{Symbol}},
+    T::timings;
+    tol::Float64 = 1e-12)
+    cond_var_idx = indexin(observables,sort(union(T.aux, T.var, T.exo_present)))
+
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    
+    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
+    shock_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+    shock²_idxs = tmp.nzind
+    
+    shockvar_idxs = setdiff(shock_idxs, shock²_idxs)
+    
+    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
+    var_idxs = tmp.nzind
+
+    state_vol = vcat(state[1][T.past_not_future_and_mixed_idx],1)
+
+    shock_independent = data_in_deviations
+    ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed], state[2][T.past_not_future_and_mixed_idx], -1, 1)
+    ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1], state_vol, -1, 1)
+    ℒ.mul!(shock_independent, 𝐒[2][cond_var_idx, var_idxs], ℒ.kron(state_vol, state_vol), -.5, 1)
+
+    shock_independent = 𝐒[1][cond_var_idx,end-T.nExo+1:end] \ shock_independent
+    # 𝐒ᶠ = ℒ.factorize(𝐒[1][cond_var_idx,end-T.nExo+1:end])
+    # ℒ.ldiv!(𝐒ᶠ, shock_independent)
+
+    𝐒ⁱ = (𝐒[1][cond_var_idx, end-T.nExo+1:end] + 𝐒[2][cond_var_idx, shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol)) \ 𝐒[2][cond_var_idx, shock²_idxs] / 2
+
+    x = zeros(T.nExo)
+    x̂ = zeros(T.nExo)
+
+    kron_buffer = ℒ.kron(x, x)
+
+    sol = speedmapping(zeros(T.nExo); 
+                        m! = (x̂, x) ->  begin
+                                            ℒ.kron!(kron_buffer, x, x)
+                                            ℒ.mul!(x̂, 𝐒ⁱ, kron_buffer)
+                                            ℒ.axpby!(1, shock_independent, -1, x̂)
+                                        end, tol = tol, maps_limit = 10000)#, stabilize = true, σ_min = 1)
+
+    x = sol.minimizer
+
+    jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒[2][cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol) + 𝐒[2][cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(T.nExo), x))
+
+    return x, jacc, maximum(abs, shock_independent - 𝐒ⁱ * ℒ.kron!(kron_buffer, x, x) - x) < tol
+end
+
+
+
+function find_shocks(::Val{:fixed_point},
+    state::Vector{Vector{Float64}}, 
+    𝐒::Vector{AbstractMatrix{Float64}}, 
+    data_in_deviations::Vector{Float64}, 
+    observables::Union{Vector{String}, Vector{Symbol}},
+    T::timings;
+    tol::Float64 = 1e-12)
+
+    cond_var_idx = indexin(observables,sort(union(T.aux, T.var, T.exo_present)))
+
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    
+    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
+    shock_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+    shock²_idxs = tmp.nzind
+    
+    shockvar_idxs = setdiff(shock_idxs, shock²_idxs)
+    
+    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
+    var_idxs = tmp.nzind
+
+    state_vol = vcat(state[1][T.past_not_future_and_mixed_idx],1)
+
+    shock_independent = data_in_deviations
+    ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed], state[2][T.past_not_future_and_mixed_idx], -1, 1)
+    ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1], state_vol, -1, 1)
+    ℒ.mul!(shock_independent, 𝐒[2][cond_var_idx, var_idxs], ℒ.kron(state_vol, state_vol), -.5, 1)
+
+    shock_independent = 𝐒[1][cond_var_idx,end-T.nExo+1:end] \ shock_independent
+    # 𝐒ᶠ = ℒ.factorize(𝐒[1][cond_var_idx,end-T.nExo+1:end])
+    # ℒ.ldiv!(𝐒ᶠ, shock_independent)
+    
+    𝐒ⁱ = (𝐒[1][cond_var_idx, end-T.nExo+1:end] + 𝐒[2][cond_var_idx, shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol)) \ 𝐒[2][cond_var_idx, shock²_idxs] / 2
+    
+    x = zeros(T.nExo)
+    x̂ = zeros(T.nExo)
+ 
+    kron_buffer = ℒ.kron(x, x)
+
+    max_update = 1.0
+
+    i = 0
+    while max_update > tol
+        ℒ.kron!(kron_buffer, x̂, x̂)
+        ℒ.mul!(x, 𝐒ⁱ, kron_buffer)
+        ℒ.axpby!(1, shock_independent, -1, x)
+        i += 1
+        
+        if i % 10 == 0
+            ℒ.axpy!(-1, x, x̂)
+            max_update = maximum(abs, x̂)
+        end
+        
+        x̂ .= x
+        # copyto!(x̂, x)
+    end
+    
+    jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒[2][cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol) + 𝐒[2][cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(T.nExo), x))
+
+    return x, jacc, maximum(abs, shock_independent - 𝐒ⁱ * ℒ.kron!(kron_buffer, x, x) - x) < tol
+end
+
+
+
+function find_shocks(::Val{:LBFGS},
+                        state::Vector{Vector{Float64}}, 
+                        𝐒::Vector{AbstractMatrix{Float64}}, 
+                        data_in_deviations::Vector{Float64}, 
+                        observables::Union{Vector{String}, Vector{Symbol}},
+                        T::timings;
+                        tol::Float64 = 1e-12)
+
+    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+
+    if length(𝐒) == 2 && length(state) == 1 # second order
+        function second_order_state_update(state::Vector{U}, shock::Vector{S}) where {U <: Real,S <: Real}
+        # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
+            aug_state = [state[T.past_not_future_and_mixed_idx]
+                                1
+                                shock]
+            return 𝐒[1] * aug_state + 𝐒[2] * ℒ.kron(aug_state, aug_state) / 2
+        end
+
+        state_update = second_order_state_update
+
+        state = state[1]
+
+        pruning = false
+    elseif length(𝐒) == 2 && length(state) == 2 # pruned second order
+        function pruned_second_order_state_update(state::Vector{Vector{U}}, shock::Vector{S}) where {U <: Real,S <: Real}
+        # state_update = function(state::Vector{Vector{T}}, shock::Vector{S}) where {T <: Real,S <: Real}
+            aug_state₁ = [state[1][T.past_not_future_and_mixed_idx]; 1; shock]
+            aug_state₂ = [state[2][T.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    
+            return [𝐒[1] * aug_state₁, 𝐒[1] * aug_state₂ + 𝐒[2] * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+        end
+
+        state_update = pruned_second_order_state_update
+
+        pruning = true
+    elseif length(𝐒) == 3 && length(state) == 1 # third order
+        function third_order_state_update(state::Vector{U}, shock::Vector{S}) where {U <: Real,S <: Real}
+        # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
+            aug_state = [state[T.past_not_future_and_mixed_idx]
+                                    1
+                                    shock]
+            return 𝐒[1] * aug_state + 𝐒[2] * ℒ.kron(aug_state, aug_state) / 2 + 𝐒[3] * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+        end
+
+        state_update = third_order_state_update
+
+        state = state[1]
+
+        pruning = false
+    elseif length(𝐒) == 3 && length(state) == 3 # pruned third order
+        function pruned_third_order_state_update(state::Vector{Vector{U}}, shock::Vector{S}) where {U <: Real,S <: Real}
+        # state_update = function(state::Vector{Vector{T}}, shock::Vector{S}) where {T <: Real,S <: Real}
+            aug_state₁ = [state[1][T.past_not_future_and_mixed_idx]; 1; shock]
+            aug_state₁̂ = [state[1][T.past_not_future_and_mixed_idx]; 0; shock]
+            aug_state₂ = [state[2][T.past_not_future_and_mixed_idx]; 0; zero(shock)]
+            aug_state₃ = [state[3][T.past_not_future_and_mixed_idx]; 0; zero(shock)]
+                    
+            kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+                    
+            return [𝐒[1] * aug_state₁, 𝐒[1] * aug_state₂ + 𝐒[2] * kron_aug_state₁ / 2, 𝐒[1] * aug_state₃ + 𝐒[2] * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒[3] * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+        end
+
+        state_update = pruned_third_order_state_update
+
+        pruning = true
+    end
+
+    precision_factor = 1.0
+
+    res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations, state, state_update, cond_var_idx, precision_factor, pruning), 
+    zeros(T.nExo), 
+    Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), 
+    # Optim.LBFGS(), 
+    Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+    autodiff = :forward)
+
+    matched = Optim.minimum(res) < tol
+
+    x = Optim.minimizer(res)
+
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    
+    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
+    shock_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+    shock²_idxs = tmp.nzind
+    
+    shockvar_idxs = setdiff(shock_idxs, shock²_idxs)
+ 
+    state_vol = vcat(state[1][T.past_not_future_and_mixed_idx],1)
+
+    jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒[2][cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol) + 𝐒[2][cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(T.nExo), x))
+
+    return x, jacc, matched
+end
 
 function inversion_filter(𝓂::ℳ, 
     data_in_deviations::AbstractArray{Float64},
@@ -10037,80 +10314,80 @@ function filter_and_smooth(𝓂::ℳ,
 end
 
 
-if VERSION >= v"1.9"
-    @setup_workload begin
-        # Putting some things in `setup` can reduce the size of the
-        # precompile file and potentially make loading faster.
-        @model FS2000 precompile = true begin
-            dA[0] = exp(gam + z_e_a  *  e_a[x])
-            log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-            - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-            W[0] = l[0] / n[0]
-            - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-            R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-            1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-            c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-            P[0] * c[0] = m[0]
-            m[0] - 1 + d[0] = l[0]
-            e[0] = exp(z_e_a  *  e_a[x])
-            y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-            gy_obs[0] = dA[0] * y[0] / y[-1]
-            gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-            log_gy_obs[0] = log(gy_obs[0])
-            log_gp_obs[0] = log(gp_obs[0])
-        end
+# if VERSION >= v"1.9"
+#     @setup_workload begin
+#         # Putting some things in `setup` can reduce the size of the
+#         # precompile file and potentially make loading faster.
+#         @model FS2000 precompile = true begin
+#             dA[0] = exp(gam + z_e_a  *  e_a[x])
+#             log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+#             - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+#             W[0] = l[0] / n[0]
+#             - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+#             R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+#             1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+#             c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+#             P[0] * c[0] = m[0]
+#             m[0] - 1 + d[0] = l[0]
+#             e[0] = exp(z_e_a  *  e_a[x])
+#             y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+#             gy_obs[0] = dA[0] * y[0] / y[-1]
+#             gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+#             log_gy_obs[0] = log(gy_obs[0])
+#             log_gp_obs[0] = log(gp_obs[0])
+#         end
 
-        @parameters FS2000 silent = true precompile = true begin  
-            alp     = 0.356
-            bet     = 0.993
-            gam     = 0.0085
-            mst     = 1.0002
-            rho     = 0.129
-            psi     = 0.65
-            del     = 0.01
-            z_e_a   = 0.035449
-            z_e_m   = 0.008862
-        end
+#         @parameters FS2000 silent = true precompile = true begin  
+#             alp     = 0.356
+#             bet     = 0.993
+#             gam     = 0.0085
+#             mst     = 1.0002
+#             rho     = 0.129
+#             psi     = 0.65
+#             del     = 0.01
+#             z_e_a   = 0.035449
+#             z_e_m   = 0.008862
+#         end
         
-        ENV["GKSwstype"] = "nul"
+#         ENV["GKSwstype"] = "nul"
 
-        @compile_workload begin
-            # all calls in this block will be precompiled, regardless of whether
-            # they belong to your package or not (on Julia 1.8 and higher)
-            @model RBC precompile = true begin
-                1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-                c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-                z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-            end
+#         @compile_workload begin
+#             # all calls in this block will be precompiled, regardless of whether
+#             # they belong to your package or not (on Julia 1.8 and higher)
+#             @model RBC precompile = true begin
+#                 1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+#                 c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+#                 z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+#             end
 
-            @parameters RBC silent = true precompile = true begin
-                δ = 0.02
-                α = 0.5
-            end
+#             @parameters RBC silent = true precompile = true begin
+#                 δ = 0.02
+#                 α = 0.5
+#             end
 
-            get_SS(FS2000, silent = true)
-            get_SS(FS2000, parameters = :alp => 0.36, silent = true)
-            get_solution(FS2000, silent = true)
-            get_solution(FS2000, parameters = :alp => 0.35)
-            get_standard_deviation(FS2000)
-            get_correlation(FS2000)
-            get_autocorrelation(FS2000)
-            get_variance_decomposition(FS2000)
-            get_conditional_variance_decomposition(FS2000)
-            get_irf(FS2000)
+#             get_SS(FS2000, silent = true)
+#             get_SS(FS2000, parameters = :alp => 0.36, silent = true)
+#             get_solution(FS2000, silent = true)
+#             get_solution(FS2000, parameters = :alp => 0.35)
+#             get_standard_deviation(FS2000)
+#             get_correlation(FS2000)
+#             get_autocorrelation(FS2000)
+#             get_variance_decomposition(FS2000)
+#             get_conditional_variance_decomposition(FS2000)
+#             get_irf(FS2000)
 
-            data = simulate(FS2000)([:c,:k],:,:simulate)
-            get_loglikelihood(FS2000, data, FS2000.parameter_values)
-            get_mean(FS2000, silent = true)
-            # get_SSS(FS2000, silent = true)
-            # get_SSS(FS2000, algorithm = :third_order, silent = true)
+#             data = simulate(FS2000)([:c,:k],:,:simulate)
+#             get_loglikelihood(FS2000, data, FS2000.parameter_values)
+#             get_mean(FS2000, silent = true)
+#             # get_SSS(FS2000, silent = true)
+#             # get_SSS(FS2000, algorithm = :third_order, silent = true)
 
-            # import StatsPlots
-            # plot_irf(FS2000)
-            # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-            # plot_conditional_variance_decomposition(FS2000)
-        end
-    end
-end
+#             # import StatsPlots
+#             # plot_irf(FS2000)
+#             # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+#             # plot_conditional_variance_decomposition(FS2000)
+#         end
+#     end
+# end
 
 end
