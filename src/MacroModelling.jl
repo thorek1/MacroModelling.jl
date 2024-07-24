@@ -9666,7 +9666,7 @@ function find_shocks(::Val{:Newton},
         # x += J \ res
     end
 
-    jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒²dv * ℒ.kron(ℒ.I(T.nExo), state_vol) + 𝐒²d * ℒ.kron(ℒ.I(T.nExo), x))
+    jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒[2][cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol) + 𝐒[2][cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(T.nExo), x))
 
     return x, jacc, maximum(abs, shock_independent - 𝐒ⁱ * ℒ.kron!(kron_buffer, x, x) - x) < tol
 end
