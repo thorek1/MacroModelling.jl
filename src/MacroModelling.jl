@@ -9530,7 +9530,8 @@ function find_shocks(::Val{:fixed_point},
 
     cond_var_idx = indexin(observables,sort(union(T.aux, T.var, T.exo_present)))
 
-    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
     e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
@@ -9539,28 +9540,68 @@ function find_shocks(::Val{:fixed_point},
     tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
     shock²_idxs = tmp.nzind
     
-    shockvar_idxs = setdiff(shock_idxs, shock²_idxs)
+    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
+ 
+    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
+    shock_idxs = tmp.nzind
+
+    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
+    shock³_idxs = tmp.nzind
+
+    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
+    shockvar1_idxs = tmp.nzind
+
+    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
+    shockvar2_idxs = tmp.nzind
+
+    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
+    shockvar3_idxs = tmp.nzind
+
+    shockvar³_idxs = setdiff(shock_idxs, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+    
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
+    var_vol²_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
+    var_vol³_idxs = tmp.nzind
     
     tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var_idxs = tmp.nzind
+    var²_idxs = tmp.nzind
 
-    state_vol = vcat(state[1][T.past_not_future_and_mixed_idx],1)
+    state¹⁻ = state[1][T.past_not_future_and_mixed_idx]
+    state¹⁻_vol = vcat(state[1][T.past_not_future_and_mixed_idx],1)
+
     if length(state) == 2
-        state⁻ = state[length(state)][T.past_not_future_and_mixed_idx]
+        state²⁻ = state[2][T.past_not_future_and_mixed_idx]
+    elseif length(state) == 3
+        state²⁻ = state[2][T.past_not_future_and_mixed_idx]
+        state³⁻ = state[3][T.past_not_future_and_mixed_idx]
     end
-
+    
+    
     shock_independent = data_in_deviations
-    if length(state) == 2
-        ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed], state⁻, -1, 1)
+    ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1], state¹⁻_vol, -1, 1)
+    if length(state) > 1
+        ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed], state²⁻, -1, 1)
     end
-    ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1], state_vol, -1, 1)
-    ℒ.mul!(shock_independent, 𝐒[2][cond_var_idx, var_idxs], ℒ.kron(state_vol, state_vol), -.5, 1)
+    ℒ.mul!(shock_independent, 𝐒[2][cond_var_idx, var_vol²_idxs], ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
+    if length(state) == 3
+        ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed], state³⁻, -1, 1)
+        ℒ.mul!(shock_independent, 𝐒[2][cond_var_idx, var²_idxs], ℒ.kron(state¹⁻, state²⁻), -1/2, 1)
+    end
+    if length(𝐒) == 3
+        ℒ.mul!(shock_independent, 𝐒[3][cond_var_idx, var_vol³_idxs], ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
+    end 
 
     shock_independent = 𝐒[1][cond_var_idx,end-T.nExo+1:end] \ shock_independent
     # 𝐒ᶠ = ℒ.factorize(𝐒[1][cond_var_idx,end-T.nExo+1:end])
     # ℒ.ldiv!(𝐒ᶠ, shock_independent)
-    
-    𝐒ⁱ = (𝐒[1][cond_var_idx, end-T.nExo+1:end] + 𝐒[2][cond_var_idx, shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol)) \ 𝐒[2][cond_var_idx, shock²_idxs] / 2
+    if length(𝐒) == 2
+        𝐒ⁱ = (𝐒[1][cond_var_idx, end-T.nExo+1:end] + 𝐒[2][cond_var_idx, shockvar²_idxs] * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)) \ 𝐒[2][cond_var_idx, shock²_idxs] / 2
+    elseif length(𝐒) == 3
+        𝐒ⁱ = (𝐒[1][cond_var_idx, end-T.nExo+1:end] + 𝐒[2][cond_var_idx, shockvar²_idxs] * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒[3][cond_var_idx, shockvar³_idxs] * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(state¹⁻_vol, state¹⁻_vol))) \ 𝐒[2][cond_var_idx, shock²_idxs] / 2
+    end
+
     
     x = zeros(T.nExo)
     x̂ = zeros(T.nExo)
@@ -9574,7 +9615,7 @@ function find_shocks(::Val{:fixed_point},
         ℒ.mul!(x, 𝐒ⁱ, kron_buffer)
         ℒ.axpby!(1, shock_independent, -1, x)
         
-        if i % 10 == 0
+        if i % 5 == 0
             ℒ.axpy!(-1, x, x̂)
             if maximum(abs, x̂) < tol break end
         end
@@ -9583,8 +9624,12 @@ function find_shocks(::Val{:fixed_point},
         # copyto!(x̂, x)
     end
     
-    jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒[2][cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol) + 𝐒[2][cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(T.nExo), x))
-
+    if length(𝐒) == 2
+        jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒[2][cond_var_idx,shockvar²_idxs] * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒[2][cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(T.nExo), x))
+    elseif length(𝐒) == 3
+        jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒[2][cond_var_idx,shockvar²_idxs] * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒[3][cond_var_idx, shockvar³_idxs] * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(state¹⁻_vol, state¹⁻_vol)) + 𝐒[2][cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(T.nExo), x)) + 𝐒[3][cond_var_idx,shock³_idxs] * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x))
+    end
+    
     return x, jacc, maximum(abs, shock_independent - 𝐒ⁱ * ℒ.kron!(kron_buffer, x, x) - x) < tol
 end
 
@@ -9810,9 +9855,9 @@ function find_shocks(::Val{:LBFGS},
 
     res = Optim.optimize(x -> minimize_distance_to_data(x, data_in_deviations, state, state_update, cond_var_idx, precision_factor, pruning), 
     zeros(T.nExo), 
-    # Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), 
-    Optim.NelderMead(), 
-    # Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+    Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+    # Optim.NelderMead(), 
+    Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
     autodiff = :forward)
 
     matched = Optim.minimum(res) < tol
