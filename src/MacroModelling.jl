@@ -9508,7 +9508,8 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     
     tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
     var²_idxs = tmp.nzind
-
+    
+    𝐒⁻¹ = 𝐒[1][T.past_not_future_and_mixed_idx,:]
     𝐒¹⁻ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
@@ -9518,13 +9519,20 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     𝐒²⁻ = 𝐒[2][cond_var_idx,var²_idxs]
     𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,shockvar²_idxs]
     𝐒²ᵉ = 𝐒[2][cond_var_idx,shock²_idxs]
+    𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
 
-    𝐒²⁻ᵛ = length(𝐒²⁻ᵛ.nzval) / length(𝐒²⁻ᵛ) > .1 ? collect(𝐒²⁻ᵛ) : 𝐒²⁻ᵛ
-    𝐒²⁻ = length(𝐒²⁻.nzval) / length(𝐒²⁻) > .1 ? collect(𝐒²⁻) : 𝐒²⁻
-    𝐒²⁻ᵉ = length(𝐒²⁻ᵉ.nzval) / length(𝐒²⁻ᵉ) > .1 ? collect(𝐒²⁻ᵉ) : 𝐒²⁻ᵉ
-    𝐒²ᵉ = length(𝐒²ᵉ.nzval) / length(𝐒²ᵉ) > .1 ? collect(𝐒²ᵉ) : 𝐒²ᵉ
+    𝐒²⁻ᵛ    = length(𝐒²⁻ᵛ.nzval)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
+    𝐒²⁻     = length(𝐒²⁻.nzval)     / length(𝐒²⁻)   > .1 ? collect(𝐒²⁻)     : 𝐒²⁻
+    𝐒²⁻ᵉ    = length(𝐒²⁻ᵉ.nzval)    / length(𝐒²⁻ᵉ)  > .1 ? collect(𝐒²⁻ᵉ)    : 𝐒²⁻ᵉ
+    𝐒²ᵉ     = length(𝐒²ᵉ.nzval)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
+    𝐒⁻²     = length(𝐒⁻².nzval)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
+
+    state[1] = state[1][T.past_not_future_and_mixed_idx]
+    state[2] = state[2][T.past_not_future_and_mixed_idx]
 
     if length(state) == 3
+        state[3] = state[3][T.past_not_future_and_mixed_idx]
+
         tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
         var_vol³_idxs = tmp.nzind
 
@@ -9547,23 +9555,31 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
         
         𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,var_vol³_idxs]
         𝐒³⁻ᵉ = 𝐒[3][cond_var_idx,shockvar³_idxs]
-        𝐒³ᵉ = 𝐒[3][cond_var_idx,shock³_idxs]
+        𝐒³ᵉ  = 𝐒[3][cond_var_idx,shock³_idxs]
+        𝐒⁻³  = 𝐒[3][T.past_not_future_and_mixed_idx,:]
 
-        𝐒³⁻ᵛ = length(𝐒³⁻ᵛ.nzval) / length(𝐒³⁻ᵛ) > .1 ? collect(𝐒³⁻ᵛ) : 𝐒³⁻ᵛ
-        𝐒³⁻ᵉ = length(𝐒³⁻ᵉ.nzval) / length(𝐒³⁻ᵉ) > .1 ? collect(𝐒³⁻ᵉ) : 𝐒³⁻ᵉ
-        𝐒³ᵉ = length(𝐒³ᵉ.nzval) / length(𝐒³ᵉ) > .1 ? collect(𝐒³ᵉ) : 𝐒³ᵉ
+        𝐒³⁻ᵛ    = length(𝐒³⁻ᵛ.nzval)    / length(𝐒³⁻ᵛ)  > .1 ? collect(𝐒³⁻ᵛ)    : 𝐒³⁻ᵛ
+        𝐒³⁻ᵉ    = length(𝐒³⁻ᵉ.nzval)    / length(𝐒³⁻ᵉ)  > .1 ? collect(𝐒³⁻ᵉ)    : 𝐒³⁻ᵉ
+        𝐒³ᵉ     = length(𝐒³ᵉ.nzval)     / length(𝐒³ᵉ)   > .1 ? collect(𝐒³ᵉ)     : 𝐒³ᵉ
+        𝐒⁻³     = length(𝐒⁻³.nzval)     / length(𝐒⁻³)   > .1 ? collect(𝐒⁻³)     : 𝐒⁻³
     end
 
+    kron_buffer = zeros(T.nExo^2)
+
+    J = zeros(T.nExo, T.nExo)
+
+    kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
+
     for i in axes(data_in_deviations,2)
-        state¹⁻ = state[1][T.past_not_future_and_mixed_idx]
+        state¹⁻ = state[1]#[T.past_not_future_and_mixed_idx]
         state¹⁻_vol = vcat(state¹⁻, 1)
 
         if length(state) > 1
-            state²⁻ = state[2][T.past_not_future_and_mixed_idx]
+            state²⁻ = state[2]#[T.past_not_future_and_mixed_idx]
         end
 
         if length(state) == 3
-            state³⁻ = state[3][T.past_not_future_and_mixed_idx]
+            state³⁻ = state[3]#[T.past_not_future_and_mixed_idx]
         end
         
         shock_independent = copy(data_in_deviations[:,i])
@@ -9590,23 +9606,20 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
             𝐒ⁱ = 𝐒¹²³ \ 𝐒²ᵉ / 2
         end
 
-        kron_buffer = zeros(T.nExo^2)
-        
+        # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
         x, matched = find_shocks(Val(:fixed_point), 
                                     kron_buffer,
+                                    kron_buffer2,
+                                    J,
                                     𝐒ⁱ,
                                     shock_independent)
 
         if length(𝐒) == 2
             jacc = -(𝐒¹² + 𝐒²ᵉ * ℒ.kron(ℒ.I(T.nExo), x))
         elseif length(𝐒) == 3
-            jacc = -(𝐒¹²³ + 𝐒²ᵉ * ℒ.kron(ℒ.I(T.nExo), x)) + 𝐒³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x))
+            jacc = -(𝐒¹²³ + 𝐒²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 𝐒³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x)))
         end
     
-
-
-        # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
-
         if !matched 
             return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive  
         end
@@ -9622,7 +9635,34 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
             shocks² += sum(abs2,x)
         end
 
-        state = state_update(state, x)
+        if length(𝐒) == 2
+            if state isa Vector{Float64}
+                aug_state = [state; 1; x]
+
+                state = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2
+            else
+                aug_state₁ = [state[1]; 1; x]
+                aug_state₂ = [state[2]; 0; zero(x)]
+
+                state = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+            end
+        elseif length(𝐒) == 3
+            if state isa Vector{Float64}
+                aug_state = [state; 1; x]
+
+                state = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2 + 𝐒⁻³ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+            else
+                aug_state₁ = [state[1]; 1; x]
+                aug_state₁̂ = [state[1]; 0; x]
+                aug_state₂ = [state[2]; 0; zero(x)]
+                aug_state₃ = [state[3]; 0; zero(x)]
+
+                kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+
+                state = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * kron_aug_state₁ / 2, 𝐒⁻¹ * aug_state₃ + 𝐒⁻² * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒⁻³ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+            end
+        end
+        # state = state_update(state, x)
     end
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
@@ -9635,6 +9675,8 @@ end
 
 function find_shocks(::Val{:fixed_point},
     kron_buffer::Vector{Float64},
+    kron_buffer2::AbstractMatrix{Float64},
+    J::AbstractMatrix{Float64},
     𝐒ⁱ::AbstractMatrix{Float64},
     shock_independent::Vector{Float64};
     tol::Float64 = 1e-12)
@@ -9658,6 +9700,52 @@ function find_shocks(::Val{:fixed_point},
         # copyto!(x̂, x)
     end
     
+    return x, maximum(abs, shock_independent - 𝐒ⁱ * ℒ.kron!(kron_buffer, x, x) - x) < tol
+end
+
+
+function find_shocks(::Val{:Newton},
+    kron_buffer::Vector{Float64},
+    kron_buffer2::AbstractMatrix{Float64},
+    J::AbstractMatrix{Float64},
+    𝐒ⁱ::AbstractMatrix{Float64},
+    shock_independent::Vector{Float64};
+    tol::Float64 = 1e-12)
+
+    nExo = Int(sqrt(length(kron_buffer)))
+
+    res = zero(shock_independent) .+ 1
+
+    x = zeros(nExo)
+
+    max_iter = 100
+
+    for i in 1:max_iter
+        ℒ.kron!(kron_buffer, x, x)
+        ℒ.mul!(res, 𝐒ⁱ, kron_buffer)
+        ℒ.axpby!(1, shock_independent, -1, res)
+        ℒ.axpy!(-1, x, res)
+        # res = shock_independent - 𝐒ⁱ * ℒ.kron(x, x) - x
+
+        if (i % 2 == 0) && (maximum(abs, res) < tol)
+            break 
+        end
+        
+        ℒ.lmul!(0, J)
+
+        for i in 1:nExo
+            J[i,i] += 1
+        end
+
+        ℒ.kron!(kron_buffer2, J, x)
+        ℒ.mul!(J, 𝐒ⁱ, kron_buffer2, 2, 1)
+        # J = 𝐒ⁱ * 2 * ℒ.kron(ℒ.I(T.nExo), x) + ℒ.I(T.nExo)
+
+        ℒ.ldiv!(ℒ.factorize(J), res)
+        ℒ.axpy!(1, res, x)
+        # x += J \ res
+    end
+
     return x, maximum(abs, shock_independent - 𝐒ⁱ * ℒ.kron!(kron_buffer, x, x) - x) < tol
 end
 
