@@ -9693,7 +9693,10 @@ function find_shocks(::Val{:fixed_point},
         
         if i % 5 == 0
             ℒ.axpy!(-1, x, x̂)
-            if maximum(abs, x̂) < tol break end
+            if maximum(abs, x̂) < tol 
+                # println(i)
+                break 
+            end
         end
         
         x̂ .= x
@@ -9728,14 +9731,16 @@ function find_shocks(::Val{:Newton},
         # res = shock_independent - 𝐒ⁱ * ℒ.kron(x, x) - x
 
         if (i % 2 == 0) && (maximum(abs, res) < tol)
+            # println(i)
             break 
         end
         
         ℒ.lmul!(0, J)
 
-        for i in 1:nExo
-            J[i,i] += 1
-        end
+        ℒ.axpy!(1, ℒ.I(nExo), J)
+        # for i in 1:nExo
+        #     J[i,i] += 1
+        # end
 
         ℒ.kron!(kron_buffer2, J, x)
         ℒ.mul!(J, 𝐒ⁱ, kron_buffer2, 2, 1)
@@ -9751,265 +9756,29 @@ end
 
 
 
-function find_shocks(::Val{:fixed_point},
-    state::Vector{Vector{Float64}}, 
-    𝐒::Vector{AbstractMatrix{Float64}}, 
-    data_in_deviations::Vector{Float64}, 
-    observables::Union{Vector{String}, Vector{Symbol}},
-    T::timings;
-    tol::Float64 = 1e-12)
-
-    cond_var_idx = indexin(observables,sort(union(T.aux, T.var, T.exo_present)))
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
-    
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-    
-    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
- 
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shock³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shockvar1_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
-    shockvar2_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
-    shockvar3_idxs = tmp.nzind
-
-    shockvar³_idxs = setdiff(shock_idxs, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-    
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
-    var_vol³_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var²_idxs = tmp.nzind
-
-    state¹⁻ = state[1][T.past_not_future_and_mixed_idx]
-    state¹⁻_vol = vcat(state[1][T.past_not_future_and_mixed_idx],1)
-
-    if length(state) == 2
-        state²⁻ = state[2][T.past_not_future_and_mixed_idx]
-    elseif length(state) == 3
-        state²⁻ = state[2][T.past_not_future_and_mixed_idx]
-        state³⁻ = state[3][T.past_not_future_and_mixed_idx]
-    end
-    
-    
-    shock_independent = data_in_deviations
-    ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1], state¹⁻_vol, -1, 1)
-    if length(state) > 1
-        ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed], state²⁻, -1, 1)
-    end
-    ℒ.mul!(shock_independent, 𝐒[2][cond_var_idx, var_vol²_idxs], ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
-    if length(state) == 3
-        ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed], state³⁻, -1, 1)
-        ℒ.mul!(shock_independent, 𝐒[2][cond_var_idx, var²_idxs], ℒ.kron(state¹⁻, state²⁻), -1/2, 1)
-    end
-    if length(𝐒) == 3
-        ℒ.mul!(shock_independent, 𝐒[3][cond_var_idx, var_vol³_idxs], ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
-    end 
-
-    shock_independent = 𝐒[1][cond_var_idx,end-T.nExo+1:end] \ shock_independent
-    # 𝐒ᶠ = ℒ.factorize(𝐒[1][cond_var_idx,end-T.nExo+1:end])
-    # ℒ.ldiv!(𝐒ᶠ, shock_independent)
-    if length(𝐒) == 2
-        𝐒ⁱ = (𝐒[1][cond_var_idx, end-T.nExo+1:end] + 𝐒[2][cond_var_idx, shockvar²_idxs] * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)) \ 𝐒[2][cond_var_idx, shock²_idxs] / 2
-    elseif length(𝐒) == 3
-        𝐒ⁱ = (𝐒[1][cond_var_idx, end-T.nExo+1:end] + 𝐒[2][cond_var_idx, shockvar²_idxs] * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒[3][cond_var_idx, shockvar³_idxs] * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(state¹⁻_vol, state¹⁻_vol))) \ 𝐒[2][cond_var_idx, shock²_idxs] / 2
-    end
-
-    
-    x = zeros(T.nExo)
-    x̂ = zeros(T.nExo)
- 
-    kron_buffer = ℒ.kron(x, x)
-
-    max_iter = 1000
-
-    for i in 1:max_iter
-        ℒ.kron!(kron_buffer, x̂, x̂)
-        ℒ.mul!(x, 𝐒ⁱ, kron_buffer)
-        ℒ.axpby!(1, shock_independent, -1, x)
-        
-        if i % 5 == 0
-            ℒ.axpy!(-1, x, x̂)
-            if maximum(abs, x̂) < tol break end
-        end
-        
-        x̂ .= x
-        # copyto!(x̂, x)
-    end
-    
-    if length(𝐒) == 2
-        jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒[2][cond_var_idx,shockvar²_idxs] * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒[2][cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(T.nExo), x))
-    elseif length(𝐒) == 3
-        jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒[2][cond_var_idx,shockvar²_idxs] * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒[3][cond_var_idx, shockvar³_idxs] * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(state¹⁻_vol, state¹⁻_vol)) + 𝐒[2][cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(T.nExo), x)) + 𝐒[3][cond_var_idx,shock³_idxs] * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x))
-    end
-    
-    return x, jacc, maximum(abs, shock_independent - 𝐒ⁱ * ℒ.kron!(kron_buffer, x, x) - x) < tol
-end
-
-
-
-function find_shocks(::Val{:Newton},
-    state::Vector{Vector{Float64}}, 
-    𝐒::Vector{AbstractMatrix{Float64}}, 
-    data_in_deviations::Vector{Float64}, 
-    observables::Union{Vector{String}, Vector{Symbol}},
-    T::timings;
-    tol::Float64 = 1e-12)
-
-    cond_var_idx = indexin(observables,sort(union(T.aux, T.var, T.exo_present)))
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
-    
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-    
-    shockvar_idxs = setdiff(shock_idxs, shock²_idxs)
-    
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var_idxs = tmp.nzind
-
-    state_vol = vcat(state[1][T.past_not_future_and_mixed_idx],1)
-    if length(state) == 2
-        state⁻ = state[length(state)][T.past_not_future_and_mixed_idx]
-    end
-
-    shock_independent = data_in_deviations
-    if length(state) == 2
-        ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed], state⁻, -1, 1)
-    end
-    ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1], state_vol, -1, 1)
-    ℒ.mul!(shock_independent, 𝐒[2][cond_var_idx, var_idxs], ℒ.kron(state_vol, state_vol), -.5, 1)
-
-    shock_independent = 𝐒[1][cond_var_idx,end-T.nExo+1:end] \ shock_independent
-    # 𝐒ᶠ = ℒ.factorize(𝐒[1][cond_var_idx,end-T.nExo+1:end])
-    # ℒ.ldiv!(𝐒ᶠ, shock_independent)
-    
-    𝐒ⁱ = (𝐒[1][cond_var_idx, end-T.nExo+1:end] + 𝐒[2][cond_var_idx, shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol)) \ 𝐒[2][cond_var_idx, shock²_idxs] / 2
-    
-    res = zero(shock_independent) .+ 1
-    
-    J = zeros(T.nExo, T.nExo)
-
-    x = zeros(T.nExo)
- 
-    kron_buffer = ℒ.kron(x, x)
-    kron_buffer2 = ℒ.kron(J, x)
-
-    max_iter = 100
-
-    for i in 1:max_iter
-        ℒ.kron!(kron_buffer, x, x)
-        ℒ.mul!(res, 𝐒ⁱ, kron_buffer)
-        ℒ.axpby!(1, shock_independent, -1, res)
-        ℒ.axpy!(-1, x, res)
-        # res = shock_independent - 𝐒ⁱ * ℒ.kron(x, x) - x
-
-        if (i % 2 == 0) && (maximum(abs, res) < tol) break end
-        
-        J *= 0
-        for i in 1:T.nExo
-            J[i,i] += 1
-        end
-
-        ℒ.kron!(kron_buffer2, J, x)
-        ℒ.mul!(J, 𝐒ⁱ, kron_buffer2, 2, 1)
-        # J = 𝐒ⁱ * 2 * ℒ.kron(ℒ.I(T.nExo), x) + ℒ.I(T.nExo)
-
-        ℒ.ldiv!(ℒ.factorize(J), res)
-        ℒ.axpy!(1, res, x)
-        # x += J \ res
-    end
-
-    jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒[2][cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol) + 𝐒[2][cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(T.nExo), x))
-
-    return x, jacc, maximum(abs, shock_independent - 𝐒ⁱ * ℒ.kron!(kron_buffer, x, x) - x) < tol
-end
-
-
-
-
-
 function find_shocks(::Val{:speedmapping},
-    state::Vector{Vector{Float64}}, 
-    𝐒::Vector{AbstractMatrix{Float64}}, 
-    data_in_deviations::Vector{Float64}, 
-    observables::Union{Vector{String}, Vector{Symbol}},
-    T::timings;
+    kron_buffer::Vector{Float64},
+    kron_buffer2::AbstractMatrix{Float64},
+    J::AbstractMatrix{Float64},
+    𝐒ⁱ::AbstractMatrix{Float64},
+    shock_independent::Vector{Float64};
     tol::Float64 = 1e-12)
     
-    cond_var_idx = indexin(observables,sort(union(T.aux, T.var, T.exo_present)))
+    x = zeros(Int(sqrt(length(kron_buffer))))
+    x̂ = zeros(Int(sqrt(length(kron_buffer))))
 
-    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
-    
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-    
-    shockvar_idxs = setdiff(shock_idxs, shock²_idxs)
-    
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var_idxs = tmp.nzind
-
-    state_vol = vcat(state[1][T.past_not_future_and_mixed_idx],1)
-    if length(state) == 2
-        state⁻ = state[length(state)][T.past_not_future_and_mixed_idx]
-    end
-
-    shock_independent = data_in_deviations
-    if length(state) == 2
-        ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed], state⁻, -1, 1)
-    end
-    ℒ.mul!(shock_independent, 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1], state_vol, -1, 1)
-    ℒ.mul!(shock_independent, 𝐒[2][cond_var_idx, var_idxs], ℒ.kron(state_vol, state_vol), -.5, 1)
-
-    shock_independent = 𝐒[1][cond_var_idx,end-T.nExo+1:end] \ shock_independent
-    # 𝐒ᶠ = ℒ.factorize(𝐒[1][cond_var_idx,end-T.nExo+1:end])
-    # ℒ.ldiv!(𝐒ᶠ, shock_independent)
-    
-    𝐒ⁱ = (𝐒[1][cond_var_idx, end-T.nExo+1:end] + 𝐒[2][cond_var_idx, shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol)) \ 𝐒[2][cond_var_idx, shock²_idxs] / 2
-    
-    x = zeros(T.nExo)
-    x̂ = zeros(T.nExo)
-
-    kron_buffer = ℒ.kron(x, x)
-
-    sol = speedmapping(zeros(T.nExo); 
+    sol = speedmapping(zeros(Int(sqrt(length(kron_buffer)))); 
                         m! = (x̂, x) ->  begin
                                             ℒ.kron!(kron_buffer, x, x)
                                             ℒ.mul!(x̂, 𝐒ⁱ, kron_buffer)
                                             ℒ.axpby!(1, shock_independent, -1, x̂)
                                         end, tol = tol, maps_limit = 10000)#, stabilize = true, σ_min = 1)
 
+    # println(sol.maps)
+
     x = sol.minimizer
 
-    jacc = -(𝐒[1][cond_var_idx,end-T.nExo+1:end] + 𝐒[2][cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(T.nExo), state_vol) + 𝐒[2][cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(T.nExo), x))
-
-    return x, jacc, maximum(abs, shock_independent - 𝐒ⁱ * ℒ.kron!(kron_buffer, x, x) - x) < tol
+    return x, maximum(abs, shock_independent - 𝐒ⁱ * ℒ.kron!(kron_buffer, x, x) - x) < tol
 end
 
 
