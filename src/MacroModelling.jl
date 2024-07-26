@@ -6751,7 +6751,7 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
         # push!(dimensions,size(tmp1))
         
         # ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester)#, tol = eps()) # potentially high matrix condition numbers. precision matters
-        
+
         if !solved
             NoTangent(), NoTangent(), NoTangent()
         end
@@ -7725,7 +7725,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
     for i in 1:max_iter
         ℒ.mul!(𝐂B, 𝐂, B)
         ℒ.mul!(𝐂¹, A, 𝐂B)
-        ℒ.axpy!(-1, X, 𝐂¹)
+        ℒ.axpy!(-1, C, 𝐂¹)
     
         if i % 10 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
@@ -7738,7 +7738,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
 
     ℒ.mul!(𝐂B, 𝐂, B)
     ℒ.mul!(𝐂¹, A, 𝐂B)
-    ℒ.axpy!(-1, X, 𝐂¹)
+    ℒ.axpy!(-1, C, 𝐂¹)
 
     solved = isapprox(𝐂¹, 𝐂, rtol = tol)
 
