@@ -6625,16 +6625,18 @@ function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
     function first_order_solution_pullback(∂A)
         tmp1 = invtmp * ∂A[1] * expand[2]
 
-        coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+        ss, solved = solve_sylvester_equation(tmp2, Â', tmp1, Val(:sylvester))
 
-        values = vcat(vec(tmp2), vec(Â'), vec(tmp1))
+        # coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+
+        # values = vcat(vec(tmp2), vec(Â'), vec(tmp1))
         
-        dimensions = Tuple{Int, Int}[]
-        push!(dimensions,size(tmp2))
-        push!(dimensions,size(Â'))
-        push!(dimensions,size(tmp1))
+        # dimensions = Tuple{Int, Int}[]
+        # push!(dimensions,size(tmp2))
+        # push!(dimensions,size(Â'))
+        # push!(dimensions,size(tmp1))
         
-        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester)#, tol = eps()) # potentially high matrix condition numbers. precision matters
+        # ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester)#, tol = eps()) # potentially high matrix condition numbers. precision matters
         
         
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (ss * Â' * Â')[:,T.future_not_past_and_mixed_idx]
@@ -6737,16 +6739,19 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
 
         tmp1 = -M' * ∂𝐒ᵗ * expand[2]
 
-        coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, Val(:sylvester))
 
-        values = vcat(vec(tmp2), vec(𝐒̂ᵗ'), vec(-tmp1))
+        # coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+
+        # values = vcat(vec(tmp2), vec(𝐒̂ᵗ'), vec(-tmp1))
         
-        dimensions = Tuple{Int, Int}[]
-        push!(dimensions,size(tmp2))
-        push!(dimensions,size(𝐒̂ᵗ'))
-        push!(dimensions,size(tmp1))
+        # dimensions = Tuple{Int, Int}[]
+        # push!(dimensions,size(tmp2))
+        # push!(dimensions,size(𝐒̂ᵗ'))
+        # push!(dimensions,size(tmp1))
         
-        ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester)#, tol = eps()) # potentially high matrix condition numbers. precision matters
+        # ss, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :sylvester)#, tol = eps()) # potentially high matrix condition numbers. precision matters
+        
         if !solved
             NoTangent(), NoTangent(), NoTangent()
         end
@@ -6863,7 +6868,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = length(C.nzval) / length(C) < .1 ? C : collect(C)
     X = length(X.nzval) / length(X) < .1 ? X : collect(X)
 
-    𝐒₂, solved = solve_sylvester_equation(B, C, X, Val(:speedmapping))
+    𝐒₂, solved = solve_sylvester_equation(B, C, X, Val(:bicgstab))
 
     # r1,c1,v1 = findnz(B)
     # r2,c2,v2 = findnz(C)
@@ -6980,23 +6985,29 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     # C += kron³(𝐒₁₋╱𝟏ₑ, M₃)
     droptol!(C,tol)
 
-    r1,c1,v1 = findnz(B)
-    r2,c2,v2 = findnz(C)
-    r3,c3,v3 = findnz(X)
+    # r1,c1,v1 = findnz(B)
+    # r2,c2,v2 = findnz(C)
+    # r3,c3,v3 = findnz(X)
 
-    coordinates = Tuple{Vector{Int}, Vector{Int}}[]
-    push!(coordinates,(r1,c1))
-    push!(coordinates,(r2,c2))
-    push!(coordinates,(r3,c3))
+    # coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    # push!(coordinates,(r1,c1))
+    # push!(coordinates,(r2,c2))
+    # push!(coordinates,(r3,c3))
     
-    values = vcat(v1, v2, v3)
+    # values = vcat(v1, v2, v3)
 
-    dimensions = Tuple{Int, Int}[]
-    push!(dimensions,size(B))
-    push!(dimensions,size(C))
-    push!(dimensions,size(X))
+    # dimensions = Tuple{Int, Int}[]
+    # push!(dimensions,size(B))
+    # push!(dimensions,size(C))
+    # push!(dimensions,size(X))
 
-    𝐒₃, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres, sparse_output = true)
+    # 𝐒₃, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres, sparse_output = true)
+
+    B = length(B.nzval) / length(B) < .1 ? B : collect(B)
+    C = length(C.nzval) / length(C) < .1 ? C : collect(C)
+    X = length(X.nzval) / length(X) < .1 ? X : collect(X)
+
+    𝐒₃, solved = solve_sylvester_equation(B, C, X, Val(:bicgstab))
 
     if !solved
         return 𝐒₃, solved
