@@ -1432,7 +1432,7 @@ function get_steady_state(𝓂::ℳ;
     # return 𝓂.SS_solve_func(𝓂)
     # return (var .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[1:length(var)]),  (𝓂.par .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[length(var)+1:end])[getindex(1:length(𝓂.par),map(x->x ∈ collect(𝓂.calibration_equations_parameters),𝓂.par))]
 end
-
+# TODO: check that derivatives are in oine with finitediff
 
 
 """
@@ -2903,6 +2903,7 @@ function get_loglikelihood(𝓂::ℳ,
     warmup_iterations::Int = 0, 
     presample_periods::Int = 0,
     initial_covariance::Symbol = :theoretical,
+    filter_algorithm::Symbol = :fixed_point,
     tol::AbstractFloat = 1e-12, 
     verbose::Bool = false)::S where S <: Real
     
@@ -2941,7 +2942,7 @@ function get_loglikelihood(𝓂::ℳ,
     # prepare data
     data_in_deviations = dt .- SS_and_pars[obs_indices]
 
-    return calculate_loglikelihood(Val(filter), observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations)
+    return calculate_loglikelihood(Val(filter), observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm)
 end
 
 
