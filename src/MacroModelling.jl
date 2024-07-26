@@ -6812,6 +6812,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
                                             𝑺₁::AbstractMatrix{<: Real},#first order solution
                                             M₂::second_order_auxilliary_matrices;  # aux matrices
                                             T::timings,
+                                            solver::Symbol = :bicgstab,
                                             tol::AbstractFloat = eps())
     # inspired by Levintal
 
@@ -6858,25 +6859,31 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
 
-    r1,c1,v1 = findnz(B)
-    r2,c2,v2 = findnz(C)
-    r3,c3,v3 = findnz(X)
+    B = length(B.nzval) / length(B) < .1 ? B : collect(B)
+    C = length(C.nzval) / length(C) < .1 ? C : collect(C)
+    X = length(X.nzval) / length(X) < .1 ? X : collect(X)
 
-    coordinates = Tuple{Vector{Int}, Vector{Int}}[]
-    push!(coordinates,(r1,c1))
-    push!(coordinates,(r2,c2))
-    push!(coordinates,(r3,c3))
+    𝐒₂, solved = solve_sylvester_equation(B, C, X, Val(:speedmapping))
+
+    # r1,c1,v1 = findnz(B)
+    # r2,c2,v2 = findnz(C)
+    # r3,c3,v3 = findnz(X)
+
+    # coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    # push!(coordinates,(r1,c1))
+    # push!(coordinates,(r2,c2))
+    # push!(coordinates,(r3,c3))
     
-    values = vcat(v1, v2, v3)
+    # values = vcat(v1, v2, v3)
 
-    dimensions = Tuple{Int, Int}[]
-    push!(dimensions,size(B))
-    push!(dimensions,size(C))
-    push!(dimensions,size(X))
+    # dimensions = Tuple{Int, Int}[]
+    # push!(dimensions,size(B))
+    # push!(dimensions,size(C))
+    # push!(dimensions,size(X))
 
-    solver = length(X.nzval) / length(X) < .1 ? :sylvester : :gmres
+    # solver = length(X.nzval) / length(X) < .1 ? :sylvester : :gmres
 
-    𝐒₂, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = solver, sparse_output = true)
+    # 𝐒₂, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = solver, sparse_output = true)
 
     if !solved
         return 𝐒₂, solved
@@ -7618,6 +7625,94 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
     mean_of_variables   = SS_and_pars[1:𝓂.timings.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
     
     return mean_of_variables, 𝐒₁, ∇₁, 𝐒₂, ∇₂
+end
+
+
+
+
+
+function solve_sylvester_equation(A::AbstractMatrix{Float64},
+    B::AbstractMatrix{Float64},
+    C::AbstractMatrix{Float64},
+    ::Val{:speedmapping};
+    tol::AbstractFloat = 1e-8)
+
+    CB = similar(C)
+
+    soll = speedmapping(-C; 
+            m! = (X, x) -> begin
+                ℒ.mul!(CB, x, B)
+                ℒ.mul!(X, A, CB)
+                ℒ.axpy!(1, C, X)
+            end, stabilize = false, maps_limit = 10000, tol = tol)
+    
+    𝐂 = soll.minimizer
+
+    solved = soll.converged
+
+    return -𝐂, solved
+end
+
+
+function rrule(::typeof(solve_sylvester_equation),
+                A::AbstractMatrix{Float64},
+                B::AbstractMatrix{Float64},
+                C::AbstractMatrix{Float64},
+                ::Val{:speedmapping};
+                tol::AbstractFloat = 1e-8)
+
+    P, solved = solve_sylvester_equation(A, B, C, Val(:speedmapping), tol = tol)
+
+    # pullback
+    function solve_sylvester_equation_pullback(∂P)
+        ∂C, solved = solve_sylvester_equation(A', B', ∂P[1], Val(:speedmapping), tol = tol)
+    
+        ∂A = ∂C * B' * P'
+
+        ∂B = P' * A' * ∂C
+
+        return NoTangent(), -∂A, -∂B, ∂C, NoTangent()
+    end
+    
+    return (P, solved), solve_sylvester_equation_pullback
+end
+
+
+
+function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
+                                    B::AbstractMatrix{ℱ.Dual{Z,S,N}},
+                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
+                                    ::Val{:speedmapping};
+                                    tol::AbstractFloat = 1e-8) where {Z,S,N}
+
+    # unpack: AoS -> SoA
+    Â = ℱ.value.(A)
+    B̂ = ℱ.value.(B)
+    Ĉ = ℱ.value.(C)
+
+    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, Val(:speedmapping), tol = tol)
+
+    Ã = copy(Â)
+    B̃ = copy(B̂)
+    C̃ = copy(Ĉ)
+    
+    P̃ = zeros(length(P̂), N)
+    
+    for i in 1:N
+        Ã .= ℱ.partials.(A, i)
+        B̃ .= ℱ.partials.(B, i)
+        C̃ .= ℱ.partials.(C, i)
+
+        X = Ã * P̂ * B̂ + Â * P̂ * B̃ + C̃
+
+        P, solved = solve_sylvester_equation(Â, B̂, X, Val(:speedmapping), tol = tol)
+
+        P̃[:,i] = vec(P)
+    end
+    
+    return reshape(map(vec(P̂), eachrow(P̃)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end, size(P̂)), solved
 end
 
 
@@ -8392,13 +8487,13 @@ end
 
 
 # Specialization for :kalman filter
-function calculate_loglikelihood(::Val{:kalman}, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations)
+function calculate_loglikelihood(::Val{:kalman}, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm)
     return calculate_kalman_filter_loglikelihood(observables, 𝐒, data_in_deviations, TT, presample_periods = presample_periods, initial_covariance = initial_covariance)
 end
 
 # Specialization for :inversion filter
-function calculate_loglikelihood(::Val{:inversion}, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations)
-    return calculate_inversion_filter_loglikelihood(state, 𝐒, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods)
+function calculate_loglikelihood(::Val{:inversion}, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm)
+    return calculate_inversion_filter_loglikelihood(state, 𝐒, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods, filter_algorithm = filter_algorithm)
 end
 
 function get_non_stochastic_steady_state(𝓂::ℳ, parameter_values::Vector{S}; verbose::Bool = false, tol::AbstractFloat = 1e-12)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
@@ -9376,7 +9471,8 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
-                                                    presample_periods::Int = 0)
+                                                    presample_periods::Int = 0,
+                                                    filter_algorithm::Symbol = :fixed_point)
     if length(𝐒) == 2 && length(state) == 1 # second order
         function second_order_state_update(state::Vector{U}, shock::Vector{S}) where {U <: Real,S <: Real}
         # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
@@ -9607,7 +9703,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
         end
 
         # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
-        x, matched = find_shocks(Val(:fixed_point), 
+        x, matched = find_shocks(Val(filter_algorithm), 
                                     kron_buffer,
                                     kron_buffer2,
                                     J,
