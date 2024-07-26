@@ -7703,14 +7703,14 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         B̃ .= ℱ.partials.(B, i)
         C̃ .= ℱ.partials.(C, i)
 
-        X = Ã * P̂ * B̂ + Â * P̂ * B̃ + C̃
+        X = - Ã * P̂ * B̂ - Â * P̂ * B̃ + C̃
 
         P, solved = solve_sylvester_equation(Â, B̂, X, Val(:speedmapping), tol = tol)
 
         P̃[:,i] = vec(P)
     end
     
-    return reshape(map(vec(P̂), eachrow(P̃)) do v, p
+    return reshape(map(P̂, eachrow(P̃)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
     end, size(P̂)), solved
 end
