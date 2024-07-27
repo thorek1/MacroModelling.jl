@@ -9602,7 +9602,8 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
-                                                    presample_periods::Int = 0)
+                                                    presample_periods::Int = 0,
+                                                    filter_algorithm::Symbol = :fixed_point)
     # first order
     state = copy(state[1])
 
@@ -9695,7 +9696,8 @@ end
 
 
 
-function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector{Vector{Float64}}, 𝐒::Matrix{Float64}, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, T::timings; warmup_iterations::Int = 0, presample_periods::Int = 0)
+function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector{Vector{Float64}}, 𝐒::Matrix{Float64}, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, T::timings; warmup_iterations::Int = 0, presample_periods::Int = 0,
+                                                    filter_algorithm::Symbol = :fixed_point)
     # first order
     state = copy(state[1])
 
