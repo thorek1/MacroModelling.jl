@@ -9980,7 +9980,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     𝐒¹⁻ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
-    inv𝐒¹ᵉ = inv(ℒ.svd(𝐒[1][cond_var_idx,end-T.nExo+1:end]))
+    inv𝐒¹ᵉ = ℒ.pinv(𝐒[1][cond_var_idx,end-T.nExo+1:end])
 
     𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,var_vol²_idxs]
     𝐒²⁻ = 𝐒[2][cond_var_idx,var²_idxs]
