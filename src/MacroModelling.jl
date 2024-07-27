@@ -7640,7 +7640,7 @@ end
 
 
 function solve_sylvester_equation(A::DenseMatrix{Float64},
-    B::DenseMatrix{Float64},
+    B::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
     C::DenseMatrix{Float64},
     ::Val{:sylvester};
     tol::AbstractFloat = 1e-12)
@@ -7654,7 +7654,7 @@ end
 
 function solve_sylvester_equation(A::DenseMatrix{Float64},
     B::AbstractMatrix{Float64},
-    C::DenseMatrix{Float64},
+    C::AbstractMatrix{Float64},
     ::Val{:bicgstab};
     tol::Float64 = 1e-12)
 
@@ -7682,7 +7682,7 @@ end
 
 function solve_sylvester_equation(A::DenseMatrix{Float64},
     B::AbstractMatrix{Float64},
-    C::DenseMatrix{Float64},
+    C::AbstractMatrix{Float64},
     ::Val{:gmres};
     tol::Float64 = 1e-12)
 
@@ -7797,7 +7797,7 @@ end
 function rrule(::typeof(solve_sylvester_equation),
     A::DenseMatrix{Float64},
     B::AbstractMatrix{Float64},
-    C::DenseMatrix{Float64},
+    C::AbstractMatrix{Float64},
     ::Val{:gmres};
     tol::AbstractFloat = 1e-12)
 
@@ -7820,7 +7820,7 @@ end
 function rrule(::typeof(solve_sylvester_equation),
     A::DenseMatrix{Float64},
     B::AbstractMatrix{Float64},
-    C::DenseMatrix{Float64},
+    C::AbstractMatrix{Float64},
     ::Val{:bicgstab};
     tol::AbstractFloat = 1e-12)
 
@@ -7932,7 +7932,7 @@ end
 
 function solve_sylvester_equation(  A::DenseMatrix{ℱ.Dual{Z,S,N}},
                                     B::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::DenseMatrix{ℱ.Dual{Z,S,N}},
+                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     ::Val{:gmres};
                                     tol::AbstractFloat = 1e-12) where {Z,S,N}
 
@@ -7970,7 +7970,7 @@ end
 
 function solve_sylvester_equation(  A::DenseMatrix{ℱ.Dual{Z,S,N}},
                                     B::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::DenseMatrix{ℱ.Dual{Z,S,N}},
+                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     ::Val{:bicgstab};
                                     tol::AbstractFloat = 1e-12) where {Z,S,N}
 
