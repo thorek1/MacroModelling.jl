@@ -6870,6 +6870,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
 
     𝐒₂, solved = solve_sylvester_equation(B, C, X, Val(:bicgstab))
 
+    𝐒₂ = sparse(𝐒₂)
+
     # r1,c1,v1 = findnz(B)
     # r2,c2,v2 = findnz(C)
     # r3,c3,v3 = findnz(X)
@@ -7008,6 +7010,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     X = length(X.nzval) / length(X) < .1 ? X : collect(X)
 
     𝐒₃, solved = solve_sylvester_equation(B, C, X, Val(:bicgstab))
+    
+    𝐒₃ = sparse(𝐒₃)
 
     if !solved
         return 𝐒₃, solved
