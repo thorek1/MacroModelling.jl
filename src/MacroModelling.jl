@@ -24,7 +24,7 @@ import Polyester
 import NLopt
 import Optim, LineSearches
 # import Zygote
-import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, sparse! #, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
+import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse! #, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import LinearAlgebra: mul!
 # import Octavian: matmul!
@@ -94,6 +94,8 @@ const ParameterType = Union{Nothing,
 # Imports
 include("common_docstrings.jl")
 include("structures.jl")
+include("sylvester.jl")
+include("lyapunov.jl")
 include("macros.jl")
 include("get_functions.jl")
 include("dynare.jl")
@@ -5736,6 +5738,7 @@ function covariance_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, p
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
     convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_covariance(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
+    # convert(Vector{ℱ.Dual{Z,S,N}},ℒ.diag(calculate_covariance(params, 𝓂, verbose = verbose)[1]))
 end
 
 
@@ -5745,6 +5748,7 @@ function covariance_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameter
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
     convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_covariance(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
+    # convert(Vector{ℱ.Dual{Z,S,N}},ℒ.diag(calculate_covariance(params, 𝓂, verbose = verbose)[1]))
 end
 
 
@@ -6891,9 +6895,9 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
 
     # 𝐒₂, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = solver, sparse_output = true)
 
-    B = length(B.nzval) / length(B) < .1 ? B : collect(B)
-    C = length(C.nzval) / length(C) < .1 ? C : collect(C)
-    X = length(X.nzval) / length(X) < .1 ? X : collect(X)
+    B = sylvester_algorithm ≠ :sylvester && length(B.nzval) / length(B) < .1 ? B : collect(B)
+    C = sylvester_algorithm ≠ :sylvester && length(C.nzval) / length(C) < .1 ? C : collect(C)
+    X = sylvester_algorithm ≠ :sylvester && length(X.nzval) / length(X) < .1 ? X : collect(X)
 
     𝐒₂, solved = solve_sylvester_equation(B, C, X, Val(sylvester_algorithm))
 
@@ -7013,9 +7017,9 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     # 𝐒₃, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :gmres, sparse_output = true)
 
-    B = length(B.nzval) / length(B) < .1 ? B : collect(B)
-    C = length(C.nzval) / length(C) < .1 ? C : collect(C)
-    X = length(X.nzval) / length(X) < .1 ? X : collect(X)
+    B = sylvester_algorithm ≠ :sylvester && length(B.nzval) / length(B) < .1 ? B : collect(B)
+    C = sylvester_algorithm ≠ :sylvester && length(C.nzval) / length(C) < .1 ? C : collect(C)
+    X = sylvester_algorithm ≠ :sylvester && length(X.nzval) / length(X) < .1 ? X : collect(X)
 
     𝐒₃, solved = solve_sylvester_equation(B, C, X, Val(sylvester_algorithm))
     
@@ -7565,16 +7569,18 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
     
     CC = C * C'
 
-    coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    # coordinates = Tuple{Vector{Int}, Vector{Int}}[]
     
-    dimensions = Tuple{Int, Int}[]
-    push!(dimensions,size(A))
-    push!(dimensions,size(CC))
+    # dimensions = Tuple{Int, Int}[]
+    # push!(dimensions,size(A))
+    # push!(dimensions,size(CC))
     
-    values = vcat(vec(A), vec(collect(-CC)))
+    # values = vcat(vec(A), vec(collect(-CC)))
 
-    covar_raw, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+    # covar_raw, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
 
+    covar_raw, _ = solve_lyapunov_equation(A, -CC, Val(:doubling))
+# println(covar_raw)
     return covar_raw, sol , ∇₁, SS_and_pars
 end
 
@@ -7648,452 +7654,6 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
     mean_of_variables   = SS_and_pars[1:𝓂.timings.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
     
     return mean_of_variables, 𝐒₁, ∇₁, 𝐒₂, ∇₂
-end
-
-
-function solve_sylvester_equation(A::DenseMatrix{Float64},
-    B::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-    C::DenseMatrix{Float64},
-    ::Val{:sylvester};
-    tol::AbstractFloat = 1e-12)
-    𝐂 = MatrixEquations.sylvd(-A, B, -C)
-    
-    solved = isapprox(𝐂, A * 𝐂 * B - C, rtol = tol)
-
-    return 𝐂, solved # return info on convergence
-end
-
-
-function solve_sylvester_equation(A::DenseMatrix{Float64},
-    B::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:bicgstab};
-    tol::Float64 = 1e-12)
-
-    tmp̄ = similar(C)
-    𝐗 = similar(C)
-
-    function sylvester!(sol,𝐱)
-        copyto!(𝐗, 𝐱)
-        ℒ.mul!(tmp̄, 𝐗, B)
-        ℒ.mul!(𝐗, A, tmp̄, 1, -1)
-        copyto!(sol, 𝐗)
-    end
-
-    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
-
-    𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol)
-
-    copyto!(𝐗, 𝐂)
-
-    solved = info.solved
-
-    return 𝐗, solved, solved # return info on convergence
-end
-
-
-function solve_sylvester_equation(A::DenseMatrix{Float64},
-    B::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:gmres};
-    tol::Float64 = 1e-12)
-
-    tmp̄ = similar(C)
-    𝐗 = similar(C)
-
-    function sylvester!(sol,𝐱)
-        copyto!(𝐗, 𝐱)
-        # 𝐗 = @view reshape(𝐱, size(𝐗))
-        ℒ.mul!(tmp̄, 𝐗, B)
-        ℒ.mul!(𝐗, A, tmp̄, 1, -1)
-        copyto!(sol, 𝐗)
-        # sol = @view reshape(𝐗, size(sol))
-    end
-
-    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
-
-    𝐂, info = Krylov.gmres(sylvester, [vec(C);],rtol = tol)
-
-    copyto!(𝐗, 𝐂)
-
-    solved = info.solved
-
-    return 𝐗, solved # return info on convergence
-end
-
-
-function solve_sylvester_equation(A::AbstractMatrix{Float64},
-    B::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:iterative};
-    tol::AbstractFloat = 1e-14)
-
-    𝐂  = copy(C)
-    𝐂¹ = copy(C)
-    𝐂B = copy(C)
-    
-    max_iter = 10000
-    
-    for i in 1:max_iter
-        ℒ.mul!(𝐂B, 𝐂, B)
-        ℒ.mul!(𝐂¹, A, 𝐂B)
-        ℒ.axpy!(-1, C, 𝐂¹)
-    
-        if i % 10 == 0
-            if isapprox(𝐂¹, 𝐂, rtol = tol)
-                break
-            end
-        end
-    
-        copyto!(𝐂, 𝐂¹)
-    end
-
-    ℒ.mul!(𝐂B, 𝐂, B)
-    ℒ.mul!(𝐂¹, A, 𝐂B)
-    ℒ.axpy!(-1, C, 𝐂¹)
-
-    solved = isapprox(𝐂¹, 𝐂, rtol = tol)
-
-    return 𝐂, solved # return info on convergence
-end
-
-
-function solve_sylvester_equation(A::AbstractMatrix{Float64},
-    B::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:speedmapping};
-    tol::AbstractFloat = 1e-12)
-
-    if !(C isa DenseMatrix)
-        C = collect(C)
-    end
-
-    CB = similar(C)
-
-    soll = speedmapping(-C; 
-            m! = (X, x) -> begin
-                ℒ.mul!(CB, x, B)
-                ℒ.mul!(X, A, CB)
-                ℒ.axpy!(1, C, X)
-            end, stabilize = false, maps_limit = 10000, tol = tol)
-    
-    𝐂 = soll.minimizer
-
-    solved = soll.converged
-
-    return -𝐂, solved
-end
-
-
-function rrule(::typeof(solve_sylvester_equation),
-                A::AbstractMatrix{Float64},
-                B::AbstractMatrix{Float64},
-                C::AbstractMatrix{Float64},
-                ::Val{:speedmapping};
-                tol::AbstractFloat = 1e-12)
-
-    P, solved = solve_sylvester_equation(A, B, C, Val(:speedmapping), tol = tol)
-
-    # pullback
-    function solve_sylvester_equation_pullback(∂P)
-        ∂C, solved = solve_sylvester_equation(A', B', ∂P[1], Val(:speedmapping), tol = tol)
-    
-        ∂A = ∂C * B' * P'
-
-        ∂B = P' * A' * ∂C
-
-        return NoTangent(), -∂A, -∂B, ∂C, NoTangent()
-    end
-    
-    return (P, solved), solve_sylvester_equation_pullback
-end
-
-
-
-function rrule(::typeof(solve_sylvester_equation),
-    A::DenseMatrix{Float64},
-    B::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:gmres};
-    tol::AbstractFloat = 1e-12)
-
-    P, solved = solve_sylvester_equation(A, B, C, Val(:gmres), tol = tol)
-
-    # pullback
-    function solve_sylvester_equation_pullback(∂P)
-        ∂C, solved = solve_sylvester_equation(A', B', ∂P[1], Val(:gmres), tol = tol)
-
-        ∂A = ∂C * B' * P'
-
-        ∂B = P' * A' * ∂C
-
-        return NoTangent(), -∂A, -∂B, ∂C, NoTangent()
-    end
-
-    return (P, solved), solve_sylvester_equation_pullback
-end
-
-function rrule(::typeof(solve_sylvester_equation),
-    A::DenseMatrix{Float64},
-    B::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:bicgstab};
-    tol::AbstractFloat = 1e-12)
-
-    P, solved = solve_sylvester_equation(A, B, C, Val(:bicgstab), tol = tol)
-
-    # pullback
-    function solve_sylvester_equation_pullback(∂P)
-        ∂C, solved = solve_sylvester_equation(A', B', ∂P[1], Val(:bicgstab), tol = tol)
-
-        ∂A = ∂C * B' * P'
-
-        ∂B = P' * A' * ∂C
-
-        return NoTangent(), -∂A, -∂B, ∂C, NoTangent()
-    end
-
-    return (P, solved), solve_sylvester_equation_pullback
-end
-
-
-
-function rrule(::typeof(solve_sylvester_equation),
-    A::AbstractMatrix{Float64},
-    B::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:sylvester};
-    tol::AbstractFloat = 1e-12)
-
-    P, solved = solve_sylvester_equation(A, B, C, Val(:sylvester), tol = tol)
-
-    # pullback
-    function solve_sylvester_equation_pullback(∂P)
-        ∂C, solved = solve_sylvester_equation(A', B', ∂P[1], Val(:sylvester), tol = tol)
-
-        ∂A = ∂C * B' * P'
-
-        ∂B = P' * A' * ∂C
-
-        return NoTangent(), -∂A, -∂B, ∂C, NoTangent()
-    end
-
-    return (P, solved), solve_sylvester_equation_pullback
-end
-
-
-
-function rrule(::typeof(solve_sylvester_equation),
-    A::AbstractMatrix{Float64},
-    B::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:iterative};
-    tol::AbstractFloat = 1e-14)
-
-    P, solved = solve_sylvester_equation(A, B, C, Val(:iterative), tol = tol)
-
-    # pullback
-    function solve_sylvester_equation_pullback(∂P)
-        ∂C, solved = solve_sylvester_equation(A', B', ∂P[1], Val(:iterative), tol = tol)
-
-        ∂A = ∂C * B' * P'
-
-        ∂B = P' * A' * ∂C
-
-        return NoTangent(), -∂A, -∂B, ∂C, NoTangent()
-    end
-
-    return (P, solved), solve_sylvester_equation_pullback
-end
-
-
-function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    B::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    ::Val{:speedmapping};
-                                    tol::AbstractFloat = 1e-12) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    B̂ = ℱ.value.(B)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, Val(:speedmapping), tol = tol)
-
-    Ã = copy(Â)
-    B̃ = copy(B̂)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        B̃ .= ℱ.partials.(B, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = - Ã * P̂ * B̂ - Â * P̂ * B̃ + C̃
-
-        P, solved = solve_sylvester_equation(Â, B̂, X, Val(:speedmapping), tol = tol)
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
-
-
-
-
-function solve_sylvester_equation(  A::DenseMatrix{ℱ.Dual{Z,S,N}},
-                                    B::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    ::Val{:gmres};
-                                    tol::AbstractFloat = 1e-12) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    B̂ = ℱ.value.(B)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, Val(:gmres), tol = tol)
-
-    Ã = copy(Â)
-    B̃ = copy(B̂)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        B̃ .= ℱ.partials.(B, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = - Ã * P̂ * B̂ - Â * P̂ * B̃ + C̃
-
-        P, solved = solve_sylvester_equation(Â, B̂, X, Val(:gmres), tol = tol)
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
-
-
-
-function solve_sylvester_equation(  A::DenseMatrix{ℱ.Dual{Z,S,N}},
-                                    B::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    ::Val{:bicgstab};
-                                    tol::AbstractFloat = 1e-12) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    B̂ = ℱ.value.(B)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, Val(:bicgstab), tol = tol)
-
-    Ã = copy(Â)
-    B̃ = copy(B̂)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        B̃ .= ℱ.partials.(B, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = - Ã * P̂ * B̂ - Â * P̂ * B̃ + C̃
-
-        P, solved = solve_sylvester_equation(Â, B̂, X, Val(:bicgstab), tol = tol)
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
-
-
-
-function solve_sylvester_equation(  A::DenseMatrix{ℱ.Dual{Z,S,N}},
-                                    B::DenseMatrix{ℱ.Dual{Z,S,N}},
-                                    C::DenseMatrix{ℱ.Dual{Z,S,N}},
-                                    ::Val{:sylvester};
-                                    tol::AbstractFloat = 1e-12) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    B̂ = ℱ.value.(B)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, Val(:sylvester), tol = tol)
-
-    Ã = copy(Â)
-    B̃ = copy(B̂)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        B̃ .= ℱ.partials.(B, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = - Ã * P̂ * B̂ - Â * P̂ * B̃ + C̃
-
-        P, solved = solve_sylvester_equation(Â, B̂, X, Val(:sylvester), tol = tol)
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
-
-
-
-function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    B::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    ::Val{:iterative};
-                                    tol::AbstractFloat = 1e-14) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    B̂ = ℱ.value.(B)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, Val(:iterative), tol = tol)
-
-    Ã = copy(Â)
-    B̃ = copy(B̂)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        B̃ .= ℱ.partials.(B, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = - Ã * P̂ * B̂ - Â * P̂ * B̃ + C̃
-
-        P, solved = solve_sylvester_equation(Â, B̂, X, Val(:iterative), tol = tol)
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
 end
 
 
@@ -8564,19 +8124,25 @@ function calculate_second_order_moments(
 
     C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
 
-    r1,c1,v1 = findnz(sparse(ŝ_to_ŝ₂))
+    # r1,c1,v1 = findnz(sparse(ŝ_to_ŝ₂))
 
-    coordinates = Tuple{Vector{Int}, Vector{Int}}[]
-    push!(coordinates,(r1,c1))
+    # coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+    # push!(coordinates,(r1,c1))
 
-    dimensions = Tuple{Int, Int}[]
-    push!(dimensions,size(ŝ_to_ŝ₂))
-    push!(dimensions,size(C))
+    # dimensions = Tuple{Int, Int}[]
+    # push!(dimensions,size(ŝ_to_ŝ₂))
+    # push!(dimensions,size(C))
     
-    values = vcat(v1, vec(collect(-C)))
+    # values = vcat(v1, vec(collect(-C)))
 
-    Σᶻ₂, info = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    
+    # Σᶻ₂, info = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+
+    Σᶻ₂, info = solve_lyapunov_equation((ŝ_to_ŝ₂), (-C), Val(:speedmapping))
+
+    # if Σᶻ₂ isa DenseMatrix
+    #     Σᶻ₂ = sparse(Σᶻ₂)
+    # end
+
     Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
 
     autocorr_tmp = ŝ_to_ŝ₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_ŝ₂ * Γ₂ * ê_to_y₂'
@@ -8796,18 +8362,20 @@ function calculate_third_order_moments(parameters::Vector{T},
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
         droptol!(C, eps())
 
-        r1,c1,v1 = findnz(ŝ_to_ŝ₃)
+        # r1,c1,v1 = findnz(ŝ_to_ŝ₃)
 
-        coordinates = Tuple{Vector{Int}, Vector{Int}}[]
-        push!(coordinates,(r1,c1))
+        # coordinates = Tuple{Vector{Int}, Vector{Int}}[]
+        # push!(coordinates,(r1,c1))
         
-        dimensions = Tuple{Int, Int}[]
-        push!(dimensions,size(ŝ_to_ŝ₃))
-        push!(dimensions,size(C))
+        # dimensions = Tuple{Int, Int}[]
+        # push!(dimensions,size(ŝ_to_ŝ₃))
+        # push!(dimensions,size(C))
         
-        values = vcat(v1, vec(collect(-C)))
+        # values = vcat(v1, vec(collect(-C)))
 
-        Σᶻ₃, info = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+        # Σᶻ₃, info = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+
+        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, -C, Val(:doubling))
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
@@ -9041,13 +8609,15 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     𝐁 = B * B'
 
     # Gaussian Prior
-    coordinates = @ignore_derivatives Tuple{Vector{Int}, Vector{Int}}[]
+    # coordinates = @ignore_derivatives Tuple{Vector{Int}, Vector{Int}}[]
     
-    dimensions = @ignore_derivatives [size(A),size(𝐁)]
+    # dimensions = @ignore_derivatives [size(A),size(𝐁)]
     
-    values = vcat(vec(A), vec(collect(-𝐁)))
+    # values = vcat(vec(A), vec(collect(-𝐁)))
 
-    P = get_initial_covariance(Val(initial_covariance), values, coordinates, dimensions)
+    # P = get_initial_covariance(Val(initial_covariance), values, coordinates, dimensions)
+
+    P = get_initial_covariance(Val(initial_covariance), A, -𝐁)
 
     return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods)
 end
@@ -9058,6 +8628,12 @@ function get_initial_covariance(::Val{:theoretical}, values::Vector{S}, coordina
     P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
     return P
 end
+
+function get_initial_covariance(::Val{:theoretical}, A::S, B::S)::AbstractMatrix{S} where S <: Real
+    P, _ = solve_lyapunov_equation(A, B, Val(:doubling))
+    return P
+end
+
 
 # Specialization for :diagonal
 function get_initial_covariance(::Val{:diagonal}, values::Vector{S}, coordinates, dimensions)::Matrix{S} where S <: Real
