@@ -688,21 +688,22 @@ end
 
 @testset verbose = true "μ, σ + μ, σ derivatives" begin
     # Test diff of SS and SSS
+    # WARNING: when debugging be aware that FIniteDifferences changes the parameters permanently. if you check after running FinDiff you need to use the old initial parameters
     include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
 
-    μdiff = get_mean(m)
+    parameters = copy(m.parameter_values)
 
-    μdiff2 = get_mean(m, algorithm = :pruned_second_order)
+    μdiff = get_mean(m, parameters = parameters)
 
-    σdiff = get_std(m)
+    μdiff2 = get_mean(m, parameters = parameters, algorithm = :pruned_second_order)
 
-    σdiff2 = get_std(m, algorithm = :pruned_second_order)
+    σdiff = get_std(m, parameters = parameters)
 
-    σdiff3 = get_std(m, algorithm = :pruned_third_order)
+    σdiff2 = get_std(m, parameters = parameters, algorithm = :pruned_second_order)
+
+    σdiff3 = get_std(m, parameters = parameters, algorithm = :pruned_third_order)
 
     𝓂 = m
-
-    parameters = copy(m.parameter_values)
 
     μfinitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
             x -> collect(get_mean(m; parameters = x, derivatives = false)), 
