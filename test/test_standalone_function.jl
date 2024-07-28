@@ -703,8 +703,6 @@ end
 
     σdiff3 = get_std(m, parameters = parameters, algorithm = :pruned_third_order)
 
-    𝓂 = m
-
     μfinitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
             x -> collect(get_mean(m; parameters = x, derivatives = false)), 
             parameters)[1]
@@ -738,7 +736,6 @@ end
     @test isapprox(σ3finitediff, σdiff3[:,2:end], rtol = 1e-6)
 end
 m = nothing
-𝓂 = nothing
 
 
 
