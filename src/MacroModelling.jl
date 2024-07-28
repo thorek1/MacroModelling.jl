@@ -4288,7 +4288,7 @@ second_order_stochastic_steady_state_iterative_solution = ℐ.ImplicitFunction(s
                                                                                     linear_solver = ℐ.DirectLinearSolver())
 
 
-function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
+function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, sylvester_algorithm::Symbol = :gmres, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -4307,7 +4307,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm)
 
     if !solved2
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
@@ -4434,7 +4434,12 @@ function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁�
 end
 
 
-function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
+function calculate_third_order_stochastic_steady_state( parameters::Vector{M}, 
+                                                        𝓂::ℳ; 
+                                                        verbose::Bool = false, 
+                                                        pruning::Bool = false, 
+                                                        sylvester_algorithm::Symbol = :gmres, 
+                                                        tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -4453,7 +4458,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol, sylvester_algorithm = sylvester_algorithm)
 
     if !solved2
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
@@ -4461,7 +4466,7 @@ function calculate_third_order_stochastic_steady_state(parameters::Vector{M}, �
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
             
-    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, tol = tol)
 
     if !solved3
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
@@ -5746,20 +5751,20 @@ end
 
 
 # helper for get functions
-function covariance_parameter_derivatives_second_order(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+function covariance_parameter_derivatives_second_order(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; sylvester_algorithm::Symbol = :gmres,verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_moments(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_moments(params, 𝓂, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64)))
 end
 
 
 # helper for get functions
-function covariance_parameter_derivatives_second_order(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+function covariance_parameter_derivatives_second_order(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; sylvester_algorithm::Symbol = :gmres,verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_moments(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_moments(params, 𝓂, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -5769,11 +5774,12 @@ function covariance_parameter_derivatives_third_order(parameters::Vector{ℱ.Dua
                                                         parameters_idx, 
                                                         𝓂::ℳ;
                                                         dependencies_tol::AbstractFloat = 1e-12,
+                                                        sylvester_algorithm::Symbol = :gmres,
                                                         verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, dependencies_tol = dependencies_tol, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -5783,11 +5789,12 @@ function covariance_parameter_derivatives_third_order(parameters::ℱ.Dual{Z,S,N
                                                         parameters_idx::Int, 
                                                         𝓂::ℳ; 
                                                         dependencies_tol::AbstractFloat = 1e-12,
+                                                        sylvester_algorithm::Symbol = :gmres,
                                                         verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, dependencies_tol = dependencies_tol, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, dependencies_tol = dependencies_tol, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -6817,7 +6824,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
                                             𝑺₁::AbstractMatrix{<: Real},#first order solution
                                             M₂::second_order_auxilliary_matrices;  # aux matrices
                                             T::timings,
-                                            solver::Symbol = :bicgstab,
+                                            sylvester_algorithm::Symbol = :gmres,
                                             tol::AbstractFloat = eps())
     # inspired by Levintal
 
@@ -6864,14 +6871,6 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
 
-    B = length(B.nzval) / length(B) < .1 ? B : collect(B)
-    C = length(C.nzval) / length(C) < .1 ? C : collect(C)
-    X = length(X.nzval) / length(X) < .1 ? X : collect(X)
-
-    𝐒₂, solved = solve_sylvester_equation(B, C, X, Val(:bicgstab))
-
-    𝐒₂ = sparse(𝐒₂)
-
     # r1,c1,v1 = findnz(B)
     # r2,c2,v2 = findnz(C)
     # r3,c3,v3 = findnz(X)
@@ -6892,6 +6891,14 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
 
     # 𝐒₂, solved = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = solver, sparse_output = true)
 
+    B = length(B.nzval) / length(B) < .1 ? B : collect(B)
+    C = length(C.nzval) / length(C) < .1 ? C : collect(C)
+    X = length(X.nzval) / length(X) < .1 ? X : collect(X)
+
+    𝐒₂, solved = solve_sylvester_equation(B, C, X, Val(sylvester_algorithm))
+
+    𝐒₂ = sparse(𝐒₂)
+
     if !solved
         return 𝐒₂, solved
     end
@@ -6911,6 +6918,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxilliary_matrices;  # aux matrices third order
                                             T::timings,
+                                            sylvester_algorithm::Symbol = :gmres,
                                             tol::AbstractFloat = eps())
     # inspired by Levintal
 
@@ -7009,7 +7017,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     C = length(C.nzval) / length(C) < .1 ? C : collect(C)
     X = length(X.nzval) / length(X) < .1 ? X : collect(X)
 
-    𝐒₃, solved = solve_sylvester_equation(B, C, X, Val(:bicgstab))
+    𝐒₃, solved = solve_sylvester_equation(B, C, X, Val(sylvester_algorithm))
     
     𝐒₃ = sparse(𝐒₃)
 
@@ -7573,7 +7581,7 @@ end
 
 
 
-function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false, algorithm = :pruned_second_order, tol::Float64 = eps()) where T <: Real
+function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false, algorithm = :pruned_second_order, sylvester_algorithm::Symbol = :gmres, tol::Float64 = eps()) where T <: Real
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean only available for first order, pruned second and third order perturbation solutions."
 
@@ -7589,7 +7597,7 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
     
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, tol = tol)
 
     nᵉ = 𝓂.timings.nExo
     nˢ = 𝓂.timings.nPast_not_future_and_mixed
@@ -7717,8 +7725,8 @@ end
 function solve_sylvester_equation(A::AbstractMatrix{Float64},
     B::AbstractMatrix{Float64},
     C::AbstractMatrix{Float64},
-    ::Val{:iteration};
-    tol::AbstractFloat = 1e-12)
+    ::Val{:iterative};
+    tol::AbstractFloat = 1e-14)
 
     𝐂  = copy(C)
     𝐂¹ = copy(C)
@@ -7754,7 +7762,11 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
     B::AbstractMatrix{Float64},
     C::AbstractMatrix{Float64},
     ::Val{:speedmapping};
-    tol::AbstractFloat = 1e-8)
+    tol::AbstractFloat = 1e-12)
+
+    if !(C isa DenseMatrix)
+        C = collect(C)
+    end
 
     CB = similar(C)
 
@@ -7778,7 +7790,7 @@ function rrule(::typeof(solve_sylvester_equation),
                 B::AbstractMatrix{Float64},
                 C::AbstractMatrix{Float64},
                 ::Val{:speedmapping};
-                tol::AbstractFloat = 1e-8)
+                tol::AbstractFloat = 1e-12)
 
     P, solved = solve_sylvester_equation(A, B, C, Val(:speedmapping), tol = tol)
 
@@ -7875,14 +7887,14 @@ function rrule(::typeof(solve_sylvester_equation),
     A::AbstractMatrix{Float64},
     B::AbstractMatrix{Float64},
     C::AbstractMatrix{Float64},
-    ::Val{:iteration};
-    tol::AbstractFloat = 1e-12)
+    ::Val{:iterative};
+    tol::AbstractFloat = 1e-14)
 
-    P, solved = solve_sylvester_equation(A, B, C, Val(:iteration), tol = tol)
+    P, solved = solve_sylvester_equation(A, B, C, Val(:iterative), tol = tol)
 
     # pullback
     function solve_sylvester_equation_pullback(∂P)
-        ∂C, solved = solve_sylvester_equation(A', B', ∂P[1], Val(:iteration), tol = tol)
+        ∂C, solved = solve_sylvester_equation(A', B', ∂P[1], Val(:iterative), tol = tol)
 
         ∂A = ∂C * B' * P'
 
@@ -7899,7 +7911,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     B::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     ::Val{:speedmapping};
-                                    tol::AbstractFloat = 1e-8) where {Z,S,N}
+                                    tol::AbstractFloat = 1e-12) where {Z,S,N}
 
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
@@ -8051,15 +8063,15 @@ end
 function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     B::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    ::Val{:iteration};
-                                    tol::AbstractFloat = 1e-12) where {Z,S,N}
+                                    ::Val{:iterative};
+                                    tol::AbstractFloat = 1e-14) where {Z,S,N}
 
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
     B̂ = ℱ.value.(B)
     Ĉ = ℱ.value.(C)
 
-    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, Val(:iteration), tol = tol)
+    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, Val(:iterative), tol = tol)
 
     Ã = copy(Â)
     B̃ = copy(B̂)
@@ -8074,7 +8086,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         X = - Ã * P̂ * B̂ - Â * P̂ * B̃ + C̃
 
-        P, solved = solve_sylvester_equation(Â, B̂, X, Val(:iteration), tol = tol)
+        P, solved = solve_sylvester_equation(Â, B̂, X, Val(:iterative), tol = tol)
 
         P̃[:,i] = vec(P)
     end
@@ -8174,20 +8186,32 @@ function solve_matrix_equation_forward(ABC::Vector{Float64};
     elseif solver == :iterative # this can still be optimised
         iter = 1
         change = 1
-        𝐂  = C
-        𝐂¹ = C
-        while change > eps(Float32) && iter < 10000
-            𝐂¹ = A * 𝐂 * B - C
-            if !(𝐂¹ isa DenseMatrix)
-                droptol!(𝐂¹, eps())
+
+        𝐂  = copy(C)
+        𝐂¹ = copy(C)
+        𝐂B = copy(C)
+        
+        max_iter = 10000
+        
+        for i in 1:max_iter
+            ℒ.mul!(𝐂B, 𝐂, B)
+            ℒ.mul!(𝐂¹, A, 𝐂B)
+            ℒ.axpy!(-1, C, 𝐂¹)
+        
+            if i % 10 == 0
+                if isapprox(𝐂¹, 𝐂, rtol = 1e-14)
+                    break
+                end
             end
-            if iter > 500
-                change = maximum(abs, 𝐂¹ - 𝐂)
-            end
-            𝐂 = 𝐂¹
-            iter += 1
+        
+            copyto!(𝐂, 𝐂¹)
         end
-        solved = change < eps(Float32)
+
+        ℒ.mul!(𝐂B, 𝐂, B)
+        ℒ.mul!(𝐂¹, A, 𝐂B)
+        ℒ.axpy!(-1, C, 𝐂¹)
+
+        solved = isapprox(𝐂¹, 𝐂, rtol = 1e-12)
     elseif solver == :doubling # cant use higher tol because rersults get weird in some cases
         iter = 1
         change = 1
@@ -8436,6 +8460,7 @@ function calculate_second_order_moments(
     𝓂::ℳ; 
     covariance::Bool = true,
     verbose::Bool = false, 
+    sylvester_algorithm::Symbol = :gmres,
     tol::AbstractFloat = eps())
 
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars = calculate_covariance(parameters, 𝓂, verbose = verbose)
@@ -8470,7 +8495,7 @@ function calculate_second_order_moments(
     # second order
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol, sylvester_algorithm = sylvester_algorithm)
 
     s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
     e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
@@ -8572,9 +8597,10 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             autocorrelation_periods::U = 1:5,
                                             verbose::Bool = false, 
                                             dependencies_tol::AbstractFloat = 1e-12, 
+                                            sylvester_algorithm::Symbol = :gmres,
                                             tol::AbstractFloat = eps()) where {U, T <: Real}
 
-    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(parameters, 𝓂, verbose = verbose)
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(parameters, 𝓂, verbose = verbose, sylvester_algorithm = sylvester_algorithm)
 
     if !covariance && !autocorrelation
         return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
@@ -8584,7 +8610,10 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
-                                                𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
+                                                𝓂.solution.perturbation.third_order_auxilliary_matrices; 
+                                                T = 𝓂.timings, 
+                                                sylvester_algorithm = sylvester_algorithm,
+                                                tol = tol)
 
     orders = determine_efficient_order(𝐒₁, 𝓂.timings, observables, tol = dependencies_tol)
 
@@ -9980,7 +10009,18 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     𝐒¹⁻ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
-    inv𝐒¹ᵉ = ℒ.pinv(𝐒[1][cond_var_idx,end-T.nExo+1:end])
+
+    if length(cond_var_idx) == T.nExo
+        𝐒¹ᵉfact = RF.lu(𝐒[1][cond_var_idx,end-T.nExo+1:end], check = false)
+
+        if !ℒ.issuccess(𝐒¹ᵉfact)
+            𝐒¹ᵉfact = ℒ.svd(𝐒[1][cond_var_idx,end-T.nExo+1:end])
+        end
+    else
+        𝐒¹ᵉfact = ℒ.svd(𝐒[1][cond_var_idx,end-T.nExo+1:end])
+    end
+
+    # inv𝐒¹ᵉ = inv(𝐒¹ᵉfact)
 
     𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,var_vol²_idxs]
     𝐒²⁻ = 𝐒[2][cond_var_idx,var²_idxs]
@@ -10063,7 +10103,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
             ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
         end 
 
-        shock_independent = inv𝐒¹ᵉ * shock_independent
+        shock_independent = 𝐒¹ᵉfact \ shock_independent
         
         if length(𝐒) == 2
             𝐒¹² = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)    
