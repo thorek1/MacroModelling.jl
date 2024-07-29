@@ -8629,7 +8629,7 @@ function get_initial_covariance(::Val{:theoretical}, values::Vector{S}, coordina
     return P
 end
 
-function get_initial_covariance(::Val{:theoretical}, A::S, B::S)::AbstractMatrix{S} where S <: Real
+function get_initial_covariance(::Val{:theoretical}, A::AbstractMatrix{S}, B::AbstractMatrix{S})::AbstractMatrix{S} where S <: Real
     P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = :doubling)
     return P
 end
