@@ -6636,7 +6636,7 @@ function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
     function first_order_solution_pullback(∂A)
         tmp1 = invtmp * ∂A[1] * expand[2]
 
-        ss, solved = solve_sylvester_equation(tmp2, Â', tmp1, Val(:sylvester))
+        ss, solved = solve_sylvester_equation(tmp2, Â', tmp1, sylvester_algorithm = :sylvester)
 
         # coordinates = Tuple{Vector{Int}, Vector{Int}}[]
 
@@ -6750,7 +6750,7 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
 
         tmp1 = -M' * ∂𝐒ᵗ * expand[2]
 
-        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, Val(:sylvester))
+        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, sylvester_algorithm = :sylvester)
 
         # coordinates = Tuple{Vector{Int}, Vector{Int}}[]
 
@@ -6899,7 +6899,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = sylvester_algorithm ≠ :sylvester && length(C.nzval) / length(C) < .1 ? C : collect(C)
     X = sylvester_algorithm ≠ :sylvester && length(X.nzval) / length(X) < .1 ? X : collect(X)
 
-    𝐒₂, solved = solve_sylvester_equation(B, C, X, Val(sylvester_algorithm))
+    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm)
 
     𝐒₂ = sparse(𝐒₂)
 
@@ -7021,7 +7021,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     C = sylvester_algorithm ≠ :sylvester && length(C.nzval) / length(C) < .1 ? C : collect(C)
     X = sylvester_algorithm ≠ :sylvester && length(X.nzval) / length(X) < .1 ? X : collect(X)
 
-    𝐒₃, solved = solve_sylvester_equation(B, C, X, Val(sylvester_algorithm))
+    𝐒₃, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm)
     
     𝐒₃ = sparse(𝐒₃)
 
@@ -7579,8 +7579,8 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
 
     # covar_raw, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
 
-    covar_raw, _ = solve_lyapunov_equation(A, -CC, Val(:doubling))
-# println(covar_raw)
+    covar_raw, _ = solve_lyapunov_equation(A, -CC, lyapunov_algorithm = :doubling)
+
     return covar_raw, sol , ∇₁, SS_and_pars
 end
 
@@ -8137,7 +8137,7 @@ function calculate_second_order_moments(
 
     # Σᶻ₂, info = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
 
-    Σᶻ₂, info = solve_lyapunov_equation((ŝ_to_ŝ₂), (-C), Val(:speedmapping))
+    Σᶻ₂, info = solve_lyapunov_equation((ŝ_to_ŝ₂), (-C), lyapunov_algorithm = :doubling)
 
     # if Σᶻ₂ isa DenseMatrix
     #     Σᶻ₂ = sparse(Σᶻ₂)
@@ -8375,7 +8375,7 @@ function calculate_third_order_moments(parameters::Vector{T},
 
         # Σᶻ₃, info = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, -C, Val(:doubling))
+        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, -C, lyapunov_algorithm = :doubling)
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
@@ -8630,7 +8630,7 @@ function get_initial_covariance(::Val{:theoretical}, values::Vector{S}, coordina
 end
 
 function get_initial_covariance(::Val{:theoretical}, A::S, B::S)::AbstractMatrix{S} where S <: Real
-    P, _ = solve_lyapunov_equation(A, B, Val(:doubling))
+    P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = :doubling)
     return P
 end
 

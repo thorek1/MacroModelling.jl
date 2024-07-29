@@ -1,7 +1,70 @@
+function solve_lyapunov_equation(A::AbstractMatrix{Float64},
+        C::AbstractMatrix{Float64};
+        lyapunov_algorithm::Symbol = :doubling,
+        tol::AbstractFloat = 1e-12)
+        solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol)
+end
+
+function rrule(::typeof(solve_lyapunov_equation),
+                A::AbstractMatrix{Float64},
+                C::AbstractMatrix{Float64};
+                lyapunov_algorithm::Symbol = :doubling,
+                tol::AbstractFloat = 1e-12)
+
+    P, solved = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol)
+
+    # pullback
+    function solve_lyapunov_equation_pullback(∂P)
+        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], Val(lyapunov_algorithm), tol = tol)
+    
+        ∂A = ∂C * A * P' + ∂C' * A * P
+
+        return NoTangent(), -∂A, ∂C, NoTangent()
+    end
+    
+    return (P, solved), solve_lyapunov_equation_pullback
+end
+
+
+
+function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
+                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}};
+                                    lyapunov_algorithm::Symbol = :doubling,
+                                    tol::AbstractFloat = 1e-12) where {Z,S,N}
+
+    # unpack: AoS -> SoA
+    Â = ℱ.value.(A)
+    Ĉ = ℱ.value.(C)
+
+    P̂, solved = solve_lyapunov_equation(Â, Ĉ, Val(lyapunov_algorithm), tol = tol)
+
+    Ã = copy(Â)
+    C̃ = copy(Ĉ)
+    
+    P̃ = zeros(length(P̂), N)
+    
+    for i in 1:N
+        Ã .= ℱ.partials.(A, i)
+        C̃ .= ℱ.partials.(C, i)
+
+        X = - Ã * P̂ * Â' - Â * P̂ * Ã' + C̃
+
+        P, solved = solve_lyapunov_equation(Â, X, Val(lyapunov_algorithm), tol = tol)
+
+        P̃[:,i] = vec(P)
+    end
+    
+    return reshape(map(P̂, eachrow(P̃)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end, size(P̂)), solved
+end
+
+
+
 function solve_lyapunov_equation(A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-    C::DenseMatrix{Float64},
-    ::Val{:lyapunov};
-    tol::AbstractFloat = 1e-12)
+                                C::DenseMatrix{Float64},
+                                ::Val{:lyapunov};
+                                tol::AbstractFloat = 1e-12)
     𝐂 = MatrixEquations.lyapd(A, -C)
     
     solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = tol)
@@ -195,337 +258,3 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
 
     return -𝐂, solved
 end
-
-
-function rrule(::typeof(solve_lyapunov_equation),
-                A::AbstractMatrix{Float64},
-                C::AbstractMatrix{Float64},
-                ::Val{:speedmapping};
-                tol::AbstractFloat = 1e-12)
-
-    P, solved = solve_lyapunov_equation(A, C, Val(:speedmapping), tol = tol)
-
-    # pullback
-    function solve_lyapunov_equation_pullback(∂P)
-        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], Val(:speedmapping), tol = tol)
-    
-        ∂A = ∂C * A * P' + ∂C' * A * P
-
-        return NoTangent(), -∂A, ∂C, NoTangent()
-    end
-    
-    return (P, solved), solve_lyapunov_equation_pullback
-end
-
-
-
-function rrule(::typeof(solve_lyapunov_equation),
-                A::AbstractMatrix{Float64},
-                C::AbstractMatrix{Float64},
-                ::Val{:doubling};
-                tol::AbstractFloat = 1e-14)
-
-    P, solved = solve_lyapunov_equation(A, C, Val(:speedmapping), tol = tol)
-
-    # pullback
-    function solve_lyapunov_equation_pullback(∂P)
-        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], Val(:doubling), tol = tol)
-    
-        ∂A = ∂C * A * P' + ∂C' * A * P
-
-        return NoTangent(), -∂A, ∂C, NoTangent()
-    end
-    
-    return (P, solved), solve_lyapunov_equation_pullback
-end
-
-
-
-
-function rrule(::typeof(solve_lyapunov_equation),
-    A::DenseMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:gmres};
-    tol::AbstractFloat = 1e-12)
-
-    P, solved = solve_lyapunov_equation(A, C, Val(:gmres), tol = tol)
-
-    # pullback
-    function solve_lyapunov_equation_pullback(∂P)
-        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], Val(:gmres), tol = tol)
-
-        ∂A = ∂C * A * P' + ∂C' * A * P
-
-        return NoTangent(), -∂A, ∂C, NoTangent()
-    end
-
-    return (P, solved), solve_lyapunov_equation_pullback
-end
-
-function rrule(::typeof(solve_lyapunov_equation),
-    A::DenseMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:bicgstab};
-    tol::AbstractFloat = 1e-12)
-
-    P, solved = solve_lyapunov_equation(A, C, Val(:bicgstab), tol = tol)
-
-    # pullback
-    function solve_lyapunov_equation_pullback(∂P)
-        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], Val(:bicgstab), tol = tol)
-
-        ∂A = ∂C * A * P' + ∂C' * A * P
-
-        return NoTangent(), -∂A, ∂C, NoTangent()
-    end
-
-    return (P, solved), solve_lyapunov_equation_pullback
-end
-
-
-
-function rrule(::typeof(solve_lyapunov_equation),
-    A::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:lyapunov};
-    tol::AbstractFloat = 1e-12)
-
-    P, solved = solve_lyapunov_equation(A, C, Val(:lyapunov), tol = tol)
-
-    # pullback
-    function solve_lyapunov_equation_pullback(∂P)
-        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], Val(:lyapunov), tol = tol)
-
-        ∂A = ∂C * A * P' + ∂C' * A * P
-
-        return NoTangent(), -∂A, ∂C, NoTangent()
-    end
-
-    return (P, solved), solve_lyapunov_equation_pullback
-end
-
-
-
-function rrule(::typeof(solve_lyapunov_equation),
-    A::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:iterative};
-    tol::AbstractFloat = 1e-14)
-
-    P, solved = solve_lyapunov_equation(A, C, Val(:iterative), tol = tol)
-
-    # pullback
-    function solve_lyapunov_equation_pullback(∂P)
-        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], Val(:iterative), tol = tol)
-
-        ∂A = ∂C * A * P' + ∂C' * A * P
-
-        return NoTangent(), -∂A, ∂C, NoTangent()
-    end
-
-    return (P, solved), solve_lyapunov_equation_pullback
-end
-
-
-function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    ::Val{:speedmapping};
-                                    tol::AbstractFloat = 1e-12) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, Val(:speedmapping), tol = tol)
-
-    Ã = copy(Â)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = - Ã * P̂ * Â' - Â * P̂ * Ã' + C̃
-
-        P, solved = solve_lyapunov_equation(Â, X, Val(:speedmapping), tol = tol)
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
-
-
-
-
-function solve_lyapunov_equation(  A::DenseMatrix{ℱ.Dual{Z,S,N}},
-    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
-    ::Val{:gmres};
-    tol::AbstractFloat = 1e-12) where {Z,S,N}
-
-# unpack: AoS -> SoA
-Â = ℱ.value.(A)
-Ĉ = ℱ.value.(C)
-
-P̂, solved = solve_lyapunov_equation(Â, Ĉ, Val(:gmres), tol = tol)
-
-Ã = copy(Â)
-C̃ = copy(Ĉ)
-
-P̃ = zeros(length(P̂), N)
-
-for i in 1:N
-Ã .= ℱ.partials.(A, i)
-C̃ .= ℱ.partials.(C, i)
-
-X = - Ã * P̂ * Â' - Â * P̂ * Ã' + C̃
-
-P, solved = solve_lyapunov_equation(Â, X, Val(:gmres), tol = tol)
-
-P̃[:,i] = vec(P)
-end
-
-return reshape(map(P̂, eachrow(P̃)) do v, p
-ℱ.Dual{Z}(v, p...) # Z is the tag
-end, size(P̂)), solved
-end
-
-
-function solve_lyapunov_equation(   A::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    ::Val{:doubling};
-                                    tol::AbstractFloat = 1e-14) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, Val(:doubling), tol = tol)
-
-    Ã = copy(Â)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = - Ã * P̂ * Â' - Â * P̂ * Ã' + C̃
-
-        P, solved = solve_lyapunov_equation(Â, X, Val(:doubling), tol = tol)
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
-
-
-
-function solve_lyapunov_equation(  A::DenseMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    ::Val{:bicgstab};
-                                    tol::AbstractFloat = 1e-12) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, Val(:bicgstab), tol = tol)
-
-    Ã = copy(Â)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = - Ã * P̂ * Â' - Â * P̂ * Ã' + C̃
-
-        P, solved = solve_lyapunov_equation(Â, X, Val(:bicgstab), tol = tol)
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
-
-
-
-function solve_lyapunov_equation(  A::DenseMatrix{ℱ.Dual{Z,S,N}},
-                                    C::DenseMatrix{ℱ.Dual{Z,S,N}},
-                                    ::Val{:lyapunov};
-                                    tol::AbstractFloat = 1e-12) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, Val(:lyapunov), tol = tol)
-
-    Ã = copy(Â)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = - Ã * P̂ * Â' - Â * P̂ * Ã' + C̃
-
-        P, solved = solve_lyapunov_equation(Â, X, Val(:speedmapping), tol = tol)
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
-
-
-
-function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    ::Val{:iterative};
-                                    tol::AbstractFloat = 1e-14) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, Val(:iterative), tol = tol)
-
-    Ã = copy(Â)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = - Ã * P̂ * Â' - Â * P̂ * Ã' + C̃
-
-        P, solved = solve_lyapunov_equation(Â, X, Val(:speedmapping), tol = tol)
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
-
