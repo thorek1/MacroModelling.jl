@@ -44,7 +44,6 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}};
                                     lyapunov_algorithm::Symbol = :doubling,
                                     tol::AbstractFloat = 1e-12) where {Z,S,N}
-
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
@@ -88,20 +87,21 @@ end
 
 
 
-function solve_lyapunov_equation(   A::S,
-                                    C::S,
+function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
+                                    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64},AbstractSparseMatrix{Float64}},
                                     ::Val{:doubling};
-                                    tol::Float64 = 1e-14) where S <: AbstractSparseMatrix{Float64}
-    𝐂  = C
+                                    tol::Float64 = 1e-14)
+    𝐂  = copy(C)
+    𝐀  = copy(A)
 
     max_iter = 500
     
     for i in 1:max_iter
-        𝐂¹ = A * 𝐂 * A' - 𝐂
+        𝐂¹ = 𝐀 * 𝐂 * 𝐀' - 𝐂
 
-        A *= A
+        𝐀 *= 𝐀
         
-        droptol!(A, eps())
+        droptol!(𝐀, eps())
 
         if i > 10 && i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
