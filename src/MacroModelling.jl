@@ -6542,59 +6542,59 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
 end
 
 # @memoize LRU(maxsize=50) 
-function calculate_jacobian_transpose(∇₁::AbstractMatrix{Float64}; T::timings, explosive::Bool = false)
-    𝐒₁, solved = MacroModelling.riccati_forward(∇₁; T = T, explosive = false)
+# function calculate_jacobian_transpose(∇₁::AbstractMatrix{Float64}; T::timings, explosive::Bool = false)
+#     𝐒₁, solved = MacroModelling.riccati_forward(∇₁; T = T, explosive = false)
 
-    sp𝐒₁ = sparse(𝐒₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-    sp∇₁ = sparse(∇₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#     sp𝐒₁ = sparse(𝐒₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#     sp∇₁ = sparse(∇₁) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
-    droptol!(sp𝐒₁, 10*eps())
-    droptol!(sp∇₁, 10*eps())
+#     droptol!(sp𝐒₁, 10*eps())
+#     droptol!(sp∇₁, 10*eps())
 
-    # expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
-    expand = [
-        spdiagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC, 
-        spdiagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-    ] 
+#     # expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+#     expand = [
+#         spdiagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC, 
+#         spdiagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#     ] 
 
-    A = sp∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    B = sp∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+#     A = sp∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+#     B = sp∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
 
-    sol_buf = sp𝐒₁ * expand[2]
-    sol_buf2 = sol_buf * sol_buf
+#     sol_buf = sp𝐒₁ * expand[2]
+#     sol_buf2 = sol_buf * sol_buf
 
-    spd𝐒₁a = (ℒ.kron(expand[2] * sp𝐒₁, A') + 
-            ℒ.kron(expand[2] * expand[2]', sol_buf' * A' + B'))
+#     spd𝐒₁a = (ℒ.kron(expand[2] * sp𝐒₁, A') + 
+#             ℒ.kron(expand[2] * expand[2]', sol_buf' * A' + B'))
             
-    droptol!(spd𝐒₁a, 10*eps())
+#     droptol!(spd𝐒₁a, 10*eps())
 
-    # d𝐒₁a = spd𝐒₁a' |> collect # bottleneck, reduce size, avoid conversion, subselect necessary part of matrix already here (as is done in the estimation part later)
+#     # d𝐒₁a = spd𝐒₁a' |> collect # bottleneck, reduce size, avoid conversion, subselect necessary part of matrix already here (as is done in the estimation part later)
 
-    # Initialize empty spd∇₁a
-    spd∇₁a = spzeros(length(sp𝐒₁), length(∇₁)) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#     # Initialize empty spd∇₁a
+#     spd∇₁a = spzeros(length(sp𝐒₁), length(∇₁)) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
-    # Directly allocate dA, dB, dC into spd∇₁a
-    # Note: You need to calculate the column indices where each matrix starts and ends
-    # This is conceptual; actual implementation would depend on how you can obtain or compute these indices
-    dA_cols = 1:(T.nFuture_not_past_and_mixed * size(𝐒₁,1))
-    dB_cols = dA_cols[end] .+ (1 : size(𝐒₁, 1)^2)
-    dC_cols = dB_cols[end] .+ (1 : length(sp𝐒₁))
+#     # Directly allocate dA, dB, dC into spd∇₁a
+#     # Note: You need to calculate the column indices where each matrix starts and ends
+#     # This is conceptual; actual implementation would depend on how you can obtain or compute these indices
+#     dA_cols = 1:(T.nFuture_not_past_and_mixed * size(𝐒₁,1))
+#     dB_cols = dA_cols[end] .+ (1 : size(𝐒₁, 1)^2)
+#     dC_cols = dB_cols[end] .+ (1 : length(sp𝐒₁))
 
-    spd∇₁a[:,dA_cols] = ℒ.kron(expand[1] * sol_buf2 * expand[2]' , -ℒ.I(size(𝐒₁, 1)))'
-    spd∇₁a[:,dB_cols] = ℒ.kron(sp𝐒₁, -ℒ.I(size(𝐒₁, 1)))' 
-    spd∇₁a[:,dC_cols] = -ℒ.I(length(𝐒₁))
+#     spd∇₁a[:,dA_cols] = ℒ.kron(expand[1] * sol_buf2 * expand[2]' , -ℒ.I(size(𝐒₁, 1)))'
+#     spd∇₁a[:,dB_cols] = ℒ.kron(sp𝐒₁, -ℒ.I(size(𝐒₁, 1)))' 
+#     spd∇₁a[:,dC_cols] = -ℒ.I(length(𝐒₁))
 
-    d𝐒₁â = ℒ.lu(spd𝐒₁a', check = false)
+#     d𝐒₁â = ℒ.lu(spd𝐒₁a', check = false)
     
-    if !ℒ.issuccess(d𝐒₁â)
-        tmp = spd∇₁a'
-        solved = false
-    else
-        tmp = inv(d𝐒₁â) * spd∇₁a # bottleneck, reduce size, avoid conversion
-    end
+#     if !ℒ.issuccess(d𝐒₁â)
+#         tmp = spd∇₁a'
+#         solved = false
+#     else
+#         tmp = inv(d𝐒₁â) * spd∇₁a # bottleneck, reduce size, avoid conversion
+#     end
 
-    return 𝐒₁, solved, tmp'
-end
+#     return 𝐒₁, solved, tmp'
+# end
 
 
 
@@ -6661,12 +6661,12 @@ function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
 end
 
 
-riccati_AD_direct = ℐ.ImplicitFunction(riccati_forward,
-                                    riccati_conditions;
-                                    # conditions_backend = 𝒷(), # ForwardDiff is slower in combination with Zygote as overall backend
-                                    linear_solver = ℐ.DirectLinearSolver())
+# riccati_AD_direct = ℐ.ImplicitFunction(riccati_forward,
+#                                     riccati_conditions;
+#                                     # conditions_backend = 𝒷(), # ForwardDiff is slower in combination with Zygote as overall backend
+#                                     linear_solver = ℐ.DirectLinearSolver())
 
-riccati_AD = ℐ.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt converge!?
+# riccati_AD = ℐ.ImplicitFunction(riccati_forward, riccati_conditions) # doesnt converge!?
 
 
 
@@ -6778,8 +6778,8 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
 end
 
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}},Bool} where {Z,S,N}
-    A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
-    # A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
+    # A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
+    A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
 
     if !solved
         return hcat(A, zeros(size(A,1),T.nExo)), solved
@@ -7659,189 +7659,189 @@ end
 
 
 
-function solve_matrix_equation_forward(ABC::Vector{Float64};
-    coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
-    dims::Vector{Tuple{Int,Int}},
-    sparse_output::Bool = false,
-    solver::Symbol = :doubling)#::Tuple{Matrix{Float64}, Bool}
+# function solve_matrix_equation_forward(ABC::Vector{Float64};
+#     coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
+#     dims::Vector{Tuple{Int,Int}},
+#     sparse_output::Bool = false,
+#     solver::Symbol = :doubling)#::Tuple{Matrix{Float64}, Bool}
 
-    if length(coords) == 1
-        lengthA = length(coords[1][1])
-        vA = ABC[1:lengthA]
+#     if length(coords) == 1
+#         lengthA = length(coords[1][1])
+#         vA = ABC[1:lengthA]
         
-        if VERSION >= v"1.9"
-            A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        else
-            A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        end
+#         if VERSION >= v"1.9"
+#             A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#         else
+#             A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#         end
 
-        C = reshape(ABC[lengthA+1:end],dims[2]...)
-        if solver != :doubling
-            B = A'
-        end
-    elseif length(coords) == 3
-        lengthA = length(coords[1][1])
-        lengthB = length(coords[2][1])
+#         C = reshape(ABC[lengthA+1:end],dims[2]...)
+#         if solver != :doubling
+#             B = A'
+#         end
+#     elseif length(coords) == 3
+#         lengthA = length(coords[1][1])
+#         lengthB = length(coords[2][1])
 
-        vA = ABC[1:lengthA]
-        vB = ABC[lengthA .+ (1:lengthB)]
-        vC = ABC[lengthA + lengthB + 1:end]
+#         vA = ABC[1:lengthA]
+#         vB = ABC[lengthA .+ (1:lengthB)]
+#         vC = ABC[lengthA + lengthB + 1:end]
 
-        if VERSION >= v"1.9"
-            A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-            B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-            C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        else
-            A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-            B = sparse(coords[2]...,vB,dims[2]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-            C = sparse(coords[3]...,vC,dims[3]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        end
+#         if VERSION >= v"1.9"
+#             A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#             B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#             C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#         else
+#             A = sparse(coords[1]...,vA,dims[1]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#             B = sparse(coords[2]...,vB,dims[2]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#             C = sparse(coords[3]...,vC,dims[3]...)# |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#         end
 
-    elseif length(dims) == 3
-        lengthA = dims[1][1] * dims[1][2]
-        lengthB = dims[2][1] * dims[2][2]
+#     elseif length(dims) == 3
+#         lengthA = dims[1][1] * dims[1][2]
+#         lengthB = dims[2][1] * dims[2][2]
 
-        A = reshape(ABC[1:lengthA], dims[1]...)
-        B = reshape(ABC[lengthA .+ (1:lengthB)], dims[2]...)
-        C = reshape(ABC[lengthA + lengthB + 1:end], dims[3]...)
-    else
-        lengthA = dims[1][1] * dims[1][2]
-        A = reshape(ABC[1:lengthA],dims[1]...)
-        C = reshape(ABC[lengthA+1:end],dims[2]...)
-        if solver != :doubling
-            B = A'
-        end
-    end
+#         A = reshape(ABC[1:lengthA], dims[1]...)
+#         B = reshape(ABC[lengthA .+ (1:lengthB)], dims[2]...)
+#         C = reshape(ABC[lengthA + lengthB + 1:end], dims[3]...)
+#     else
+#         lengthA = dims[1][1] * dims[1][2]
+#         A = reshape(ABC[1:lengthA],dims[1]...)
+#         C = reshape(ABC[lengthA+1:end],dims[2]...)
+#         if solver != :doubling
+#             B = A'
+#         end
+#     end
     
 
-    if solver ∈ [:gmres, :bicgstab]  
-        # tmp̂ = similar(C)
-        # tmp̄ = similar(C)
-        # 𝐗 = similar(C)
+#     if solver ∈ [:gmres, :bicgstab]  
+#         # tmp̂ = similar(C)
+#         # tmp̄ = similar(C)
+#         # 𝐗 = similar(C)
 
-        # function sylvester!(sol,𝐱)
-        #     copyto!(𝐗, 𝐱)
-        #     mul!(tmp̄, 𝐗, B)
-        #     mul!(tmp̂, A, tmp̄)
-        #     ℒ.axpy!(-1, tmp̂, 𝐗)
-        #     ℒ.rmul!(𝐗, -1)
-        #     copyto!(sol, 𝐗)
-        # end
-        # TODO: above is slower. below is fastest
-        function sylvester!(sol,𝐱)
-            𝐗 = reshape(𝐱, size(C))
-            copyto!(sol, A * 𝐗 * B - 𝐗)
-            # sol .= vec(A * 𝐗 * B - 𝐗)
-            # return sol
-        end
+#         # function sylvester!(sol,𝐱)
+#         #     copyto!(𝐗, 𝐱)
+#         #     mul!(tmp̄, 𝐗, B)
+#         #     mul!(tmp̂, A, tmp̄)
+#         #     ℒ.axpy!(-1, tmp̂, 𝐗)
+#         #     ℒ.rmul!(𝐗, -1)
+#         #     copyto!(sol, 𝐗)
+#         # end
+#         # TODO: above is slower. below is fastest
+#         function sylvester!(sol,𝐱)
+#             𝐗 = reshape(𝐱, size(C))
+#             copyto!(sol, A * 𝐗 * B - 𝐗)
+#             # sol .= vec(A * 𝐗 * B - 𝐗)
+#             # return sol
+#         end
         
-        sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
+#         sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
 
-        if solver == :gmres
-            𝐂, info = Krylov.gmres(sylvester, [vec(C);])#, rtol = Float64(tol))
-        elseif solver == :bicgstab
-            𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])#, rtol = Float64(tol))
-        end
-        solved = info.solved
-    elseif solver == :iterative # this can still be optimised
-        iter = 1
-        change = 1
+#         if solver == :gmres
+#             𝐂, info = Krylov.gmres(sylvester, [vec(C);])#, rtol = Float64(tol))
+#         elseif solver == :bicgstab
+#             𝐂, info = Krylov.bicgstab(sylvester, [vec(C);])#, rtol = Float64(tol))
+#         end
+#         solved = info.solved
+#     elseif solver == :iterative # this can still be optimised
+#         iter = 1
+#         change = 1
 
-        𝐂  = copy(C)
-        𝐂¹ = copy(C)
-        𝐂B = copy(C)
+#         𝐂  = copy(C)
+#         𝐂¹ = copy(C)
+#         𝐂B = copy(C)
         
-        max_iter = 10000
+#         max_iter = 10000
         
-        for i in 1:max_iter
-            ℒ.mul!(𝐂B, 𝐂, B)
-            ℒ.mul!(𝐂¹, A, 𝐂B)
-            ℒ.axpy!(-1, C, 𝐂¹)
+#         for i in 1:max_iter
+#             ℒ.mul!(𝐂B, 𝐂, B)
+#             ℒ.mul!(𝐂¹, A, 𝐂B)
+#             ℒ.axpy!(-1, C, 𝐂¹)
         
-            if i % 10 == 0
-                if isapprox(𝐂¹, 𝐂, rtol = 1e-14)
-                    break
-                end
-            end
+#             if i % 10 == 0
+#                 if isapprox(𝐂¹, 𝐂, rtol = 1e-14)
+#                     break
+#                 end
+#             end
         
-            copyto!(𝐂, 𝐂¹)
-        end
+#             copyto!(𝐂, 𝐂¹)
+#         end
 
-        ℒ.mul!(𝐂B, 𝐂, B)
-        ℒ.mul!(𝐂¹, A, 𝐂B)
-        ℒ.axpy!(-1, C, 𝐂¹)
+#         ℒ.mul!(𝐂B, 𝐂, B)
+#         ℒ.mul!(𝐂¹, A, 𝐂B)
+#         ℒ.axpy!(-1, C, 𝐂¹)
 
-        solved = isapprox(𝐂¹, 𝐂, rtol = 1e-12)
-    elseif solver == :doubling # cant use higher tol because rersults get weird in some cases
-        iter = 1
-        change = 1
-        𝐂  = -C
-        𝐂¹ = -C
-        CA = similar(A)
-        A² = similar(A)
-        while change > eps(Float32) && iter < 500
-            if A isa DenseMatrix
+#         solved = isapprox(𝐂¹, 𝐂, rtol = 1e-12)
+#     elseif solver == :doubling # cant use higher tol because rersults get weird in some cases
+#         iter = 1
+#         change = 1
+#         𝐂  = -C
+#         𝐂¹ = -C
+#         CA = similar(A)
+#         A² = similar(A)
+#         while change > eps(Float32) && iter < 500
+#             if A isa DenseMatrix
                 
-                mul!(CA, 𝐂, A')
-                mul!(𝐂¹, A, CA, 1, 1)
+#                 mul!(CA, 𝐂, A')
+#                 mul!(𝐂¹, A, CA, 1, 1)
         
-                mul!(A², A, A)
-                copy!(A, A²)
+#                 mul!(A², A, A)
+#                 copy!(A, A²)
                 
-                if iter > 10
-                    ℒ.axpy!(-1, 𝐂¹, 𝐂)
-                    change = maximum(abs, 𝐂)
-                end
+#                 if iter > 10
+#                     ℒ.axpy!(-1, 𝐂¹, 𝐂)
+#                     change = maximum(abs, 𝐂)
+#                 end
         
-                copy!(𝐂, 𝐂¹)
+#                 copy!(𝐂, 𝐂¹)
         
-                iter += 1
-            else
-                𝐂¹ = A * 𝐂 * A' + 𝐂
+#                 iter += 1
+#             else
+#                 𝐂¹ = A * 𝐂 * A' + 𝐂
         
-                A *= A
+#                 A *= A
                 
-                droptol!(A, eps())
+#                 droptol!(A, eps())
 
-                if iter > 10
-                    change = maximum(abs, 𝐂¹ - 𝐂)
-                end
+#                 if iter > 10
+#                     change = maximum(abs, 𝐂¹ - 𝐂)
+#                 end
         
-                𝐂 = 𝐂¹
+#                 𝐂 = 𝐂¹
                 
-                iter += 1
-            end
-        end
-        solved = change < eps(Float32)
-    elseif solver == :sylvester
-        𝐂 = try MatrixEquations.sylvd(collect(-A),collect(B),-C)
-        catch
-            return sparse_output ? spzeros(0,0) : zeros(0,0), false
-        end
+#                 iter += 1
+#             end
+#         end
+#         solved = change < eps(Float32)
+#     elseif solver == :sylvester
+#         𝐂 = try MatrixEquations.sylvd(collect(-A),collect(B),-C)
+#         catch
+#             return sparse_output ? spzeros(0,0) : zeros(0,0), false
+#         end
         
-        solved = isapprox(𝐂, A * 𝐂 * B - C, rtol = eps(Float32))
-    elseif solver == :lyapunov
-        𝐂 = MatrixEquations.lyapd(collect(A),-C)
-        solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = eps(Float32))
-    elseif solver == :speedmapping
-        CB = similar(A)
+#         solved = isapprox(𝐂, A * 𝐂 * B - C, rtol = eps(Float32))
+#     elseif solver == :lyapunov
+#         𝐂 = MatrixEquations.lyapd(collect(A),-C)
+#         solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = eps(Float32))
+#     elseif solver == :speedmapping
+#         CB = similar(A)
 
-        soll = @suppress begin
-            speedmapping(collect(-C); 
-                m! = (X, x) -> begin
-                    mul!(CB, x, B)
-                    mul!(X, A, CB)
-                    ℒ.axpy!(1, C, X)
-                end, stabilize = false)#, tol = tol)
-            # speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
-        end
-        𝐂 = soll.minimizer
+#         soll = @suppress begin
+#             speedmapping(collect(-C); 
+#                 m! = (X, x) -> begin
+#                     mul!(CB, x, B)
+#                     mul!(X, A, CB)
+#                     ℒ.axpy!(1, C, X)
+#                 end, stabilize = false)#, tol = tol)
+#             # speedmapping(collect(-C); m! = (X, x) -> X .= A * x * B - C, stabilize = true)
+#         end
+#         𝐂 = soll.minimizer
 
-        solved = soll.converged
-    end
+#         solved = soll.converged
+#     end
 
-    return sparse_output ? sparse(reshape(𝐂, size(C))) : reshape(𝐂, size(C)), solved # return info on convergence
-end
+#     return sparse_output ? sparse(reshape(𝐂, size(C))) : reshape(𝐂, size(C)), solved # return info on convergence
+# end
 
 
 
@@ -7888,130 +7888,130 @@ end
 
 
 
-function solve_matrix_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
-    coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
-    dims::Vector{Tuple{Int,Int}},
-    sparse_output::Bool = false,
-    solver::Symbol = :doubling) where {Z,S,N}
+# function solve_matrix_equation_forward(abc::Vector{ℱ.Dual{Z,S,N}};
+#     coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
+#     dims::Vector{Tuple{Int,Int}},
+#     sparse_output::Bool = false,
+#     solver::Symbol = :doubling) where {Z,S,N}
 
-    # unpack: AoS -> SoA
-    ABC = ℱ.value.(abc)
+#     # unpack: AoS -> SoA
+#     ABC = ℱ.value.(abc)
 
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    partial_values = zeros(length(abc), N)
-    for i in 1:N
-        partial_values[:,i] = ℱ.partials.(abc, i)
-    end
+#     # you can play with the dimension here, sometimes it makes sense to transpose
+#     partial_values = zeros(length(abc), N)
+#     for i in 1:N
+#         partial_values[:,i] = ℱ.partials.(abc, i)
+#     end
 
-    # get f(vs)
-    val, solved = solve_matrix_equation_forward(ABC, coords = coords, dims = dims, sparse_output = sparse_output, solver = solver)
+#     # get f(vs)
+#     val, solved = solve_matrix_equation_forward(ABC, coords = coords, dims = dims, sparse_output = sparse_output, solver = solver)
 
-    if length(coords) == 1
-        lengthA = length(coords[1][1])
+#     if length(coords) == 1
+#         lengthA = length(coords[1][1])
 
-        vA = ABC[1:lengthA]
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        # C = reshape(ABC[lengthA+1:end],dims[2]...)
-        droptol!(A,eps())
+#         vA = ABC[1:lengthA]
+#         A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#         # C = reshape(ABC[lengthA+1:end],dims[2]...)
+#         droptol!(A,eps())
 
-        B = sparse(A') |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#         B = sparse(A') |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
-        partials = zeros(dims[1][1] * dims[1][2] + dims[2][1] * dims[2][2], size(partial_values,2))
-        partials[vcat(coords[1][1] + (coords[1][2] .- 1) * dims[1][1], dims[1][1] * dims[1][2] + 1:end),:] = partial_values
+#         partials = zeros(dims[1][1] * dims[1][2] + dims[2][1] * dims[2][2], size(partial_values,2))
+#         partials[vcat(coords[1][1] + (coords[1][2] .- 1) * dims[1][1], dims[1][1] * dims[1][2] + 1:end),:] = partial_values
 
-        reshape_matmul_b = LinearOperators.LinearOperator(Float64, length(val) * size(partials,2), 2*size(A,1)^2 * size(partials,2), false, false, 
-        (sol,𝐱) -> begin 
-            𝐗 = reshape(𝐱, (2* size(A,1)^2,size(partials,2))) |> sparse
+#         reshape_matmul_b = LinearOperators.LinearOperator(Float64, length(val) * size(partials,2), 2*size(A,1)^2 * size(partials,2), false, false, 
+#         (sol,𝐱) -> begin 
+#             𝐗 = reshape(𝐱, (2* size(A,1)^2,size(partials,2))) |> sparse
 
-            b = hcat(jacobian_wrt_A(A, val), -ℒ.I(length(val)))
-            droptol!(b,eps())
+#             b = hcat(jacobian_wrt_A(A, val), -ℒ.I(length(val)))
+#             droptol!(b,eps())
 
-            sol .= vec(b * 𝐗)
-            return sol
-        end)
-    elseif length(coords) == 3
-        lengthA = length(coords[1][1])
-        lengthB = length(coords[2][1])
+#             sol .= vec(b * 𝐗)
+#             return sol
+#         end)
+#     elseif length(coords) == 3
+#         lengthA = length(coords[1][1])
+#         lengthB = length(coords[2][1])
 
-        vA = ABC[1:lengthA]
-        vB = ABC[lengthA .+ (1:lengthB)]
-        # vC = ABC[lengthA + lengthB + 1:end]
+#         vA = ABC[1:lengthA]
+#         vB = ABC[lengthA .+ (1:lengthB)]
+#         # vC = ABC[lengthA + lengthB + 1:end]
 
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        # C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#         A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#         B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#         # C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
-        partials = spzeros(dims[1][1] * dims[1][2] + dims[2][1] * dims[2][2] + dims[3][1] * dims[3][2], size(partial_values,2))
-        partials[vcat(
-            coords[1][1] + (coords[1][2] .- 1) * dims[1][1], 
-            coords[2][1] + (coords[2][2] .- 1) * dims[2][1] .+ dims[1][1] * dims[1][2], 
-            coords[3][1] + (coords[3][2] .- 1) * dims[3][1] .+ dims[1][1] * dims[1][2] .+ dims[2][1] * dims[2][2]),:] = partial_values
+#         partials = spzeros(dims[1][1] * dims[1][2] + dims[2][1] * dims[2][2] + dims[3][1] * dims[3][2], size(partial_values,2))
+#         partials[vcat(
+#             coords[1][1] + (coords[1][2] .- 1) * dims[1][1], 
+#             coords[2][1] + (coords[2][2] .- 1) * dims[2][1] .+ dims[1][1] * dims[1][2], 
+#             coords[3][1] + (coords[3][2] .- 1) * dims[3][1] .+ dims[1][1] * dims[1][2] .+ dims[2][1] * dims[2][2]),:] = partial_values
         
-        reshape_matmul_b = LinearOperators.LinearOperator(Float64, length(val) * size(partials,2), (length(A) + length(B) + length(val)) * size(partials,2), false, false, 
-            (sol,𝐱) -> begin 
-                𝐗 = reshape(𝐱, (length(A) + length(B) + length(val), size(partials,2))) |> sparse
+#         reshape_matmul_b = LinearOperators.LinearOperator(Float64, length(val) * size(partials,2), (length(A) + length(B) + length(val)) * size(partials,2), false, false, 
+#             (sol,𝐱) -> begin 
+#                 𝐗 = reshape(𝐱, (length(A) + length(B) + length(val), size(partials,2))) |> sparse
 
-                jacobian_A = ℒ.kron(val * B, ℒ.I(size(A,1)))
-                jacobian_B = ℒ.kron(ℒ.I(size(B,1)), A * val)
+#                 jacobian_A = ℒ.kron(val * B, ℒ.I(size(A,1)))
+#                 jacobian_B = ℒ.kron(ℒ.I(size(B,1)), A * val)
 
-                b = hcat(jacobian_A', jacobian_B, -ℒ.I(length(val)))
-                droptol!(b,eps())
+#                 b = hcat(jacobian_A', jacobian_B, -ℒ.I(length(val)))
+#                 droptol!(b,eps())
 
-                sol .= vec(b * 𝐗)
-                return sol
-        end)
-    else
-        lengthA = dims[1][1] * dims[1][2]
-        A = reshape(ABC[1:lengthA],dims[1]...) |> sparse
-        droptol!(A, eps())
-        # C = reshape(ABC[lengthA+1:end],dims[2]...)
-        B = sparse(A') |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+#                 sol .= vec(b * 𝐗)
+#                 return sol
+#         end)
+#     else
+#         lengthA = dims[1][1] * dims[1][2]
+#         A = reshape(ABC[1:lengthA],dims[1]...) |> sparse
+#         droptol!(A, eps())
+#         # C = reshape(ABC[lengthA+1:end],dims[2]...)
+#         B = sparse(A') |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
-        partials = partial_values
+#         partials = partial_values
 
-        reshape_matmul_b = LinearOperators.LinearOperator(Float64, length(val) * size(partials,2), 2*size(A,1)^2 * size(partials,2), false, false, 
-        (sol,𝐱) -> begin 
-            𝐗 = reshape(𝐱, (2* size(A,1)^2,size(partials,2))) |> sparse
+#         reshape_matmul_b = LinearOperators.LinearOperator(Float64, length(val) * size(partials,2), 2*size(A,1)^2 * size(partials,2), false, false, 
+#         (sol,𝐱) -> begin 
+#             𝐗 = reshape(𝐱, (2* size(A,1)^2,size(partials,2))) |> sparse
 
-            b = hcat(jacobian_wrt_A(A, val), -ℒ.I(length(val)))
-            droptol!(b,eps())
+#             b = hcat(jacobian_wrt_A(A, val), -ℒ.I(length(val)))
+#             droptol!(b,eps())
 
-            sol .= vec(b * 𝐗)
-            return sol
-        end)
-    end
+#             sol .= vec(b * 𝐗)
+#             return sol
+#         end)
+#     end
     
-    # get J(f, vs) * ps (cheating). Write your custom rule here. This used to be the conditions but here they are analytically derived.
-    reshape_matmul_a = LinearOperators.LinearOperator(Float64, length(val) * size(partials,2), length(val) * size(partials,2), false, false, 
-        (sol,𝐱) -> begin 
-        𝐗 = reshape(𝐱, (length(val),size(partials,2))) |> sparse
+#     # get J(f, vs) * ps (cheating). Write your custom rule here. This used to be the conditions but here they are analytically derived.
+#     reshape_matmul_a = LinearOperators.LinearOperator(Float64, length(val) * size(partials,2), length(val) * size(partials,2), false, false, 
+#         (sol,𝐱) -> begin 
+#         𝐗 = reshape(𝐱, (length(val),size(partials,2))) |> sparse
 
-        a = jacobian_wrt_values(A, B)
-        droptol!(a,eps())
+#         a = jacobian_wrt_values(A, B)
+#         droptol!(a,eps())
 
-        sol .= vec(a * 𝐗)
-        return sol
-    end)
+#         sol .= vec(a * 𝐗)
+#         return sol
+#     end)
 
-    X, info = Krylov.gmres(reshape_matmul_a, vec(reshape_matmul_b * vec(partials)))#, atol = tol)
+#     X, info = Krylov.gmres(reshape_matmul_a, vec(reshape_matmul_b * vec(partials)))#, atol = tol)
 
-    jvp = reshape(X, (length(val), size(partials,2)))
+#     jvp = reshape(X, (length(val), size(partials,2)))
 
-    out = reshape(map(val, eachrow(jvp)) do v, p
-            ℱ.Dual{Z}(v, p...) # Z is the tag
-        end,size(val))
+#     out = reshape(map(val, eachrow(jvp)) do v, p
+#             ℱ.Dual{Z}(v, p...) # Z is the tag
+#         end,size(val))
 
-    # pack: SoA -> AoS
-    return sparse_output ? sparse(out) : out, solved
-end
+#     # pack: SoA -> AoS
+#     return sparse_output ? sparse(out) : out, solved
+# end
 
 
-solve_matrix_equation_AD = ℐ.ImplicitFunction(solve_matrix_equation_forward, 
-                                                solve_matrix_equation_conditions)
+# solve_matrix_equation_AD = ℐ.ImplicitFunction(solve_matrix_equation_forward, 
+#                                                 solve_matrix_equation_conditions)
 
-solve_matrix_equation_AD_direct = ℐ.ImplicitFunction(solve_matrix_equation_forward, 
-                                                solve_matrix_equation_conditions; 
-                                                linear_solver = ℐ.DirectLinearSolver())
+# solve_matrix_equation_AD_direct = ℐ.ImplicitFunction(solve_matrix_equation_forward, 
+#                                                 solve_matrix_equation_conditions; 
+#                                                 linear_solver = ℐ.DirectLinearSolver())
 
 
 
@@ -8624,10 +8624,10 @@ end
 
 
 # Specialization for :theoretical
-function get_initial_covariance(::Val{:theoretical}, values::Vector{S}, coordinates, dimensions)::Matrix{S} where S <: Real
-    P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-    return P
-end
+# function get_initial_covariance(::Val{:theoretical}, values::Vector{S}, coordinates, dimensions)::Matrix{S} where S <: Real
+#     P, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+#     return P
+# end
 
 function get_initial_covariance(::Val{:theoretical}, A::AbstractMatrix{S}, B::AbstractMatrix{S})::AbstractMatrix{S} where S <: Real
     P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = :doubling)
@@ -8636,51 +8636,51 @@ end
 
 
 # Specialization for :diagonal
-function get_initial_covariance(::Val{:diagonal}, values::Vector{S}, coordinates, dimensions)::Matrix{S} where S <: Real
+function get_initial_covariance(::Val{:diagonal}, A::AbstractMatrix{S}, B::AbstractMatrix{S})::AbstractMatrix{S} where S <: Real
     P = @ignore_derivatives collect(ℒ.I(dimensions[1][1]) * 10.0)
     return P
 end
 
 
-function rrule(::typeof(get_initial_covariance),
-    ::Val{:theoretical}, 
-    values, 
-    coordinates, 
-    dimensions)
+# function rrule(::typeof(get_initial_covariance),
+#     ::Val{:theoretical}, 
+#     values, 
+#     coordinates, 
+#     dimensions)
 
-    P, _ = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
+#     P, _ = solve_matrix_equation_forward(values, coords = coordinates, dims = dimensions, solver = :doubling)
 
-    A = reshape(values[1:(dimensions[1][1] * dimensions[1][2])], dimensions[1])
+#     A = reshape(values[1:(dimensions[1][1] * dimensions[1][2])], dimensions[1])
 
-    # pullback
-    function initial_covariance_pullback(∂P)
-        values_pb = vcat(vec(A'), vec(-∂P))
+#     # pullback
+#     function initial_covariance_pullback(∂P)
+#         values_pb = vcat(vec(A'), vec(-∂P))
 
-        ∂𝐁, _ = solve_matrix_equation_forward(values_pb, coords = coordinates, dims = dimensions, solver = :doubling)
+#         ∂𝐁, _ = solve_matrix_equation_forward(values_pb, coords = coordinates, dims = dimensions, solver = :doubling)
         
-        ∂A = ∂𝐁 * A * P' + ∂𝐁' * A * P
+#         ∂A = ∂𝐁 * A * P' + ∂𝐁' * A * P
 
-        return NoTangent(), NoTangent(), vcat(vec(∂A), vec(-∂𝐁)), NoTangent(), NoTangent()
-    end
+#         return NoTangent(), NoTangent(), vcat(vec(∂A), vec(-∂𝐁)), NoTangent(), NoTangent()
+#     end
     
-    return P, initial_covariance_pullback
-end
+#     return P, initial_covariance_pullback
+# end
 
 
 
-function rrule(::typeof(get_initial_covariance),
-    ::Val{:diagonal}, 
-    values, 
-    coordinates, 
-    dimensions)
+# function rrule(::typeof(get_initial_covariance),
+#     ::Val{:diagonal}, 
+#     values, 
+#     coordinates, 
+#     dimensions)
 
-    # pullback
-    function initial_covariance_pullback(∂P)
-        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
-    end
+#     # pullback
+#     function initial_covariance_pullback(∂P)
+#         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+#     end
     
-    return collect(ℒ.I(dimensions[1][1]) * 10.0), initial_covariance_pullback
-end
+#     return collect(ℒ.I(dimensions[1][1]) * 10.0), initial_covariance_pullback
+# end
 
 function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}, P::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S <: Float64
     u = zeros(S, size(C,2))

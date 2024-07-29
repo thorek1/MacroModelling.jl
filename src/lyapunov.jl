@@ -112,7 +112,7 @@ function solve_lyapunov_equation(   A::M,
                                     tol::Float64 = 1e-14) where M <: DenseMatrix{Float64}
     𝐂  = copy(-C)
     𝐂¹ = copy(-C)
-    𝐀 = copy(A)
+    𝐀  = copy(A)
 
     CA = similar(𝐀)
     𝐀² = similar(𝐀)
