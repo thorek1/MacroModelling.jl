@@ -6249,7 +6249,6 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
 end
 
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}},Bool} where {Z,S,N}
-    # A, solved = riccati_AD_direct(∇₁; T = T, explosive = explosive)
     A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
 
     if !solved
@@ -7002,7 +7001,7 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
     
     CC = C * C'
 
-    covar_raw, _ = solve_lyapunov_equation(A, -CC, lyapunov_algorithm = :doubling)
+    covar_raw, _ = solve_lyapunov_equation(A, CC, lyapunov_algorithm = :doubling)
 
     return covar_raw, sol , ∇₁, SS_and_pars
 end
@@ -7191,7 +7190,7 @@ function calculate_second_order_moments(
 
     C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
 
-    Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, -C, lyapunov_algorithm = :doubling)
+    Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, lyapunov_algorithm = :doubling)
 
     # if Σᶻ₂ isa DenseMatrix
     #     Σᶻ₂ = sparse(Σᶻ₂)
@@ -7416,7 +7415,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
         droptol!(C, eps())
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, -C, lyapunov_algorithm = :doubling)
+        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyapunov_algorithm = :doubling)
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 

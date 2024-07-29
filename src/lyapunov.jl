@@ -67,9 +67,9 @@ function solve_lyapunov_equation(A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},D
                                 C::DenseMatrix{Float64},
                                 ::Val{:lyapunov};
                                 tol::AbstractFloat = 1e-12)
-    𝐂 = MatrixEquations.lyapd(A, -C)
+    𝐂 = MatrixEquations.lyapd(A, C)
     
-    solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = tol)
+    solved = isapprox(𝐂, A * 𝐂 * A' + C, rtol = tol)
 
     return 𝐂, solved # return info on convergence
 end
@@ -80,12 +80,12 @@ function solve_lyapunov_equation(   A::S,
                                     C::S,
                                     ::Val{:doubling};
                                     tol::Float64 = 1e-14) where S <: AbstractSparseMatrix{Float64}
-    𝐂  = -C
+    𝐂  = C
 
     max_iter = 500
     
     for i in 1:max_iter
-        𝐂¹ = A * 𝐂 * A' + 𝐂
+        𝐂¹ = A * 𝐂 * A' - 𝐂
 
         A *= A
         
@@ -100,7 +100,7 @@ function solve_lyapunov_equation(   A::S,
         𝐂 = 𝐂¹
     end
 
-    solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = tol)
+    solved = isapprox(𝐂, A * 𝐂 * A' + C, rtol = tol)
 
     return 𝐂, solved # return info on convergence
 end
@@ -112,8 +112,8 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
                                     C::DenseMatrix{Float64},
                                     ::Val{:doubling};
                                     tol::Float64 = 1e-14)
-    𝐂  = copy(-C)
-    𝐂¹ = copy(-C)
+    𝐂  = copy(C)
+    𝐂¹ = copy(C)
     𝐀  = copy(A)
 
     CA = similar(𝐀)
@@ -137,7 +137,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
         copyto!(𝐂, 𝐂¹)
     end
 
-    solved = isapprox(𝐂, 𝐀 * 𝐂 * 𝐀' - C, rtol = tol)
+    solved = isapprox(𝐂, 𝐀 * 𝐂 * 𝐀' + C, rtol = tol)
 
     return 𝐂, solved # return info on convergence
 end
@@ -156,7 +156,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     function lyapunov!(sol,𝐱)
         copyto!(𝐗, 𝐱)
         ℒ.mul!(tmp̄, 𝐗, A')
-        ℒ.mul!(𝐗, A, tmp̄, 1, -1)
+        ℒ.mul!(𝐗, A, tmp̄, -1, 1)
         copyto!(sol, 𝐗)
     end
 
@@ -184,7 +184,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
         copyto!(𝐗, 𝐱)
         # 𝐗 = @view reshape(𝐱, size(𝐗))
         ℒ.mul!(tmp̄, 𝐗, A')
-        ℒ.mul!(𝐗, A, tmp̄, 1, -1)
+        ℒ.mul!(𝐗, A, tmp̄, -1, 1)
         copyto!(sol, 𝐗)
         # sol = @view reshape(𝐗, size(sol))
     end
@@ -215,7 +215,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     for i in 1:max_iter
         ℒ.mul!(𝐂A, 𝐂, A')
         ℒ.mul!(𝐂¹, A, 𝐂A)
-        ℒ.axpy!(-1, C, 𝐂¹)
+        ℒ.axpy!(1, C, 𝐂¹)
     
         if i % 10 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
@@ -228,7 +228,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
 
     ℒ.mul!(𝐂A, 𝐂, A')
     ℒ.mul!(𝐂¹, A, 𝐂A)
-    ℒ.axpy!(-1, C, 𝐂¹)
+    ℒ.axpy!(1, C, 𝐂¹)
 
     solved = isapprox(𝐂¹, 𝐂, rtol = tol)
 
@@ -247,7 +247,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
 
     CA = similar(C)
 
-    soll = speedmapping(-C; 
+    soll = speedmapping(C; 
             m! = (X, x) -> begin
                 ℒ.mul!(CA, x, A')
                 ℒ.mul!(X, A, CA)
@@ -258,5 +258,5 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
 
     solved = soll.converged
 
-    return -𝐂, solved
+    return 𝐂, solved
 end

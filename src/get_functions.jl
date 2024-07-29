@@ -1969,7 +1969,7 @@ function get_variance_decomposition(𝓂::ℳ;
         
         CC = C * C'
 
-        covar_raw, _ = solve_lyapunov_equation(A, -CC, lyapunov_algorithm = :doubling)
+        covar_raw, _ = solve_lyapunov_equation(A, CC, lyapunov_algorithm = :doubling)
 
         variances_by_shock[:,i] = ℒ.diag(covar_raw)
     end
