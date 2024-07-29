@@ -6065,51 +6065,56 @@ end
 
 
 
-function riccati_conditions(∇₁::AbstractMatrix{M}, sol_d::AbstractMatrix{N}, solved::Bool; T::timings, explosive::Bool = false) where {M,N}
-    expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
-
-    A = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    B = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    C = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
-
-    sol_buf = sol_d * expand[2]
-
-    sol_buf2 = sol_buf * sol_buf
-
-    err1 = A * sol_buf2 + B * sol_buf + C
-
-    err1[:,T.past_not_future_and_mixed_idx]
-end
-
 
 function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
     ∇̂₁ = ℱ.value.(∇₁)
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, ∇₁)'
 
-    val, solved = riccati_forward(∇̂₁;T = T, explosive = explosive)
+    expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
 
-    if solved
-        # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = 𝒜.jacobian(𝒷(), x -> riccati_conditions(x, val, solved; T = T), ∇̂₁)[1]
-        A = 𝒜.jacobian(𝒷(), x -> riccati_conditions(∇̂₁, x, solved; T = T), val)[1]
+    A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
 
-        Â = RF.lu(A, check = false)
+    x, solved = riccati_forward(∇̂₁;T = T, explosive = explosive)
 
-        if !ℒ.issuccess(Â)
-            Â = ℒ.svd(A)
-        end
-        
-        jvp = -(Â \ B) * ps
-    else
-        jvp = fill(0,length(val),length(∇̂₁)) * ps
+    X = x * expand[2]
+
+    AXB = A * X + B
+    
+    AXBfact = RF.lu(AXB, check = false)
+
+    if !ℒ.issuccess(AXBfact)
+        AXBfact = ℒ.svd(AXB)
     end
 
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
+    invAXB = inv(AXBfact)
+
+    AA = invAXB * A
+
+    X² = X * X
+
+    X̃ = zeros(length(x), N)
+
+    p = zero(∇̂₁)
+
+    # https://arxiv.org/abs/2011.11430  
+    for i in 1:N
+        p .= ℱ.partials.(∇₁, i)
+
+        dA = p[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+        dB = p[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+        dC = p[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+    
+        CC = invAXB * (dA * X² + dC + dB * X)
+    
+        dX, solved = solve_sylvester_equation(AA, -X, CC, sylvester_algorithm = :sylvester)
+
+        X̃[:,i] = vec(dX[:,T.past_not_future_and_mixed_idx])
+    end
+    
+    return reshape(map(x, eachrow(X̃)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val)), solved
+    end, size(x)), solved
 end
 
 
@@ -7074,48 +7079,6 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
     return mean_of_variables, 𝐒₁, ∇₁, 𝐒₂, ∇₂
 end
 
-
-
-function solve_matrix_equation_conditions(ABC::Vector{<: Real},
-    X::AbstractMatrix{<: Real}, 
-    solved::Bool;
-    coords::Vector{Tuple{Vector{Int}, Vector{Int}}},
-    dims::Vector{Tuple{Int,Int}},
-    sparse_output::Bool = false,
-    solver::Symbol = :doubling)
-
-    solver = :gmres # ensure the AXB works always
-
-    if length(coords) == 1
-        lengthA = length(coords[1][1])
-        vA = ABC[1:lengthA]
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        C = reshape(ABC[lengthA+1:end],dims[2]...)
-        if solver != :doubling
-            B = A' |> sparse |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        end
-    elseif length(coords) == 3
-        lengthA = length(coords[1][1])
-        lengthB = length(coords[2][1])
-        
-        vA = ABC[1:lengthA]
-        vB = ABC[lengthA .+ (1:lengthB)]
-        vC = ABC[lengthA + lengthB + 1:end]
-
-        A = sparse(coords[1]...,vA,dims[1]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        B = sparse(coords[2]...,vB,dims[2]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-        C = sparse(coords[3]...,vC,dims[3]...) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-    else
-        lengthA = dims[1][1] * dims[1][2]
-        A = reshape(ABC[1:lengthA],dims[1]...)
-        C = reshape(ABC[lengthA+1:end],dims[2]...)
-        if solver != :doubling
-            B = A'
-        end
-    end
-
-    A * X * B - C - X
-end
 
 
 

@@ -13,7 +13,8 @@ function rrule(::typeof(solve_lyapunov_equation),
 
     P, solved = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol)
 
-    # pullback
+    # pullback 
+    # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
         ∂C, solved = solve_lyapunov_equation(A', ∂P[1], Val(lyapunov_algorithm), tol = tol)
     
@@ -43,6 +44,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     
     P̃ = zeros(length(P̂), N)
     
+    # https://arxiv.org/abs/2011.11430  
     for i in 1:N
         Ã .= ℱ.partials.(A, i)
         C̃ .= ℱ.partials.(C, i)
