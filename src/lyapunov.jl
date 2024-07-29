@@ -3,13 +3,13 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 lyapunov_algorithm::Symbol = :doubling,
                                 tol::AbstractFloat = 1e-12)
     if A isa AbstractSparseMatrix
-        if length(A.nzval) / length(A) > .1 || sylvester_algorithm == :sylvester
+        if length(A.nzval) / length(A) > .1 || lyapunov_algorithm == :lyapunov
             A = collect(A)
         end
     end
 
     if C isa AbstractSparseMatrix
-        if length(C.nzval) / length(C) > .1 || sylvester_algorithm == :sylvester
+        if length(C.nzval) / length(C) > .1 || lyapunov_algorithm == :lyapunov
             C = collect(C)
         end
     end
