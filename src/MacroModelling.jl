@@ -8636,8 +8636,8 @@ end
 
 
 # Specialization for :diagonal
-function get_initial_covariance(::Val{:diagonal}, A::AbstractMatrix{S}, B::AbstractMatrix{S})::AbstractMatrix{S} where S <: Real
-    P = @ignore_derivatives collect(ℒ.I(dimensions[1][1]) * 10.0)
+function get_initial_covariance(::Val{:diagonal}, A::AbstractMatrix{S}, B::AbstractMatrix{S})::Matrix{S} where S <: Real
+    P = @ignore_derivatives collect(ℒ.I(size(A, 1)) * 10.0)
     return P
 end
 
