@@ -23,12 +23,12 @@ function rrule(::typeof(solve_lyapunov_equation),
                 lyapunov_algorithm::Symbol = :doubling,
                 tol::AbstractFloat = 1e-12)
 
-    P, solved = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol)
+    P, solved = solve_lyapunov_equation(A, C, lyapunov_algorithm = lyapunov_algorithm, tol = tol)
 
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
-        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], Val(lyapunov_algorithm), tol = tol)
+        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], lyapunov_algorithm = lyapunov_algorithm, tol = tol)
     
         ∂A = ∂C * A * P' + ∂C' * A * P
 
@@ -49,7 +49,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
 
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, Val(lyapunov_algorithm), tol = tol)
+    P̂, solved = solve_lyapunov_equation(Â, Ĉ, lyapunov_algorithm = lyapunov_algorithm, tol = tol)
 
     Ã = copy(Â)
     C̃ = copy(Ĉ)
@@ -63,7 +63,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         X = Ã * P̂ * Â' + Â * P̂ * Ã' + C̃
 
-        P, solved = solve_lyapunov_equation(Â, X, Val(lyapunov_algorithm), tol = tol)
+        P, solved = solve_lyapunov_equation(Â, X, lyapunov_algorithm = lyapunov_algorithm, tol = tol)
 
         P̃[:,i] = vec(P)
     end

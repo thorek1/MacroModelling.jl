@@ -20,7 +20,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
             C = collect(C)
         end
     end
-    
+
     solve_sylvester_equation(A, B, C, Val(sylvester_algorithm), tol = tol)
 end
 
@@ -32,11 +32,11 @@ function rrule(::typeof(solve_sylvester_equation),
     sylvester_algorithm::Symbol = :gmres,
     tol::AbstractFloat = 1e-12)
 
-    P, solved = solve_sylvester_equation(A, B, C, Val(sylvester_algorithm), tol = tol)
+    P, solved = solve_sylvester_equation(A, B, C, sylvester_algorithm = sylvester_algorithm, tol = tol)
 
     # pullback
     function solve_sylvester_equation_pullback(∂P)
-        ∂C, solved = solve_sylvester_equation(A', B', ∂P[1], Val(sylvester_algorithm), tol = tol)
+        ∂C, solved = solve_sylvester_equation(A', B', ∂P[1], sylvester_algorithm = sylvester_algorithm, tol = tol)
 
         ∂A = ∂C * B' * P'
 
@@ -60,7 +60,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     B̂ = ℱ.value.(B)
     Ĉ = ℱ.value.(C)
 
-    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, Val(sylvester_algorithm), tol = tol)
+    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, sylvester_algorithm = sylvester_algorithm, tol = tol)
 
     Ã = copy(Â)
     B̃ = copy(B̂)
@@ -75,7 +75,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         X = - Ã * P̂ * B̂ - Â * P̂ * B̃ + C̃
 
-        P, solved = solve_sylvester_equation(Â, B̂, X, Val(sylvester_algorithm), tol = tol)
+        P, solved = solve_sylvester_equation(Â, B̂, X, sylvester_algorithm = sylvester_algorithm, tol = tol)
 
         P̃[:,i] = vec(P)
     end
