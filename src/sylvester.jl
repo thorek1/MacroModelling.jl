@@ -3,6 +3,24 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     C::AbstractMatrix{Float64};
                                     sylvester_algorithm::Symbol = :gmres,
                                     tol::AbstractFloat = 1e-12)
+    if A isa AbstractSparseMatrix
+        if length(A.nzval) / length(A) > .1 || sylvester_algorithm == :sylvester
+            A = collect(A)
+        end
+    end
+
+    if B isa AbstractSparseMatrix
+        if length(B.nzval) / length(B) > .1 || sylvester_algorithm == :sylvester
+            B = collect(B)
+        end
+    end
+
+    if C isa AbstractSparseMatrix
+        if length(C.nzval) / length(C) > .1 || sylvester_algorithm == :sylvester
+            C = collect(C)
+        end
+    end
+    
     solve_sylvester_equation(A, B, C, Val(sylvester_algorithm), tol = tol)
 end
 

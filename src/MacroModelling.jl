@@ -6374,10 +6374,6 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
 
-    B = sylvester_algorithm ≠ :sylvester && length(B.nzval) / length(B) < .1 ? B : collect(B)
-    C = sylvester_algorithm ≠ :sylvester && length(C.nzval) / length(C) < .1 ? C : collect(C)
-    X = sylvester_algorithm ≠ :sylvester && length(X.nzval) / length(X) < .1 ? X : collect(X)
-
     𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm)
 
     𝐒₂ = sparse(𝐒₂)
@@ -6477,10 +6473,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     C *= M₃.𝐂₃
     # C += kron³(𝐒₁₋╱𝟏ₑ, M₃)
     droptol!(C,tol)
-
-    B = sylvester_algorithm ≠ :sylvester && length(B.nzval) / length(B) < .1 ? B : collect(B)
-    C = sylvester_algorithm ≠ :sylvester && length(C.nzval) / length(C) < .1 ? C : collect(C)
-    X = sylvester_algorithm ≠ :sylvester && length(X.nzval) / length(X) < .1 ? X : collect(X)
 
     𝐒₃, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm)
     
@@ -7672,7 +7664,6 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 lyapunov_algorithm::Symbol = :doubling)::S where S <: Real
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
 
-
     A = 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(S, length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
     B = 𝐒[observables_and_states,T.nPast_not_future_and_mixed+1:end]
 
@@ -7681,7 +7672,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     𝐁 = B * B'
 
     # Gaussian Prior
-    P = get_initial_covariance(Val(initial_covariance), A, -𝐁, lyapunov_algorithm = lyapunov_algorithm)
+    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyapunov_algorithm = lyapunov_algorithm)
 
     return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods)
 end

@@ -1,8 +1,20 @@
 function solve_lyapunov_equation(A::AbstractMatrix{Float64},
-        C::AbstractMatrix{Float64};
-        lyapunov_algorithm::Symbol = :doubling,
-        tol::AbstractFloat = 1e-12)
-        solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol)
+                                C::AbstractMatrix{Float64};
+                                lyapunov_algorithm::Symbol = :doubling,
+                                tol::AbstractFloat = 1e-12)
+    if A isa AbstractSparseMatrix
+        if length(A.nzval) / length(A) > .1 || sylvester_algorithm == :sylvester
+            A = collect(A)
+        end
+    end
+
+    if C isa AbstractSparseMatrix
+        if length(C.nzval) / length(C) > .1 || sylvester_algorithm == :sylvester
+            C = collect(C)
+        end
+    end
+    
+    solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol)
 end
 
 function rrule(::typeof(solve_lyapunov_equation),
@@ -20,7 +32,7 @@ function rrule(::typeof(solve_lyapunov_equation),
     
         ∂A = ∂C * A * P' + ∂C' * A * P
 
-        return NoTangent(), -∂A, ∂C, NoTangent()
+        return NoTangent(), ∂A, ∂C, NoTangent()
     end
     
     return (P, solved), solve_lyapunov_equation_pullback
@@ -49,7 +61,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         Ã .= ℱ.partials.(A, i)
         C̃ .= ℱ.partials.(C, i)
 
-        X = - Ã * P̂ * Â' - Â * P̂ * Ã' + C̃
+        X = Ã * P̂ * Â' + Â * P̂ * Ã' + C̃
 
         P, solved = solve_lyapunov_equation(Â, X, Val(lyapunov_algorithm), tol = tol)
 
