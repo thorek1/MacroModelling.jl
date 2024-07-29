@@ -6997,16 +6997,6 @@ function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::B
     
     CC = C * C'
 
-    # coordinates = Tuple{Vector{Int}, Vector{Int}}[]
-    
-    # dimensions = Tuple{Int, Int}[]
-    # push!(dimensions,size(A))
-    # push!(dimensions,size(CC))
-    
-    # values = vcat(vec(A), vec(collect(-CC)))
-
-    # covar_raw, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
-
     covar_raw, _ = solve_lyapunov_equation(A, -CC, lyapunov_algorithm = :doubling)
 
     return covar_raw, sol , ∇₁, SS_and_pars
@@ -7462,19 +7452,6 @@ function calculate_third_order_moments(parameters::Vector{T},
 
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
         droptol!(C, eps())
-
-        # r1,c1,v1 = findnz(ŝ_to_ŝ₃)
-
-        # coordinates = Tuple{Vector{Int}, Vector{Int}}[]
-        # push!(coordinates,(r1,c1))
-        
-        # dimensions = Tuple{Int, Int}[]
-        # push!(dimensions,size(ŝ_to_ŝ₃))
-        # push!(dimensions,size(C))
-        
-        # values = vcat(v1, vec(collect(-C)))
-
-        # Σᶻ₃, info = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
 
         Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, -C, lyapunov_algorithm = :doubling)
 

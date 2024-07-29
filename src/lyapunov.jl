@@ -106,10 +106,10 @@ end
 
 
 
-function solve_lyapunov_equation(   A::M,
-                                    C::M,
+function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+                                    C::DenseMatrix{Float64},
                                     ::Val{:doubling};
-                                    tol::Float64 = 1e-14) where M <: DenseMatrix{Float64}
+                                    tol::Float64 = 1e-14)
     𝐂  = copy(-C)
     𝐂¹ = copy(-C)
     𝐀  = copy(A)
@@ -143,8 +143,8 @@ end
 
 
 
-function solve_lyapunov_equation(A::DenseMatrix{Float64},
-    C::AbstractMatrix{Float64},
+function solve_lyapunov_equation(A::AbstractMatrix{Float64},
+    C::DenseMatrix{Float64},
     ::Val{:bicgstab};
     tol::Float64 = 1e-12)
 
@@ -170,8 +170,8 @@ function solve_lyapunov_equation(A::DenseMatrix{Float64},
 end
 
 
-function solve_lyapunov_equation(A::DenseMatrix{Float64},
-    C::AbstractMatrix{Float64},
+function solve_lyapunov_equation(A::AbstractMatrix{Float64},
+    C::DenseMatrix{Float64},
     ::Val{:gmres};
     tol::Float64 = 1e-12)
 
@@ -200,7 +200,7 @@ end
 
 
 function solve_lyapunov_equation(A::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
+    C::DenseMatrix{Float64},
     ::Val{:iterative};
     tol::AbstractFloat = 1e-14)
 
@@ -235,7 +235,7 @@ end
 
 
 function solve_lyapunov_equation(A::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
+    C::DenseMatrix{Float64},
     ::Val{:speedmapping};
     tol::AbstractFloat = 1e-12)
 

@@ -1969,15 +1969,7 @@ function get_variance_decomposition(𝓂::ℳ;
         
         CC = C * C'
 
-        coordinates = Tuple{Vector{Int}, Vector{Int}}[]
-    
-        dimensions = Tuple{Int, Int}[]
-        push!(dimensions,size(A))
-        push!(dimensions,size(CC))
-        
-        values = vcat(vec(A), vec(collect(-CC)))
-    
-        covar_raw, _ = solve_matrix_equation_AD(values, coords = coordinates, dims = dimensions, solver = :doubling)
+        covar_raw, _ = solve_lyapunov_equation(A, -CC, lyapunov_algorithm = :doubling)
 
         variances_by_shock[:,i] = ℒ.diag(covar_raw)
     end
