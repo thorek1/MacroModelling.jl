@@ -49,18 +49,19 @@ function solve_lyapunov_equation(   A::M,
                                     tol::Float64 = 1e-14) where M <: DenseMatrix{Float64}
     𝐂  = copy(-C)
     𝐂¹ = copy(-C)
+    𝐀 = copy(A)
 
-    CA = similar(A)
-    A² = similar(A)
+    CA = similar(𝐀)
+    𝐀² = similar(𝐀)
 
     max_iter = 500
     
     for i in 1:max_iter
-        mul!(CA, 𝐂, A')
-        mul!(𝐂¹, A, CA, 1, 1)
+        mul!(CA, 𝐂, 𝐀')
+        mul!(𝐂¹, 𝐀, CA, 1, 1)
 
-        mul!(A², A, A)
-        copyto!(A, A²)
+        mul!(𝐀², 𝐀, 𝐀)
+        copyto!(𝐀, 𝐀²)
         
         if i > 10 && i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
@@ -71,7 +72,7 @@ function solve_lyapunov_equation(   A::M,
         copyto!(𝐂, 𝐂¹)
     end
 
-    solved = isapprox(𝐂, A * 𝐂 * A' - C, rtol = tol)
+    solved = isapprox(𝐂, 𝐀 * 𝐂 * 𝐀' - C, rtol = tol)
 
     return 𝐂, solved # return info on convergence
 end
@@ -90,7 +91,7 @@ function solve_lyapunov_equation(A::DenseMatrix{Float64},
     function lyapunov!(sol,𝐱)
         copyto!(𝐗, 𝐱)
         ℒ.mul!(tmp̄, 𝐗, A')
-        ℒ.mul!(𝐗, A, tmp̄, 1, 1)
+        ℒ.mul!(𝐗, A, tmp̄, 1, -1)
         copyto!(sol, 𝐗)
     end
 
@@ -118,7 +119,7 @@ function solve_lyapunov_equation(A::DenseMatrix{Float64},
         copyto!(𝐗, 𝐱)
         # 𝐗 = @view reshape(𝐱, size(𝐗))
         ℒ.mul!(tmp̄, 𝐗, A')
-        ℒ.mul!(𝐗, A, tmp̄, 1, 1)
+        ℒ.mul!(𝐗, A, tmp̄, 1, -1)
         copyto!(sol, 𝐗)
         # sol = @view reshape(𝐗, size(sol))
     end
