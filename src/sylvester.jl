@@ -7,17 +7,29 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
         if length(A.nzval) / length(A) > .1 || sylvester_algorithm == :sylvester
             A = collect(A)
         end
+        
+        if VERSION >= v"1.9"
+            A = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
+        end
     end
 
     if B isa AbstractSparseMatrix
         if length(B.nzval) / length(B) > .1 || sylvester_algorithm == :sylvester
             B = collect(B)
         end
+        
+        if VERSION >= v"1.9"
+            B = ThreadedSparseArrays.ThreadedSparseMatrixCSC(B)
+        end
     end
 
     if C isa AbstractSparseMatrix
         if length(C.nzval) / length(C) > .1 || sylvester_algorithm == :sylvester
             C = collect(C)
+        end
+        
+        if VERSION >= v"1.9"
+            C = ThreadedSparseArrays.ThreadedSparseMatrixCSC(C)
         end
     end
 

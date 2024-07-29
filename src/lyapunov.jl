@@ -6,11 +6,19 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
         if length(A.nzval) / length(A) > .1 || lyapunov_algorithm == :lyapunov
             A = collect(A)
         end
+
+        if VERSION >= v"1.9"
+            A = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
+        end
     end
 
     if C isa AbstractSparseMatrix
         if length(C.nzval) / length(C) > .1 || lyapunov_algorithm == :lyapunov
             C = collect(C)
+        end
+        
+        if VERSION >= v"1.9"
+            C = ThreadedSparseArrays.ThreadedSparseMatrixCSC(C)
         end
     end
     
