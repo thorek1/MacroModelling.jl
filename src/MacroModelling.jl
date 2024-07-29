@@ -5304,21 +5304,29 @@ end
 
 
 # helper for get functions
-function covariance_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+function covariance_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, 
+                                            parameters_idx, 
+                                            𝓂::ℳ; 
+                                            lyapunov_algorithm::Symbol = :doubling, 
+                                            verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_covariance(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_covariance(params, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64)))
     # convert(Vector{ℱ.Dual{Z,S,N}},ℒ.diag(calculate_covariance(params, 𝓂, verbose = verbose)[1]))
 end
 
 
 # helper for get functions
-function covariance_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; verbose::Bool = false) where {Z,S,N}
+function covariance_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, 
+                                            parameters_idx::Int, 
+                                            𝓂::ℳ; 
+                                            lyapunov_algorithm::Symbol = :doubling, 
+                                            verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_covariance(params, 𝓂, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_covariance(params, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64)))
     # convert(Vector{ℱ.Dual{Z,S,N}},ℒ.diag(calculate_covariance(params, 𝓂, verbose = verbose)[1]))
 end
 
@@ -5326,20 +5334,29 @@ end
 
 
 # helper for get functions
-function covariance_parameter_derivatives_second_order(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; sylvester_algorithm::Symbol = :gmres,verbose::Bool = false) where {Z,S,N}
+function covariance_parameter_derivatives_second_order(parameters::Vector{ℱ.Dual{Z,S,N}}, 
+                                                        parameters_idx, 
+                                                        𝓂::ℳ; 
+                                                        lyapunov_algorithm::Symbol = :doubling, 
+                                                        sylvester_algorithm::Symbol = :gmres,
+                                                        verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_moments(params, 𝓂, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_moments(params, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)[1]),eps(Float64)))
 end
 
 
 # helper for get functions
-function covariance_parameter_derivatives_second_order(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; sylvester_algorithm::Symbol = :gmres,verbose::Bool = false) where {Z,S,N}
+function covariance_parameter_derivatives_second_order(parameters::ℱ.Dual{Z,S,N}, 
+                                                        parameters_idx::Int, 𝓂::ℳ; 
+                                                        lyapunov_algorithm::Symbol = :doubling, 
+                                                        sylvester_algorithm::Symbol = :gmres,
+                                                        verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_moments(params, 𝓂, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_second_order_moments(params, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -5350,11 +5367,12 @@ function covariance_parameter_derivatives_third_order(parameters::Vector{ℱ.Dua
                                                         𝓂::ℳ;
                                                         dependencies_tol::AbstractFloat = 1e-12,
                                                         sylvester_algorithm::Symbol = :gmres,
+                                                        lyapunov_algorithm::Symbol = :doubling,
                                                         verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, dependencies_tol = dependencies_tol, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64)))
 end
 
 
@@ -5365,29 +5383,40 @@ function covariance_parameter_derivatives_third_order(parameters::ℱ.Dual{Z,S,N
                                                         𝓂::ℳ; 
                                                         dependencies_tol::AbstractFloat = 1e-12,
                                                         sylvester_algorithm::Symbol = :gmres,
+                                                        lyapunov_algorithm::Symbol = :doubling,
                                                         verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, dependencies_tol = dependencies_tol, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64)))
+    convert(Vector{ℱ.Dual{Z,S,N}},max.(ℒ.diag(calculate_third_order_moments(params, variables, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64)))
 end
 
 
 # helper for get functions
-function mean_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameters_idx, 𝓂::ℳ; algorithm::Symbol = :pruned_second_order, verbose::Bool = false) where {Z,S,N}
+function mean_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, 
+                                    parameters_idx, 
+                                    𝓂::ℳ; 
+                                    algorithm::Symbol = :pruned_second_order, 
+                                    sylvester_algorithm::Symbol = :gmres,
+                                    verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}}, calculate_mean(params, 𝓂, algorithm = algorithm, verbose = verbose)[1])
+    convert(Vector{ℱ.Dual{Z,S,N}}, calculate_mean(params, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm)[1])
 end
 
 
 # helper for get functions
-function mean_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::Int, 𝓂::ℳ; algorithm::Symbol = :pruned_second_order, verbose::Bool = false) where {Z,S,N}
+function mean_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, 
+                                    parameters_idx::Int, 
+                                    𝓂::ℳ; 
+                                    algorithm::Symbol = :pruned_second_order, 
+                                    sylvester_algorithm::Symbol = :gmres,
+                                    verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    convert(Vector{ℱ.Dual{Z,S,N}}, calculate_mean(params, 𝓂, algorithm = algorithm, verbose = verbose)[1])
+    convert(Vector{ℱ.Dual{Z,S,N}}, calculate_mean(params, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm)[1])
 end
 
 
@@ -6985,23 +7014,23 @@ end
 
 
 
-function calculate_covariance(parameters::Vector{<: Real}, 𝓂::ℳ; verbose::Bool = false)
+function calculate_covariance(parameters::Vector{<: Real}, 
+                                𝓂::ℳ; 
+                                lyapunov_algorithm::Symbol = :doubling, 
+                                verbose::Bool = false)
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters, 0)
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
     sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
 
-    # covar_raw, solved_cov = calculate_covariance_AD(sol, T = 𝓂.timings, subset_indices = collect(1:𝓂.timings.nVars))
-
     A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
 
-    
     C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
     
     CC = C * C'
 
-    covar_raw, _ = solve_lyapunov_equation(A, CC, lyapunov_algorithm = :doubling)
+    covar_raw, _ = solve_lyapunov_equation(A, CC, lyapunov_algorithm = lyapunov_algorithm)
 
     return covar_raw, sol , ∇₁, SS_and_pars
 end
@@ -7087,9 +7116,10 @@ function calculate_second_order_moments(
     covariance::Bool = true,
     verbose::Bool = false, 
     sylvester_algorithm::Symbol = :gmres,
+    lyapunov_algorithm::Symbol = :doubling,
     tol::AbstractFloat = eps())
 
-    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars = calculate_covariance(parameters, 𝓂, verbose = verbose)
+    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars = calculate_covariance(parameters, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
 
     nᵉ = 𝓂.timings.nExo
 
@@ -7190,7 +7220,7 @@ function calculate_second_order_moments(
 
     C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
 
-    Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, lyapunov_algorithm = :doubling)
+    Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, lyapunov_algorithm = lyapunov_algorithm)
 
     # if Σᶻ₂ isa DenseMatrix
     #     Σᶻ₂ = sparse(Σᶻ₂)
@@ -7217,6 +7247,7 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             verbose::Bool = false, 
                                             dependencies_tol::AbstractFloat = 1e-12, 
                                             sylvester_algorithm::Symbol = :gmres,
+                                            lyapunov_algorithm::Symbol = :doubling,
                                             tol::AbstractFloat = eps()) where {U, T <: Real}
 
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(parameters, 𝓂, verbose = verbose, sylvester_algorithm = sylvester_algorithm)
@@ -7415,7 +7446,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
         droptol!(C, eps())
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyapunov_algorithm = :doubling)
+        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyapunov_algorithm = lyapunov_algorithm)
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
@@ -7637,7 +7668,8 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
                                                 presample_periods::Int = 0,
-                                                initial_covariance::Symbol = :theoretical)::S where S <: Real
+                                                initial_covariance::Symbol = :theoretical,
+                                                lyapunov_algorithm::Symbol = :doubling)::S where S <: Real
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
 
 
@@ -7649,21 +7681,21 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     𝐁 = B * B'
 
     # Gaussian Prior
-    P = get_initial_covariance(Val(initial_covariance), A, -𝐁)
+    P = get_initial_covariance(Val(initial_covariance), A, -𝐁, lyapunov_algorithm = lyapunov_algorithm)
 
     return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods)
 end
 
-
+# TODO: use higher level wrapper, like for lyapunov/sylvester
 # Specialization for :theoretical
-function get_initial_covariance(::Val{:theoretical}, A::AbstractMatrix{S}, B::AbstractMatrix{S})::AbstractMatrix{S} where S <: Real
-    P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = :doubling)
+function get_initial_covariance(::Val{:theoretical}, A::AbstractMatrix{S}, B::AbstractMatrix{S}; lyapunov_algorithm::Symbol = :doubling)::AbstractMatrix{S} where S <: Real
+    P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = lyapunov_algorithm)
     return P
 end
 
 
 # Specialization for :diagonal
-function get_initial_covariance(::Val{:diagonal}, A::AbstractMatrix{S}, B::AbstractMatrix{S})::Matrix{S} where S <: Real
+function get_initial_covariance(::Val{:diagonal}, A::AbstractMatrix{S}, B::AbstractMatrix{S}; lyapunov_algorithm::Symbol = :doubling)::Matrix{S} where S <: Real
     P = @ignore_derivatives collect(ℒ.I(size(A, 1)) * 10.0)
     return P
 end
@@ -9340,6 +9372,7 @@ function filter_and_smooth(𝓂::ℳ,
                             data_in_deviations::AbstractArray{Float64}, 
                             observables::Vector{Symbol}; 
                             verbose::Bool = false, 
+                            lyapunov_algorithm::Symbol = :doubling,
                             tol::AbstractFloat = 1e-12)
     # Based on Durbin and Koopman (2012)
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
@@ -9369,7 +9402,7 @@ function filter_and_smooth(𝓂::ℳ,
 
     𝐁 = B * B'
 
-    P̄ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose)[1]
+    P̄ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)[1]
 
     n_obs = size(data_in_deviations,2)
 
