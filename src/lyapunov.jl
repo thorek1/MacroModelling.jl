@@ -109,6 +109,45 @@ end
 
 
 function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
+                                    C::AbstractSparseMatrix{Float64},
+                                    ::Val{:doubling};
+                                    tol::Float64 = 1e-12)
+    𝐂  = copy(C)
+    𝐀  = copy(A)
+
+    max_iter = 500
+
+    iters = max_iter
+
+    for i in 1:max_iter
+        𝐂¹ = 𝐀 * 𝐂 * 𝐀' + 𝐂
+
+        𝐀 = 𝐀^2
+
+        droptol!(𝐀, eps())
+
+        if i > 10# && i % 2 == 0
+            if isapprox(𝐂¹, 𝐂, rtol = tol)
+                iters = i
+                break 
+            end
+        end
+
+        𝐂 = 𝐂¹
+    end
+
+    𝐂¹ = 𝐀 * 𝐂 * 𝐀' + 𝐂
+
+    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    reached_tol = ℒ.norm(𝐂¹ - 𝐂) / denom
+
+    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+end
+
+
+
+function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
                                     C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
                                     ::Val{:doubling};
                                     tol::Float64 = 1e-12)
