@@ -40,7 +40,8 @@ function rrule(::typeof(solve_lyapunov_equation),
                 A::AbstractMatrix{Float64},
                 C::AbstractMatrix{Float64};
                 lyapunov_algorithm::Symbol = :doubling,
-                tol::AbstractFloat = 1e-12)
+                tol::AbstractFloat = 1e-12,
+                verbose::Bool = false)
 
     P, solved = solve_lyapunov_equation(A, C, lyapunov_algorithm = lyapunov_algorithm, tol = tol)
 
@@ -62,7 +63,8 @@ end
 function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}};
                                     lyapunov_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-12) where {Z,S,N}
+                                    tol::AbstractFloat = 1e-12,
+                                    verbose::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
