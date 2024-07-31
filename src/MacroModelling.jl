@@ -8617,6 +8617,9 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
         𝐒¹ᵉfact = RF.lu(𝐒[1][cond_var_idx,end-T.nExo+1:end], check = false)
 
         if !ℒ.issuccess(𝐒¹ᵉfact)
+            if ℒ.rank(𝐒[1][cond_var_idx,end-T.nExo+1:end]) < T.nExo
+                return -Inf
+            end
             𝐒¹ᵉfact = ℒ.svd(𝐒[1][cond_var_idx,end-T.nExo+1:end])
         end
     else
