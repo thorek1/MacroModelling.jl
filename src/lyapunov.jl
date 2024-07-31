@@ -1,7 +1,16 @@
+# Available algorithms: 
+# :doubling     - fast and precise
+# :lyapunov     - fast for small matrices and precise
+# :bicgstab     - less precise
+# :gmres        - less precise
+# :iterative    - slow and precise
+# :speedmapping - slow and very precise
+
 function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 C::AbstractMatrix{Float64};
                                 lyapunov_algorithm::Symbol = :doubling,
-                                tol::AbstractFloat = 1e-12)
+                                tol::AbstractFloat = 1e-12,
+                                verbose::Bool = false)
     if A isa AbstractSparseMatrix
         if length(A.nzval) / length(A) > .1 || lyapunov_algorithm == :lyapunov
             A = collect(A)
@@ -18,7 +27,13 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
         end
     end
     
-    solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol)
+    X, solved, i, reached_tol = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol)
+
+    if verbose
+        println("Lyapunov equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $lyapunov_algorithm")
+    end
+
+    return X, solved
 end
 
 function rrule(::typeof(solve_lyapunov_equation),
@@ -79,14 +94,16 @@ end
 
 
 function solve_lyapunov_equation(A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-                                C::DenseMatrix{Float64},
+                                C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
                                 ::Val{:lyapunov};
                                 tol::AbstractFloat = 1e-12)
     𝐂 = MatrixEquations.lyapd(A, C)
     
-    solved = isapprox(𝐂, A * 𝐂 * A' + C, rtol = tol)
+    𝐂¹ = A * 𝐂 * A' + C
 
-    return 𝐂, solved # return info on convergence
+    reached_tol = ℒ.norm(𝐂¹ - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    return 𝐂, reached_tol < tol, 0, reached_tol # return info on convergence
 end
 
 
@@ -94,18 +111,20 @@ end
 function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
                                     C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
                                     ::Val{:doubling};
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-12)
     𝐂  = copy(C)
     𝐀  = copy(A)
-    CA = collect(𝐀)    
+    𝐂A = collect(𝐀)    
     𝐂¹ = copy(C)
 
     max_iter = 500
-    
+
+    iters = max_iter
+
     for i in 1:max_iter
         # 𝐂¹ .= 𝐀 * 𝐂 * 𝐀' + 𝐂
-        mul!(CA, 𝐂, 𝐀')
-        mul!(𝐂¹, 𝐀, CA, 1, 1)
+        mul!(𝐂A, 𝐂, 𝐀')
+        mul!(𝐂¹, 𝐀, 𝐂A, 1, 1)
 
         𝐀 *= 𝐀
         
@@ -113,6 +132,7 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
 
         if i > 10 && i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
+                iters = i
                 break 
             end
         end
@@ -121,36 +141,47 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
         # 𝐂 = 𝐂¹
     end
 
-    solved = isapprox(𝐂, A * 𝐂 * A' + C, rtol = tol)
+    ℒ.mul!(𝐂A, 𝐂, A')
+    ℒ.mul!(𝐂¹, A, 𝐂A)
+    ℒ.axpy!(1, C, 𝐂¹)
 
-    return 𝐂, solved # return info on convergence
+    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+
+    reached_tol = ℒ.norm(𝐂¹) / denom
+
+    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
 
 
 
 function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-                                    C::DenseMatrix{Float64},
+                                    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
                                     ::Val{:doubling};
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-12)
     𝐂  = copy(C)
     𝐂¹ = copy(C)
     𝐀  = copy(A)
 
-    CA = similar(𝐀)
+    𝐂A = similar(𝐀)
     𝐀² = similar(𝐀)
 
     max_iter = 500
-    
+
+    iters = max_iter
+
     for i in 1:max_iter
-        mul!(CA, 𝐂, 𝐀')
-        mul!(𝐂¹, 𝐀, CA, 1, 1)
+        mul!(𝐂A, 𝐂, 𝐀')
+        mul!(𝐂¹, 𝐀, 𝐂A, 1, 1)
 
         mul!(𝐀², 𝐀, 𝐀)
         copyto!(𝐀, 𝐀²)
         
         if i > 10 && i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
+                iters = i
                 break 
             end
         end
@@ -158,18 +189,26 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
         copyto!(𝐂, 𝐂¹)
     end
 
-    solved = isapprox(𝐂, 𝐀 * 𝐂 * 𝐀' + C, rtol = tol)
+    ℒ.mul!(𝐂A, 𝐂, A')
+    ℒ.mul!(𝐂¹, A, 𝐂A)
+    ℒ.axpy!(1, C, 𝐂¹)
 
-    return 𝐂, solved # return info on convergence
+    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+
+    reached_tol = ℒ.norm(𝐂¹) / denom
+    
+    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
 
 
 
 function solve_lyapunov_equation(A::AbstractMatrix{Float64},
-    C::DenseMatrix{Float64},
+    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
     ::Val{:bicgstab};
-    tol::Float64 = 1e-12)
+    tol::Float64 = 1e-8)
 
     tmp̄ = similar(C)
     𝐗 = similar(C)
@@ -187,16 +226,23 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
 
     copyto!(𝐗, 𝐂)
 
-    solved = info.solved
+    ℒ.mul!(tmp̄, A, 𝐗 * A')
+    ℒ.axpy!(1, C, tmp̄)
 
-    return 𝐗, solved, solved # return info on convergence
+    denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
+
+    ℒ.axpy!(-1, 𝐗, tmp̄)
+
+    reached_tol = ℒ.norm(tmp̄) / denom
+
+    return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
 
 
 function solve_lyapunov_equation(A::AbstractMatrix{Float64},
-    C::DenseMatrix{Float64},
+    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
     ::Val{:gmres};
-    tol::Float64 = 1e-12)
+    tol::Float64 = 1e-8)
 
     tmp̄ = similar(C)
     𝐗 = similar(C)
@@ -216,16 +262,23 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
 
     copyto!(𝐗, 𝐂)
 
-    solved = info.solved
+    ℒ.mul!(tmp̄, A, 𝐗 * A')
+    ℒ.axpy!(1, C, tmp̄)
 
-    return 𝐗, solved # return info on convergence
+    denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
+
+    ℒ.axpy!(-1, 𝐗, tmp̄)
+
+    reached_tol = ℒ.norm(tmp̄) / denom
+
+    return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
 
 
 function solve_lyapunov_equation(A::AbstractMatrix{Float64},
-    C::DenseMatrix{Float64},
+    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
     ::Val{:iterative};
-    tol::AbstractFloat = 1e-14)
+    tol::AbstractFloat = 1e-12)
 
     𝐂  = copy(C)
     𝐂¹ = copy(C)
@@ -233,6 +286,8 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     
     max_iter = 10000
     
+    iters = max_iter
+
     for i in 1:max_iter
         ℒ.mul!(𝐂A, 𝐂, A')
         ℒ.mul!(𝐂¹, A, 𝐂A)
@@ -240,6 +295,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     
         if i % 10 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
+                iters = i
                 break
             end
         end
@@ -251,33 +307,28 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     ℒ.mul!(𝐂¹, A, 𝐂A)
     ℒ.axpy!(1, C, 𝐂¹)
 
-    solved = isapprox(𝐂¹, 𝐂, rtol = tol)
+    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    return 𝐂, solved # return info on convergence
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+
+    reached_tol = ℒ.norm(𝐂¹) / denom
+    
+    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
 
 function solve_lyapunov_equation(A::AbstractMatrix{Float64},
-    C::DenseMatrix{Float64},
-    ::Val{:speedmapping};
-    tol::AbstractFloat = 1e-12)
-
-    if !(C isa DenseMatrix)
-        C = collect(C)
-    end
-
-    CA = similar(C)
+                                    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+                                    ::Val{:speedmapping};
+                                    tol::AbstractFloat = 1e-12)
+    𝐂A = similar(C)
 
     soll = speedmapping(C; 
             m! = (X, x) -> begin
-                ℒ.mul!(CA, x, A')
-                ℒ.mul!(X, A, CA)
+                ℒ.mul!(𝐂A, x, A')
+                ℒ.mul!(X, A, 𝐂A)
                 ℒ.axpy!(1, C, X)
-            end, stabilize = false, maps_limit = 10000, tol = tol)
-    
-    𝐂 = soll.minimizer
+            end, stabilize = false, maps_limit = 1000, tol = tol)
 
-    solved = soll.converged
-
-    return 𝐂, solved
+    return soll.minimizer, soll.converged, soll.maps, soll.norm_∇
 end
