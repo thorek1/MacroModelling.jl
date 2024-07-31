@@ -126,11 +126,15 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
         mul!(𝐂A, 𝐂, 𝐀')
         mul!(𝐂¹, 𝐀, 𝐂A, 1, 1)
 
-        𝐀 *= 𝐀
+        # 𝐀 *= 𝐀
+        𝐀 = 𝐀^2 # faster than A *= A
+        # copyto!(𝐂A,𝐀)
+        # 𝐀 = sparse(𝐀 * 𝐂A)
+        # 𝐀 = sparse(𝐂A * 𝐀) # faster than sparse-dense matmul but slower than sparse sparse matmul
         
         droptol!(𝐀, eps())
 
-        if i > 10 && i % 2 == 0
+        if i > 10# && i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -179,7 +183,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
         mul!(𝐀², 𝐀, 𝐀)
         copyto!(𝐀, 𝐀²)
         
-        if i > 10 && i % 2 == 0
+        if i > 10# && i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
