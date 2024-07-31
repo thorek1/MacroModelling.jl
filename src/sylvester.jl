@@ -156,6 +156,67 @@ end
 
 
 
+function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
+                                    B::AbstractSparseMatrix{Float64},
+                                    C::Matrix{Float64},
+                                    ::Val{:doubling};
+                                    tol::Float64 = 1e-12)
+                                    # see doi:10.1016/j.aml.2009.01.012
+    𝐀  = copy(A)    
+    𝐀¹ = copy(A)
+    𝐁  = copy(B)
+    𝐁¹ = copy(B)
+    𝐂  = copy(C)
+    ℒ.rmul!(𝐂, -1)
+    𝐂¹  = similar(C)
+    𝐂B = copy(C)
+
+    max_iter = 500
+
+    iters = max_iter
+
+    for i in 1:max_iter
+        ℒ.mul!(𝐂B, 𝐂, 𝐁)
+        ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+        ℒ.axpy!(1, 𝐂, 𝐂¹)
+        # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+        ℒ.mul!(𝐀¹,𝐀,𝐀)
+        copy!(𝐀,𝐀¹)
+        ℒ.mul!(𝐁¹,𝐁,𝐁)
+        copy!(𝐁,𝐁¹)
+        # 𝐀 = 𝐀^2
+        # 𝐁 = 𝐁^2
+
+        droptol!(𝐀, eps())
+        droptol!(𝐁, eps())
+
+        if i > 10# && i % 2 == 0
+            if isapprox(𝐂¹, 𝐂, rtol = tol)
+                iters = i
+                break 
+            end
+        end
+
+        copy!(𝐂,𝐂¹)
+    end
+
+    ℒ.mul!(𝐂B, 𝐂, 𝐁)
+    ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+    ℒ.axpy!(1, 𝐂, 𝐂¹)
+    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+
+    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+
+    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+end
+
+
+
 
 function solve_sylvester_equation(  A::Matrix{Float64},
                                     B::AbstractSparseMatrix{Float64},
