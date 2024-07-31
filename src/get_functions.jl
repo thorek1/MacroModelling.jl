@@ -2050,7 +2050,7 @@ And data, 4×4 Matrix{Float64}:
 function get_correlation(𝓂::ℳ; 
     parameters::ParameterType = nothing,  
     algorithm::Symbol = :first_order,
-    sylvester_algorithm::Symbol = :gmres,
+    sylvester_algorithm::Symbol = :doubling,
     lyapunov_algorithm::Symbol = :doubling, 
     verbose::Bool = false)
     
@@ -2142,7 +2142,7 @@ function get_autocorrelation(𝓂::ℳ;
     autocorrelation_periods = 1:5,
     parameters::ParameterType = nothing,  
     algorithm::Symbol = :first_order,
-    sylvester_algorithm::Symbol = :gmres,
+    sylvester_algorithm::Symbol = :doubling,
     lyapunov_algorithm::Symbol = :doubling, 
     verbose::Bool = false)
     
@@ -2277,11 +2277,11 @@ function get_moments(𝓂::ℳ;
     parameter_derivatives::Union{Symbol_input,String_input} = :all,
     algorithm::Symbol = :first_order,
     dependencies_tol::AbstractFloat = 1e-12,
-    sylvester_algorithm::Symbol = :gmres,
+    sylvester_algorithm::Symbol = :doubling,
     lyapunov_algorithm::Symbol = :doubling, 
     verbose::Bool = false,
     silent::Bool = false)#limit output by selecting pars and vars like for plots and irfs!?
-    
+
     solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, silent = silent)
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
@@ -2504,7 +2504,7 @@ function get_moments(𝓂::ℳ;
         end
 
         if mean && !(variance || standard_deviation || covariance)
-            state_μ, ___ = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose)
+            state_μ, ___ = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm)
             var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
         end
 
@@ -2727,7 +2727,7 @@ function get_statistics(𝓂,
     autocorrelation::Vector{Symbol} = Symbol[],
     autocorrelation_periods::U = 1:5,
     algorithm::Symbol = :first_order,
-    sylvester_algorithm::Symbol = :gmres,
+    sylvester_algorithm::Symbol = :doubling,
     lyapunov_algorithm::Symbol = :doubling, 
     verbose::Bool = false) where {U,T}
 

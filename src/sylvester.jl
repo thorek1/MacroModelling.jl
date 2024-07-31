@@ -1,4 +1,5 @@
 # Available algorithms: 
+# :doubling     - fast and precise
 # :sylvester    - fast and precise
 # :bicgstab     - less precise
 # :gmres        - less precise
@@ -9,9 +10,11 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     B::AbstractMatrix{Float64},
                                     C::AbstractMatrix{Float64};
                                     sylvester_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-12)
+                                    tol::AbstractFloat = 1e-12,
+                                    density_threshold::Float64 = .15,
+                                    verbose::Bool = false)
     if A isa AbstractSparseMatrix
-        if length(A.nzval) / length(A) > .1 || sylvester_algorithm == :sylvester
+        if length(A.nzval) / length(A) > density_threshold || sylvester_algorithm == :sylvester
             A = collect(A)
         elseif VERSION >= v"1.9"
             A = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
@@ -19,7 +22,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
     end
 
     if B isa AbstractSparseMatrix
-        if length(B.nzval) / length(B) > .1 || sylvester_algorithm == :sylvester
+        if length(B.nzval) / length(B) > density_threshold || sylvester_algorithm == :sylvester
             B = collect(B)
         elseif VERSION >= v"1.9"
             B = ThreadedSparseArrays.ThreadedSparseMatrixCSC(B)
@@ -27,14 +30,20 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
     end
 
     if C isa AbstractSparseMatrix
-        if A isa DenseMatrix || length(C.nzval) / length(C) > .1 || sylvester_algorithm == :sylvester
+        if A isa DenseMatrix || length(C.nzval) / length(C) > density_threshold || sylvester_algorithm == :sylvester
             C = collect(C)
         elseif VERSION >= v"1.9"
             C = ThreadedSparseArrays.ThreadedSparseMatrixCSC(C)
         end
     end
-    
-    solve_sylvester_equation(A, B, C, Val(sylvester_algorithm), tol = tol)
+
+    X, solved, i, reached_tol = solve_sylvester_equation(A, B, C, Val(sylvester_algorithm), tol = tol)
+
+    if verbose
+        println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
+    end
+
+    return X, solved
 end
 
 
@@ -42,14 +51,15 @@ function rrule(::typeof(solve_sylvester_equation),
     A::AbstractMatrix{Float64},
     B::AbstractMatrix{Float64},
     C::AbstractMatrix{Float64};
-    sylvester_algorithm::Symbol = :gmres,
-    tol::AbstractFloat = 1e-12)
+    sylvester_algorithm::Symbol = :doubling,
+    tol::AbstractFloat = 1e-12,
+    verbose::Bool = false)
 
-    P, solved = solve_sylvester_equation(A, B, C, sylvester_algorithm = sylvester_algorithm, tol = tol)
+    P, solved = solve_sylvester_equation(A, B, C, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
 
     # pullback
     function solve_sylvester_equation_pullback(∂P)
-        ∂C, solved = solve_sylvester_equation(A', B', ∂P[1], sylvester_algorithm = sylvester_algorithm, tol = tol)
+        ∂C, solved = solve_sylvester_equation(A', B', ∂P[1], sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
 
         ∂A = ∂C * B' * P'
 
@@ -66,14 +76,15 @@ end
 function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     B::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}};
-                                    sylvester_algorithm::Symbol = :gmres,
-                                    tol::AbstractFloat = 1e-12) where {Z,S,N}
+                                    sylvester_algorithm::Symbol = :doubling,
+                                    tol::AbstractFloat = 1e-12,
+                                    verbose::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
     B̂ = ℱ.value.(B)
     Ĉ = ℱ.value.(C)
 
-    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, sylvester_algorithm = sylvester_algorithm, tol = tol)
+    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
 
     Ã = copy(Â)
     B̃ = copy(B̂)
@@ -88,7 +99,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         X = - Ã * P̂ * B̂ - Â * P̂ * B̃ + C̃
 
-        P, solved = solve_sylvester_equation(Â, B̂, X, sylvester_algorithm = sylvester_algorithm, tol = tol)
+        P, solved = solve_sylvester_equation(Â, B̂, X, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
 
         P̃[:,i] = vec(P)
     end
@@ -100,15 +111,16 @@ end
 
 
 
-function solve_sylvester_equation(  A::AbstractMatrix{Float64},
-                                    B::AbstractMatrix{Float64},
-                                    C::AbstractMatrix{Float64},
+function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
+                                    B::AbstractSparseMatrix{Float64},
+                                    C::AbstractSparseMatrix{Float64},
                                     ::Val{:doubling};
                                     tol::Float64 = 1e-12)
-    # see doi:10.1016/j.aml.2009.01.012
+                                    # see doi:10.1016/j.aml.2009.01.012
     𝐀  = copy(A)
     𝐁  = copy(B)
-    𝐂  = copy(-C)
+    𝐂  = copy(C)
+    ℒ.rmul!(𝐂, -1)
 
     max_iter = 500
 
@@ -120,12 +132,11 @@ function solve_sylvester_equation(  A::AbstractMatrix{Float64},
         𝐀 = 𝐀^2
         𝐁 = 𝐁^2
 
-        # droptol!(𝐀, eps())
-        # droptol!(𝐁, eps())
+        droptol!(𝐀, eps())
+        droptol!(𝐁, eps())
 
         if i > 10# && i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
-                println(i)
                 iters = i
                 break 
             end
@@ -144,6 +155,185 @@ function solve_sylvester_equation(  A::AbstractMatrix{Float64},
 end
 
 
+
+
+function solve_sylvester_equation(  A::Matrix{Float64},
+                                    B::AbstractSparseMatrix{Float64},
+                                    C::Matrix{Float64},
+                                    ::Val{:doubling};
+                                    tol::Float64 = 1e-12)
+                                    # see doi:10.1016/j.aml.2009.01.012
+    𝐀  = copy(A)    
+    𝐀¹ = copy(A)
+    𝐁  = copy(B)
+    # 𝐁¹ = copy(B)
+    𝐂  = copy(C)
+    ℒ.rmul!(𝐂, -1)
+    𝐂¹  = similar(C)
+    𝐂B = copy(C)
+
+    max_iter = 500
+
+    iters = max_iter
+
+    for i in 1:max_iter
+        ℒ.mul!(𝐂B, 𝐂, 𝐁)
+        ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+        ℒ.axpy!(1, 𝐂, 𝐂¹)
+        # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+        ℒ.mul!(𝐀¹,𝐀,𝐀)
+        copy!(𝐀,𝐀¹)
+        # 𝐀 = 𝐀^2
+        𝐁 = 𝐁^2
+
+        # droptol!(𝐀, eps())
+        droptol!(𝐁, eps())
+
+        if i > 10# && i % 2 == 0
+            if isapprox(𝐂¹, 𝐂, rtol = tol)
+                iters = i
+                break 
+            end
+        end
+
+        copy!(𝐂,𝐂¹)
+    end
+
+    ℒ.mul!(𝐂B, 𝐂, 𝐁)
+    ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+    ℒ.axpy!(1, 𝐂, 𝐂¹)
+    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+
+    reached_tol = ℒ.norm(𝐂¹) / denom
+
+    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+end
+
+
+function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
+                                    B::Matrix{Float64},
+                                    C::Matrix{Float64},
+                                    ::Val{:doubling};
+                                    tol::Float64 = 1e-12)
+                                    # see doi:10.1016/j.aml.2009.01.012
+    𝐀  = copy(A)    
+    # 𝐀¹ = copy(A)
+    𝐁  = copy(B)
+    𝐁¹ = copy(B)
+    𝐂  = copy(C)
+    ℒ.rmul!(𝐂, -1)
+    𝐂¹ = similar(C)
+    𝐂B = copy(C)
+
+    max_iter = 500
+
+    iters = max_iter
+
+    for i in 1:max_iter
+        ℒ.mul!(𝐂B, 𝐂, 𝐁)
+        ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+        ℒ.axpy!(1, 𝐂, 𝐂¹)
+        # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+        𝐀 = 𝐀^2
+        ℒ.mul!(𝐁¹,𝐁,𝐁)
+        copy!(𝐁,𝐁¹)
+        # 𝐁 = 𝐁^2
+
+        droptol!(𝐀, eps())
+        # droptol!(𝐁, eps())
+
+        if i > 10# && i % 2 == 0
+            if isapprox(𝐂¹, 𝐂, rtol = tol)
+                iters = i
+                break 
+            end
+        end
+
+        copy!(𝐂,𝐂¹)
+    end
+
+    ℒ.mul!(𝐂B, 𝐂, 𝐁)
+    ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+    ℒ.axpy!(1, 𝐂, 𝐂¹)
+    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+
+    reached_tol = ℒ.norm(𝐂¹) / denom
+
+    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+end
+
+
+
+function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+                                    B::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+                                    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+                                    ::Val{:doubling};
+                                    tol::Float64 = 1e-12)
+                                    # see doi:10.1016/j.aml.2009.01.012
+    𝐀  = copy(A)    
+    𝐀¹ = copy(A)
+    𝐁  = copy(B)
+    𝐁¹ = copy(B)
+    𝐂  = copy(C)
+    ℒ.rmul!(𝐂, -1)
+    𝐂¹  = similar(C)
+    𝐂B = copy(C)
+
+    max_iter = 500
+
+    iters = max_iter
+
+    for i in 1:max_iter
+        ℒ.mul!(𝐂B, 𝐂, 𝐁)
+        ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+        ℒ.axpy!(1, 𝐂, 𝐂¹)
+        # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+        ℒ.mul!(𝐀¹,𝐀,𝐀)
+        copy!(𝐀,𝐀¹)
+        ℒ.mul!(𝐁¹,𝐁,𝐁)
+        copy!(𝐁,𝐁¹)
+        # 𝐀 = 𝐀^2
+        # 𝐁 = 𝐁^2
+
+        # droptol!(𝐀, eps())
+        # droptol!(𝐁, eps())
+
+        if i > 10# && i % 2 == 0
+            if isapprox(𝐂¹, 𝐂, rtol = tol)
+                iters = i
+                break 
+            end
+        end
+
+        copy!(𝐂,𝐂¹)
+    end
+
+    ℒ.mul!(𝐂B, 𝐂, 𝐁)
+    ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+    ℒ.axpy!(1, 𝐂, 𝐂¹)
+    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+
+    reached_tol = ℒ.norm(𝐂¹) / denom
+
+    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+end
+
+
 function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     B::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
                                     C::DenseMatrix{Float64},
@@ -151,9 +341,11 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     tol::AbstractFloat = 1e-12)
     𝐂 = MatrixEquations.sylvd(-A, B, -C)
     
-    solved = isapprox(𝐂, A * 𝐂 * B - C, rtol = tol)
+    𝐂¹ = A * 𝐂 * B - C
 
-    return 𝐂, solved # return info on convergence
+    reached_tol = ℒ.norm(𝐂¹ - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    return 𝐂, reached_tol < tol, 0, reached_tol # return info on convergence
 end
 
 
@@ -161,7 +353,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     B::AbstractMatrix{Float64},
     C::AbstractMatrix{Float64},
     ::Val{:bicgstab};
-    tol::Float64 = 1e-12)
+    tol::Float64 = 1e-8)
 
     tmp̄ = similar(C)
     𝐗 = similar(C)
@@ -179,9 +371,16 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     copyto!(𝐗, 𝐂)
 
-    solved = info.solved
+    ℒ.mul!(tmp̄, A, 𝐗 * B)
+    ℒ.axpy!(-1, C, tmp̄)
 
-    return 𝐗, solved, solved # return info on convergence
+    denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
+
+    ℒ.axpy!(-1, 𝐗, tmp̄)
+
+    reached_tol = ℒ.norm(tmp̄) / denom
+
+    return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
 
 
@@ -189,7 +388,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     B::AbstractMatrix{Float64},
     C::AbstractMatrix{Float64},
     ::Val{:gmres};
-    tol::Float64 = 1e-12)
+    tol::Float64 = 1e-8)
 
     tmp̄ = similar(C)
     𝐗 = similar(C)
@@ -209,9 +408,16 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     copyto!(𝐗, 𝐂)
 
-    solved = info.solved
+    ℒ.mul!(tmp̄, A, 𝐗 * B)
+    ℒ.axpy!(-1, C, tmp̄)
 
-    return 𝐗, solved # return info on convergence
+    denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
+
+    ℒ.axpy!(-1, 𝐗, tmp̄)
+
+    reached_tol = ℒ.norm(tmp̄) / denom
+
+    return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
 
 
@@ -219,7 +425,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
     B::AbstractMatrix{Float64},
     C::AbstractMatrix{Float64},
     ::Val{:iterative};
-    tol::AbstractFloat = 1e-14)
+    tol::AbstractFloat = 1e-12)
 
     𝐂  = copy(C)
     𝐂¹ = copy(C)
@@ -227,6 +433,8 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
     
     max_iter = 10000
     
+    iters = max_iter
+
     for i in 1:max_iter
         ℒ.mul!(𝐂B, 𝐂, B)
         ℒ.mul!(𝐂¹, A, 𝐂B)
@@ -234,6 +442,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
     
         if i % 10 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
+                iters = i
                 break
             end
         end
@@ -245,9 +454,13 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
     ℒ.mul!(𝐂¹, A, 𝐂B)
     ℒ.axpy!(-1, C, 𝐂¹)
 
-    solved = isapprox(𝐂¹, 𝐂, rtol = tol)
+    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    return 𝐂, solved # return info on convergence
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+
+    reached_tol = ℒ.norm(𝐂¹) / denom
+    
+    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
 
@@ -270,9 +483,5 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                 ℒ.axpy!(1, C, X)
             end, stabilize = false, maps_limit = 10000, tol = tol)
     
-    𝐂 = soll.minimizer
-
-    solved = soll.converged
-
-    return -𝐂, solved
+    return -soll.minimizer, soll.converged, soll.maps, soll.norm_∇
 end

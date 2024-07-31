@@ -10,9 +10,10 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 C::AbstractMatrix{Float64};
                                 lyapunov_algorithm::Symbol = :doubling,
                                 tol::AbstractFloat = 1e-12,
+                                density_threshold::Float64 = .15,
                                 verbose::Bool = false)
     if A isa AbstractSparseMatrix
-        if length(A.nzval) / length(A) > .1 || lyapunov_algorithm == :lyapunov
+        if length(A.nzval) / length(A) > density_threshold || lyapunov_algorithm == :lyapunov
             A = collect(A)
         elseif VERSION >= v"1.9"
             A = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
@@ -20,7 +21,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     end
 
     if C isa AbstractSparseMatrix
-        if length(C.nzval) / length(C) > .1 || lyapunov_algorithm == :lyapunov
+        if length(C.nzval) / length(C) > density_threshold || lyapunov_algorithm == :lyapunov
             C = collect(C)
         elseif VERSION >= v"1.9"
             C = ThreadedSparseArrays.ThreadedSparseMatrixCSC(C)
@@ -43,12 +44,12 @@ function rrule(::typeof(solve_lyapunov_equation),
                 tol::AbstractFloat = 1e-12,
                 verbose::Bool = false)
 
-    P, solved = solve_lyapunov_equation(A, C, lyapunov_algorithm = lyapunov_algorithm, tol = tol)
+    P, solved = solve_lyapunov_equation(A, C, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
 
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
-        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], lyapunov_algorithm = lyapunov_algorithm, tol = tol)
+        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
     
         ∂A = ∂C * A * P' + ∂C' * A * P
 
@@ -69,7 +70,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
 
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, lyapunov_algorithm = lyapunov_algorithm, tol = tol)
+    P̂, solved = solve_lyapunov_equation(Â, Ĉ, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
 
     Ã = copy(Â)
     C̃ = copy(Ĉ)
@@ -83,7 +84,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         X = Ã * P̂ * Â' + Â * P̂ * Ã' + C̃
 
-        P, solved = solve_lyapunov_equation(Â, X, lyapunov_algorithm = lyapunov_algorithm, tol = tol)
+        P, solved = solve_lyapunov_equation(Â, X, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
 
         P̃[:,i] = vec(P)
     end

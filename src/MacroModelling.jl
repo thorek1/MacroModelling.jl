@@ -3880,7 +3880,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
 
     if !solved2
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
@@ -4031,7 +4031,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol, sylvester_algorithm = sylvester_algorithm)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol, sylvester_algorithm = sylvester_algorithm, verbose= verbose)
 
     if !solved2
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
@@ -4039,7 +4039,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
             
-    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, tol = tol)
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
 
     if !solved3
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
@@ -6328,7 +6328,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
                                             M₂::second_order_auxilliary_matrices;  # aux matrices
                                             T::timings,
                                             sylvester_algorithm::Symbol = :gmres,
-                                            tol::AbstractFloat = eps())
+                                            tol::AbstractFloat = eps(),
+                                            verbose::Bool = false)
     # inspired by Levintal
 
     # Indices and number of variables
@@ -6374,7 +6375,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
     droptol!(C,tol)
 
-    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm)
+    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
 
     𝐒₂ = sparse(𝐒₂)
 
@@ -6398,7 +6399,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                             M₃::third_order_auxilliary_matrices;  # aux matrices third order
                                             T::timings,
                                             sylvester_algorithm::Symbol = :gmres,
-                                            tol::AbstractFloat = eps())
+                                            tol::AbstractFloat = eps(),
+                                            verbose::Bool = false)
     # inspired by Levintal
 
     # Indices and number of variables
@@ -6474,7 +6476,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     # C += kron³(𝐒₁₋╱𝟏ₑ, M₃)
     droptol!(C,tol)
 
-    𝐒₃, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm)
+    𝐒₃, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose= verbose)
     
     𝐒₃ = sparse(𝐒₃)
 
@@ -7046,7 +7048,7 @@ function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false,
     
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
     
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, tol = tol)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
 
     nᵉ = 𝓂.timings.nExo
     nˢ = 𝓂.timings.nPast_not_future_and_mixed
@@ -7143,7 +7145,7 @@ function calculate_second_order_moments(
     # second order
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol, sylvester_algorithm = sylvester_algorithm)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
 
     s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
     e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
@@ -7261,7 +7263,8 @@ function calculate_third_order_moments(parameters::Vector{T},
                                                 𝓂.solution.perturbation.third_order_auxilliary_matrices; 
                                                 T = 𝓂.timings, 
                                                 sylvester_algorithm = sylvester_algorithm,
-                                                tol = tol)
+                                                tol = tol, 
+                                                verbose= verbose)
 
     orders = determine_efficient_order(𝐒₁, 𝓂.timings, observables, tol = dependencies_tol)
 
