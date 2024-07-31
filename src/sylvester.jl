@@ -149,7 +149,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
 
     denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    reached_tol = ℒ.norm(𝐂¹ - 𝐂) / denom
+    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -209,7 +209,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
 
     ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
-    reached_tol = ℒ.norm(𝐂¹) / denom
+    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -267,7 +267,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
 
     ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
-    reached_tol = ℒ.norm(𝐂¹) / denom
+    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -328,7 +328,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
 
     ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
-    reached_tol = ℒ.norm(𝐂¹) / denom
+    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -343,8 +343,10 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     
     𝐂¹ = A * 𝐂 * B - C
 
-    reached_tol = ℒ.norm(𝐂¹ - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
+    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
+    
     return 𝐂, reached_tol < tol, 0, reached_tol # return info on convergence
 end
 
@@ -378,7 +380,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     ℒ.axpy!(-1, 𝐗, tmp̄)
 
-    reached_tol = ℒ.norm(tmp̄) / denom
+    reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
 
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
@@ -415,7 +417,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     ℒ.axpy!(-1, 𝐗, tmp̄)
 
-    reached_tol = ℒ.norm(tmp̄) / denom
+    reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
 
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
@@ -458,7 +460,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
 
     ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
-    reached_tol = ℒ.norm(𝐂¹) / denom
+    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
     
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end

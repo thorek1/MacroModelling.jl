@@ -353,7 +353,7 @@ end
 @testset verbose = true "NSSS and std derivatives" begin
     # derivatives of paramteres wrt standard deviations
     stdev_deriv = ForwardDiff.jacobian(x -> get_statistics(RBC_CME, x, parameters = RBC_CME.parameters, standard_deviation = RBC_CME.var)[1], RBC_CME.parameter_values)
-    stdev_deriv[9]
+
     @test isapprox(stdev_deriv[5,6],1.3135107627695757, rtol = 1e-6)
 
     # derivatives of paramteres wrt non stochastic steady state
