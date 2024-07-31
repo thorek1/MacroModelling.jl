@@ -101,7 +101,7 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
     max_iter = 500
     
     for i in 1:max_iter
-        𝐂¹ = 𝐀 * 𝐂 * 𝐀' - 𝐂
+        𝐂¹ = 𝐀 * 𝐂 * 𝐀' + 𝐂
 
         𝐀 *= 𝐀
         

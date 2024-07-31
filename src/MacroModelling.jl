@@ -7242,8 +7242,14 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             lyapunov_algorithm::Symbol = :doubling,
                                             tol::AbstractFloat = eps()) where {U, T <: Real}
 
-    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(parameters, 𝓂, verbose = verbose, sylvester_algorithm = sylvester_algorithm)
+    second_order_moments = calculate_second_order_moments(parameters, 
+                                                            𝓂, 
+                                                            verbose = verbose, 
+                                                            sylvester_algorithm = sylvester_algorithm, 
+                                                            lyapunov_algorithm = lyapunov_algorithm)
 
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = second_order_moments
+    
     if !covariance && !autocorrelation
         return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
     end
