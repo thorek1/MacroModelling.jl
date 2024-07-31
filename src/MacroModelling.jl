@@ -3861,7 +3861,7 @@ second_order_stochastic_steady_state_iterative_solution = ℐ.ImplicitFunction(s
                                                                                     linear_solver = ℐ.DirectLinearSolver())
 
 
-function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, sylvester_algorithm::Symbol = :gmres, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
+function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, sylvester_algorithm::Symbol = :doubling, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -4011,7 +4011,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         verbose::Bool = false, 
                                                         pruning::Bool = false, 
-                                                        sylvester_algorithm::Symbol = :gmres, 
+                                                        sylvester_algorithm::Symbol = :doubling, 
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
@@ -5338,7 +5338,7 @@ function covariance_parameter_derivatives_second_order(parameters::Vector{ℱ.Du
                                                         parameters_idx, 
                                                         𝓂::ℳ; 
                                                         lyapunov_algorithm::Symbol = :doubling, 
-                                                        sylvester_algorithm::Symbol = :gmres,
+                                                        sylvester_algorithm::Symbol = :doubling,
                                                         verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -5351,7 +5351,7 @@ end
 function covariance_parameter_derivatives_second_order(parameters::ℱ.Dual{Z,S,N}, 
                                                         parameters_idx::Int, 𝓂::ℳ; 
                                                         lyapunov_algorithm::Symbol = :doubling, 
-                                                        sylvester_algorithm::Symbol = :gmres,
+                                                        sylvester_algorithm::Symbol = :doubling,
                                                         verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -5366,7 +5366,7 @@ function covariance_parameter_derivatives_third_order(parameters::Vector{ℱ.Dua
                                                         parameters_idx, 
                                                         𝓂::ℳ;
                                                         dependencies_tol::AbstractFloat = 1e-12,
-                                                        sylvester_algorithm::Symbol = :gmres,
+                                                        sylvester_algorithm::Symbol = :doubling,
                                                         lyapunov_algorithm::Symbol = :doubling,
                                                         verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
@@ -5382,7 +5382,7 @@ function covariance_parameter_derivatives_third_order(parameters::ℱ.Dual{Z,S,N
                                                         parameters_idx::Int, 
                                                         𝓂::ℳ; 
                                                         dependencies_tol::AbstractFloat = 1e-12,
-                                                        sylvester_algorithm::Symbol = :gmres,
+                                                        sylvester_algorithm::Symbol = :doubling,
                                                         lyapunov_algorithm::Symbol = :doubling,
                                                         verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
@@ -5397,7 +5397,7 @@ function mean_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}},
                                     parameters_idx, 
                                     𝓂::ℳ; 
                                     algorithm::Symbol = :pruned_second_order, 
-                                    sylvester_algorithm::Symbol = :gmres,
+                                    sylvester_algorithm::Symbol = :doubling,
                                     verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -5411,7 +5411,7 @@ function mean_parameter_derivatives(parameters::ℱ.Dual{Z,S,N},
                                     parameters_idx::Int, 
                                     𝓂::ℳ; 
                                     algorithm::Symbol = :pruned_second_order, 
-                                    sylvester_algorithm::Symbol = :gmres,
+                                    sylvester_algorithm::Symbol = :doubling,
                                     verbose::Bool = false) where {Z,S,N}
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
@@ -6327,7 +6327,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
                                             𝑺₁::AbstractMatrix{<: Real},#first order solution
                                             M₂::second_order_auxilliary_matrices;  # aux matrices
                                             T::timings,
-                                            sylvester_algorithm::Symbol = :gmres,
+                                            sylvester_algorithm::Symbol = :doubling,
                                             tol::AbstractFloat = eps(),
                                             verbose::Bool = false)
     # inspired by Levintal
@@ -6398,7 +6398,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxilliary_matrices;  # aux matrices third order
                                             T::timings,
-                                            sylvester_algorithm::Symbol = :gmres,
+                                            sylvester_algorithm::Symbol = :doubling,
                                             tol::AbstractFloat = eps(),
                                             verbose::Bool = false)
     # inspired by Levintal
@@ -7032,7 +7032,12 @@ end
 
 
 
-function calculate_mean(parameters::Vector{T}, 𝓂::ℳ; verbose::Bool = false, algorithm = :pruned_second_order, sylvester_algorithm::Symbol = :gmres, tol::Float64 = eps()) where T <: Real
+function calculate_mean(parameters::Vector{T}, 
+                        𝓂::ℳ; 
+                        verbose::Bool = false, 
+                        algorithm = :pruned_second_order, 
+                        sylvester_algorithm::Symbol = :doubling, 
+                        tol::Float64 = eps()) where T <: Real
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean only available for first order, pruned second and third order perturbation solutions."
 
@@ -7109,7 +7114,7 @@ function calculate_second_order_moments(
     𝓂::ℳ; 
     covariance::Bool = true,
     verbose::Bool = false, 
-    sylvester_algorithm::Symbol = :gmres,
+    sylvester_algorithm::Symbol = :doubling,
     lyapunov_algorithm::Symbol = :doubling,
     tol::AbstractFloat = eps())
 
@@ -7240,7 +7245,7 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             autocorrelation_periods::U = 1:5,
                                             verbose::Bool = false, 
                                             dependencies_tol::AbstractFloat = 1e-12, 
-                                            sylvester_algorithm::Symbol = :gmres,
+                                            sylvester_algorithm::Symbol = :doubling,
                                             lyapunov_algorithm::Symbol = :doubling,
                                             tol::AbstractFloat = eps()) where {U, T <: Real}
 
