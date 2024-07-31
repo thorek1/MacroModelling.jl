@@ -20,13 +20,13 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
     end
 
     if C isa AbstractSparseMatrix
-        if length(C.nzval) / length(C) > .1 || sylvester_algorithm == :sylvester
+        if A isa DenseMatrix || length(C.nzval) / length(C) > .1 || sylvester_algorithm == :sylvester
             C = collect(C)
         elseif VERSION >= v"1.9"
             C = ThreadedSparseArrays.ThreadedSparseMatrixCSC(C)
         end
     end
-
+    
     solve_sylvester_equation(A, B, C, Val(sylvester_algorithm), tol = tol)
 end
 

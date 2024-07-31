@@ -92,16 +92,20 @@ end
 
 
 function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
-                                    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64},AbstractSparseMatrix{Float64}},
+                                    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
                                     ::Val{:doubling};
                                     tol::Float64 = 1e-14)
     𝐂  = copy(C)
     𝐀  = copy(A)
+    CA = collect(𝐀)    
+    𝐂¹ = copy(C)
 
     max_iter = 500
     
     for i in 1:max_iter
-        𝐂¹ = 𝐀 * 𝐂 * 𝐀' + 𝐂
+        # 𝐂¹ .= 𝐀 * 𝐂 * 𝐀' + 𝐂
+        mul!(CA, 𝐂, 𝐀')
+        mul!(𝐂¹, 𝐀, CA, 1, 1)
 
         𝐀 *= 𝐀
         
@@ -113,7 +117,8 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
             end
         end
 
-        𝐂 = 𝐂¹
+        copy!(𝐂,𝐂¹)
+        # 𝐂 = 𝐂¹
     end
 
     solved = isapprox(𝐂, A * 𝐂 * A' + C, rtol = tol)
