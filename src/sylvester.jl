@@ -1,7 +1,14 @@
+# Available algorithms: 
+# :sylvester    - fast and precise
+# :bicgstab     - less precise
+# :gmres        - less precise
+# :iterative    - slow and precise
+# :speedmapping - slow and very precise
+
 function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     B::AbstractMatrix{Float64},
                                     C::AbstractMatrix{Float64};
-                                    sylvester_algorithm::Symbol = :gmres,
+                                    sylvester_algorithm::Symbol = :doubling,
                                     tol::AbstractFloat = 1e-12)
     if A isa AbstractSparseMatrix
         if length(A.nzval) / length(A) > .1 || sylvester_algorithm == :sylvester
@@ -93,11 +100,55 @@ end
 
 
 
+function solve_sylvester_equation(  A::AbstractMatrix{Float64},
+                                    B::AbstractMatrix{Float64},
+                                    C::AbstractMatrix{Float64},
+                                    ::Val{:doubling};
+                                    tol::Float64 = 1e-12)
+    # see doi:10.1016/j.aml.2009.01.012
+    𝐀  = copy(A)
+    𝐁  = copy(B)
+    𝐂  = copy(-C)
+
+    max_iter = 500
+
+    iters = max_iter
+
+    for i in 1:max_iter
+        𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+        𝐀 = 𝐀^2
+        𝐁 = 𝐁^2
+
+        # droptol!(𝐀, eps())
+        # droptol!(𝐁, eps())
+
+        if i > 10# && i % 2 == 0
+            if isapprox(𝐂¹, 𝐂, rtol = tol)
+                println(i)
+                iters = i
+                break 
+            end
+        end
+
+        𝐂 = 𝐂¹
+    end
+
+    𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    reached_tol = ℒ.norm(𝐂¹ - 𝐂) / denom
+
+    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+end
+
+
 function solve_sylvester_equation(A::DenseMatrix{Float64},
-    B::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-    C::DenseMatrix{Float64},
-    ::Val{:sylvester};
-    tol::AbstractFloat = 1e-12)
+                                    B::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+                                    C::DenseMatrix{Float64},
+                                    ::Val{:sylvester};
+                                    tol::AbstractFloat = 1e-12)
     𝐂 = MatrixEquations.sylvd(-A, B, -C)
     
     solved = isapprox(𝐂, A * 𝐂 * B - C, rtol = tol)
