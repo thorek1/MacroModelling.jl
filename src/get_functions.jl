@@ -1970,7 +1970,7 @@ function get_variance_decomposition(𝓂::ℳ;
         
         CC = C * C'
 
-        covar_raw, _ = solve_lyapunov_equation(A, CC, lyapunov_algorithm = lyapunov_algorithm)
+        covar_raw, _ = solve_lyapunov_equation(A, CC, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
 
         variances_by_shock[:,i] = ℒ.diag(covar_raw)
     end
@@ -2943,7 +2943,7 @@ function get_loglikelihood(𝓂::ℳ,
     # prepare data
     data_in_deviations = dt .- SS_and_pars[obs_indices]
 
-    return calculate_loglikelihood(Val(filter), observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm)
+    return calculate_loglikelihood(Val(filter), observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, verbose)
 end
 
 

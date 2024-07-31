@@ -7022,7 +7022,7 @@ function calculate_covariance(parameters::Vector{<: Real},
     
     CC = C * C'
 
-    covar_raw, _ = solve_lyapunov_equation(A, CC, lyapunov_algorithm = lyapunov_algorithm)
+    covar_raw, _ = solve_lyapunov_equation(A, CC, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
 
     return covar_raw, sol , ∇₁, SS_and_pars
 end
@@ -7212,7 +7212,7 @@ function calculate_second_order_moments(
 
     C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
 
-    Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, lyapunov_algorithm = lyapunov_algorithm)
+    Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
 
     # if Σᶻ₂ isa DenseMatrix
     #     Σᶻ₂ = sparse(Σᶻ₂)
@@ -7249,7 +7249,7 @@ function calculate_third_order_moments(parameters::Vector{T},
                                                             lyapunov_algorithm = lyapunov_algorithm)
 
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = second_order_moments
-    
+
     if !covariance && !autocorrelation
         return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
     end
@@ -7444,7 +7444,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
         droptol!(C, eps())
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyapunov_algorithm = lyapunov_algorithm)
+        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
@@ -7522,12 +7522,12 @@ end
 
 
 # Specialization for :kalman filter
-function calculate_loglikelihood(::Val{:kalman}, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm)
-    return calculate_kalman_filter_loglikelihood(observables, 𝐒, data_in_deviations, TT, presample_periods = presample_periods, initial_covariance = initial_covariance)
+function calculate_loglikelihood(::Val{:kalman}, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, verbose)
+    return calculate_kalman_filter_loglikelihood(observables, 𝐒, data_in_deviations, TT, presample_periods = presample_periods, initial_covariance = initial_covariance, verbose = verbose)
 end
 
 # Specialization for :inversion filter
-function calculate_loglikelihood(::Val{:inversion}, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm)
+function calculate_loglikelihood(::Val{:inversion}, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, verbose)
     return calculate_inversion_filter_loglikelihood(state, 𝐒, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods, filter_algorithm = filter_algorithm)
 end
 
@@ -7644,10 +7644,11 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
                                                 presample_periods::Int = 0, 
-                                                initial_covariance::Symbol = :theoretical)::S where S <: Real
+                                                initial_covariance::Symbol = :theoretical,
+                                                verbose::Bool = false)::S where S <: Real
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, verbose = verbose)
 end
 
 function calculate_kalman_filter_loglikelihood(observables::Vector{String}, 
@@ -7655,10 +7656,11 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
                                                 presample_periods::Int = 0, 
-                                                initial_covariance::Symbol = :theoretical)::S where S <: Real
+                                                initial_covariance::Symbol = :theoretical,
+                                                verbose::Bool = false)::S where S <: Real
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, verbose = verbose)
 end
 
 function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, 
@@ -7667,7 +7669,8 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 T::timings; 
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
-                                                lyapunov_algorithm::Symbol = :doubling)::S where S <: Real
+                                                lyapunov_algorithm::Symbol = :doubling,
+                                                verbose::Bool = false)::S where S <: Real
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
 
     A = 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(S, length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
@@ -7678,21 +7681,21 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     𝐁 = B * B'
 
     # Gaussian Prior
-    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyapunov_algorithm = lyapunov_algorithm)
+    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
 
     return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods)
 end
 
 # TODO: use higher level wrapper, like for lyapunov/sylvester
 # Specialization for :theoretical
-function get_initial_covariance(::Val{:theoretical}, A::AbstractMatrix{S}, B::AbstractMatrix{S}; lyapunov_algorithm::Symbol = :doubling)::AbstractMatrix{S} where S <: Real
-    P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = lyapunov_algorithm)
+function get_initial_covariance(::Val{:theoretical}, A::AbstractMatrix{S}, B::AbstractMatrix{S}; lyapunov_algorithm::Symbol = :doubling, verbose::Bool = false)::AbstractMatrix{S} where S <: Real
+    P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
     return P
 end
 
 
 # Specialization for :diagonal
-function get_initial_covariance(::Val{:diagonal}, A::AbstractMatrix{S}, B::AbstractMatrix{S}; lyapunov_algorithm::Symbol = :doubling)::Matrix{S} where S <: Real
+function get_initial_covariance(::Val{:diagonal}, A::AbstractMatrix{S}, B::AbstractMatrix{S}; lyapunov_algorithm::Symbol = :doubling, verbose::Bool = false)::Matrix{S} where S <: Real
     P = @ignore_derivatives collect(ℒ.I(size(A, 1)) * 10.0)
     return P
 end
