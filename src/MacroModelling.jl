@@ -8729,7 +8729,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
                                     𝐒ⁱ,
                                     𝐒ⁱ²ᵉ,
                                     shock_independent)
-println(x)
+
         if length(𝐒) == 2
             jacc = -(𝐒ⁱ + 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x))
         elseif length(𝐒) == 3
@@ -8851,8 +8851,8 @@ function find_shocks(::Val{:Newton},
         # ℒ.axpby!(1, shock_independent, -1, res)
         Δx = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * kron_buffer2) \ (shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron_buffer)
         # println(ℒ.norm(Δx))
-        if ℒ.norm(Δx) < tol
-            println(i)
+        if i > 6 && ℒ.norm(Δx) < tol
+            # println(i)
             break
         end
         
