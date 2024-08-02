@@ -3955,9 +3955,8 @@ function calculate_second_order_stochastic_steady_state(::Val{:Newton},
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     for i in 1:max_iters
         Δx = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 - x)
-        println(ℒ.norm(Δx))
+        
         if i > 3 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
-            println(i)
             break
         end
         
