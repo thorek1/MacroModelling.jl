@@ -3777,94 +3777,38 @@ end
 
 
 
-function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{Float64};  dims::Vector{Tuple{Int,Int}},  𝓂::ℳ, tol::AbstractFloat = eps())
-    len𝐒₁ = dims[1][1] * dims[1][2]
+# function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{Float64};  dims::Vector{Tuple{Int,Int}},  𝓂::ℳ, tol::AbstractFloat = eps())
+#     len𝐒₁ = dims[1][1] * dims[1][2]
 
-    𝐒₁ = reshape(𝐒₁𝐒₂[1 : len𝐒₁],dims[1])
-    𝐒₂ = sparse(reshape(𝐒₁𝐒₂[len𝐒₁ + 1 : end],dims[2]))
+#     𝐒₁ = reshape(𝐒₁𝐒₂[1 : len𝐒₁],dims[1])
+#     𝐒₂ = sparse(reshape(𝐒₁𝐒₂[len𝐒₁ + 1 : end],dims[2]))
         
-    state = zeros(𝓂.timings.nVars)
-    shock = zeros(𝓂.timings.nExo)
+#     state = zeros(𝓂.timings.nVars)
+#     shock = zeros(𝓂.timings.nExo)
 
-    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-    1
-    shock]
+#     aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+#     1
+#     shock]
 
-    sol = @suppress begin
-        speedmapping(state; 
-                    m! = (SSS, sss) -> begin 
-                                        aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
-                                                    1
-                                                    shock]
+#     sol = @suppress begin
+#         speedmapping(state; 
+#                     m! = (SSS, sss) -> begin 
+#                                         aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
+#                                                     1
+#                                                     shock]
 
-                                        SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-                    end, 
-        tol = tol, maps_limit = 10000)
-    end
+#                                         SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+#                     end, 
+#         tol = tol, maps_limit = 10000)
+#     end
 
-    return sol.minimizer, sol.converged
-end
-
-
-function second_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂::SparseVector, SSS, converged::Bool; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps())
-    len𝐒₁ = dims[1][1] * dims[1][2]
-
-    𝐒₁ = reshape(𝐒₁𝐒₂[1 : len𝐒₁],dims[1])
-    𝐒₂ = sparse(reshape(𝐒₁𝐒₂[len𝐒₁ + 1 : end],dims[2]))
-
-    shock = zeros(𝓂.timings.nExo)
-
-    aug_state = [SSS[𝓂.timings.past_not_future_and_mixed_idx]
-    1
-    shock]
-
-    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 - SSS
-end
-
-
-function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps()) where {Z,S,N}
-    S₁S₂, ps = separate_values_and_partials_from_sparsevec_dual(𝐒₁𝐒₂)
-
-    # get f(vs)
-    val, converged = second_order_stochastic_steady_state_iterative_solution_forward(S₁S₂; dims = dims, 𝓂 = 𝓂, tol = tol)
-
-    if converged
-        # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = 𝒜.jacobian(𝒷(), x -> second_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂)[1]
-        A = 𝒜.jacobian(𝒷(), x -> second_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)[1]
-
-        Â = RF.lu(A, check = false)
-
-        if !ℒ.issuccess(Â)
-            Â = ℒ.svd(A)
-        end
-        
-        jvp = -(Â \ B) * ps
-    else
-        jvp = fill(0,length(val),length(𝐒₁𝐒₂)) * ps
-    end
-
-    # lm = LinearMap{Float64}(x -> A * reshape(x, size(B)), length(B))
-
-    # jvp = - sparse(reshape(ℐ.gmres(lm, sparsevec(B)), size(B))) * ps
-    # jvp *= -ps
-
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val)), converged
-end
-
-
-second_order_stochastic_steady_state_iterative_solution = ℐ.ImplicitFunction(second_order_stochastic_steady_state_iterative_solution_forward,
-                                                                                    second_order_stochastic_steady_state_iterative_solution_conditions; 
-                                                                                    linear_solver = ℐ.DirectLinearSolver())
+#     return sol.minimizer, sol.converged
+# end
 
 
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, sylvester_algorithm::Symbol = :doubling, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
     
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     if solution_error > tol || isnan(solution_error)
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
@@ -3972,8 +3916,10 @@ end
 
 function calculate_second_order_stochastic_steady_state(::Val{:Newton}, 
                                                         𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
-                                                        x::Vector{ℱ.Dual{Z,S,N}},
+                                                        # 𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
+                                                        # x::Vector{ℱ.Dual{Z,S,N}},
+                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
+                                                        x::Vector{Float64},
                                                         𝓂::ℳ;
                                                         tol::AbstractFloat = 1e-14) where {Z,S,N}
 
@@ -4030,92 +3976,92 @@ end
 
 
 
-function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps())
-    len𝐒₁ = dims[1][1] * dims[1][2]
-    len𝐒₂ = dims[2][1] * dims[2][2]
-
-    𝐒₁ = reshape(𝐒₁𝐒₂𝐒₃[1 : len𝐒₁],dims[1])
-    𝐒₂ = sparse(reshape(𝐒₁𝐒₂𝐒₃[len𝐒₁ .+ (1 : len𝐒₂)],dims[2]))
-    𝐒₃ = sparse(reshape(𝐒₁𝐒₂𝐒₃[len𝐒₁ + len𝐒₂ + 1 : end],dims[3]))
-
-    state = zeros(𝓂.timings.nVars)
-    shock = zeros(𝓂.timings.nExo)
-
-    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-    1
-    shock]
-
-    sol = @suppress begin
-        speedmapping(state; 
-                    m! = (SSS, sss) -> begin 
-                                        aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
-                                                    1
-                                                    shock]
-
-                                        SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-                    end, 
-        tol = tol, maps_limit = 10000)
-    end
-
-    return sol.minimizer, sol.converged
-end
-
-
-function third_order_stochastic_steady_state_iterative_solution_conditions(𝐒₁𝐒₂𝐒₃::SparseVector, SSS, converged::Bool; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps())
-    len𝐒₁ = dims[1][1] * dims[1][2]
-    len𝐒₂ = dims[2][1] * dims[2][2]
-
-    𝐒₁ = reshape(𝐒₁𝐒₂𝐒₃[1 : len𝐒₁],dims[1])
-    𝐒₂ = sparse(reshape(𝐒₁𝐒₂𝐒₃[len𝐒₁ .+ (1 : len𝐒₂)],dims[2]))
-    𝐒₃ = sparse(reshape(𝐒₁𝐒₂𝐒₃[len𝐒₁ + len𝐒₂ + 1 : end],dims[3]))
-
-    shock = zeros(𝓂.timings.nExo)
-
-    aug_state = [SSS[𝓂.timings.past_not_future_and_mixed_idx]
-    1
-    shock]
-
-    return 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6 - SSS
-end
-
-third_order_stochastic_steady_state_iterative_solution = ℐ.ImplicitFunction(third_order_stochastic_steady_state_iterative_solution_forward,
-                                                                                third_order_stochastic_steady_state_iterative_solution_conditions; 
-                                                                                linear_solver = ℐ.DirectLinearSolver())
-
-function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{ℱ.Dual{Z,S,N}}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps()) where {Z,S,N}
-    S₁S₂S₃, ps = separate_values_and_partials_from_sparsevec_dual(𝐒₁𝐒₂𝐒₃)
-
-    # get f(vs)
-    val, converged = third_order_stochastic_steady_state_iterative_solution_forward(S₁S₂S₃; dims = dims, 𝓂 = 𝓂, tol = tol)
-
-    if converged
-        # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = 𝒜.jacobian(𝒷(), x -> third_order_stochastic_steady_state_iterative_solution_conditions(x, val, converged; dims = dims, 𝓂 = 𝓂, tol = tol), S₁S₂S₃)[1]
-        A = 𝒜.jacobian(𝒷(), x -> third_order_stochastic_steady_state_iterative_solution_conditions(S₁S₂S₃, x, converged; dims = dims, 𝓂 = 𝓂, tol = tol), val)[1]
-        
-        Â = RF.lu(A, check = false)
+function rrule(::typeof(calculate_second_order_stochastic_steady_state),
+                                                        ::Val{:Newton}, 
+                                                        𝐒₁::Matrix{Float64}, 
+                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
+                                                        x::Vector{Float64},
+                                                        𝓂::ℳ;
+                                                        tol::AbstractFloat = 1e-14)
     
-        if !ℒ.issuccess(Â)
-            Â = ℒ.svd(A)
+    nᵉ = 𝓂.timings.nExo
+
+    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
+    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    
+    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    
+    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    
+    A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+    B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    
+    max_iters = 100
+    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+    for i in 1:max_iters
+        Δx = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 - x)
+
+        if i > 5 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
+            break
         end
         
-        jvp = -(Â \ B) * ps
-    else
-        jvp = fill(0,length(val),length(𝐒₁𝐒₂𝐒₃)) * ps
+        # x += Δx
+        ℒ.axpy!(-1, Δx, x)
     end
-println(jvp)
-    # lm = LinearMap{Float64}(x -> A * reshape(x, size(B)), length(B))
 
-    # jvp = - sparse(reshape(ℐ.gmres(lm, sparsevec(B)), size(B))) * ps
-    # jvp *= -ps
+    solved = isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)         
 
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end,size(val)), converged
+    # println(x)
+
+    ∂𝐒₁ =  zero(𝐒₁)
+    ∂𝐒₂ =  zero(𝐒₂)
+
+    function second_order_stochastic_steady_state_pullback(∂x)
+        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+
+        ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed] = S' * x'
+        
+        ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
+
+        return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent()
+    end
+
+    return (x, solved), second_order_stochastic_steady_state_pullback
 end
 
 
+
+
+# function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps())
+#     len𝐒₁ = dims[1][1] * dims[1][2]
+#     len𝐒₂ = dims[2][1] * dims[2][2]
+
+#     𝐒₁ = reshape(𝐒₁𝐒₂𝐒₃[1 : len𝐒₁],dims[1])
+#     𝐒₂ = sparse(reshape(𝐒₁𝐒₂𝐒₃[len𝐒₁ .+ (1 : len𝐒₂)],dims[2]))
+#     𝐒₃ = sparse(reshape(𝐒₁𝐒₂𝐒₃[len𝐒₁ + len𝐒₂ + 1 : end],dims[3]))
+
+#     state = zeros(𝓂.timings.nVars)
+#     shock = zeros(𝓂.timings.nExo)
+
+#     aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
+#     1
+#     shock]
+
+#     sol = @suppress begin
+#         speedmapping(state; 
+#                     m! = (SSS, sss) -> begin 
+#                                         aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
+#                                                     1
+#                                                     shock]
+
+#                                         SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+#                     end, 
+#         tol = tol, maps_limit = 10000)
+#     end
+
+#     return sol.minimizer, sol.converged
+# end
 
 
 function calculate_third_order_stochastic_steady_state( parameters::Vector{M}, 
