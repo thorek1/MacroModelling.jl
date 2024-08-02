@@ -3916,10 +3916,8 @@ end
 
 function calculate_second_order_stochastic_steady_state(::Val{:Newton}, 
                                                         𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
-                                                        # 𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
-                                                        # x::Vector{ℱ.Dual{Z,S,N}},
-                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
-                                                        x::Vector{Float64},
+                                                        𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
+                                                        x::Vector{ℱ.Dual{Z,S,N}},
                                                         𝓂::ℳ;
                                                         tol::AbstractFloat = 1e-14) where {Z,S,N}
 
