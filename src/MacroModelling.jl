@@ -3955,7 +3955,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:Newton},
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     for i in 1:max_iters
         Δx = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 - x)
-        
+
         if i > 3 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
             break
         end
@@ -3966,6 +3966,69 @@ function calculate_second_order_stochastic_steady_state(::Val{:Newton},
 
     return x, isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
 end
+
+
+
+
+function calculate_second_order_stochastic_steady_state(::Val{:Newton}, 
+                                                        𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
+                                                        𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
+                                                        x::Vector{ℱ.Dual{Z,S,N}},
+                                                        𝓂::ℳ;
+                                                        tol::AbstractFloat = 1e-14) where {Z,S,N}
+
+    𝐒₁̂ = ℱ.value.(𝐒₁)
+    𝐒₂̂ = ℱ.value.(𝐒₂)
+    x̂ = ℱ.value.(x)
+    
+    nᵉ = 𝓂.timings.nExo
+
+    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
+    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    
+    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    
+    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    
+    A = 𝐒₁̂[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+    B = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+ 
+    max_iters = 100
+    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+    for i in 1:max_iters
+        Δx = (A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) \ (A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 - x̂)
+
+        if i > 5 && isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2, x̂, rtol = tol)
+            break
+        end
+        
+        # x̂ += Δx
+        ℒ.axpy!(-1, Δx, x̂)
+    end
+
+    ∂x = zeros(length(x̂), N)
+    
+    for i in 1:N
+        ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
+        ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
+
+        ∂A = ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+        ∂B̂ = ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+
+        tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2
+
+        TMP = A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)
+
+        ∂x[:,i] = -TMP \ tmp
+    end
+    
+    return reshape(map(x̂, eachrow(∂x)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end, size(x̂)), isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2, x̂, rtol = tol)
+end
+
+
 
 function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps())
     len𝐒₁ = dims[1][1] * dims[1][2]
@@ -4040,7 +4103,7 @@ function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁�
     else
         jvp = fill(0,length(val),length(𝐒₁𝐒₂𝐒₃)) * ps
     end
-
+println(jvp)
     # lm = LinearMap{Float64}(x -> A * reshape(x, size(B)), length(B))
 
     # jvp = - sparse(reshape(ℐ.gmres(lm, sparsevec(B)), size(B))) * ps
@@ -4051,6 +4114,8 @@ function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁�
         ℱ.Dual{Z}(v, p...) # Z is the tag
     end,size(val)), converged
 end
+
+
 
 
 function calculate_third_order_stochastic_steady_state( parameters::Vector{M}, 
@@ -4122,8 +4187,10 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         Ĉ = 𝐒₃[:,kron_s⁺_s⁺_s⁺]
     
         SSSstates, converged = calculate_third_order_stochastic_steady_state(Val(:Newton), 𝐒₁, 𝐒₂, 𝐒₃, SSSstates, 𝓂)
+        
         state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2 + Ĉ * ℒ.kron(vcat(SSSstates,1),  ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1))) / 6
         # state, converged = third_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂); vec(𝐒₃)]; dims = [size(𝐒₁); size(𝐒₂); size(𝐒₃)], 𝓂 = 𝓂)
+        # state, converged = third_order_stochastic_steady_state_iterative_solution_forward([sparsevec(𝐒₁); vec(𝐒₂); vec(𝐒₃)]; dims = [size(𝐒₁); size(𝐒₂); size(𝐒₃)], 𝓂 = 𝓂)
     end
 
     # all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
@@ -4180,6 +4247,76 @@ function calculate_third_order_stochastic_steady_state(::Val{:Newton},
 
     return x, isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)
 end
+
+
+function calculate_third_order_stochastic_steady_state(::Val{:Newton}, 
+                                                        𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
+                                                        𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
+                                                        𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
+                                                        x::Vector{ℱ.Dual{Z,S,N}},
+                                                        𝓂::ℳ;
+                                                        tol::AbstractFloat = 1e-14) where {Z,S,N}
+
+    𝐒₁̂ = ℱ.value.(𝐒₁)
+    𝐒₂̂ = ℱ.value.(𝐒₂)
+    𝐒₃̂ = ℱ.value.(𝐒₃)
+    x̂ = ℱ.value.(x)
+    
+    nᵉ = 𝓂.timings.nExo
+
+    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
+    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    
+    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    
+    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    
+    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+    
+    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
+    
+    A = 𝐒₁̂[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+    B = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    C = 𝐒₃̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
+    Ĉ = 𝐒₃̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+
+    max_iters = 100
+    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+    for i in 1:max_iters
+        Δx = (A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) \ (A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6 - x̂)
+
+        if i > 5 && isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
+            break
+        end
+        
+        # x̂ += Δx
+        ℒ.axpy!(-1, Δx, x̂)
+    end
+
+    ∂x = zeros(length(x̂), N)
+    
+    for i in 1:N
+        ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
+        ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
+        ∂𝐒₃ = ℱ.partials.(𝐒₃, i)
+
+        ∂A = ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+        ∂B̂ = ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+        ∂Ĉ = ∂𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+
+        tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + ∂Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6 
+
+        TMP = A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C / 2 * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)
+
+        ∂x[:,i] = -TMP \ tmp
+    end
+    
+    return reshape(map(x̂, eachrow(∂x)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end, size(x̂)), isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
+end
+
 
 
 function solve!(𝓂::ℳ; 
