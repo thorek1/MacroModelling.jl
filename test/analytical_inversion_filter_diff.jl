@@ -1,4 +1,5 @@
 using Revise
+# using Pkg; Pkg.activate(".");
 using MacroModelling
 # using StatsPlots
 using Random
@@ -68,10 +69,8 @@ end, RBC_baseline.parameter_values)[1]
 #   (:ψ)   2.44111          0.0           0.0           1.29984       4.46926      -2.08167e-16   0.0           0.0           4.46926      -3.66166
 𝓂 = Gali_2015_chapter_3_nonlinear
 𝓂 = Smets_Wouters_2007
-
-get_solution(𝓂, algorithm = :third_order);
-
-import MacroModelling: get_and_check_observables, check_bounds, minimize_distance_to_initial_data, get_relevant_steady_state_and_state_update, replace_indices, minimize_distance_to_data, match_data_sequence!, match_initial_data!,calculate_loglikelihood, String_input, calculate_second_order_stochastic_steady_state, expand_steady_state, mat_mult_kron, solve_matrix_equation_forward, A_mult_kron_power_3_B, solve_sylvester_equation
+SSS(𝓂, algorithm = :third_order, parameters = :csadjcost => 6.0144)
+import MacroModelling: get_and_check_observables, check_bounds, minimize_distance_to_initial_data, get_relevant_steady_state_and_state_update, replace_indices, minimize_distance_to_data, match_data_sequence!, match_initial_data!,calculate_loglikelihood, String_input, calculate_second_order_stochastic_steady_state, expand_steady_state, calculate_third_order_stochastic_steady_state
 
 parameter_values = 𝓂.parameter_values
 parameters = 𝓂.parameter_values
@@ -824,6 +823,9 @@ get_loglikelihood(𝓂, data[:,1:15], 𝓂.parameter_values, filter = :inversion
 
 get_loglikelihood(𝓂, data[1:6,1:5], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :third_order)
 get_loglikelihood(𝓂, data[:,1:5], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :third_order)
+get_loglikelihood(𝓂, data[1:6,1:10], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :second_order)
+get_loglikelihood(𝓂, data[1:6,1:10], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :third_order)
+get_loglikelihood(𝓂, data[1:6,1:10], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :pruned_third_order)
 get_loglikelihood(𝓂, data[:,1:50], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :pruned_second_order)
 @benchmark get_loglikelihood(𝓂, data[:,1:5], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :pruned_second_order)
 @benchmark get_loglikelihood(𝓂, data[:,1:5], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :pruned_third_order)
@@ -920,15 +922,15 @@ sort!(observables)
 observables = observables isa String_input ? observables .|> Meta.parse .|> replace_indices : observables
 
 # solve model given the parameters
-sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)
-
+# sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)
+stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)
 # if !converged 
 #     @error "No solution for these parameters."
 # end
 
 all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
+state = [zeros(𝓂.timings.nVars), collect(stochastic_steady_state) - all_SS]
 
 state_update = function(pruned_states::Vector{Vector{T}}, shock::Vector{S}) where {T,S}
     aug_state₁ = [pruned_states[1][𝓂.timings.past_not_future_and_mixed_idx]; 1; shock]
@@ -1174,7 +1176,7 @@ shock_independent = data_in_deviations[1:6,1] - 𝐒₁[cond_var_idx,:] * aug_st
 # inv(𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end]) * 𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] * aug_state₁[end-𝓂.timings.nExo+1:end]
 # inv(𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end]) * 𝐒₂[cond_var_idx,:]
 
-inv(𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end]) * shock_independent - (aug_state₁[end-𝓂.timings.nExo+1:end] + inv(𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end]) * 𝐒₂[cond_var_idx,shock_idxs] * ℒ.kron(aug_state₁[end-𝓂.timings.nExo+1:end], aug_state₁) / 2 )
+# inv(𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end]) * shock_independent - (aug_state₁[end-𝓂.timings.nExo+1:end] + inv(𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end]) * 𝐒₂[cond_var_idx,shock_idxs] * ℒ.kron(aug_state₁[end-𝓂.timings.nExo+1:end], aug_state₁) / 2 )
 
 
 shock_independent - (𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] * aug_state₁[end-𝓂.timings.nExo+1:end] + 𝐒₂[cond_var_idx,shock_idxs] * ℒ.kron(aug_state₁[end-𝓂.timings.nExo+1:end], aug_state₁) / 2 )
@@ -1200,12 +1202,290 @@ shock_independent - ((𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] + 𝐒�
 shock_independent - ((𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] + 𝐒₂[cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(𝓂.timings.nExo), aug_state₁[1:end-𝓂.timings.nExo])) * aug_state₁[end-𝓂.timings.nExo+1:end] + 𝐒₂[cond_var_idx,shock²_idxs] * ℒ.kron(aug_state₁[end-𝓂.timings.nExo+1:end], aug_state₁[end-𝓂.timings.nExo+1:end]) / 2 )
 
 
+shock_independent 
+- (𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] + 𝐒₂[cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(𝓂.timings.nExo), aug_state₁[1:end-𝓂.timings.nExo])) * aug_state₁[end-𝓂.timings.nExo+1:end] 
+- 𝐒₂[cond_var_idx,shock²_idxs] * ℒ.kron(aug_state₁[end-𝓂.timings.nExo+1:end], aug_state₁[end-𝓂.timings.nExo+1:end]) / 2 
 
+
+A = (𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] + 𝐒₂[cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(𝓂.timings.nExo), aug_state₁[1:end-𝓂.timings.nExo])) \ shock_independent
+
+𝐒₂[cond_var_idx,shock²_idxs] * ℒ.kron(aug_state₁[end-𝓂.timings.nExo+1:end], aug_state₁[end-𝓂.timings.nExo+1:end]) / 2 
+
+𝐒₂[cond_var_idx,shock²_idxs] * ℒ.kron(ℒ.I(𝓂.timings.nExo), aug_state₁[end-𝓂.timings.nExo+1:end]) / 2 * aug_state₁[end-𝓂.timings.nExo+1:end]
+
+
+X = aug_state₁[end-𝓂.timings.nExo+1:end]
+
+shock_independent - (𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] + 𝐒₂[cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(𝓂.timings.nExo), aug_state₁[1:end-𝓂.timings.nExo])) * X - 𝐒₂[cond_var_idx,shock²_idxs] * ℒ.kron(X, X) / 2 
+
+A = shock_independent
+B = (𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] + 𝐒₂[cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(𝓂.timings.nExo), aug_state₁[1:end-𝓂.timings.nExo]))
+C = 𝐒₂[cond_var_idx,shock²_idxs] / 2
+
+A - B * X - C * ℒ.kron(X, X)
+
+B\A - B\C * ℒ.kron(X, X) - X
+B\A - B\C * ℒ.kron(X, X) - X
+ℒ.kron(X, X)
+vec(X * X')
+
+
+Y = A - B * X - C * ℒ.kron(X, X)
+
+B*∂X - C * ℒ.kron(X, ∂X) - ∂X
+- B - 2 * C * ℒ.kron(ℒ.I(𝓂.timings.nExo), X)
+ℒ.kron(ℒ.I(𝓂.timings.nExo), X)
+ℒ.kron(ℒ.I(𝓂.timings.nExo), ones(𝓂.timings.nExo)) .* X'
+
+X' * ℒ.I(𝓂.timings.nExo)
+2 * C * vec(ℒ.I(𝓂.timings.nExo)) * X'
+
+
+
+A = shock_independent
+B = (𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] + 𝐒₂[cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(𝓂.timings.nExo), aug_state₁[1:end-𝓂.timings.nExo]))
+C = 𝐒₂[cond_var_idx,shock²_idxs] / 2
+
+XX = zeros(𝓂.timings.nExo)
+
+for i in 1:100
+    ΔX = (B + 2 * C * ℒ.kron(ℒ.I(𝓂.timings.nExo), XX)) \ (A - B * XX - C * ℒ.kron(XX, XX))
+    # ΔX = (ℒ.I(𝓂.timings.nExo) + 2 * B \ C * ℒ.kron(ℒ.I(𝓂.timings.nExo), XX)) \ (B \ A - XX - B \ C * ℒ.kron(XX, XX))
+    # ΔX = (C \ B + 2 * ℒ.kron(ℒ.I(𝓂.timings.nExo), XX)) \ (C \ A - C \ B * XX - ℒ.kron(XX, XX))
+    if ℒ.norm(ΔX) < 1e-14
+        println(i)
+        break
+    end
+    XX += ΔX
+end
+ℒ.norm(XX)
+
+SSState = zeros(𝓂.timings.nPast_not_future_and_mixed)
+
+for i in 1:10000
+    SSStateold = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed] * SSState + 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,var_idxs] * ℒ.kron(vcat(SSState,1), vcat(SSState,1)) / 2
+    # println(ℒ.norm(SSStateold - SSState))
+    if ℒ.norm(SSStateold - SSState) < 1e-16
+        println(i)
+        break
+    end
+    SSState = SSStateold
+end
+
+
+isapprox(𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed] * SSState + 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,var_idxs] * ℒ.kron(vcat(SSState,1), vcat(SSState,1)) / 2, SSState, rtol = 1e-14)
+# same for stochastic steady state
+# second order
+
+nᵉ = 𝓂.timings.nExo
+s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
+s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+
+tmp = ℒ.kron(s_in_s⁺, s_in_s) |> sparse
+var_idxs2 = tmp.nzind
+
+tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
+var_idxs = tmp.nzind
+
+
+A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,var_idxs2]
+B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,var_idxs]
+
+A + B * ℒ.kron(vcat(SSState,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)
+
+
+
+
+XX = zeros(𝓂.timings.nPast_not_future_and_mixed)
+XX = SSState
+
+jacc = ForwardDiff.jacobian(XX->(B̂ * ℒ.kron(vcat(XX,1), vcat(XX,1)) / 2), XX)
+ℒ.norm(jacc - B * ℒ.kron(vcat(XX,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)))
+
+
+jacc = ForwardDiff.jacobian(XX->(A * XX + B̂ * ℒ.kron(vcat(XX,1), vcat(XX,1)) / 2 - XX), XX)
+ℒ.norm(jacc - (A + B * ℒ.kron(vcat(XX,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)))
+
+for i in 1:100
+    ΔX = -(A + B * ℒ.kron(vcat(XX,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) \ (A * XX + B̂ * ℒ.kron(vcat(XX,1), vcat(XX,1)) / 2 - XX)
+    println(ℒ.norm(ΔX))
+    if ℒ.norm(ΔX) < 1e-14
+        println(i)
+        break
+    end
+    XX += ΔX
+end
+
+
+ℒ.norm(SSState - XX)
+
+ℒ.norm(A * XX + B̂ * ℒ.kron(vcat(XX,1), vcat(XX,1)) / 2 - XX)
+
+
+ℒ.norm(A * SSState + B̂ * ℒ.kron(vcat(SSState,1), vcat(SSState,1)) / 2 - SSState)
+
+
+nᵉ = 𝓂.timings.nExo
+
+s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
+s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+
+kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+
+kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+
+kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+
+kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
+
+kron_s_s_s⁺ = ℒ.kron(ℒ.kron(s_in_s, s_in_s⁺), s_in_s)
+
+A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
+B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+C = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
+Ĉ = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+C̄ = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s_s_s⁺]
+
+
+x = zeros(𝓂.timings.nPast_not_future_and_mixed)
+
+max_iters = 100
+# SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+for i in 1:max_iters
+    Δx = -(A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6 - x)
+    println(ℒ.norm(Δx))
+    if i > 6 && ℒ.norm(Δx) < tol
+        println(i)
+        break
+    end
+    x += Δx
+end
+
+
+ℒ.norm(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6 - x)
+
+XX = ones(𝓂.timings.nPast_not_future_and_mixed)
+x = ones(𝓂.timings.nPast_not_future_and_mixed)
+
+jacc = ForwardDiff.jacobian(x->A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6 - x, XX)
+
+jacc = ForwardDiff.jacobian(x->A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 - x, XX)
+
+ℒ.norm(jacc - (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)))
+
+
+
+jacc = ForwardDiff.jacobian(x-> Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, XX)
+
+jacc - C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2
+
+vec(vec(x * x') * x')
+
+
+hess = ForwardDiff.jacobian(y -> ForwardDiff.jacobian(x -> Ĉ * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), vcat(x,1)) / 6, y), XX)
+
+
+hess = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1), x-> Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, XX)[1]
+
+# hess = Zygote.jacobian(x -> Zygote.jacobian(x-> Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6,x), XX)
+
+C̄ * ℒ.kron(ℒ.I(𝓂.timings.nPast_not_future_and_mixed), ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed))) / 2
+
+ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))
+
+ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))
+
+ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed + 1)) * vcat(x,1) == ℒ.kron(vcat(x,1), vcat(x,1))
+ℒ.kron(vcat(x,1), (ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed + 1)) * vcat(x,1))) == ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))
+
+vec(vcat(x,1) * (ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed + 1)) * vcat(x,1))') ≈ ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))
+
+vec(vcat(x,1) * (ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed + 1)) * vcat(x,1))') ≈ ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))
+
+ℒ.kron(ℒ.I(𝓂.timings.nPast_not_future_and_mixed + 1), ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed + 1)) * vcat(x,1)) * vcat(x,1) ≈ ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))
+
+
+ℒ.kron(ℒ.I(𝓂.timings.nPast_not_future_and_mixed + 1), ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed + 1)) * vcat(x,1)) * vcat(x,1) ≈ ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))
+
+vec(vec(ℒ.I(𝓂.timings.nPast_not_future_and_mixed + 1)) * (ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed + 1)) * vcat(x,1))')
+
+
+C̄ * (ℒ.kron(ℒ.I(𝓂.timings.nPast_not_future_and_mixed), ℒ.kron(ℒ.I(𝓂.timings.nPast_not_future_and_mixed), vcat(x,1))) + ℒ.kron(ℒ.I(𝓂.timings.nPast_not_future_and_mixed), ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed))) + ℒ.kron(vcat(x,1), ℒ.kron(ℒ.I(𝓂.timings.nPast_not_future_and_mixed), ℒ.I(𝓂.timings.nPast_not_future_and_mixed))))  - hess'
+
+𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,ℒ.kron(ℒ.kron(s_in_s, s_in_s), s_in_s⁺)] * ℒ.kron(ℒ.kron(ℒ.I(𝓂.timings.nPast_not_future_and_mixed), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)), vcat(x,1)) * 3
+𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,ℒ.kron(ℒ.kron(s_in_s, s_in_s⁺), s_in_s)] * ℒ.kron(ℒ.I(𝓂.timings.nPast_not_future_and_mixed), ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)))
+𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,ℒ.kron(ℒ.kron(s_in_s⁺, s_in_s), s_in_s)] * ℒ.kron(vcat(x,1), ℒ.kron(ℒ.I(𝓂.timings.nPast_not_future_and_mixed), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)))
+
+
+
+
+ℒ.norm(jacc - (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)))
+
+
+jacc = ForwardDiff.jacobian(XX->(A * XX + B̂ * ℒ.kron(vcat(XX,1), vcat(XX,1)) / 2 - XX), XX)
+ℒ.norm(jacc - (A + B * ℒ.kron(vcat(XX,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)))
+
+
+
+function calculate_third_order_stochastic_steady_state(::Val{:Newton}, 
+                                                        𝐒₁::AbstractSparseMatrix{Float64}, 
+                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
+                                                        𝐒₃::AbstractSparseMatrix{Float64},
+                                                        𝓂::ℳ;
+                                                        tol::AbstractFloat = 1e-14)
+    nᵉ = 𝓂.timings.nExo
+
+    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
+    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+
+    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    
+    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    
+    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+    
+    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s, kron_s⁺_s⁺)
+    
+    A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+    B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    C = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
+    Ĉ = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+
+    x = zeros(𝓂.timings.nPast_not_future_and_mixed)
+
+    max_iters = 100
+    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+    for i in 1:max_iters
+        Δx = -(A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) - x)
+        if i > 6 && ℒ.norm(Δx) < tol
+            break
+        end
+        x += Δx
+    end
+
+    return x, isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
+end
+
+
+
+
+ℒ.kron(ℒ.I(𝓂.timings.nExo), X)
 # aug_state₁[end-𝓂.timings.nExo+1:end] - inv(𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end]) * shock_independent + inv(𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end]) * 𝐒₂[cond_var_idx,:] * ℒ.kron(aug_state₁, aug_state₁) / 2
 # inv(𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end]) * shock_independent + inv(𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end]) * 𝐒₂[cond_var_idx,:] * ℒ.kron(aug_state₁, aug_state₁) / 2
 
 shock_independent_future =     𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] \ shock_independent
 inv𝐒₁𝐒₂ = (𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] + 𝐒₂[cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(𝓂.timings.nExo), aug_state₁[1:end-𝓂.timings.nExo])) \ 𝐒₂[cond_var_idx,shock²_idxs] / 2
+
+
+𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] \ shock_independent - (𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] + 𝐒₂[cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(𝓂.timings.nExo), aug_state₁[1:end-𝓂.timings.nExo])) \ 𝐒₂[cond_var_idx,shock²_idxs] / 2 * ℒ.kron(x, x) - x
+
+
+
+shock_independent - 𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] * ((𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] + 𝐒₂[cond_var_idx,shockvar_idxs] * ℒ.kron(ℒ.I(𝓂.timings.nExo), aug_state₁[1:end-𝓂.timings.nExo])) \ 𝐒₂[cond_var_idx,shock²_idxs] / 2 * ℒ.kron(x, x)) - 𝐒₁[cond_var_idx,end-𝓂.timings.nExo+1:end] * x
+
 
 Shock = zeros(𝓂.timings.nExo)
 # ℒ.kron(Shock, aug_state₁)
@@ -1264,13 +1544,13 @@ prob = OptimizationProblem(f, u0, p, ub = zero(u0) .+ 1e2, lb = zero(u0) .- 1e2)
 
 # Import a solver package and solve the optimization problem
 
-@benchmark sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000)
+sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000)
 
 @benchmark sol = solve(prob, NLopt.LD_TNEWTON_PRECOND_RESTART(), maxiters = 10000)
 
 sol = solve(prob, NLopt.LN_SBPLX(), maxiters = 1000000)
 
-sol = solve(prob, NLopt.GD_MLSL_LDS(), local_method = NLopt.LN_NELDERMEAD(), maxiters = 100000)
+sol = solve(prob, NLopt.GD_MLSL_LDS(), local_method = NLopt.LD_LBFGS(), maxiters = 100000)
 
 sol = solve(prob, NLopt.GN_ISRES(), maxiters = 100000)
 

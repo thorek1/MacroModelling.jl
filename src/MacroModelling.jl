@@ -8235,7 +8235,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    filter_algorithm::Symbol = :fixed_point)
+                                                    filter_algorithm::Symbol = :Newton)
     # first order
     state = copy(state[1])
 
@@ -8329,7 +8329,7 @@ end
 
 
 function rrule(::typeof(calculate_inversion_filter_loglikelihood), state::Vector{Vector{Float64}}, 𝐒::Matrix{Float64}, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, T::timings; warmup_iterations::Int = 0, presample_periods::Int = 0,
-                                                    filter_algorithm::Symbol = :fixed_point)
+                                                    filter_algorithm::Symbol = :Newton)
     # first order
     state = copy(state[1])
 
@@ -8475,7 +8475,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    filter_algorithm::Symbol = :fixed_point)
+                                                    filter_algorithm::Symbol = :Newton)
     if length(𝐒) == 2 && length(state) == 1 # second order
         function second_order_state_update(state::Vector{U}, shock::Vector{S}) where {U <: Real,S <: Real}
         # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
@@ -8709,14 +8709,16 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
             ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
         end 
 
-        shock_independent = 𝐒¹ᵉfact \ shock_independent
+        # shock_independent = 𝐒¹ᵉfact \ shock_independent
         
         if length(𝐒) == 2
-            𝐒¹² = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)    
-            𝐒ⁱ = 𝐒¹² \ 𝐒²ᵉ / 2
+            𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)    
+            𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
+            # 𝐒ⁱ = 𝐒¹² \ 𝐒²ᵉ / 2
         elseif length(𝐒) == 3
-            𝐒¹²³ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒³⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(state¹⁻_vol, state¹⁻_vol))  
-            𝐒ⁱ = 𝐒¹²³ \ 𝐒²ᵉ / 2
+            𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒³⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(state¹⁻_vol, state¹⁻_vol))  
+            𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2
+            # 𝐒ⁱ = 𝐒¹²³ \ 𝐒²ᵉ / 2
         end
 
         # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
@@ -8725,12 +8727,13 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
                                     kron_buffer2,
                                     J,
                                     𝐒ⁱ,
+                                    𝐒ⁱ²ᵉ,
                                     shock_independent)
 
         if length(𝐒) == 2
-            jacc = -(𝐒¹² + 𝐒²ᵉ * ℒ.kron(ℒ.I(T.nExo), x))
+            jacc = -(𝐒ⁱ + 𝐒²ᵉ * ℒ.kron(ℒ.I(T.nExo), x))
         elseif length(𝐒) == 3
-            jacc = -(𝐒¹²³ + 𝐒²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 𝐒³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x)))
+            jacc = -(𝐒ⁱ + 𝐒²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 𝐒³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x)))
         end
     
         if !matched 
@@ -8807,7 +8810,7 @@ function find_shocks(::Val{:fixed_point},
         if i % 5 == 0
             ℒ.axpy!(-1, x, x̂)
             if maximum(abs, x̂) < tol 
-                # println(i)
+                println(i)
                 break 
             end
         end
@@ -8825,46 +8828,39 @@ function find_shocks(::Val{:Newton},
     kron_buffer2::AbstractMatrix{Float64},
     J::AbstractMatrix{Float64},
     𝐒ⁱ::AbstractMatrix{Float64},
+    𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
     shock_independent::Vector{Float64};
-    tol::Float64 = 1e-12)
+    tol::Float64 = 1e-14) # will fail for higher or lower precision
 
     nExo = Int(sqrt(length(kron_buffer)))
 
-    res = zero(shock_independent) .+ 1
+    # res = zero(shock_independent) .+ 1
 
     x = zeros(nExo)
 
-    max_iter = 100
+    max_iter = 1000
 
     for i in 1:max_iter
         ℒ.kron!(kron_buffer, x, x)
-        ℒ.mul!(res, 𝐒ⁱ, kron_buffer)
-        ℒ.axpby!(1, shock_independent, -1, res)
-        ℒ.axpy!(-1, x, res)
-        # res = shock_independent - 𝐒ⁱ * ℒ.kron(x, x) - x
 
-        if (i % 2 == 0) && (maximum(abs, res) < tol)
+        ℒ.lmul!(0, J)
+        ℒ.axpy!(1, ℒ.I(nExo), J)
+        ℒ.kron!(kron_buffer2, J, x)
+
+        # ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer)
+        # ℒ.axpby!(1, shock_independent, -1, res)
+        Δx = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * kron_buffer2) \ (shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron_buffer)
+        # println(ℒ.norm(Δx))
+        if i > 6 && ℒ.norm(Δx) < tol
             # println(i)
-            break 
+            break
         end
         
-        ℒ.lmul!(0, J)
-
-        ℒ.axpy!(1, ℒ.I(nExo), J)
-        # for i in 1:nExo
-        #     J[i,i] += 1
-        # end
-
-        ℒ.kron!(kron_buffer2, J, x)
-        ℒ.mul!(J, 𝐒ⁱ, kron_buffer2, 2, 1)
-        # J = 𝐒ⁱ * 2 * ℒ.kron(ℒ.I(T.nExo), x) + ℒ.I(T.nExo)
-
-        ℒ.ldiv!(ℒ.factorize(J), res)
-        ℒ.axpy!(1, res, x)
-        # x += J \ res
+        ℒ.axpy!(1, Δx, x)
+        # x += Δx
     end
 
-    return x, maximum(abs, shock_independent - 𝐒ⁱ * ℒ.kron!(kron_buffer, x, x) - x) < tol
+    return x, maximum(abs, shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * ℒ.kron!(kron_buffer, x, x)) < tol
 end
 
 
