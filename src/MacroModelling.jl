@@ -36,7 +36,6 @@ import Subscripts: super, sub
 import Krylov
 import LinearOperators
 import DataStructures: CircularBuffer
-import ImplicitDifferentiation as ℐ
 import SpeedMapping: speedmapping
 import Suppressor: @suppress
 import REPL
@@ -2279,13 +2278,7 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
         
     push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
 
-    if VERSION >= v"1.9"
-        push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒷())))
-    else
-        push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
-    end
-
-    push!(SS_solve_func,:(solution = block_solver_AD(params_and_solved_vars,
+    push!(SS_solve_func,:(solution = block_solver(params_and_solved_vars,
                                                             $(n_block), 
                                                             𝓂.ss_solve_blocks[$(n_block)], 
                                                             # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
@@ -3295,13 +3288,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         
         push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
 
-        if VERSION >= v"1.9"
-            push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver(), conditions_backend = 𝒷())))
-        else
-            push!(SS_solve_func,:(block_solver_AD = ℐ.ImplicitFunction(block_solver, 𝓂.ss_solve_blocks[$(n_block)]; linear_solver = ℐ.DirectLinearSolver())))
-        end
-
-        push!(SS_solve_func,:(solution = block_solver_AD(length(params_and_solved_vars) == 0 ? [0.0] : params_and_solved_vars,
+        push!(SS_solve_func,:(solution = block_solver(length(params_and_solved_vars) == 0 ? [0.0] : params_and_solved_vars,
                                                                 $(n_block), 
                                                                 𝓂.ss_solve_blocks[$(n_block)], 
                                                                 # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
