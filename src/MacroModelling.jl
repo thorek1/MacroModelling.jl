@@ -1887,6 +1887,8 @@ function levenberg_marquardt(f::Function,
     ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
     ∇̂ = similar(∇)
 
+    prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
+    
     largest_step = zero(T)
     largest_residual = zero(T)
 
@@ -1898,11 +1900,12 @@ function levenberg_marquardt(f::Function,
 
 	for iter in 1:iterations
         # ∇ .= 𝒜.jacobian(𝒷(), f̂,current_guess)[1]
-        ∇ .= 𝒟.jacobian(f̂, backend, current_guess)
+        𝒟.jacobian!(f̂, ∇, backend, current_guess, prep)
 
         previous_guess .= current_guess
 
-        ∇̂ .= ∇' * ∇
+        # ∇̂ .= ∇' * ∇
+        ℒ.mul!(∇̂, ∇', ∇)
 
         ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
 
