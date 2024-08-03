@@ -7893,6 +7893,121 @@ function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values
 end
     
 
+
+
+
+function get_non_stochastic_steady_state(𝓂::ℳ, parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; verbose::Bool = false, tol::AbstractFloat = 1e-12) where {Z,S,N}
+    parameter_values = ℱ.value.(parameter_values_dual)
+
+    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+
+    # if solution_error > tol || isnan(solution_error)
+    #     return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    # end
+
+    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+        
+    SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+    
+    # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
+    unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+    # ∂SS_equations_∂parameters = try 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
+    # catch
+    #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    # end
+
+    X = [parameter_values; SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]]
+    
+    # vals = Float64[]
+
+    # for f in 𝓂.∂SS_equations_∂parameters[1]
+    #     push!(vals, f(X)...)
+    # end
+    
+    vals = zeros(Float64, length(𝓂.∂SS_equations_∂parameters[1]))
+
+    # lk = ReentrantLock()
+
+    Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
+        out = f(X)
+        
+        # begin
+        #     lock(lk)
+        #     try
+                @inbounds vals[out[2]] = out[1]
+        #     finally
+        #         unlock(lk)
+        #     end
+        # end
+    end
+
+    Accessors.@reset 𝓂.∂SS_equations_∂parameters[2].nzval = vals
+    
+    ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
+
+    # vals = Float64[]
+
+    # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+    #     push!(vals, f(X)...)
+    # end
+
+    vals = zeros(Float64, length(𝓂.∂SS_equations_∂SS_and_pars[1]))
+
+    # lk = ReentrantLock()
+
+    Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+        out = f(X)
+        
+        # begin
+        #     lock(lk)
+        #     try
+                @inbounds vals[out[2]] = out[1]
+        #     finally
+        #         unlock(lk)
+        #     end
+        # end
+    end
+
+    𝓂.∂SS_equations_∂SS_and_pars[3] .*= 0
+    𝓂.∂SS_equations_∂SS_and_pars[3][𝓂.∂SS_equations_∂SS_and_pars[2]] .+= vals
+
+    ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
+
+    # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
+    # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
+    
+    ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
+
+    if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
+        return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    end
+
+    JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
+
+    jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.parameters))
+    
+    for (i,v) in enumerate(SS_and_pars_names)
+        if v in unknowns
+            jvp[i,:] = JVP[indexin([v], unknowns),:]
+        end
+    end
+
+    ∂SS_and_pars = zeros(length(SS_and_pars), N)
+
+    for i in 1:N
+        parameter_values_partials = ℱ.partials.(parameter_values_dual, i)
+
+        ∂SS_and_pars[:,i] = jvp * parameter_values_partials
+    end
+    
+    return reshape(map(SS_and_pars, eachrow(∂SS_and_pars)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end, size(SS_and_pars)), (solution_error, iters)
+end
+
+
+
+
 function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
