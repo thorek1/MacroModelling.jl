@@ -1345,8 +1345,9 @@ function get_steady_state(𝓂::ℳ;
 
     calib_idx = return_variables_only ? [] : indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
-    if length_par * length(var_idx) > 200 
-        derivatives = false
+    if length_par * length(var_idx) > 200
+        @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, set derivatives = false." maxlog = 3
+    #     derivatives = false
     end
 
     if parameter_derivatives != :all
@@ -2308,7 +2309,8 @@ function get_moments(𝓂::ℳ;
     NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_non_stochastic_steady_state(𝓂, 𝓂.parameter_values, verbose = verbose) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
     if length_par * length(NSSS) > 200 || (!variance && !standard_deviation && !non_stochastic_steady_state && !mean)
-        derivatives = false
+        @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, set derivatives = false." maxlog = 3
+        # derivatives = false
     end
 
     if parameter_derivatives != :all && (variance || standard_deviation || non_stochastic_steady_state || mean)
