@@ -3794,7 +3794,7 @@ end
 
 
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, sylvester_algorithm::Symbol = :doubling, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
-    SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, parameters, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
     
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -4056,7 +4056,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         pruning::Bool = false, 
                                                         sylvester_algorithm::Symbol = :doubling, 
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
-    SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, parameters, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -4349,7 +4349,7 @@ function solve!(𝓂::ℳ;
             ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
-            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_non_stochastic_steady_state(𝓂, 𝓂.parameter_values, verbose = verbose) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
+            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
             if solution_error > tol
                 @warn "Could not find non stochastic steady steady."
@@ -4535,7 +4535,7 @@ function solve!(𝓂::ℳ;
         if  ((:binder_pesaran  == algorithm) && ((:binder_pesaran   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:quadratic_iteration  == algorithm) && ((:quadratic_iteration   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
             
-            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_non_stochastic_steady_state(𝓂, 𝓂.parameter_values, verbose = verbose) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
+            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
             if solution_error > tol
                 @warn "Could not find non stochastic steady steady."
@@ -4580,7 +4580,7 @@ function solve!(𝓂::ℳ;
         obc_not_solved = isnothing(𝓂.solution.perturbation.linear_time_iteration.state_update_obc)
         if  ((:linear_time_iteration  == algorithm) && ((:linear_time_iteration   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
             
-            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_non_stochastic_steady_state(𝓂, 𝓂.parameter_values, verbose = verbose) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
+            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
             if solution_error > tol
                 @warn "Could not find non stochastic steady steady."
@@ -5523,7 +5523,7 @@ function SS_parameter_derivatives(parameters::Vector{ℱ.Dual{Z,S,N}}, parameter
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    get_non_stochastic_steady_state(𝓂, params, verbose = verbose)
+    get_NSSS_and_parameters(𝓂, params, verbose = verbose)
 end
 
 
@@ -5532,7 +5532,7 @@ function SS_parameter_derivatives(parameters::ℱ.Dual{Z,S,N}, parameters_idx::I
     params = copy(𝓂.parameter_values)
     params = convert(Vector{ℱ.Dual{Z,S,N}},params)
     params[parameters_idx] = parameters
-    get_non_stochastic_steady_state(𝓂, params, verbose = verbose)
+    get_NSSS_and_parameters(𝓂, params, verbose = verbose)
 end
 
 
@@ -7245,7 +7245,7 @@ function calculate_covariance(parameters::Vector{<: Real},
                                 𝓂::ℳ; 
                                 lyapunov_algorithm::Symbol = :doubling, 
                                 verbose::Bool = false)
-    SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, parameters, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
@@ -7274,7 +7274,7 @@ function calculate_mean(parameters::Vector{T},
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean only available for first order, pruned second and third order perturbation solutions."
 
-    SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, parameters, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
     
     if algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran]
         return SS_and_pars[1:𝓂.timings.nVars], solution_error
@@ -7772,12 +7772,12 @@ function calculate_loglikelihood(::Val{:inversion}, observables, 𝐒, data_in_d
     return calculate_inversion_filter_loglikelihood(state, 𝐒, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods, filter_algorithm = filter_algorithm)
 end
 
-function get_non_stochastic_steady_state(𝓂::ℳ, parameter_values::Vector{S}; verbose::Bool = false, tol::AbstractFloat = 1e-12)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Float64
+function get_NSSS_and_parameters(𝓂::ℳ, parameter_values::Vector{S}; verbose::Bool = false, tol::AbstractFloat = 1e-12)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Float64
     𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
 end
 
 
-function rrule(::typeof(get_non_stochastic_steady_state), 𝓂, parameter_values; verbose = false,  tol::AbstractFloat = 1e-12)
+function rrule(::typeof(get_NSSS_and_parameters), 𝓂, parameter_values; verbose = false,  tol::AbstractFloat = 1e-12)
     SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
 
     if solution_error > tol || isnan(solution_error)
@@ -7883,7 +7883,7 @@ end
 
 
 
-function get_non_stochastic_steady_state(𝓂::ℳ, parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; verbose::Bool = false, tol::AbstractFloat = 1e-12) where {Z,S,N}
+function get_NSSS_and_parameters(𝓂::ℳ, parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; verbose::Bool = false, tol::AbstractFloat = 1e-12) where {Z,S,N}
     parameter_values = ℱ.value.(parameter_values_dual)
 
     SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
@@ -8505,7 +8505,7 @@ end
 
 
 function get_relevant_steady_state_and_state_update(::Val{:first_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
-    SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, parameter_values, tol = tol)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, tol = tol)
 
     state = zeros(𝓂.timings.nVars)
 
@@ -9430,7 +9430,7 @@ function inversion_filter(𝓂::ℳ,
             return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
         end
     else
-        SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, 𝓂.parameter_values, verbose = verbose)
+        SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose)
 
         if solution_error > tol || isnan(solution_error)
             @error "No solution for these parameters."
@@ -9741,7 +9741,7 @@ function filter_and_smooth(𝓂::ℳ,
 
     parameters = 𝓂.parameter_values
 
-    SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, parameters, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
     
     @assert solution_error < tol "Could not solve non stochastic steady state." 
 
