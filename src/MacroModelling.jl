@@ -14,10 +14,12 @@ import Accessors
 # import Memoization: @memoize
 # import LRUCache: LRU
 
-import AbstractDifferentiation as 𝒜
+# import AbstractDifferentiation as 𝒜
+import DifferentiationInterface as 𝒟
 import ForwardDiff as ℱ
+backend = 𝒟.AutoForwardDiff()
 # import Diffractor: DiffractorForwardBackend
-𝒷 = 𝒜.ForwardDiffBackend
+# 𝒷 = 𝒜.ForwardDiffBackend
 # 𝒷 = Diffractor.DiffractorForwardBackend
 
 import Polyester
@@ -309,7 +311,8 @@ function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, 
     𝓂 = p[4]
 
     if length(jac) > 0
-        jac .= 𝒜.jacobian(𝒷(), xx -> 𝓂.obc_violation_function(xx, p), X)[1]'
+        # jac .= 𝒜.jacobian(𝒷(), xx -> 𝓂.obc_violation_function(xx, p), X)[1]'
+        jac .= 𝒟.jacobian(xx -> 𝓂.obc_violation_function(xx, p), backend, X)'
     end
 
     res .= 𝓂.obc_violation_function(X, p)
@@ -329,15 +332,24 @@ function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where
     Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, 𝒷, precision_factor = p
 
     if length(jac) > 0
-        jac .= 𝒜.jacobian(𝒷(), xx -> begin
-                                        Shocks[Free_shock_idx] .= xx
+        # jac .= 𝒜.jacobian(𝒷(), xx -> begin
+        #                                 Shocks[Free_shock_idx] .= xx
 
-                                        new_State = State_update(State, convert(typeof(xx), Shocks))
+        #                                 new_State = State_update(State, convert(typeof(xx), Shocks))
 
-                                        cond_vars = Pruning ? sum(new_State) : new_State
+        #                                 cond_vars = Pruning ? sum(new_State) : new_State
                                         
-                                        return precision_factor .* abs.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
-                                    end, X)[1]'
+        #                                 return precision_factor .* abs.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+        #                             end, X)[1]'
+        jac .= 𝒟.jacobian(xx -> begin
+                                    Shocks[Free_shock_idx] .= xx
+
+                                    new_State = State_update(State, convert(typeof(xx), Shocks))
+
+                                    cond_vars = Pruning ? sum(new_State) : new_State
+                                    
+                                    return precision_factor .* abs.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+                                end, backend, X)'
     end
 
     Shocks[Free_shock_idx] .= X
@@ -368,7 +380,16 @@ function minimize_distance_to_conditions!(X::Vector{S}, grad::Vector{S}, p) wher
     Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, 𝒷, precision_factor = p
 
     if length(grad) > 0
-        grad .= 𝒜.gradient(𝒷(), xx -> begin
+        # grad .= 𝒜.gradient(𝒷(), xx -> begin
+        #                                 Shocks[Free_shock_idx] .= xx
+
+        #                                 new_State = State_update(State, convert(typeof(xx), Shocks))
+
+        #                                 cond_vars = Pruning ? sum(new_State) : new_State
+                                        
+        #                                 return precision_factor * sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+        #                             end, X)[1]
+        grad .= 𝒟.gradient(xx -> begin
                                         Shocks[Free_shock_idx] .= xx
 
                                         new_State = State_update(State, convert(typeof(xx), Shocks))
@@ -376,7 +397,8 @@ function minimize_distance_to_conditions!(X::Vector{S}, grad::Vector{S}, p) wher
                                         cond_vars = Pruning ? sum(new_State) : new_State
                                         
                                         return precision_factor * sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
-                                    end, X)[1]
+                                    end, backend, X)
+
     end
 
     Shocks[Free_shock_idx] .= X
@@ -416,7 +438,18 @@ function minimize_distance_to_initial_data!(X::Vector{S}, grad::Vector{S}, data:
     end
 
     if length(grad) > 0
-        grad .= 𝒜.gradient(𝒷(), xx -> begin
+        # grad .= 𝒜.gradient(𝒷(), xx -> begin
+        #                                 state_copy = deepcopy(state)
+
+        #                                 XX = reshape(xx, length(X) ÷ warmup_iters, warmup_iters)
+
+        #                                 for i in 1:warmup_iters
+        #                                     state_copy = state_update(state_copy, XX[:,i])
+        #                                 end
+
+        #                                 return precision_factor .* sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+        #                             end, X)[1]
+        grad .= 𝒟.gradient(xx -> begin
                                         state_copy = deepcopy(state)
 
                                         XX = reshape(xx, length(X) ÷ warmup_iters, warmup_iters)
@@ -426,7 +459,7 @@ function minimize_distance_to_initial_data!(X::Vector{S}, grad::Vector{S}, data:
                                         end
 
                                         return precision_factor .* sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
-                                    end, X)[1]
+                                    end, backend, X)
     end
 
     state_copy = deepcopy(state)
@@ -451,7 +484,18 @@ function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data:
     end
 
     if length(jac) > 0
-        jac .= 𝒜.jacobian(𝒷(), xx -> begin
+        # jac .= 𝒜.jacobian(𝒷(), xx -> begin
+        #                                 state_copy = deepcopy(state)
+
+        #                                 XX = reshape(xx, length(X) ÷ warmup_iters, warmup_iters)
+
+        #                                 for i in 1:warmup_iters
+        #                                     state_copy = state_update(state_copy, XX[:,i])
+        #                                 end
+
+        #                                 return precision_factor .* abs.(data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+        #                             end, X)[1]'
+        jac .= 𝒟.jacobian(xx -> begin
                                         state_copy = deepcopy(state)
 
                                         XX = reshape(xx, length(X) ÷ warmup_iters, warmup_iters)
@@ -461,7 +505,7 @@ function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data:
                                         end
 
                                         return precision_factor .* abs.(data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
-                                    end, X)[1]'
+                                    end, backend, X)'
     end
 
     if length(res) > 0
@@ -508,7 +552,8 @@ function minimize_distance_to_data!(X::Vector{S}, grad::Vector{S}, Data::Vector{
     end
     
     if length(grad) > 0
-        grad .= 𝒜.gradient(𝒷(), xx -> precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]
+        # grad .= 𝒜.gradient(𝒷(), xx -> precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]
+        grad .= 𝒟.gradient(xx -> precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), backend, X)
     end
 
     return precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
@@ -525,6 +570,7 @@ function match_data_sequence!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, Data
     
     if length(jac) > 0
         jac .= 𝒜.jacobian(𝒷(), xx -> precision_factor .* abs.(Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]'
+        jac .= 𝒟.jacobian(xx -> precision_factor .* abs.(Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), backend, X)[1]'
     end
 
     if length(res) > 0
@@ -1851,7 +1897,8 @@ function levenberg_marquardt(f::Function,
     p² = p̄²
 
 	for iter in 1:iterations
-        ∇ .= 𝒜.jacobian(𝒷(), f̂,current_guess)[1]
+        # ∇ .= 𝒜.jacobian(𝒷(), f̂,current_guess)[1]
+        ∇ .= 𝒟.jacobian(f̂, backend, current_guess)
 
         previous_guess .= current_guess
 
@@ -3694,74 +3741,6 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     return sol_values, (sol_minimum, total_iters)
 end
-
-# needed for Julia 1.8
-function block_solver(parameters_and_solved_vars::Vector{ℱ.Dual{Z,S,N}}, 
-    n_block::Int, 
-    ss_solve_blocks::Function, 
-    # SS_optimizer, 
-    # f::OptimizationFunction, 
-    guess::Vector{Vector{Float64}}, 
-    lbs::Vector{Float64}, 
-    ubs::Vector{Float64},
-    parameters::Vector{solver_parameters},
-    cold_start::Bool,
-    verbose::Bool ;
-    tol::AbstractFloat = eps() #,
-    # timeout = 120,
-    # starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2, .9, .75, 1.5, -.5, 2, .25]
-    # fail_fast_solvers_only = true,
-    # verbose::Bool = false
-    ) where {Z,S,N}
-
-    # unpack: AoS -> SoA
-    inp = ℱ.value.(parameters_and_solved_vars)
-
-    # you can play with the dimension here, sometimes it makes sense to transpose
-    ps = mapreduce(ℱ.partials, hcat, parameters_and_solved_vars)'
-
-    if verbose println("Solution for derivatives.") end
-    # get f(vs)
-    val, (min, iter) = block_solver(inp, 
-                        n_block, 
-                        ss_solve_blocks, 
-                        # SS_optimizer, 
-                        # f, 
-                        guess, 
-                        lbs, 
-                        ubs,
-                        parameters,
-                        cold_start,
-                        verbose;
-                        tol = tol #,
-                        # timeout = timeout,
-                        # starting_points = starting_points
-                        )
-
-    if min > tol
-        jvp = fill(0,length(val),length(inp)) * ps
-    else
-        # get J(f, vs) * ps (cheating). Write your custom rule here
-        B = 𝒜.jacobian(𝒷(), x -> ss_solve_blocks(x,val), inp)[1]
-        A = 𝒜.jacobian(𝒷(), x -> ss_solve_blocks(inp,x), val)[1]
-        # B = Zygote.jacobian(x -> ss_solve_blocks(x,transformer(val, option = 0),0), inp)[1]
-        # A = Zygote.jacobian(x -> ss_solve_blocks(inp,transformer(x, option = 0),0), val)[1]
-
-        Â = RF.lu(A, check = false)
-
-        if !ℒ.issuccess(Â)
-            Â = ℒ.svd(A)
-        end
-        
-        jvp = -(Â \ B) * ps
-    end
-
-    # pack: SoA -> AoS
-    return reshape(map(val, eachrow(jvp)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(val)), (min, iter)
-end
-
 
 
 # function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{Float64};  dims::Vector{Tuple{Int,Int}},  𝓂::ℳ, tol::AbstractFloat = eps())

@@ -1372,44 +1372,55 @@ function get_steady_state(𝓂::ℳ;
         if stochastic
                 if algorithm == :third_order
 
-                    dSSS = 𝒜.jacobian(𝒷(), x->begin 
-                                SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
-                                [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                            end, 𝓂.parameter_values[param_idx])[1]
+                    # dSSS = 𝒜.jacobian(𝒷(), x->begin 
+                    #             SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
+                    #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                    #         end, 𝓂.parameter_values[param_idx])[1]
+                    dSSS = 𝒟.jacobian(x -> begin SSS = calculate_third_order_stochastic_steady_state(x, 𝓂, verbose = verbose)
+                                        return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                    end, backend, 𝓂.parameter_values)[:,param_idx]
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
 
                 elseif algorithm == :pruned_third_order
 
-                    dSSS = 𝒜.jacobian(𝒷(), x->begin 
-                                SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
-                                [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                            end, 𝓂.parameter_values[param_idx])[1]
+                    # dSSS = 𝒜.jacobian(𝒷(), x->begin 
+                    #             SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
+                    #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                    #         end, 𝓂.parameter_values[param_idx])[1]
+                    dSSS = 𝒟.jacobian(x-> begin SSS= calculate_third_order_stochastic_steady_state(x, 𝓂, verbose = verbose, pruning = true)
+                                        return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                    end, backend, 𝓂.parameter_values)[:,param_idx]
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
                 
                 elseif algorithm == :pruned_second_order
-
-                    dSSS = 𝒜.jacobian(𝒷(), x->begin 
-                                SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
-                                [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                            end, 𝓂.parameter_values[param_idx])[1]
+                    # dSSS = 𝒜.jacobian(𝒷(), x->begin 
+                    #             SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
+                    #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                    #         end, 𝓂.parameter_values[param_idx])[1]
+                    dSSS = 𝒟.jacobian(x->begin SSS = calculate_second_order_stochastic_steady_state(x, 𝓂, verbose = verbose, pruning = true)
+                                        return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                    end, backend, 𝓂.parameter_values)[:,param_idx]
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
 
                 else
-
-                    dSSS = 𝒜.jacobian(𝒷(), x->begin 
-                                SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
-                                [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
-                            end, 𝓂.parameter_values[param_idx])[1]
+                    # dSSS = 𝒜.jacobian(𝒷(), x->begin 
+                    #             SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
+                    #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                    #         end, 𝓂.parameter_values[param_idx])[1]
+                    dSSS = 𝒟.jacobian(x->begin SSS = calculate_second_order_stochastic_steady_state(x, 𝓂, verbose = verbose)
+                                        return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                    end, backend, 𝓂.parameter_values)[:,param_idx]
 
                     return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
 
                 end
         else
             # dSS = 𝒜.jacobian(𝒷(), x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
-            dSS = 𝒜.jacobian(𝒷(), x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[[var_idx...,calib_idx...]], 𝓂.parameter_values[param_idx])[1]
+            # dSS = 𝒜.jacobian(𝒷(), x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[[var_idx...,calib_idx...]], 𝓂.parameter_values[param_idx])[1]
+            dSS = 𝒟.jacobian(x->get_NSSS_and_parameters(𝓂, x, verbose = verbose)[1][[var_idx...,calib_idx...]], backend, 𝓂.parameter_values)[:,param_idx]
 
             # if length(𝓂.calibration_equations_parameters) == 0        
             #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters))
@@ -2352,7 +2363,8 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            dNSSS = 𝒜.jacobian(𝒷(), x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), 𝓂.parameter_values[param_idx])[1]
+            # dNSSS = 𝒜.jacobian(𝒷(), x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), 𝓂.parameter_values[param_idx])[1]
+            dNSSS = 𝒟.jacobian(x -> get_NSSS_and_parameters(𝓂, x, verbose = verbose)[1], backend, 𝓂.parameter_values)[:,param_idx]
             
             if length(𝓂.calibration_equations_parameters) > 0
                 var_idx_ext = vcat(var_idx, 𝓂.timings.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
@@ -2382,7 +2394,8 @@ function get_moments(𝓂::ℳ;
             if algorithm == :pruned_second_order
                 covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
 
-                dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
+                # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
+                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
@@ -2390,7 +2403,8 @@ function get_moments(𝓂::ℳ;
             elseif algorithm == :pruned_third_order
                 covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
 
-                dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, dependencies_tol = dependencies_tol, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
+                # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, dependencies_tol = dependencies_tol, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
+                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
@@ -2398,7 +2412,8 @@ function get_moments(𝓂::ℳ;
             else
                 covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
 
-                dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm), 𝓂.parameter_values[param_idx])[1]
+                # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm), 𝓂.parameter_values[param_idx])[1]
+                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_covariance(x, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
             end
 
             vari = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
@@ -2419,11 +2434,14 @@ function get_moments(𝓂::ℳ;
                 standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
 
                 if algorithm == :pruned_second_order
-                    dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
+                    # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
+                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
                 elseif algorithm == :pruned_third_order
-                    dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
+                    # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
+                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
                 else
-                    dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)), 𝓂.parameter_values[param_idx])[1]
+                    # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)), 𝓂.parameter_values[param_idx])[1]
+                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
                 end
 
                 st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
@@ -2441,7 +2459,8 @@ function get_moments(𝓂::ℳ;
             if algorithm == :pruned_second_order
                 covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
 
-                dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
+                # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
+                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
@@ -2449,7 +2468,8 @@ function get_moments(𝓂::ℳ;
             elseif algorithm == :pruned_third_order
                 covar_dcmp, state_μ, _ = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
 
-                dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
+                # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
+                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
@@ -2457,7 +2477,8 @@ function get_moments(𝓂::ℳ;
             else
                 covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
                 
-                dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)), 𝓂.parameter_values[param_idx])[1]
+                # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)), 𝓂.parameter_values[param_idx])[1]
+                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
             end
 
             standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
@@ -2476,7 +2497,8 @@ function get_moments(𝓂::ℳ;
 
             state_μ, ___ = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose)
 
-            state_μ_dev = 𝒜.jacobian(𝒷(), x -> mean_parameter_derivatives(x, param_idx, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm), 𝓂.parameter_values[param_idx])[1]
+            # state_μ_dev = 𝒜.jacobian(𝒷(), x -> mean_parameter_derivatives(x, param_idx, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm), 𝓂.parameter_values[param_idx])[1]
+            state_μ_dev = 𝒟.jacobian(x -> calculate_mean(x, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm)[1], backend, 𝓂.parameter_values)[:,param_idx]
             
             var_means =  KeyedArray(hcat(state_μ[var_idx], state_μ_dev[var_idx, :]);  Variables = axis1, Mean_and_∂mean∂parameter = axis2)
         end
