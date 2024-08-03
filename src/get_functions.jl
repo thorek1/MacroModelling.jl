@@ -643,7 +643,7 @@ function get_conditional_forecast(𝓂::ℳ,
     if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
         precision_factor = 1.0
 
-        p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state, pruning, 𝒷, precision_factor)
+        p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state, pruning, precision_factor)
 
         res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
                             zeros(length(free_shock_idx)), 
@@ -688,7 +688,7 @@ function get_conditional_forecast(𝓂::ℳ,
     
             @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
     
-            p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, 𝒷, precision_factor)
+            p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, precision_factor)
 
             res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
                                 zeros(length(free_shock_idx)), 

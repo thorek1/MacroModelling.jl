@@ -329,7 +329,7 @@ end
 
 
 function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
-    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, 𝒷, precision_factor = p
+    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
 
     if length(jac) > 0
         # jac .= 𝒜.jacobian(𝒷(), xx -> begin
@@ -363,7 +363,7 @@ end
 
 
 function minimize_distance_to_conditions(X::Vector{S}, p)::S where S
-    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, 𝒷, precision_factor = p
+    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
 
     Shocks[Free_shock_idx] .= X
 
@@ -377,7 +377,7 @@ end
 
 
 function minimize_distance_to_conditions!(X::Vector{S}, grad::Vector{S}, p) where S
-    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, 𝒷, precision_factor = p
+    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
 
     if length(grad) > 0
         # grad .= 𝒜.gradient(𝒷(), xx -> begin
@@ -569,7 +569,7 @@ function match_data_sequence!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, Data
     end
     
     if length(jac) > 0
-        jac .= 𝒜.jacobian(𝒷(), xx -> precision_factor .* abs.(Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]'
+        # jac .= 𝒜.jacobian(𝒷(), xx -> precision_factor .* abs.(Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]'
         jac .= 𝒟.jacobian(xx -> precision_factor .* abs.(Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), backend, X)[1]'
     end
 
