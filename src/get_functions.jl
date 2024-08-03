@@ -876,7 +876,7 @@ function get_irf(𝓂::ℳ,
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
     end
 
-    reference_steady_state, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
+    reference_steady_state, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, parameters, verbose = verbose)
     
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)# |> Matrix
 								
@@ -1319,8 +1319,7 @@ function get_steady_state(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    SS, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
-    # SS, solution_error = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose) : (copy(𝓂.solution.non_stochastic_steady_state), eps())
+    SS, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, 𝓂.parameter_values, verbose = verbose)
 
     if solution_error > tol
         @warn "Could not find non-stochastic steady state. Solution error: $solution_error > $tol"
@@ -1674,8 +1673,8 @@ function get_solution(𝓂::ℳ,
         end
     end
 
-    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
-    
+    SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, parameters, verbose = verbose)
+
     if solution_error > tol || isnan(solution_error)
         if algorithm == :second_order
             return SS_and_pars[1:length(𝓂.var)], zeros(length(𝓂.var),2), spzeros(length(𝓂.var),2), false
@@ -1812,7 +1811,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, 𝓂.parameter_values, verbose = verbose)
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
@@ -1955,7 +1954,7 @@ function get_variance_decomposition(𝓂::ℳ;
     
     solve!(𝓂, parameters = parameters, verbose = verbose)
 
-    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters) = get_non_stochastic_steady_state(𝓂, 𝓂.parameter_values, verbose = verbose)
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
@@ -2306,7 +2305,7 @@ function get_moments(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
+    NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_non_stochastic_steady_state(𝓂, 𝓂.parameter_values, verbose = verbose) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
     if length_par * length(NSSS) > 200 || (!variance && !standard_deviation && !non_stochastic_steady_state && !mean)
         derivatives = false
@@ -3014,7 +3013,7 @@ function get_non_stochastic_steady_state_residuals(
     
     solve!(𝓂, parameters = parameters)
 
-    SS_and_pars, _ = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, false, 𝓂.solver_parameters)
+    SS_and_pars, _ = get_non_stochastic_steady_state(𝓂, 𝓂.parameter_values, verbose = false)
 
     aux_and_vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_aux_equations)), union(𝓂.parameters_in_equations, 𝓂.➕_vars))))
 
