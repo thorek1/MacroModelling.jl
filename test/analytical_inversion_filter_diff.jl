@@ -37,20 +37,20 @@ data = rekey(data, :Variable => observables)
 
 
 
-include("../models/Gali_2015_chapter_3_nonlinear.jl")
-include("../models/RBC_baseline.jl")
-init = copy(RBC_baseline.parameter_values)
-SSS(RBC_baseline)
+# include("../models/Gali_2015_chapter_3_nonlinear.jl")
+# include("../models/RBC_baseline.jl")
+# init = copy(RBC_baseline.parameter_values)
+# SSS(RBC_baseline)
 
-forw = SSS(RBC_baseline)
-fin
+# forw = SSS(RBC_baseline)
+# fin
 
-forw[:,2:end] ./ fin
-fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1), y -> begin
-                        out = SSS(RBC_baseline, parameters = y, derivatives = false)
-                        SS(RBC_baseline, parameters = init)
-                        return out
-end, RBC_baseline.parameter_values)[1]
+# forw[:,2:end] ./ fin
+# fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1), y -> begin
+#                         out = SSS(RBC_baseline, parameters = y, derivatives = false)
+#                         SS(RBC_baseline, parameters = init)
+#                         return out
+# end, RBC_baseline.parameter_values)[1]
 
 # target
 # 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
@@ -67,9 +67,10 @@ end, RBC_baseline.parameter_values)[1]
 #   (:z)   1.0              8.15433e-14   1.59038e-13   5.38247e-15   2.10361e-14   1.45386e-15   4.35917e-13   2.20476e-13   1.54192e-14  -2.25203e-14
 #   (:ḡ)   0.219078         0.0           0.0           0.0          -1.97621e-18   0.0105326     0.0           0.0           1.07497       1.15434
 #   (:ψ)   2.44111          0.0           0.0           1.29984       4.46926      -2.08167e-16   0.0           0.0           4.46926      -3.66166
-𝓂 = Gali_2015_chapter_3_nonlinear
+# 𝓂 = Gali_2015_chapter_3_nonlinear
+
 𝓂 = Smets_Wouters_2007
-SSS(𝓂, algorithm = :third_order, parameters = :csadjcost => 6.0144)
+SSS(𝓂, algorithm = :third_order, derivatives = false)#, parameters = :csadjcost => 6.0144)
 import MacroModelling: get_and_check_observables, check_bounds, minimize_distance_to_initial_data, get_relevant_steady_state_and_state_update, replace_indices, minimize_distance_to_data, match_data_sequence!, match_initial_data!,calculate_loglikelihood, String_input, calculate_second_order_stochastic_steady_state, expand_steady_state, calculate_third_order_stochastic_steady_state
 
 parameter_values = 𝓂.parameter_values
@@ -81,6 +82,55 @@ presample_periods = 0
 initial_covariance = :diagonal
 tol = 1e-12
 verbose = false
+
+
+
+
+observables = get_and_check_observables(𝓂, data)
+
+solve!(𝓂, verbose = verbose, algorithm = algorithm)
+
+bounds_violated = check_bounds(parameter_values, 𝓂)
+
+NSSS_labels = [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
+
+obs_indices = convert(Vector{Int}, indexin(observables, NSSS_labels))
+
+TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol)
+
+if collect(axiskeys(data,1)) isa Vector{String}
+    data = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
+end
+
+dt = (data(observables))
+
+# prepare data
+data_in_deviations = dt .- SS_and_pars[obs_indices]
+
+presample_periods = 0
+
+# 𝓂
+# data_in_deviations
+# algorithm
+warmup_iterations = 0
+verbose = false
+tol = 1e-12
+
+observables = collect(axiskeys(data_in_deviations,1))
+
+data_in_deviations = collect(data_in_deviations)
+
+# @assert observables isa Vector{String} || observables isa Vector{Symbol} "Make sure that the data has variables names as rows. They can be either Strings or Symbols."
+
+sort!(observables)
+
+observables = observables isa String_input ? observables .|> Meta.parse .|> replace_indices : observables
+
+# solve model given the parameters
+# sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)
+stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)
+stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = false)
+
 
 
 SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameters, 𝓂, verbose, false, 𝓂.solver_parameters)
@@ -96,6 +146,8 @@ all_SS = expand_steady_state(SS_and_pars,𝓂)
 ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
             
 # 𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings)
+
+
 
 # ∇₁::AbstractMatrix{<: Real}, #first order derivatives
 # ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
@@ -1349,7 +1401,15 @@ Ĉ = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
 C̄ = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s_s_s⁺]
 
 
-x = zeros(𝓂.timings.nPast_not_future_and_mixed)
+𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+
+aug_state₁ = sparse([zeros(𝓂.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.timings.nExo)])
+
+tmp = (ℒ.I - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed])
+
+tmp̄ = ℒ.lu(tmp, check = false)
+
+x = tmp̄ \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx]
 
 max_iters = 100
 # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
@@ -1362,6 +1422,17 @@ for i in 1:max_iters
     end
     x += Δx
 end
+
+
+A * x + B̂ * ℒ.kron(x, x) / 2 + Ĉ * ℒ.kron(x, ℒ.kron(x, x)) / 6 - x
+
+
+∂A * x + A * ∂x + ∂B̂ * ℒ.kron(x, x) / 2 + B̂ * ℒ.kron(∂x, x) + ∂Ĉ * ℒ.kron(x, ℒ.kron(x, x)) / 6 + Ĉ * ℒ.kron(∂x, ℒ.kron(x, x)) - ∂x
+
+
+rrule
+
+-(A \partial     + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6 - x)
 
 
 ℒ.norm(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6 - x)
@@ -1466,7 +1537,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:Newton},
         x += Δx
     end
 
-    return x, isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
+    return x, isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), vcat(x,1)) / 6, x, rtol = tol)
 end
 
 
