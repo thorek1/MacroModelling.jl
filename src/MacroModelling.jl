@@ -8986,31 +8986,39 @@ function find_shocks(::Val{:Newton},
 
     nExo = Int(sqrt(length(kron_buffer)))
 
-    # res = zero(shock_independent) .+ 1
+    x = zero(nExo)
 
-    x = zeros(nExo)
+    x̂ = zeros(nExo)
+
+    ∂x = zero(𝐒ⁱ)
+
+    Ĵ = ℒ.I(nExo)*2
 
     max_iter = 1000
 
+
     for i in 1:max_iter
         ℒ.kron!(kron_buffer, x, x)
-
-        ℒ.lmul!(0, J)
-        ℒ.axpy!(1, ℒ.I(nExo), J)
-        ℒ.kron!(kron_buffer2, J, x)
-
-        ∂x = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * kron_buffer2)
+        ℒ.kron!(kron_buffer2, Ĵ, x)
+        
+        ℒ.mul!(∂x, 𝐒ⁱ²ᵉ, kron_buffer2)
+        ℒ.axpy!(1, 𝐒ⁱ, ∂x)
+        # ∂x = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(nExo), x))
 
         ∂x̂ = ℒ.lu!(∂x, check = false)
 
         if !ℒ.issuccess(∂x̂) 
             return x, false
         end
-        # ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer)
-        # ℒ.axpby!(1, shock_independent, -1, res)
+        
+        ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer)
+        ℒ.mul!(Δx, 𝐒ⁱ, x)
+        ℒ.axpy!(1, Δx, x̂)
+        ℒ.axbpy!(1, shock_independent, -1, x̂)
+        ℒ.ldiv!(Δx, ∂x̂, x̂)
         Δx = ∂x̂ \ (shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron_buffer)
         # println(ℒ.norm(Δx))
-        if i > 6 && ℒ.norm(Δx) < tol
+        if i > 6 && ℒ.norm(x̂) < tol
             # println(i)
             break
         end
@@ -9023,7 +9031,7 @@ function find_shocks(::Val{:Newton},
         end
     end
 
-    return x, maximum(abs, shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * ℒ.kron!(kron_buffer, x, x)) < tol
+    return x, ℒ.norm(x̂) < tol
 end
 
 
