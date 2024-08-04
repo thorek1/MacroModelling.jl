@@ -5,6 +5,8 @@
 - [ ] ss transition by entering new parameters at given periods
 - [ ] add argument to plotting functions to replace names in plots (e.g input a dictionnary: Dict(:dinve => "Investment growth"))
 - [ ] programmatic model writing: accept {i}[0] as definition for variable
+- [ ] fix higher order shock finder (3rd order) and check results for pruned second order. are the right state values taken for 1st and second order subprocesses?
+- [ ] take analytical derivatives of NSSS funcs to reduce allocation and speed up the NSSS solver
 - [ ] try a newton version of binder pesaran
 - [ ] in the docs make it clear that for estimation you need to have variables which have the name of the observables in the dataframe and the parameters must be handed over to the get_loglikelihood function in the same order as declared. check with get_parameters
 - [ ] check out dense sparse matmul on transposed matrices
