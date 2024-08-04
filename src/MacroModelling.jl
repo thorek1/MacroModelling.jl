@@ -8764,21 +8764,6 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
     𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
 
-    if length(cond_var_idx) == T.nExo
-        𝐒¹ᵉfact = RF.lu(𝐒[1][cond_var_idx,end-T.nExo+1:end], check = false)
-
-        if !ℒ.issuccess(𝐒¹ᵉfact)
-            if ℒ.rank(𝐒[1][cond_var_idx,end-T.nExo+1:end]) < T.nExo
-                return -Inf
-            end
-            𝐒¹ᵉfact = ℒ.svd(𝐒[1][cond_var_idx,end-T.nExo+1:end])
-        end
-    else
-        𝐒¹ᵉfact = ℒ.svd(𝐒[1][cond_var_idx,end-T.nExo+1:end])
-    end
-
-    # inv𝐒¹ᵉ = inv(𝐒¹ᵉfact)
-
     𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,var_vol²_idxs]
     𝐒²⁻ = 𝐒[2][cond_var_idx,var²_idxs]
     𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,shockvar²_idxs]
@@ -8875,8 +8860,6 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
             ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
         end 
 
-        # shock_independent = 𝐒¹ᵉfact \ shock_independent
-        
         if length(𝐒) == 2
             𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)    
             𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
