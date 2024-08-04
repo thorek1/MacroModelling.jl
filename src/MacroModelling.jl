@@ -8866,7 +8866,8 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
             # 𝐒ⁱ = 𝐒¹² \ 𝐒²ᵉ / 2
         elseif length(𝐒) == 3
             𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒³⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(state¹⁻_vol, state¹⁻_vol))  
-            𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2
+            𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 # + add something here
+            # check that the correct states are taken throughout and that terms add up
             # 𝐒ⁱ = 𝐒¹²³ \ 𝐒²ᵉ / 2
         end
 
