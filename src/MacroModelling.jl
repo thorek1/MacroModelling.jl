@@ -8881,15 +8881,16 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
                                     𝐒ⁱ²ᵉ,
                                     shock_independent)
 
+        if !matched 
+            return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive  
+        end
+        
         if length(𝐒) == 2
             jacc = -(𝐒ⁱ + 𝐒²ᵉ * ℒ.kron(ℒ.I(T.nExo), x))
         elseif length(𝐒) == 3
             jacc = -(𝐒ⁱ + 𝐒²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 𝐒³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x)))
         end
     
-        if !matched 
-            return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive  
-        end
 
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
@@ -8998,9 +8999,16 @@ function find_shocks(::Val{:Newton},
         ℒ.axpy!(1, ℒ.I(nExo), J)
         ℒ.kron!(kron_buffer2, J, x)
 
+        ∂x = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * kron_buffer2)
+
+        ℒ.lu!(∂x, check = false)
+
+        if !ℒ.issuccess(∂x) 
+            return x, false
+        end
         # ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer)
         # ℒ.axpby!(1, shock_independent, -1, res)
-        Δx = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * kron_buffer2) \ (shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron_buffer)
+        Δx = ∂x \ (shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron_buffer)
         # println(ℒ.norm(Δx))
         if i > 6 && ℒ.norm(Δx) < tol
             # println(i)

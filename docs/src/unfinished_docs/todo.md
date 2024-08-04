@@ -9,6 +9,9 @@
 - [ ] check out dense sparse matmul on transposed matrices
 - [ ] check out DiffInterface for NSSS solver
 - [ ] write plotting callback for NSSS solver
+- [ ] time NSSS solver and estimation codes
+- [ ] move korn_s_s_s to higher order aux variables
+- [ ] write own interior point solver
 - [ ] append forecast (no shocks) after estimated variables
 - [ ] write more tests for the plots
 - [ ] add background part in docs on NSSS solver (use material from presentation)
