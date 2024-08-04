@@ -294,6 +294,8 @@ if !test_higher_order
     simulated_data = simulate(model)
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+    
+    SS(model, parameters = :alpha => 0.01) # avoid the NaN error for finitediff in tests
 
     back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
     
