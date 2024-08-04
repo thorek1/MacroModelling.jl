@@ -8791,10 +8791,16 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     𝐒²ᵉ     = length(𝐒²ᵉ.nzval)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
     𝐒⁻²     = length(𝐒⁻².nzval)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
 
-    state[1] = state[1][T.past_not_future_and_mixed_idx]
-    state[2] = state[2][T.past_not_future_and_mixed_idx]
+    if state isa Vector{Vector{Float64}} 
+        if length(state) > 1
+            state[1] = state[1][T.past_not_future_and_mixed_idx]
+            state[2] = state[2][T.past_not_future_and_mixed_idx]
+        end
+    else
+        state = state[T.past_not_future_and_mixed_idx]
+    end
 
-    if length(state) == 3
+    if state isa Vector{Vector{Float64}} && length(state) == 3
         state[3] = state[3][T.past_not_future_and_mixed_idx]
 
         tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
@@ -8835,28 +8841,37 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
     kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
 
     for i in axes(data_in_deviations,2)
-        state¹⁻ = state[1]#[T.past_not_future_and_mixed_idx]
+        if state isa Vector{Float64}
+            state¹⁻ = state#[T.past_not_future_and_mixed_idx]
+        else
+            state¹⁻ = state[1]
+        end
+
         state¹⁻_vol = vcat(state¹⁻, 1)
 
-        if length(state) > 1
+        if state isa Vector{Vector{Float64}} && length(state) > 1
             state²⁻ = state[2]#[T.past_not_future_and_mixed_idx]
         end
 
-        if length(state) == 3
+        if state isa Vector{Vector{Float64}} && length(state) == 3
             state³⁻ = state[3]#[T.past_not_future_and_mixed_idx]
         end
         
         shock_independent = copy(data_in_deviations[:,i])
         ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
-        if length(state) > 1
+        
+        if state isa Vector{Vector{Float64}} && length(state) > 1
             ℒ.mul!(shock_independent, 𝐒¹⁻, state²⁻, -1, 1)
         end
+
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
-        if length(state) == 3
+        
+        if state isa Vector{Vector{Float64}} && length(state) == 3
             ℒ.mul!(shock_independent, 𝐒¹⁻, state³⁻, -1, 1)
             ℒ.mul!(shock_independent, 𝐒²⁻, ℒ.kron(state¹⁻, state²⁻), -1/2, 1)
         end
-        if length(𝐒) == 3
+        
+        if state isa Vector{Vector{Float64}} && length(𝐒) == 3
             ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
         end 
 
@@ -8997,7 +9012,6 @@ function find_shocks(::Val{:Newton},
     Ĵ = ℒ.I(nExo)*2
 
     max_iter = 1000
-
 
     for i in 1:max_iter
         ℒ.kron!(kron_buffer, x, x)
