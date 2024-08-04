@@ -1888,7 +1888,7 @@ function levenberg_marquardt(f::Function,
     ∇̂ = similar(∇)
 
     prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
-    
+
     largest_step = zero(T)
     largest_residual = zero(T)
 
@@ -1899,7 +1899,7 @@ function levenberg_marquardt(f::Function,
     p² = p̄²
 
 	for iter in 1:iterations
-        # ∇ .= 𝒜.jacobian(𝒷(), f̂,current_guess)[1]
+        # make the jacobian and f calls nonallocating
         𝒟.jacobian!(f̂, ∇, backend, current_guess, prep)
 
         previous_guess .= current_guess
@@ -1907,21 +1907,29 @@ function levenberg_marquardt(f::Function,
         # ∇̂ .= ∇' * ∇
         ℒ.mul!(∇̂, ∇', ∇)
 
-        ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
+        μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
+
+        for i in 1:size(∇̂,1)
+            ∇̂[i,i] += μ¹s + μ² * ∇̂[i,i]^p²
+        end
+        # ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
 
         if !all(isfinite,∇̂)
             return undo_transform(current_guess,transformation_level), (iter, Inf, Inf, upper_bounds)
             # return undo_transform(current_guess,transformation_level,shift), (iter, Inf, Inf, upper_bounds)
         end
 
-        ∇̄ = RF.lu!(∇̂, check = false)
+        ∇̄ = ℒ.cholesky!(∇̂, check = false)
 
         if !ℒ.issuccess(∇̄)
             return undo_transform(current_guess,transformation_level), (iter, Inf, Inf, upper_bounds)
             # ∇̄ = ℒ.svd(∇̂)
         end
 
-        current_guess .-= ∇̄ \ ∇' * f̂(current_guess)
+        ℒ.mul!(guess_update, ∇', f̂(current_guess))
+        ℒ.ldiv!(∇̄, guess_update)
+        ℒ.axpy!(-1, guess_update, current_guess)
+        # current_guess .-= ∇̄ \ ∇' * f̂(current_guess)
 
         minmax!(current_guess, lower_bounds, upper_bounds)
 
