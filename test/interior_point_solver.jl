@@ -233,6 +233,7 @@ end
 
 
 
+shock_independent = data_in_deviations[1:6,1] - 𝐒₁[cond_var_idx,:] * aug_state₂ - 𝐒₁[cond_var_idx,1:𝓂.timings.nPast_not_future_and_mixed+1] * aug_state₁[1:𝓂.timings.nPast_not_future_and_mixed+1] - 𝐒₂[cond_var_idx,var_idxs] * ℒ.kron(aug_state₁[1:𝓂.timings.nPast_not_future_and_mixed+1], aug_state₁[1:𝓂.timings.nPast_not_future_and_mixed+1]) / 2
 
 # x, matched = find_shocks(Val(filter_algorithm), 
 #                         kron_buffer,
