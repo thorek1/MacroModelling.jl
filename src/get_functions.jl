@@ -2934,6 +2934,9 @@ function get_loglikelihood(𝓂::ℳ,
     tol::AbstractFloat = 1e-12, 
     verbose::Bool = false)::S where S <: Real
     
+    # TODO: throw error for bounds violations, suggesting this might be due to wrong parameter ordering
+    @assert length(parameter_values) == length(𝓂.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, you need to combine the estimated parameters with the other model parameters in one `Vector`. Make sure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
+
     # checks to avoid errors further down the line and inform the user
     @assert filter ∈ [:kalman, :inversion] "Currently only the Kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 

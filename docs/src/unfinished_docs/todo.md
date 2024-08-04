@@ -6,6 +6,7 @@
 - [ ] add argument to plotting functions to replace names in plots (e.g input a dictionnary: Dict(:dinve => "Investment growth"))
 - [ ] programmatic model writing: accept {i}[0] as definition for variable
 - [ ] try a newton version of binder pesaran
+- [ ] in the docs make it clear that for estimation you need to have variables which have the name of the observables in the dataframe and the parameters must be handed over to the get_loglikelihood function in the same order as declared. check with get_parameters
 - [ ] check out dense sparse matmul on transposed matrices
 - [ ] check out DiffInterface for NSSS solver
 - [ ] write plotting callback for NSSS solver
