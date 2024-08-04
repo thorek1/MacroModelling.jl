@@ -9018,7 +9018,7 @@ function find_shocks(::Val{:Newton},
         ℒ.axpy!(1, Δx, x)
         # x += Δx
 
-        if !isfinite.(x) 
+        if !all(isfinite.(x))
             return x, false
         end
     end
