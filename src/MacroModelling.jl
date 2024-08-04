@@ -8986,9 +8986,11 @@ function find_shocks(::Val{:Newton},
 
     nExo = Int(sqrt(length(kron_buffer)))
 
-    x = zero(nExo)
+    x = zeros(nExo)
 
     x̂ = zeros(nExo)
+
+    Δx = zeros(nExo)
 
     ∂x = zero(𝐒ⁱ)
 
@@ -9014,7 +9016,7 @@ function find_shocks(::Val{:Newton},
         ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer)
         ℒ.mul!(Δx, 𝐒ⁱ, x)
         ℒ.axpy!(1, Δx, x̂)
-        ℒ.axbpy!(1, shock_independent, -1, x̂)
+        ℒ.axpby!(1, shock_independent, -1, x̂)
         ℒ.ldiv!(Δx, ∂x̂, x̂)
         Δx = ∂x̂ \ (shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron_buffer)
         # println(ℒ.norm(Δx))
