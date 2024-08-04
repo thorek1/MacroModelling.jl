@@ -8884,7 +8884,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
         if !matched 
             return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive  
         end
-        
+
         if length(𝐒) == 2
             jacc = -(𝐒ⁱ + 𝐒²ᵉ * ℒ.kron(ℒ.I(T.nExo), x))
         elseif length(𝐒) == 3
@@ -9017,6 +9017,10 @@ function find_shocks(::Val{:Newton},
         
         ℒ.axpy!(1, Δx, x)
         # x += Δx
+
+        if !isfinite.(x) 
+            return x, false
+        end
     end
 
     return x, maximum(abs, shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * ℒ.kron!(kron_buffer, x, x)) < tol
