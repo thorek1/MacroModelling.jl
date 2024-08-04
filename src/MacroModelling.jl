@@ -9001,14 +9001,14 @@ function find_shocks(::Val{:Newton},
 
         ∂x = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * kron_buffer2)
 
-        ℒ.lu!(∂x, check = false)
+        ∂x̂ = ℒ.lu!(∂x, check = false)
 
-        if !ℒ.issuccess(∂x) 
+        if !ℒ.issuccess(∂x̂) 
             return x, false
         end
         # ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer)
         # ℒ.axpby!(1, shock_independent, -1, res)
-        Δx = ∂x \ (shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron_buffer)
+        Δx = ∂x̂ \ (shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron_buffer)
         # println(ℒ.norm(Δx))
         if i > 6 && ℒ.norm(Δx) < tol
             # println(i)
