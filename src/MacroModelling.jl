@@ -9630,6 +9630,8 @@ function find_shocks(::Val{:Newton},
     Ĵ = ℒ.I(nExo)*2
 
     max_iter = 1000
+		
+		norm2 = ℒ.norm(shock_independent)
 
     for i in 1:max_iter
         ℒ.kron!(kron_buffer, x, x)
@@ -9644,6 +9646,7 @@ function find_shocks(::Val{:Newton},
         ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer)
         ℒ.mul!(x̄, 𝐒ⁱ, x)
         ℒ.axpy!(1, x̄, x̂)
+				norm1 = ℒ.norm(x̂)
         ℒ.axpby!(1, shock_independent, -1, x̂)
         try 
 					ℒ.ldiv!(Δx, ∂x̂, x̂)
@@ -9652,7 +9655,7 @@ function find_shocks(::Val{:Newton},
 				end
         # Δx = ∂x̂ \ (shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron_buffer)
         # println(ℒ.norm(Δx))
-        if i > 6 && ℒ.norm(x̂) < tol
+        if i > 6 && (ℒ.norm(x̂) / max(norm1,norm2) < tol)
             # println(i)
             break
         end
@@ -9700,6 +9703,8 @@ function find_shocks(::Val{:Newton},
 
     max_iter = 1000
 
+		norm2 = ℒ.norm(shock_independent)
+
     for i in 1:max_iter
         ℒ.kron!(kron_buffer, x, x)
         ℒ.kron!(kron_buffer², x, kron_buffer)
@@ -9717,6 +9722,7 @@ function find_shocks(::Val{:Newton},
         ℒ.mul!(x̂, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
         ℒ.mul!(x̄, 𝐒ⁱ, x)
         ℒ.axpy!(1, x̄, x̂)
+				norm1 = ℒ.norm(x̂)
         ℒ.axpby!(1, shock_independent, -1, x̂)
         try 
 					ℒ.ldiv!(Δx, ∂x̂, x̂)
@@ -9725,7 +9731,7 @@ function find_shocks(::Val{:Newton},
 				end
         # Δx = ∂x̂ \ (shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron_buffer)
         # println(ℒ.norm(Δx))
-        if i > 6 && ℒ.norm(x̂) < tol
+        if i > 6 && (ℒ.norm(x̂) / max(norm1,norm2)) < tol
             # println("Iters: $i Norm: $(ℒ.norm(x̂))")
             break
         end
