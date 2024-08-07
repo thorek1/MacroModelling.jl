@@ -9643,8 +9643,12 @@ function find_shocks(::Val{:Newton},
         ℒ.axpy!(1, 𝐒ⁱ, ∂x)
         # ∂x = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(nExo), x))
 
-	      ∂x̂ = ℒ.factorize(∂x)
-							
+        ∂x̂ = try 
+            ℒ.factorize(∂x)
+        catch
+            return x, false
+        end 
+
         ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer)
         ℒ.mul!(x̄, 𝐒ⁱ, x)
         ℒ.axpy!(1, x̄, x̂)
@@ -9720,7 +9724,11 @@ function find_shocks(::Val{:Newton},
         ℒ.axpy!(1, 𝐒ⁱ, ∂x)
         # ∂x = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(nExo), x) + 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(nExo), ℒ.kron(x,x)))
 
-        ∂x̂ = ℒ.factorize(∂x)
+        ∂x̂ = try 
+            ℒ.factorize(∂x)
+        catch
+            return x, false
+        end 
 							
         ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer)
         ℒ.mul!(x̂, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
