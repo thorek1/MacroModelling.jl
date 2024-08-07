@@ -9303,7 +9303,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                     𝐒ⁱ³ᵉ,
                                     shock_independent)
 
-        if !matched 
+        if !matched
             return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive  
         end
 
@@ -9630,8 +9630,10 @@ function find_shocks(::Val{:Newton},
     Ĵ = ℒ.I(nExo)*2
 
     max_iter = 1000
-		
-		norm2 = ℒ.norm(shock_independent)
+
+	norm1 = 1
+
+	norm2 = ℒ.norm(shock_independent)
 
     for i in 1:max_iter
         ℒ.kron!(kron_buffer, x, x)
@@ -9649,10 +9651,10 @@ function find_shocks(::Val{:Newton},
 				norm1 = ℒ.norm(x̂)
         ℒ.axpby!(1, shock_independent, -1, x̂)
         try 
-					ℒ.ldiv!(Δx, ∂x̂, x̂)
-				catch
-					return x, false
-				end
+            ℒ.ldiv!(Δx, ∂x̂, x̂)
+        catch
+            return x, false
+        end
         # Δx = ∂x̂ \ (shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron_buffer)
         # println(ℒ.norm(Δx))
         if i > 6 && (ℒ.norm(x̂) / max(norm1,norm2) < tol)
@@ -9668,7 +9670,7 @@ function find_shocks(::Val{:Newton},
         end
     end
 
-    return x, ℒ.norm(x̂) < tol
+    return x, ℒ.norm(x̂) / max(norm1,norm2) < tol
 end
 
 
@@ -9703,7 +9705,9 @@ function find_shocks(::Val{:Newton},
 
     max_iter = 1000
 
-		norm2 = ℒ.norm(shock_independent)
+    norm1 = 1
+
+	norm2 = ℒ.norm(shock_independent)
 
     for i in 1:max_iter
         ℒ.kron!(kron_buffer, x, x)
@@ -9725,14 +9729,14 @@ function find_shocks(::Val{:Newton},
 				norm1 = ℒ.norm(x̂)
         ℒ.axpby!(1, shock_independent, -1, x̂)
         try 
-					ℒ.ldiv!(Δx, ∂x̂, x̂)
-				catch
-					return x, false
-				end
+            ℒ.ldiv!(Δx, ∂x̂, x̂)
+        catch
+            return x, false
+        end
         # Δx = ∂x̂ \ (shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron_buffer)
         # println(ℒ.norm(Δx))
         if i > 6 && (ℒ.norm(x̂) / max(norm1,norm2)) < tol
-            # println("Iters: $i Norm: $(ℒ.norm(x̂))")
+            # println("Iters: $i Norm: $(ℒ.norm(x̂) / max(norm1,norm2))")
             break
         end
         
@@ -9744,8 +9748,8 @@ function find_shocks(::Val{:Newton},
         end
     end
 
-    # println("Iters: $max_iter Norm: $(ℒ.norm(x̂))")
-    return x, ℒ.norm(x̂) < tol
+    # println("Iters: $max_iter Norm: $(ℒ.norm(x̂) / max(norm1,norm2))")
+    return x, ℒ.norm(x̂) / max(norm1,norm2) < tol
 end
 
 
