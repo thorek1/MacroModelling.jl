@@ -8518,7 +8518,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
         end
 
         ℒ.mul!(state, 𝐒, vcat(state[T.past_not_future_and_mixed_idx], x))
-        println(ℒ.norm(data_in_deviations[:,i] - state[cond_var_idx]))
+        #println(ℒ.norm(data_in_deviations[:,i] - state[cond_var_idx]))
         # state = state_update(state, x)
     end
 
