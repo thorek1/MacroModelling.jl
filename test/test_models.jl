@@ -2,7 +2,7 @@ if !test_higher_order
     include("../models/Guerrieri_Iacoviello_2017.jl")
     SSvals = get_SS(Guerrieri_Iacoviello_2017)
 
-    @test isapprox(SSvals([:b,:c,:k,:r]),[3.7449, 1.01054, 16.5337, 1.01005],rtol = 1e-4)
+    @test isapprox(SSvals([:b,:c,:k,:r],[:Steady_state]),[3.7449, 1.01054, 16.5337, 1.01005],rtol = 1e-4)
 
     var_dec = get_var_decomp(Guerrieri_Iacoviello_2017)
 
@@ -19,7 +19,7 @@ if !test_higher_order
     include("models/SW07_nonlinear.jl")
     SSvals = get_SS(SW07_nonlinear)
 
-    @test isapprox(SSvals([:robs, :y, :kflex, :ygap]),[1.62996, 1.36422, 7.55624, 0],rtol = 1e-4)
+    @test isapprox(SSvals([:robs, :y, :kflex, :ygap],[:Steady_state]),[1.62996, 1.36422, 7.55624, 0],rtol = 1e-4)
 
     var_dec = get_var_decomp(SW07_nonlinear)
 
@@ -51,7 +51,7 @@ if !test_higher_order
     include("models/Backus_Kehoe_Kydland_1992.jl")
     SSvals = get_SS(Backus_Kehoe_Kydland_1992)
 
-    @test isapprox(SSvals(["A{F}","K{H}","L{F}","LGM"]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
+    @test isapprox(SSvals(["A{F}","K{H}","L{F}","LGM"],["Steady_state"]),[0.606436, 11.0148, 0.696782, 0.278732],rtol = 1e-4)
 
     var_dec = get_var_decomp(Backus_Kehoe_Kydland_1992)
 
@@ -83,7 +83,7 @@ if !test_higher_order
     include("../models/NAWM_EAUS_2008.jl")
     SSvals = get_SS(NAWM_EAUS_2008)
 
-    @test isapprox(SSvals([:EAUS_RER,:EA_Y,:EA_K,:EA_C,:US_Y,:US_K]),[0.937577, 3.62701, 33.4238, 2.18955, 3.92449, 33.6712],rtol = 1e-5)
+    @test isapprox(SSvals([:EAUS_RER,:EA_Y,:EA_K,:EA_C,:US_Y,:US_K],[:Steady_state]),[0.937577, 3.62701, 33.4238, 2.18955, 3.92449, 33.6712],rtol = 1e-5)
 
     var_dec = get_var_decomp(NAWM_EAUS_2008)
 
@@ -294,11 +294,13 @@ if !test_higher_order
     simulated_data = simulate(model)
 
     get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+    
+    SS(model, parameters = [:alpha => 0.1, :trend_inflation => 1.5, :var_rho => 0.01]) # avoid the NaN error for finitediff in tests
 
     back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
     
     # use forward_cdm so that parameter values stay positive. they would return NaN otherwise
-    fin_grad = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
     
     @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
 

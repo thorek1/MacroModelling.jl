@@ -48,7 +48,7 @@ Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_third_order)
+        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :third_order)
     end
 end
 

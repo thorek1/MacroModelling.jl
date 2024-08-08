@@ -353,7 +353,7 @@ end
 @testset verbose = true "NSSS and std derivatives" begin
     # derivatives of paramteres wrt standard deviations
     stdev_deriv = ForwardDiff.jacobian(x -> get_statistics(RBC_CME, x, parameters = RBC_CME.parameters, standard_deviation = RBC_CME.var)[1], RBC_CME.parameter_values)
-    stdev_deriv[9]
+
     @test isapprox(stdev_deriv[5,6],1.3135107627695757, rtol = 1e-6)
 
     # derivatives of paramteres wrt non stochastic steady state
@@ -688,21 +688,20 @@ end
 
 @testset verbose = true "μ, σ + μ, σ derivatives" begin
     # Test diff of SS and SSS
+    # WARNING: when debugging be aware that FIniteDifferences changes the parameters permanently. if you check after running FinDiff you need to use the old initial parameters
     include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
 
-    μdiff = get_mean(m)
-
-    μdiff2 = get_mean(m, algorithm = :pruned_second_order)
-
-    σdiff = get_std(m)
-
-    σdiff2 = get_std(m, algorithm = :pruned_second_order)
-
-    σdiff3 = get_std(m, algorithm = :pruned_third_order)
-
-    𝓂 = m
-
     parameters = copy(m.parameter_values)
+
+    μdiff = get_mean(m, parameters = parameters)
+
+    μdiff2 = get_mean(m, parameters = parameters, algorithm = :pruned_second_order)
+
+    σdiff = get_std(m, parameters = parameters)
+
+    σdiff2 = get_std(m, parameters = parameters, algorithm = :pruned_second_order)
+
+    σdiff3 = get_std(m, parameters = parameters, algorithm = :pruned_third_order)
 
     μfinitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
             x -> collect(get_mean(m; parameters = x, derivatives = false)), 
@@ -737,7 +736,6 @@ end
     @test isapprox(σ3finitediff, σdiff3[:,2:end], rtol = 1e-6)
 end
 m = nothing
-𝓂 = nothing
 
 
 
