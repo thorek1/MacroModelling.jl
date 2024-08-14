@@ -8435,7 +8435,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    filter_algorithm::Symbol = :LagrngeNewton)
+                                                    filter_algorithm::Symbol = :LagrangeNewton)
     # first order
     state = copy(state[1])
 
@@ -8530,7 +8530,7 @@ end
 
 
 function rrule(::typeof(calculate_inversion_filter_loglikelihood), ::Val{:first_order}, state::Vector{Vector{Float64}}, 𝐒::Matrix{Float64}, data_in_deviations::Matrix{Float64}, observables::Union{Vector{String}, Vector{Symbol}}, T::timings; warmup_iterations::Int = 0, presample_periods::Int = 0,
-                                                    filter_algorithm::Symbol = :LagrngeNewton)
+                                                    filter_algorithm::Symbol = :LagrangeNewton)
     # first order
     state = copy(state[1])
 
@@ -8676,7 +8676,7 @@ function calculate_inversion_filter_loglikelihood(state::Vector{Vector{Float64}}
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    filter_algorithm::Symbol = :LagrngeNewton)
+                                                    filter_algorithm::Symbol = :LagrangeNewton)
     if length(𝐒) == 2 && length(state) == 1 # second order
         function second_order_state_update(state::Vector{U}, shock::Vector{S}) where {U <: Real,S <: Real}
         # state_update = function(state::Vector{T}, shock::Vector{S}) where {T <: Real,S <: Real}
@@ -8996,7 +8996,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    filter_algorithm::Symbol = :LagrngeNewton)
+                                                    filter_algorithm::Symbol = :LagrangeNewton)
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -9190,7 +9190,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    filter_algorithm::Symbol = :LagrngeNewton)
+                                                    filter_algorithm::Symbol = :LagrangeNewton)
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -9367,7 +9367,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    filter_algorithm::Symbol = :LagrngeNewton)
+                                                    filter_algorithm::Symbol = :LagrangeNewton)
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -9491,7 +9491,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     T::timings; 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    filter_algorithm::Symbol = :LagrngeNewton)
+                                                    filter_algorithm::Symbol = :LagrangeNewton)
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
