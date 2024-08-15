@@ -13,7 +13,7 @@ dat = CSV.read("data/usmodel.csv", DataFrame)
 data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
 
 # declare observables
-observables = [:dy, :dc]#, :dinve, :labobs, :pinfobs, :dw, :robs]
+observables = [:dy]#, :dinve, :labobs, :pinfobs, :dw, :robs]
 
 # Subsample from 1966Q1 - 2004Q4
 # subset observables in data
@@ -48,7 +48,7 @@ Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :third_order)
+        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_third_order)
     end
 end
 
