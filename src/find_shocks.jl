@@ -86,9 +86,11 @@ function find_shocks(::Val{:LagrangeNewton},
         ℒ.axpy!(-1, Δxλ, xλ)
         # xλ -= Δxλ
     
-        x = xλ[1:size(𝐒ⁱ, 2)]
+        # x = xλ[1:size(𝐒ⁱ, 2)]
+        copyto!(x, 1, xλ, 1, size(𝐒ⁱ,2))
 
-        λ = xλ[size(𝐒ⁱ, 2)+1:end]
+        # λ = xλ[size(𝐒ⁱ, 2)+1:end]
+        copyto!(λ, 1, xλ, size(𝐒ⁱ,2) + 1, length(λ))
 
         ℒ.kron!(kron_buffer, x, x)
 
@@ -223,9 +225,11 @@ function find_shocks(::Val{:LagrangeNewton},
         ℒ.axpy!(-1, Δxλ, xλ)
         # xλ -= Δxλ
     
-        x = xλ[1:size(𝐒ⁱ, 2)]
+        # x = xλ[1:size(𝐒ⁱ, 2)]
+        copyto!(x, 1, xλ, 1, size(𝐒ⁱ,2))
 
-        λ = xλ[size(𝐒ⁱ, 2)+1:end]
+        # λ = xλ[size(𝐒ⁱ, 2)+1:end]
+        copyto!(λ, 1, xλ, size(𝐒ⁱ,2) + 1, length(λ))
 
         ℒ.kron!(kron_buffer, x, x)
 
@@ -279,6 +283,7 @@ function find_shocks(::Val{:SLSQP},
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
         if length(grad) > 0
             copy!(grad, X)
+
             ℒ.rmul!(grad, 2)
             # grad .= 2 .* X
         end
@@ -288,18 +293,19 @@ function find_shocks(::Val{:SLSQP},
 
     function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
         if length(jac) > 0
-            copy!(jac', 𝐒ⁱ)
             ℒ.kron!(kron_buffer2, Ĵ, x)
+
+            copy!(jac', 𝐒ⁱ)
+
             ℒ.mul!(jac', 𝐒ⁱ²ᵉ, kron_buffer2, -2, -1)
             # jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))'
-            # println(jac + (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))')
         end
 
         ℒ.kron!(kron_buffer, x, x)
 
-        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer)
+        ℒ.mul!(res, 𝐒ⁱ, x)
 
-        ℒ.mul!(res, 𝐒ⁱ, x, 1, 1)
+        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
 
         ℒ.axpby!(1, shock_independent, -1, res)
         # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
@@ -361,6 +367,7 @@ function find_shocks(::Val{:SLSQP},
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
         if length(grad) > 0
             copy!(grad, X)
+
             ℒ.rmul!(grad, 2)
             # grad .= 2 .* X
         end
@@ -371,17 +378,20 @@ function find_shocks(::Val{:SLSQP},
     function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
         ℒ.kron!(kron_buffer, x, x)
 
+        ℒ.kron!(kron_buffer², x, kron_buffer)
+
         if length(jac) > 0
-            copy!(jac', 𝐒ⁱ)
             ℒ.kron!(kron_buffer2, Ĵ, x)
+
             ℒ.kron!(kron_buffer3, Ĵ, kron_buffer)
+
+            copy!(jac', 𝐒ⁱ)
+
             ℒ.mul!(jac', 𝐒ⁱ²ᵉ, kron_buffer2, 2, 1)
+
             ℒ.mul!(jac', 𝐒ⁱ³ᵉ, kron_buffer3, 1, -1)
-            
             # jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(Ĵ, x) - 𝐒ⁱ³ᵉ * ℒ.kron(Ĵ, ℒ.kron(x,x)))'
         end
-
-        ℒ.kron!(kron_buffer², x, kron_buffer)
 
         ℒ.mul!(res, 𝐒ⁱ, x)
 
@@ -390,7 +400,6 @@ function find_shocks(::Val{:SLSQP},
         ℒ.mul!(res, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
 
         ℒ.axpby!(1, shock_independent, -1, res)
-        
         # res .= shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * ℒ.kron!(kron_buffer, x, x) - 𝐒ⁱ³ᵉ * ℒ.kron!(kron_buffer², x, kron_buffer)
     end
 
@@ -452,12 +461,11 @@ function find_shocks(::Val{:COBYLA},
     function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
         ℒ.kron!(kron_buffer, x, x)
 
-        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer)
+        ℒ.mul!(res, 𝐒ⁱ, x)
 
-        ℒ.mul!(res, 𝐒ⁱ, x, 1, 1)
+        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
 
         ℒ.axpby!(1, shock_independent, -1, res)
-
         # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
     end
     
@@ -522,14 +530,13 @@ function find_shocks(::Val{:COBYLA},
 
         ℒ.kron!(kron_buffer², x, kron_buffer)
 
-        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer)
+        ℒ.mul!(res, 𝐒ⁱ, x)
+
+        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
 
         ℒ.mul!(res, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
 
-        ℒ.mul!(res, 𝐒ⁱ, x, 1, 1)
-
         ℒ.axpby!(1, shock_independent, -1, res)
-
         # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X) - 𝐒ⁱ³ᵉ * ℒ.kron(X, ℒ.kron(X,X))
     end
 
