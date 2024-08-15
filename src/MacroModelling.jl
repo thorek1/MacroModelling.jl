@@ -9225,9 +9225,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         #                         # max_iter = 500
         #                         )
         # if mat
-        #     println("SLSQP: $mat, $(ℒ.norm(x2-x) / max(ℒ.norm(x2), ℒ.norm(x)))")
+        #     println("SLSQP: $(ℒ.norm(x2-x) / max(ℒ.norm(x2), ℒ.norm(x)))")
         # elseif mat2
-        #     println("COBYLA: $mat2, $(ℒ.norm(x3-x) / max(ℒ.norm(x3), ℒ.norm(x)))")
+        #     println("COBYLA: $(ℒ.norm(x3-x) / max(ℒ.norm(x3), ℒ.norm(x)))")
         # end
 
         jacc = -(𝐒ⁱ + 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x)))
@@ -9404,7 +9404,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
         # println("$filter_algorithm: $matched; current x: $x")
         if !matched
             x, matched = find_shocks(Val(:COBYLA), 
-                                    x,
+                                    zeros(size(𝐒ⁱ, 2)),
                                     kron_buffer,
                                     kron_buffer²,
                                     kron_buffer2,
@@ -9449,6 +9449,39 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
             #     end
             # end
         end
+
+        # x2, mat = find_shocks(Val(:SLSQP), 
+        #                         x,
+        #                         kron_buffer,
+        #                         kron_buffer²,
+        #                         kron_buffer2,
+        #                         kron_buffer3,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         𝐒ⁱ³ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 500
+        #                         )
+            
+        # x3, mat2 = find_shocks(Val(:COBYLA), 
+        #                         x,
+        #                         kron_buffer,
+        #                         kron_buffer²,
+        #                         kron_buffer2,
+        #                         kron_buffer3,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         𝐒ⁱ³ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 500
+        #                         )
+        # if mat
+        #     println("SLSQP: $(ℒ.norm(x2-x) / max(ℒ.norm(x2), ℒ.norm(x)))")
+        # elseif mat2
+        #     println("COBYLA: $(ℒ.norm(x3-x) / max(ℒ.norm(x3), ℒ.norm(x)))")
+        # end
 
         jacc = -(𝐒ⁱ + 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x)))
     
@@ -9567,7 +9600,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                 
         if !matched
             x, matched = find_shocks(Val(:COBYLA), 
-                                    x,
+                                    zeros(size(𝐒ⁱ, 2)),
                                     kron_buffer,
                                     kron_buffer2,
                                     J,
@@ -9590,6 +9623,33 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                 end 
             # end
         end
+
+        # x2, mat = find_shocks(Val(:SLSQP), 
+        #                         x,
+        #                         kron_buffer,
+        #                         kron_buffer2,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 500
+        #                         )
+            
+        # x3, mat2 = find_shocks(Val(:COBYLA), 
+        #                         x,
+        #                         kron_buffer,
+        #                         kron_buffer2,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 500
+        #                         )
+        # if mat
+        #     println("SLSQP: $(ℒ.norm(x2-x) / max(ℒ.norm(x2), ℒ.norm(x)))")
+        # elseif mat2
+        #     println("COBYLA: $(ℒ.norm(x3-x) / max(ℒ.norm(x3), ℒ.norm(x)))")
+        # end
 
         jacc = -(𝐒ⁱ + 𝐒²ᵉ * ℒ.kron(ℒ.I(T.nExo), x))
 
@@ -9715,7 +9775,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                 
         if !matched
             x, matched = find_shocks(Val(:COBYLA), 
-                                    x,
+                                    zeros(size(𝐒ⁱ, 2)),
                                     kron_buffer,
                                     kron_buffer2,
                                     J,
@@ -9738,6 +9798,33 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                 end 
             # end
         end
+
+        # x2, mat = find_shocks(Val(:SLSQP), 
+        #                         x,
+        #                         kron_buffer,
+        #                         kron_buffer2,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 500
+        #                         )
+            
+        # x3, mat2 = find_shocks(Val(:COBYLA), 
+        #                         x,
+        #                         kron_buffer,
+        #                         kron_buffer2,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 500
+        #                         )
+        # if mat
+        #     println("SLSQP: $(ℒ.norm(x2-x) / max(ℒ.norm(x2), ℒ.norm(x)))")
+        # elseif mat2
+        #     println("COBYLA: $(ℒ.norm(x3-x) / max(ℒ.norm(x3), ℒ.norm(x)))")
+        # end
 
         jacc = -(𝐒ⁱ + 𝐒²ᵉ * ℒ.kron(ℒ.I(T.nExo), x))
     

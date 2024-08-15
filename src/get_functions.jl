@@ -2930,7 +2930,7 @@ function get_loglikelihood(𝓂::ℳ,
     warmup_iterations::Int = 0, 
     presample_periods::Int = 0,
     initial_covariance::Symbol = :theoretical,
-    filter_algorithm::Symbol = :Newton,
+    filter_algorithm::Symbol = :LagrangeNewton,
     tol::AbstractFloat = 1e-12, 
     verbose::Bool = false)::S where S <: Real
     
