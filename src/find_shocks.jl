@@ -99,19 +99,16 @@ function find_shocks(::Val{:LagrangeNewton},
         # ℒ.axpby!(1, shock_independent, -1, x̂)
 
         if ℒ.norm(x̂) / max(norm1,norm2) < eps() && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol
-            # println("Tol reached")
-            # println("LagrangeNewton: $i")
+            # println("LagrangeNewton: $i, Tol reached")
             break
         end
 
-        if ℒ.norm(Δxλ) > 1e-12 && ℒ.norm(Δxλ) > Δnorm
-            # println("Norm increase")
-            # println("LagrangeNewton: $i")
+        if i > 5 && ℒ.norm(Δxλ) > 1e-12 && ℒ.norm(Δxλ) > Δnorm
+            # println("LagrangeNewton: $i, Norm increase")
             break
         end
         # if i == max_iter
-        #     println("Max iter reached")
-        #     # println("LagrangeNewton: $i")
+            # println("LagrangeNewton: $i, Max iter reached")
         #     # println(ℒ.norm(Δxλ))
         # end
     end
@@ -175,18 +172,18 @@ function find_shocks(::Val{:LagrangeNewton},
     
         # println(ℒ.norm(ΔXλ))
         if ℒ.norm(shock_independent - (𝐒ⁱ * Xλ[1:size(𝐒ⁱ, 2)] + 𝐒ⁱ²ᵉ * ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)],Xλ[1:size(𝐒ⁱ, 2)]) + 𝐒ⁱ³ᵉ * ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)], ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)], Xλ[1:size(𝐒ⁱ, 2)])))) / max(norm1,norm2) < eps() && ℒ.norm(ΔXλ) < tol
-            # println("LagrangeNewton: $i")
+            # println("LagrangeNewton: $i, Tol reached")
             break
         end
 
-        if ℒ.norm(ΔXλ) > 1e-12 && ℒ.norm(ΔXλ) > Δnorm
-            # println("LagrangeNewton: $i")
+        if i > 5 && ℒ.norm(ΔXλ) > 1e-12 && ℒ.norm(ΔXλ) > Δnorm
+            # println("LagrangeNewton: $i, Norm increase")
             break
         end
-        if i == max_iter
-            # println("LagrangeNewton: $i")
+        # if i == max_iter
+            # println("LagrangeNewton: $i, Max iter reached")
             # println(ℒ.norm(ΔXλ))
-        end
+        # end
     end
 
     x = Xλ[1:size(𝐒ⁱ, 2)]
@@ -214,7 +211,7 @@ function find_shocks(::Val{:SLSQP},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 500,
-                    tol::Float64 = 1e-15) # will fail for higher or lower precision
+                    tol::Float64 = 1e-14) # will fail for higher or lower precision
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
         if length(grad) > 0
             grad .= 2 .* X
@@ -243,7 +240,11 @@ function find_shocks(::Val{:SLSQP},
 
     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
 
-    (minf,x,ret) = NLopt.optimize(opt, initial_guess)
+    (minf,x,ret) = try 
+        NLopt.optimize(opt, initial_guess)
+    catch
+        return initial_guess, false
+    end
 
     y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x)
 
@@ -277,7 +278,7 @@ function find_shocks(::Val{:SLSQP},
                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 500,
-                    tol::Float64 = 1e-15) # will fail for higher or lower precision
+                    tol::Float64 = 1e-14) # will fail for higher or lower precision
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
         if length(grad) > 0
             grad .= 2 .* X
@@ -306,7 +307,11 @@ function find_shocks(::Val{:SLSQP},
 
     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
 
-    (minf,x,ret) = NLopt.optimize(opt, initial_guess)
+    (minf,x,ret) = try 
+        NLopt.optimize(opt, initial_guess)
+    catch
+        return initial_guess, false
+    end
 
     y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
 
@@ -339,8 +344,8 @@ function find_shocks(::Val{:COBYLA},
                     𝐒ⁱ::AbstractMatrix{Float64},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
-                    max_iter::Int = 5000,
-                    tol::Float64 = 1e-15) # will fail for higher or lower precision
+                    max_iter::Int = 10000,
+                    tol::Float64 = 1e-14) # will fail for higher or lower precision
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
         if length(grad) > 0
             grad .= 2 .* X
@@ -405,8 +410,8 @@ function find_shocks(::Val{:COBYLA},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
-                    max_iter::Int = 5000,
-                    tol::Float64 = 1e-15) # will fail for higher or lower precision
+                    max_iter::Int = 10000,
+                    tol::Float64 = 1e-14) # will fail for higher or lower precision
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
         if length(grad) > 0
             grad .= 2 .* X
@@ -453,8 +458,8 @@ function find_shocks(::Val{:COBYLA},
     ])
 
     # println("COBYLA: $(opt.numevals)")
-
     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
+
     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
 end
 
