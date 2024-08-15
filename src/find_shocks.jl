@@ -29,7 +29,7 @@ function find_shocks(::Val{:LagrangeNewton},
 
     x̄ = zeros(size(𝐒ⁱ,2))
 
-    Ĵ = ℒ.I(length(x))
+    Ĵ = sparse(ℒ.I(length(x)))
 
     ∂x = zero(𝐒ⁱ)
     
@@ -39,7 +39,7 @@ function find_shocks(::Val{:LagrangeNewton},
 
     tmp = zeros(size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
 
-    II = ℒ.I(length(x)^2)
+    II = sparse(ℒ.I(length(x)^2))
 
     lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
 
@@ -63,10 +63,10 @@ function find_shocks(::Val{:LagrangeNewton},
         ℒ.axpby!(1, lI, 2, tmp)
 
         fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp
-        fxλp[1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] .= ∂x'
+        fxλp[1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] = ∂x'
 
         ℒ.rmul!(∂x, -1)
-        fxλp[size(𝐒ⁱ, 2)+1:end, 1:size(𝐒ⁱ, 2)] .= ∂x
+        fxλp[size(𝐒ⁱ, 2)+1:end, 1:size(𝐒ⁱ, 2)] = ∂x
 
         # fXλp = [reshape(2 * 𝐒ⁱ²ᵉ' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))'
         #         -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
@@ -162,7 +162,7 @@ function find_shocks(::Val{:LagrangeNewton},
 
     x̄ = zeros(size(𝐒ⁱ,2))
 
-    Ĵ = ℒ.I(length(x))
+    Ĵ = sparse(ℒ.I(length(x)))
 
     ∂x = zero(𝐒ⁱ)
     
@@ -174,7 +174,7 @@ function find_shocks(::Val{:LagrangeNewton},
 
     tmp2 = zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
 
-    II = ℒ.I(length(x)^2)
+    II = sparse(ℒ.I(length(x)^2))
 
     lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
 
@@ -205,10 +205,10 @@ function find_shocks(::Val{:LagrangeNewton},
 
         fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp#2 * 𝐒ⁱ²ᵉ' * λ
         # fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] -= 2 * ℒ.I(size(𝐒ⁱ, 2))
-        fxλp[1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] .= ∂x'
+        fxλp[1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] = ∂x'
 
         ℒ.rmul!(∂x, -1)
-        fxλp[size(𝐒ⁱ, 2)+1:end, 1:size(𝐒ⁱ, 2)] .= ∂x
+        fxλp[size(𝐒ⁱ, 2)+1:end, 1:size(𝐒ⁱ, 2)] = ∂x
         # fXλp = [reshape((2 * 𝐒ⁱ²ᵉ - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(ℒ.I(length(x)),x)))' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))'
         #         -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
         
