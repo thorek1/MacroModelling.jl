@@ -1,3 +1,4 @@
+# no guarantee that SLSQP or LagrangeNewton converge to global min for third order (dont know for second ordr yet). COBYLA sometimes finds solution with smaller norm(x)
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
                     kron_buffer::Vector{Float64},
@@ -24,8 +25,6 @@ function find_shocks(::Val{:LagrangeNewton},
     Δnorm = 1e12
 
     x̂ = copy(shock_independent)
-
-    x̃ = zeros(size(𝐒ⁱ,1))
 
     x̄ = zeros(size(𝐒ⁱ,2))
 
@@ -95,9 +94,7 @@ function find_shocks(::Val{:LagrangeNewton},
 
         ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer)
 
-        ℒ.mul!(x̃, 𝐒ⁱ, x)
-
-        ℒ.axpy!(1, x̃, x̂)
+        ℒ.mul!(x̂, 𝐒ⁱ, x, 1, 1)
 
         norm2 = ℒ.norm(x̂)
 
@@ -157,8 +154,6 @@ function find_shocks(::Val{:LagrangeNewton},
     Δnorm = 1e12
 
     x̂ = copy(shock_independent)
-
-    x̃ = zeros(size(𝐒ⁱ,1))
 
     x̄ = zeros(size(𝐒ⁱ,2))
 
@@ -240,9 +235,7 @@ function find_shocks(::Val{:LagrangeNewton},
 
         ℒ.mul!(x̂, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
 
-        ℒ.mul!(x̃, 𝐒ⁱ, x)
-
-        ℒ.axpy!(1, x̃, x̂)
+        ℒ.mul!(x̂, 𝐒ⁱ, x, 1, 1)
 
         norm2 = ℒ.norm(x̂)
 
@@ -285,20 +278,34 @@ function find_shocks(::Val{:SLSQP},
                     tol::Float64 = 1e-14) # will fail for higher or lower precision
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
         if length(grad) > 0
-            grad .= 2 .* X
+            copy!(grad, X)
+            ℒ.rmul!(grad, 2)
+            # grad .= 2 .* X
         end
         
         sum(abs2, X)
     end
 
-    function constraint_optim(res::Vector{S}, X::Vector{S}, jac::Matrix{S}) where S <: Float64
+    function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
         if length(jac) > 0
-            # jac .= 𝒟.jacobian(x -> shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron(x,x), backend, X)'
-            jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(X)), X))'
+            copy!(jac', 𝐒ⁱ)
+            ℒ.kron!(kron_buffer2, Ĵ, x)
+            ℒ.mul!(jac', 𝐒ⁱ²ᵉ, kron_buffer2, -2, -1)
+            # jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))'
+            # println(jac + (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))')
         end
 
-        res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
+        ℒ.kron!(kron_buffer, x, x)
+
+        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer)
+
+        ℒ.mul!(res, 𝐒ⁱ, x, 1, 1)
+
+        ℒ.axpby!(1, shock_independent, -1, res)
+        # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
     end
+    
+    Ĵ = sparse(ℒ.I(length(initial_guess)))
     
     # opt = NLopt.Opt(NLopt.:LN_COBYLA, size(𝐒ⁱ,2))
     opt = NLopt.Opt(NLopt.:LD_SLSQP, size(𝐒ⁱ,2))
@@ -353,22 +360,42 @@ function find_shocks(::Val{:SLSQP},
                     tol::Float64 = 1e-14) # will fail for higher or lower precision
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
         if length(grad) > 0
-            grad .= 2 .* X
+            copy!(grad, X)
+            ℒ.rmul!(grad, 2)
+            # grad .= 2 .* X
         end
         
         sum(abs2, X)
     end
 
-    function constraint_optim(res::Vector{S}, X::Vector{S}, jac::Matrix{S}) where S <: Float64
+    function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
+        ℒ.kron!(kron_buffer, x, x)
+
         if length(jac) > 0
-            # jac .= 𝒟.jacobian(x -> shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron(x,x) - 𝐒ⁱ³ᵉ * kron(x,kron(x,x)), backend, X)'
-            jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(X)), X) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(X)), ℒ.kron(X,X)))'
+            copy!(jac', 𝐒ⁱ)
+            ℒ.kron!(kron_buffer2, Ĵ, x)
+            ℒ.kron!(kron_buffer3, Ĵ, kron_buffer)
+            ℒ.mul!(jac', 𝐒ⁱ²ᵉ, kron_buffer2, 2, 1)
+            ℒ.mul!(jac', 𝐒ⁱ³ᵉ, kron_buffer3, 1, -1)
+            
+            # jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(Ĵ, x) - 𝐒ⁱ³ᵉ * ℒ.kron(Ĵ, ℒ.kron(x,x)))'
         end
 
-        res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X) - 𝐒ⁱ³ᵉ * ℒ.kron(X, ℒ.kron(X,X))
+        ℒ.kron!(kron_buffer², x, kron_buffer)
+
+        ℒ.mul!(res, 𝐒ⁱ, x)
+
+        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
+
+        ℒ.mul!(res, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
+
+        ℒ.axpby!(1, shock_independent, -1, res)
+        
+        # res .= shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * ℒ.kron!(kron_buffer, x, x) - 𝐒ⁱ³ᵉ * ℒ.kron!(kron_buffer², x, kron_buffer)
     end
 
-    # opt = NLopt.Opt(NLopt.:LN_COBYLA, T.nExo)
+    Ĵ = sparse(ℒ.I(length(initial_guess)))
+    
     opt = NLopt.Opt(NLopt.:LD_SLSQP, size(𝐒ⁱ,2))
                     
     opt.min_objective = objective_optim_fun
@@ -419,22 +446,23 @@ function find_shocks(::Val{:COBYLA},
                     max_iter::Int = 10000,
                     tol::Float64 = 1e-14) # will fail for higher or lower precision
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
-        if length(grad) > 0
-            grad .= 2 .* X
-        end
-        
         sum(abs2, X)
     end
 
-    function constraint_optim(res::Vector{S}, X::Vector{S}, jac::Matrix{S}) where S <: Float64
-        if length(jac) > 0
-            # jac .= 𝒟.jacobian(x -> shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron(x,x), backend, X)'
-            jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(X)), X))'
-        end
+    function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
+        ℒ.kron!(kron_buffer, x, x)
 
-        res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
+        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer)
+
+        ℒ.mul!(res, 𝐒ⁱ, x, 1, 1)
+
+        ℒ.axpby!(1, shock_independent, -1, res)
+
+        # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
     end
     
+    Ĵ = sparse(ℒ.I(length(initial_guess)))
+
     opt = NLopt.Opt(NLopt.:LN_COBYLA, size(𝐒ⁱ,2))
                     
     opt.min_objective = objective_optim_fun
@@ -486,20 +514,23 @@ function find_shocks(::Val{:COBYLA},
                     max_iter::Int = 10000,
                     tol::Float64 = 1e-14) # will fail for higher or lower precision
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
-        if length(grad) > 0
-            grad .= 2 .* X
-        end
-        
         sum(abs2, X)
     end
 
-    function constraint_optim(res::Vector{S}, X::Vector{S}, jac::Matrix{S}) where S <: Float64
-        if length(jac) > 0
-            # jac .= 𝒟.jacobian(x -> shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * kron(x,x) - 𝐒ⁱ³ᵉ * kron(x,kron(x,x)), backend, X)'
-            jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(X)), X) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(X)), ℒ.kron(X,X)))'
-        end
+    function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
+        ℒ.kron!(kron_buffer, x, x)
 
-        res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X) - 𝐒ⁱ³ᵉ * ℒ.kron(X, ℒ.kron(X,X))
+        ℒ.kron!(kron_buffer², x, kron_buffer)
+
+        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer)
+
+        ℒ.mul!(res, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
+
+        ℒ.mul!(res, 𝐒ⁱ, x, 1, 1)
+
+        ℒ.axpby!(1, shock_independent, -1, res)
+
+        # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X) - 𝐒ⁱ³ᵉ * ℒ.kron(X, ℒ.kron(X,X))
     end
 
     opt = NLopt.Opt(NLopt.:LN_COBYLA, size(𝐒ⁱ,2))
