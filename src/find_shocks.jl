@@ -70,7 +70,11 @@ function find_shocks(::Val{:LagrangeNewton},
         # fxλp = [reshape((2 * 𝐒ⁱ²ᵉ)' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  ∂x'
         #         -∂x  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
         # println(size(fxλp))
-        f̂xλp = ℒ.factorize(fxλp)
+        f̂xλp = try 
+            ℒ.factorize(fxλp)
+        catch
+            return x, false
+        end
 
         # Δxλ = fxλp \ fxλ
         ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
