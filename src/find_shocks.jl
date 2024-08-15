@@ -9,76 +9,79 @@ function find_shocks(::Val{:LagrangeNewton},
                     max_iter::Int = 1000,
                     tol::Float64 = 1e-14) # will fail for higher or lower precision
     x = initial_guess
-
+    
     λ = zeros(size(𝐒ⁱ, 1))
     
     xλ = [  x
             λ   ]
-    
+
     Δxλ = copy(xλ)
 
     norm1 = ℒ.norm(shock_independent) 
-    
+
     norm2 = 1.0
     
     Δnorm = 1e12
-    
+
     x̂ = copy(shock_independent)
 
-    x̄ = zeros(size(𝐒ⁱ²ᵉ,1))
+    x̃ = zeros(size(𝐒ⁱ,1))
 
-    Ĵ = ℒ.I(length(x)) * 2
+    x̄ = zeros(size(𝐒ⁱ,2))
+
+    Ĵ = ℒ.I(length(x))
 
     ∂x = zero(𝐒ⁱ)
     
-    fxλ = zeros(size(𝐒ⁱ²ᵉ,1) + size(shock_independent,1))
-
-    fxλp = zeros(size(𝐒ⁱ, 2) + size(𝐒ⁱ, 1), size(𝐒ⁱ, 2) + size(𝐒ⁱ, 1))
+    fxλ = zeros(length(xλ))
+    
+    fxλp = zeros(length(xλ), length(xλ))
 
     tmp = zeros(size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
+
+    II = ℒ.I(length(x)^2)
+
+    lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
 
     for i in 1:max_iter
         ℒ.kron!(kron_buffer2, Ĵ, x)
 
         ℒ.mul!(∂x, 𝐒ⁱ²ᵉ, kron_buffer2)
+        ℒ.axpby!(1, 𝐒ⁱ, 2, ∂x)
 
-        ℒ.axpy!(1, 𝐒ⁱ, ∂x)
-        
         ℒ.mul!(x̄, ∂x', λ)
+        
         ℒ.axpy!(-2, x, x̄)
 
-        copyto!(fxλ, 1, x̄, 1, size(𝐒ⁱ²ᵉ,1))
-        copyto!(fxλ, size(𝐒ⁱ²ᵉ,1) + 1, x̂, 1, size(shock_independent,1))
-        # copyto!(fxλp, ∂x)
-        # fxλ = [x̄#∂x' * λ - 2 * x
-        #        x̂]
+        copyto!(fxλ, 1, x̄, 1, size(𝐒ⁱ,2))
+        copyto!(fxλ, size(𝐒ⁱ,2) + 1, x̂, 1, size(shock_independent,1))
+        
+        # fXλ = [(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))' * λ - 2 * x
+                # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x))]
 
         ℒ.mul!(tmp, 𝐒ⁱ²ᵉ', λ)
-        ℒ.rmul!(tmp, 2)
+        ℒ.axpby!(1, lI, 2, tmp)
 
-        # Define the destination and source ranges
-        # dest_range = CartesianIndices((1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)))
-        
-        # Perform the copy using copyto!
-        # copyto!(fxλp, dest_range, tmp, CartesianIndices(tmp))
-
-        fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp#2 * 𝐒ⁱ²ᵉ' * λ
+        fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp
         fxλp[1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] .= ∂x'
 
         ℒ.rmul!(∂x, -1)
         fxλp[size(𝐒ⁱ, 2)+1:end, 1:size(𝐒ⁱ, 2)] .= ∂x
-        # fxλp = [reshape((2 * 𝐒ⁱ²ᵉ)' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  ∂x'
-        #         -∂x  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
-        # println(size(fxλp))
+
+        # fXλp = [reshape(2 * 𝐒ⁱ²ᵉ' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))'
+        #         -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
+        
         f̂xλp = try 
             ℒ.factorize(fxλp)
         catch
+            # ℒ.svd(fxλp)
+            # println("factorization fails")
             return x, false
         end
 
         # Δxλ = fxλp \ fxλ
         ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
-    
+        
         if !all(isfinite,Δxλ) break end
         
         ℒ.axpy!(-1, Δxλ, xλ)
@@ -92,15 +95,13 @@ function find_shocks(::Val{:LagrangeNewton},
 
         ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer)
 
-        ℒ.mul!(x̄, 𝐒ⁱ, x)
+        ℒ.mul!(x̃, 𝐒ⁱ, x)
 
-        ℒ.axpy!(1, x̄, x̂)
-        # tmp2 = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron!(kron_buffer, x, x)
+        ℒ.axpy!(1, x̃, x̂)
 
         norm2 = ℒ.norm(x̂)
 
         ℒ.axpby!(1, shock_independent, -1, x̂)
-        # ℒ.axpby!(1, shock_independent, -1, x̂)
 
         if ℒ.norm(x̂) / max(norm1,norm2) < eps() && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol
             # println("LagrangeNewton: $i, Tol reached")
@@ -109,21 +110,13 @@ function find_shocks(::Val{:LagrangeNewton},
 
         if i > 5 && ℒ.norm(Δxλ) > 1e-12 && ℒ.norm(Δxλ) > Δnorm
             # println("LagrangeNewton: $i, Norm increase")
-            break
+            return x, false
         end
         # if i == max_iter
-            # println("LagrangeNewton: $i, Max iter reached")
+        #     println("LagrangeNewton: $i, Max iter reached")
         #     # println(ℒ.norm(Δxλ))
         # end
     end
-         
-    # println(ℒ.norm(x̂))         
-
-    # y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x)
-
-    # norm1 = ℒ.norm(y)
-
-	# norm2 = ℒ.norm(shock_independent)
 
     # println("Norm: $(ℒ.norm(x̂) / max(norm1,norm2))")
     # println(ℒ.norm(Δxλ))
@@ -140,6 +133,7 @@ function find_shocks(::Val{:LagrangeNewton},
                     kron_buffer²::Vector{Float64},
                     kron_buffer2::AbstractMatrix{Float64},
                     kron_buffer3::AbstractMatrix{Float64},
+                    kron_buffer4::AbstractMatrix{Float64},
                     J::AbstractMatrix{Float64},
                     𝐒ⁱ::AbstractMatrix{Float64},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
@@ -147,59 +141,132 @@ function find_shocks(::Val{:LagrangeNewton},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 1000,
                     tol::Float64 = 1e-14) # will fail for higher or lower precision
-    X = initial_guess
+    x = initial_guess
+
     λ = zeros(size(𝐒ⁱ, 1))
     
-    Xλ = [  X
+    xλ = [  x
             λ   ]
 
-    ΔXλ = copy(Xλ)
+    Δxλ = copy(xλ)
 
     norm1 = ℒ.norm(shock_independent) 
 
+    norm2 = 1.0
+    
     Δnorm = 1e12
 
+    x̂ = copy(shock_independent)
+
+    x̃ = zeros(size(𝐒ⁱ,1))
+
+    x̄ = zeros(size(𝐒ⁱ,2))
+
+    Ĵ = ℒ.I(length(x))
+
+    ∂x = zero(𝐒ⁱ)
+    
+    fxλ = zeros(length(xλ))
+    
+    fxλp = zeros(length(xλ), length(xλ))
+
+    tmp = zeros(size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
+
+    tmp2 = zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
+
+    II = ℒ.I(length(x)^2)
+
+    lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
+
     for i in 1:max_iter
-        fXλ = [(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(X)), Xλ[1:size(𝐒ⁱ, 2)]) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(X)), ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)], Xλ[1:size(𝐒ⁱ, 2)])))' * Xλ[size(𝐒ⁱ, 2)+1:end] - 2 * Xλ[1:size(𝐒ⁱ, 2)]
-                shock_independent - 𝐒ⁱ * Xλ[1:size(𝐒ⁱ, 2)] - 𝐒ⁱ²ᵉ * ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)],Xλ[1:size(𝐒ⁱ, 2)]) - 𝐒ⁱ³ᵉ * ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)], ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)], Xλ[1:size(𝐒ⁱ, 2)]))]
+        ℒ.kron!(kron_buffer2, Ĵ, x)
+        ℒ.kron!(kron_buffer3, Ĵ, kron_buffer)
 
-        fXλp = [reshape((2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(X)), ℒ.I(length(X))) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(X)), ℒ.kron(ℒ.I(length(X)),Xλ[1:size(𝐒ⁱ, 2)])))' * Xλ[size(𝐒ⁱ, 2)+1:end], size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(X)), Xλ[1:size(𝐒ⁱ, 2)]) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(X)), ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)], Xλ[1:size(𝐒ⁱ, 2)])))'
-                -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(X)), Xλ[1:size(𝐒ⁱ, 2)]) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(X)), ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)], Xλ[1:size(𝐒ⁱ, 2)])))  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
-    
-        ΔXλ = fXλp \ fXλ
-  
-        if !all(isfinite,ΔXλ) break end
+        ℒ.mul!(∂x, 𝐒ⁱ³ᵉ, kron_buffer3)
+        ℒ.mul!(∂x, 𝐒ⁱ²ᵉ, kron_buffer2, 2, -1)
+        ℒ.axpy!(1, 𝐒ⁱ, ∂x)
 
-        Xλ -= ΔXλ
+        ℒ.mul!(x̄, ∂x', λ)
+        
+        ℒ.axpy!(-2, x, x̄)
+
+        copyto!(fxλ, 1, x̄, 1, size(𝐒ⁱ,2))
+        copyto!(fxλ, size(𝐒ⁱ,2) + 1, x̂, 1, size(shock_independent,1))
+        
+        # fXλ = [(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+                # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]
+
+        ℒ.kron!(kron_buffer4, II, x)
+        ℒ.mul!(tmp2, 𝐒ⁱ³ᵉ, kron_buffer4)
+        ℒ.mul!(tmp, tmp2', λ)
+        ℒ.mul!(tmp, 𝐒ⁱ²ᵉ', λ, 2, 1)
+        ℒ.axpy!(1,lI,tmp)
+        # ℒ.rmul!(tmp, 2)
+
+        fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp#2 * 𝐒ⁱ²ᵉ' * λ
+        # fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] -= 2 * ℒ.I(size(𝐒ⁱ, 2))
+        fxλp[1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] .= ∂x'
+
+        ℒ.rmul!(∂x, -1)
+        fxλp[size(𝐒ⁱ, 2)+1:end, 1:size(𝐒ⁱ, 2)] .= ∂x
+        # fXλp = [reshape((2 * 𝐒ⁱ²ᵉ - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(ℒ.I(length(x)),x)))' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))'
+        #         -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
+        
+        f̂xλp = try 
+            ℒ.factorize(fxλp)
+        catch
+            # ℒ.svd(fxλp)
+            # println("factorization fails")
+            return x, false
+        end
+
+        # Δxλ = fxλp \ fxλ
+        ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
+        
+        if !all(isfinite,Δxλ) break end
+        
+        ℒ.axpy!(-1, Δxλ, xλ)
+        # xλ -= Δxλ
     
-        norm2 = ℒ.norm(𝐒ⁱ * Xλ[1:size(𝐒ⁱ, 2)] + 𝐒ⁱ²ᵉ * ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)],Xλ[1:size(𝐒ⁱ, 2)]) + 𝐒ⁱ³ᵉ * ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)], ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)], Xλ[1:size(𝐒ⁱ, 2)])))
-    
-        # println(ℒ.norm(ΔXλ))
-        if ℒ.norm(shock_independent - (𝐒ⁱ * Xλ[1:size(𝐒ⁱ, 2)] + 𝐒ⁱ²ᵉ * ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)],Xλ[1:size(𝐒ⁱ, 2)]) + 𝐒ⁱ³ᵉ * ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)], ℒ.kron(Xλ[1:size(𝐒ⁱ, 2)], Xλ[1:size(𝐒ⁱ, 2)])))) / max(norm1,norm2) < eps() && ℒ.norm(ΔXλ) < tol
+        x = xλ[1:size(𝐒ⁱ, 2)]
+
+        λ = xλ[size(𝐒ⁱ, 2)+1:end]
+
+        ℒ.kron!(kron_buffer, x, x)
+
+        ℒ.kron!(kron_buffer², x, kron_buffer)
+
+        ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer)
+
+        ℒ.mul!(x̂, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
+
+        ℒ.mul!(x̃, 𝐒ⁱ, x)
+
+        ℒ.axpy!(1, x̃, x̂)
+
+        norm2 = ℒ.norm(x̂)
+
+        ℒ.axpby!(1, shock_independent, -1, x̂)
+
+        if ℒ.norm(x̂) / max(norm1,norm2) < eps() && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol
             # println("LagrangeNewton: $i, Tol reached")
             break
         end
 
-        if i > 5 && ℒ.norm(ΔXλ) > 1e-12 && ℒ.norm(ΔXλ) > Δnorm
+        if i > 5 && ℒ.norm(Δxλ) > 1e-12 && ℒ.norm(Δxλ) > Δnorm
             # println("LagrangeNewton: $i, Norm increase")
-            break
+            return x, false
         end
         # if i == max_iter
-            # println("LagrangeNewton: $i, Max iter reached")
-            # println(ℒ.norm(ΔXλ))
+        #     println("LagrangeNewton: $i, Max iter reached")
+        #     # println(ℒ.norm(Δxλ))
         # end
     end
 
-    x = Xλ[1:size(𝐒ⁱ, 2)]
-                    
-    y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
-
-    norm1 = ℒ.norm(y)
-
-	norm2 = ℒ.norm(shock_independent)
-
-    # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
-    return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && ℒ.norm(ΔXλ) < tol
+    # println("Norm: $(ℒ.norm(x̂) / max(norm1,norm2))")
+    # println(ℒ.norm(Δxλ))
+    # println(ℒ.norm(Δxλ) / ℒ.norm(xλ))
+    return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol
 end
 
 
@@ -276,6 +343,7 @@ function find_shocks(::Val{:SLSQP},
                     kron_buffer²::Vector{Float64},
                     kron_buffer2::AbstractMatrix{Float64},
                     kron_buffer3::AbstractMatrix{Float64},
+                    kron_buffer4::AbstractMatrix{Float64},
                     J::AbstractMatrix{Float64},
                     𝐒ⁱ::AbstractMatrix{Float64},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
@@ -409,6 +477,7 @@ function find_shocks(::Val{:COBYLA},
                     kron_buffer²::Vector{Float64},
                     kron_buffer2::AbstractMatrix{Float64},
                     kron_buffer3::AbstractMatrix{Float64},
+                    kron_buffer4::AbstractMatrix{Float64},
                     J::AbstractMatrix{Float64},
                     𝐒ⁱ::AbstractMatrix{Float64},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},

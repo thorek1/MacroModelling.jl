@@ -9103,6 +9103,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
     kron_buffer3 = ℒ.kron(J, kron_buffer)
 
+    kron_buffer4 = ℒ.kron(ℒ.kron(J, J), zeros(T.nExo))
+
     for i in axes(data_in_deviations,2)
         state¹⁻ = state[1]
 
@@ -9142,6 +9144,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                 kron_buffer²,
                                 kron_buffer2,
                                 kron_buffer3,
+                                kron_buffer4,
                                 J,
                                 𝐒ⁱ,
                                 𝐒ⁱ²ᵉ,
@@ -9150,6 +9153,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                 # max_iter = 100
                                 )
                                 
+        # if matched println("$filter_algorithm: $matched; current x: $x") end      
         if !matched
             x, matched = find_shocks(Val(:COBYLA), 
                                     zeros(size(𝐒ⁱ, 2)),
@@ -9157,6 +9161,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                     kron_buffer²,
                                     kron_buffer2,
                                     kron_buffer3,
+                                    kron_buffer4,
                                     J,
                                     𝐒ⁱ,
                                     𝐒ⁱ²ᵉ,
@@ -9364,6 +9369,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
 
     kron_buffer3 = ℒ.kron(J, kron_buffer)
 
+    kron_buffer4 = ℒ.kron(ℒ.kron(J, J), zeros(T.nExo))
+
     for i in axes(data_in_deviations,2)
         state¹⁻ = state
 
@@ -9393,6 +9400,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                 kron_buffer²,
                                 kron_buffer2,
                                 kron_buffer3,
+                                kron_buffer4,
                                 J,
                                 𝐒ⁱ,
                                 𝐒ⁱ²ᵉ,
@@ -9409,6 +9417,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                     kron_buffer²,
                                     kron_buffer2,
                                     kron_buffer3,
+                                    kron_buffer4,
                                     J,
                                     𝐒ⁱ,
                                     𝐒ⁱ²ᵉ,
@@ -9772,7 +9781,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                 shock_independent,
                                 # max_iter = 100
                                 )
-                                
+                     
+        # if matched println("$filter_algorithm: $matched; current x: $x") end      
         if !matched
             x, matched = find_shocks(Val(:COBYLA), 
                                     zeros(size(𝐒ⁱ, 2)),
@@ -9784,6 +9794,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                     shock_independent,
                                     # max_iter = 500
                                     )
+            # println("COBYLA: $matched; current x: $x")
             # if !matched
             #     x, matched = find_shocks(Val(filter_algorithm), 
             #                             x,
