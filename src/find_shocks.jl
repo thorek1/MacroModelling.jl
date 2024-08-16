@@ -1,15 +1,19 @@
-# no guarantee that SLSQP or LagrangeNewton converge to global min for third order (dont know for second ordr yet). COBYLA sometimes finds solution with smaller norm(x)
+# Algorithms
+# - LagrangeNewton: fast, but no guarantee of convergence to global minimum
+# - COBYLA: best known chances of convergence to global minimum; ok speed for third order
+# - SLSQP: relatively slow and not guaranteed to converge to global minimum
+
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
                     kron_buffer::Vector{Float64},
                     kron_buffer2::AbstractMatrix{Float64},
-                    J::AbstractMatrix{Float64},
+                    J::ℒ.Diagonal{Bool, Vector{Bool}},
                     𝐒ⁱ::AbstractMatrix{Float64},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 1000,
                     tol::Float64 = 1e-14) # will fail for higher or lower precision
-    x = initial_guess
+    x = copy(initial_guess)
     
     λ = zeros(size(𝐒ⁱ, 1))
     
@@ -28,8 +32,6 @@ function find_shocks(::Val{:LagrangeNewton},
 
     x̄ = zeros(size(𝐒ⁱ,2))
 
-    Ĵ = sparse(ℒ.I(length(x)))
-
     ∂x = zero(𝐒ⁱ)
     
     fxλ = zeros(length(xλ))
@@ -43,7 +45,7 @@ function find_shocks(::Val{:LagrangeNewton},
     lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
 
     for i in 1:max_iter
-        ℒ.kron!(kron_buffer2, Ĵ, x)
+        ℒ.kron!(kron_buffer2, J, x)
 
         ℒ.mul!(∂x, 𝐒ⁱ²ᵉ, kron_buffer2)
         ℒ.axpby!(1, 𝐒ⁱ, 2, ∂x)
@@ -133,14 +135,14 @@ function find_shocks(::Val{:LagrangeNewton},
                     kron_buffer2::AbstractMatrix{Float64},
                     kron_buffer3::AbstractMatrix{Float64},
                     kron_buffer4::AbstractMatrix{Float64},
-                    J::AbstractMatrix{Float64},
+                    J::ℒ.Diagonal{Bool, Vector{Bool}},
                     𝐒ⁱ::AbstractMatrix{Float64},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 1000,
                     tol::Float64 = 1e-14) # will fail for higher or lower precision
-    x = initial_guess
+    x = copy(initial_guess)
 
     λ = zeros(size(𝐒ⁱ, 1))
     
@@ -159,8 +161,6 @@ function find_shocks(::Val{:LagrangeNewton},
 
     x̄ = zeros(size(𝐒ⁱ,2))
 
-    Ĵ = sparse(ℒ.I(length(x)))
-
     ∂x = zero(𝐒ⁱ)
     
     fxλ = zeros(length(xλ))
@@ -174,10 +174,10 @@ function find_shocks(::Val{:LagrangeNewton},
     II = sparse(ℒ.I(length(x)^2))
 
     lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
-
+    
     for i in 1:max_iter
-        ℒ.kron!(kron_buffer2, Ĵ, x)
-        ℒ.kron!(kron_buffer3, Ĵ, kron_buffer)
+        ℒ.kron!(kron_buffer2, J, x)
+        ℒ.kron!(kron_buffer3, J, kron_buffer)
 
         ℒ.mul!(∂x, 𝐒ⁱ³ᵉ, kron_buffer3)
         ℒ.mul!(∂x, 𝐒ⁱ²ᵉ, kron_buffer2, 2, -1)
@@ -259,7 +259,6 @@ function find_shocks(::Val{:LagrangeNewton},
         #     # println(ℒ.norm(Δxλ))
         # end
     end
-
     # println("Norm: $(ℒ.norm(x̂) / max(norm1,norm2))")
     # println(ℒ.norm(Δxλ))
     # println(ℒ.norm(Δxλ) / ℒ.norm(xλ))
@@ -274,7 +273,7 @@ function find_shocks(::Val{:SLSQP},
                     initial_guess::Vector{Float64},
                     kron_buffer::Vector{Float64},
                     kron_buffer2::AbstractMatrix{Float64},
-                    J::AbstractMatrix{Float64},
+                    J::ℒ.Diagonal{Bool, Vector{Bool}},
                     𝐒ⁱ::AbstractMatrix{Float64},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
@@ -293,7 +292,7 @@ function find_shocks(::Val{:SLSQP},
 
     function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
         if length(jac) > 0
-            ℒ.kron!(kron_buffer2, Ĵ, x)
+            ℒ.kron!(kron_buffer2, J, x)
 
             copy!(jac', 𝐒ⁱ)
 
@@ -310,8 +309,6 @@ function find_shocks(::Val{:SLSQP},
         ℒ.axpby!(1, shock_independent, -1, res)
         # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
     end
-    
-    Ĵ = sparse(ℒ.I(length(initial_guess)))
     
     # opt = NLopt.Opt(NLopt.:LN_COBYLA, size(𝐒ⁱ,2))
     opt = NLopt.Opt(NLopt.:LD_SLSQP, size(𝐒ⁱ,2))
@@ -357,7 +354,7 @@ function find_shocks(::Val{:SLSQP},
                     kron_buffer2::AbstractMatrix{Float64},
                     kron_buffer3::AbstractMatrix{Float64},
                     kron_buffer4::AbstractMatrix{Float64},
-                    J::AbstractMatrix{Float64},
+                    J::ℒ.Diagonal{Bool, Vector{Bool}},
                     𝐒ⁱ::AbstractMatrix{Float64},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
@@ -381,16 +378,16 @@ function find_shocks(::Val{:SLSQP},
         ℒ.kron!(kron_buffer², x, kron_buffer)
 
         if length(jac) > 0
-            ℒ.kron!(kron_buffer2, Ĵ, x)
+            ℒ.kron!(kron_buffer2, J, x)
 
-            ℒ.kron!(kron_buffer3, Ĵ, kron_buffer)
+            ℒ.kron!(kron_buffer3, J, kron_buffer)
 
             copy!(jac', 𝐒ⁱ)
 
             ℒ.mul!(jac', 𝐒ⁱ²ᵉ, kron_buffer2, 2, 1)
 
             ℒ.mul!(jac', 𝐒ⁱ³ᵉ, kron_buffer3, 1, -1)
-            # jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(Ĵ, x) - 𝐒ⁱ³ᵉ * ℒ.kron(Ĵ, ℒ.kron(x,x)))'
+            # jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(J, x) - 𝐒ⁱ³ᵉ * ℒ.kron(J, ℒ.kron(x,x)))'
         end
 
         ℒ.mul!(res, 𝐒ⁱ, x)
@@ -402,8 +399,6 @@ function find_shocks(::Val{:SLSQP},
         ℒ.axpby!(1, shock_independent, -1, res)
         # res .= shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * ℒ.kron!(kron_buffer, x, x) - 𝐒ⁱ³ᵉ * ℒ.kron!(kron_buffer², x, kron_buffer)
     end
-
-    Ĵ = sparse(ℒ.I(length(initial_guess)))
     
     opt = NLopt.Opt(NLopt.:LD_SLSQP, size(𝐒ⁱ,2))
                     
@@ -448,7 +443,7 @@ function find_shocks(::Val{:COBYLA},
                     initial_guess::Vector{Float64},
                     kron_buffer::Vector{Float64},
                     kron_buffer2::AbstractMatrix{Float64},
-                    J::AbstractMatrix{Float64},
+                    J::ℒ.Diagonal{Bool, Vector{Bool}},
                     𝐒ⁱ::AbstractMatrix{Float64},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
@@ -468,8 +463,6 @@ function find_shocks(::Val{:COBYLA},
         ℒ.axpby!(1, shock_independent, -1, res)
         # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
     end
-    
-    Ĵ = sparse(ℒ.I(length(initial_guess)))
 
     opt = NLopt.Opt(NLopt.:LN_COBYLA, size(𝐒ⁱ,2))
                     
@@ -514,7 +507,7 @@ function find_shocks(::Val{:COBYLA},
                     kron_buffer2::AbstractMatrix{Float64},
                     kron_buffer3::AbstractMatrix{Float64},
                     kron_buffer4::AbstractMatrix{Float64},
-                    J::AbstractMatrix{Float64},
+                    J::ℒ.Diagonal{Bool, Vector{Bool}},
                     𝐒ⁱ::AbstractMatrix{Float64},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
@@ -581,7 +574,7 @@ end
 # function find_shocks(::Val{:Newton},
 #     kron_buffer::Vector{Float64},
 #     kron_buffer2::AbstractMatrix{Float64},
-#     J::AbstractMatrix{Float64},
+#     J::ℒ.Diagonal{Bool, Vector{Bool}},
 #     𝐒ⁱ::AbstractMatrix{Float64},
 #     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
 #     shock_independent::Vector{Float64};
@@ -658,7 +651,7 @@ end
 #                     kron_buffer²::Vector{Float64},
 #                     kron_buffer2::AbstractMatrix{Float64},
 #                     kron_buffer3::AbstractMatrix{Float64},
-#                     J::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
 #                     𝐒ⁱ::AbstractMatrix{Float64},
 #                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
 #                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
@@ -739,7 +732,7 @@ end
 # function find_shocks(::Val{:LBFGS},
 #                     kron_buffer::Vector{Float64},
 #                     kron_buffer2::AbstractMatrix{Float64},
-#                     J::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
 #                     𝐒ⁱ::AbstractMatrix{Float64},
 #                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
 #                     shock_independent::Vector{Float64};
@@ -782,7 +775,7 @@ end
 #                     kron_buffer²::Vector{Float64},
 #                     kron_buffer2::AbstractMatrix{Float64},
 #                     kron_buffer3::AbstractMatrix{Float64},
-#                     J::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
 #                     𝐒ⁱ::AbstractMatrix{Float64},
 #                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
 #                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
@@ -824,7 +817,7 @@ end
 #                     kron_buffer²::Vector{Float64},
 #                     kron_buffer2::AbstractMatrix{Float64},
 #                     kron_buffer3::AbstractMatrix{Float64},
-#                     J::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
 #                     𝐒ⁱ::AbstractMatrix{Float64},
 #                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
 #                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
@@ -862,7 +855,7 @@ end
 # function find_shocks(::Val{:LBFGSjl},
 #                     kron_buffer::Vector{Float64},
 #                     kron_buffer2::AbstractMatrix{Float64},
-#                     J::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
 #                     𝐒ⁱ::AbstractMatrix{Float64},
 #                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
 #                     shock_independent::Vector{Float64};
@@ -900,7 +893,7 @@ end
 #                     kron_buffer²::Vector{Float64},
 #                     kron_buffer2::AbstractMatrix{Float64},
 #                     kron_buffer3::AbstractMatrix{Float64},
-#                     J::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
 #                     𝐒ⁱ::AbstractMatrix{Float64},
 #                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
 #                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
@@ -935,7 +928,7 @@ end
 # function find_shocks(::Val{:speedmapping},
 #                     kron_buffer::Vector{Float64},
 #                     kron_buffer2::AbstractMatrix{Float64},
-#                     J::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
 #                     𝐒ⁱ::AbstractMatrix{Float64},
 #                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
 #                     shock_independent::Vector{Float64};
