@@ -9097,7 +9097,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
     kron_buffer² = zeros(T.nExo^3)
 
-    J = zeros(T.nExo, T.nExo)
+    J = ℒ.I(T.nExo)
 
     kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
 
@@ -9366,7 +9366,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
 
     kron_buffer² = zeros(T.nExo^3)
 
-    J = zeros(T.nExo, T.nExo)
+    J = ℒ.I(T.nExo)
 
     kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
 
@@ -9579,7 +9579,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
 
     kron_buffer = zeros(T.nExo^2)
 
-    J = zeros(T.nExo, T.nExo)
+    J = ℒ.I(T.nExo)
 
     kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
 
@@ -9754,7 +9754,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
 
     kron_buffer = zeros(T.nExo^2)
 
-    J = zeros(T.nExo, T.nExo)
+    J = ℒ.I(T.nExo)
 
     kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
 
