@@ -169,9 +169,9 @@ function rrule(::typeof(find_shocks),
 
         ∂shock_independent = S[length(initial_guess)+1:end]
         
-        ∂𝐒ⁱ =  ℒ.kron(S[1:length(initial_guess)], λ) - ℒ.kron(S[length(initial_guess)+1:end], x)
+        ∂𝐒ⁱ =  ℒ.kron(S[1:length(initial_guess)], λ) - ℒ.kron(x, S[length(initial_guess)+1:end])
 
-        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], λx) - ℒ.kron(S[length(initial_guess)+1:end], kron_buffer)
+        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], λx) - ℒ.kron(kron_buffer, S[length(initial_guess)+1:end])
 
         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  ∂𝐒ⁱ, ∂𝐒ⁱ²ᵉ, ∂shock_independent, NoTangent(), NoTangent()
     end
@@ -314,6 +314,10 @@ function find_shocks(::Val{:LagrangeNewton},
     end
 
     # println(λ)
+    # println(reshape(tmp, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2)))
+    # println([reshape((2 * 𝐒ⁱ²ᵉ - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(ℒ.I(length(x)),x)))' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))'
+    #         -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))])
+    # println(fxλp)
     # println("Norm: $(ℒ.norm(x̂) / max(norm1,norm2))")
     # println(ℒ.norm(Δxλ))
     # println(ℒ.norm(Δxλ) / ℒ.norm(xλ))
@@ -377,11 +381,11 @@ function rrule(::typeof(find_shocks),
 
         ∂shock_independent = S[length(initial_guess)+1:end]
         
-        ∂𝐒ⁱ =  ℒ.kron(S[1:length(initial_guess)], λ) - ℒ.kron(S[length(initial_guess)+1:end], x)
+        ∂𝐒ⁱ =  ℒ.kron(S[1:length(initial_guess)], λ) - ℒ.kron(x, S[length(initial_guess)+1:end])
 
-        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], λx) - ℒ.kron(S[length(initial_guess)+1:end], kron_buffer)
+        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], λx) - ℒ.kron(kron_buffer, S[length(initial_guess)+1:end])
         
-        ∂𝐒ⁱ³ᵉ = -ℒ.kron(S[1:length(initial_guess)], λxx) - ℒ.kron(S[length(initial_guess)+1:end], kron_buffer²)
+        ∂𝐒ⁱ³ᵉ = -ℒ.kron(S[1:length(initial_guess)], λxx) - ℒ.kron(kron_buffer², S[length(initial_guess)+1:end])
 
         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  ∂𝐒ⁱ, ∂𝐒ⁱ²ᵉ, ∂𝐒ⁱ³ᵉ, ∂shock_independent, NoTangent(), NoTangent()
     end
