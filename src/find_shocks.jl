@@ -119,12 +119,59 @@ function find_shocks(::Val{:LagrangeNewton},
         # end
     end
 
+    # println(λ)
     # println("Norm: $(ℒ.norm(x̂) / max(norm1,norm2))")
     # println(ℒ.norm(Δxλ))
     # println(ℒ.norm(Δxλ) / ℒ.norm(xλ))
     return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol
 end
 
+
+
+function rrule(::typeof(find_shocks), 
+                ::Val{:LagrangeNewton},
+                initial_guess::Vector{Float64},
+                kron_buffer::Vector{Float64},
+                kron_buffer2::AbstractMatrix{Float64},
+                J::ℒ.Diagonal{Bool, Vector{Bool}},
+                𝐒ⁱ::AbstractMatrix{Float64},
+                𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
+                shock_independent::Vector{Float64};
+                max_iter::Int = 1000,
+                tol::Float64 = 1e-14)
+
+    x, matched = find_shocks(Val(:LagrangeNewton),
+                            initial_guess,
+                            kron_buffer,
+                            kron_buffer2,
+                            J,
+                            𝐒ⁱ,
+                            𝐒ⁱ²ᵉ,
+                            shock_independent,
+                            max_iter = max_iter,
+                            tol = tol)
+
+    λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))' \ x * 2
+
+    fXλp = [reshape(2 * 𝐒ⁱ²ᵉ' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))'
+    -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
+
+    function find_shocks_pullback(∂x)
+        ∂x = vcat(∂x[1], zero(λ))
+
+        S = (-fXλp' \ ∂x)
+
+        ∂shock_independent = S[length(initial_guess)+1:end]
+        
+        ∂𝐒ⁱ =  λ * S[1:length(initial_guess)]' - S[length(initial_guess)+1:end] * x'
+
+        ∂𝐒ⁱ²ᵉ = 2 * vec((S[1:length(initial_guess)] * vec(λ * x')')') - vec(S[length(initial_guess)+1:end] * vec(x * x')')
+
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  ∂𝐒ⁱ, ∂𝐒ⁱ²ᵉ, ∂shock_independent, NoTangent(), NoTangent()
+    end
+
+    return (x, matched), find_shocks_pullback
+end
 
 
 
@@ -259,6 +306,8 @@ function find_shocks(::Val{:LagrangeNewton},
         #     # println(ℒ.norm(Δxλ))
         # end
     end
+
+    # println(λ)
     # println("Norm: $(ℒ.norm(x̂) / max(norm1,norm2))")
     # println(ℒ.norm(Δxλ))
     # println(ℒ.norm(Δxλ) / ℒ.norm(xλ))
