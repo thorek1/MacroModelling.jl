@@ -128,7 +128,7 @@ end
 
 
 
-function rrule(::typeof(find_shocks), 
+function rrule(::typeof(find_shocks),
                 ::Val{:LagrangeNewton},
                 initial_guess::Vector{Float64},
                 kron_buffer::Vector{Float64},
@@ -151,21 +151,27 @@ function rrule(::typeof(find_shocks),
                             max_iter = max_iter,
                             tol = tol)
 
-    λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))' \ x * 2
+    tmp = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x)
 
-    fXλp = [reshape(2 * 𝐒ⁱ²ᵉ' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))'
-    -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
+    λ = tmp' \ x * 2
+
+    fXλp = [reshape(2 * 𝐒ⁱ²ᵉ' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  tmp'
+    -tmp  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
+
+    ℒ.kron!(kron_buffer, x, x)
+
+    λx = ℒ.kron(λ, x)
 
     function find_shocks_pullback(∂x)
         ∂x = vcat(∂x[1], zero(λ))
 
-        S = (-fXλp' \ ∂x)
+        S = -fXλp' \ ∂x
 
         ∂shock_independent = S[length(initial_guess)+1:end]
         
-        ∂𝐒ⁱ =  λ * S[1:length(initial_guess)]' - S[length(initial_guess)+1:end] * x'
+        ∂𝐒ⁱ =  ℒ.kron(S[1:length(initial_guess)], λ) - ℒ.kron(S[length(initial_guess)+1:end], x)
 
-        ∂𝐒ⁱ²ᵉ = 2 * vec(vec(λ * x') * S[1:length(initial_guess)]') - vec(S[length(initial_guess)+1:end] * vec(x * x')')
+        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], λx) - ℒ.kron(S[length(initial_guess)+1:end], kron_buffer)
 
         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  ∂𝐒ⁱ, ∂𝐒ⁱ²ᵉ, ∂shock_independent, NoTangent(), NoTangent()
     end
@@ -314,6 +320,70 @@ function find_shocks(::Val{:LagrangeNewton},
     return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol
 end
 
+
+
+
+
+function rrule(::typeof(find_shocks),
+                ::Val{:LagrangeNewton},
+                initial_guess::Vector{Float64},
+                kron_buffer::Vector{Float64},
+                kron_buffer²::Vector{Float64},
+                kron_buffer2::AbstractMatrix{Float64},
+                kron_buffer3::AbstractMatrix{Float64},
+                kron_buffer4::AbstractMatrix{Float64},
+                J::ℒ.Diagonal{Bool, Vector{Bool}},
+                𝐒ⁱ::AbstractMatrix{Float64},
+                𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
+                𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
+                shock_independent::Vector{Float64};
+                max_iter::Int = 1000,
+                tol::Float64 = 1e-14)
+
+    x, matched = find_shocks(Val(:LagrangeNewton),
+                            initial_guess,
+                            kron_buffer,
+                            kron_buffer²,
+                            kron_buffer2,
+                            kron_buffer3,
+                            kron_buffer4,
+                            J,
+                            𝐒ⁱ,
+                            𝐒ⁱ²ᵉ,
+                            𝐒ⁱ³ᵉ,
+                            shock_independent,
+                            max_iter = max_iter,
+                            tol = tol)
+
+    ℒ.kron!(kron_buffer, x, x)
+
+    tmp = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer)
+
+    λ = tmp' \ x * 2
+
+    fXλp = [reshape((2 * 𝐒ⁱ²ᵉ - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(ℒ.I(length(x)),x)))' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  tmp'
+    -tmp  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
+    
+    λx = ℒ.kron(λ, x)
+
+    function find_shocks_pullback(∂x)
+        ∂x = vcat(∂x[1], zero(λ))
+
+        S = -fXλp' \ ∂x
+
+        ∂shock_independent = S[length(initial_guess)+1:end]
+        
+        ∂𝐒ⁱ =  ℒ.kron(S[1:length(initial_guess)], λ) - ℒ.kron(S[length(initial_guess)+1:end], x)
+
+        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], λx) - ℒ.kron(S[length(initial_guess)+1:end], kron_buffer)
+
+        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], λx) - ℒ.kron(S[length(initial_guess)+1:end], kron_buffer)
+
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  ∂𝐒ⁱ, ∂𝐒ⁱ²ᵉ, NoTangent(), ∂shock_independent, NoTangent(), NoTangent()
+    end
+
+    return (x, matched), find_shocks_pullback
+end
 
 
 
