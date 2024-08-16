@@ -165,7 +165,7 @@ function rrule(::typeof(find_shocks),
         
         ∂𝐒ⁱ =  λ * S[1:length(initial_guess)]' - S[length(initial_guess)+1:end] * x'
 
-        ∂𝐒ⁱ²ᵉ = 2 * vec((S[1:length(initial_guess)] * vec(λ * x')')') - vec(S[length(initial_guess)+1:end] * vec(x * x')')
+        ∂𝐒ⁱ²ᵉ = 2 * vec(vec(λ * x') * S[1:length(initial_guess)]') - vec(S[length(initial_guess)+1:end] * vec(x * x')')
 
         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  ∂𝐒ⁱ, ∂𝐒ⁱ²ᵉ, ∂shock_independent, NoTangent(), NoTangent()
     end
