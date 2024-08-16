@@ -249,7 +249,7 @@ function find_shocks(::Val{:LagrangeNewton},
         ℒ.kron!(kron_buffer4, II, x)
         ℒ.mul!(tmp2, 𝐒ⁱ³ᵉ, kron_buffer4)
         ℒ.mul!(tmp, tmp2', λ)
-        ℒ.mul!(tmp, 𝐒ⁱ²ᵉ', λ, 2, 1)
+        ℒ.mul!(tmp, 𝐒ⁱ²ᵉ', λ, 2, -1)
         ℒ.axpy!(1,lI,tmp)
         # ℒ.rmul!(tmp, 2)
 
@@ -288,11 +288,11 @@ function find_shocks(::Val{:LagrangeNewton},
 
         ℒ.kron!(kron_buffer², x, kron_buffer)
 
-        ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer)
+        ℒ.mul!(x̂, 𝐒ⁱ, x)
+
+        ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
 
         ℒ.mul!(x̂, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
-
-        ℒ.mul!(x̂, 𝐒ⁱ, x, 1, 1)
 
         norm2 = ℒ.norm(x̂)
 
