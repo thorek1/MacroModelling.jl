@@ -1,7 +1,7 @@
 # Algorithms
 # - LagrangeNewton: fast, but no guarantee of convergence to global minimum
-# - COBYLA: best known chances of convergence to global minimum; ok speed for third order; lower tol on optimality condition (1e-6)
-# - SLSQP: relatively slow and not guaranteed to converge to global minimum; lower tol on optimality condition (1e-6)
+# - COBYLA: best known chances of convergence to global minimum; ok speed for third order; lower tol on optimality conditions (1e-7)
+# - SLSQP: relatively slow and not guaranteed to converge to global minimum
 
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
@@ -245,7 +245,6 @@ function find_shocks(::Val{:LagrangeNewton},
 
         copyto!(fxλ, 1, x̄, 1, size(𝐒ⁱ,2))
         copyto!(fxλ, size(𝐒ⁱ,2) + 1, x̂, 1, size(shock_independent,1))
-        
         # fXλ = [(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
                 # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]
 
@@ -460,7 +459,9 @@ function find_shocks(::Val{:SLSQP},
         return initial_guess, false
     end
 
-    y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x)
+    ℒ.kron!(kron_buffer, x, x)
+
+    y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * kron_buffer
 
     norm1 = ℒ.norm(y)
 
@@ -539,7 +540,7 @@ function find_shocks(::Val{:SLSQP},
 
     # opt.xtol_abs = eps()
     # opt.ftol_abs = eps()
-    # opt.constrtol_abs = eps()
+    # opt.constrtol_abs = eps() # doesnt work
     # opt.xtol_rel = eps()
     # opt.ftol_rel = eps()
     opt.maxeval = max_iter
@@ -551,6 +552,8 @@ function find_shocks(::Val{:SLSQP},
     catch
         return initial_guess, false
     end
+
+    # println("SLSQP - retcode: $ret, nevals: $(opt.numevals)")
 
     y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
 
@@ -566,8 +569,8 @@ function find_shocks(::Val{:SLSQP},
         NLopt.ROUNDOFF_LIMITED,
     ])
 
-    # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
-    # println([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+    # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
+    # println([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
     # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))])
     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
@@ -611,7 +614,7 @@ function find_shocks(::Val{:COBYLA},
     # opt.ftol_abs = eps()
     # opt.xtol_rel = eps()
     # opt.ftol_rel = eps()
-    # opt.constrtol_abs = eps()
+    # opt.constrtol_abs = eps() # doesnt work
     opt.maxeval = max_iter
 
     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
@@ -681,6 +684,9 @@ function find_shocks(::Val{:COBYLA},
 
     # opt.xtol_abs = eps()
     # opt.ftol_abs = eps()
+    # opt.xtol_rel = eps()
+    # opt.ftol_rel = eps()
+    # opt.constrtol_abs = eps() # doesnt work
     opt.maxeval = max_iter
 
     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
@@ -703,8 +709,8 @@ function find_shocks(::Val{:COBYLA},
         NLopt.ROUNDOFF_LIMITED,
     ])
 
-    # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
-    # println([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+    # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
+    # println([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
     # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))])
     # println("COBYLA: $(opt.numevals)")
     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
