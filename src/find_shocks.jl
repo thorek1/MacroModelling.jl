@@ -1,7 +1,7 @@
 # Algorithms
 # - LagrangeNewton: fast, but no guarantee of convergence to global minimum
-# - COBYLA: best known chances of convergence to global minimum; ok speed for third order
-# - SLSQP: relatively slow and not guaranteed to converge to global minimum
+# - COBYLA: best known chances of convergence to global minimum; ok speed for third order; lower tol on constraints (1e-6)
+# - SLSQP: relatively slow and not guaranteed to converge to global minimum; lower tol on constraints (1e-6)
 
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
@@ -240,7 +240,7 @@ function find_shocks(::Val{:LagrangeNewton},
         copy!(∂x̂, ∂x)
 
         ℒ.mul!(∂x, 𝐒ⁱ³ᵉ, kron_buffer3, -1, 1)
-        ℒ.mul!(∂x̂, 𝐒ⁱ³ᵉ, kron_buffer3, 3, 1)
+        ℒ.mul!(∂x̂, 𝐒ⁱ³ᵉ, kron_buffer3, -3, -1)
 
         ℒ.mul!(x̄, ∂x', λ)
         
@@ -261,11 +261,11 @@ function find_shocks(::Val{:LagrangeNewton},
 
         fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp#2 * 𝐒ⁱ²ᵉ' * λ
         # fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] -= 2 * ℒ.I(size(𝐒ⁱ, 2))
-        fxλp[1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] = ∂x̂'
+        fxλp[1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] = ∂x'
 
-        ℒ.rmul!(∂x̂, -1)
+        # ℒ.rmul!(∂x̂, -1)
         fxλp[size(𝐒ⁱ, 2)+1:end, 1:size(𝐒ⁱ, 2)] = ∂x̂
-        # fXλp = [reshape(2 * (𝐒ⁱ²ᵉ - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(ℒ.I(length(x)),x)))' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))'
+        # fXλp = [reshape(2 * (𝐒ⁱ²ᵉ - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(ℒ.I(length(x)),x)))' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))'
         #         -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
         
         f̂xλp = try 
@@ -322,6 +322,8 @@ function find_shocks(::Val{:LagrangeNewton},
     end
 
     # println(λ)
+    # println([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+    # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))])
     # println(fxλp)
     # println(reshape(tmp, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2)))
     # println([reshape((2 * 𝐒ⁱ²ᵉ - 2 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(ℒ.I(length(x)),x)))' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))'
@@ -372,16 +374,18 @@ function rrule(::typeof(find_shocks),
 
     ℒ.kron!(kron_buffer², x, kron_buffer)
 
-    λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
+    tmp = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer)
 
-    tmp = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer)
+    λ = tmp' \ x * 2
+
+    tmp2 = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer)
 
     fXλp = [reshape(2 * (𝐒ⁱ²ᵉ - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(ℒ.I(length(x)),x)))' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  tmp'
-    -tmp  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
+    -tmp2  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
 
-    λx = ℒ.kron(λ, x)
+    xλ = ℒ.kron(x,λ)
 
-    λxx = ℒ.kron(λx, x)
+    xxλ = ℒ.kron(x,xλ)
 
     function find_shocks_pullback(∂x)
         ∂x = vcat(∂x[1], zero(λ))
@@ -392,9 +396,9 @@ function rrule(::typeof(find_shocks),
         
         ∂𝐒ⁱ = ℒ.kron(S[1:length(initial_guess)], λ) - ℒ.kron(x, S[length(initial_guess)+1:end])
 
-        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], λx) - ℒ.kron(kron_buffer, S[length(initial_guess)+1:end])
+        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], xλ) - ℒ.kron(kron_buffer, S[length(initial_guess)+1:end])
         
-        ∂𝐒ⁱ³ᵉ = - ℒ.kron(S[1:length(initial_guess)], λxx) - ℒ.kron(kron_buffer², S[length(initial_guess)+1:end])
+        ∂𝐒ⁱ³ᵉ = - ℒ.kron(S[1:length(initial_guess)], xxλ) - ℒ.kron(kron_buffer²,S[length(initial_guess)+1:end])
 
         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  ∂𝐒ⁱ, ∂𝐒ⁱ²ᵉ, ∂𝐒ⁱ³ᵉ, ∂shock_independent, NoTangent(), NoTangent()
     end
@@ -522,8 +526,8 @@ function find_shocks(::Val{:SLSQP},
 
             ℒ.mul!(jac', 𝐒ⁱ²ᵉ, kron_buffer2, 2, 1)
 
-            ℒ.mul!(jac', 𝐒ⁱ³ᵉ, kron_buffer3, 1, -1)
-            # jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(J, x) - 𝐒ⁱ³ᵉ * ℒ.kron(J, ℒ.kron(x,x)))'
+            ℒ.mul!(jac', 𝐒ⁱ³ᵉ, kron_buffer3, -3, -1)
+            # jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(J, x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(J, ℒ.kron(x,x)))'
         end
 
         ℒ.mul!(res, 𝐒ⁱ, x)
@@ -566,6 +570,9 @@ function find_shocks(::Val{:SLSQP},
         NLopt.ROUNDOFF_LIMITED,
     ])
 
+    # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
+    # println([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+    # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))])
     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
 end
@@ -697,6 +704,9 @@ function find_shocks(::Val{:COBYLA},
         NLopt.ROUNDOFF_LIMITED,
     ])
 
+    # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
+    # println([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+    # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))])
     # println("COBYLA: $(opt.numevals)")
     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
 
