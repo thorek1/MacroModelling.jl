@@ -14,6 +14,10 @@ import Accessors
 # import Memoization: @memoize
 # import LRUCache: LRU
 
+# for find shocks
+# import JuMP
+# import MadNLP
+# import Ipopt
 # import AbstractDifferentiation as 𝒜
 import DifferentiationInterface as 𝒟
 import ForwardDiff as ℱ
@@ -9027,6 +9031,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
     e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
 
+    tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
+    shockvar_idxs = tmp.nzind
+    
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
 
@@ -9052,12 +9059,14 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,var_vol²_idxs]
     𝐒²⁻ = 𝐒[2][cond_var_idx,var²_idxs]
     𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,shockvar²_idxs]
+    𝐒²⁻ᵛᵉ = 𝐒[2][cond_var_idx,shockvar_idxs]
     𝐒²ᵉ = 𝐒[2][cond_var_idx,shock²_idxs]
     𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
 
     𝐒²⁻ᵛ    = length(𝐒²⁻ᵛ.nzval)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
     𝐒²⁻     = length(𝐒²⁻.nzval)     / length(𝐒²⁻)   > .1 ? collect(𝐒²⁻)     : 𝐒²⁻
     𝐒²⁻ᵉ    = length(𝐒²⁻ᵉ.nzval)    / length(𝐒²⁻ᵉ)  > .1 ? collect(𝐒²⁻ᵉ)    : 𝐒²⁻ᵉ
+    𝐒²⁻ᵛᵉ   = length(𝐒²⁻ᵛᵉ.nzval)   / length(𝐒²⁻ᵛᵉ) > .1 ? collect(𝐒²⁻ᵛᵉ)   : 𝐒²⁻ᵛᵉ
     𝐒²ᵉ     = length(𝐒²ᵉ.nzval)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
     𝐒⁻²     = length(𝐒⁻².nzval)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
 
@@ -9132,11 +9141,11 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
         ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
         
-        ℒ.mul!(shock_independent, 𝐒²⁻, ℒ.kron(state¹⁻, state²⁻), -1/2, 1)
+        ℒ.mul!(shock_independent, 𝐒²⁻, ℒ.kron(state¹⁻, state²⁻), -1, 1)
         
         ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
 
-        𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
+        𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(ℒ.I(T.nExo), state²⁻) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
     
         𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), ℒ.I(T.nExo)), state¹⁻_vol) / 2
 
@@ -9164,52 +9173,60 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         # println("$filter_algorithm: $matched; current x: $x, $(ℒ.norm(x))")
         # if !matched
 
-        if filter_algorithm ≠ :COBYLA
-            x̂, matched2 = find_shocks(Val(:COBYLA), 
-                                zeros(size(𝐒ⁱ, 2)),
-                                kron_buffer,
-                                kron_buffer²,
-                                kron_buffer2,
-                                kron_buffer3,
-                                kron_buffer4,
-                                J,
-                                𝐒ⁱ,
-                                𝐒ⁱ²ᵉ,
-                                𝐒ⁱ³ᵉ,
-                                shock_independent,
-                                # max_iter = 5000
-                                )
-            if ℒ.norm(x̂) * (1 - eps(Float32)) < ℒ.norm(x)
-                x̄, matched3 = find_shocks(Val(filter_algorithm), 
-                                    x̂,
-                                    kron_buffer,
-                                    kron_buffer²,
-                                    kron_buffer2,
-                                    kron_buffer3,
-                                    kron_buffer4,
-                                    J,
-                                    𝐒ⁱ,
-                                    𝐒ⁱ²ᵉ,
-                                    𝐒ⁱ³ᵉ,
-                                    shock_independent,
-                                    # max_iter = 200
-                                    )
+        # backup_solver = :COBYLA
+
+        # if filter_algorithm ≠ backup_solver
+        #     x̂, matched2 = find_shocks(Val(backup_solver), 
+        #                         zeros(size(𝐒ⁱ, 2)),
+        #                         kron_buffer,
+        #                         kron_buffer²,
+        #                         kron_buffer2,
+        #                         kron_buffer3,
+        #                         kron_buffer4,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         𝐒ⁱ³ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 5000
+        #                         )
+        #     if ℒ.norm(x̂) * (1 - eps(Float32)) < ℒ.norm(x)
+        #         x̄, matched3 = find_shocks(Val(filter_algorithm), 
+        #                             x̂,
+        #                             kron_buffer,
+        #                             kron_buffer²,
+        #                             kron_buffer2,
+        #                             kron_buffer3,
+        #                             kron_buffer4,
+        #                             J,
+        #                             𝐒ⁱ,
+        #                             𝐒ⁱ²ᵉ,
+        #                             𝐒ⁱ³ᵉ,
+        #                             shock_independent,
+        #                             # max_iter = 200
+        #                             )
                               
-                if matched3 && ℒ.norm(x̄) * (1 - eps(Float32)) < ℒ.norm(x̂)
-                    # println("$i - LagrangeNewton restart - $matched3: $(ℒ.norm(x̄)), $(ℒ.norm(x̂)), $(ℒ.norm(x))")
-                    x = x̄
-                    matched = matched3
-                elseif matched2
-                    # println("$i - COBYLA - $matched2: $(ℒ.norm(x̄)), $(ℒ.norm(x̂)), $(ℒ.norm(x))")
-                    x = x̂
-                    matched = matched2
-                # else
-                    # println("$i - stay with $filter_algorithm - $matched")
-                end
-            # else
-                # println("$i - stay with $filter_algorithm, $(ℒ.norm(x)), $(ℒ.norm(x̂))")
-            end
-        end
+        #         if matched3 && ℒ.norm(x̄) * (1 - eps(Float32)) < ℒ.norm(x̂)
+        #             println("$i - $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm ($matched) - $(ℒ.norm(x))")
+        #             x = x̄
+        #             matched = matched3
+        #         elseif matched2
+        #             println("$i - $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), $filter_algorithm ($matched) - $(ℒ.norm(x))")
+        #             x = x̂
+        #             matched = matched2
+        #         else
+        #             y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
+
+        #             norm1 = ℒ.norm(y)
+
+        #             norm2 = ℒ.norm(shock_independent)
+
+        #             println("$i - $filter_algorithm ($matched) - $(ℒ.norm(x)), $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), residual norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
+        #         end
+        #     else
+        #         println("$i - $filter_algorithm ($matched) - $(ℒ.norm(x)), $backup_solver ($matched2) - $(ℒ.norm(x̂))")
+        #     end
+        # end
 
         if !matched
             return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
@@ -9299,6 +9316,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         
         kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
 
+        # res = 𝐒[1][cond_var_idx,:] * aug_state₁   +   𝐒[1][cond_var_idx,:] * aug_state₂ + 𝐒[2][cond_var_idx,:] * kron_aug_state₁ / 2   +   𝐒[1][cond_var_idx,:] * aug_state₃ + 𝐒[2][cond_var_idx,:] * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒[3][cond_var_idx,:] * ℒ.kron(kron_aug_state₁,aug_state₁) / 6 - data_in_deviations[:,i]
+        # println("Match with data: $res")
+        
         state = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * kron_aug_state₁ / 2, 𝐒⁻¹ * aug_state₃ + 𝐒⁻² * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒⁻³ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
     end
 
@@ -9456,52 +9476,60 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
         # println("$filter_algorithm: $matched; current x: $x, $(ℒ.norm(x))")
         # if !matched
 
-        if filter_algorithm ≠ :COBYLA
-            x̂, matched2 = find_shocks(Val(:COBYLA), 
-                                zeros(size(𝐒ⁱ, 2)),
-                                kron_buffer,
-                                kron_buffer²,
-                                kron_buffer2,
-                                kron_buffer3,
-                                kron_buffer4,
-                                J,
-                                𝐒ⁱ,
-                                𝐒ⁱ²ᵉ,
-                                𝐒ⁱ³ᵉ,
-                                shock_independent,
-                                # max_iter = 500
-                                )
-            if ℒ.norm(x̂) * (1 - eps(Float32)) < ℒ.norm(x)
-                x̄, matched3 = find_shocks(Val(filter_algorithm), 
-                                    x̂,
-                                    kron_buffer,
-                                    kron_buffer²,
-                                    kron_buffer2,
-                                    kron_buffer3,
-                                    kron_buffer4,
-                                    J,
-                                    𝐒ⁱ,
-                                    𝐒ⁱ²ᵉ,
-                                    𝐒ⁱ³ᵉ,
-                                    shock_independent,
-                                    # max_iter = 200
-                                    )
+        # backup_solver = :COBYLA
+
+        # if filter_algorithm ≠ backup_solver
+        #     x̂, matched2 = find_shocks(Val(backup_solver), 
+        #                         zeros(size(𝐒ⁱ, 2)),
+        #                         kron_buffer,
+        #                         kron_buffer²,
+        #                         kron_buffer2,
+        #                         kron_buffer3,
+        #                         kron_buffer4,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         𝐒ⁱ³ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 5000
+        #                         )
+        #     if ℒ.norm(x̂) * (1 - eps(Float32)) < ℒ.norm(x)
+        #         x̄, matched3 = find_shocks(Val(filter_algorithm), 
+        #                             x̂,
+        #                             kron_buffer,
+        #                             kron_buffer²,
+        #                             kron_buffer2,
+        #                             kron_buffer3,
+        #                             kron_buffer4,
+        #                             J,
+        #                             𝐒ⁱ,
+        #                             𝐒ⁱ²ᵉ,
+        #                             𝐒ⁱ³ᵉ,
+        #                             shock_independent,
+        #                             # max_iter = 200
+        #                             )
                               
-                if matched3 && ℒ.norm(x̄) * (1 - eps(Float32)) < ℒ.norm(x̂)
-                    # println("$i - LagrangeNewton restart - $matched3: $(ℒ.norm(x̄)), $(ℒ.norm(x̂)), $(ℒ.norm(x))")
-                    x = x̄
-                    matched = matched3
-                elseif matched2
-                    # println("$i - COBYLA - $matched2: $(ℒ.norm(x̄)), $(ℒ.norm(x̂)), $(ℒ.norm(x))")
-                    x = x̂
-                    matched = matched2
-                # else
-                    # println("$i - stay with $filter_algorithm - $matched")
-                end
-            # else
-                # println("$i - stay with $filter_algorithm, $(ℒ.norm(x)), $(ℒ.norm(x̂))")
-            end
-        end
+        #         if matched3 && ℒ.norm(x̄) * (1 - eps(Float32)) < ℒ.norm(x̂)
+        #             println("$i - $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm ($matched) - $(ℒ.norm(x))")
+        #             x = x̄
+        #             matched = matched3
+        #         elseif matched2
+        #             println("$i - $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), $filter_algorithm ($matched) - $(ℒ.norm(x))")
+        #             x = x̂
+        #             matched = matched2
+        #         else
+        #             y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
+
+        #             norm1 = ℒ.norm(y)
+
+        #             norm2 = ℒ.norm(shock_independent)
+
+        #             println("$i - $filter_algorithm ($matched) - $(ℒ.norm(x)), $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), residual norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
+        #         end
+        #     else
+        #         println("$i - $filter_algorithm ($matched) - $(ℒ.norm(x)), $backup_solver ($matched2) - $(ℒ.norm(x̂))")
+        #     end
+        # end
 
         if !matched
             return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
@@ -9588,9 +9616,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
 
         aug_state = [state; 1; x]
 
-
         # res = 𝐒[1][cond_var_idx, :] * aug_state + 𝐒[2][cond_var_idx, :] * ℒ.kron(aug_state, aug_state) / 2 + 𝐒[3][cond_var_idx, :] * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6 - data_in_deviations[:,i]
-        
         # println("Match with data: $res")
 
         state = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2 + 𝐒⁻³ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
@@ -9769,6 +9795,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
         aug_state₁ = [state[1]; 1; x]
         aug_state₂ = [state[2]; 0; zero(x)]
 
+        # res = 𝐒[1][cond_var_idx,:] * aug_state₁   +   𝐒[1][cond_var_idx,:] * aug_state₂ + 𝐒[2][cond_var_idx,:] * ℒ.kron(aug_state₁, aug_state₁) / 2  - data_in_deviations[:,i]
+        # println("Match with data: $res")
+
         state = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
         # state = state_update(state, x)
     end
@@ -9936,6 +9965,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
         end
 
         aug_state = [state; 1; x]
+
+        # res = 𝐒[1][cond_var_idx, :] * aug_state + 𝐒[2][cond_var_idx, :] * ℒ.kron(aug_state, aug_state) / 2 - data_in_deviations[:,i]
+        # println("Match with data: $res")
 
         state = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2
     end
