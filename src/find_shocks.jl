@@ -160,7 +160,7 @@ function rrule(::typeof(find_shocks),
 
     ℒ.kron!(kron_buffer, x, x)
 
-    λx = ℒ.kron(λ, x)
+    xλ = ℒ.kron(x,λ)
 
     function find_shocks_pullback(∂x)
         ∂x = vcat(∂x[1], zero(λ))
@@ -170,8 +170,8 @@ function rrule(::typeof(find_shocks),
         ∂shock_independent = S[length(initial_guess)+1:end]
         
         ∂𝐒ⁱ =  ℒ.kron(S[1:length(initial_guess)], λ) - ℒ.kron(x, S[length(initial_guess)+1:end])
-
-        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], λx) - ℒ.kron(kron_buffer, S[length(initial_guess)+1:end])
+        
+        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], xλ) - ℒ.kron(kron_buffer, S[length(initial_guess)+1:end])
 
         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  ∂𝐒ⁱ, ∂𝐒ⁱ²ᵉ, ∂shock_independent, NoTangent(), NoTangent()
     end
