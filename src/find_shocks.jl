@@ -1,7 +1,7 @@
 # Algorithms
 # - LagrangeNewton: fast, but no guarantee of convergence to global minimum
-# - COBYLA: best known chances of convergence to global minimum; ok speed for third order; lower tol on constraints (1e-6)
-# - SLSQP: relatively slow and not guaranteed to converge to global minimum; lower tol on constraints (1e-6)
+# - COBYLA: best known chances of convergence to global minimum; ok speed for third order; lower tol on optimality condition (1e-6)
+# - SLSQP: relatively slow and not guaranteed to converge to global minimum; lower tol on optimality condition (1e-6)
 
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
