@@ -450,13 +450,12 @@ function find_shocks(::Val{:SLSQP},
         # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
     end
     
-    # opt = NLopt.Opt(NLopt.:LN_COBYLA, size(𝐒ⁱ,2))
     opt = NLopt.Opt(NLopt.:LD_SLSQP, size(𝐒ⁱ,2))
                     
     opt.min_objective = objective_optim_fun
 
-    opt.xtol_abs = eps()
-    opt.ftol_abs = eps()
+    # opt.xtol_abs = eps()
+    # opt.ftol_abs = eps()
     opt.maxeval = max_iter
 
     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
@@ -544,8 +543,11 @@ function find_shocks(::Val{:SLSQP},
                     
     opt.min_objective = objective_optim_fun
 
-    opt.xtol_abs = eps()
-    opt.ftol_abs = eps()
+    # opt.xtol_abs = eps()
+    # opt.ftol_abs = eps()
+    # opt.constrtol_abs = eps()
+    # opt.xtol_rel = eps()
+    # opt.ftol_rel = eps()
     opt.maxeval = max_iter
 
     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
@@ -611,8 +613,11 @@ function find_shocks(::Val{:COBYLA},
                     
     opt.min_objective = objective_optim_fun
 
-    opt.xtol_abs = eps()
-    opt.ftol_abs = eps()
+    # opt.xtol_abs = eps()
+    # opt.ftol_abs = eps()
+    # opt.xtol_rel = eps()
+    # opt.ftol_rel = eps()
+    # opt.constrtol_abs = eps()
     opt.maxeval = max_iter
 
     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
@@ -680,8 +685,8 @@ function find_shocks(::Val{:COBYLA},
                     
     opt.min_objective = objective_optim_fun
 
-    opt.xtol_abs = eps()
-    opt.ftol_abs = eps()
+    # opt.xtol_abs = eps()
+    # opt.ftol_abs = eps()
     opt.maxeval = max_iter
 
     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
