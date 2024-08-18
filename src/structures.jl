@@ -388,7 +388,9 @@ mutable struct ℳ
     model_jacobian_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
     # model_jacobian::FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}#{typeof(model_jacobian)}
     model_hessian::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    model_hessian_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
     model_third_order_derivatives::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    model_third_order_derivatives_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
 
     timings::timings
 

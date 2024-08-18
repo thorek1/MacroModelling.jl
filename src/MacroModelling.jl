@@ -3805,7 +3805,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
     
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
 
@@ -4091,7 +4091,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
     
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol, sylvester_algorithm = sylvester_algorithm, verbose= verbose)
 
@@ -4099,7 +4099,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
 
@@ -5158,6 +5158,49 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
             𝓂.model_hessian = (funcs, sparse(row2, column2, zero(column2), length(eqs_sub), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
         end
+
+        # derivative of hessian wrt SS_and_pars and parameters
+        eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), second_order)
+
+        ∂hessian_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(final_indices))]), simplify = false) # |> findnz
+
+        idx_conversion = (row2 + length(eqs) * (column2 .- 1))
+
+        cols, rows, vals = findnz(∂hessian_∂SS_and_pars) #transposed
+
+        converted_cols = idx_conversion[cols]
+
+        perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
+
+        min_n_funcs = length(vals) ÷ max_exprs_per_func + 1
+
+        funcs = Function[]
+
+        lk = ReentrantLock()
+
+        if min_n_funcs == 1
+            push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
+        else
+            Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
+                indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
+
+                indices = length(indices) == 1 ? indices[1] : indices
+
+                func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
+
+                begin
+                    lock(lk)
+                    try
+                        push!(funcs, func)
+                    finally
+                        unlock(lk)
+                    end
+                end
+            end
+        end
+
+        𝓂.model_hessian_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
+
     end
 
     if max_perturbation_order == 3
@@ -5198,6 +5241,48 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
             𝓂.model_third_order_derivatives = (funcs, sparse(row3, column3, zero(column3), length(eqs_sub), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)))
         end
+
+        # derivative of third order wrt SS_and_pars and parameters
+        eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), third_order)
+
+        ∂third_order_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(final_indices))]), simplify = false) # |> findnz
+
+        idx_conversion = (row3 + length(eqs) * (column3 .- 1))
+
+        cols, rows, vals = findnz(∂third_order_∂SS_and_pars) #transposed
+
+        converted_cols = idx_conversion[cols]
+
+        perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
+
+        min_n_funcs = length(vals) ÷ max_exprs_per_func + 1
+
+        funcs = Function[]
+
+        lk = ReentrantLock()
+
+        if min_n_funcs == 1
+            push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
+        else
+            Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
+                indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
+
+                indices = length(indices) == 1 ? indices[1] : indices
+
+                func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
+
+                begin
+                    lock(lk)
+                    try
+                        push!(funcs, func)
+                    finally
+                        unlock(lk)
+                    end
+                end
+            end
+        end
+
+        𝓂.model_third_order_derivatives_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)))
     end
 
     return nothing
@@ -5738,13 +5823,13 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
     
         Accessors.@reset 𝓂.model_jacobian_SS_and_pars_vars[2].nzval = vals
         
-        analytical_jac_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        analytical_jacobian_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
-        cols_unique = unique(findnz(analytical_jac_SS_and_pars_vars)[2])
+        cols_unique = unique(findnz(analytical_jacobian_SS_and_pars_vars)[2])
 
         v∂∇₁ = ∂∇₁[cols_unique]
 
-        ∂parameters_and_SS_and_pars = analytical_jac_SS_and_pars_vars[:,cols_unique] * v∂∇₁
+        ∂parameters_and_SS_and_pars = analytical_jacobian_SS_and_pars_vars[:,cols_unique] * v∂∇₁
 
         return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
     end
@@ -5804,7 +5889,7 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
 
     Accessors.@reset 𝓂.model_hessian[2].nzval = vals
     
-    return 𝓂.model_hessian[2] * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+    return 𝓂.model_hessian[2]# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 
     # vals = M[]
     # rows = Int[]
@@ -5825,6 +5910,36 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     # sparse!(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 end
 
+
+function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
+    hessian = calculate_hessian(parameters, SS_and_pars, 𝓂)
+
+    function calculate_hessian_pullback(∂∇₁)
+        X = [parameters; SS_and_pars]
+
+        vals = zeros(Float64, length(𝓂.model_hessian_SS_and_pars_vars[1]))
+
+        Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian_SS_and_pars_vars[1]
+            out = f(X)
+            
+            @inbounds vals[out[2]] = out[1]
+        end
+    
+        Accessors.@reset 𝓂.model_hessian_SS_and_pars_vars[2].nzval = vals
+        
+        analytical_hessian_SS_and_pars_vars = 𝓂.model_hessian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+
+        cols_unique = unique(findnz(analytical_hessian_SS_and_pars_vars)[2])
+
+        v∂∇₁ = ∂∇₁[cols_unique]
+
+        ∂parameters_and_SS_and_pars = analytical_hessian_SS_and_pars_vars[:,cols_unique] * v∂∇₁
+
+        return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
+    end
+
+    return hessian, calculate_hessian_pullback
+end
 
 
 function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ) where {M,N}
@@ -5879,7 +5994,7 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
 
     Accessors.@reset 𝓂.model_third_order_derivatives[2].nzval = vals
     
-    return 𝓂.model_third_order_derivatives[2] * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    return 𝓂.model_third_order_derivatives[2]# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 
     # vals = M[]
     # rows = Int[]
@@ -5898,6 +6013,36 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
     # sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 end
 
+
+function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_pars, 𝓂)
+    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
+
+    function calculate_third_order_derivatives_pullback(∂∇₁)
+        X = [parameters; SS_and_pars]
+
+        vals = zeros(Float64, length(𝓂.model_third_order_derivatives_SS_and_pars_vars[1]))
+
+        Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives_SS_and_pars_vars[1]
+            out = f(X)
+            
+            @inbounds vals[out[2]] = out[1]
+        end
+    
+        Accessors.@reset 𝓂.model_third_order_derivatives_SS_and_pars_vars[2].nzval = vals
+        
+        analytical_third_order_derivatives_SS_and_pars_vars = 𝓂.model_third_order_derivatives_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+
+        cols_unique = unique(findnz(analytical_third_order_derivatives_SS_and_pars_vars)[2])
+
+        v∂∇₁ = ∂∇₁[cols_unique]
+
+        ∂parameters_and_SS_and_pars = analytical_third_order_derivatives_SS_and_pars_vars[:,cols_unique] * v∂∇₁
+
+        return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
+    end
+
+    return third_order_derivatives, calculate_third_order_derivatives_pullback
+end
 
 
 function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = eps())
@@ -7140,7 +7285,7 @@ function calculate_mean(parameters::Vector{T},
     
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
     
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
 
@@ -7237,7 +7382,7 @@ function calculate_second_order_moments(
     e⁴ = quadrup * E_e⁴
 
     # second order
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
 
@@ -7350,7 +7495,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
     end
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
@@ -9155,6 +9300,19 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
         init_guess = zeros(size(𝐒ⁱ, 2))
 
+
+        # x² , matched = find_shocks(Val(filter_algorithm), 
+        #                         init_guess,
+        #                         kron_buffer,
+        #                         kron_buffer2,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 200
+        #                         )
+        #                         println(x²)
+
         x, matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kron_buffer,
@@ -9170,6 +9328,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                 # max_iter = 200
                                 )
                                 
+                                # println(x)
         # println("$filter_algorithm: $matched; current x: $x, $(ℒ.norm(x))")
         # if !matched
 
@@ -9206,25 +9365,25 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         #                             # max_iter = 200
         #                             )
                               
-        #         if matched3 && ℒ.norm(x̄) * (1 - eps(Float32)) < ℒ.norm(x̂)
-        #             println("$i - $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm ($matched) - $(ℒ.norm(x))")
+        #         if matched3 && (!matched || ℒ.norm(x̄) * (1 - eps(Float32)) < ℒ.norm(x̂) || (matched && ℒ.norm(x̄) * (1 - eps(Float32)) < ℒ.norm(x)))
+        #             # println("$i - $filter_algorithm restart - $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm ($matched) - $(ℒ.norm(x))")
         #             x = x̄
         #             matched = matched3
         #         elseif matched2
-        #             println("$i - $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), $filter_algorithm ($matched) - $(ℒ.norm(x))")
+        #             # println("$i - $backup_solver - $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm ($matched) - $(ℒ.norm(x))")
         #             x = x̂
         #             matched = matched2
-        #         else
-        #             y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
+        #         # else
+        #         #     y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
 
-        #             norm1 = ℒ.norm(y)
+        #         #     norm1 = ℒ.norm(y)
 
-        #             norm2 = ℒ.norm(shock_independent)
+        #         #     norm2 = ℒ.norm(shock_independent)
 
-        #             println("$i - $filter_algorithm ($matched) - $(ℒ.norm(x)), $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), residual norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
+        #             # println("$i - $filter_algorithm - $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm ($matched) - $(ℒ.norm(x))")#, residual norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
         #         end
-        #     else
-        #         println("$i - $filter_algorithm ($matched) - $(ℒ.norm(x)), $backup_solver ($matched2) - $(ℒ.norm(x̂))")
+        #     # else
+        #     #     println("$i - $filter_algorithm ($matched) - $(ℒ.norm(x)), $backup_solver ($matched2) - $(ℒ.norm(x̂))")
         #     end
         # end
 
@@ -9319,7 +9478,10 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         # res = 𝐒[1][cond_var_idx,:] * aug_state₁   +   𝐒[1][cond_var_idx,:] * aug_state₂ + 𝐒[2][cond_var_idx,:] * kron_aug_state₁ / 2   +   𝐒[1][cond_var_idx,:] * aug_state₃ + 𝐒[2][cond_var_idx,:] * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒[3][cond_var_idx,:] * ℒ.kron(kron_aug_state₁,aug_state₁) / 6 - data_in_deviations[:,i]
         # println("Match with data: $res")
         
+        # println(ℒ.norm(x))
+
         state = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * kron_aug_state₁ / 2, 𝐒⁻¹ * aug_state₃ + 𝐒⁻² * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒⁻³ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+        # println(sum(state))
     end
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
