@@ -311,11 +311,17 @@ function find_shocks(::Val{:LagrangeNewton},
             return x, false
         end
         # if i == max_iter
-        #     println("LagrangeNewton: $i, Max iter reached")
+            # println("LagrangeNewton: $i, Max iter reached")
         #     # println(ℒ.norm(Δxλ))
         # end
     end
 
+    # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
+    # println("LagrangeNewton: $(ℒ.norm([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+    # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]))")
+
+    # println(ℒ.norm(x))
+    # println(x)
     # println(λ)
     # println([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) - 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
     # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))])
@@ -326,7 +332,7 @@ function find_shocks(::Val{:LagrangeNewton},
     # println(fxλp)
     # println("Norm: $(ℒ.norm(x̂) / max(norm1,norm2))")
     # println(ℒ.norm(Δxλ))
-    # println(ℒ.norm(Δxλ) / ℒ.norm(xλ))
+    # println(ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol)
     return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol
 end
 
@@ -468,6 +474,7 @@ function find_shocks(::Val{:SLSQP},
 	norm2 = ℒ.norm(shock_independent)
 
     solved = ret ∈ Symbol.([
+        # NLopt.MAXEVAL_REACHED,
         NLopt.SUCCESS,
         NLopt.STOPVAL_REACHED,
         NLopt.FTOL_REACHED,
@@ -475,6 +482,7 @@ function find_shocks(::Val{:SLSQP},
         NLopt.ROUNDOFF_LIMITED,
     ])
 
+    # println(ℒ.norm(x))
     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
 end
@@ -562,6 +570,7 @@ function find_shocks(::Val{:SLSQP},
 	norm2 = ℒ.norm(shock_independent)
 
     solved = ret ∈ Symbol.([
+        # NLopt.MAXEVAL_REACHED,
         NLopt.SUCCESS,
         NLopt.STOPVAL_REACHED,
         NLopt.FTOL_REACHED,
@@ -569,9 +578,10 @@ function find_shocks(::Val{:SLSQP},
         NLopt.ROUNDOFF_LIMITED,
     ])
 
+    # println(ℒ.norm(x))
     # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
-    # println([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
-    # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))])
+    # println("SLSQP - $ret: $(ℒ.norm([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+    # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]))")
     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
 end
@@ -708,10 +718,11 @@ function find_shocks(::Val{:COBYLA},
         NLopt.XTOL_REACHED,
         NLopt.ROUNDOFF_LIMITED,
     ])
-
+    # println(ℒ.norm(x))
+    # println(x)
     # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
-    # println([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
-    # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))])
+    # println("COBYLA: $(ℒ.norm([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+    # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]))")
     # println("COBYLA: $(opt.numevals)")
     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
 
@@ -720,6 +731,104 @@ end
 
 
 
+
+
+
+
+# function find_shocks(::Val{:MadNLP},
+#                     initial_guess::Vector{Float64},
+#                     kron_buffer::Vector{Float64},
+#                     kron_buffer²::Vector{Float64},
+#                     kron_buffer2::AbstractMatrix{Float64},
+#                     kron_buffer3::AbstractMatrix{Float64},
+#                     kron_buffer4::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
+#                     𝐒ⁱ::AbstractMatrix{Float64},
+#                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
+#                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
+#                     shock_independent::Vector{Float64};
+#                     max_iter::Int = 500,
+#                     tol::Float64 = 1e-14) # will fail for higher or lower precision
+#     model = JuMP.Model(MadNLP.Optimizer)
+
+#     JuMP.set_silent(model)
+
+#     JuMP.set_optimizer_attribute(model, "tol", tol)
+
+#     JuMP.@variable(model, x[1:length(initial_guess)])
+
+#     JuMP.set_start_value.(x, initial_guess)
+
+#     JuMP.@objective(model, Min, sum(abs2,x))
+
+#     JuMP.@constraint(model, 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)) .== shock_independent)
+
+#     JuMP.optimize!(model)
+
+#     x = JuMP.value.(x)
+
+#     y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
+
+#     norm1 = ℒ.norm(y)
+
+# 	norm2 = ℒ.norm(shock_independent)
+
+#     # println(ℒ.norm(y - shock_independent) / max(norm1,norm2))
+#     # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
+#     # println("SLSQP - $ret: $(ℒ.norm([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+#     # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]))")
+#     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
+#     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol
+# end
+
+
+
+
+# function find_shocks(::Val{:Ipopt},
+#                     initial_guess::Vector{Float64},
+#                     kron_buffer::Vector{Float64},
+#                     kron_buffer²::Vector{Float64},
+#                     kron_buffer2::AbstractMatrix{Float64},
+#                     kron_buffer3::AbstractMatrix{Float64},
+#                     kron_buffer4::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
+#                     𝐒ⁱ::AbstractMatrix{Float64},
+#                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
+#                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
+#                     shock_independent::Vector{Float64};
+#                     max_iter::Int = 500,
+#                     tol::Float64 = 1e-14) # will fail for higher or lower precision
+#     model = JuMP.Model(Ipopt.Optimizer)
+
+#     JuMP.set_silent(model)
+
+#     JuMP.set_optimizer_attribute(model, "tol", tol)
+
+#     JuMP.@variable(model, x[1:length(initial_guess)])
+
+#     JuMP.set_start_value.(x, initial_guess)
+
+#     JuMP.@objective(model, Min, sum(abs2,x))
+
+#     JuMP.@constraint(model, 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)) .== shock_independent)
+
+#     JuMP.optimize!(model)
+
+#     x = JuMP.value.(x)
+
+#     y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
+
+#     norm1 = ℒ.norm(y)
+
+# 	norm2 = ℒ.norm(shock_independent)
+
+#     # println(ℒ.norm(y - shock_independent) / max(norm1,norm2))
+#     # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
+#     # println("SLSQP - $ret: $(ℒ.norm([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+#     # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]))")
+#     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
+#     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol
+# end
 
 
 # function find_shocks(::Val{:Newton},
