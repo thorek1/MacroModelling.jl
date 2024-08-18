@@ -969,76 +969,76 @@ end
                 
 
 
-function jacobian_wrt_values(A, B)
-    # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
+# function jacobian_wrt_values(A, B)
+#     # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
 
-    # Compute the Kronecker product and subtract from identity
-    C = ℒ.I - ℒ.kron(A, B)
+#     # Compute the Kronecker product and subtract from identity
+#     C = ℒ.I - ℒ.kron(A, B)
 
-    # Extract the row, column, and value indices from C
-    rows, cols, vals = findnz(C)
+#     # Extract the row, column, and value indices from C
+#     rows, cols, vals = findnz(C)
 
-    # Lists to store the 2D indices after the operations
-    final_rows = zeros(Int,length(rows))
-    final_cols = zeros(Int,length(rows))
+#     # Lists to store the 2D indices after the operations
+#     final_rows = zeros(Int,length(rows))
+#     final_cols = zeros(Int,length(rows))
 
-    Threads.@threads for i = 1:length(rows)
-        # Convert the 1D row index to its 2D components
-        i1, i2 = divrem(rows[i]-1, size(B,1)) .+ 1
+#     Threads.@threads for i = 1:length(rows)
+#         # Convert the 1D row index to its 2D components
+#         i1, i2 = divrem(rows[i]-1, size(B,1)) .+ 1
 
-        # Convert the 1D column index to its 2D components
-        j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
+#         # Convert the 1D column index to its 2D components
+#         j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
 
-        # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
-        final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(B,1), size(B,1)), i1, j2, j1, i2) - 1, size(A,1) * size(B,1)) .+ 1
+#         # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
+#         final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(B,1), size(B,1)), i1, j2, j1, i2) - 1, size(A,1) * size(B,1)) .+ 1
 
-        # Store the 2D indices
-        final_rows[i] = final_row
-        final_cols[i] = final_col
-    end
+#         # Store the 2D indices
+#         final_rows[i] = final_row
+#         final_cols[i] = final_col
+#     end
 
-    return sparse(final_rows, final_cols, vals, size(A,1) * size(B,1), size(A,1) * size(B,1))
-end
-
-
+#     return sparse(final_rows, final_cols, vals, size(A,1) * size(B,1), size(A,1) * size(B,1))
+# end
 
 
-function jacobian_wrt_A(A, X)
-    # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
 
-    # Compute the Kronecker product and subtract from identity
-    C = ℒ.kron(ℒ.I(size(A,1)), sparse(A * X))
 
-    # Extract the row, column, and value indices from C
-    rows, cols, vals = findnz(C)
+# function jacobian_wrt_A(A, X)
+#     # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
 
-    # Lists to store the 2D indices after the operations
-    final_rows = zeros(Int,length(rows))
-    final_cols = zeros(Int,length(rows))
+#     # Compute the Kronecker product and subtract from identity
+#     C = ℒ.kron(ℒ.I(size(A,1)), sparse(A * X))
 
-    Threads.@threads for i = 1:length(rows)
-        # Convert the 1D row index to its 2D components
-        i1, i2 = divrem(rows[i]-1, size(A,1)) .+ 1
+#     # Extract the row, column, and value indices from C
+#     rows, cols, vals = findnz(C)
 
-        # Convert the 1D column index to its 2D components
-        j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
+#     # Lists to store the 2D indices after the operations
+#     final_rows = zeros(Int,length(rows))
+#     final_cols = zeros(Int,length(rows))
 
-        # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
-        final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(A,1), size(A,1)), i2, i1, j1, j2) - 1, size(A,1) * size(A,1)) .+ 1
+#     Threads.@threads for i = 1:length(rows)
+#         # Convert the 1D row index to its 2D components
+#         i1, i2 = divrem(rows[i]-1, size(A,1)) .+ 1
 
-        # Store the 2D indices
-        final_rows[i] = final_row
-        final_cols[i] = final_col
-    end
+#         # Convert the 1D column index to its 2D components
+#         j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
 
-    r,c,_ = findnz(A) 
+#         # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
+#         final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(A,1), size(A,1)), i2, i1, j1, j2) - 1, size(A,1) * size(A,1)) .+ 1
+
+#         # Store the 2D indices
+#         final_rows[i] = final_row
+#         final_cols[i] = final_col
+#     end
+
+#     r,c,_ = findnz(A) 
     
-    non_zeros_only = spzeros(Int,size(A,1)^2,size(A,1)^2)
+#     non_zeros_only = spzeros(Int,size(A,1)^2,size(A,1)^2)
     
-    non_zeros_only[CartesianIndex.(r .+ (c.-1) * size(A,1), r .+ (c.-1) * size(A,1))] .= 1
+#     non_zeros_only[CartesianIndex.(r .+ (c.-1) * size(A,1), r .+ (c.-1) * size(A,1))] .= 1
     
-    return sparse(final_rows, final_cols, vals, size(A,1) * size(A,1), size(A,1) * size(A,1)) + ℒ.kron(sparse(X * A'), ℒ.I(size(A,1)))' * non_zeros_only
-end
+#     return sparse(final_rows, final_cols, vals, size(A,1) * size(A,1), size(A,1) * size(A,1)) + ℒ.kron(sparse(X * A'), ℒ.I(size(A,1)))' * non_zeros_only
+# end
 
 
 # # higher order solutions moment helper functions
@@ -6620,6 +6620,172 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     𝐒₂ *= M₂.𝐔₂
 
     return 𝐒₂, solved
+end
+
+
+
+
+function rrule(::typeof(calculate_second_order_solution), 
+                    ∇₁::AbstractMatrix{<: Real}, #first order derivatives
+                    ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
+                    𝑺₁::AbstractMatrix{<: Real},#first order solution
+                    M₂::second_order_auxilliary_matrices;  # aux matrices
+                    T::timings,
+                    sylvester_algorithm::Symbol = :doubling,
+                    tol::AbstractFloat = eps(),
+                    verbose::Bool = false)
+    # 𝐒₂, solved = calculate_second_order_solution(∇₁, #first order derivatives
+    #                                             ∇₂, #second order derivatives
+    #                                             𝑺₁,#first order solution
+    #                                             M₂;  # aux matrices
+    #                                             T = T,
+    #                                             sylvester_algorithm = sylvester_algorithm,
+    #                                             tol = tol,
+    #                                             verbose = verbose)
+
+    # inspired by Levintal
+
+    # Indices and number of variables
+    i₊ = T.future_not_past_and_mixed_idx;
+    i₋ = T.past_not_future_and_mixed_idx;
+
+    n₋ = T.nPast_not_future_and_mixed
+    n₊ = T.nFuture_not_past_and_mixed
+    nₑ = T.nExo;
+    n  = T.nVars
+    nₑ₋ = n₋ + 1 + nₑ
+
+    # 1st order solution
+    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]] |> sparse
+    droptol!(𝐒₁,tol)
+
+    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) spdiagm(ones(nₑ + 1))[1,:] zeros(nₑ + 1, nₑ)];
+    
+    ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
+                                𝐒₁
+                                spdiagm(ones(nₑ₋))[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]];
+
+    𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
+                    zeros(n₋ + n + nₑ, nₑ₋)];
+
+
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+
+    spinv = sparse(inv(∇₁₊𝐒₁➕∇₁₀))
+    droptol!(spinv,tol)
+
+    # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = - ∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = -(mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+
+    X = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
+    droptol!(X,tol)
+
+    ∇₁₊ = @views sparse(∇₁[:,1:n₊] * spdiagm(ones(n))[i₊,:])
+
+    B = spinv * ∇₁₊
+    droptol!(B,tol)
+
+    C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
+    droptol!(C,tol)
+
+    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
+
+    𝐒₂ = sparse(𝐒₂)
+
+    if !solved
+        return 𝐒₂, solved
+    end
+
+    # 𝐒₂ *= M₂.𝐔₂
+
+    Bt = sparse(B')
+
+    Ct = sparse(C')
+
+    function second_order_solution_pullback(∂𝐒₂_solved) 
+        ∂∇₁ = zero(∇₁)
+        ∂𝐒₁ = zero(𝐒₁)
+        ∂spinv = zero(spinv)
+
+        ∂𝐒₂ = ∂𝐒₂_solved[1]
+        
+        # droptol!(∂𝐒₂, eps())
+
+        ∂𝐒₂ *= M₂.𝐔₂'
+
+        ∂X, solved = solve_sylvester_equation(Bt, Ct, ∂𝐒₂, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
+
+        ∂X = sparse(∂X)
+
+        ∂B = -∂X * C' * 𝐒₂'
+
+        ∂C = -𝐒₂' * B' * ∂X
+
+        # C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
+        ∂kron𝐒₁₋╱𝟏ₑ = M₂.𝐔₂' * ∂C * M₂.𝐂₂'
+        tmp = reshape(∂kron𝐒₁₋╱𝟏ₑ, size(𝐒₁₋╱𝟏ₑ, 1), size(𝐒₁₋╱𝟏ₑ, 1), size(𝐒₁₋╱𝟏ₑ, 2), size(𝐒₁₋╱𝟏ₑ, 2))
+        ∂𝐒₁₋╱𝟏ₑ = mapslices(x -> ℒ.dot(𝐒₁₋╱𝟏ₑ,x), tmp; dims = (2, 4))[:,1,:,1]
+        ∂𝐒₁₋╱𝟏ₑ += mapslices(x -> ℒ.dot(𝐒₁₋╱𝟏ₑ,x), tmp; dims = (1, 3))[1,:,1,:]
+        
+        # B = spinv * ∇₁₊
+        ∂∇₁₊ = spinv' * ∂B
+        ∂spinv += ∂B * ∇₁₊'
+        
+        # ∇₁₊ =  sparse(∇₁[:,1:n₊] * spdiagm(ones(n))[i₊,:])
+        ∂∇₁[:,1:n₊] += ∂∇₁₊ * spdiagm(ones(n))[i₊,:]'
+
+        # X = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
+        ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = spinv' * ∂X
+        ∂spinv += ∂X * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹'
+
+
+        # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = - (∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) * M₂.𝐂₂  + ∇₂ * ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔 * M₂.𝐂₂)
+        # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = -(mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+        ∂∇₂ = - (∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ * M₂.𝐂₂' * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)' + ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ * M₂.𝐂₂' * M₂.𝛔' * ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)')
+        
+        ∂kron𝐒₁₊╱𝟎 = - ∇₂' * ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ * M₂.𝐂₂' * M₂.𝛔'
+        tmp = reshape(∂kron𝐒₁₊╱𝟎, size(𝐒₁₊╱𝟎, 1), size(𝐒₁₊╱𝟎, 1), size(𝐒₁₊╱𝟎, 2), size(𝐒₁₊╱𝟎, 2))
+        ∂𝐒₁₊╱𝟎 =  mapslices(x -> ℒ.dot(𝐒₁₊╱𝟎,x), tmp; dims = (2, 4))[:,1,:,1]
+        ∂𝐒₁₊╱𝟎 +=  mapslices(x -> ℒ.dot(𝐒₁₊╱𝟎,x), tmp; dims = (1, 3))[1,:,1,:]
+        
+
+        ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = - ∇₂' * ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ * M₂.𝐂₂'
+        tmp = reshape(∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 1), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 1), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 2), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 2))
+        ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = mapslices(x -> ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,x), tmp; dims = (2, 4))[:,1,:,1]
+        ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ += mapslices(x -> ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,x), tmp; dims = (1, 3))[1,:,1,:]
+        
+
+        # spinv = sparse(inv(∇₁₊𝐒₁➕∇₁₀))
+        ∂∇₁₊𝐒₁➕∇₁₀ = -spinv' * ∂spinv * spinv'
+
+        # ∇₁₊𝐒₁➕∇₁₀ =  -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+        ∂∇₁[:,1:n₊] -= ∂∇₁₊𝐒₁➕∇₁₀ * ℒ.diagm(ones(n))[i₋,:]' * 𝐒₁[i₊,1:n₋]'
+        ∂∇₁[:,range(1,n) .+ n₊] -= ∂∇₁₊𝐒₁➕∇₁₀
+
+        # 𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
+        #                 zeros(n₋ + n + nₑ, nₑ₋)];
+        ∂𝐒₁[i₊,:] += ∂𝐒₁₊╱𝟎[1:length(i₊),:]
+
+        ###### ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ =  [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
+        # ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ =  [ℒ.I(size(𝐒₁,1))[i₊,:] * 𝐒₁ * 𝐒₁₋╱𝟏ₑ
+        #                     𝐒₁
+        #                     spdiagm(ones(nₑ₋))[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]];
+        ∂𝐒₁ += spdiagm(ones(size(𝐒₁,1)))[:,i₊] * ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[1:length(i₊),:] * 𝐒₁₋╱𝟏ₑ'
+        ∂𝐒₁ += ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[length(i₊) .+ (1:size(𝐒₁,1)),:]
+        
+        
+        # 𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) spdiagm(ones(nₑ + 1))[1,:] zeros(nₑ + 1, nₑ)];
+        ∂𝐒₁[i₋,:] += ∂𝐒₁₋╱𝟏ₑ[1:length(i₋), :]
+
+        # 𝐒₁ = [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]
+        ∂𝑺₁ = [∂𝐒₁[:,1:n₋] ∂𝐒₁[:,n₋+2:end]]
+
+        return NoTangent(), ∂∇₁, ∂∇₂, ∂𝑺₁, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        # return NoTangent(), ∂∇₁, ∂∇₂, ∂𝑺₁, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+    end
+
+    # return (1,1), second_order_solution_pullback
+    return (𝐒₂ * M₂.𝐔₂, solved), second_order_solution_pullback
 end
 
 
