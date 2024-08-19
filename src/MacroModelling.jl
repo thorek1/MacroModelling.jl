@@ -3845,7 +3845,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
     else
         nᵉ = 𝓂.timings.nExo
 
-        s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
+        s_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
 
         kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
         
