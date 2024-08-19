@@ -12,7 +12,7 @@ function find_shocks(::Val{:LagrangeNewton},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 1000,
-                    tol::Float64 = 1e-14) # will fail for higher or lower precision
+                    tol::Float64 = 1e-13) # will fail for higher or lower precision
     x = copy(initial_guess)
     
     λ = zeros(size(𝐒ⁱ, 1))
@@ -105,7 +105,7 @@ function find_shocks(::Val{:LagrangeNewton},
         ℒ.axpby!(1, shock_independent, -1, x̂)
 
         if ℒ.norm(x̂) / max(norm1,norm2) < eps() && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol
-            # println("LagrangeNewton: $i, Tol reached")
+            # println("LagrangeNewton: $i, Tol reached, $x")
             break
         end
 
@@ -113,9 +113,9 @@ function find_shocks(::Val{:LagrangeNewton},
             # println("LagrangeNewton: $i, Norm increase")
             return x, false
         end
-        # if i == max_iter
+        # # if i == max_iter
         #     println("LagrangeNewton: $i, Max iter reached")
-        #     # println(ℒ.norm(Δxλ))
+            # println(ℒ.norm(Δxλ) / ℒ.norm(xλ))
         # end
     end
 
@@ -138,7 +138,7 @@ function rrule(::typeof(find_shocks),
                 𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                 shock_independent::Vector{Float64};
                 max_iter::Int = 1000,
-                tol::Float64 = 1e-14)
+                tol::Float64 = 1e-13)
 
     x, matched = find_shocks(Val(:LagrangeNewton),
                             initial_guess,
@@ -194,7 +194,7 @@ function find_shocks(::Val{:LagrangeNewton},
                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 1000,
-                    tol::Float64 = 1e-14) # will fail for higher or lower precision
+                    tol::Float64 = 1e-13) # will fail for higher or lower precision
     x = copy(initial_guess)
 
     λ = zeros(size(𝐒ⁱ, 1))
@@ -354,7 +354,7 @@ function rrule(::typeof(find_shocks),
                 𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
                 shock_independent::Vector{Float64};
                 max_iter::Int = 1000,
-                tol::Float64 = 1e-14)
+                tol::Float64 = 1e-13)
 
     x, matched = find_shocks(Val(:LagrangeNewton),
                             initial_guess,
