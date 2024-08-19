@@ -2024,14 +2024,26 @@ end
 
 
 function expand_steady_state(SS_and_pars::Vector{M},𝓂::ℳ) where M
-    all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    all_variables = @ignore_derivatives sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
-    all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    ignore_derivatives() do
+        all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    end
+
+    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+
+    X = zeros(Int, length(all_variables), length(SS_and_pars))
+
+    ignore_derivatives() do
+        for (i,s) in enumerate(all_variables)
+            idx = indexin([s],NSSS_labels)
+            X[i,idx...] = 1
+        end
+    end
     
-    NSSS_labels = [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
-    
-    [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
+    return X * SS_and_pars
 end
+
 
 
 
@@ -3819,13 +3831,13 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
 
     tmp = (ℒ.I - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed])
 
-    tmp̄ = RF.lu(tmp, check = false)
+    tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
     if !ℒ.issuccess(tmp̄)
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
-    SSSstates = tmp̄ \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx]
+    SSSstates = tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx]
 
     if pruning
         state = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
@@ -10062,19 +10074,22 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
 
         state²⁻ = state[2]#[T.past_not_future_and_mixed_idx]
 
-        shock_independent = copy(data_in_deviations[:,i])
+        # shock_independent = copy(data_in_deviations[:,i])
 
-        ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
+        # ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
         
-        ℒ.mul!(shock_independent, 𝐒¹⁻, state²⁻, -1, 1)
+        # ℒ.mul!(shock_independent, 𝐒¹⁻, state²⁻, -1, 1)
 
-        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
-    
+        # ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
+# println(shock_independent)
+# println((data_in_deviations[:,i] - (𝐒¹⁻ᵛ * state¹⁻_vol + 𝐒¹⁻ * state²⁻ + 𝐒²⁻ᵛ * ℒ.kron(state¹⁻_vol, state¹⁻_vol) / 2)))
+        shock_independent = data_in_deviations[:,i] - (𝐒¹⁻ᵛ * state¹⁻_vol + 𝐒¹⁻ * state²⁻ + 𝐒²⁻ᵛ * ℒ.kron(state¹⁻_vol, state¹⁻_vol) / 2)
+
         𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)  
 
         𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
         
-        init_guess = zeros(size(𝐒ⁱ, 2))
+        init_guess = @ignore_derivatives zeros(size(𝐒ⁱ, 2))
 
         x, matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
@@ -10088,17 +10103,17 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                 )
                      
         # if matched println("$filter_algorithm: $matched; current x: $x") end      
-        if !matched
-            x, matched = find_shocks(Val(:COBYLA), 
-                                    zeros(size(𝐒ⁱ, 2)),
-                                    kron_buffer,
-                                    kron_buffer2,
-                                    J,
-                                    𝐒ⁱ,
-                                    𝐒ⁱ²ᵉ,
-                                    shock_independent,
-                                    # max_iter = 500
-                                    )
+        # if !matched
+        #     x, matched = find_shocks(Val(:COBYLA), 
+        #                             zeros(size(𝐒ⁱ, 2)),
+        #                             kron_buffer,
+        #                             kron_buffer2,
+        #                             J,
+        #                             𝐒ⁱ,
+        #                             𝐒ⁱ²ᵉ,
+        #                             shock_independent,
+        #                             # max_iter = 500
+        #                             )
             # println("COBYLA: $matched; current x: $x")
             # if !matched
             #     x, matched = find_shocks(Val(filter_algorithm), 
@@ -10113,7 +10128,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                     return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
                 end 
             # end
-        end
+        # end
 
         # x2, mat = find_shocks(Val(:SLSQP), 
         #                         x,
@@ -10261,17 +10276,17 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                 # max_iter = 100
                                 )
                                 
-        if !matched
-            x, matched = find_shocks(Val(:COBYLA), 
-                                    zeros(size(𝐒ⁱ, 2)),
-                                    kron_buffer,
-                                    kron_buffer2,
-                                    J,
-                                    𝐒ⁱ,
-                                    𝐒ⁱ²ᵉ,
-                                    shock_independent,
-                                    # max_iter = 500
-                                    )
+        # if !matched
+        #     x, matched = find_shocks(Val(:COBYLA), 
+        #                             zeros(size(𝐒ⁱ, 2)),
+        #                             kron_buffer,
+        #                             kron_buffer2,
+        #                             J,
+        #                             𝐒ⁱ,
+        #                             𝐒ⁱ²ᵉ,
+        #                             shock_independent,
+        #                             # max_iter = 500
+        #                             )
             # if !matched
             #     x, matched = find_shocks(Val(filter_algorithm), 
             #                             x,
@@ -10285,7 +10300,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                     return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
                 end 
             # end
-        end
+        # end
 
         # x2, mat = find_shocks(Val(:SLSQP), 
         #                         x,
