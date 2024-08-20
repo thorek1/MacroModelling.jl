@@ -19,9 +19,13 @@ using SparseArrays
 # using Test
 
 include("../models/Gali_2015_chapter_3_nonlinear.jl")
+include("../models/RBC_baseline.jl")
 
 
 𝓂 = Gali_2015_chapter_3_nonlinear
+𝓂 = RBC_baseline
+
+
 T = 𝓂.timings
 tol = 1e-12
 parameter_values = 𝓂.parameter_values
@@ -55,59 +59,39 @@ isapprox(findiff, zygdiff, rtol = 1e-7)
 
 
 
-function step_by_step(𝓂::ℳ, 
-                        data::KeyedArray{Float64}, 
-                        parameter_values::Vector{S}; 
-                        algorithm::Symbol = :first_order, 
-                        filter::Symbol = :kalman, 
-                        warmup_iterations::Int = 0, 
-                        presample_periods::Int = 0,
-                        initial_covariance::Symbol = :theoretical,
-                        filter_algorithm::Symbol = :LagrangeNewton,
-                        tol::AbstractFloat = 1e-12, 
-                        verbose::Bool = false) where S <: Real
-    observables = @ignore_derivatives get_and_check_observables(𝓂, data)
-
-    @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
-
-    bounds_violated = @ignore_derivatives check_bounds(parameter_values, 𝓂)
-
-    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
-
-    obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, NSSS_labels))
-
-    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol)
-
-    return SS_and_pars#, state, solved, obs_indices, bounds_violated, observables, TT, 𝐒
-end
-
-step_by_step(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
-
-Zygote.jacobian(x -> step_by_step(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1]
 
 
-get_relevant_steady_state_and_state_update(Val(algorithm), 𝓂.parameter_values, 𝓂, tol)[2]
-
-Zygote.jacobian(x -> get_relevant_steady_state_and_state_update(Val(algorithm), x, 𝓂, tol)[2], 𝓂.parameter_values)[1]
-
-
-Zygote.jacobian(x -> get_relevant_steady_state_and_state_update(Val(:second_order), x, 𝓂, tol)[2], 𝓂.parameter_values)[1]
-
-
-calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)[3]
+second_order_output = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)
+second_order_output[6]
+second_order_output[8]
 # all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
 
+
+
 zyg1 = Zygote.jacobian(x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[1], 𝓂.parameter_values)[1]
+fin1 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[1], 𝓂.parameter_values)[1]
+isapprox(zyg1,fin1)
+zyg1-fin1
 
 zyg2 = Zygote.jacobian(x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[3], 𝓂.parameter_values)[1]
+fin2 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[3], 𝓂.parameter_values)[1]
+isapprox(zyg2,fin2)
 
 zyg3 = Zygote.jacobian(x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[5], 𝓂.parameter_values)[1]
+fin3 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[5], 𝓂.parameter_values)[1]
+isapprox(zyg3,fin3)
 
 zyg4 = Zygote.jacobian(x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[6], 𝓂.parameter_values)[1]
+fin4 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[6], 𝓂.parameter_values)[1]
+isapprox(zyg4,fin4)
 
 zyg5 = Zygote.jacobian(x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[7], 𝓂.parameter_values)[1]
+fin5 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[7], 𝓂.parameter_values)[1]
+isapprox(zyg5,fin5)
 
 zyg6 = Zygote.jacobian(x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[8], 𝓂.parameter_values)[1]
+fin6 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[8], 𝓂.parameter_values)[1]
+isapprox(zyg6,fin6)
 
 
 Zygote.jacobian(x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[3], 𝓂.parameter_values)[1]
@@ -624,10 +608,10 @@ vec(mat2_rsh)' * reshape(∂kronaa,6,6)
 # forward diff
 kron(x,x)
 
-derivative of kron(x,x) wrt x
+# derivative of kron(x,x) wrt x
 
 # reverse mode AD
-derivative of x wrt to kron(x,x)
+# derivative of x wrt to kron(x,x)
 
 
 
