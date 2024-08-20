@@ -6489,11 +6489,11 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
 
     𝐒̂ᵗ = 𝐒ᵗ * expand[2]
    
-    ∂∇₁ = zero(∇₁)
-   
     tmp2 = -M' * ∇₊'
 
     function first_order_solution_pullback(∂𝐒) 
+        ∂∇₁ = zero(∇₁)
+
         ∂𝐒ᵗ = ∂𝐒[1][:,1:T.nPast_not_future_and_mixed]
         ∂𝐒ᵉ = ∂𝐒[1][:,T.nPast_not_future_and_mixed + 1:end]
 
