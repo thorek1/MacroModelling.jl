@@ -14,18 +14,10 @@ jobs:
       fail-fast: false
       matrix:
         test_set: ["basic", "plots", "higher_order", "estimation"]
-        version: ['1.8', '1.9', '1.10']
+        version: ['1.10']
         os: [ubuntu-latest, macos-latest, windows-latest]
         arch: [x64, arm64]
         exclude:
-          - version: '1.8'
-            os: ubuntu-latest
-          - version: '1.8'
-            os: windows-latest
-          - version: '1.9'
-            os: ubuntu-latest
-          - version: '1.9'
-            os: windows-latest
           - arch: arm64
             os: ubuntu-latest
           - arch: arm64
