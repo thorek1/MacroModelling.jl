@@ -1,6 +1,6 @@
 using Revise
 using MacroModelling
-import MacroModelling: find_shocks, expand_steady_state, get_and_check_observables, check_bounds, get_NSSS_and_parameters, get_relevant_steady_state_and_state_update, ℳ, calculate_second_order_stochastic_steady_state, timings, second_order_auxilliary_matrices
+import MacroModelling: find_shocks, expand_steady_state, get_and_check_observables, check_bounds, get_NSSS_and_parameters, get_relevant_steady_state_and_state_update, ℳ, calculate_second_order_stochastic_steady_state, timings, second_order_auxilliary_matrices, calculate_third_order_stochastic_steady_state
 using Random
 using BenchmarkTools
 import LinearAlgebra as ℒ
@@ -13,13 +13,58 @@ import ThreadedSparseArrays
 import Polyester
 using SparseArrays
 
-# import ForwardDiff
+import ForwardDiff
 # import CSV
 # using DataFrames
 # using Test
 
 include("../models/Gali_2015_chapter_3_nonlinear.jl")
-include("../models/RBC_baseline.jl")
+
+
+
+@model RBC_baseline begin
+	c[0] ^ (-σ) = β * c[1] ^ (-σ) * (α * z[1] * (k[0] / l[1]) ^ (α - 1) + 1 - δ)
+
+	ψ * c[0] ^ σ / (1 - l[0]) = y[0] * (1 - α) / l[0]
+
+	y[0] = c[0] + k[0] - (1 - δ) * k[-1] + g[0]
+
+	y[0] = z[0] * k[-1] ^ α * l[0] ^ (1 - α)
+
+	z[0] = (1 - ρᶻ) + ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
+
+	g[0] = (1 - ρᵍ) * ḡ + ρᵍ * g[-1] + σᵍ * ϵᵍ[x]
+
+end
+
+
+@parameters RBC_baseline begin
+	σᶻ = 0.066
+
+	σᵍ = .104
+
+	σ = 1
+
+	α = 1/3
+
+	i_y = 0.25
+
+	k_y = 10.4
+
+	ρᶻ = 0.97
+
+	ρᵍ = 0.989
+
+	g_y = 0.2038
+
+	ḡ | ḡ = g_y * y[ss]
+
+    δ = i_y / k_y
+
+    β = 1 / (α / k_y + (1 - δ))
+
+	ψ | l[ss] = 1/3
+end
 
 
 𝓂 = Gali_2015_chapter_3_nonlinear
@@ -36,8 +81,9 @@ sylvester_algorithm = :doubling
 
 
 
-oobbss = [:Y, :Pi, :R]
-algorithm = :pruned_second_order
+# oobbss = [:Y, :Pi, :R]
+oobbss = [:c, :k]
+algorithm = :pruned_third_order
 
 Random.seed!(9)
 data = simulate(𝓂, algorithm = algorithm)(oobbss,:,:simulate)
@@ -56,18 +102,61 @@ get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
 isapprox(findiff, zygdiff, rtol = 1e-7)
 
 
+to = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)
+
+to[7]
+to[8]
+to[9]
+to[10]
+
+# third order
+# all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃
+for1 = ForwardDiff.jacobian(x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[1], 𝓂.parameter_values)
+zyg1 = Zygote.jacobian(x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[1], 𝓂.parameter_values)[1]
+fin1 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[1], 𝓂.parameter_values)[1]
+isapprox(zyg1,fin1)
+isapprox(for1,fin1)
+zyg1-fin1
+
+
+zyg2 = Zygote.jacobian(x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[3], 𝓂.parameter_values)[1]
+fin2 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[3], 𝓂.parameter_values)[1]
+isapprox(zyg2,fin2)
+
+
+zyg3 = Zygote.jacobian(x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[5], 𝓂.parameter_values)[1]
+fin3 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[5], 𝓂.parameter_values)[1]
+isapprox(zyg3,fin3)
+
+
+zyg4 = Zygote.jacobian(x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[6], 𝓂.parameter_values)[1]
+fin4 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[6], 𝓂.parameter_values)[1]
+isapprox(zyg4,fin4)
+
+
+zyg5 = Zygote.jacobian(x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[7], 𝓂.parameter_values)[1]
+fin5 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[7], 𝓂.parameter_values)[1]
+isapprox(zyg5,fin5)
+
+
+zyg6 = Zygote.jacobian(x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[8], 𝓂.parameter_values)[1]
+fin6 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[8], 𝓂.parameter_values)[1]
+isapprox(zyg6,fin6)
+
+
+zyg7 = Zygote.jacobian(x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[9], 𝓂.parameter_values)[1]
+fin7 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[9], 𝓂.parameter_values)[1]
+isapprox(zyg7,fin7)
+
+
+zyg8 = Zygote.jacobian(x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[10], 𝓂.parameter_values)[1]
+fin8 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[10], 𝓂.parameter_values)[1]
+isapprox(zyg8,fin8)
 
 
 
-
-
-second_order_output = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)
-second_order_output[6]
-second_order_output[8]
-# all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂
-
-
-
+# second order
+for1 = ForwardDiff.jacobian(x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[1], 𝓂.parameter_values)
 zyg1 = Zygote.jacobian(x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[1], 𝓂.parameter_values)[1]
 fin1 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[1], 𝓂.parameter_values)[1]
 isapprox(zyg1,fin1)

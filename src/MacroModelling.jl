@@ -4125,13 +4125,13 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     tmp = (ℒ.I - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed])
 
-    tmp̄ = RF.lu(tmp, check = false)
+    tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
     if !ℒ.issuccess(tmp̄)
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
-    SSSstates = tmp̄ \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx]
+    SSSstates = tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx]
 
     if pruning
         state = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
@@ -4139,7 +4139,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     else
         nᵉ = 𝓂.timings.nExo
 
-        s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
+        s_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
 
         kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
         
@@ -6900,14 +6900,12 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     out = - ∇₃ * tmpkron - ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ - ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
     𝐗₃ += out
     
-    # tmp𝐗₃ = -∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
-    tmp𝐗₃ = -mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
+    tmpkron10 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
+    tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
+    tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
+    tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)
 
-    tmpkron1 = -∇₂ *  ℒ.kron(𝐒₁₊╱𝟎,𝐒₂₊╱𝟎)
-    tmpkron2 = ℒ.kron(M₂.𝛔,𝐒₁₋╱𝟏ₑ)
-    out2 = tmpkron1 * tmpkron2 +  tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
-    
-    𝐗₃ += (tmp𝐗₃ + out2 + -∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)) * M₃.𝐏# |> findnz
+    𝐗₃ -= ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏# |> findnz
     
     𝐗₃ += @views -∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]) * M₃.𝐏
     droptol!(𝐗₃,tol)
@@ -6935,6 +6933,457 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     return 𝐒₃, solved
 end
+
+
+
+
+function rrule(::typeof(calculate_third_order_solution), 
+                ∇₁::AbstractMatrix{<: Real}, #first order derivatives
+                ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
+                ∇₃::SparseMatrixCSC{<: Real}, #third order derivatives
+                𝑺₁::AbstractMatrix{<: Real}, #first order solution
+                𝐒₂::SparseMatrixCSC{<: Real}, #second order solution
+                M₂::second_order_auxilliary_matrices,  # aux matrices second order
+                M₃::third_order_auxilliary_matrices;  # aux matrices third order
+                T::timings,
+                sylvester_algorithm::Symbol = :doubling,
+                tol::AbstractFloat = eps(),
+                verbose::Bool = false)
+    # inspired by Levintal
+
+    # Indices and number of variables
+    i₊ = T.future_not_past_and_mixed_idx;
+    i₋ = T.past_not_future_and_mixed_idx;
+
+    n₋ = T.nPast_not_future_and_mixed
+    n₊ = T.nFuture_not_past_and_mixed
+    nₑ = T.nExo;
+    n = T.nVars
+    nₑ₋ = n₋ + 1 + nₑ
+
+    # 1st order solution
+    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]] |> sparse
+    droptol!(𝐒₁,tol)
+
+    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) spdiagm(ones(nₑ + 1))[1,:] zeros(nₑ + 1, nₑ)];
+
+    ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
+                                𝐒₁
+                                spdiagm(ones(nₑ₋))[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]];
+
+    𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
+                    zeros(n₋ + n + nₑ, nₑ₋)];
+
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+
+
+    ∇₁₊ = @views sparse(∇₁[:,1:n₊] * spdiagm(ones(n))[i₊,:])
+
+    spinv = sparse(inv(∇₁₊𝐒₁➕∇₁₀))
+    droptol!(spinv,tol)
+
+    B = spinv * ∇₁₊
+    droptol!(B,tol)
+
+    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + 𝐒₁ * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
+            𝐒₂
+            zeros(n₋ + nₑ, nₑ₋^2)];
+        
+    𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:] 
+            zeros(n₋ + n + nₑ, nₑ₋^2)];
+
+    aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
+
+    # 𝐗₃ = -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
+    𝐗₃ = -A_mult_kron_power_3_B(∇₃, aux)
+
+    tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔
+
+    tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0)
+    out = - ∇₃ * tmpkron22 - ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ - ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+    𝐗₃ += out
+    
+    tmpkron10 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
+    tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
+    tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
+    𝐒₂₊╱𝟎𝛔 = 𝐒₂₊╱𝟎 * M₂.𝛔
+    tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎𝛔)
+
+    𝐗₃ -= ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏# |> findnz
+    
+    𝐒₂₋╱𝟎 = @views [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]
+
+    tmpkron12 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
+    𝐗₃ -= ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏
+    droptol!(𝐗₃,tol)
+    
+    X = spinv * 𝐗₃ * M₃.𝐂₃
+    droptol!(X,tol)
+    
+    tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
+    
+    kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)
+
+    C = M₃.𝐔₃ * tmpkron + M₃.𝐔₃ * M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐔₃ * M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
+    C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ) # no speed up here from A_mult_kron_power_3_B; this is the bottleneck. ideally have this return reduced space directly. TODO: make kron3 faster
+    C *= M₃.𝐂₃
+    # C += kron³(𝐒₁₋╱𝟏ₑ, M₃)
+    droptol!(C,tol)
+
+    𝐒₃, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose= verbose)
+    
+    𝐒₃ = sparse(𝐒₃)
+
+    if !solved
+        return 𝐒₃, solved
+    end
+
+    Bt = sparse(B')
+
+    Ct = sparse(C')
+
+    kronaux =  ℒ.kron(aux,aux)
+
+    function third_order_solution_pullback(∂𝐒₃_solved) 
+        ∂∇₁ = zero(∇₁)
+        ∂∇₂ = zero(∇₂)
+        ∂∇₃ = zero(∇₃)
+        ∂𝐒₁ = zero(𝐒₁)
+        ∂𝐒₂ = zero(𝐒₂)
+        ∂spinv = zero(spinv)
+        ∂𝐒₁₋╱𝟏ₑ = zero(𝐒₁₋╱𝟏ₑ)
+        ∂kron𝐒₁₋╱𝟏ₑ = zero(kron𝐒₁₋╱𝟏ₑ)
+        ∂𝐒₁₊╱𝟎 = zero(𝐒₁₊╱𝟎)
+        ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+        ∂tmpkron = zero(tmpkron)
+        ∂tmpkron22 = zero(tmpkron22)
+        ∂kronaux = zero(kronaux)
+        ∂aux = zero(aux)
+        ∂tmpkron0 = zero(tmpkron0)
+        ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = zero(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
+        ∂𝐒₂₊╱𝟎 = zero(𝐒₂₊╱𝟎)
+        ∂𝐒₂₊╱𝟎𝛔 = zero(𝐒₂₊╱𝟎𝛔)
+        ∂∇₁₊ = zero(∇₁₊)
+        ∂𝐒₂₋╱𝟎 = zero(𝐒₂₋╱𝟎)
+
+        ∂𝐒₃ = ∂𝐒₃_solved[1]
+        
+        # droptol!(∂𝐒₂, eps())
+
+        ∂𝐒₃ *= M₃.𝐔₃'
+
+        ∂X, solved = solve_sylvester_equation(Bt, Ct, ∂𝐒₃, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
+
+        ∂X = sparse(∂X)
+
+        ∂B = -∂X * C' * 𝐒₃'
+
+        ∂C = -𝐒₃' * B' * ∂X
+
+        # C = M₃.𝐔₃ * (
+        #   tmpkron 
+        # + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ 
+        # + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃ 
+        # + ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ))
+        # ) * M₃.𝐂₃
+
+        ∂tmpkron += M₃.𝐔₃' * ∂C * M₃.𝐂₃'
+        ∂tmpkron += M₃.𝐏₁ₗ̄' * M₃.𝐔₃' * ∂C * M₃.𝐂₃' * M₃.𝐏₁ᵣ̃'
+        ∂tmpkron += M₃.𝐏₂ₗ̄' * M₃.𝐔₃' * ∂C * M₃.𝐂₃' * M₃.𝐏₂ᵣ̃'
+
+        ∂kronkron𝐒₁₋╱𝟏ₑ = M₃.𝐔₃' * ∂C * M₃.𝐂₃'
+
+        re∂kronkron𝐒₁₋╱𝟏ₑ = reshape(∂kronkron𝐒₁₋╱𝟏ₑ, size(kron𝐒₁₋╱𝟏ₑ,1), size(𝐒₁₋╱𝟏ₑ,1), size(kron𝐒₁₋╱𝟏ₑ,2), size(𝐒₁₋╱𝟏ₑ,2))
+
+        ei = 1
+        for e in eachslice(re∂kronkron𝐒₁₋╱𝟏ₑ; dims = (2,4))
+            ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(kron𝐒₁₋╱𝟏ₑ,e)
+            ei += 1
+        end
+
+        ei = 1
+        for e in eachslice(re∂kronkron𝐒₁₋╱𝟏ₑ; dims = (1,3))
+            ∂kron𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
+            ei += 1
+        end
+
+
+
+        # tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
+
+        re∂tmpkron = reshape(∂tmpkron, size(𝐒₁₋╱𝟏ₑ,1), size(M₂.𝛔,1), size(𝐒₁₋╱𝟏ₑ,2), size(M₂.𝛔,2))
+
+        ei = 1
+        for e in eachslice(re∂tmpkron; dims = (1,3))
+            ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(M₂.𝛔,e)
+            ei += 1
+        end
+
+
+        # X = spinv * 𝐗₃ * M₃.𝐂₃
+        ∂𝐗₃ = spinv' * ∂X * M₃.𝐂₃'
+        ∂spinv = ∂X * M₃.𝐂₃' * 𝐗₃'
+
+
+        # 𝐗₃ = -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux) 
+        # - ∇₃ * tmpkron22 
+        # - ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
+        # - ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+        # - ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏
+        # - ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏
+
+        # -∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏
+        ∂∇₁₊ -= ∂𝐗₃ * M₃.𝐏' * tmpkron12' * 𝐒₂'
+        ∂𝐒₂ -= ∇₁₊' * ∂𝐗₃ * M₃.𝐏' * tmpkron12'
+        ∂tmpkron12 = - 𝐒₂' * ∇₁₊' * ∂𝐗₃ * M₃.𝐏'
+
+        re∂tmpkron12 = reshape(∂tmpkron12, size(𝐒₁₋╱𝟏ₑ,1), size(𝐒₂₋╱𝟎,1), size(𝐒₁₋╱𝟏ₑ,2), size(𝐒₂₋╱𝟎,2))
+
+        ei = 1
+        for e in eachslice(re∂tmpkron12; dims = (2,4))
+            ∂𝐒₂₋╱𝟎[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
+            ei += 1
+        end
+
+        ei = 1
+        for e in eachslice(re∂tmpkron12; dims = (1,3))
+            ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₂₋╱𝟎,e)
+            ei += 1
+        end
+        
+        
+        # - ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏
+
+        ∂∇₂ -= ∂𝐗₃ * M₃.𝐏' * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11)'
+
+        ∂tmpkron10 = -∇₂' * ∂𝐗₃ * M₃.𝐏'
+
+        re∂tmpkron10 = reshape(∂tmpkron10, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), size(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎,1), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2), size(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎,2))
+
+        ei = 1
+        for e in eachslice(re∂tmpkron10; dims = (2,4))
+            ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,e)
+            ei += 1
+        end
+
+        ei = 1
+        for e in eachslice(re∂tmpkron10; dims = (1,3))
+            ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎,e)
+            ei += 1
+        end
+
+
+        ∂tmpkron1 = - ∇₂' * ∂𝐗₃ * M₃.𝐏' * tmpkron2' - ∇₂' * ∂𝐗₃ * M₃.𝐏' * M₃.𝐏₁ᵣ' * tmpkron2' * M₃.𝐏₁ₗ'
+
+        ∂tmpkron2 = - tmpkron1' * ∇₂' * ∂𝐗₃ * M₃.𝐏' - M₃.𝐏₁ₗ' * tmpkron1' * ∇₂' * ∂𝐗₃ * M₃.𝐏' * M₃.𝐏₁ᵣ'
+
+        ∂tmpkron11 = -∇₂' * ∂𝐗₃ * M₃.𝐏'
+
+        re∂tmpkron1 = reshape(∂tmpkron1, size(𝐒₁₊╱𝟎,1), size(𝐒₂₊╱𝟎,1), size(𝐒₁₊╱𝟎,2), size(𝐒₂₊╱𝟎,2))
+
+        ei = 1
+        for e in eachslice(re∂tmpkron1; dims = (2,4))
+            ∂𝐒₂₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
+            ei += 1
+        end
+
+        ei = 1
+        for e in eachslice(re∂tmpkron1; dims = (1,3))
+            ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₂₊╱𝟎,e)
+            ei += 1
+        end
+
+
+        re∂tmpkron2 = reshape(∂tmpkron2, size(M₂.𝛔,1), size(𝐒₁₋╱𝟏ₑ,1), size(M₂.𝛔,2), size(𝐒₁₋╱𝟏ₑ,2))
+
+        ei = 1
+        for e in eachslice(re∂tmpkron2; dims = (2,4))
+            ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(M₂.𝛔,e)
+            ei += 1
+        end
+
+
+        re∂tmpkron11 = reshape(∂tmpkron11, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), size(𝐒₂₊╱𝟎𝛔,1), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2), size(𝐒₂₊╱𝟎𝛔,2))
+
+        ei = 1
+        for e in eachslice(re∂tmpkron11; dims = (2,4))
+            ∂𝐒₂₊╱𝟎𝛔[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,e)
+            ei += 1
+        end
+
+        ei = 1
+        for e in eachslice(re∂tmpkron11; dims = (1,3))
+            ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(𝐒₂₊╱𝟎𝛔,e)
+            ei += 1
+        end
+
+        ∂𝐒₂₊╱𝟎 = ∂𝐒₂₊╱𝟎𝛔 * M₂.𝛔'
+
+
+        # out = - ∇₃ * tmpkron22 
+        # - ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
+        # - ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+
+        ∂∇₃ -= ∂𝐗₃ * tmpkron22' + ∂𝐗₃ * M₃.𝐏₁ᵣ̃' * tmpkron22' * M₃.𝐏₁ₗ̂' + ∂𝐗₃ * M₃.𝐏₂ᵣ̃' * tmpkron22' * M₃.𝐏₂ₗ̂'
+
+        ∂tmpkron22 -= ∇₃' * ∂𝐗₃ + M₃.𝐏₁ₗ̂' * ∇₃' * ∂𝐗₃ * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * ∇₃' * ∂𝐗₃ * M₃.𝐏₂ᵣ̃'
+
+        # tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
+        
+        re∂tmpkron22 = reshape(∂tmpkron22, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), size(tmpkron0,1), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2), size(tmpkron0,2))
+
+        ei = 1
+        for e in eachslice(re∂tmpkron22; dims = (2,4))
+            ∂tmpkron0[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,e)
+            ei += 1
+        end
+
+        ei = 1
+        for e in eachslice(re∂tmpkron22; dims = (1,3))
+            ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(tmpkron0,e)
+            ei += 1
+        end
+
+        ∂kron𝐒₁₊╱𝟎 = ∂tmpkron0 * M₂.𝛔'
+
+        re∂kron𝐒₁₊╱𝟎 = reshape(∂kron𝐒₁₊╱𝟎, size(𝐒₁₊╱𝟎,1), size(𝐒₁₊╱𝟎,1), size(𝐒₁₊╱𝟎,2), size(𝐒₁₊╱𝟎,2))
+
+        ei = 1
+        for e in eachslice(re∂kron𝐒₁₊╱𝟎; dims = (2,4))
+            ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
+            ei += 1
+        end
+
+        ei = 1
+        for e in eachslice(re∂kron𝐒₁₊╱𝟎; dims = (1,3))
+            ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
+            ei += 1
+        end
+
+        # -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
+        ∂∇₃ -= ∂𝐗₃ * ℒ.kron(ℒ.kron(aux, aux), aux)'
+        ∂kronkronaux = -∇₃' * ∂𝐗₃
+
+
+        re∂kronkronaux = reshape(∂kronkronaux, size(kronaux,1), size(aux,1), size(kronaux,2), size(aux,2))
+
+        ei = 1
+        for e in eachslice(re∂kronkronaux; dims = (2,4))
+            ∂aux[ei] += ℒ.dot(kronaux,e)
+            ei += 1
+        end
+
+        ei = 1
+        for e in eachslice(re∂kronkronaux; dims = (1,3))
+            ∂kronaux[ei] += ℒ.dot(aux,e)
+            ei += 1
+        end
+
+
+        re∂kronaux = reshape(∂kronaux, size(aux,1), size(aux,1), size(aux,2), size(aux,2))
+
+        ei = 1
+        for e in eachslice(re∂kronaux; dims = (2,4))
+            ∂aux[ei] += ℒ.dot(aux,e)
+            ei += 1
+        end
+
+        ei = 1
+        for e in eachslice(re∂kronaux; dims = (1,3))
+            ∂aux[ei] += ℒ.dot(aux,e)
+            ei += 1
+        end
+
+        # aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
+        ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ += M₃.𝐒𝐏' * ∂aux
+
+
+        # 𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:] 
+        #     zeros(n₋ + n + nₑ, nₑ₋^2)]
+        ∂𝐒₂[i₊,:] = ∂𝐒₂₊╱𝟎[i₊,:]
+
+
+        # ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = [
+            # (𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + 𝐒₁ * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
+            # ℒ.diagm(ones(n))[i₊,:] * 𝐒₂k𝐒₁₋╱𝟏ₑ
+            # 𝐒₂
+            # zeros(n₋ + nₑ, nₑ₋^2)
+        # ];
+        ∂𝐒₂k𝐒₁₋╱𝟏ₑ = ℒ.diagm(ones(size(𝐒₁,1)))[i₊,:]' * ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎[1:length(i₊),:]
+
+        ∂𝐒₂ += ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎[length(i₊) .+ (1:size(𝐒₂,1)),:]
+
+        ∂𝐒₂ += ∂𝐒₂k𝐒₁₋╱𝟏ₑ * kron𝐒₁₋╱𝟏ₑ'
+
+        ∂kron𝐒₁₋╱𝟏ₑ += 𝐒₂' * ∂𝐒₂k𝐒₁₋╱𝟏ₑ
+
+        
+        re∂kron𝐒₁₋╱𝟏ₑ = reshape(∂kron𝐒₁₋╱𝟏ₑ, size(𝐒₁₋╱𝟏ₑ,1), size(𝐒₁₋╱𝟏ₑ,1), size(𝐒₁₋╱𝟏ₑ,2), size(𝐒₁₋╱𝟏ₑ,2))
+
+        ei = 1
+        for e in eachslice(re∂kron𝐒₁₋╱𝟏ₑ; dims = (2,4))
+            ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
+            ei += 1
+        end
+
+        ei = 1
+        for e in eachslice(re∂kron𝐒₁₋╱𝟏ₑ; dims = (1,3))
+            ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
+            ei += 1
+        end 
+
+        # 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + 𝐒₁ * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)]
+        # 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + 𝐒₁ * 𝐒₂╱𝟎
+        ∂𝐒₁ += ∂𝐒₂k𝐒₁₋╱𝟏ₑ * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)]'
+        
+        # ∂𝐒₂[i₋,:] += spdiagm(ones(size(𝐒₂,1)))[i₋,:]' * 𝐒₁' * ∂𝐒₂k𝐒₁₋╱𝟏ₑ[1:length(i₋),:]
+        ∂𝐒₂╱𝟎 = 𝐒₁' * ∂𝐒₂k𝐒₁₋╱𝟏ₑ
+        ∂𝐒₂[i₋,:] = ∂𝐒₂╱𝟎[1:length(i₋),:]
+
+
+        ###
+        
+        # B = spinv * ∇₁₊
+        ∂∇₁₊ = spinv' * ∂B
+        ∂spinv += ∂B * ∇₁₊'
+        
+        # ∇₁₊ =  sparse(∇₁[:,1:n₊] * spdiagm(ones(n))[i₊,:])
+        ∂∇₁[:,1:n₊] += ∂∇₁₊ * spdiagm(ones(n))[i₊,:]'
+
+        # spinv = sparse(inv(∇₁₊𝐒₁➕∇₁₀))
+        ∂∇₁₊𝐒₁➕∇₁₀ = -spinv' * ∂spinv * spinv'
+
+        # ∇₁₊𝐒₁➕∇₁₀ =  -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+        ∂∇₁[:,1:n₊] -= ∂∇₁₊𝐒₁➕∇₁₀ * ℒ.diagm(ones(n))[i₋,:]' * 𝐒₁[i₊,1:n₋]'
+        ∂∇₁[:,range(1,n) .+ n₊] -= ∂∇₁₊𝐒₁➕∇₁₀
+
+        ∂𝐒₁[i₊,1:n₋] -= ∇₁[:,1:n₊]' * ∂∇₁₊𝐒₁➕∇₁₀ * ℒ.diagm(ones(n))[i₋,:]'
+
+        # 𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
+        #                 zeros(n₋ + n + nₑ, nₑ₋)];
+        ∂𝐒₁[i₊,:] += ∂𝐒₁₊╱𝟎[1:length(i₊),:]
+
+        ###### ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ =  [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
+        # ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ =  [ℒ.I(size(𝐒₁,1))[i₊,:] * 𝐒₁ * 𝐒₁₋╱𝟏ₑ
+        #                     𝐒₁
+        #                     spdiagm(ones(nₑ₋))[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]];
+        ∂𝐒₁ += spdiagm(ones(size(𝐒₁,1)))[:,i₊] * ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[1:length(i₊),:] * 𝐒₁₋╱𝟏ₑ'
+        ∂𝐒₁ += ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[length(i₊) .+ (1:size(𝐒₁,1)),:]
+        
+        ∂𝐒₁₋╱𝟏ₑ += 𝐒₁' * spdiagm(ones(size(𝐒₁,1)))[:,i₊] * ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[1:length(i₊),:]
+
+        # 𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) spdiagm(ones(nₑ + 1))[1,:] zeros(nₑ + 1, nₑ)];
+        ∂𝐒₁[i₋,:] += ∂𝐒₁₋╱𝟏ₑ[1:length(i₋), :]
+
+        # 𝐒₁ = [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]
+        ∂𝑺₁ = [∂𝐒₁[:,1:n₋] ∂𝐒₁[:,n₋+2:end]]
+
+        return NoTangent(), ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+    end
+
+    return (𝐒₃ * M₃.𝐔₃, solved), third_order_solution_pullback
+end
+
 
 
 function irf(state_update::Function, 
