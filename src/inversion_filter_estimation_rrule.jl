@@ -18,7 +18,7 @@ import ForwardDiff
 # using DataFrames
 # using Test
 
-include("../models/Gali_2015_chapter_3_nonlinear.jl")
+# include("../models/Gali_2015_chapter_3_nonlinear.jl")
 
 
 
@@ -67,7 +67,7 @@ end
 end
 
 
-𝓂 = Gali_2015_chapter_3_nonlinear
+# 𝓂 = Gali_2015_chapter_3_nonlinear
 𝓂 = RBC_baseline
 
 
@@ -153,8 +153,26 @@ zyg8 = Zygote.jacobian(x -> calculate_third_order_stochastic_steady_state(x, �
 fin8 = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[10], 𝓂.parameter_values)[1]
 isapprox(zyg8,fin8)
 
+ℒ.norm(zyg8 - fin8) / max(ℒ.norm(fin8), ℒ.norm(zyg8))
 
 
+s3 = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)[10]
+
+
+
+
+fin_debug = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[10], 𝓂.parameter_values)[1]
+zyg_debug = Zygote.jacobian(x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[10], 𝓂.parameter_values)[1]
+isapprox(zyg_debug, fin_debug)
+
+ℒ.norm(zyg_debug - fin_debug) / max(ℒ.norm(fin_debug), ℒ.norm(zyg_debug))
+
+import DifferentiationInterface as 𝒟
+backend = 𝒟.AutoZygote()
+
+xxx = 𝒟.value_and_jacobian(x -> calculate_third_order_stochastic_steady_state(x, 𝓂, pruning = true)[10], backend, 𝓂.parameter_values)
+xxx[2]
+isapprox(s3,xxx[1])
 # second order
 for1 = ForwardDiff.jacobian(x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[1], 𝓂.parameter_values)
 zyg1 = Zygote.jacobian(x -> calculate_second_order_stochastic_steady_state(x, 𝓂, pruning = true)[1], 𝓂.parameter_values)[1]
