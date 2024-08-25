@@ -4,6 +4,7 @@
 
 - [ ] ss transition by entering new parameters at given periods
 - [ ] allow to define y[ss] = 1 in parameters block
+- [ ] check tols throughout. adopt max(abs,rel*norm) tols
 - [ ] add argument to plotting functions to replace names in plots (e.g input a dictionnary: Dict(:dinve => "Investment growth"))
 - [ ] programmatic model writing: accept {i}[0] as definition for variable
 - [ ] fix higher order shock finder (3rd order) and check results for pruned second order. are the right state values taken for 1st and second order subprocesses?
