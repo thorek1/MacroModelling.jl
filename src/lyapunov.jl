@@ -6,6 +6,8 @@
 # :iterative    - slow and precise
 # :speedmapping - slow and very precise
 
+# solves: A * X * A' + C = X
+
 function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 C::AbstractMatrix{Float64};
                                 lyapunov_algorithm::Symbol = :doubling,

@@ -6,6 +6,8 @@
 # :iterative    - slow and precise
 # :speedmapping - slow and very precise
 
+# solves: A * X * B - C = X for X
+
 function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     B::AbstractMatrix{Float64},
                                     C::AbstractMatrix{Float64};
