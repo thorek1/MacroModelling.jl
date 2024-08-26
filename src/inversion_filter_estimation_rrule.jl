@@ -85,7 +85,7 @@ sylvester_algorithm = :doubling
 
 # oobbss = [:Y, :Pi, :R]
 oobbss = [:c, :k]
-algorithm = :pruned_third_order
+algorithm = :pruned_second_order
 
 Random.seed!(9)
 data = simulate(𝓂, algorithm = algorithm)(oobbss,:,:simulate)
@@ -101,7 +101,7 @@ zygdiff = Zygote.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algor
 
 get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
 
-isapprox(findiff, zygdiff, rtol = 1e-7)
+isapprox(findiff, zygdiff)
 
 
 to = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true)
