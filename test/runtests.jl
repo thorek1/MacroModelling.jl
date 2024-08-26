@@ -6,6 +6,7 @@ import Zygote, FiniteDifferences
 import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
 using JET
+import LinearAlgebra as ℒ
 
 test_set = ENV["TEST_SET"]
 
