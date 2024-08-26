@@ -6382,7 +6382,7 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
     
         CC = invAXB * (dA * X² + dC + dB * X)
     
-        dX, solved = solve_sylvester_equation(AA, -X, CC, sylvester_algorithm = :sylvester)
+        dX, solved = solve_sylvester_equation(AA, -X, -CC, sylvester_algorithm = :sylvester)
 
         X̃[:,i] = vec(dX[:,T.past_not_future_and_mixed_idx])
     end
@@ -6414,7 +6414,7 @@ function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
     function first_order_solution_pullback(∂A)
         tmp1 = invtmp * ∂A[1] * expand[2]
 
-        ss, solved = solve_sylvester_equation(tmp2, Â', tmp1, sylvester_algorithm = :sylvester)
+        ss, solved = solve_sylvester_equation(tmp2, Â', -tmp1, sylvester_algorithm = :sylvester)
 
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (ss * Â' * Â')[:,T.future_not_past_and_mixed_idx]
         ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .= ss * Â'
@@ -6505,7 +6505,7 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
 
         ∂𝐒ᵗ .+= ∇₊' * M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand[2]'
 
-        tmp1 = -M' * ∂𝐒ᵗ * expand[2]
+        tmp1 = M' * ∂𝐒ᵗ * expand[2]
 
         ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, sylvester_algorithm = :sylvester)
 
@@ -6608,7 +6608,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     droptol!(spinv,tol)
 
     # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = - ∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
-    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = -(mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔 * M₂.𝐂₂ 
 
     X = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
     droptol!(X,tol)
@@ -6687,7 +6687,7 @@ function rrule(::typeof(calculate_second_order_solution),
     droptol!(spinv,tol)
 
     # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = - ∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
-    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = -(mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔 * M₂.𝐂₂ 
 
     X = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
     droptol!(X,tol)
@@ -6732,9 +6732,9 @@ function rrule(::typeof(calculate_second_order_solution),
 
         ∂X = sparse(∂X)
 
-        ∂B = -∂X * C' * 𝐒₂'
+        ∂B = ∂X * C' * 𝐒₂'
 
-        ∂C = -𝐒₂' * B' * ∂X
+        ∂C = 𝐒₂' * B' * ∂X
 
         # C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
         ∂kron𝐒₁₋╱𝟏ₑ = M₂.𝐔₂' * ∂C * M₂.𝐂₂'
@@ -6905,10 +6905,10 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     # kronaux = ℒ.kron(aux, aux)
     # 𝐗₃ = -∇₃ * ℒ.kron(kronaux, aux)
-    𝐗₃ = -A_mult_kron_power_3_B(∇₃, aux)
+    𝐗₃ = A_mult_kron_power_3_B(∇₃, aux)
 
     tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
-    out = - ∇₃ * tmpkron - ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ - ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
+    out = ∇₃ * tmpkron + ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃  + ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
     𝐗₃ += out
     
     tmpkron10 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
@@ -6916,14 +6916,14 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
     tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)
 
-    𝐗₃ -= ∇₂ * (
+    𝐗₃ += ∇₂ * (
       tmpkron10
     + tmpkron1 * tmpkron2
     + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
     + tmpkron11
      ) * M₃.𝐏# |> findnz
     
-    𝐗₃ += @views -∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]) * M₃.𝐏
+    𝐗₃ += @views ∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]) * M₃.𝐏
     droptol!(𝐗₃,tol)
     
     X = spinv * 𝐗₃ * M₃.𝐂₃
@@ -7014,12 +7014,12 @@ function rrule(::typeof(calculate_third_order_solution),
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
 
     kronaux = ℒ.kron(aux, aux)
-    𝐗₃ = -∇₃ * ℒ.kron(kronaux, aux)
+    𝐗₃ = ∇₃ * ℒ.kron(kronaux, aux)
     # 𝐗₃ = -A_mult_kron_power_3_B(∇₃, aux)
 
     tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔
     tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0)
-    out = - ∇₃ * tmpkron22 - ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ - ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+    out = ∇₃ * tmpkron22 + ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃  + ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
     𝐗₃ += out
     
     tmpkron10 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
@@ -7028,7 +7028,7 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐒₂₊╱𝟎𝛔 = 𝐒₂₊╱𝟎 * M₂.𝛔
     tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎𝛔)
 
-    𝐗₃ -= ∇₂ * (tmpkron10
+    𝐗₃ += ∇₂ * (tmpkron10
      + tmpkron1 * tmpkron2
      + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
      + tmpkron11
@@ -7037,7 +7037,7 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐒₂₋╱𝟎 = @views [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]
 
     tmpkron12 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
-    𝐗₃ -= ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏
+    𝐗₃ += ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏
     droptol!(𝐗₃,tol)
     
     X = spinv * 𝐗₃ * M₃.𝐂₃
@@ -7087,9 +7087,9 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ∂X = sparse(∂X)
 
-        ∂B = -∂X * C' * 𝐒₃'
+        ∂B = ∂X * C' * 𝐒₃'
 
-        ∂C = -𝐒₃' * B' * ∂X
+        ∂C = 𝐒₃' * B' * ∂X
 
         # X = spinv * 𝐗₃ * M₃.𝐂₃
         ∂𝐗₃ = spinv' * ∂X * M₃.𝐂₃'
