@@ -162,24 +162,34 @@ function rrule(::typeof(find_shocks),
 
     xλ = ℒ.kron(x,λ)
 
+
+    ∂shock_independent = similar(shock_independent)
+
+    # ∂𝐒ⁱ = similar(𝐒ⁱ)
+
+    # ∂𝐒ⁱ²ᵉ = similar(𝐒ⁱ²ᵉ)
+
     function find_shocks_pullback(∂x)
         ∂x = vcat(∂x[1], zero(λ))
 
         S = -fXλp' \ ∂x
 
-        ∂shock_independent = S[length(initial_guess)+1:end]
+        copyto!(∂shock_independent, S[length(initial_guess)+1:end])
         
-        ∂𝐒ⁱ =  ℒ.kron(S[1:length(initial_guess)], λ) - ℒ.kron(x, S[length(initial_guess)+1:end])
+        # copyto!(∂𝐒ⁱ, ℒ.kron(S[1:length(initial_guess)], λ) - ℒ.kron(x, S[length(initial_guess)+1:end]))
+        ∂𝐒ⁱ = S[1:length(initial_guess)] * λ' - S[length(initial_guess)+1:end] * x'
         
-        ∂𝐒ⁱ²ᵉ = 2 * ℒ.kron(S[1:length(initial_guess)], xλ) - ℒ.kron(kron_buffer, S[length(initial_guess)+1:end])
+        # copyto!(∂𝐒ⁱ²ᵉ, 2 * ℒ.kron(S[1:length(initial_guess)], xλ) - ℒ.kron(kron_buffer, S[length(initial_guess)+1:end]))
+        ∂𝐒ⁱ²ᵉ = 2 * S[1:length(initial_guess)] * xλ' - S[length(initial_guess)+1:end] * kron_buffer'
 
-        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  ∂𝐒ⁱ, ∂𝐒ⁱ²ᵉ, ∂shock_independent, NoTangent(), NoTangent()
+        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), ∂𝐒ⁱ, ∂𝐒ⁱ²ᵉ, ∂shock_independent, NoTangent(), NoTangent()
     end
 
     return (x, matched), find_shocks_pullback
 end
 
 
+# TODO: forwarddiff for find_shocks
 
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
