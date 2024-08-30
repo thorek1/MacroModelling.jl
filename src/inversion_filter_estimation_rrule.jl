@@ -2950,18 +2950,19 @@ S = fXλp[i]' \ ∂xλ
 ##############
 # in a loop
 
-∂𝐒ⁱ = zero(𝐒ⁱ)
+∂𝐒ⁱ = zero(𝐒ⁱ[1])
 ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
 ∂state¹⁻_vol = zero(state¹⁻_vol)
 ∂x = zero(x[1])
 
 for i in 3:-1:1#reverse(axes(data_in_deviations,2))
-    if i == 1
-        ∂x *= -1
-    end
 
     # shocks² += sum(abs2,x[i])
-    ∂x += copy(x[i])
+    if i == 3
+        ∂x += copy(x[i])
+    else
+        ∂x -= copy(x[i])
+    end
 
     # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
     ∂jacc = inv(jacc[i])'
@@ -2977,7 +2978,11 @@ for i in 3:-1:1#reverse(axes(data_in_deviations,2))
 
     ei = 1
     for e in eachslice(re∂kronIx; dims = (1,3))
-        ∂x[ei] += ℒ.dot(ℒ.I(T.nExo),e)
+        if i == 3
+            ∂x[ei] += ℒ.dot(ℒ.I(T.nExo),e)
+        else
+            ∂x[ei] -= ℒ.dot(ℒ.I(T.nExo),e)
+        end
         ei += 1
     end
 
@@ -2985,6 +2990,10 @@ for i in 3:-1:1#reverse(axes(data_in_deviations,2))
     ∂xλ = vcat(∂x, zero(λ[i]))
 
     S = fXλp[i]' \ ∂xλ
+
+    if i < 3
+        S *= -1
+    end
 
     ∂shock_independent = S[T.nExo+1:end]
 
@@ -3137,6 +3146,7 @@ findiff = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),
                 end, 
 data_in_deviations[:,1:3])[1]
 
+reshape(findiff,3,3)
 
 
 
