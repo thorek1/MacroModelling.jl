@@ -4649,20 +4649,30 @@ end
 
 
 
-n_end = 2 # size(data_in_deviations,2)
+n_end = size(data_in_deviations,2)
 
 ∂𝐒ⁱ = zero(𝐒ⁱ[1])
 ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
+
+∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
+∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
+
+∂𝐒¹⁻ᵛ = zero(𝐒¹⁻ᵛ)
+∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
+
+∂𝐒⁻¹ = zero(𝐒⁻¹)
+∂𝐒⁻² = zero(𝐒⁻²)
+
 ∂state¹⁻_vol = zero(state¹⁻_vol)
 ∂x = zero(x[1])
 ∂state = zeros(T.nPast_not_future_and_mixed)
-∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
-∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
-∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
-∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
 
-for i in 2:-1:1 # reverse(axes(data_in_deviations,2))
+for i in reverse(axes(data_in_deviations,2))
     # stt = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2
+    ∂𝐒⁻¹ += ∂state * aug_state[i]'
+    
+    ∂𝐒⁻² += ∂state * ℒ.kron(aug_state[i], aug_state[i])' / 2
+
     ∂aug_state = 𝐒⁻¹' * ∂state
     ∂kronaug_state  = 𝐒⁻²' * ∂state / 2
 
@@ -4763,9 +4773,13 @@ for i in 2:-1:1 # reverse(axes(data_in_deviations,2))
 
 
     # ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
+    ∂𝐒¹⁻ᵛ -= ∂shock_independent * [aug_state[i][1:length(stt)];1]'
+
     ∂state¹⁻_vol -= 𝐒¹⁻ᵛ' * ∂shock_independent
 
     # ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
+    ∂𝐒²⁻ᵛ -= ∂shock_independent * ℒ.kron([aug_state[i][1:length(stt)];1], [aug_state[i][1:length(stt)];1])' / 2
+
     ∂kronstate¹⁻_vol = -𝐒²⁻ᵛ' * ∂shock_independent / 2
 
     re∂kronstate¹⁻_vol = reshape(∂kronstate¹⁻_vol, 
@@ -4794,6 +4808,8 @@ end
 
 ∂𝐒¹ᵉ
 
+∂𝐒¹⁻ᵛ
+
 ∂data_in_deviations[:,1:n_end]
 
 
@@ -4813,7 +4829,7 @@ findiff = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1, max_rang
 
                     𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
 
-                    for i in 1:2 # axes(dtt,2)
+                    for i in axes(dtt,2)
                         state¹⁻ = stt
 
                         state¹⁻_vols = vcat(state¹⁻, 1)
@@ -4855,12 +4871,29 @@ findiff = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1, max_rang
 
                         aug_statee = [stt; 1; xx]
 
-                        stt = 𝐒⁻¹ * aug_statee + 𝐒⁻² * ℒ.kron(aug_statee, aug_statee) / 2
+                        stt = 𝐒⁻¹ * aug_statee + X * ℒ.kron(aug_statee, aug_statee) / 2
                     end
 
                     -(logabsdets + shocks² + (length(observables) * (0 + n_obs - 0)) * log(2 * 3.141592653589793)) / 2
                 end, 
-                𝐒¹ᵉ)[1]
+                𝐒⁻²)[1]'
+
+                ∂𝐒⁻¹
+                reshape(findiff,4,8)
+                isapprox(∂𝐒⁻¹, reshape(findiff,4,8))
+
+                ∂𝐒⁻²
+                reshape(findiff,4,64)
+                isapprox(∂𝐒⁻², reshape(findiff,4,64))
+
+                ∂𝐒²⁻ᵛ
+                reshape(findiff,3,25)
+                isapprox(∂𝐒²⁻ᵛ, reshape(findiff,3,25))
+
+                ∂𝐒¹⁻ᵛ
+                reshape(findiff,3,5)
+                isapprox(∂𝐒¹⁻ᵛ, reshape(findiff,3,5))
+
 
                 ∂𝐒¹ᵉ
                 reshape(findiff,3,3)
