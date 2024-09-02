@@ -4550,16 +4550,118 @@ findiff[1:9]
 
 #### try loop again
 
+stt = state[T.past_not_future_and_mixed_idx]
 
-n_end = 10
+kronxx = [zeros(T.nExo^2) for _ in 1:size(data_in_deviations,2)]
+
+J = ℒ.I(T.nExo)
+
+kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
+
+x = [zeros(T.nExo) for _ in 1:size(data_in_deviations,2)]
+
+state¹⁻ = stt
+
+state¹⁻_vol = vcat(state¹⁻, 1)
+
+𝐒ⁱtmp = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
+
+𝐒ⁱ = [zero(𝐒ⁱtmp) for _ in 1:size(data_in_deviations,2)]
+
+𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
+
+aug_state = [zeros(size(𝐒⁻¹,2)) for _ in 1:size(data_in_deviations,2)]
+
+tmp = 𝐒ⁱtmp + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x[1])), x[1])
+
+jacc = [zero(tmp) for _ in 1:size(data_in_deviations,2)]
+
+λ = [zeros(size(tmp, 1)) for _ in 1:size(data_in_deviations,2)]
+
+λ[1] = tmp' \ x[1] * 2
+
+fXλp_tmp = [reshape(2 * 𝐒ⁱ²ᵉ' * λ[1], size(𝐒ⁱ[1], 2), size(𝐒ⁱ[1], 2)) - 2 * ℒ.I(size(𝐒ⁱ[1], 2))  tmp'
+            -tmp  zeros(size(𝐒ⁱ[1], 1),size(𝐒ⁱ[1], 1))]
+
+fXλp = [zero(fXλp_tmp) for _ in 1:size(data_in_deviations,2)]
+
+kronxλ_tmp = ℒ.kron(x[1], λ[1])
+
+kronxλ = [kronxλ_tmp for _ in 1:size(data_in_deviations,2)]
+
+
+for i in axes(data_in_deviations,2)
+    state¹⁻ = stt
+
+    state¹⁻_vol = vcat(state¹⁻, 1)
+    
+    shock_independent = copy(data_in_deviations[:,i])
+
+    ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
+    
+    ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
+
+    𝐒ⁱ[i] = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
+
+    init_guess = zeros(size(𝐒ⁱ[i], 2))
+
+    x[i], matched = find_shocks(Val(filter_algorithm), 
+                            init_guess,
+                            kronxx[i],
+                            kron_buffer2,
+                            J,
+                            𝐒ⁱ[i],
+                            𝐒ⁱ²ᵉ,
+                            shock_independent,
+                            # max_iter = 100
+                            )
+
+    jacc[i] =  𝐒ⁱ[i] + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x[i])), x[i])
+
+    λ[i] = jacc[i]' \ x[i] * 2
+    # ℒ.ldiv!(λ[i], tmp', x[i])
+    # ℒ.rmul!(λ[i], 2)
+
+    fXλp[i] = [reshape(2 * 𝐒ⁱ²ᵉ' * λ[i], size(𝐒ⁱ[i], 2), size(𝐒ⁱ[i], 2)) - 2 * ℒ.I(size(𝐒ⁱ[i], 2))  jacc[i]'
+                -jacc[i]  zeros(size(𝐒ⁱ[i], 1),size(𝐒ⁱ[i], 1))]
+
+    ℒ.kron!(kronxx[i], x[i], x[i])
+
+    ℒ.kron!(kronxλ[i], x[i], λ[i])
+
+    if i > presample_periods
+        # due to change of variables: jacobian determinant adjustment
+        if T.nExo == length(observables)
+            logabsdets += ℒ.logabsdet(jacc[i] ./ precision_factor)[1]
+        else
+            logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i] ./ precision_factor))
+        end
+
+        shocks² += sum(abs2,x[i])
+    end
+
+    aug_state[i] = [stt; 1; x[i]]
+
+    stt = 𝐒⁻¹ * aug_state[i] + 𝐒⁻² * ℒ.kron(aug_state[i], aug_state[i]) / 2
+end
+
+
+
+
+
+n_end = 2 # size(data_in_deviations,2)
 
 ∂𝐒ⁱ = zero(𝐒ⁱ[1])
 ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
 ∂state¹⁻_vol = zero(state¹⁻_vol)
 ∂x = zero(x[1])
 ∂state = zeros(T.nPast_not_future_and_mixed)
+∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
+∂𝐒²⁻ᵉ = zero(𝐒²⁻ᵉ)
+∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
+∂𝐒²⁻ᵛ = zero(𝐒²⁻ᵛ)
 
-for i in n_end:-1:1#reverse(axes(data_in_deviations,2))
+for i in 2:-1:1 # reverse(axes(data_in_deviations,2))
     # stt = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2
     ∂aug_state = 𝐒⁻¹' * ∂state
     ∂kronaug_state  = 𝐒⁻²' * ∂state / 2
@@ -4618,6 +4720,8 @@ for i in n_end:-1:1#reverse(axes(data_in_deviations,2))
         ei += 1
     end
 
+    ∂𝐒ⁱ²ᵉ -= ∂jacc * ℒ.kron(ℒ.I(T.nExo), x[i])'
+
     # find_shocks
     ∂xλ = vcat(∂x, zero(λ[i]))
 
@@ -4631,6 +4735,8 @@ for i in n_end:-1:1#reverse(axes(data_in_deviations,2))
 
     ∂𝐒ⁱ = (S[1:T.nExo] * λ[i]' - S[T.nExo+1:end] * x[i]') # fine
     ∂𝐒ⁱ -= ∂jacc / 2 # fine
+
+    ∂𝐒ⁱ²ᵉ += 2 * S[1:T.nExo] *  kronxλ[i]' - S[T.nExo+1:end] * kronxx[i]'
 
     # 𝐒ⁱ[i] = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
     ∂state¹⁻_vol *= 0
@@ -4647,6 +4753,10 @@ for i in n_end:-1:1#reverse(axes(data_in_deviations,2))
         ∂state¹⁻_vol[ei] += ℒ.dot(ℒ.I(T.nExo),e)
         ei += 1
     end
+
+    ∂𝐒¹ᵉ += ∂𝐒ⁱ
+
+    ∂𝐒²⁻ᵉ += ∂𝐒ⁱ * ℒ.kron(ℒ.I(T.nExo), [aug_state[i][1:length(stt)];1])'
 
     # shock_independent = copy(data_in_deviations[:,i])
     ∂data_in_deviations[:,i] = ∂shock_independent
@@ -4678,30 +4788,32 @@ for i in n_end:-1:1#reverse(axes(data_in_deviations,2))
     ∂state += ∂state¹⁻_vol[1:end-1]
 end
 
+∂𝐒²ᵉ = ∂𝐒ⁱ²ᵉ / 2
+
+
+
+∂𝐒¹ᵉ
 
 ∂data_in_deviations[:,1:n_end]
-reshape(findiff,3,n_end)
-
-
-isapprox(∂data_in_deviations[:,1:n_end], reshape(findiff,3,n_end))
 
 
 #### findiff loop
 
-findiff = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1), 
+findiff = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1, max_range = 1e-6), 
                 X -> begin
                     stt = copy(state[T.past_not_future_and_mixed_idx])
                 
                     shocks² = 0.0
                     logabsdets = 0.0
                     
-                    # dtt = copy(data_in_deviations)
+                    dtt = copy(data_in_deviations)
+                    # dtt = copy(data_in_deviations[:,[1]])
                     # dtt[:,1] = X[:,1]
-                    dtt = X
+                    # dtt = X
 
                     𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
 
-                    for i in axes(dtt,2)
+                    for i in 1:2 # axes(dtt,2)
                         state¹⁻ = stt
 
                         state¹⁻_vols = vcat(state¹⁻, 1)
@@ -4719,7 +4831,7 @@ findiff = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),
 
                         xx, matched = find_shocks(Val(filter_algorithm), 
                                                 init_guess,
-                                                kronxx[i],
+                                                copy(kronxx[i]),
                                                 kron_buffer2,
                                                 J,
                                                 𝐒ⁱs,
@@ -4748,7 +4860,31 @@ findiff = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),
 
                     -(logabsdets + shocks² + (length(observables) * (0 + n_obs - 0)) * log(2 * 3.141592653589793)) / 2
                 end, 
-data_in_deviations[:,1:n_end])[1]
+                𝐒¹ᵉ)[1]
+
+                ∂𝐒¹ᵉ
+                reshape(findiff,3,3)
+                isapprox(∂𝐒¹ᵉ, reshape(findiff,3,3))
+
+                ∂𝐒²⁻ᵉ
+                reshape(findiff,3,15)
+                isapprox(∂𝐒²⁻ᵉ, reshape(findiff,3,15))
+
+
+                ∂𝐒ⁱ²ᵉ
+                reshape(findiff,3,9)
+                isapprox(∂𝐒ⁱ²ᵉ, reshape(findiff,3,9))
+
+                
+∂data_in_deviations[:,1:n_end]
+reshape(findiff,3,n_end)
+
+reshape(findiff,3,9)
+∂𝐒²⁻ᵉ
+
+isapprox(∂data_in_deviations[:,1:n_end], reshape(findiff,3,n_end))
+
+
 
 
 
