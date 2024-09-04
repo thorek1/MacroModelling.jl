@@ -10418,7 +10418,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         ∂𝐒⁻² = zero(𝐒⁻²)
 
         ∂state¹⁻_vol = zero(state¹⁻_vol)
-        ∂x = zero(x[1])
+        # ∂x = zero(x[1])
         ∂state = zeros(T.nPast_not_future_and_mixed)
 
         for i in reverse(axes(data_in_deviations,2))
@@ -10498,7 +10498,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
             ∂shock_independent = S[T.nExo+1:end] # fine
 
-            ∂𝐒ⁱ = (S[1:T.nExo] * λ[i]' - S[T.nExo+1:end] * x[i]') # fine
+            ∂𝐒ⁱ = S[1:T.nExo] * λ[i]' - S[T.nExo+1:end] * x[i]' # fine
             ∂𝐒ⁱ -= ∂jacc / 2 # fine
 
             ∂𝐒ⁱ²ᵉ += 2 * S[1:T.nExo] *  kronxλ[i]' - S[T.nExo+1:end] * kronxx[i]'
@@ -11337,11 +11337,11 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
     𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
     
-    𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
-    
+    𝐒ⁱ²ᵉ = [zero(𝐒²ᵉ) for _ in 1:size(data_in_deviations,2)]
+
     aug_state = [zeros(size(𝐒⁻¹,2)) for _ in 1:size(data_in_deviations,2)]
     
-    tmp = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x[1])
+    tmp = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ[1] * ℒ.kron(ℒ.I(T.nExo), x[1])
     
     jacc = [zero(tmp) for _ in 1:size(data_in_deviations,2)]
     
@@ -11349,7 +11349,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
     λ[1] = tmp' \ x[1] * 2
     
-    fXλp_tmp = [reshape(2 * 𝐒ⁱ²ᵉ' * λ[1], size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  tmp'
+    fXλp_tmp = [reshape(2 * 𝐒ⁱ²ᵉ[1]' * λ[1], size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  tmp'
                 -tmp  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
     
     fXλp = [zero(fXλp_tmp) for _ in 1:size(data_in_deviations,2)]
@@ -11383,7 +11383,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
         𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
     
-        𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state¹⁻_vol) / 2
+        𝐒ⁱ²ᵉ[i] = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state¹⁻_vol) / 2
 
         init_guess = zeros(size(𝐒ⁱ, 2))
     
@@ -11396,18 +11396,18 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                                 kron_buffer4,
                                 J,
                                 𝐒ⁱ,
-                                𝐒ⁱ²ᵉ,
+                                𝐒ⁱ²ᵉ[i],
                                 𝐒ⁱ³ᵉ,
                                 shock_independent,
                                 # max_iter = 100
                                 )
     
-        jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x[i]) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), kronxx[i])
+        jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ[i] * ℒ.kron(ℒ.I(T.nExo), x[i]) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), kronxx[i])
     
         λ[i] = jacc[i]' \ x[i] * 2
         # ℒ.ldiv!(λ[i], tmp', x[i])
         # ℒ.rmul!(λ[i], 2)
-        fXλp[i] = [reshape((2 * 𝐒ⁱ²ᵉ + 6 * 𝐒ⁱ³ᵉ * ℒ.kron(II, x[i]))' * λ[i], size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - lI  jacc[i]'
+        fXλp[i] = [reshape((2 * 𝐒ⁱ²ᵉ[i] + 6 * 𝐒ⁱ³ᵉ * ℒ.kron(II, x[i]))' * λ[i], size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - lI  jacc[i]'
                     -jacc[i]  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
     
         ℒ.kron!(kronxx[i], x[i], x[i])
@@ -11437,8 +11437,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
     llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 
-    println(llh)
-    
 
     ∂state = similar(state)
 
@@ -11448,7 +11446,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     function inversion_filter_loglikelihood_pullback(∂llh)
         ∂𝐒ⁱ = zero(𝐒ⁱ)
-        ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
+        ∂𝐒²ᵉ = zero(𝐒²ᵉ)
         ∂𝐒ⁱ³ᵉ = zero(𝐒ⁱ³ᵉ)
 
         ∂𝐒¹ᵉ = zero(𝐒¹ᵉ)
@@ -11537,7 +11535,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x))
             ∂𝐒ⁱ -= ∂jacc / 2 # fine
 
-            ∂kronIx = 𝐒ⁱ²ᵉ' * ∂jacc
+            ∂kronIx = 𝐒ⁱ²ᵉ[i]' * ∂jacc
 
             re∂kronIx = reshape(∂kronIx, 
                                     T.nExo, 
@@ -11555,7 +11553,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ei += 1
             end
 
-            ∂𝐒ⁱ²ᵉ -= ∂jacc * ℒ.kron(ℒ.I(T.nExo), x[i])'
+            ∂𝐒ⁱ²ᵉ = -∂jacc * ℒ.kron(ℒ.I(T.nExo), x[i])'
 
             ∂kronIxx = 𝐒ⁱ³ᵉ' * ∂jacc * 3 / 2
             
@@ -11612,6 +11610,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂𝐒ⁱ³ᵉ += 3 * S[1:T.nExo] * kronxxλ[i]' - S[T.nExo + 1:end] * kronxxx[i]'
 
             # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
+            ∂kronstate¹⁻_vol *= 0
+
             state¹⁻_vol = [aug_state[i][1:T.nPast_not_future_and_mixed];1] # define here as it is used multiple times later
 
             ∂𝐒¹ᵉ += ∂𝐒ⁱ
@@ -11652,8 +11652,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             
 
             # 𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state¹⁻_vol) / 2
-            # 𝐒²ᵉ dealt with after the loop
-
+            ∂𝐒²ᵉ += ∂𝐒ⁱ²ᵉ / 2
+            
             ∂𝐒³⁻ᵉ += ∂𝐒ⁱ²ᵉ * ℒ.kron(II, state¹⁻_vol)' / 2
             
             ∂kronIIstate¹⁻_vol = 𝐒³⁻ᵉ' * ∂𝐒ⁱ²ᵉ / 2
@@ -11688,7 +11688,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             # ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
             ∂𝐒³⁻ᵛ -= ∂shock_independent * ℒ.kron(ℒ.kron(state¹⁻_vol, state¹⁻_vol), state¹⁻_vol)' / 6
 
-            ∂kronstate¹⁻_volstate¹⁻_vol = -𝐒³⁻ᵛ' * ∂shock_independent / 2
+            ∂kronstate¹⁻_volstate¹⁻_vol = -𝐒³⁻ᵛ' * ∂shock_independent / 6
 
             re∂kronstate¹⁻_volstate¹⁻_vol = reshape(∂kronstate¹⁻_volstate¹⁻_vol, 
                                     length(state¹⁻_vol), 
@@ -11730,7 +11730,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         ∂𝐒[1][cond_var_idx,end-T.nExo+1:end] += ∂𝐒¹ᵉ
         ∂𝐒[2][cond_var_idx,shockvar²_idxs] += ∂𝐒²⁻ᵉ
-        ∂𝐒[2][cond_var_idx,shock²_idxs] += ∂𝐒ⁱ²ᵉ / 2 # 𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + ...
+        ∂𝐒[2][cond_var_idx,shock²_idxs] += ∂𝐒²ᵉ
         ∂𝐒[3][cond_var_idx,shockvar³2_idxs] += ∂𝐒³⁻ᵉ²
         ∂𝐒[3][cond_var_idx,shockvar³_idxs] += ∂𝐒³⁻ᵉ
         ∂𝐒[3][cond_var_idx,shock³_idxs] += ∂𝐒ⁱ³ᵉ / 6 # 𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
