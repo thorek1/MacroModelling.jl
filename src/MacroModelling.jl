@@ -11533,7 +11533,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂jacc = inv(jacc[i])'
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x))
-            ∂𝐒ⁱ -= ∂jacc / 2 # fine
+            ∂𝐒ⁱ = -∂jacc / 2 # fine
 
             ∂kronIx = 𝐒ⁱ²ᵉ[i]' * ∂jacc
 
@@ -11562,6 +11562,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                                     T.nExo, 
                                     1,
                                     T.nExo)
+
+            ∂kronxx *= 0
 
             ei = 1
             for e in eachslice(re∂kronIxx; dims = (1,3))
