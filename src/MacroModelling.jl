@@ -922,7 +922,7 @@ function kron³(A::SparseMatrixCSC{T}, M₃::third_order_auxilliary_matrices) wh
     end
 end
 
-function A_mult_kron_power_3_B(A::AbstractArray{R},B::AbstractArray{T}; tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
+function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},B::AbstractArray{T}; tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
     n_row = size(B,1)
     n_col = size(B,2)
 
@@ -7047,8 +7047,8 @@ function rrule(::typeof(calculate_third_order_solution),
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
 
     kronaux = ℒ.kron(aux, aux)
-    𝐗₃ = ∇₃ * ℒ.kron(kronaux, aux)
-    # 𝐗₃ = A_mult_kron_power_3_B(∇₃, aux)
+    # 𝐗₃ = ∇₃ * ℒ.kron(kronaux, aux)
+    𝐗₃ = A_mult_kron_power_3_B(∇₃, aux)
 
     tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔
     tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0)
@@ -7307,7 +7307,8 @@ function rrule(::typeof(calculate_third_order_solution),
         # end
 
         # -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
-        ∂∇₃ += ∂𝐗₃ * ℒ.kron(ℒ.kron(aux, aux), aux)'
+        # ∂∇₃ += ∂𝐗₃ * ℒ.kron(ℒ.kron(aux, aux), aux)'
+        ∂∇₃ += A_mult_kron_power_3_B(∂𝐗₃, aux') # this is slower somehow
         ∂kronkronaux = ∇₃' * ∂𝐗₃
 
         fill_sparse_kron_adjoint!(∂kronaux, ∂aux, ∂kronkronaux, kronaux, aux)
