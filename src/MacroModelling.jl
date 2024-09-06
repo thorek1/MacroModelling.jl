@@ -777,6 +777,45 @@ end
 # end
 
 
+function fill_sparse_kron_adjoint!(∂B::AbstractMatrix{Float64}, ∂A::AbstractMatrix{Float64}, ∂X::S, B::S, A::S) where S <: AbstractSparseMatrix{Float64}
+    @assert size(∂A) == size(A)
+    @assert size(∂B) == size(B)
+    @assert length(∂X) == length(A) * length(B) "∂X must have the same length as kron(A,B)"
+    
+    n1, m1 = size(A)
+    n2 = size(B,1)
+    
+    # Precompute constants
+    const_n1n2 = n1 * n2
+    const_n1n2m1 = n1 * n2 * m1
+    
+    # Access the sparse matrix internal representation
+    colptr = ∂X.colptr  # Column pointers
+    rowval = ∂X.rowval  # Row indices of non-zeros
+    nzval  = ∂X.nzval   # Non-zero values
+    
+    # Iterate over columns of ∂X
+    for col in 1:size(∂X, 2)
+        # Iterate over the non-zeros in this column
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            linear_idx = (col - 1) * size(∂X, 1) + row
+
+            @inbounds begin
+                i = (linear_idx - 1) % n1 + 1
+                k = ((linear_idx - 1) ÷ n1) % n2 + 1
+                j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
+                l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
+                
+                # Update ∂A and ∂B
+                ∂A[i,j] += B[k,l] * val
+                ∂B[k,l] += A[i,j] * val
+            end
+        end
+    end
+end
 
 function mat_mult_kron(A::AbstractArray{T},B::AbstractArray{T},C::AbstractArray{T}; tol::AbstractFloat = eps()) where T <: Real
     n_rowB = size(B,1)
@@ -6730,19 +6769,20 @@ function rrule(::typeof(calculate_second_order_solution),
         # C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
         ∂kron𝐒₁₋╱𝟏ₑ = M₂.𝐔₂' * ∂C * M₂.𝐂₂'
 
-        re∂kron𝐒₁₋╱𝟏ₑ = reshape(∂kron𝐒₁₋╱𝟏ₑ, size(𝐒₁₋╱𝟏ₑ,1), size(𝐒₁₋╱𝟏ₑ,1), size(𝐒₁₋╱𝟏ₑ,2), size(𝐒₁₋╱𝟏ₑ,2))
+        fill_sparse_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, ∂kron𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
+        # re∂kron𝐒₁₋╱𝟏ₑ = reshape(∂kron𝐒₁₋╱𝟏ₑ, size(𝐒₁₋╱𝟏ₑ,1), size(𝐒₁₋╱𝟏ₑ,1), size(𝐒₁₋╱𝟏ₑ,2), size(𝐒₁₋╱𝟏ₑ,2))
 
-        ei = 1
-        for e in eachslice(re∂kron𝐒₁₋╱𝟏ₑ; dims = (1,3))
-            ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kron𝐒₁₋╱𝟏ₑ; dims = (1,3))
+        #     ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
+        #     ei += 1
+        # end
 
-        ei = 1
-        for e in eachslice(re∂kron𝐒₁₋╱𝟏ₑ; dims = (2,4))
-            ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kron𝐒₁₋╱𝟏ₑ; dims = (2,4))
+        #     ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
+        #     ei += 1
+        # end
 
         # B = spinv * ∇₁₊
         ∂∇₁₊ = spinv' * ∂B
@@ -6762,35 +6802,37 @@ function rrule(::typeof(calculate_second_order_solution),
         
         ∂kron𝐒₁₊╱𝟎 = ∇₂' * ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ * M₂.𝐂₂' * M₂.𝛔'
 
-        re∂kron𝐒₁₊╱𝟎 = reshape(∂kron𝐒₁₊╱𝟎, size(𝐒₁₊╱𝟎,1), size(𝐒₁₊╱𝟎,1), size(𝐒₁₊╱𝟎,2), size(𝐒₁₊╱𝟎,2))
+        fill_sparse_kron_adjoint!(∂𝐒₁₊╱𝟎, ∂𝐒₁₊╱𝟎, ∂kron𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
+        # re∂kron𝐒₁₊╱𝟎 = reshape(∂kron𝐒₁₊╱𝟎, size(𝐒₁₊╱𝟎,1), size(𝐒₁₊╱𝟎,1), size(𝐒₁₊╱𝟎,2), size(𝐒₁₊╱𝟎,2))
 
-        ei = 1
-        for e in eachslice(re∂kron𝐒₁₊╱𝟎; dims = (1,3))
-            ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kron𝐒₁₊╱𝟎; dims = (1,3))
+        #     ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
+        #     ei += 1
+        # end
 
-        ei = 1
-        for e in eachslice(re∂kron𝐒₁₊╱𝟎; dims = (2,4))
-            ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kron𝐒₁₊╱𝟎; dims = (2,4))
+        #     ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
+        #     ei += 1
+        # end
         
         ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = ∇₂' * ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ * M₂.𝐂₂'
 
-        re∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = reshape(∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2))
+        fill_sparse_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+        # re∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = reshape(∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2))
 
-        ei = 1
-        for e in eachslice(re∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋; dims = (1,3))
-            ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋; dims = (1,3))
+        #     ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, e)
+        #     ei += 1
+        # end
         
-        ei = 1
-        for e in eachslice(re∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋; dims = (2,4))
-            ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋; dims = (2,4))
+        #     ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, e)
+        #     ei += 1
+        # end
 
         # spinv = sparse(inv(∇₁₊𝐒₁➕∇₁₀))
         ∂∇₁₊𝐒₁➕∇₁₀ = -spinv' * ∂spinv * spinv'
@@ -7099,23 +7141,24 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂tmpkron12 = 𝐒₂' * ∇₁₊' * ∂𝐗₃ * M₃.𝐏'
 
         # tmpkron12 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
-        re∂tmpkron12 = reshape(∂tmpkron12, 
-                                size(𝐒₂₋╱𝟎,1), 
-                                size(𝐒₁₋╱𝟏ₑ,1), 
-                                size(𝐒₂₋╱𝟎,2),
-                                size(𝐒₁₋╱𝟏ₑ,2))
+        fill_sparse_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₂₋╱𝟎, ∂tmpkron12, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
+        # re∂tmpkron12 = reshape(∂tmpkron12, 
+        #                         size(𝐒₂₋╱𝟎,1), 
+        #                         size(𝐒₁₋╱𝟏ₑ,1), 
+        #                         size(𝐒₂₋╱𝟎,2),
+        #                         size(𝐒₁₋╱𝟏ₑ,2))
 
-        ei = 1
-        for e in eachslice(re∂tmpkron12; dims = (1,3))
-            ∂𝐒₂₋╱𝟎[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂tmpkron12; dims = (1,3))
+        #     ∂𝐒₂₋╱𝟎[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
+        #     ei += 1
+        # end
 
-        ei = 1
-        for e in eachslice(re∂tmpkron12; dims = (2,4))
-            ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₂₋╱𝟎,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂tmpkron12; dims = (2,4))
+        #     ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₂₋╱𝟎,e)
+        #     ei += 1
+        # end
         
         
         # ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏
@@ -7130,23 +7173,24 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂tmpkron10 = ∇₂' * ∂𝐗₃ * M₃.𝐏'
 
         # tmpkron10 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
-        re∂tmpkron10 = reshape(∂tmpkron10, 
-                                size(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎,1), 
-                                size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), 
-                                size(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎,2),
-                                size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2))
+        fill_sparse_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ∂tmpkron10, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
+        # re∂tmpkron10 = reshape(∂tmpkron10, 
+        #                         size(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎,1), 
+        #                         size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), 
+        #                         size(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎,2),
+        #                         size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2))
 
-        ei = 1
-        for e in eachslice(re∂tmpkron10; dims = (1,3))
-            ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂tmpkron10; dims = (1,3))
+        #     ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,e)
+        #     ei += 1
+        # end
 
-        ei = 1
-        for e in eachslice(re∂tmpkron10; dims = (2,4))
-            ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂tmpkron10; dims = (2,4))
+        #     ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎,e)
+        #     ei += 1
+        # end
 
 
         ∂tmpkron1 = ∇₂' * ∂𝐗₃ * M₃.𝐏' * tmpkron2' + ∇₂' * ∂𝐗₃ * M₃.𝐏' * M₃.𝐏₁ᵣ' * tmpkron2' * M₃.𝐏₁ₗ'
@@ -7156,23 +7200,24 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂tmpkron11 = ∇₂' * ∂𝐗₃ * M₃.𝐏'
 
         # tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
-        re∂tmpkron1 = reshape(∂tmpkron1, 
-                                size(𝐒₂₊╱𝟎,1), 
-                                size(𝐒₁₊╱𝟎,1), 
-                                size(𝐒₂₊╱𝟎,2),
-                                size(𝐒₁₊╱𝟎,2))
+        fill_sparse_kron_adjoint!(∂𝐒₁₊╱𝟎, ∂𝐒₂₊╱𝟎, ∂tmpkron1, 𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
+        # re∂tmpkron1 = reshape(∂tmpkron1, 
+        #                         size(𝐒₂₊╱𝟎,1), 
+        #                         size(𝐒₁₊╱𝟎,1), 
+        #                         size(𝐒₂₊╱𝟎,2),
+        #                         size(𝐒₁₊╱𝟎,2))
 
-        ei = 1
-        for e in eachslice(re∂tmpkron1; dims = (1,3))
-            ∂𝐒₂₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂tmpkron1; dims = (1,3))
+        #     ∂𝐒₂₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
+        #     ei += 1
+        # end
 
-        ei = 1
-        for e in eachslice(re∂tmpkron1; dims = (2,4))
-            ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₂₊╱𝟎,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂tmpkron1; dims = (2,4))
+        #     ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₂₊╱𝟎,e)
+        #     ei += 1
+        # end
 
 
         # tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
@@ -7190,23 +7235,24 @@ function rrule(::typeof(calculate_third_order_solution),
 
 
         # tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)
-        re∂tmpkron11 = reshape(∂tmpkron11, 
-                                size(𝐒₂₊╱𝟎𝛔,1), 
-                                size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), 
-                                size(𝐒₂₊╱𝟎𝛔,2),
-                                size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2))
+        fill_sparse_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂𝐒₂₊╱𝟎𝛔, ∂tmpkron11, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)
+        # re∂tmpkron11 = reshape(∂tmpkron11, 
+        #                         size(𝐒₂₊╱𝟎𝛔,1), 
+        #                         size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), 
+        #                         size(𝐒₂₊╱𝟎𝛔,2),
+        #                         size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2))
 
-        ei = 1
-        for e in eachslice(re∂tmpkron11; dims = (1,3))
-            ∂𝐒₂₊╱𝟎𝛔[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂tmpkron11; dims = (1,3))
+        #     ∂𝐒₂₊╱𝟎𝛔[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,e)
+        #     ei += 1
+        # end
 
-        ei = 1
-        for e in eachslice(re∂tmpkron11; dims = (2,4))
-            ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(𝐒₂₊╱𝟎𝛔,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂tmpkron11; dims = (2,4))
+        #     ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(𝐒₂₊╱𝟎𝛔,e)
+        #     ei += 1
+        # end
 
         ∂𝐒₂₊╱𝟎 += ∂𝐒₂₊╱𝟎𝛔 * M₂.𝛔'
 
@@ -7220,85 +7266,87 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂tmpkron22 += ∇₃' * ∂𝐗₃ + M₃.𝐏₁ₗ̂' * ∇₃' * ∂𝐗₃ * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * ∇₃' * ∂𝐗₃ * M₃.𝐏₂ᵣ̃'
 
         # tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
-        
-        re∂tmpkron22 = reshape(∂tmpkron22, 
-                                size(tmpkron0,1), 
-                                size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), 
-                                size(tmpkron0,2),
-                                size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2))
+        fill_sparse_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂tmpkron0, ∂tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
+        # re∂tmpkron22 = reshape(∂tmpkron22, 
+        #                         size(tmpkron0,1), 
+        #                         size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,1), 
+        #                         size(tmpkron0,2),
+        #                         size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,2))
 
-        ei = 1
-        for e in eachslice(re∂tmpkron22; dims = (1,3))
-            ∂tmpkron0[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂tmpkron22; dims = (1,3))
+        #     ∂tmpkron0[ei] += ℒ.dot(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,e)
+        #     ei += 1
+        # end
 
-        ei = 1
-        for e in eachslice(re∂tmpkron22; dims = (2,4))
-            ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(tmpkron0,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂tmpkron22; dims = (2,4))
+        #     ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[ei] += ℒ.dot(tmpkron0,e)
+        #     ei += 1
+        # end
 
         ∂kron𝐒₁₊╱𝟎 = ∂tmpkron0 * M₂.𝛔'
 
-        re∂kron𝐒₁₊╱𝟎 = reshape(∂kron𝐒₁₊╱𝟎, 
-                                size(𝐒₁₊╱𝟎,1), 
-                                size(𝐒₁₊╱𝟎,1), 
-                                size(𝐒₁₊╱𝟎,2), 
-                                size(𝐒₁₊╱𝟎,2))
+        fill_sparse_kron_adjoint!(∂𝐒₁₊╱𝟎, ∂𝐒₁₊╱𝟎, ∂kron𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
+        # re∂kron𝐒₁₊╱𝟎 = reshape(∂kron𝐒₁₊╱𝟎, 
+        #                         size(𝐒₁₊╱𝟎,1), 
+        #                         size(𝐒₁₊╱𝟎,1), 
+        #                         size(𝐒₁₊╱𝟎,2), 
+        #                         size(𝐒₁₊╱𝟎,2))
 
-        ei = 1
-        for e in eachslice(re∂kron𝐒₁₊╱𝟎; dims = (2,4))
-            ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kron𝐒₁₊╱𝟎; dims = (2,4))
+        #     ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
+        #     ei += 1
+        # end
 
-        ei = 1
-        for e in eachslice(re∂kron𝐒₁₊╱𝟎; dims = (1,3))
-            ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kron𝐒₁₊╱𝟎; dims = (1,3))
+        #     ∂𝐒₁₊╱𝟎[ei] += ℒ.dot(𝐒₁₊╱𝟎,e)
+        #     ei += 1
+        # end
 
         # -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
         ∂∇₃ += ∂𝐗₃ * ℒ.kron(ℒ.kron(aux, aux), aux)'
         ∂kronkronaux = ∇₃' * ∂𝐗₃
 
-        re∂kronkronaux = reshape(∂kronkronaux, 
-                                size(aux,1), 
-                                size(kronaux,1), 
-                                size(aux,2),
-                                size(kronaux,2))
+        fill_sparse_kron_adjoint!(∂kronaux, ∂aux, ∂kronkronaux, kronaux, aux)
+        # re∂kronkronaux = reshape(∂kronkronaux, 
+        #                         size(aux,1), 
+        #                         size(kronaux,1), 
+        #                         size(aux,2),
+        #                         size(kronaux,2))
 
-        ei = 1
-        for e in eachslice(re∂kronkronaux; dims = (1,3))
-            ∂aux[ei] += ℒ.dot(kronaux,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kronkronaux; dims = (1,3))
+        #     ∂aux[ei] += ℒ.dot(kronaux,e)
+        #     ei += 1
+        # end
 
-        ei = 1
-        for e in eachslice(re∂kronkronaux; dims = (2,4))
-            ∂kronaux[ei] += ℒ.dot(aux,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kronkronaux; dims = (2,4))
+        #     ∂kronaux[ei] += ℒ.dot(aux,e)
+        #     ei += 1
+        # end
 
+        fill_sparse_kron_adjoint!(∂aux, ∂aux, ∂kronaux, aux, aux)
+        # re∂kronaux = reshape(∂kronaux, 
+        #                     size(aux,1), 
+        #                     size(aux,1), 
+        #                     size(aux,2), 
+        #                     size(aux,2))
 
-        re∂kronaux = reshape(∂kronaux, 
-                            size(aux,1), 
-                            size(aux,1), 
-                            size(aux,2), 
-                            size(aux,2))
+        # ei = 1
+        # for e in eachslice(re∂kronaux; dims = (2,4))
+        #     ∂aux[ei] += ℒ.dot(aux,e)
+        #     ei += 1
+        # end
 
-        ei = 1
-        for e in eachslice(re∂kronaux; dims = (2,4))
-            ∂aux[ei] += ℒ.dot(aux,e)
-            ei += 1
-        end
-
-        ei = 1
-        for e in eachslice(re∂kronaux; dims = (1,3))
-            ∂aux[ei] += ℒ.dot(aux,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kronaux; dims = (1,3))
+        #     ∂aux[ei] += ℒ.dot(aux,e)
+        #     ei += 1
+        # end
 
         # aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
         ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ += M₃.𝐒𝐏' * ∂aux
@@ -7343,24 +7391,26 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ∂kronkron𝐒₁₋╱𝟏ₑ = M₃.𝐔₃' * ∂C * M₃.𝐂₃'
 
-        re∂kronkron𝐒₁₋╱𝟏ₑ = reshape(∂kronkron𝐒₁₋╱𝟏ₑ, 
-                                    size(kron𝐒₁₋╱𝟏ₑ,1), 
-                                    size(𝐒₁₋╱𝟏ₑ,1), 
-                                    size(kron𝐒₁₋╱𝟏ₑ,2), 
-                                    size(𝐒₁₋╱𝟏ₑ,2))
+        fill_sparse_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂kron𝐒₁₋╱𝟏ₑ, ∂kronkron𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ)
+        # re∂kronkron𝐒₁₋╱𝟏ₑ = reshape(∂kronkron𝐒₁₋╱𝟏ₑ, 
+        #                             size(kron𝐒₁₋╱𝟏ₑ,1), 
+        #                             size(𝐒₁₋╱𝟏ₑ,1), 
+        #                             size(kron𝐒₁₋╱𝟏ₑ,2), 
+        #                             size(𝐒₁₋╱𝟏ₑ,2))
 
-        ei = 1
-        for e in eachslice(re∂kronkron𝐒₁₋╱𝟏ₑ; dims = (2,4))
-            ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(kron𝐒₁₋╱𝟏ₑ,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kronkron𝐒₁₋╱𝟏ₑ; dims = (2,4))
+        #     ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(kron𝐒₁₋╱𝟏ₑ,e)
+        #     ei += 1
+        # end
 
-        ei = 1
-        for e in eachslice(re∂kronkron𝐒₁₋╱𝟏ₑ; dims = (1,3))
-            ∂kron𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂kronkron𝐒₁₋╱𝟏ₑ; dims = (1,3))
+        #     ∂kron𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
+        #     ei += 1
+        # end
 
+        # fill_sparse_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, ∂kron𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
         re∂kron𝐒₁₋╱𝟏ₑ = reshape(∂kron𝐒₁₋╱𝟏ₑ, 
                                 size(𝐒₁₋╱𝟏ₑ,1), 
                                 size(𝐒₁₋╱𝟏ₑ,1), 
@@ -7380,6 +7430,7 @@ function rrule(::typeof(calculate_third_order_solution),
         end 
 
         # tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
+        # fill_sparse_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, ∂tmpkron, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
         re∂tmpkron = reshape(∂tmpkron, 
                             size(M₂.𝛔,1), # this needs to correspond to the second entry in the kron call
                             size(𝐒₁₋╱𝟏ₑ,1),  # this needs to correspond to the first entry in the kron call
