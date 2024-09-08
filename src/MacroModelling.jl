@@ -777,13 +777,13 @@ end
 # end
 
 
-function fill_sparse_kron_adjoint!(∂B::AbstractMatrix{Float64}, ∂A::AbstractMatrix{Float64}, ∂X::S, B::S, A::S) where S <: AbstractSparseMatrix{Float64}
+function fill_sparse_kron_adjoint!(∂A::S, ∂B::AbstractMatrix{T}, ∂X::S, A::S, B::S) where {S <: AbstractSparseMatrix{Float64}, T <: Float64}
     @assert size(∂A) == size(A)
     @assert size(∂B) == size(B)
-    @assert length(∂X) == length(A) * length(B) "∂X must have the same length as kron(A,B)"
+    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
     
-    n1, m1 = size(A)
-    n2 = size(B,1)
+    n1, m1 = size(B)
+    n2 = size(A,1)
     
     # Precompute constants
     const_n1n2 = n1 * n2
@@ -809,13 +809,192 @@ function fill_sparse_kron_adjoint!(∂B::AbstractMatrix{Float64}, ∂A::Abstract
                 j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
                 l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
                 
-                # Update ∂A and ∂B
-                ∂A[i,j] += B[k,l] * val
-                ∂B[k,l] += A[i,j] * val
+                # Update ∂B and ∂A
+                ∂A[k,l] += B[i,j] * val
+                ∂B[i,j] += A[k,l] * val
             end
         end
     end
 end
+
+
+function fill_vector_kron_adjoint!(∂A::T, ∂B::T, ∂X::T, A::T, B::T) where T <: Vector{<: Real}
+    @assert size(∂A) == size(A)
+    @assert size(∂B) == size(B)
+    @assert length(∂X) == length(B) * length(A) "∂X must have the same length as kron(B,A)"
+    
+    re∂X = reshape(∂X, 
+                    length(A), 
+                    length(B))
+
+    ei = 1
+    for e in eachslice(re∂X; dims = 1)
+        ∂A[ei] += ℒ.dot(B,e)
+        ei += 1
+    end
+
+    ei = 1
+    for e in eachslice(re∂X; dims = 2)
+        ∂B[ei] += ℒ.dot(A,e)
+        ei += 1
+    end
+end
+
+
+function fill_sparse_kron_adjoint_∂B!(∂X::AbstractSparseMatrix{R}, ∂B::AbstractArray{S}, A::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(∂B) * length(A) "∂X must have the same length as kron(B,A)"
+    
+    n1, m1 = size(∂B)
+    n2 = size(A,1)
+    
+    # Precompute constants
+    const_n1n2 = n1 * n2
+    const_n1n2m1 = n1 * n2 * m1
+    
+    # Access the sparse matrix internal representation
+    colptr = ∂X.colptr  # Column pointers
+    rowval = ∂X.rowval  # Row indices of non-zeros
+    nzval  = ∂X.nzval   # Non-zero values
+    
+    # Iterate over columns of ∂X
+    for col in 1:size(∂X, 2)
+        # Iterate over the non-zeros in this column
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            linear_idx = (col - 1) * size(∂X, 1) + row
+
+            @inbounds begin
+                i = (linear_idx - 1) % n1 + 1
+                k = ((linear_idx - 1) ÷ n1) % n2 + 1
+                j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
+                l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
+                
+                # Update ∂B and ∂A
+                ∂B[i,j] += A[k,l] * val
+            end
+        end
+    end
+end
+
+
+
+function fill_sparse_kron_adjoint_∂A!(∂X::AbstractSparseMatrix{R}, ∂A::AbstractMatrix{S}, B::AbstractMatrix{T}) where {R <: Real, S <: Real, T <: Real}
+    @assert length(∂X) == length(B) * length(∂A) "∂X must have the same length as kron(B,A)"
+    
+    n1, m1 = size(B)
+    n2 = size(∂A,1)
+    
+    # Precompute constants
+    const_n1n2 = n1 * n2
+    const_n1n2m1 = n1 * n2 * m1
+    
+    # Access the sparse matrix internal representation
+    colptr = ∂X.colptr  # Column pointers
+    rowval = ∂X.rowval  # Row indices of non-zeros
+    nzval  = ∂X.nzval   # Non-zero values
+    
+    # Iterate over columns of ∂X
+    for col in 1:size(∂X, 2)
+        # Iterate over the non-zeros in this column
+        for idx in colptr[col]:(colptr[col + 1] - 1)
+            row = rowval[idx]
+            val = nzval[idx]
+
+            linear_idx = (col - 1) * size(∂X, 1) + row
+
+            @inbounds begin
+                i = (linear_idx - 1) % n1 + 1
+                k = ((linear_idx - 1) ÷ n1) % n2 + 1
+                j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
+                l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
+                
+                # Update ∂B and ∂A
+                ∂A[k,l] += B[i,j] * val
+            end
+        end
+    end
+end
+
+
+
+# function fill_sparse_kron_adjoint!(∂X::S; ∂A::AbstractMatrix{Float64}, A::S) where S <: AbstractSparseMatrix{Float64}
+#     @assert size(∂A) == size(A)
+#     @assert length(∂X) == length(A) * length(A) "∂X must have the same length as kron(B,A)"
+    
+#     n1, m1 = size(A)
+#     n2 = n1
+    
+#     # Precompute constants
+#     const_n1n2 = n1 * n2
+#     const_n1n2m1 = n1 * n2 * m1
+    
+#     # Access the sparse matrix internal representation
+#     colptr = ∂X.colptr  # Column pointers
+#     rowval = ∂X.rowval  # Row indices of non-zeros
+#     nzval  = ∂X.nzval   # Non-zero values
+    
+#     # Iterate over columns of ∂X
+#     for col in 1:size(∂X, 2)
+#         # Iterate over the non-zeros in this column
+#         for idx in colptr[col]:(colptr[col + 1] - 1)
+#             row = rowval[idx]
+#             val = nzval[idx]
+
+#             linear_idx = (col - 1) * size(∂X, 1) + row
+
+#             @inbounds begin
+#                 i = (linear_idx - 1) % n1 + 1
+#                 k = ((linear_idx - 1) ÷ n1) % n2 + 1
+#                 j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
+#                 l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
+                
+#                 # Update ∂B and ∂A
+#                 ∂A[k,l] += A[i,j] * val
+#                 ∂A[i,j] += A[k,l] * val
+#             end
+#         end
+#     end
+# end
+
+
+# function fill_sparse_kron_adjoint!(∂A::AbstractSparseMatrix{Float64}, ∂X::AbstractSparseMatrix{Float64}, B::AbstractSparseMatrix)# where S <: AbstractSparseMatrix{Float64}
+#     @assert length(∂X) == length(B) * length(∂A) "∂X must have the same length as kron(B,A)"
+    
+#     n1, m1 = size(B)
+#     n2 = size(∂A,1)
+    
+#     # Precompute constants
+#     const_n1n2 = n1 * n2
+#     const_n1n2m1 = n1 * n2 * m1
+    
+#     # Access the sparse matrix internal representation
+#     colptr = ∂X.colptr  # Column pointers
+#     rowval = ∂X.rowval  # Row indices of non-zeros
+#     nzval  = ∂X.nzval   # Non-zero values
+    
+#     # Iterate over columns of ∂X
+#     for col in 1:size(∂X, 2)
+#         # Iterate over the non-zeros in this column
+#         for idx in colptr[col]:(colptr[col + 1] - 1)
+#             row = rowval[idx]
+#             val = nzval[idx]
+
+#             linear_idx = (col - 1) * size(∂X, 1) + row
+
+#             @inbounds begin
+#                 i = (linear_idx - 1) % n1 + 1
+#                 k = ((linear_idx - 1) ÷ n1) % n2 + 1
+#                 j = ((linear_idx - 1) ÷ const_n1n2) % m1 + 1
+#                 l = ((linear_idx - 1) ÷ const_n1n2m1) + 1
+                
+#                 # Update ∂A
+#                 ∂A[k,l] += B[i,j] * val
+#             end
+#         end
+#     end
+# end
 
 function mat_mult_kron(A::AbstractArray{T},B::AbstractArray{T},C::AbstractArray{T}; tol::AbstractFloat = eps()) where T <: Real
     n_rowB = size(B,1)
@@ -946,7 +1125,7 @@ function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},B::AbstractArray{T}; t
             for (i,idx) in enumerate(idx_mat)
                 i_1, i_3 = divrem((idx - 1) % (n_row^2), n_row) .+ 1
                 i_2 = ((idx - 1) ÷ (n_row^2)) + 1
-                mult_val += vals_mat[i] * B̄[i_1,col_1] * B̄[i_2,col_2] * B̄[i_3,col_3]
+                @inbounds mult_val += vals_mat[i] * B̄[i_1,col_1] * B̄[i_2,col_2] * B̄[i_3,col_3]
             end
 
             if abs(mult_val) > tol
@@ -958,6 +1137,37 @@ function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},B::AbstractArray{T}; t
     end
 
     sparse(rows,cols,vals,size(A,1),size(B,2)^3)
+end
+
+
+function A_mult_kron_power_3_B!(X::AbstractSparseMatrix{R}, A::AbstractSparseMatrix{S},B::AbstractMatrix{T}; tol::AbstractFloat = eps()) where {R <: Real, S <: Real, T <: Real}
+    n_row = size(B,1)
+    n_col = size(B,2)
+
+    B̄ = collect(B)
+
+    for row in 1:size(A,1)
+        idx_mat, vals_mat = A[row,:] |> findnz
+
+        if length(vals_mat) == 0 continue end
+
+        for col in 1:size(B,2)^3
+            col_1, col_3 = divrem((col - 1) % (n_col^2), n_col) .+ 1
+            col_2 = ((col - 1) ÷ (n_col^2)) + 1
+
+            mult_val = 0.0
+
+            for (i,idx) in enumerate(idx_mat)
+                i_1, i_3 = divrem((idx - 1) % (n_row^2), n_row) .+ 1
+                i_2 = ((idx - 1) ÷ (n_row^2)) + 1
+                @inbounds mult_val += vals_mat[i] * B̄[i_1,col_1] * B̄[i_2,col_2] * B̄[i_3,col_3]
+            end
+
+            if abs(mult_val) > tol  # Skip small values below tolerance
+                @inbounds X[row,col] += mult_val
+            end
+        end
+    end
 end
 
 
@@ -6770,6 +6980,7 @@ function rrule(::typeof(calculate_second_order_solution),
         ∂kron𝐒₁₋╱𝟏ₑ = M₂.𝐔₂' * ∂C * M₂.𝐂₂'
 
         fill_sparse_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, ∂kron𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
+        # fill_sparse_kron_adjoint!(∂kron𝐒₁₋╱𝟏ₑ, ∂A = ∂𝐒₁₋╱𝟏ₑ, A = 𝐒₁₋╱𝟏ₑ)
         # re∂kron𝐒₁₋╱𝟏ₑ = reshape(∂kron𝐒₁₋╱𝟏ₑ, size(𝐒₁₋╱𝟏ₑ,1), size(𝐒₁₋╱𝟏ₑ,1), size(𝐒₁₋╱𝟏ₑ,2), size(𝐒₁₋╱𝟏ₑ,2))
 
         # ei = 1
@@ -7219,19 +7430,19 @@ function rrule(::typeof(calculate_third_order_solution),
         #     ei += 1
         # end
 
-
         # tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
-        re∂tmpkron2 = reshape(∂tmpkron2, 
-                                size(𝐒₁₋╱𝟏ₑ,1), 
-                                size(M₂.𝛔,1), 
-                                size(𝐒₁₋╱𝟏ₑ,2),
-                                size(M₂.𝛔,2))
+        fill_sparse_kron_adjoint_∂B!(∂tmpkron2, ∂𝐒₁₋╱𝟏ₑ, M₂.𝛔)
+        # re∂tmpkron2 = reshape(∂tmpkron2, 
+        #                         size(𝐒₁₋╱𝟏ₑ,1), 
+        #                         size(M₂.𝛔,1), 
+        #                         size(𝐒₁₋╱𝟏ₑ,2),
+        #                         size(M₂.𝛔,2))
 
-        ei = 1
-        for e in eachslice(re∂tmpkron2; dims = (1,3))
-            ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(M₂.𝛔,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂tmpkron2; dims = (1,3))
+        #     ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(M₂.𝛔,e)
+        #     ei += 1
+        # end
 
 
         # tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)
@@ -7307,7 +7518,8 @@ function rrule(::typeof(calculate_third_order_solution),
         # end
 
         # -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
-        # ∂∇₃ += ∂𝐗₃ * ℒ.kron(ℒ.kron(aux, aux), aux)'
+        # ∂∇₃ += ∂𝐗₃ * ℒ.kron(ℒ.kron(aux', aux'), aux')
+        # A_mult_kron_power_3_B!(∂∇₃, ∂𝐗₃, aux') # not a good idea because filling an existing matrix one by one is slow
         ∂∇₃ += A_mult_kron_power_3_B(∂𝐗₃, aux') # this is slower somehow
         ∂kronkronaux = ∇₃' * ∂𝐗₃
 
@@ -7410,7 +7622,7 @@ function rrule(::typeof(calculate_third_order_solution),
         #     ∂kron𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(𝐒₁₋╱𝟏ₑ,e)
         #     ei += 1
         # end
-
+        
         # fill_sparse_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, ∂kron𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
         re∂kron𝐒₁₋╱𝟏ₑ = reshape(∂kron𝐒₁₋╱𝟏ₑ, 
                                 size(𝐒₁₋╱𝟏ₑ,1), 
@@ -7431,18 +7643,18 @@ function rrule(::typeof(calculate_third_order_solution),
         end 
 
         # tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
-        # fill_sparse_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, ∂tmpkron, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
-        re∂tmpkron = reshape(∂tmpkron, 
-                            size(M₂.𝛔,1), # this needs to correspond to the second entry in the kron call
-                            size(𝐒₁₋╱𝟏ₑ,1),  # this needs to correspond to the first entry in the kron call
-                            size(M₂.𝛔,2), 
-                            size(𝐒₁₋╱𝟏ₑ,2))
+        fill_sparse_kron_adjoint_∂A!(∂tmpkron, ∂𝐒₁₋╱𝟏ₑ, M₂.𝛔)
+        # re∂tmpkron = reshape(∂tmpkron, 
+        #                     size(M₂.𝛔,1), # this needs to correspond to the second entry in the kron call
+        #                     size(𝐒₁₋╱𝟏ₑ,1),  # this needs to correspond to the first entry in the kron call
+        #                     size(M₂.𝛔,2), 
+        #                     size(𝐒₁₋╱𝟏ₑ,2))
 
-        ei = 1
-        for e in eachslice(re∂tmpkron; dims = (2,4))
-            ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(M₂.𝛔,e)
-            ei += 1
-        end
+        # ei = 1
+        # for e in eachslice(re∂tmpkron; dims = (2,4))
+        #     ∂𝐒₁₋╱𝟏ₑ[ei] += ℒ.dot(M₂.𝛔,e)
+        #     ei += 1
+        # end
 
 
         # B = spinv * ∇₁₊
@@ -9962,21 +10174,22 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
             ∂kronaug_state₁ = 𝐒⁻²' * ∂state[2] / 2
 
-            re∂kronaug_state₁ = reshape(∂kronaug_state₁, 
-                                    length(aug_state₁[i]), 
-                                    length(aug_state₁[i]))
+            fill_sparse_kron_adjoint!(∂aug_state₁, ∂aug_state₁, ∂kronaug_state₁, aug_state₁[i], aug_state₁[i])
+            # re∂kronaug_state₁ = reshape(∂kronaug_state₁, 
+            #                         length(aug_state₁[i]), 
+            #                         length(aug_state₁[i]))
 
-            ei = 1
-            for e in eachslice(re∂kronaug_state₁; dims = (1))
-                ∂aug_state₁[ei] += ℒ.dot(aug_state₁[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronaug_state₁; dims = (1))
+            #     ∂aug_state₁[ei] += ℒ.dot(aug_state₁[i],e)
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronaug_state₁; dims = (2))
-                ∂aug_state₁[ei] += ℒ.dot(aug_state₁[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronaug_state₁; dims = (2))
+            #     ∂aug_state₁[ei] += ℒ.dot(aug_state₁[i],e)
+            #     ei += 1
+            # end
 
             if i > 1 && i < size(data_in_deviations,2)
                 ∂state[1] *= 0
@@ -10005,21 +10218,26 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x[1])
             ∂kronIx = 𝐒ⁱ²ᵉ' * ∂jacc
 
-            re∂kronIx = reshape(∂kronIx, 
-                                    T.nExo, 
-                                    T.nExo, 
-                                    1,
-                                    T.nExo)
-
-            ei = 1
-            for e in eachslice(re∂kronIx; dims = (1,3))
-                if i < size(data_in_deviations,2)
-                    ∂x[ei] -= ℒ.dot(ℒ.I(T.nExo),e)
-                else
-                    ∂x[ei] += ℒ.dot(ℒ.I(T.nExo),e)
-                end
-                ei += 1
+            if i < size(data_in_deviations,2)
+                fill_sparse_kron_adjoint_∂B!(∂kronIx,∂x,-ℒ.I(T.nExo))
+            else
+                fill_sparse_kron_adjoint_∂B!(∂kronIx,∂x,ℒ.I(T.nExo))
             end
+            # re∂kronIx = reshape(∂kronIx, 
+            #                         T.nExo, 
+            #                         T.nExo, 
+            #                         1,
+            #                         T.nExo)
+
+            # ei = 1
+            # for e in eachslice(re∂kronIx; dims = (1,3))
+            #     if i < size(data_in_deviations,2)
+            #         ∂x[ei] -= ℒ.dot(ℒ.I(T.nExo),e)
+            #     else
+            #         ∂x[ei] += ℒ.dot(ℒ.I(T.nExo),e)
+            #     end
+            #     ei += 1
+            # end
 
             ∂𝐒ⁱ²ᵉ -= ∂jacc * ℒ.kron(ℒ.I(T.nExo), x[i])'
 
@@ -10043,28 +10261,30 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂state¹⁻_vol *= 0
             ∂kronIstate¹⁻_vol = 𝐒²⁻ᵉ' * ∂𝐒ⁱ
 
-            re∂kronIstate¹⁻_vol = reshape(∂kronIstate¹⁻_vol, 
-                                    length(state¹⁻_vol), 
-                                    T.nExo, 
-                                    1,
-                                    T.nExo)
+            fill_sparse_kron_adjoint_∂B!(∂kronIstate¹⁻_vol, ∂state¹⁻_vol, ℒ.I(T.nExo))
+            # re∂kronIstate¹⁻_vol = reshape(∂kronIstate¹⁻_vol, 
+            #                         length(state¹⁻_vol), 
+            #                         T.nExo, 
+            #                         1,
+            #                         T.nExo)
 
-            ei = 1
-            for e in eachslice(re∂kronIstate¹⁻_vol; dims = (1,3))
-                ∂state¹⁻_vol[ei] += ℒ.dot(ℒ.I(T.nExo),e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronIstate¹⁻_vol; dims = (1,3))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot(ℒ.I(T.nExo),e)
+            #     ei += 1
+            # end
+            state¹⁻_vol = [aug_state₁[i][1:T.nPast_not_future_and_mixed]; 1]
 
             ∂𝐒¹ᵉ += ∂𝐒ⁱ
 
-            ∂𝐒²⁻ᵉ += ∂𝐒ⁱ * ℒ.kron(ℒ.I(T.nExo), [aug_state₁[i][1:T.nPast_not_future_and_mixed]; 1])'
+            ∂𝐒²⁻ᵉ += ∂𝐒ⁱ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)'
 
             # shock_independent = copy(data_in_deviations[:,i])
             ∂data_in_deviations[:,i] = ∂shock_independent
 
 
             # ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
-            ∂𝐒¹⁻ᵛ -= ∂shock_independent * [aug_state₁[i][1:T.nPast_not_future_and_mixed]; 1]'
+            ∂𝐒¹⁻ᵛ -= ∂shock_independent * state¹⁻_vol'
 
             ∂state¹⁻_vol -= 𝐒¹⁻ᵛ' * ∂shock_independent
 
@@ -10074,25 +10294,26 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂state[2] -= 𝐒¹⁻' * ∂shock_independent
 
             # ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
-            ∂𝐒²⁻ᵛ -= ∂shock_independent * ℒ.kron([aug_state₁[i][1:T.nPast_not_future_and_mixed]; 1], [aug_state₁[i][1:T.nPast_not_future_and_mixed]; 1])' / 2
+            ∂𝐒²⁻ᵛ -= ∂shock_independent * ℒ.kron(state¹⁻_vol, state¹⁻_vol)' / 2
 
             ∂kronstate¹⁻_vol = -𝐒²⁻ᵛ' * ∂shock_independent / 2
 
-            re∂kronstate¹⁻_vol = reshape(∂kronstate¹⁻_vol, 
-                                    length(state¹⁻_vol), 
-                                    length(state¹⁻_vol))
+            fill_sparse_kron_adjoint!(∂state¹⁻_vol, ∂state¹⁻_vol, ∂kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+            # re∂kronstate¹⁻_vol = reshape(∂kronstate¹⁻_vol, 
+            #                         length(state¹⁻_vol), 
+            #                         length(state¹⁻_vol))
 
-            ei = 1
-            for e in eachslice(re∂kronstate¹⁻_vol; dims = (1))
-                ∂state¹⁻_vol[ei] += ℒ.dot([aug_state₁[i][1:T.nPast_not_future_and_mixed]; 1],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronstate¹⁻_vol; dims = (1))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot(state¹⁻_vol,e)
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronstate¹⁻_vol; dims = (2))
-                ∂state¹⁻_vol[ei] += ℒ.dot([aug_state₁[i][1:T.nPast_not_future_and_mixed]; 1],e) # fine
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronstate¹⁻_vol; dims = (2))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot(state¹⁻_vol,e) # fine
+            #     ei += 1
+            # end
 
             # state¹⁻_vol = vcat(state¹⁻, 1)
             ∂state[1] += ∂state¹⁻_vol[1:end-1]
@@ -10482,21 +10703,22 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂aug_state = 𝐒⁻¹' * ∂state
             ∂kronaug_state  = 𝐒⁻²' * ∂state / 2
 
-            re∂kronaug_state = reshape(∂kronaug_state, 
-                                    length(aug_state[i]), 
-                                    length(aug_state[i]))
+            fill_sparse_kron_adjoint!(∂aug_state, ∂aug_state, ∂kronaug_state, aug_state[i], aug_state[i])
+            # re∂kronaug_state = reshape(∂kronaug_state, 
+            #                         length(aug_state[i]), 
+            #                         length(aug_state[i]))
 
-            ei = 1
-            for e in eachslice(re∂kronaug_state; dims = (1))
-                ∂aug_state[ei] += ℒ.dot(aug_state[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronaug_state; dims = (1))
+            #     ∂aug_state[ei] += ℒ.dot(aug_state[i],e)
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronaug_state; dims = (2))
-                ∂aug_state[ei] += ℒ.dot(aug_state[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronaug_state; dims = (2))
+            #     ∂aug_state[ei] += ℒ.dot(aug_state[i],e)
+            #     ei += 1
+            # end
 
             if i > 1 && i < size(data_in_deviations,2)
                 ∂state *= 0
@@ -10521,21 +10743,26 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x[1])
             ∂kronIx = 𝐒ⁱ²ᵉ' * ∂jacc
 
-            re∂kronIx = reshape(∂kronIx, 
-                                    T.nExo, 
-                                    T.nExo, 
-                                    1,
-                                    T.nExo)
-
-            ei = 1
-            for e in eachslice(re∂kronIx; dims = (1,3))
-                if i < size(data_in_deviations,2)
-                    ∂x[ei] -= ℒ.dot(ℒ.I(T.nExo),e)
-                else
-                    ∂x[ei] += ℒ.dot(ℒ.I(T.nExo),e)
-                end
-                ei += 1
+            if i < size(data_in_deviations,2)
+                fill_sparse_kron_adjoint_∂B!(∂kronIx,∂x,-ℒ.I(T.nExo))
+            else
+                fill_sparse_kron_adjoint_∂B!(∂kronIx,∂x,ℒ.I(T.nExo))
             end
+            # re∂kronIx = reshape(∂kronIx, 
+            #                         T.nExo, 
+            #                         T.nExo, 
+            #                         1,
+            #                         T.nExo)
+
+            # ei = 1
+            # for e in eachslice(re∂kronIx; dims = (1,3))
+            #     if i < size(data_in_deviations,2)
+            #         ∂x[ei] -= ℒ.dot(ℒ.I(T.nExo),e)
+            #     else
+            #         ∂x[ei] += ℒ.dot(ℒ.I(T.nExo),e)
+            #     end
+            #     ei += 1
+            # end
 
             ∂𝐒ⁱ²ᵉ -= ∂jacc * ℒ.kron(ℒ.I(T.nExo), x[i])'
 
@@ -10559,17 +10786,18 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂state¹⁻_vol *= 0
             ∂kronIstate¹⁻_vol = 𝐒²⁻ᵉ' * ∂𝐒ⁱ
 
-            re∂kronIstate¹⁻_vol = reshape(∂kronIstate¹⁻_vol, 
-                                    length(state¹⁻_vol), 
-                                    T.nExo, 
-                                    1,
-                                    T.nExo)
+            fill_sparse_kron_adjoint_∂B!(∂kronIstate¹⁻_vol, ∂state¹⁻_vol, ℒ.I(T.nExo))
+            # re∂kronIstate¹⁻_vol = reshape(∂kronIstate¹⁻_vol, 
+            #                         length(state¹⁻_vol), 
+            #                         T.nExo, 
+            #                         1,
+            #                         T.nExo)
 
-            ei = 1
-            for e in eachslice(re∂kronIstate¹⁻_vol; dims = (1,3))
-                ∂state¹⁻_vol[ei] += ℒ.dot(ℒ.I(T.nExo),e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronIstate¹⁻_vol; dims = (1,3))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot(ℒ.I(T.nExo),e)
+            #     ei += 1
+            # end
 
             ∂𝐒¹ᵉ += ∂𝐒ⁱ
 
@@ -10589,21 +10817,22 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
             ∂kronstate¹⁻_vol = -𝐒²⁻ᵛ' * ∂shock_independent / 2
 
-            re∂kronstate¹⁻_vol = reshape(∂kronstate¹⁻_vol, 
-                                    length(state¹⁻_vol), 
-                                    length(state¹⁻_vol))
+            fill_sparse_kron_adjoint!(∂state¹⁻_vol, ∂state¹⁻_vol, ∂kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+            # re∂kronstate¹⁻_vol = reshape(∂kronstate¹⁻_vol, 
+            #                         length(state¹⁻_vol), 
+            #                         length(state¹⁻_vol))
 
-            ei = 1
-            for e in eachslice(re∂kronstate¹⁻_vol; dims = (1))
-                ∂state¹⁻_vol[ei] += ℒ.dot([aug_state[i][1:T.nPast_not_future_and_mixed];1],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronstate¹⁻_vol; dims = (1))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot([aug_state[i][1:T.nPast_not_future_and_mixed];1],e)
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronstate¹⁻_vol; dims = (2))
-                ∂state¹⁻_vol[ei] += ℒ.dot([aug_state[i][1:T.nPast_not_future_and_mixed];1],e) # fine
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronstate¹⁻_vol; dims = (2))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot([aug_state[i][1:T.nPast_not_future_and_mixed];1],e) # fine
+            #     ei += 1
+            # end
 
             # state¹⁻_vol = vcat(state¹⁻, 1)
             ∂state += ∂state¹⁻_vol[1:end-1]
@@ -11287,58 +11516,61 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
             ∂kronaug_state₁̂₂ = 𝐒⁻²' * ∂state[3]
 
-            re∂kronaug_state₁̂₂ = reshape(∂kronaug_state₁̂₂, 
-                                    length(aug_state₁[i]), 
-                                    length(aug_state₁[i]))
+            fill_vector_kron_adjoint!(∂aug_state₁̂, ∂aug_state₂, ∂kronaug_state₁̂₂, aug_state₁̂[i], aug_state₂[i])
+            # re∂kronaug_state₁̂₂ = reshape(∂kronaug_state₁̂₂, 
+            #                         length(aug_state₁[i]), 
+            #                         length(aug_state₁[i]))
 
-            ei = 1
-            for e in eachslice(re∂kronaug_state₁̂₂; dims = (1))
-                ∂aug_state₁̂[ei] += ℒ.dot(aug_state₂[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronaug_state₁̂₂; dims = (1))
+            #     ∂aug_state₁̂[ei] += ℒ.dot(aug_state₂[i],e)
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronaug_state₁̂₂; dims = (2))
-                ∂aug_state₂[ei] += ℒ.dot(aug_state₁̂[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronaug_state₁̂₂; dims = (2))
+            #     ∂aug_state₂[ei] += ℒ.dot(aug_state₁̂[i],e)
+            #     ei += 1
+            # end
 
             ∂𝐒⁻³ += ∂state[3] * ℒ.kron(kron_aug_state₁[i],aug_state₁[i])' / 6
 
             ∂kronkronaug_state₁ = 𝐒⁻³' * ∂state[3] / 6
 
-            re∂kronkronaug_state₁ = reshape(∂kronkronaug_state₁, 
-                                            length(aug_state₁[i]), 
-                                            length(aug_state₁[i])^2)
+            fill_vector_kron_adjoint!(∂aug_state₁, ∂kronaug_state₁, ∂kronkronaug_state₁, aug_state₁[i], kron_aug_state₁[i])
+            # re∂kronkronaug_state₁ = reshape(∂kronkronaug_state₁, 
+            #                                 length(aug_state₁[i]), 
+            #                                 length(aug_state₁[i])^2)
     
-            ei = 1
-            for e in eachslice(re∂kronkronaug_state₁; dims = (1))
-                ∂aug_state₁[ei] += ℒ.dot(kron_aug_state₁[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronkronaug_state₁; dims = (1))
+            #     ∂aug_state₁[ei] += ℒ.dot(kron_aug_state₁[i],e)
+            #     ei += 1
+            # end
             
-            ei = 1
-            for e in eachslice(re∂kronkronaug_state₁; dims = (2))
-                ∂kronaug_state₁[ei] += ℒ.dot(aug_state₁[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronkronaug_state₁; dims = (2))
+            #     ∂kronaug_state₁[ei] += ℒ.dot(aug_state₁[i],e)
+            #     ei += 1
+            # end
     
             # kron_aug_state₁[i] = ℒ.kron(aug_state₁[i], aug_state₁[i])
-            re∂kronaug_state₁ = reshape(∂kronaug_state₁, 
-                                    length(aug_state₁[i]), 
-                                    length(aug_state₁[i]))
+            fill_vector_kron_adjoint!(∂aug_state₁, ∂aug_state₁, ∂kronaug_state₁, aug_state₁[i], aug_state₁[i])
+            # re∂kronaug_state₁ = reshape(∂kronaug_state₁, 
+            #                         length(aug_state₁[i]), 
+            #                         length(aug_state₁[i]))
 
-            ei = 1
-            for e in eachslice(re∂kronaug_state₁; dims = (1))
-                ∂aug_state₁[ei] += ℒ.dot(aug_state₁[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronaug_state₁; dims = (1))
+            #     ∂aug_state₁[ei] += ℒ.dot(aug_state₁[i],e)
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronaug_state₁; dims = (2))
-                ∂aug_state₁[ei] += ℒ.dot(aug_state₁[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronaug_state₁; dims = (2))
+            #     ∂aug_state₁[ei] += ℒ.dot(aug_state₁[i],e)
+            #     ei += 1
+            # end
 
             if i > 1 && i < size(data_in_deviations,2)
                 ∂state[1] *= 0
@@ -11377,6 +11609,11 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
             ∂kronIx = 𝐒ⁱ²ᵉ[i]' * ∂jacc
 
+            # if i < size(data_in_deviations,2)
+            #     fill_sparse_kron_adjoint_∂B!(∂kronIx,∂x,-ℒ.I(T.nExo))
+            # else
+            #     fill_sparse_kron_adjoint_∂B!(∂kronIx,∂x,ℒ.I(T.nExo))
+            # end
             re∂kronIx = reshape(∂kronIx, 
                                     T.nExo, 
                                     T.nExo, 
@@ -11396,14 +11633,19 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂𝐒ⁱ²ᵉ = -∂jacc * ℒ.kron(ℒ.I(T.nExo), x[i])'
 
             ∂kronIxx = 𝐒ⁱ³ᵉ' * ∂jacc * 3 / 2
-            
+
+            ∂kronxx *= 0
+
+            # if i < size(data_in_deviations,2)
+            #     fill_sparse_kron_adjoint_∂B!(∂kronIxx, ∂kronxx, -ℒ.I(T.nExo))
+            # else
+            #     fill_sparse_kron_adjoint_∂B!(∂kronIxx, ∂kronxx, ℒ.I(T.nExo))
+            # end
             re∂kronIxx = reshape(∂kronIxx, 
                                     T.nExo^2, 
                                     T.nExo, 
                                     1,
                                     T.nExo)
-
-            ∂kronxx *= 0
 
             ei = 1
             for e in eachslice(re∂kronIxx; dims = (1,3))
@@ -11415,21 +11657,22 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ei += 1
             end
 
-            re∂kronxx = reshape(∂kronxx, 
-                                    T.nExo, 
-                                    T.nExo)
+            fill_vector_kron_adjoint!(∂x, ∂x, ∂kronxx, x[i], x[i])
+            # re∂kronxx = reshape(∂kronxx, 
+            #                         T.nExo, 
+            #                         T.nExo)
 
-            ei = 1
-            for e in eachslice(re∂kronxx; dims = (2))
-                ∂x[ei] += ℒ.dot(x[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronxx; dims = (2))
+            #     ∂x[ei] += ℒ.dot(x[i],e)
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronxx; dims = (1))
-                ∂x[ei] += ℒ.dot(x[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronxx; dims = (1))
+            #     ∂x[ei] += ℒ.dot(x[i],e)
+            #     ei += 1
+            # end
 
             ∂𝐒ⁱ³ᵉ -= ∂jacc * ℒ.kron(ℒ.I(T.nExo), kronxx[i])' * 3 / 2
 
@@ -11464,6 +11707,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
             ∂kronIstate¹⁻_vol = 𝐒²⁻ᵉ' * ∂𝐒ⁱ
 
+            # fill_sparse_kron_adjoint_∂B!(∂kronIstate¹⁻_vol, ∂state¹⁻_vol, ℒ.I(T.nExo))
             re∂kronIstate¹⁻_vol = reshape(∂kronIstate¹⁻_vol, 
                                     length(state¹⁻_vol), 
                                     T.nExo, 
@@ -11480,6 +11724,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
             ∂kronIstate²⁻ = 𝐒²⁻ᵛᵉ' * ∂𝐒ⁱ
 
+            # fill_sparse_kron_adjoint_∂B!(∂kronIstate²⁻, ∂state[2], ℒ.I(T.nExo))
             re∂kronIstate²⁻ = reshape(∂kronIstate²⁻, 
                                     length(state²⁻), 
                                     T.nExo, 
@@ -11496,6 +11741,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
             ∂kronIstate¹⁻_volstate¹⁻_vol = 𝐒³⁻ᵉ²' * ∂𝐒ⁱ / 2
 
+            # fill_sparse_kron_adjoint_∂B!(∂kronIstate¹⁻_volstate¹⁻_vol, ∂kronstate¹⁻_vol, ℒ.I(T.nExo))
             re∂kronIstate¹⁻_volstate¹⁻_vol = reshape(∂kronIstate¹⁻_volstate¹⁻_vol, 
                                     length(state¹⁻_vol)^2, 
                                     T.nExo, 
@@ -11517,6 +11763,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             
             ∂kronIIstate¹⁻_vol = 𝐒³⁻ᵉ' * ∂𝐒ⁱ²ᵉ / 2
 
+            # fill_sparse_kron_adjoint_∂B!(∂kronIIstate¹⁻_vol, ∂state¹⁻_vol, II)
             re∂kronIIstate¹⁻_vol = reshape(∂kronIIstate¹⁻_vol, 
                                     length(state¹⁻_vol), 
                                     T.nExo^2, 
@@ -11557,27 +11804,29 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
             ∂kronstate¹⁻²⁻ = -𝐒²⁻' * ∂shock_independent
 
-            re∂kronstate¹⁻²⁻ = reshape(∂kronstate¹⁻²⁻, 
-                                    length(state¹⁻), 
-                                    length(state¹⁻))
+            fill_vector_kron_adjoint!(∂state[1], ∂state[2], ∂kronstate¹⁻²⁻, state¹⁻, state²⁻)
+            # re∂kronstate¹⁻²⁻ = reshape(∂kronstate¹⁻²⁻, 
+            #                         length(state¹⁻), 
+            #                         length(state¹⁻))
 
-            ei = 1
-            for e in eachslice(re∂kronstate¹⁻²⁻; dims = (2))
-                ∂state[1][ei] += ℒ.dot(state²⁻,e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronstate¹⁻²⁻; dims = (2))
+            #     ∂state[1][ei] += ℒ.dot(state²⁻,e)
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronstate¹⁻²⁻; dims = (1))
-                ∂state[2][ei] += ℒ.dot(state¹⁻,e) # fine
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronstate¹⁻²⁻; dims = (1))
+            #     ∂state[2][ei] += ℒ.dot(state¹⁻,e) # fine
+            #     ei += 1
+            # end
 
             # ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
             ∂𝐒³⁻ᵛ -= ∂shock_independent * ℒ.kron(ℒ.kron(state¹⁻_vol, state¹⁻_vol), state¹⁻_vol)' / 6
 
             ∂kronstate¹⁻_volstate¹⁻_vol = -𝐒³⁻ᵛ' * ∂shock_independent / 6
 
+            # fill_sparse_kron_adjoint!(∂kronstate¹⁻_vol, ∂state¹⁻_vol, ∂kronstate¹⁻_volstate¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol), state¹⁻_vol)
             re∂kronstate¹⁻_volstate¹⁻_vol = reshape(∂kronstate¹⁻_volstate¹⁻_vol, 
                                     length(state¹⁻_vol), 
                                     length(state¹⁻_vol)^2)
@@ -11594,21 +11843,22 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ei += 1
             end        
 
-            re∂kronstate¹⁻_vol = reshape(∂kronstate¹⁻_vol, 
-                                    length(state¹⁻_vol), 
-                                    length(state¹⁻_vol))
+            fill_vector_kron_adjoint!(∂state¹⁻_vol, ∂state¹⁻_vol, ∂kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+            # re∂kronstate¹⁻_vol = reshape(∂kronstate¹⁻_vol, 
+            #                         length(state¹⁻_vol), 
+            #                         length(state¹⁻_vol))
 
-            ei = 1
-            for e in eachslice(re∂kronstate¹⁻_vol; dims = (1))
-                ∂state¹⁻_vol[ei] += ℒ.dot(state¹⁻_vol,e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronstate¹⁻_vol; dims = (1))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot(state¹⁻_vol,e)
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronstate¹⁻_vol; dims = (2))
-                ∂state¹⁻_vol[ei] += ℒ.dot(state¹⁻_vol,e) # fine
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronstate¹⁻_vol; dims = (2))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot(state¹⁻_vol,e) # fine
+            #     ei += 1
+            # end
 
             # state¹⁻_vol = vcat(state¹⁻, 1)
             ∂state[1] += ∂state¹⁻_vol[1:end-1]
@@ -12211,37 +12461,39 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂kronaug_state = 𝐒⁻²' * ∂state / 2
             ∂kronkronaug_state = 𝐒⁻³' * ∂state / 6
     
-            re∂kronkronaug_state = reshape(∂kronkronaug_state, 
-                                            length(aug_state[i]), 
-                                            length(aug_state[i])^2)
+            fill_sparse_kron_adjoint!(∂aug_state₁, ∂kronaug_state₁, ∂kronkronaug_state₁, aug_state₁[i], kron_aug_state₁[i])
+            # re∂kronkronaug_state = reshape(∂kronkronaug_state, 
+            #                                 length(aug_state[i]), 
+            #                                 length(aug_state[i])^2)
     
-            ei = 1
-            for e in eachslice(re∂kronkronaug_state; dims = (1))
-                ∂aug_state[ei] += ℒ.dot(ℒ.kron(aug_state[i], aug_state[i]),e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronkronaug_state; dims = (1))
+            #     ∂aug_state[ei] += ℒ.dot(ℒ.kron(aug_state[i], aug_state[i]),e)
+            #     ei += 1
+            # end
             
-            ei = 1
-            for e in eachslice(re∂kronkronaug_state; dims = (2))
-                ∂kronaug_state[ei] += ℒ.dot(aug_state[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronkronaug_state; dims = (2))
+            #     ∂kronaug_state[ei] += ℒ.dot(aug_state[i],e)
+            #     ei += 1
+            # end
     
-            re∂kronaug_state = reshape(∂kronaug_state, 
-                                    length(aug_state[i]), 
-                                    length(aug_state[i]))
+            fill_sparse_kron_adjoint!(∂aug_state, ∂aug_state, ∂kronaug_state, aug_state[i], aug_state[i])
+            # re∂kronaug_state = reshape(∂kronaug_state, 
+            #                         length(aug_state[i]), 
+            #                         length(aug_state[i]))
 
-            ei = 1
-            for e in eachslice(re∂kronaug_state; dims = (1))
-                ∂aug_state[ei] += ℒ.dot(aug_state[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronaug_state; dims = (1))
+            #     ∂aug_state[ei] += ℒ.dot(aug_state[i],e)
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronaug_state; dims = (2))
-                ∂aug_state[ei] += ℒ.dot(aug_state[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronaug_state; dims = (2))
+            #     ∂aug_state[ei] += ℒ.dot(aug_state[i],e)
+            #     ei += 1
+            # end
 
             if i > 1 && i < size(data_in_deviations,2)
                 ∂state *= 0
@@ -12268,59 +12520,70 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
             ∂kronIx = 𝐒ⁱ²ᵉ[i]' * ∂jacc
 
-            re∂kronIx = reshape(∂kronIx, 
-                                    T.nExo, 
-                                    T.nExo, 
-                                    1,
-                                    T.nExo)
-
-            ei = 1
-            for e in eachslice(re∂kronIx; dims = (1,3))
-                if i < size(data_in_deviations,2)
-                    ∂x[ei] -= ℒ.dot(ℒ.I(T.nExo),e)
-                else
-                    ∂x[ei] += ℒ.dot(ℒ.I(T.nExo),e)
-                end
-                ei += 1
+            if i < size(data_in_deviations,2)
+                fill_sparse_kron_adjoint_∂B!(∂kronIxx, ∂kronxx, -ℒ.I(T.nExo))
+            else
+                fill_sparse_kron_adjoint_∂B!(∂kronIxx, ∂kronxx, ℒ.I(T.nExo))
             end
+            # re∂kronIx = reshape(∂kronIx, 
+            #                         T.nExo, 
+            #                         T.nExo, 
+            #                         1,
+            #                         T.nExo)
+
+            # ei = 1
+            # for e in eachslice(re∂kronIx; dims = (1,3))
+            #     if i < size(data_in_deviations,2)
+            #         ∂x[ei] -= ℒ.dot(ℒ.I(T.nExo),e)
+            #     else
+            #         ∂x[ei] += ℒ.dot(ℒ.I(T.nExo),e)
+            #     end
+            #     ei += 1
+            # end
 
             ∂𝐒ⁱ²ᵉ = -∂jacc * ℒ.kron(ℒ.I(T.nExo), x[i])'
 
             ∂kronIxx = 𝐒ⁱ³ᵉ' * ∂jacc * 3 / 2
             
-            re∂kronIxx = reshape(∂kronIxx, 
-                                    T.nExo^2, 
-                                    T.nExo, 
-                                    1,
-                                    T.nExo)
-
             ∂kronxx *= 0
 
-            ei = 1
-            for e in eachslice(re∂kronIxx; dims = (1,3))
-                if i < size(data_in_deviations,2)
-                    ∂kronxx[ei] -= ℒ.dot(ℒ.I(T.nExo),e)
-                else
-                    ∂kronxx[ei] += ℒ.dot(ℒ.I(T.nExo),e)
-                end
-                ei += 1
+            if i < size(data_in_deviations,2)
+                fill_sparse_kron_adjoint_∂B!(∂kronIxx, ∂kronxx, -ℒ.I(T.nExo))
+            else
+                fill_sparse_kron_adjoint_∂B!(∂kronIxx, ∂kronxx, ℒ.I(T.nExo))
             end
+            # re∂kronIxx = reshape(∂kronIxx, 
+            #                         T.nExo^2, 
+            #                         T.nExo, 
+            #                         1,
+            #                         T.nExo)
 
-            re∂kronxx = reshape(∂kronxx, 
-                                    T.nExo, 
-                                    T.nExo)
+            # ei = 1
+            # for e in eachslice(re∂kronIxx; dims = (1,3))
+            #     if i < size(data_in_deviations,2)
+            #         ∂kronxx[ei] -= ℒ.dot(ℒ.I(T.nExo),e)
+            #     else
+            #         ∂kronxx[ei] += ℒ.dot(ℒ.I(T.nExo),e)
+            #     end
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronxx; dims = (2))
-                ∂x[ei] += ℒ.dot(x[i],e)
-                ei += 1
-            end
+            fill_sparse_kron_adjoint!(∂x, ∂x, ∂kronxx, x[i], x[i])
+            # re∂kronxx = reshape(∂kronxx, 
+            #                         T.nExo, 
+            #                         T.nExo)
 
-            ei = 1
-            for e in eachslice(re∂kronxx; dims = (1))
-                ∂x[ei] += ℒ.dot(x[i],e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronxx; dims = (2))
+            #     ∂x[ei] += ℒ.dot(x[i],e)
+            #     ei += 1
+            # end
+
+            # ei = 1
+            # for e in eachslice(re∂kronxx; dims = (1))
+            #     ∂x[ei] += ℒ.dot(x[i],e)
+            #     ei += 1
+            # end
 
             ∂𝐒ⁱ³ᵉ -= ∂jacc * ℒ.kron(ℒ.I(T.nExo), kronxx[i])' * 3 / 2
 
@@ -12353,33 +12616,35 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
             ∂kronIstate¹⁻_vol = 𝐒²⁻ᵉ' * ∂𝐒ⁱ
 
-            re∂kronIstate¹⁻_vol = reshape(∂kronIstate¹⁻_vol, 
-                                    length(state¹⁻_vol), 
-                                    T.nExo, 
-                                    1,
-                                    T.nExo)
+            fill_sparse_kron_adjoint_∂B!(∂kronIstate¹⁻_volstate¹⁻_vol, ∂kronstate¹⁻_vol, ℒ.I(T.nExo))
+            # re∂kronIstate¹⁻_vol = reshape(∂kronIstate¹⁻_vol, 
+            #                         length(state¹⁻_vol), 
+            #                         T.nExo, 
+            #                         1,
+            #                         T.nExo)
 
-            ei = 1
-            for e in eachslice(re∂kronIstate¹⁻_vol; dims = (1,3))
-                ∂state¹⁻_vol[ei] += ℒ.dot(ℒ.I(T.nExo),e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronIstate¹⁻_vol; dims = (1,3))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot(ℒ.I(T.nExo),e)
+            #     ei += 1
+            # end
 
             ∂𝐒²⁻ᵉ += ∂𝐒ⁱ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)'
 
             ∂kronIstate¹⁻_volstate¹⁻_vol = 𝐒³⁻ᵉ²' * ∂𝐒ⁱ / 2
 
-            re∂kronIstate¹⁻_volstate¹⁻_vol = reshape(∂kronIstate¹⁻_volstate¹⁻_vol, 
-                                    length(state¹⁻_vol)^2, 
-                                    T.nExo, 
-                                    1,
-                                    T.nExo)
+            fill_sparse_kron_adjoint_∂B!(∂kronIstate¹⁻_volstate¹⁻_vol, ∂kronstate¹⁻_vol, ℒ.I(T.nExo))
+            # re∂kronIstate¹⁻_volstate¹⁻_vol = reshape(∂kronIstate¹⁻_volstate¹⁻_vol, 
+            #                         length(state¹⁻_vol)^2, 
+            #                         T.nExo, 
+            #                         1,
+            #                         T.nExo)
 
-            ei = 1
-            for e in eachslice(re∂kronIstate¹⁻_volstate¹⁻_vol; dims = (1,3))
-                ∂kronstate¹⁻_vol[ei] += ℒ.dot(ℒ.I(T.nExo),e) # ∂kronstate¹⁻_vol is dealt with later
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronIstate¹⁻_volstate¹⁻_vol; dims = (1,3))
+            #     ∂kronstate¹⁻_vol[ei] += ℒ.dot(ℒ.I(T.nExo),e) # ∂kronstate¹⁻_vol is dealt with later
+            #     ei += 1
+            # end
 
             ∂𝐒³⁻ᵉ² += ∂𝐒ⁱ * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol)' / 2
             
@@ -12391,17 +12656,18 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             
             ∂kronIIstate¹⁻_vol = 𝐒³⁻ᵉ' * ∂𝐒ⁱ²ᵉ / 2
 
-            re∂kronIIstate¹⁻_vol = reshape(∂kronIIstate¹⁻_vol, 
-                                    length(state¹⁻_vol), 
-                                    T.nExo^2, 
-                                    1,
-                                    T.nExo^2)
+            fill_sparse_kron_adjoint_∂B!(∂kronIIstate¹⁻_vol, ∂state¹⁻_vol, II)
+            # re∂kronIIstate¹⁻_vol = reshape(∂kronIIstate¹⁻_vol, 
+            #                         length(state¹⁻_vol), 
+            #                         T.nExo^2, 
+            #                         1,
+            #                         T.nExo^2)
 
-            ei = 1
-            for e in eachslice(re∂kronIIstate¹⁻_vol; dims = (1,3))
-                ∂state¹⁻_vol[ei] += ℒ.dot(II,e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronIIstate¹⁻_vol; dims = (1,3))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot(II,e)
+            #     ei += 1
+            # end
 
 
             # shock_independent = copy(data_in_deviations[:,i])
@@ -12423,37 +12689,39 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
             ∂kronstate¹⁻_volstate¹⁻_vol = -𝐒³⁻ᵛ' * ∂shock_independent / 6
 
-            re∂kronstate¹⁻_volstate¹⁻_vol = reshape(∂kronstate¹⁻_volstate¹⁻_vol, 
-                                    length(state¹⁻_vol), 
-                                    length(state¹⁻_vol)^2)
+            fill_sparse_kron_adjoint!(∂kronstate¹⁻_vol, ∂state¹⁻_vol, ∂kronstate¹⁻_volstate¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol), state¹⁻_vol)
+            # re∂kronstate¹⁻_volstate¹⁻_vol = reshape(∂kronstate¹⁻_volstate¹⁻_vol, 
+            #                         length(state¹⁻_vol), 
+            #                         length(state¹⁻_vol)^2)
                             
-            ei = 1
-            for e in eachslice(re∂kronstate¹⁻_volstate¹⁻_vol; dims = (2))
-                ∂kronstate¹⁻_vol[ei] += ℒ.dot(state¹⁻_vol,e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronstate¹⁻_volstate¹⁻_vol; dims = (2))
+            #     ∂kronstate¹⁻_vol[ei] += ℒ.dot(state¹⁻_vol,e)
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronstate¹⁻_volstate¹⁻_vol; dims = (1))
-                ∂state¹⁻_vol[ei] += ℒ.dot(ℒ.kron(state¹⁻_vol, state¹⁻_vol),e) # fine
-                ei += 1
-            end        
+            # ei = 1
+            # for e in eachslice(re∂kronstate¹⁻_volstate¹⁻_vol; dims = (1))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot(ℒ.kron(state¹⁻_vol, state¹⁻_vol),e) # fine
+            #     ei += 1
+            # end        
 
-            re∂kronstate¹⁻_vol = reshape(∂kronstate¹⁻_vol, 
-                                    length(state¹⁻_vol), 
-                                    length(state¹⁻_vol))
+            fill_sparse_kron_adjoint!(∂state¹⁻_vol, ∂state¹⁻_vol, ∂kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+            # re∂kronstate¹⁻_vol = reshape(∂kronstate¹⁻_vol, 
+            #                         length(state¹⁻_vol), 
+            #                         length(state¹⁻_vol))
 
-            ei = 1
-            for e in eachslice(re∂kronstate¹⁻_vol; dims = (1))
-                ∂state¹⁻_vol[ei] += ℒ.dot(state¹⁻_vol,e)
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronstate¹⁻_vol; dims = (1))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot(state¹⁻_vol,e)
+            #     ei += 1
+            # end
 
-            ei = 1
-            for e in eachslice(re∂kronstate¹⁻_vol; dims = (2))
-                ∂state¹⁻_vol[ei] += ℒ.dot(state¹⁻_vol,e) # fine
-                ei += 1
-            end
+            # ei = 1
+            # for e in eachslice(re∂kronstate¹⁻_vol; dims = (2))
+            #     ∂state¹⁻_vol[ei] += ℒ.dot(state¹⁻_vol,e) # fine
+            #     ei += 1
+            # end
 
             # state¹⁻_vol = vcat(state¹⁻, 1)
             ∂state += ∂state¹⁻_vol[1:end-1]
