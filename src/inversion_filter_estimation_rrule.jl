@@ -20,7 +20,10 @@ import ForwardDiff
 
 include("../models/Gali_2015_chapter_3_nonlinear.jl")
 
-# include("../models/Ghironi_Melitz_2005.jl")
+include("../models/Ghironi_Melitz_2005.jl")
+
+
+include("../models/Smets_Wouters_2007.jl")
 
 
 
@@ -70,7 +73,8 @@ include("../models/Gali_2015_chapter_3_nonlinear.jl")
 # 	ψ | l[ss] = 1/3
 # end
 
-# 𝓂 = Ghironi_Melitz_2005
+𝓂 = Smets_Wouters_2007
+𝓂 = Ghironi_Melitz_2005
 𝓂 = Gali_2015_chapter_3_nonlinear
 # 𝓂 = RBC_baseline
 
@@ -84,15 +88,15 @@ presample_periods = 0
 sylvester_algorithm = :doubling
 
 
-
-oobbss = [:Y, :Pi, :R]
+oobbss = [:labobs, :dwobs, :robs, :pinfobs, :dinve, :dc, :dy]
+# oobbss = [:Y, :Pi, :R]
 # oobbss = [:r, :C]
 periods = 20
 # oobbss = [:c, :k]
 algorithm = :second_order
-algorithm = :pruned_second_order
-algorithm = :third_order
-algorithm = :pruned_third_order
+# algorithm = :pruned_second_order
+# algorithm = :third_order
+# algorithm = :pruned_third_order
 
 Random.seed!(9)
 data = simulate(𝓂, algorithm = algorithm, periods = periods)(oobbss,:,:simulate)
@@ -102,11 +106,13 @@ get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
 get_parameters(𝓂, values = true)
 
 
-findiff = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1, max_range = 1e-6), x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1]
+findiff = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-6), x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1]
+
+findiff = FiniteDifferences.grad(FiniteDifferences.forward_fdm(5,1, max_range = 1e-3), x-> get_loglikelihood(𝓂, data, vcat(x,𝓂.parameter_values[2:end]), algorithm = algorithm), 𝓂.parameter_values[1])[1]
 
 zygdiff = Zygote.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1]
 
-isapprox(findiff, collect(zygdiff))
+isapprox(findiff, zygdiff)
 
 
 @benchmark get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
@@ -116,7 +122,11 @@ isapprox(findiff, collect(zygdiff))
 @benchmark FiniteDifferences.grad(FiniteDifferences.central_fdm(5,1, max_range = 1e-4), x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1]
 
 
+@profview Zygote.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1]
+
 @profview for i in 1:5 Zygote.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1] end
+
+@profview for i in 1:50 get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm) end
 
 # fordiff = ForwardDiff.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)
 
