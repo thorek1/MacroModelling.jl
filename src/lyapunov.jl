@@ -160,7 +160,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
         mul!(𝐀², 𝐀, 𝐀)
         copyto!(𝐀, 𝐀²)
 
-        droptol!(𝐀, eps())
+        # droptol!(𝐀, eps())
 
         if i > 10# && i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
