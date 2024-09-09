@@ -79,7 +79,7 @@ oobbss = [:labobs, :dwobs, :robs, :pinfobs, :dinve, :dc, :dy]
 oobbss = [:r, :C]
 
 𝓂 = Gali_2015_chapter_3_nonlinear
-oobbss = [:Y, :R , :Pi]
+oobbss = [:Y, :R] # , :Pi]
 # 𝓂 = RBC_baseline
 
 
