@@ -22,7 +22,6 @@ include("../models/Gali_2015_chapter_3_nonlinear.jl")
 
 include("../models/Ghironi_Melitz_2005.jl")
 
-
 include("../models/Smets_Wouters_2007.jl")
 
 
@@ -74,8 +73,13 @@ include("../models/Smets_Wouters_2007.jl")
 # end
 
 𝓂 = Smets_Wouters_2007
+oobbss = [:labobs, :dwobs, :robs, :pinfobs, :dinve, :dc, :dy]
+
 𝓂 = Ghironi_Melitz_2005
+oobbss = [:r, :C]
+
 𝓂 = Gali_2015_chapter_3_nonlinear
+oobbss = [:Y, :R , :Pi]
 # 𝓂 = RBC_baseline
 
 
@@ -88,11 +92,7 @@ presample_periods = 0
 sylvester_algorithm = :doubling
 
 
-oobbss = [:labobs, :dwobs, :robs, :pinfobs, :dinve, :dc, :dy]
-# oobbss = [:Y, :Pi, :R]
-# oobbss = [:r, :C]
-periods = 20
-# oobbss = [:c, :k]
+periods = 10
 algorithm = :second_order
 # algorithm = :pruned_second_order
 # algorithm = :third_order
@@ -103,12 +103,12 @@ data = simulate(𝓂, algorithm = algorithm, periods = periods)(oobbss,:,:simula
 
 get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
 
-get_parameters(𝓂, values = true)
+# get_parameters(𝓂, values = true)
 
 
-findiff = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-6), x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1]
+findiff = FiniteDifferences.grad(FiniteDifferences.central_fdm(5,1, max_range = 1e-5), x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1]
 
-findiff = FiniteDifferences.grad(FiniteDifferences.forward_fdm(5,1, max_range = 1e-3), x-> get_loglikelihood(𝓂, data, vcat(x,𝓂.parameter_values[2:end]), algorithm = algorithm), 𝓂.parameter_values[1])[1]
+# findiff = FiniteDifferences.grad(FiniteDifferences.forward_fdm(5,1, max_range = 1e-3), x-> get_loglikelihood(𝓂, data, vcat(x,𝓂.parameter_values[2:end]), algorithm = algorithm), 𝓂.parameter_values[1])[1]
 
 zygdiff = Zygote.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1]
 
