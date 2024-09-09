@@ -14,22 +14,10 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 tol::AbstractFloat = 1e-12,
                                 density_threshold::Float64 = .15,
                                 verbose::Bool = false)
-    if A isa AbstractSparseMatrix
-        if length(A.nzval) / length(A) > density_threshold || lyapunov_algorithm == :lyapunov
-            A = collect(A)
-        elseif VERSION >= v"1.9"
-            A = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
-        end
-    end
+    A = choose_matrix_format(A)
 
-    if C isa AbstractSparseMatrix
-        if length(C.nzval) / length(C) > density_threshold || lyapunov_algorithm == :lyapunov
-            C = collect(C)
-        elseif VERSION >= v"1.9"
-            C = ThreadedSparseArrays.ThreadedSparseMatrixCSC(C)
-        end
-    end
-    
+    C = choose_matrix_format(C)
+ 
     X, solved, i, reached_tol = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol)
 
     if verbose
