@@ -149,13 +149,13 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
     𝐀  = copy(A)
 
     𝐀² = similar(𝐀)
-    
+
     max_iter = 500
 
     iters = max_iter
 
     for i in 1:max_iter
-        𝐂¹ = 𝐀 * 𝐂 * 𝐀' + 𝐂
+        𝐂¹ = 𝐀 * 𝐂 * 𝐀' + 𝐂 % TODO check whether this is sparse in some cases
 
         mul!(𝐀², 𝐀, 𝐀)
         copyto!(𝐀, 𝐀²)
