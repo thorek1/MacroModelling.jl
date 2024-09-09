@@ -40,11 +40,9 @@ function find_shocks(::Val{:LagrangeNewton},
 
     tmp = zeros(size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
 
-    II = sparse(ℒ.I(length(x)^2))
-
     lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
 
-    for i in 1:max_iter
+    @inbounds for i in 1:max_iter
         ℒ.kron!(kron_buffer2, J, x)
 
         ℒ.mul!(∂x, 𝐒ⁱ²ᵉ, kron_buffer2)
@@ -240,7 +238,7 @@ function find_shocks(::Val{:LagrangeNewton},
 
     lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
     
-    for i in 1:max_iter
+    @inbounds for i in 1:max_iter
         ℒ.kron!(kron_buffer2, J, x)
         ℒ.kron!(kron_buffer3, J, kron_buffer)
 
