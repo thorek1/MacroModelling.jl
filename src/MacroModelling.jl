@@ -6893,14 +6893,14 @@ function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Du
 end
 
 
-function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
-                                            ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
-                                            𝑺₁::AbstractMatrix{<: Real},#first order solution
+function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
+                                            ∇₂::SparseMatrixCSC{S}, #second order derivatives
+                                            𝑺₁::AbstractMatrix{S},#first order solution
                                             M₂::second_order_auxilliary_matrices;  # aux matrices
                                             T::timings,
                                             sylvester_algorithm::Symbol = :doubling,
                                             tol::AbstractFloat = eps(),
-                                            verbose::Bool = false)
+                                            verbose::Bool = false)::Tuple{<: AbstractSparseMatrix{S}, Bool} where S <: Real
     # inspired by Levintal
 
     # Indices and number of variables
@@ -6951,12 +6951,12 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{<: Real}, #first
     𝐒₂ = sparse(𝐒₂)
 
     if !solved
-        return 𝐒₂, solved
+        return 𝐒₂, false
     end
 
     𝐒₂ *= M₂.𝐔₂
 
-    return 𝐒₂, solved
+    return 𝐒₂, true
 end
 
 
