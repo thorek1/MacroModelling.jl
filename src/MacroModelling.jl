@@ -1022,17 +1022,30 @@ end
 
 
 function choose_matrix_format(A::ℒ.Adjoint{S, <: DenseMatrix{S}}; 
-    density_threshold::Float64 = .15, tol::AbstractFloat = eps()) where S <: Real
-    choose_matrix_format(collect(A), density_threshold = density_threshold, tol = tol)
+                                density_threshold::Float64 = .1, 
+                                min_length::Int = 1000,
+                                tol::AbstractFloat = eps()) where S <: Real
+    choose_matrix_format(collect(A), 
+                        density_threshold = density_threshold, 
+                        min_length = min_length, 
+                        tol = tol)
 end
 
 function choose_matrix_format(A::ℒ.Adjoint{S, <: AbstractSparseMatrix{S}}; 
-    density_threshold::Float64 = .15, tol::AbstractFloat = eps()) where S <: Real
-    choose_matrix_format(sparse(A), density_threshold = density_threshold, tol = tol)
+                                density_threshold::Float64 = .1, 
+                                min_length::Int = 1000,
+                                tol::AbstractFloat = eps()) where S <: Real
+    choose_matrix_format(sparse(A), 
+                        density_threshold = density_threshold, 
+                        min_length = min_length, 
+                        tol = tol)
 end
 
-function choose_matrix_format(A::DenseMatrix{S}; density_threshold::Float64 = .15, tol::AbstractFloat = eps()) where S <: Real
-    if sum(A .== 0) / length(A) < density_threshold
+function choose_matrix_format(A::DenseMatrix{S}; 
+                                density_threshold::Float64 = .1, 
+                                min_length::Int = 1000,
+                                tol::AbstractFloat = eps()) where S <: Real
+    if sum(A .== 0) / length(A) < density_threshold && length(A) < min_length
         if VERSION >= v"1.9"
             return ThreadedSparseArrays.ThreadedSparseMatrixCSC(sparse(A))
         else
@@ -1043,10 +1056,13 @@ function choose_matrix_format(A::DenseMatrix{S}; density_threshold::Float64 = .1
     end
 end
 
-function choose_matrix_format(A::AbstractSparseMatrix{S}; density_threshold::Float64 = .15, tol::AbstractFloat = eps()) where S <: Real
+function choose_matrix_format(A::AbstractSparseMatrix{S}; 
+                                density_threshold::Float64 = .1, 
+                                min_length::Int = 1000,
+                                tol::AbstractFloat = eps()) where S <: Real
     droptol!(A,tol)
 
-    if length(A.nzval) / length(A) > density_threshold
+    if length(A.nzval) / length(A) > density_threshold || length(A) < min_length
         return collect(A)
     else 
         return A
@@ -6779,8 +6795,8 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
         return (hcat(𝐒ᵗ, zeros(size(𝐒ᵗ,1),T.nExo)), solved), x -> NoTangent(), NoTangent(), NoTangent()
     end
 
-    expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
-                    ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+    expand = @views [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:],
+                     ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
 
     ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
     ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
