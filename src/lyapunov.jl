@@ -1,6 +1,6 @@
 # Available algorithms: 
 # :doubling     - fast and precise
-# :lyapunov     - fast for small matrices and precise
+# :lyapunov     - fast for small matrices and precise, dense matrices only
 # :bicgstab     - less precise
 # :gmres        - less precise
 # :iterative    - slow and precise
@@ -16,7 +16,8 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 verbose::Bool = false)
     A = choose_matrix_format(A)
 
-    C = choose_matrix_format(C)
+    # C = choose_matrix_format(C)
+    C = collect(C) # C is always dense because the output will be dense in all of these cases as we use this function to compute dense covariance matrices
  
     X, solved, i, reached_tol = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol)
 

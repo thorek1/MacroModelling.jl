@@ -8864,7 +8864,7 @@ end
 
 # TODO: use higher level wrapper, like for lyapunov/sylvester
 # Specialization for :theoretical
-function get_initial_covariance(::Val{:theoretical}, A::AbstractMatrix{S}, B::AbstractMatrix{S}; lyapunov_algorithm::Symbol = :doubling, verbose::Bool = false)::AbstractMatrix{S} where S <: Real
+function get_initial_covariance(::Val{:theoretical}, A::AbstractMatrix{S}, B::AbstractMatrix{S}; lyapunov_algorithm::Symbol = :doubling, verbose::Bool = false)::Matrix{S} where S <: Real
     P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
     return P
 end

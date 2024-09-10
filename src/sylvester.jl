@@ -1,6 +1,6 @@
 # Available algorithms: 
 # :doubling     - fast and precise
-# :sylvester    - fast and precise
+# :sylvester    - fast and precise, dense matrices only
 # :bicgstab     - less precise
 # :gmres        - less precise
 # :iterative    - slow and precise
