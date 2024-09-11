@@ -10,6 +10,8 @@ import SpecialFunctions
 import SymPyPythonCall as SPyPyC
 import Symbolics
 import Accessors
+import TimerOutputs
+import TimerOutputs: TimerOutput, @timeit, @timeit_debug
 # import NaNMath
 # import Memoization: @memoize
 # import LRUCache: LRU
@@ -792,11 +794,17 @@ function fill_kron_adjoint!(∂A::AbstractMatrix{R},
     # Precompute constants
     const_n1n2 = n1 * n2
     const_n1n2m1 = n1 * n2 * m1
-    
+
     # Access the sparse matrix internal representation
-    colptr = ∂X.colptr  # Column pointers
-    rowval = ∂X.rowval  # Row indices of non-zeros
-    nzval  = ∂X.nzval   # Non-zero values
+    if ∂X isa SparseMatrixCSC
+        colptr = ∂X.colptr  # Column pointers
+        rowval = ∂X.rowval  # Row indices of non-zeros
+        nzval  = ∂X.nzval   # Non-zero values
+    else
+        colptr = ∂X.A.colptr  # Column pointers
+        rowval = ∂X.A.rowval  # Row indices of non-zeros
+        nzval  = ∂X.A.nzval   # Non-zero values
+    end
     
     # Iterate over columns of ∂X
     for col in 1:size(∂X, 2)
@@ -1045,46 +1053,57 @@ function choose_matrix_format(A::DenseMatrix{S};
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::AbstractFloat = eps()) where S <: Real
-    if sum(A .== 0) / length(A) < density_threshold && length(A) < min_length
+    if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
+        A = sparse(A)
+
+        droptol!(A, tol)
+
         if VERSION >= v"1.9"
-            return ThreadedSparseArrays.ThreadedSparseMatrixCSC(sparse(A))
-        else
-            return sparse(A)
+            A = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
         end
-    else
-        return A
     end
+
+    return A
 end
 
 function choose_matrix_format(A::AbstractSparseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::AbstractFloat = eps()) where S <: Real
-    droptol!(A,tol)
+    droptol!(A, tol)
 
-    if length(A.nzval) / length(A) > density_threshold || length(A) < min_length
+    lennz = A isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(A.A.nzval) : length(A.nzval)
+
+    if lennz / length(A) > density_threshold || length(A) < min_length
         return collect(A)
     else 
+        if VERSION >= v"1.9"
+            A = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
+        end
+
         return A
     end
 end
 
 
-function mat_mult_kron(A::AbstractArray{T},B::AbstractArray{T},C::AbstractArray{T}; tol::AbstractFloat = eps()) where T <: Real
+function mat_mult_kron(A::AbstractSparseMatrix{R},
+                        B::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}},
+                        C::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}}; 
+                        tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
     n_rowB = size(B,1)
     n_colB = size(B,2)
 
     n_rowC = size(C,1)
     n_colC = size(C,2)
 
-    B̄ = collect(B)
-    C̄ = collect(C)
-
     vals = T[]
     rows = Int[]
     cols = Int[]
 
-    for row in 1:size(A,1)
+    rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
+
+    # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
+    for row in rv |> unique
         idx_mat, vals_mat = A[row,:] |> findnz
 
         if length(vals_mat) == 0 continue end
@@ -1097,10 +1116,13 @@ function mat_mult_kron(A::AbstractArray{T},B::AbstractArray{T},C::AbstractArray{
             for (i,idx) in enumerate(idx_mat)
                 i_1, i_2 = divrem((idx - 1) % (n_rowB*n_rowC), n_rowC) .+ 1
                 
-                mult_val += vals_mat[i] * B̄[i_1,col_1] * C̄[i_2,col_2]
+                mult_val += vals_mat[i] * B[i_1,col_1] * C[i_2,col_2] # doesnt make sense with sparse matrcies here because access time takes too long
             end
 
             if abs(mult_val) > tol
+                # push!(threadlocal[1],mult_val)
+                # push!(threadlocal[2],row)
+                # push!(threadlocal[3],col)
                 push!(vals,mult_val)
                 push!(rows,row)
                 push!(cols,col)
@@ -1108,8 +1130,17 @@ function mat_mult_kron(A::AbstractArray{T},B::AbstractArray{T},C::AbstractArray{
         end
     end
 
+    # println((threadlocal[15]))
+    # for t in threadlocal
+    #     println(length(t[1]))
+    #     # push!(vals, t[1]...)
+    #     # push!(rows, t[2]...)
+    #     # push!(cols, t[3]...)
+    # end
+
     sparse(rows,cols,vals,size(A,1),n_colB*n_colC)
 end
+
 
 function kron³(A::SparseMatrixCSC{T}, M₃::third_order_auxilliary_matrices) where T <: Real
     rows, cols, vals = findnz(A)
@@ -4123,30 +4154,59 @@ end
 # end
 
 
-function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 𝓂::ℳ; verbose::Bool = false, pruning::Bool = false, sylvester_algorithm::Symbol = :doubling, tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
+function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 
+    𝓂::ℳ; 
+    verbose::Bool = false, 
+    pruning::Bool = false, 
+    sylvester_algorithm::Symbol = :doubling, 
+    timer::TimerOutput = TimerOutput(),
+    tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     
+    # @timeit_debug timer "Calculate NSSS" begin
+
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
+
+    # end # timeit_debug
+
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     if solution_error > tol || isnan(solution_error)
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
+    # @timeit_debug timer "Calculate Jacobian" begin
+
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
+    # end # timeit_debug
+
+    # @timeit_debug timer "Calculate first order solution" begin
+
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
+    # end # timeit_debug
+
     if !solved
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
+    # @timeit_debug timer "Calculate Hessian" begin
+
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
     
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
+    # end # timeit_debug
+
+    # @timeit_debug timer "Calculate second order solution" begin
+
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, verbose = verbose, timer = timer)
+
+    # end # timeit_debug
 
     if !solved2
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
+
+    # @timeit_debug timer "Calculate SSS" begin
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
@@ -4179,6 +4239,8 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, �
         state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2
         # state, converged = second_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂)]; dims = [size(𝐒₁); size(𝐒₂)], 𝓂 = 𝓂)
     end
+
+    # end # timeit_debug
 
     # all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
@@ -4699,11 +4761,16 @@ function solve!(𝓂::ℳ;
     obc::Bool = false,
     verbose::Bool = false,
     silent::Bool = false,
+    timer::TimerOutput = TimerOutput(),
     tol::AbstractFloat = 1e-12)
 
     @assert algorithm ∈ all_available_algorithms
     
+    @timeit_debug timer "Write parameter inputs" begin
+
     write_parameters_input!(𝓂, parameters, verbose = verbose)
+
+    end # timeit_debug
 
     if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && 
         algorithm ∈ [:second_order, :pruned_second_order]
@@ -4727,16 +4794,28 @@ function solve!(𝓂::ℳ;
             ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
+            @timeit_debug timer "Solve for NSSS (if necessary)" begin
+
             SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
+
+            end # timeit_debug
 
             if solution_error > tol
                 @warn "Could not find non stochastic steady steady."
             end
 
+            @timeit_debug timer "Calculate Jacobian" begin
+
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
+            end # timeit_debug
+
+            @timeit_debug timer "Calculate first order solution" begin
+
             S₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
-            
+             
+            end # timeit_debug
+
             @assert solved "Could not find stable first order solution."
 
             state_update₁ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
@@ -4776,7 +4855,7 @@ function solve!(𝓂::ℳ;
             ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
             
 
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, timer = timer)
             
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
@@ -4809,7 +4888,7 @@ function solve!(𝓂::ℳ;
         if  ((:pruned_second_order  == algorithm) && ((:pruned_second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
+            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true, timer = timer)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
@@ -6900,6 +6979,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             T::timings,
                                             sylvester_algorithm::Symbol = :doubling,
                                             tol::AbstractFloat = eps(),
+                                            timer::TimerOutput = TimerOutput(),
                                             verbose::Bool = false)::Tuple{<: AbstractSparseMatrix{S}, Bool} where S <: Real
     # inspired by Levintal
 
@@ -6913,40 +6993,57 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     n  = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
 
-    # 1st order solution
-    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]] |> sparse
-    droptol!(𝐒₁,tol)
+    @timeit_debug timer "Setup matrices" begin
 
-    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) spdiagm(ones(nₑ + 1))[1,:] zeros(nₑ + 1, nₑ)];
+    # 1st order solution
+    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]# |> sparse
+    # droptol!(𝐒₁,tol)
     
+    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) ℒ.I(nₑ + 1)[1,:] zeros(nₑ + 1, nₑ)]# |> sparse
+    # droptol!(𝐒₁₋╱𝟏ₑ,tol)
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = .99)
+
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
                                 𝐒₁
-                                spdiagm(ones(nₑ₋))[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]];
+                                ℒ.I(nₑ₋)[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]] #|> sparse
+    # droptol!(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,tol)
 
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
-                    zeros(n₋ + n + nₑ, nₑ₋)];
+                    zeros(n₋ + n + nₑ, nₑ₋)]# |> sparse
+    # droptol!(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋,tol)
 
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+    end #timeit_debug
 
-    spinv = sparse(inv(∇₁₊𝐒₁➕∇₁₀))
-    droptol!(spinv,tol)
+    @timeit_debug timer "Invert matrix" begin
 
-    # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
-    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = (mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+    spinv = inv(∇₁₊𝐒₁➕∇₁₀)
+    spinv = choose_matrix_format(spinv)
 
+    end # timeit_debug
+
+    @timeit_debug timer "Setup second order matrices" begin
+
+    # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * (ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) * M₂.𝐂₂ + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔 * M₂.𝐂₂ 
+    
     X = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
-    droptol!(X,tol)
 
-    ∇₁₊ = @views sparse(∇₁[:,1:n₊] * spdiagm(ones(n))[i₊,:])
+    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
 
     B = spinv * ∇₁₊
-    droptol!(B,tol)
 
-    C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
-    droptol!(C,tol)
+    C = M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) * M₂.𝐂₂ + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
+    end # timeit_debug
 
-    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
+    @timeit_debug timer "Solve sylvester equation" begin
+
+    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose, timer = timer)
+
+    end # timeit_debug
+
+    @timeit_debug timer "Post-process" begin
 
     𝐒₂ = sparse(𝐒₂)
 
@@ -6955,6 +7052,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     end
 
     𝐒₂ *= M₂.𝐔₂
+
+    end # timeit_debug
 
     return 𝐒₂, true
 end
@@ -6970,6 +7069,7 @@ function rrule(::typeof(calculate_second_order_solution),
                     T::timings,
                     sylvester_algorithm::Symbol = :doubling,
                     tol::AbstractFloat = eps(),
+                    timer::TimerOutput = TimerOutput(),
                     verbose::Bool = false)
     # inspired by Levintal
 
@@ -6983,85 +7083,117 @@ function rrule(::typeof(calculate_second_order_solution),
     n  = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
 
+    @timeit_debug timer "Setup matrices" begin
+
     # 1st order solution
-    # 𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]
-    𝐒₁ = choose_matrix_format([𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]], tol = tol)
-
-
-    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) spdiagm(ones(nₑ + 1))[1,:] zeros(nₑ + 1, nₑ)];
+    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]# |> sparse
+    # droptol!(𝐒₁,tol)
     
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, tol = tol)
-
-    # println(length(𝐒₁₋╱𝟏ₑ.nzval) / length(𝐒₁₋╱𝟏ₑ))
+    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) ℒ.I(nₑ + 1)[1,:] zeros(nₑ + 1, nₑ)]
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = .99)
 
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
                                 𝐒₁
-                                spdiagm(ones(nₑ₋))[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]];
-
-    ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = choose_matrix_format(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tol = tol)
+                                ℒ.I(nₑ₋)[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]]
 
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
-                    zeros(n₋ + n + nₑ, nₑ₋)];
+                    zeros(n₋ + n + nₑ, nₑ₋)]
 
-    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, tol = tol)
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+    end #timeit_debug
 
-    spinv = choose_matrix_format(inv(∇₁₊𝐒₁➕∇₁₀))
-    # droptol!(spinv,tol)
+    @timeit_debug timer "Invert matrix" begin
 
-    # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
-    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = (mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+    spinv = inv(∇₁₊𝐒₁➕∇₁₀)
+    spinv = choose_matrix_format(spinv)
 
+    end # timeit_debug
+
+    @timeit_debug timer "Setup second order matrices" begin
+
+    # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * (ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) * M₂.𝐂₂ + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔 * M₂.𝐂₂ 
+    
     X = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
-    # droptol!(X,tol)
 
-    ∇₁₊ = @views sparse(∇₁[:,1:n₊] * spdiagm(ones(n))[i₊,:])
+    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
 
     B = spinv * ∇₁₊
-    # droptol!(B,tol)
 
-    C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
-    # droptol!(C,tol)
+    C = M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) * M₂.𝐂₂ + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
+    end # timeit_debug
 
-    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
+    @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₂ = sparse(𝐒₂)
+    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose, timer = timer)
+
+    end # timeit_debug
+
+    @timeit_debug timer "Post-process" begin
 
     if !solved
         return 𝐒₂, solved
     end
 
-    # 𝐒₂ *= M₂.𝐔₂
+    end # timeit_debug
+  
+    sp⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t = choose_matrix_format(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋', density_threshold = .99)
 
-    Bt = choose_matrix_format(B', tol = tol)
+    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = .99)
 
-    Ct = choose_matrix_format(C', tol = tol)
-    
+    𝛔t = choose_matrix_format(M₂.𝛔', density_threshold = .99)
+
+    𝐔₂t = choose_matrix_format(M₂.𝐔₂', density_threshold = .99)
+
+    𝐂₂t = choose_matrix_format(M₂.𝐂₂', density_threshold = .99)
+
+    ∇₂t = choose_matrix_format(∇₂', density_threshold = .99)
+
     function second_order_solution_pullback(∂𝐒₂_solved) 
+        @timeit_debug timer "Pullback" begin
+            
+        @timeit_debug timer "Preallocate" begin
+        ∂∇₂ = zeros(size(∇₂))
         ∂∇₁ = zero(∇₁)
         ∂𝐒₁ = zero(𝐒₁)
         ∂spinv = zero(spinv)
-        ∂𝐒₁₋╱𝟏ₑ = zero(𝐒₁₋╱𝟏ₑ)
-        ∂𝐒₁₊╱𝟎 = zero(𝐒₁₊╱𝟎)
-        ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = zero(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+        ∂𝐒₁₋╱𝟏ₑ = zeros(size(𝐒₁₋╱𝟏ₑ))
+        ∂𝐒₁₊╱𝟎 = zeros(size(𝐒₁₊╱𝟎))
+        ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = zeros(size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
 
-        ∂𝐒₂ = choose_matrix_format(∂𝐒₂_solved[1], tol = tol)
+        end # timeit_debug
 
-        ∂𝐒₂ *= M₂.𝐔₂'
+        ∂𝐒₂ = ∂𝐒₂_solved[1]
+        
+        ∂𝐒₂ *= 𝐔₂t
 
-        ∂X, solved = solve_sylvester_equation(Bt, Ct, ∂𝐒₂, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
+        @timeit_debug timer "Sylvester" begin
 
-        ∂X = choose_matrix_format(∂X, tol = tol) # Dense
+        ∂X, solved = solve_sylvester_equation(B', C', ∂𝐒₂, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose, timer = timer)
+        
+        end # timeit_debug
+
+        @timeit_debug timer "Matmul" begin
+
+        ∂X = choose_matrix_format(∂X) # Dense
 
         ∂B = ∂X * C' * 𝐒₂' # Dense
 
         ∂C = 𝐒₂' * B' * ∂X # Dense
 
         # C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
-        ∂kron𝐒₁₋╱𝟏ₑ = M₂.𝐔₂' * ∂C * M₂.𝐂₂'
+        ∂kron𝐒₁₋╱𝟏ₑ = 𝐔₂t * ∂C * 𝐂₂t
+
+        end # timeit_debug
+
+        @timeit_debug timer "Kron adjoint" begin
 
         fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₁₋╱𝟏ₑ, ∂kron𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
+
+        end # timeit_debug
+
+        @timeit_debug timer "Matmul2" begin
 
         # B = spinv * ∇₁₊
         ∂∇₁₊ = spinv' * ∂B
@@ -7071,34 +7203,48 @@ function rrule(::typeof(calculate_second_order_solution),
         ∂∇₁[:,1:n₊] += ∂∇₁₊ * ℒ.I(n)[:,i₊]
 
         # X = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
-        ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = spinv' * ∂X
+        ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂ = spinv' * ∂X * 𝐂₂t
+        
         ∂spinv += ∂X * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹'
 
+        end # timeit_debug
+
+        @timeit_debug timer "Matmul3" begin
+
         # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) * M₂.𝐂₂  + ∇₂ * ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔 * M₂.𝐂₂
-        # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = (mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+        kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = choose_matrix_format(ℒ.kron(sp⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, sp⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t), density_threshold = .99)
 
-        # ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = choose_matrix_format(∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹) # sparse makes it much slower
+        𝛔kron𝐒₁₊╱𝟎 = choose_matrix_format(𝛔t * ℒ.kron(𝐒₁₊╱𝟎', 𝐒₁₊╱𝟎'), density_threshold = .99)
+
+        ℒ.mul!(∂∇₂, ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂, 𝛔kron𝐒₁₊╱𝟎, 1, 1)
         
+        ℒ.mul!(∂∇₂, ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂, kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 1, 1)
 
-        ∂∇₂ = ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ * M₂.𝐂₂' * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)' + ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ * M₂.𝐂₂' * M₂.𝛔' * ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)'
+        end # timeit_debug
 
-        # ∂∇₂ = choose_matrix_format(∂∇₂) 
-        # println(typeof(∂∇₂))
-        # println(sum(∂∇₂ .== 0)/length(∂∇₂))
-        # println(length(∂∇₂.nzval) / length(∂∇₂))
+        @timeit_debug timer "Matmul4" begin
 
-        # println(size(∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹))
-        # println(length(∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹.nzval) / length(∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹))
+        ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂ = choose_matrix_format(∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂, density_threshold = .99)
 
-        # println(size(∂X))
-        # println(length(∂X.nzval) / length(∂X))
+        ∂kron𝐒₁₊╱𝟎 = ∇₂t * ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂ * 𝛔t
 
-        ∂kron𝐒₁₊╱𝟎 = ∇₂' * ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ * M₂.𝐂₂' * M₂.𝛔'
+        end # timeit_debug
+
+        @timeit_debug timer "Kron adjoint 2" begin
+
         fill_kron_adjoint!(∂𝐒₁₊╱𝟎, ∂𝐒₁₊╱𝟎, ∂kron𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
         
-        ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = ∇₂' * ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ * M₂.𝐂₂'
+        end # timeit_debug
 
-        fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋)
+        ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = ∇₂t * ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂
+
+        @timeit_debug timer "Kron adjoint 3" begin
+
+        fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) # filling dense is much faster
+
+        end # timeit_debug
+
+        @timeit_debug timer "Matmul5" begin
 
         # spinv = sparse(inv(∇₁₊𝐒₁➕∇₁₀))
         ∂∇₁₊𝐒₁➕∇₁₀ = -spinv' * ∂spinv * spinv'
@@ -7128,10 +7274,15 @@ function rrule(::typeof(calculate_second_order_solution),
         # 𝐒₁ = [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]
         ∂𝑺₁ = [∂𝐒₁[:,1:n₋] ∂𝐒₁[:,n₋+2:end]]
 
+        end # timeit_debug
+
+        end # timeit_debug
+
         return NoTangent(), ∂∇₁, ∂∇₂, ∂𝑺₁, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
+    
 
-    return (𝐒₂ * M₂.𝐔₂, solved), second_order_solution_pullback
+    return (sparse(𝐒₂) * M₂.𝐔₂, solved), second_order_solution_pullback
 end
 
 
@@ -9299,8 +9450,12 @@ end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
+function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, 
+                                                    parameter_values::Vector{S}, 
+                                                    𝓂::ℳ, 
+                                                    tol::AbstractFloat; 
+                                                    timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
