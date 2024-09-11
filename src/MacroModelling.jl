@@ -1054,13 +1054,15 @@ function choose_matrix_format(A::DenseMatrix{S};
                                 min_length::Int = 1000,
                                 tol::AbstractFloat = eps()) where S <: Real
     if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
-        A = sparse(A)
+        a = sparse(A)
 
-        droptol!(A, tol)
+        droptol!(a, tol)
 
         if VERSION >= v"1.9"
-            A = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
+            a = ThreadedSparseArrays.ThreadedSparseMatrixCSC(a)
         end
+
+        return a
     end
 
     return A
@@ -6462,8 +6464,8 @@ end
 
 
 function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = eps())
-    expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
-            ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+    expand = @views [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:],
+            ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
 
     ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
     ∇₀ = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
@@ -6509,8 +6511,8 @@ end
 
 function calculate_quadratic_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = eps())
     # see Binder and Pesaran (1997) for more details on this approach
-    expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
-            ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+    expand = @views [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:],
+            ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
 
     ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
     ∇₀ = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
@@ -6548,8 +6550,8 @@ end
 
 function calculate_quadratic_iteration_solution_AD(∇₁::AbstractMatrix{S}; T::timings, tol::AbstractFloat = 1e-12) where S
     # see Binder and Pesaran (1997) for more details on this approach
-    expand = @ignore_derivatives [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
-            ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+    expand = @ignore_derivatives [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:],
+            ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
 
     ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
     ∇₀ = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
@@ -6749,7 +6751,7 @@ function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive:
     # unpack: AoS -> SoA
     ∇̂₁ = ℱ.value.(∇₁)
 
-    expand = [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:], ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+    expand = [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:], ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
 
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
     B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
@@ -6801,8 +6803,8 @@ function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
     # Forward pass to compute the output and intermediate values needed for the backward pass
     A, solved = riccati_forward(∇₁, T = T, explosive = explosive)
 
-    expand = @views [ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
-                    ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
+    expand = @views [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:],
+                    ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
 
     Â = A * expand[2]
     
@@ -6841,9 +6843,9 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
         return hcat(A, zeros(size(A,1),T.nExo)), solved
     end
 
-    Jm = @view(ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:])
+    Jm = @view(ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:])
     
-    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:]
+    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:]
     ∇₀ = copy(∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)])
     ∇ₑ = copy(∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end])
     
