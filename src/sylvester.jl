@@ -17,11 +17,14 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     verbose::Bool = false)
     @timeit_debug timer "Choose matrix formats" begin
 
-    A = choose_matrix_format(A)# |> sparse
+    if sylvester_algorithm ≠ :sylvester
+        A = choose_matrix_format(A)# |> sparse
 
-    B = choose_matrix_format(B)# |> collect
+        B = choose_matrix_format(B)# |> collect
 
-    C = choose_matrix_format(C)# |> sparse
+        C = choose_matrix_format(C)# |> sparse
+    end
+    
     end # timeit_debug
                                     
     @timeit_debug timer "Solve sylvester equation" begin

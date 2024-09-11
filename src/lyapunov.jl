@@ -13,10 +13,13 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 lyapunov_algorithm::Symbol = :doubling,
                                 tol::AbstractFloat = 1e-12,
                                 verbose::Bool = false)
-    A = choose_matrix_format(A)
 
-    # C = choose_matrix_format(C)
-    C = collect(C) # C is always dense because the output will be dense in all of these cases as we use this function to compute dense covariance matrices
+    if sylvester_algorithm ≠ :lyapunov
+        A = choose_matrix_format(A)
+    end
+
+    C = choose_matrix_format(C, density_threshold = 0.0)
+    # C = collect(C) # C is always dense because the output will be dense in all of these cases as we use this function to compute dense covariance matrices
  
     X, solved, i, reached_tol = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol)
 
