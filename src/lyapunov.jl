@@ -12,7 +12,6 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 C::AbstractMatrix{Float64};
                                 lyapunov_algorithm::Symbol = :doubling,
                                 tol::AbstractFloat = 1e-12,
-                                density_threshold::Float64 = .15,
                                 verbose::Bool = false)
     A = choose_matrix_format(A)
 
