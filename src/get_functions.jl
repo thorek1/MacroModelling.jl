@@ -987,7 +987,10 @@ function get_irf(𝓂::ℳ;
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
     levels::Bool = false,
     ignore_obc::Bool = false,
+    timer::TimerOutput = TimerOutput(),
     verbose::Bool = false)
+
+    @timeit_debug timer "Wrangling inputs" begin
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -1039,10 +1042,20 @@ function get_irf(𝓂::ℳ;
         occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
     end
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+    end # timeit_debug
     
+    @timeit_debug timer "Solve model" begin
+
+    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included, timer = timer)
+    
+    end # timeit_debug
+
+    @timeit_debug timer "Get relevant steady state" begin
+
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
     
+    end # timeit_debug
+
     unspecified_initial_state = initial_state == [0.0]
 
     if unspecified_initial_state
@@ -1080,6 +1093,7 @@ function get_irf(𝓂::ℳ;
     end
     
     if generalised_irf
+        @timeit_debug timer "Calculate IRFs" begin    
         girfs =  girf(state_update,
                         initial_state,
                         levels ? reference_steady_state + SSS_delta : SSS_delta,
@@ -1088,6 +1102,8 @@ function get_irf(𝓂::ℳ;
                         shocks = shocks, 
                         variables = variables, 
                         negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
+        end # timeit_debug
+
         return girfs
     else
         if occasionally_binding_constraints
@@ -1157,6 +1173,7 @@ function get_irf(𝓂::ℳ;
                 return present_states, present_shocks, solved
             end
 
+            @timeit_debug timer "Calculate IRFs" begin
             irfs =  irf(state_update,
                         obc_state_update, 
                         initial_state, 
@@ -1166,7 +1183,9 @@ function get_irf(𝓂::ℳ;
                         shocks = shocks, 
                         variables = variables, 
                         negative_shock = negative_shock)
+            end # timeit_debug
         else
+            @timeit_debug timer "Calculate IRFs" begin        
             irfs =  irf(state_update, 
                         initial_state, 
                         levels ? reference_steady_state + SSS_delta : SSS_delta,
@@ -1175,10 +1194,12 @@ function get_irf(𝓂::ℳ;
                         shocks = shocks, 
                         variables = variables, 
                         negative_shock = negative_shock)
+            end # timeit_debug
         end
-
+   
         return irfs
     end
+
 end
 
 
@@ -2932,6 +2953,7 @@ function get_loglikelihood(𝓂::ℳ,
     initial_covariance::Symbol = :theoretical,
     filter_algorithm::Symbol = :LagrangeNewton,
     tol::AbstractFloat = 1e-12, 
+    timer::TimerOutput = TimerOutput(),
     verbose::Bool = false)::S where S <: Real
 
     # if algorithm ∈ [:third_order,:pruned_third_order]
@@ -2953,7 +2975,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     observables = @ignore_derivatives get_and_check_observables(𝓂, data)
 
-    @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
+    @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm, timer = timer)
 
     bounds_violated = @ignore_derivatives check_bounds(parameter_values, 𝓂)
 
@@ -2963,10 +2985,14 @@ function get_loglikelihood(𝓂::ℳ,
 
     obs_indices = @ignore_derivatives convert(Vector{Int}, indexin(observables, NSSS_labels))
 
-    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol)
+    # @timeit_debug timer "Get relevant steady state and solution" begin
+
+    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol, timer = timer)
+
+    # end # timeit_debug
 
     if !solved return -Inf end
-
+ 
     if collect(axiskeys(data,1)) isa Vector{String}
         data = @ignore_derivatives rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
     end
@@ -2976,7 +3002,13 @@ function get_loglikelihood(𝓂::ℳ,
     # prepare data
     data_in_deviations = dt .- SS_and_pars[obs_indices]
 
-    return calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, verbose)
+    # @timeit_debug timer "Filter" begin
+
+    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, verbose)
+
+    # end # timeit_debug
+
+    return llh
 end
 
 
