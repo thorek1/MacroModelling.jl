@@ -9436,8 +9436,12 @@ function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: R
     return false
 end
 
-function get_relevant_steady_state_and_state_update(::Val{:second_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat) where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂)
+function get_relevant_steady_state_and_state_update(::Val{:second_order}, 
+                                                    parameter_values::Vector{S}, 
+                                                    𝓂::ℳ, 
+                                                    tol::AbstractFloat; 
+                                                    timer::TimerOutput = TimerOutput()) where S <: Real
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -9468,7 +9472,11 @@ end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat) where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:third_order}, 
+                                                    parameter_values::Vector{S}, 
+                                                    𝓂::ℳ, 
+                                                    tol::AbstractFloat; 
+                                                    timer::TimerOutput = TimerOutput()) where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -9482,7 +9490,11 @@ end
 
 
 
-function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
+                                                    parameter_values::Vector{S}, 
+                                                    𝓂::ℳ, 
+                                                    tol::AbstractFloat; 
+                                                    timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -9495,7 +9507,11 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
 end
 
 
-function get_relevant_steady_state_and_state_update(::Val{:first_order}, parameter_values::Vector{S}, 𝓂::ℳ, tol::AbstractFloat)::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
+function get_relevant_steady_state_and_state_update(::Val{:first_order}, 
+                                                    parameter_values::Vector{S}, 
+                                                    𝓂::ℳ, 
+                                                    tol::AbstractFloat; 
+                                                    timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, tol = tol)
 
     state = zeros(𝓂.timings.nVars)
