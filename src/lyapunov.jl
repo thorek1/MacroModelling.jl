@@ -14,7 +14,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 tol::AbstractFloat = 1e-12,
                                 verbose::Bool = false)
 
-    if sylvester_algorithm ≠ :lyapunov
+    if lyapunov_algorithm ≠ :lyapunov
         A = choose_matrix_format(A)
     end
 
