@@ -32,7 +32,7 @@ import Polyester
 import NLopt
 import Optim, LineSearches
 # import Zygote
-import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse! #, sparse, spzeros, droptol!, sparsevec, spdiagm, findnz#, sparse!
+import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import LinearAlgebra: mul!
 # import Octavian: matmul!
@@ -4163,7 +4163,6 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     sylvester_algorithm::Symbol = :doubling, 
     timer::TimerOutput = TimerOutput(),
     tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
-    
     # @timeit_debug timer "Calculate NSSS" begin
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
@@ -4237,7 +4236,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
         A = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed]
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
     
-        SSSstates, converged = calculate_second_order_stochastic_steady_state(Val(:Newton), 𝐒₁, 𝐒₂, SSSstates, 𝓂)
+        SSSstates, converged = calculate_second_order_stochastic_steady_state(Val(:Newton), 𝐒₁, 𝐒₂, SSSstates, 𝓂, timer = timer)
         state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2
         # state, converged = second_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂)]; dims = [size(𝐒₁); size(𝐒₂)], 𝓂 = 𝓂)
     end
@@ -4263,7 +4262,10 @@ function calculate_second_order_stochastic_steady_state(::Val{:Newton},
                                                         𝐒₂::AbstractSparseMatrix{Float64}, 
                                                         x::Vector{Float64},
                                                         𝓂::ℳ;
+                                                        timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
+    @timeit_debug timer "Setup matrices" begin
+
     nᵉ = 𝓂.timings.nExo
 
     s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
@@ -4279,6 +4281,11 @@ function calculate_second_order_stochastic_steady_state(::Val{:Newton},
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+    
+    end # timeit_debug
+      
+    @timeit_debug timer "Iterations" begin
+
     for i in 1:max_iters
         ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
 
@@ -4298,6 +4305,8 @@ function calculate_second_order_stochastic_steady_state(::Val{:Newton},
         ℒ.axpy!(-1, Δx, x)
     end
 
+    end # timeit_debug
+
     return x, isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
 end
 
@@ -4309,6 +4318,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:Newton},
                                                         𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
                                                         x::Vector{ℱ.Dual{Z,S,N}},
                                                         𝓂::ℳ;
+                                                        timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14) where {Z,S,N}
 
     𝐒₁̂ = ℱ.value.(𝐒₁)
@@ -4378,8 +4388,12 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
                                                         𝐒₂::AbstractSparseMatrix{Float64}, 
                                                         x::Vector{Float64},
                                                         𝓂::ℳ;
+                                                        timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
+    @timeit_debug timer "Calculate SSS - forward" begin
     
+    @timeit_debug timer "Setup indices" begin
+
     nᵉ = 𝓂.timings.nExo
 
     s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
@@ -4393,6 +4407,10 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
     B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
     
+    end # timeit_debug
+      
+    @timeit_debug timer "Iterations" begin
+
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     for i in 1:max_iters
@@ -4421,12 +4439,19 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     ∂𝐒₁ =  zero(𝐒₁)
     ∂𝐒₂ =  zero(𝐒₂)
 
+    end # timeit_debug
+    end # timeit_debug
+
     function second_order_stochastic_steady_state_pullback(∂x)
+        @timeit_debug timer "Calculate SSS - pullback" begin
+
         S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
 
         ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed] = S' * x'
         
         ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
+
+        end # timeit_debug
 
         return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent()
     end
@@ -7073,6 +7098,7 @@ function rrule(::typeof(calculate_second_order_solution),
                     tol::AbstractFloat = eps(),
                     timer::TimerOutput = TimerOutput(),
                     verbose::Bool = false)
+    @timeit_debug timer "Second order solution - forward" begin
     # inspired by Levintal
 
     # Indices and number of variables
@@ -7152,8 +7178,10 @@ function rrule(::typeof(calculate_second_order_solution),
 
     ∇₂t = choose_matrix_format(∇₂', density_threshold = .99)
 
+    end #timeit_debug
+
     function second_order_solution_pullback(∂𝐒₂_solved) 
-        @timeit_debug timer "Pullback" begin
+        @timeit_debug timer "Second order solution - pullback" begin
             
         @timeit_debug timer "Preallocate" begin
         ∂∇₂ = zeros(size(∇₂))
@@ -8752,13 +8780,52 @@ end
 
 
 # Specialization for :kalman filter
-function calculate_loglikelihood(::Val{:kalman}, algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, verbose)
-    return calculate_kalman_filter_loglikelihood(observables, 𝐒, data_in_deviations, TT, presample_periods = presample_periods, initial_covariance = initial_covariance, verbose = verbose)
+function calculate_loglikelihood(::Val{:kalman}, 
+                                algorithm, 
+                                observables, 
+                                𝐒, 
+                                data_in_deviations, 
+                                TT, 
+                                presample_periods, 
+                                initial_covariance, 
+                                state, 
+                                warmup_iterations, 
+                                filter_algorithm, 
+                                verbose; 
+                                timer::TimerOutput = TimerOutput())
+    return calculate_kalman_filter_loglikelihood(observables, 
+                                                𝐒, 
+                                                data_in_deviations, 
+                                                TT, 
+                                                presample_periods = presample_periods, 
+                                                initial_covariance = initial_covariance, 
+                                                verbose = verbose, 
+                                                timer = timer)
 end
 
 # Specialization for :inversion filter
-function calculate_loglikelihood(::Val{:inversion}, algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, verbose)
-    return calculate_inversion_filter_loglikelihood(Val(algorithm), state, 𝐒, data_in_deviations, observables, TT, warmup_iterations = warmup_iterations, presample_periods = presample_periods, filter_algorithm = filter_algorithm)
+function calculate_loglikelihood(::Val{:inversion}, 
+                                algorithm, observables, 
+                                𝐒, 
+                                data_in_deviations, 
+                                TT, 
+                                presample_periods, 
+                                initial_covariance, 
+                                state, 
+                                warmup_iterations, 
+                                filter_algorithm, 
+                                verbose; 
+                                timer::TimerOutput = TimerOutput())
+    return calculate_inversion_filter_loglikelihood(Val(algorithm), 
+                                                    state, 
+                                                    𝐒, 
+                                                    data_in_deviations, 
+                                                    observables, 
+                                                    TT, 
+                                                    warmup_iterations = warmup_iterations, 
+                                                    presample_periods = presample_periods, 
+                                                    filter_algorithm = filter_algorithm, 
+                                                    timer = timer)
 end
 
 function get_NSSS_and_parameters(𝓂::ℳ, parameter_values::Vector{S}; verbose::Bool = false, tol::AbstractFloat = 1e-12) where S <: Float64
@@ -9590,6 +9657,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     data_in_deviations::Matrix{Float64}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
+                                                    timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     filter_algorithm::Symbol = :LagrangeNewton)
@@ -9693,9 +9761,12 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}}, 
                 T::timings; 
+                timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0, 
                 presample_periods::Int = 0,
                 filter_algorithm::Symbol = :LagrangeNewton)
+    @timeit_debug timer "Inversion filter - forward" begin    
+            
     # first order
     state = copy(state[1])
 
@@ -9785,9 +9856,12 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     ∂𝐒t⁻        = copy(tmp2)
     # ∂𝐒obs_idx   = copy(tmp1)
 
+    end # timeit_debug
     # TODO: optimize allocations
     # pullback
     function inversion_pullback(∂llh)
+        @timeit_debug timer "Inversion filter - pullback" begin    
+                
         for t in reverse(axes(data_in_deviations,2))
             ∂state[t⁻]                                  .= M² * ∂state[t⁻]
 
@@ -9827,6 +9901,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         
         ∂𝐒[obs_idx,end-T.nExo+1:end] -= (size(data_in_deviations,2) - presample_periods) * invjac' / 2
 
+        end # timeit_debug
+
         return NoTangent(), NoTangent(), [∂state * ∂llh], ∂𝐒 * ∂llh, ∂data_in_deviations * ∂llh, NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
     
@@ -9842,6 +9918,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     data_in_deviations::Matrix{Float64}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
+                                                    timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     filter_algorithm::Symbol = :LagrangeNewton)
@@ -10019,9 +10096,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}},
                 T::timings; 
+                timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
+    @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
+        
+    @timeit_debug timer "Preallocation" begin
+                    
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -10108,6 +10190,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
     kronxλ = [kronxλ_tmp for _ in 1:size(data_in_deviations,2)]
     
+    end # timeit_debug
+      
+    @timeit_debug timer "Main loop" begin
+
     for i in axes(data_in_deviations,2)
         state¹⁻ = state₁
     
@@ -10168,11 +10254,31 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         state₁, state₂ = [𝐒⁻¹ * aug_state₁[i], 𝐒⁻¹ * aug_state₂[i] + 𝐒⁻² * ℒ.kron(aug_state₁[i], aug_state₁[i]) / 2] # strictly following Andreasen et al. (2018)
     end
     
-    
+    end # timeit_debug
+      
+    end # timeit_debug
 
     ∂data_in_deviations = similar(data_in_deviations)
 
+    ∂aug_state₁ = zero(aug_state₁[1])
+
+    ∂aug_state₂ = zero(aug_state₂[1])
+
+    ∂kronaug_state₁ = zeros(length(aug_state₁[1])^2)
+
+    kronaug_state₁ = zeros(length(aug_state₁[1])^2)
+
+    ∂kronIx = zero(ℒ.kron(ℒ.I(length(x[1])), x[1]))
+
+    ∂kronIstate¹⁻_vol = zero(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol))
+
+    ∂kronstate¹⁻_vol = zero(ℒ.kron(state¹⁻_vol, state¹⁻_vol))
+
     function inversion_filter_loglikelihood_pullback(∂llh) 
+        @timeit_debug timer "Inversion filter pruned 2nd - pullback" begin
+
+        @timeit_debug timer "Preallocation" begin
+        
         ∂𝐒ⁱ = zero(𝐒ⁱ)
         ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
 
@@ -10191,20 +10297,33 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         ∂x = zero(x[1])
         ∂state = [zeros(T.nPast_not_future_and_mixed), zeros(T.nPast_not_future_and_mixed)]
 
+        end # timeit_debug
+        
+        @timeit_debug timer "Main loop" begin
+        
         for i in reverse(axes(data_in_deviations,2))
             # state₁, state₂ = [𝐒⁻¹ * aug_state₁[i], 𝐒⁻¹ * aug_state₂[i] + 𝐒⁻² * ℒ.kron(aug_state₁[i], aug_state₁[i]) / 2]
             # state₁ = 𝐒⁻¹ * aug_state₁[i]
-            ∂𝐒⁻¹ += ∂state[1] * aug_state₁[i]'
-            ∂aug_state₁ = 𝐒⁻¹' * ∂state[1]
+            # ∂𝐒⁻¹ += ∂state[1] * aug_state₁[i]'
+            ℒ.mul!(∂𝐒⁻¹, ∂state[1], aug_state₁[i]', 1, 1)
+
+            # ∂aug_state₁ = 𝐒⁻¹' * ∂state[1]
+            ℒ.mul!(∂aug_state₁, 𝐒⁻¹', ∂state[1])
 
             # state₂ = 𝐒⁻¹ * aug_state₂[i] + 𝐒⁻² * ℒ.kron(aug_state₁[i], aug_state₁[i]) / 2
-            ∂𝐒⁻¹ += ∂state[2] * aug_state₂[i]'
+            # ∂𝐒⁻¹ += ∂state[2] * aug_state₂[i]'
+            ℒ.mul!(∂𝐒⁻¹, ∂state[2], aug_state₂[i]', 1, 1)
 
-            ∂aug_state₂ = 𝐒⁻¹' * ∂state[2]
+            # ∂aug_state₂ = 𝐒⁻¹' * ∂state[2]
+            ℒ.mul!(∂aug_state₂, 𝐒⁻¹', ∂state[2])
 
-            ∂𝐒⁻² += ∂state[2] * ℒ.kron(aug_state₁[i], aug_state₁[i])' / 2
+            # ∂𝐒⁻² += ∂state[2] * ℒ.kron(aug_state₁[i], aug_state₁[i])' / 2
+            ℒ.kron!(kronaug_state₁, aug_state₁[i], aug_state₁[i])
+            ℒ.mul!(∂𝐒⁻², ∂state[2], kronaug_state₁', 1/2, 1)
 
-            ∂kronaug_state₁ = 𝐒⁻²' * ∂state[2] / 2
+            # ∂kronaug_state₁ = 𝐒⁻²' * ∂state[2] / 2
+            ℒ.mul!(∂kronaug_state₁, 𝐒⁻²', ∂state[2])
+            ℒ.rdiv!(∂kronaug_state₁, 2)
 
             fill_kron_adjoint!(∂aug_state₁, ∂aug_state₁, ∂kronaug_state₁, aug_state₁[i], aug_state₁[i])
 
@@ -10213,14 +10332,15 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ∂state[2] *= 0
             end
             
-
             # aug_state₁ = [state₁; 1; x]
-            ∂state[1] += ∂aug_state₁[1:length(∂state[1])] # TODO: cleanup length and size references
+            # ∂state[1] += ∂aug_state₁[1:length(∂state[1])] # TODO: cleanup length and size references
+            ℒ.axpy!(1, ∂aug_state₁[1:length(∂state[1])], ∂state[1])
 
             ∂x = ∂aug_state₁[T.nPast_not_future_and_mixed+2:end]
 
             # aug_state₂ = [state₂; 0; zero(x)] # TODO: dont allocate new vector here
-            ∂state[2] += ∂aug_state₂[1:length(∂state[1])]
+            # ∂state[2] += ∂aug_state₂[1:length(∂state[1])]
+            ℒ.axpy!(1, ∂aug_state₂[1:length(∂state[1])], ∂state[2])
 
             # shocks² += sum(abs2,x[i])
             if i < size(data_in_deviations,2)
@@ -10237,20 +10357,24 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x[1])
-            ∂kronIx = 𝐒ⁱ²ᵉ' * ∂jacc
+            # ∂kronIx = 𝐒ⁱ²ᵉ' * ∂jacc
+            ℒ.mul!(∂kronIx, 𝐒ⁱ²ᵉ', ∂jacc)
 
             if i < size(data_in_deviations,2)
-                fill_kron_adjoint_∂B!(∂kronIx,∂x,-ℒ.I(T.nExo))
+                fill_kron_adjoint_∂B!(∂kronIx, ∂x, -ℒ.I(T.nExo))
             else
-                fill_kron_adjoint_∂B!(∂kronIx,∂x,ℒ.I(T.nExo))
+                fill_kron_adjoint_∂B!(∂kronIx, ∂x, ℒ.I(T.nExo))
             end
 
-            ∂𝐒ⁱ²ᵉ -= ∂jacc * ℒ.kron(ℒ.I(T.nExo), x[i])'
+            # ∂𝐒ⁱ²ᵉ -= ∂jacc * ℒ.kron(ℒ.I(T.nExo), x[i])'
+            ℒ.mul!(∂𝐒ⁱ²ᵉ, ∂jacc, ℒ.kron(ℒ.I(T.nExo), x[i])', -1, 1)
 
             # find_shocks
             ∂xλ = vcat(∂x, zero(λ[i]))
+            # S = vcat(∂x, zero(λ[i]))
 
             S = fXλp[i]' \ ∂xλ
+            # ℒ.ldiv!(fXλp[i]', S)
 
             if i < size(data_in_deviations,2)
                 S *= -1
@@ -10261,69 +10385,96 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             # ∂𝐒ⁱ = (S[1:T.nExo] * λ[i]' - S[T.nExo+1:end] * x[i]') # fine
             # ∂𝐒ⁱ -= ∂jacc / 2 # fine
             copyto!(∂𝐒ⁱ, ℒ.kron(S[1:T.nExo], λ[i]) - ℒ.kron(x[i], S[T.nExo+1:end]))
-            ∂𝐒ⁱ -= ∂jacc / 2 # fine
+            # ∂𝐒ⁱ -= ∂jacc / 2 # fine
+            ℒ.axpy!(-1/2, ∂jacc, ∂𝐒ⁱ)
         
             ∂𝐒ⁱ²ᵉ += reshape(2 * ℒ.kron(S[1:T.nExo], ℒ.kron(x[i], λ[i])) - ℒ.kron(kronxx[i], S[T.nExo+1:end]), size(∂𝐒ⁱ²ᵉ))
             # ∂𝐒ⁱ²ᵉ += 2 * S[1:T.nExo] *  kronxλ[i]' - S[T.nExo+1:end] * kronxx[i]'
 
             # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
             ∂state¹⁻_vol *= 0
-            ∂kronIstate¹⁻_vol = 𝐒²⁻ᵉ' * ∂𝐒ⁱ
+            # ∂kronIstate¹⁻_vol = 𝐒²⁻ᵉ' * ∂𝐒ⁱ
+            ℒ.mul!(∂kronIstate¹⁻_vol, 𝐒²⁻ᵉ', ∂𝐒ⁱ)
 
             fill_kron_adjoint_∂A!(∂kronIstate¹⁻_vol, ∂state¹⁻_vol, ℒ.I(T.nExo))
 
-            state¹⁻_vol = [aug_state₁[i][1:T.nPast_not_future_and_mixed]; 1]
+            state¹⁻_vol = aug_state₁[i][1:T.nPast_not_future_and_mixed+1]
 
-            ∂𝐒¹ᵉ += ∂𝐒ⁱ
+            # ∂𝐒¹ᵉ += ∂𝐒ⁱ
+            ℒ.axpy!(1, ∂𝐒ⁱ, ∂𝐒¹ᵉ)
 
-            ∂𝐒²⁻ᵉ += ∂𝐒ⁱ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)'
+            # ∂𝐒²⁻ᵉ += ∂𝐒ⁱ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)'
+            ℒ.kron!(∂kronIstate¹⁻_vol, ℒ.I(T.nExo), state¹⁻_vol)
+            ℒ.mul!(∂𝐒²⁻ᵉ, ∂𝐒ⁱ, ∂kronIstate¹⁻_vol', 1, 1)
+
 
             # shock_independent = copy(data_in_deviations[:,i])
             ∂data_in_deviations[:,i] = ∂shock_independent
 
-
             # ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
-            ∂𝐒¹⁻ᵛ -= ∂shock_independent * state¹⁻_vol'
+            # ∂𝐒¹⁻ᵛ -= ∂shock_independent * state¹⁻_vol'
+            ℒ.mul!(∂𝐒¹⁻ᵛ, ∂shock_independent, state¹⁻_vol', -1, 1)
 
-            ∂state¹⁻_vol -= 𝐒¹⁻ᵛ' * ∂shock_independent
+            # ∂state¹⁻_vol -= 𝐒¹⁻ᵛ' * ∂shock_independent
+            ℒ.mul!(∂state¹⁻_vol, 𝐒¹⁻ᵛ', ∂shock_independent, -1, 1)
 
             # ℒ.mul!(shock_independent, 𝐒¹⁻, state²⁻, -1, 1)
-            ∂𝐒¹⁻ -= ∂shock_independent * aug_state₂[i][1:T.nPast_not_future_and_mixed]'
+            # ∂𝐒¹⁻ -= ∂shock_independent * aug_state₂[i][1:T.nPast_not_future_and_mixed]'
+            ℒ.mul!(∂𝐒¹⁻, ∂shock_independent, aug_state₂[i][1:T.nPast_not_future_and_mixed]', -1, 1)
 
-            ∂state[2] -= 𝐒¹⁻' * ∂shock_independent
+            # ∂state[2] -= 𝐒¹⁻' * ∂shock_independent
+            ℒ.mul!(∂state[2], 𝐒¹⁻', ∂shock_independent, -1, 1)
 
             # ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
-            ∂𝐒²⁻ᵛ -= ∂shock_independent * ℒ.kron(state¹⁻_vol, state¹⁻_vol)' / 2
-
-            ∂kronstate¹⁻_vol = -𝐒²⁻ᵛ' * ∂shock_independent / 2
+            # ∂𝐒²⁻ᵛ -= ∂shock_independent * ℒ.kron(state¹⁻_vol, state¹⁻_vol)' / 2
+            ℒ.kron!(∂kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+            ℒ.mul!(∂𝐒²⁻ᵛ, ∂shock_independent, ∂kronstate¹⁻_vol', -1/2, 1)
+            
+            # ∂kronstate¹⁻_vol = -𝐒²⁻ᵛ' * ∂shock_independent / 2
+            ℒ.mul!(∂kronstate¹⁻_vol, 𝐒²⁻ᵛ', ∂shock_independent)
+            ℒ.rdiv!(∂kronstate¹⁻_vol, -2)
 
             fill_kron_adjoint!(∂state¹⁻_vol, ∂state¹⁻_vol, ∂kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
 
             # state¹⁻_vol = vcat(state¹⁻, 1)
-            ∂state[1] += ∂state¹⁻_vol[1:end-1]
+            # ∂state[1] += ∂state¹⁻_vol[1:end-1]
+            ℒ.axpy!(1, ∂state¹⁻_vol[1:end-1], ∂state[1])
         end
 
-        ∂𝐒 = [copy(𝐒[1]) * 0, copy(𝐒[2]) * 0]
+        end # timeit_debug
+        
+        @timeit_debug timer "Post allocation" begin
 
-        ∂𝐒[1][cond_var_idx,end-T.nExo+1:end] += ∂𝐒¹ᵉ
-        ∂𝐒[2][cond_var_idx,shockvar²_idxs] += ∂𝐒²⁻ᵉ
-        ∂𝐒[2][cond_var_idx,shock²_idxs] += ∂𝐒ⁱ²ᵉ / 2
+        ∂𝐒 = [zero(𝐒[1]), zeros(size(𝐒[2]))]
 
-        ∂𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1] += ∂𝐒¹⁻ᵛ
-        ∂𝐒[2][cond_var_idx,var_vol²_idxs] += ∂𝐒²⁻ᵛ
+        ∂𝐒[1][cond_var_idx,end-T.nExo+1:end] .+= ∂𝐒¹ᵉ
+        ∂𝐒[2][cond_var_idx,shockvar²_idxs] .+= ∂𝐒²⁻ᵉ
+        ℒ.rdiv!(∂𝐒ⁱ²ᵉ, 2)
+        ∂𝐒[2][cond_var_idx,shock²_idxs] .+= ∂𝐒ⁱ²ᵉ# / 2
 
-        ∂𝐒[1][T.past_not_future_and_mixed_idx,:] += ∂𝐒⁻¹
-        ∂𝐒[2][T.past_not_future_and_mixed_idx,:] += ∂𝐒⁻²
+        ∂𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1] .+= ∂𝐒¹⁻ᵛ
+        ∂𝐒[2][cond_var_idx,var_vol²_idxs] .+= ∂𝐒²⁻ᵛ
 
-        ∂𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed] += ∂𝐒¹⁻
+        ∂𝐒[1][T.past_not_future_and_mixed_idx,:] .+= ∂𝐒⁻¹
+        ∂𝐒[2][T.past_not_future_and_mixed_idx,:] .+= ∂𝐒⁻²
 
-        ∂𝐒[1] *= ∂llh
-        ∂𝐒[2] *= ∂llh
+        ∂𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed] .+= ∂𝐒¹⁻
 
+        # ∂𝐒[1] *= ∂llh
+        # ∂𝐒[2] *= ∂llh
+        ℒ.rmul!(∂𝐒[1], ∂llh)
+        ℒ.rmul!(∂𝐒[2], ∂llh)
+
+        ℒ.rmul!(∂data_in_deviations, ∂llh)
+        
         ∂state[1] = ℒ.I(T.nVars)[:,T.past_not_future_and_mixed_idx] * ∂state[1] * ∂llh
         ∂state[2] = ℒ.I(T.nVars)[:,T.past_not_future_and_mixed_idx] * ∂state[2] * ∂llh
 
-        return NoTangent(), NoTangent(),  ∂state, ∂𝐒, ∂data_in_deviations * ∂llh, NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        end # timeit_debug
+        
+        end # timeit_debug
+
+        return NoTangent(), NoTangent(), ∂state, ∂𝐒, ∂data_in_deviations, NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
     end
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
@@ -10341,6 +10492,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     data_in_deviations::Matrix{Float64}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
+                                                    timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
@@ -10543,6 +10695,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}},
                 T::timings; 
+                timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
@@ -10902,7 +11055,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     𝐒::Vector{AbstractMatrix{Float64}}, 
                                                     data_in_deviations::Matrix{Float64}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
-                                                    T::timings; 
+                                                    T::timings;
+                                                    timer::TimerOutput = TimerOutput(), 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     filter_algorithm::Symbol = :LagrangeNewton)
@@ -11243,6 +11397,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}},
                 T::timings; 
+                timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 filter_algorithm::Symbol = :LagrangeNewton)
@@ -11769,6 +11924,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     data_in_deviations::Matrix{Float64}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
+                                                    timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     filter_algorithm::Symbol = :LagrangeNewton)
@@ -12073,6 +12229,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}},
                 T::timings; 
+                timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 filter_algorithm::Symbol = :LagrangeNewton)
