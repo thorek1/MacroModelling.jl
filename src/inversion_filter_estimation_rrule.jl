@@ -105,6 +105,8 @@ Random.seed!(9)
 data = simulate(𝓂, algorithm = algorithm, periods = periods)(oobbss,:,:simulate)
 
 
+get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
+
 timer = TimerOutput()
 get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, timer = timer)
 timer
