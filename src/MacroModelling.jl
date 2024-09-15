@@ -1312,16 +1312,14 @@ function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},
     n_row = size(B,1)
     n_col = size(B,2)
 
-    B̄ = collect(B)
-
     vals = T[]
     rows = Int[]
     cols = Int[]
 
-    for row in 1:size(A,1)
-        idx_mat, vals_mat = A[row,:] |> findnz
+    Ar, Ac, Av = findnz(A)
 
-        if length(vals_mat) == 0 continue end
+    for row in unique(Ar)
+        idx_mat, vals_mat = A[row,:] |> findnz
 
         for col in 1:size(B,2)^3
             col_1, col_3 = divrem((col - 1) % (n_col^2), n_col) .+ 1
@@ -1332,7 +1330,7 @@ function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},
             for (i,idx) in enumerate(idx_mat)
                 i_1, i_3 = divrem((idx - 1) % (n_row^2), n_row) .+ 1
                 i_2 = ((idx - 1) ÷ (n_row^2)) + 1
-                @inbounds mult_val += vals_mat[i] * B̄[i_1,col_1] * B̄[i_2,col_2] * B̄[i_3,col_3]
+                @inbounds mult_val += vals_mat[i] * B[i_1,col_1] * B[i_2,col_2] * B[i_3,col_3]
             end
 
             if abs(mult_val) > tol
