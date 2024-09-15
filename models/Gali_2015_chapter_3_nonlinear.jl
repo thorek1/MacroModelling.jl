@@ -33,6 +33,8 @@
 
 	log_y[0] = log(Y[0])
 
+	y_gap[0] = log(Y[0]/Y[ss])
+
 	log_W_real[0] = log(W_real[0])
 
 	log_N[0] = log(N[0])

@@ -1,15 +1,17 @@
 using MacroModelling
 import Turing
-import Pigeons
+import Zygote
+# import Pigeons
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
+import StatsPlots
 
 include("../models/FS2000.jl")
 
 # load data
-dat = CSV.read("data/FS2000_data.csv", DataFrame)
+dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
 data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
 data = log.(data)
 
@@ -40,6 +42,10 @@ Turing.@model function FS2000_loglikelihood_function(data, m)
     end
 end
 
+
+n_samples = 1000
+
+samps = sample(FS2000_loglikelihood_function(data, FS2000), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, init_params = FS2000.parameter_values)
 
 Random.seed!(30)
 
