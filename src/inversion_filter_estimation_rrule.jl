@@ -18,16 +18,11 @@ import ForwardDiff
 # using DataFrames
 # using Test
 
-using TimerOutputs
-TimerOutputs.enable_debug_timings(MacroModelling)
-
 include("../models/Gali_2015_chapter_3_nonlinear.jl")
 
-include("../models/SGU_2003_debt_premium.jl")
+include("../models/Ghironi_Melitz_2005.jl")
 
 include("../models/Smets_Wouters_2007.jl")
-
-include("../models/Ghironi_Melitz_2005.jl")
 
 
 
@@ -76,19 +71,12 @@ include("../models/Ghironi_Melitz_2005.jl")
 
 # 	ψ | l[ss] = 1/3
 # end
-𝓂 = Ghironi_Melitz_2005
-oobbss = [:C, :Q]
-
-𝓂 = Smets_Wouters_2003
-get_variables(𝓂)
-oobbss = [:L, :W, :R, :pi, :I, :C, :Y]
 
 𝓂 = Smets_Wouters_2007
 oobbss = [:labobs, :dwobs, :robs, :pinfobs, :dinve, :dc, :dy]
 
-𝓂 = SGU_2003_debt_premium
-get_variables(𝓂)
-oobbss = [:r]
+𝓂 = Ghironi_Melitz_2005
+oobbss = [:r, :C]
 
 𝓂 = Gali_2015_chapter_3_nonlinear
 oobbss = [:Y, :R, :Pi]
@@ -105,55 +93,16 @@ sylvester_algorithm = :doubling
 
 
 periods = 10
-# speed up solution and filtering
-# algorithm = :second_order
+algorithm = :second_order
 algorithm = :pruned_second_order
-# algorithm = :third_order
-# algorithm = :pruned_third_order
-timer = TimerOutput()
-rr = rand()
-# Random.seed!(9)
-data = simulate(𝓂, 
-                algorithm = algorithm, 
-                periods = periods, 
-                # parameters = :constebeta => .99 + rr * 1e-5, 
-                # parameters = :β  => .992, 
-                timer = timer)(oobbss,:,:simulate)
-timer
+algorithm = :third_order
+algorithm = :pruned_third_order
 
+Random.seed!(9)
+data = simulate(𝓂, algorithm = algorithm, periods = periods)(oobbss,:,:simulate)
 
-timer = TimerOutput()
-rr = rand()
-# Random.seed!(9)
-data = simulate(𝓂, 
-                # algorithm = algorithm, 
-                periods = periods, 
-                parameters = :constebeta => .99 + rr * 1e-5, 
-                # parameters = :β  => .992, 
-                timer = timer)(oobbss,:,:simulate)
-timer
+get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
 
-timer = TimerOutput()
-get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, timer = timer)
-timer
-
-
-Zygote.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1]
-
-timer = TimerOutput()
-# for i in 1:10
-zygdiff = Zygote.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm, timer = timer), 𝓂.parameter_values)[1]
-# end
-timer
-
-@profview for i in 1:3 Zygote.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm, timer = timer), 𝓂.parameter_values)[1] end
-
-using BenchmarkTools
-@benchmark get_loglikelihood(𝓂, data[:,1:10], 𝓂.parameter_values, algorithm = algorithm)
-
-@benchmark Zygote.gradient(x-> get_loglikelihood(𝓂, data[:,1:10], x, algorithm = algorithm), 𝓂.parameter_values)[1]
-
-get_parameters(𝓂)
 # get_parameters(𝓂, values = true)
 
 
@@ -164,7 +113,7 @@ findiff = FiniteDifferences.grad(FiniteDifferences.central_fdm(5,1, max_range = 
 zygdiff = Zygote.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1]
 
 isapprox(findiff, zygdiff)
-findiff - zygdiff
+
 
 @benchmark get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
 
