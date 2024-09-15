@@ -4595,7 +4595,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         verbose::Bool = false, 
                                                         pruning::Bool = false, 
-                                                        sylvester_algorithm::Symbol = :doubling, 
+                                                        sylvester_algorithm::Symbol = :gmres, 
                                                         timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
@@ -7428,7 +7428,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxilliary_matrices;  # aux matrices third order
                                             T::timings,
-                                            sylvester_algorithm::Symbol = :doubling,
+                                            sylvester_algorithm::Symbol = :gmres,
                                             timer::TimerOutput = TimerOutput(),
                                             tol::AbstractFloat = eps(),
                                             verbose::Bool = false)
