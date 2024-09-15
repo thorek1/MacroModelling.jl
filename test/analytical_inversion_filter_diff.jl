@@ -12,14 +12,9 @@ import Zygote
 import ForwardDiff
 import CSV
 using DataFrames
-# add Revise, FiniteDifferences, Zygote, Turing, StatsPlots, BenchmarkTools, Optim, LineSearches, CSV, DataFrames, MCMCChains
 
 include("../models/Smets_Wouters_2007.jl")
-a = [830684.5691855529, -1.6725129370342984e-7, -1.416978107575101e6, 1.3549368848624122e6, -1161.8328616591498, 369970.1528579773, 7359.1865933364525, 332758.6709496731, 67383.63086730876, 26660.725830535765, 14185.205304565256, 66483.26212553571, -351561.1996895059, -11329.062020175625, 2.7066506740857423e6, 1.3366176168324659e7, 1011.853193917699]
-b = [830684.5567340921, -0.00012850397425596366, -1.4169787327049365e6, 1.216073435544097e6, -1161.9517977564014, 369970.149363275, 7359.184791517299, 332758.6676129965, 67383.62794260411, 26660.72533677993, 14185.205200845863, 66483.25854341379, -351561.2079249865, -11328.885182399157, 2.70665069816183e6, 1.3366175992946988e7, 1011.8312573206733]
-using LinearAlgebra
-a-b
-norm(a-b) / max(norm(a),norm(b))
+
 # load data
 dat = CSV.read("test/data/usmodel.csv", DataFrame)
 
@@ -151,66 +146,6 @@ all_SS = expand_steady_state(SS_and_pars,𝓂)
 ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
             
 # 𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings)
-
-
-
-
-M₂ = 𝓂.solution.perturbation.second_order_auxilliary_matrices
-M₃ = 𝓂.solution.perturbation.third_order_auxilliary_matrices
-T = 𝓂.timings
-tol = eps()
-
-    # inspired by Levintal
-
-    # Indices and number of variables
-    i₊ = T.future_not_past_and_mixed_idx;
-    i₋ = T.past_not_future_and_mixed_idx;
-
-    n₋ = T.nPast_not_future_and_mixed
-    n₊ = T.nFuture_not_past_and_mixed
-    nₑ = T.nExo;
-    n  = T.nVars
-    nₑ₋ = n₋ + 1 + nₑ
-
-    # 1st order solution
-    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]] |> sparse
-    droptol!(𝐒₁,tol)
-
-    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) spdiagm(ones(nₑ + 1))[1,:] zeros(nₑ + 1, nₑ)];
-    
-    ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
-                                𝐒₁
-                                spdiagm(ones(nₑ₋))[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]];
-
-    𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
-                    zeros(n₋ + n + nₑ, nₑ₋)];
-
-
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
-
-    spinv = sparse(inv(∇₁₊𝐒₁➕∇₁₀))
-    droptol!(spinv,tol)
-
-    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * sparse(ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
-    # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = (mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
-
-    X = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
-    droptol!(X,tol)
-
-    ∇₁₊ = @views sparse(∇₁[:,1:n₊] * spdiagm(ones(n))[i₊,:])
-
-    B = spinv * ∇₁₊
-    droptol!(B,tol)
-
-    C = (M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + M₂.𝐔₂ * M₂.𝛔) * M₂.𝐂₂
-    droptol!(C,tol)
-
-    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
-
-    zygdiff = Zygote.jacobian(x -> solve_sylvester_equation(x, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1], B)[1]
-    findiff = FiniteDifferences.jacobian(FiniteDifferences.cetral_fdm(3,1),x -> solve_sylvester_equation(x, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1], B)[1]
-
-    isapprox(zygdiff, findiff)
 
 
 

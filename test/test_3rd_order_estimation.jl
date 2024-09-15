@@ -1,8 +1,6 @@
-using Revise
 using MacroModelling
 import Turing
-# import Pigeons
-import Zygote
+import Pigeons
 import Turing: NUTS, sample, logpdf, PG, IS
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
@@ -11,7 +9,7 @@ import DynamicPPL
 # estimate highly nonlinear model
 
 # load data
-dat = CSV.read("test/data/usmodel.csv", DataFrame)
+dat = CSV.read("data/usmodel.csv", DataFrame)
 data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
 
 # declare observables
@@ -25,9 +23,8 @@ data = data(observables,75:230)
 include("models/Caldara_et_al_2012_estim.jl")
 
 
-get_loglikelihood(Caldara_et_al_2012_estim, data, Caldara_et_al_2012_estim.parameter_values, algorithm = :pruned_third_order)
+# get_loglikelihood(Caldara_et_al_2012_estim, data, Caldara_et_al_2012_estim.parameter_values, algorithm = :pruned_third_order)
 
-Zygote.gradient(x -> get_loglikelihood(Caldara_et_al_2012_estim, data, x, algorithm = :pruned_third_order), Caldara_et_al_2012_estim.parameter_values)
 # get_loglikelihood(Caldara_et_al_2012_estim, data, Caldara_et_al_2012_estim.parameter_values*0.99, algorithm = :pruned_third_order)
 
 
@@ -58,11 +55,7 @@ end
 
 Random.seed!(3)
 
-n_samples = 1000
-
-Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim);
-
-samps = sample(Caldara_et_al_2012_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, init_params = Caldara_et_al_2012_estim.parameter_values)
+# Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)
 
 # samps = @time sample(Caldara_et_al_2012_loglikelihood, PG(100), 10, progress = true)#, init_params = sol)
 
