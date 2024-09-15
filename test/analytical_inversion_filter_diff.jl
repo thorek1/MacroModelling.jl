@@ -37,6 +37,39 @@ data = rekey(data, :Variable => observables)
 
 
 
+𝓂 = Smets_Wouters_2007
+get_solution(𝓂, algorithm = :third_order);
+
+get_loglikelihood(𝓂, data[1:6,1:40], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_second_order, filter_algorithm = :LagrangeNewton)
+get_loglikelihood(𝓂, data[1:6,1:40], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_second_order, filter_algorithm = :SLSQP)
+get_loglikelihood(𝓂, data[1:6,1:40], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_second_order, filter_algorithm = :COBYLA)
+
+@benchmark get_loglikelihood($𝓂, $data[1:6,1:40], $𝓂.parameter_values, filter = :inversion, algorithm = :pruned_second_order, filter_algorithm = :LagrangeNewton)
+@benchmark get_loglikelihood($𝓂, $data[1:6,1:40], $𝓂.parameter_values, filter = :inversion, algorithm = :pruned_second_order, filter_algorithm = :SLSQP)
+@benchmark get_loglikelihood($𝓂, $data[1:6,1:40], $𝓂.parameter_values, filter = :inversion, algorithm = :pruned_second_order, filter_algorithm = :COBYLA)
+@profview for i in 1:10 get_loglikelihood(𝓂, data[1:6,1:40], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_second_order, filter_algorithm = :LagrangeNewton) end
+
+
+get_loglikelihood(𝓂, data[:,1:70], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_second_order)
+get_loglikelihood(𝓂, data[:,1:70], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_second_order, filter_algorithm = :SLSQP)
+get_loglikelihood(𝓂, data[:,1:70], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_second_order, filter_algorithm = :COBYLA)
+
+@benchmark get_loglikelihood(𝓂, data[1:6,1:25], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_third_order)
+@benchmark get_loglikelihood(𝓂, data[1:6,1:25], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_third_order, filter_algorithm = :COBYLA)
+@profview get_loglikelihood(𝓂, data[1:6,1:25], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_third_order)
+
+get_loglikelihood(𝓂, data[1:6,1:25], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_third_order)
+get_loglikelihood(𝓂, data[1:6,1:25], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_third_order, filter_algorithm = :SLSQP)
+get_loglikelihood(𝓂, data[1:6,1:25], 𝓂.parameter_values, filter = :inversion, algorithm = :pruned_third_order, filter_algorithm = :COBYLA)
+
+get_loglikelihood(𝓂, data[:,1:5], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :pruned_third_order)
+
+get_loglikelihood(𝓂, data[1:6,1:5], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :third_order)
+get_loglikelihood(𝓂, data[:,1:5], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :third_order)
+get_loglikelihood(𝓂, data[1:6,1:10], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :second_order)
+get_loglikelihood(𝓂, data[1:6,1:10], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :third_order)
+get_loglikelihood(𝓂, data[1:6,1:10], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :pruned_third_order)
+get_loglikelihood(𝓂, data[:,1:50], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :pruned_second_order)
 # include("../models/Gali_2015_chapter_3_nonlinear.jl")
 # include("../models/RBC_baseline.jl")
 # init = copy(RBC_baseline.parameter_values)
@@ -871,7 +904,7 @@ get_loglikelihood(𝓂, data[1:6,1:40], 𝓂.parameter_values, filter = :inversi
 
 get_loglikelihood(𝓂, data[:,1:40], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :pruned_second_order)
 get_loglikelihood(𝓂, data[1:6,1:5], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :pruned_third_order)
-get_loglikelihood(𝓂, data[:,1:15], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :pruned_third_order)
+get_loglikelihood(𝓂, data[:,1:5], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :pruned_third_order)
 
 get_loglikelihood(𝓂, data[1:6,1:5], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :third_order)
 get_loglikelihood(𝓂, data[:,1:5], 𝓂.parameter_values, filter = :inversion, presample_periods = presample_periods, algorithm = :third_order)
