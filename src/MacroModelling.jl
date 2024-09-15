@@ -1208,7 +1208,9 @@ function kron³(A::SparseMatrixCSC{T}, M₃::third_order_auxilliary_matrices) wh
     end
 end
 
-function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R}, B::AbstractArray{T}; tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
+function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},
+    B::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}}; 
+    tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
     n_row = size(B,1)
     n_col = size(B,2)
 
@@ -1247,35 +1249,35 @@ function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R}, B::AbstractArray{T}; 
 end
 
 
-function A_mult_kron_power_3_B!(X::AbstractSparseMatrix{R}, A::AbstractSparseMatrix{S},B::AbstractMatrix{T}; tol::AbstractFloat = eps()) where {R <: Real, S <: Real, T <: Real}
-    n_row = size(B,1)
-    n_col = size(B,2)
+# function A_mult_kron_power_3_B!(X::AbstractSparseMatrix{R}, A::AbstractSparseMatrix{S},B::AbstractMatrix{T}; tol::AbstractFloat = eps()) where {R <: Real, S <: Real, T <: Real}
+#     n_row = size(B,1)
+#     n_col = size(B,2)
 
-    B̄ = collect(B)
+#     B̄ = collect(B)
 
-    for row in 1:size(A,1)
-        idx_mat, vals_mat = A[row,:] |> findnz
+#     for row in 1:size(A,1)
+#         idx_mat, vals_mat = A[row,:] |> findnz
 
-        if length(vals_mat) == 0 continue end
+#         if length(vals_mat) == 0 continue end
 
-        for col in 1:size(B,2)^3
-            col_1, col_3 = divrem((col - 1) % (n_col^2), n_col) .+ 1
-            col_2 = ((col - 1) ÷ (n_col^2)) + 1
+#         for col in 1:size(B,2)^3
+#             col_1, col_3 = divrem((col - 1) % (n_col^2), n_col) .+ 1
+#             col_2 = ((col - 1) ÷ (n_col^2)) + 1
 
-            mult_val = 0.0
+#             mult_val = 0.0
 
-            for (i,idx) in enumerate(idx_mat)
-                i_1, i_3 = divrem((idx - 1) % (n_row^2), n_row) .+ 1
-                i_2 = ((idx - 1) ÷ (n_row^2)) + 1
-                @inbounds mult_val += vals_mat[i] * B̄[i_1,col_1] * B̄[i_2,col_2] * B̄[i_3,col_3]
-            end
+#             for (i,idx) in enumerate(idx_mat)
+#                 i_1, i_3 = divrem((idx - 1) % (n_row^2), n_row) .+ 1
+#                 i_2 = ((idx - 1) ÷ (n_row^2)) + 1
+#                 @inbounds mult_val += vals_mat[i] * B̄[i_1,col_1] * B̄[i_2,col_2] * B̄[i_3,col_3]
+#             end
 
-            if abs(mult_val) > tol  # Skip small values below tolerance
-                @inbounds X[row,col] += mult_val
-            end
-        end
-    end
-end
+#             if abs(mult_val) > tol  # Skip small values below tolerance
+#                 @inbounds X[row,col] += mult_val
+#             end
+#         end
+#     end
+# end
 
 
 function translate_symbol_to_ascii(x::Symbol)
