@@ -12,7 +12,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     B::AbstractMatrix{Float64},
                                     C::AbstractMatrix{Float64};
                                     sylvester_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-12,
+                                    tol::AbstractFloat = 1e-11,
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false)
     @timeit_debug timer "Choose matrix formats" begin
@@ -604,7 +604,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
         copyto!(𝐗, 𝐱)
         # 𝐗 = @view reshape(𝐱, size(𝐗))
         ℒ.mul!(tmp̄, 𝐗, B)
-        ℒ.mul!(𝐗, A, tmp̄, 1, 1)
+        ℒ.mul!(𝐗, A, tmp̄, -1, 1)
         copyto!(sol, 𝐗)
         # sol = @view reshape(𝐗, size(sol))
     end
@@ -612,7 +612,6 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
 
     𝐂, info = Krylov.gmres(sylvester, [vec(C);],rtol = tol)
-
     copyto!(𝐗, 𝐂)
 
     ℒ.mul!(tmp̄, A, 𝐗 * B)
