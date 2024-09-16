@@ -7717,7 +7717,8 @@ function rrule(::typeof(calculate_third_order_solution),
 
     A = spinv * ∇₁₊
 
-    tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
+    # tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
+    tmpkron = choose_matrix_format(ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔), density_threshold = 1.0)
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)
     
     @timeit_debug timer "Setup B" begin
@@ -7907,10 +7908,12 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ∂A = ∂C * B' * 𝐒₃'
 
-        ∂B = 𝐒₃' * A' * ∂C
+        # ∂B = 𝐒₃' * A' * ∂C
+        ∂B = choose_matrix_format(𝐒₃' * A' * ∂C, density_threshold = 1.0)
 
         # C = spinv * 𝐗₃ * M₃.𝐂₃
         ∂𝐗₃ = spinv' * ∂C * M₃.𝐂₃'
+        ∂𝐗₃ = choose_matrix_format(∂𝐗₃, density_threshold = 1.0)
         ∂spinv += ∂C * M₃.𝐂₃' * 𝐗₃'
 
         # 𝐗₃ = ∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux) 
@@ -8034,7 +8037,6 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
         fill_kron_adjoint_∂A!(∂tmpkron, ∂𝐒₁₋╱𝟏ₑ, M₂.𝛔)
-
         # A = spinv * ∇₁₊
         ∂∇₁₊ += spinv' * ∂A
         ∂spinv += ∂A * ∇₁₊'
