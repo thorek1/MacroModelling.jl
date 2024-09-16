@@ -11,7 +11,7 @@
 function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     B::AbstractMatrix{Float64},
                                     C::AbstractMatrix{Float64};
-                                    init::AbstractMatrix{Float64} = zeros(0,0),
+                                    # init::AbstractMatrix{Float64} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
                                     tol::AbstractFloat = 1e-11,
                                     timer::TimerOutput = TimerOutput(),
@@ -30,7 +30,10 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     
     @timeit_debug timer "Solve sylvester equation" begin
 
-    X, solved, i, reached_tol = solve_sylvester_equation(A, B, C, Val(sylvester_algorithm), tol = tol, timer = timer, init = init)
+    X, solved, i, reached_tol = solve_sylvester_equation(A, B, C, Val(sylvester_algorithm), 
+                                                        # init = init, 
+                                                        tol = tol, 
+                                                        timer = timer)
 
     end # timeit_debug
 
@@ -46,7 +49,7 @@ function rrule(::typeof(solve_sylvester_equation),
     A::AbstractMatrix{Float64},
     B::AbstractMatrix{Float64},
     C::AbstractMatrix{Float64};
-    init::AbstractMatrix{Float64},
+    # init::AbstractMatrix{Float64},
     sylvester_algorithm::Symbol = :doubling,
     tol::AbstractFloat = 1e-12,
     timer::TimerOutput = TimerOutput(),
@@ -73,7 +76,7 @@ end
 function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     B::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}};
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     sylvester_algorithm::Symbol = :doubling,
                                     tol::AbstractFloat = 1e-12,
                                     timer::TimerOutput = TimerOutput(),
@@ -113,14 +116,15 @@ end
 function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
                                     B::AbstractSparseMatrix{Float64},
                                     C::AbstractSparseMatrix{Float64},
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     ::Val{:doubling};
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
     𝐀  = copy(A)
     𝐁  = copy(B)
-    𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    𝐂  = copy(C)
     # ℒ.rmul!(𝐂, -1)
 
     max_iter = 500
@@ -161,7 +165,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
                                     B::AbstractSparseMatrix{Float64},
                                     C::Matrix{Float64},
                                     ::Val{:doubling};
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
@@ -169,7 +173,8 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
     𝐀¹ = copy(A)
     𝐁  = copy(B)
     𝐁¹ = copy(B)
-    𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    𝐂  = copy(C)
     # ℒ.rmul!(𝐂, -1)
     𝐂¹  = similar(𝐂)
     𝐂B = copy(C)
@@ -225,7 +230,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
                                     B::AbstractSparseMatrix{Float64},
                                     C::Matrix{Float64},
                                     ::Val{:doubling};
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
@@ -235,7 +240,8 @@ function solve_sylvester_equation(  A::Matrix{Float64},
     𝐀¹ = copy(A)
     𝐁  = copy(B)
     # 𝐁¹ = similar(B)
-    𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    𝐂  = copy(C)
     # ℒ.rmul!(𝐂, -1)
     𝐂¹  = similar(𝐂)
     𝐂B = copy(C)
@@ -305,7 +311,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
                                     B::Matrix{Float64},
                                     C::Matrix{Float64},
                                     ::Val{:doubling};
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
@@ -313,7 +319,8 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
     # 𝐀¹ = copy(A)
     𝐁  = copy(B)
     𝐁¹ = copy(B)
-    𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    𝐂  = copy(C)
     # ℒ.rmul!(𝐂, -1)
     𝐂¹ = similar(𝐂)
     𝐂B = copy(C)
@@ -366,7 +373,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
                                     B::Matrix{Float64},
                                     C::AbstractSparseMatrix{Float64},
                                     ::Val{:doubling};
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
@@ -374,7 +381,8 @@ function solve_sylvester_equation(  A::Matrix{Float64},
     𝐀¹ = copy(A)
     𝐁  = copy(B)
     𝐁¹ = copy(B)
-    𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    𝐂  = copy(C)
     # ℒ.rmul!(𝐂, -1)
     𝐂¹ = similar(𝐂)
     𝐂B = copy(C)
@@ -428,7 +436,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
                                     B::AbstractSparseMatrix{Float64},
                                     C::AbstractSparseMatrix{Float64},
                                     ::Val{:doubling};
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
@@ -436,7 +444,8 @@ function solve_sylvester_equation(  A::Matrix{Float64},
     𝐀¹ = copy(A)
     𝐁  = copy(B)
     # 𝐁¹ = copy(B)
-    𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    𝐂  = copy(C)
     # ℒ.rmul!(𝐂, -1)
     𝐂¹ = similar(𝐂)
     𝐂B = copy(C)
@@ -489,7 +498,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
                                     B::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
                                     C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
                                     ::Val{:doubling};
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
@@ -497,7 +506,8 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
     𝐀¹ = copy(A)
     𝐁  = copy(B)
     𝐁¹ = copy(B)
-    𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    𝐂  = copy(C)
     # ℒ.rmul!(𝐂, -1)
     𝐂¹  = similar(𝐂)
     𝐂B = copy(C)
@@ -551,7 +561,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     B::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
                                     C::DenseMatrix{Float64},
                                     ::Val{:sylvester};
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::AbstractFloat = 1e-12)
     𝐂 = MatrixEquations.sylvd(-A, B, C)
@@ -570,7 +580,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     B::AbstractMatrix{Float64},
     C::AbstractMatrix{Float64},
     ::Val{:bicgstab};
-    init::AbstractMatrix{Float64},
+    # init::AbstractMatrix{Float64},
     timer::TimerOutput = TimerOutput(),
     tol::Float64 = 1e-8)
 
@@ -586,11 +596,11 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
 
-    if length(init) == 0
+    # if length(init) == 0
         𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol / 10)
-    else
-        𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
-    end
+    # else
+    #     𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
+    # end
 
     copyto!(𝐗, 𝐂)
 
@@ -611,7 +621,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     B::AbstractMatrix{Float64},
                                     C::AbstractMatrix{Float64},
                                     ::Val{:gmres};
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-8)
     @timeit_debug timer "Preallocate matrices" begin
@@ -662,11 +672,11 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true,true, preconditioner!)
 
     @timeit_debug timer "GMRES solve" begin
-    if length(init) == 0
+    # if length(init) == 0
         𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol / 10)#, restart = true, M = precond)
-    else
-        𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)#, restart = true, M = precond)
-    end
+    # else
+    #     𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)#, restart = true, M = precond)
+    # end
     end # timeit_debug
 
     @timeit_debug timer "Postprocess" begin
@@ -692,10 +702,11 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     B::AbstractMatrix{Float64},
                                     C::AbstractMatrix{Float64},
                                     ::Val{:iterative};
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::AbstractFloat = 1e-12)
-    𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    𝐂  = copy(C)
     𝐂¹ = copy(C)
     𝐂B = copy(C)
     
@@ -739,7 +750,8 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::AbstractFloat = 1e-12)
-    𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    𝐂  = copy(C)
 
     if !(C isa DenseMatrix)
         C = collect(C)

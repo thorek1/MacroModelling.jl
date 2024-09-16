@@ -7182,7 +7182,11 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₂, solved = solve_sylvester_equation(A, B, C, sylvester_algorithm = sylvester_algorithm, verbose = verbose, timer = timer, tol = tol)
+    𝐒₂, solved = solve_sylvester_equation(A, B, C, 
+                                            sylvester_algorithm = sylvester_algorithm, 
+                                            verbose = verbose, 
+                                            timer = timer, 
+                                            tol = tol)
 
     end # timeit_debug
 
@@ -7193,7 +7197,9 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                                 # init = 𝐒₂, 
                                                 # sylvester_algorithm = :gmres, 
                                                 sylvester_algorithm = :doubling, 
-                                                verbose = verbose, timer = timer, tol = tol)
+                                                verbose = verbose, 
+                                                timer = timer, 
+                                                tol = tol)
     end
 
     end # timeit_debug
