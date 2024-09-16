@@ -1156,7 +1156,7 @@ function compressed_kron³(a::AbstractSparseMatrix{T};
     # Estimate an upper bound for non-zero entries to preallocate arrays
     lennz = a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
 
-    estimated_nnz = Int(m3 ^ 2 * lennz / length(a))
+    estimated_nnz = floor(Int, m3 ^ 2 * lennz / length(a))
 
     I = Vector{Int}(undef, estimated_nnz)
     J = Vector{Int}(undef, estimated_nnz)
