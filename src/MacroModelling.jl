@@ -4599,7 +4599,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         verbose::Bool = false, 
                                                         pruning::Bool = false, 
-                                                        sylvester_algorithm::Symbol = :gmres, 
+                                                        sylvester_algorithm::Symbol = :bicgstab, 
                                                         timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
@@ -7455,7 +7455,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxilliary_matrices;  # aux matrices third order
                                             T::timings,
-                                            sylvester_algorithm::Symbol = :gmres,
+                                            sylvester_algorithm::Symbol = :bicgstab,
                                             timer::TimerOutput = TimerOutput(),
                                             tol::AbstractFloat = 1e-12, # sylvester tol
                                             verbose::Bool = false)
@@ -9834,7 +9834,7 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    sylvester_algorithm::Symbol = :gmres, 
+                                                    sylvester_algorithm::Symbol = :bicgstab, 
                                                     timer::TimerOutput = TimerOutput()) where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm = sylvester_algorithm)
 
@@ -9853,7 +9853,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    sylvester_algorithm::Symbol = :gmres, 
+                                                    sylvester_algorithm::Symbol = :bicgstab, 
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer, sylvester_algorithm= sylvester_algorithm)
 
