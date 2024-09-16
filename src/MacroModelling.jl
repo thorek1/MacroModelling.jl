@@ -7162,26 +7162,30 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
 
-    B = spinv * ∇₁₊
+    A = spinv * ∇₁₊
 
     # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * (ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
     ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) * M₂.𝐂₂ + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔 * M₂.𝐂₂ 
     
-    X = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
+    C = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
 
-    C = M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) * M₂.𝐂₂ + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
+    B = M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) * M₂.𝐂₂ + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
     end # timeit_debug
 
     @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose, timer = timer, tol = tol)
+    𝐒₂, solved = solve_sylvester_equation(A, B, C, sylvester_algorithm = sylvester_algorithm, verbose = verbose, timer = timer, tol = tol)
 
     end # timeit_debug
 
     @timeit_debug timer "Refine sylvester equation" begin
 
     if !solved
-        𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = :doubling, verbose = verbose, timer = timer, tol = tol)
+        𝐒₂, solved = solve_sylvester_equation(A, B, C, 
+                                                # init = 𝐒₂, 
+                                                # sylvester_algorithm = :gmres, 
+                                                sylvester_algorithm = :doubling, 
+                                                verbose = verbose, timer = timer, tol = tol)
     end
 
     end # timeit_debug
@@ -7668,8 +7672,11 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     @timeit_debug timer "Refine sylvester equation" begin
 
     if !solved
-        println("nope")
-        𝐒₃, solved = solve_sylvester_equation(A, B, C, init = 𝐒₃, sylvester_algorithm = :doubling, verbose= verbose, timer = timer, tol = tol)
+        𝐒₃, solved = solve_sylvester_equation(A, B, C, 
+                                                # init = 𝐒₃, 
+                                                # sylvester_algorithm = :iterative, 
+                                                sylvester_algorithm = :doubling, 
+                                                verbose = verbose, timer = timer, tol = tol)
     end
 
     end # timeit_debug

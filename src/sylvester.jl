@@ -29,7 +29,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
     end # timeit_debug
                                     
     @timeit_debug timer "Solve sylvester equation" begin
-        
+
     X, solved, i, reached_tol = solve_sylvester_equation(A, B, C, Val(sylvester_algorithm), tol = tol, timer = timer, init = init)
 
     end # timeit_debug
@@ -587,9 +587,9 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
 
     if length(init) == 0
-        𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol)
+        𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol / 10)
     else
-        𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol)
+        𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     end
 
     copyto!(𝐗, 𝐂)
@@ -663,9 +663,9 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     @timeit_debug timer "GMRES solve" begin
     if length(init) == 0
-        𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol/10)#, restart = true, M = precond)
+        𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol / 10)#, restart = true, M = precond)
     else
-        𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol/10tol)#, restart = true, M = precond)
+        𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)#, restart = true, M = precond)
     end
     end # timeit_debug
 
@@ -753,6 +753,6 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                 ℒ.mul!(X, A, CB)
                 ℒ.axpy!(1, C, X)
             end, stabilize = false, maps_limit = 10000, tol = tol)
-    
+
     return soll.minimizer, soll.converged, soll.maps, soll.norm_∇
 end
