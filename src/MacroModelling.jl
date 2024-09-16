@@ -4297,7 +4297,11 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate second order solution" begin
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, verbose = verbose, timer = timer)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; 
+                                                    T = 𝓂.timings, 
+                                                    # sylvester_algorithm = sylvester_algorithm, 
+                                                    sylvester_algorithm = :doubling, # hard code doubling
+                                                    verbose = verbose, timer = timer)
 
     # end # timeit_debug
 
@@ -4595,7 +4599,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         verbose::Bool = false, 
                                                         pruning::Bool = false, 
-                                                        sylvester_algorithm::Symbol = :doubling, 
+                                                        sylvester_algorithm::Symbol = :gmres, 
                                                         timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
@@ -4615,8 +4619,12 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     end
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
-    
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol, sylvester_algorithm = sylvester_algorithm, verbose= verbose, timer = timer)
+
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; 
+                                                    T = 𝓂.timings, tol = tol, 
+                                                    # sylvester_algorithm = sylvester_algorithm, 
+                                                    sylvester_algorithm = :doubling, # doubling will always be faster here
+                                                    verbose= verbose, timer = timer)
     if !solved2
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
@@ -9788,9 +9796,9 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    sylvester_algorithm::Symbol = :gmres, 
+                                                    sylvester_algorithm::Symbol = :doubling, 
                                                     timer::TimerOutput = TimerOutput()) where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm= sylvester_algorithm)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm = sylvester_algorithm)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -9807,7 +9815,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    sylvester_algorithm::Symbol = :gmres, 
+                                                    sylvester_algorithm::Symbol = :doubling, 
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer, sylvester_algorithm = sylvester_algorithm)
 
