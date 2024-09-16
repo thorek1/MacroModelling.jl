@@ -559,6 +559,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     B::AbstractMatrix{Float64},
     C::AbstractMatrix{Float64},
     ::Val{:bicgstab};
+    timer::TimerOutput = TimerOutput(),
     tol::Float64 = 1e-8)
 
     tmp̄ = similar(C)
@@ -567,7 +568,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     function sylvester!(sol,𝐱)
         copyto!(𝐗, 𝐱)
         ℒ.mul!(tmp̄, 𝐗, B)
-        ℒ.mul!(𝐗, A, tmp̄, 1, 1)
+        ℒ.mul!(𝐗, A, tmp̄, -1, 1)
         copyto!(sol, 𝐗)
     end
 
@@ -596,22 +597,43 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     ::Val{:gmres};
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-8)
-
+    @timeit_debug timer "Preallocate matrices" begin
     tmp̄ = similar(C)
     𝐗 = similar(C)
+    end # timeit_debug   
 
     function sylvester!(sol,𝐱)
+        @timeit_debug timer "Copy1" begin
         copyto!(𝐗, 𝐱)
+        end # timeit_debug
         # 𝐗 = @view reshape(𝐱, size(𝐗))
-        ℒ.mul!(tmp̄, 𝐗, B)
-        ℒ.mul!(𝐗, A, tmp̄, -1, 1)
+        @timeit_debug timer "Mul1" begin
+        # tmp̄ = A * 𝐗 * B 
+        ℒ.mul!(tmp̄, A, 𝐗)
+        end # timeit_debug
+        @timeit_debug timer "Mul2" begin
+        ℒ.mul!(𝐗, tmp̄, B, -1, 1)
+        # ℒ.axpby!(-1, tmp̄, 1, 𝐗)
+        end # timeit_debug
+        @timeit_debug timer "Copy2" begin
         copyto!(sol, 𝐗)
+    end # timeit_debug
         # sol = @view reshape(𝐗, size(sol))
     end
+          
+    # function sylvester!(sol,𝐱)
+    #     copyto!(𝐗, 𝐱)
+    #     copyto!(sol, -A * 𝐗 * B + 𝐗)
+    # end
 
     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
 
-    𝐂, info = Krylov.gmres(sylvester, [vec(C);],rtol = tol)
+    @timeit_debug timer "GMRES solve" begin
+    𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol/10)
+    end # timeit_debug
+
+    @timeit_debug timer "Postprocess" begin
+
     copyto!(𝐗, 𝐂)
 
     ℒ.mul!(tmp̄, A, 𝐗 * B)
@@ -622,6 +644,8 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     ℒ.axpy!(-1, 𝐗, tmp̄)
 
     reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
+
+    end # timeit_debug
 
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
