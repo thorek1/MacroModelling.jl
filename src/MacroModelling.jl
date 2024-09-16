@@ -1160,7 +1160,7 @@ function compressed_kron³(a::AbstractSparseMatrix{T};
 
     I = Vector{Int}(undef, estimated_nnz)
     J = Vector{Int}(undef, estimated_nnz)
-    V = Vector{Float64}(undef, estimated_nnz)
+    V = Vector{T}(undef, estimated_nnz)
 
     # k = Threads.Atomic{Int}(0)  # Counter for non-zero entries
     # k̄ = Threads.Atomic{Int}(0)  # effectively slower than the non-threaded version
