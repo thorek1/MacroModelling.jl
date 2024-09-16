@@ -623,8 +623,29 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
     
+    # # ==== Preconditioner Setup ====
+    # # Approximate the diagonal of the Sylvester operator J = A ⊗ B - I
+    # # For AXB - X, the diagonal can be approximated as diag(A) * diag(B) - 1
+    # diag_J_matrix = ℒ.diag(A) * ℒ.diag(B)' .- 1.0
+    # diag_J = vec(diag_J_matrix)  # Vector of length 39,270
+
+    # # To avoid division by zero, set a minimum threshold
+    # diag_J = max.(abs.(diag_J), 1e-12)
+
+    # # Compute the inverse of the diagonal preconditioner
+    # inv_diag_J = 1.0 ./ diag_J
+
+    # # println(length(inv_diag_J))
+    # # Define the preconditioner as a LinearOperator
+    # function preconditioner!(y, x)
+    #     # ℒ.mul!(y, inv_diag_J, x)
+    #     @. y = inv_diag_J .* x
+    # end
+
+    # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true,true, preconditioner!)
+
     @timeit_debug timer "GMRES solve" begin
-    𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol/10)
+    𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol/10)#, restart = true, M = precond)
     end # timeit_debug
 
     @timeit_debug timer "Postprocess" begin
@@ -641,7 +662,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
 
     end # timeit_debug
-    
+
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
 
