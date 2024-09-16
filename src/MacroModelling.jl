@@ -4255,12 +4255,12 @@ end
 
 
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 
-    𝓂::ℳ; 
-    verbose::Bool = false, 
-    pruning::Bool = false, 
-    sylvester_algorithm::Symbol = :doubling, 
-    timer::TimerOutput = TimerOutput(),
-    tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
+                                                        𝓂::ℳ; 
+                                                        verbose::Bool = false, 
+                                                        pruning::Bool = false, 
+                                                        sylvester_algorithm::Symbol = :doubling, 
+                                                        timer::TimerOutput = TimerOutput(),
+                                                        tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     # @timeit_debug timer "Calculate NSSS" begin
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
@@ -4623,7 +4623,14 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
             
-    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose, timer = timer)
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
+                                                𝓂.solution.perturbation.second_order_auxilliary_matrices, 
+                                                𝓂.solution.perturbation.third_order_auxilliary_matrices; 
+                                                T = 𝓂.timings, 
+                                                sylvester_algorithm = sylvester_algorithm, 
+                                                tol = tol, 
+                                                verbose = verbose, 
+                                                timer = timer)
 
     if !solved3
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
@@ -7167,7 +7174,15 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose, timer = timer)
+    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose, timer = timer, tol = tol)
+
+    end # timeit_debug
+
+    @timeit_debug timer "Refine sylvester equation" begin
+
+    if !solved
+        𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = :doubling, verbose = verbose, timer = timer, tol = tol)
+    end
 
     end # timeit_debug
 
@@ -7430,7 +7445,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                             T::timings,
                                             sylvester_algorithm::Symbol = :gmres,
                                             timer::TimerOutput = TimerOutput(),
-                                            tol::AbstractFloat = eps(),
+                                            tol::AbstractFloat = 1e-12, # sylvester tol
                                             verbose::Bool = false)
     @timeit_debug timer "Calculate third order solution" begin
     # inspired by Levintal
@@ -7477,67 +7492,67 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     
     ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
 
-    B = spinv * ∇₁₊
+    A = spinv * ∇₁₊
 
     tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)
     
-    @timeit_debug timer "Setup C" begin
+    @timeit_debug timer "Setup B" begin
 
-    # C = M₃.𝐔₃ * tmpkron + M₃.𝐔₃ * M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐔₃ * M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
-    # C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) # no speed up here from A_mult_kron_power_3_B; this is the bottleneck. ideally have this return reduced space directly. TODO: make kron3 faster
-    # @timeit_debug timer "Combine C" begin
-    # C = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃ + ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ)
+    # B = M₃.𝐔₃ * tmpkron + M₃.𝐔₃ * M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐔₃ * M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
+    # B += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) # no speed up here from A_mult_kron_power_3_B; this is the bottleneck. ideally have this return reduced space directly. TODO: make kron3 faster
+    # @timeit_debug timer "Combine B" begin
+    # B = tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃ + ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ)
     # end # timeit_debug
     @timeit_debug timer "Add tmpkron" begin
-    C = tmpkron
+    B = tmpkron
     end # timeit_debug
     @timeit_debug timer "Step 1" begin
-    C += M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃
+    B += M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃
     end # timeit_debug
     @timeit_debug timer "Step 2" begin
-    C += M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
+    B += M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
     end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
-    # C += ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ) # this is the bottleneck
+    # B += ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ) # this is the bottleneck
     # end # timeit_debug
     # println(size(𝐒₁₋╱𝟏ₑ))
     # println(length(𝐒₁₋╱𝟏ₑ.A.nzval) / length(𝐒₁₋╱𝟏ₑ))
-    # println(typeof(C))
+    # println(typeof(B))
     @timeit_debug timer "Mult" begin
-    C *= M₃.𝐂₃
-    C = choose_matrix_format(M₃.𝐔₃ * C)
+    B *= M₃.𝐂₃
+    B = choose_matrix_format(M₃.𝐔₃ * B)
     end # timeit_debug
 
     # @timeit_debug timer "Step 3" begin
-    #     C += kron³(𝐒₁₋╱𝟏ₑ, M₃)
+    #     B += kron³(𝐒₁₋╱𝟏ₑ, M₃)
     # end # timeit_debug
     @timeit_debug timer "3rd Kronecker power" begin
-    C += compressed_kron³(𝐒₁₋╱𝟏ₑ)
+    B += compressed_kron³(𝐒₁₋╱𝟏ₑ)
     end # timeit_debug
 
     # @timeit_debug timer "3rd Kronecker power" begin
-    # C += A_mult_kron_power_3_B(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
+    # B += A_mult_kron_power_3_B(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
     # end # timeit_debug
 
     # @timeit_debug timer "3rd Kronecker power" begin
-    # C += mat_mult_kron(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ), collect(kron𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
+    # B += mat_mult_kron(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ), collect(kron𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
     # end # timeit_debug
 
     end # timeit_debug
     
-    # C = M₃.𝐔₃ * tmpkron * M₃.𝐂₃
-    # C += M₃.𝐔₃ * M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ * M₃.𝐂₃
-    # C += M₃.𝐔₃ * M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃ * M₃.𝐂₃
-    # C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ) * M₃.𝐂₃ # no speed up here from A_mult_kron_power_3_B; this is the bottleneck. ideally have this return reduced space directly. TODO: make kron3 faster
-    # C += kron³(𝐒₁₋╱𝟏ₑ, M₃)
-    # C = M₃.𝐔₃ * C
+    # B = M₃.𝐔₃ * tmpkron * M₃.𝐂₃
+    # B += M₃.𝐔₃ * M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ * M₃.𝐂₃
+    # B += M₃.𝐔₃ * M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃ * M₃.𝐂₃
+    # B += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ) * M₃.𝐂₃ # no speed up here from A_mult_kron_power_3_B; this is the bottleneck. ideally have this return reduced space directly. TODO: make kron3 faster
+    # B += kron³(𝐒₁₋╱𝟏ₑ, M₃)
+    # B = M₃.𝐔₃ * B
 
-    # C *= M₃.𝐂₃
-    # C = M₃.𝐔₃ * (tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃ + ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
-    # droptol!(C,tol)
+    # B *= M₃.𝐂₃
+    # B = M₃.𝐔₃ * (tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃ + ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
+    # droptol!(B,tol)
     
-    @timeit_debug timer "Setup X" begin
+    @timeit_debug timer "Setup C" begin
 
     @timeit_debug timer "Initialise smaller matrices" begin
 
@@ -7639,7 +7654,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     
     @timeit_debug timer "Mult" begin
 
-    X = spinv * 𝐗₃ * M₃.𝐂₃
+    C = spinv * 𝐗₃ * M₃.𝐂₃
     
     end # timeit_debug
 
@@ -7647,8 +7662,16 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     
     @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₃, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose= verbose, timer = timer)
+    𝐒₃, solved = solve_sylvester_equation(A, B, C, sylvester_algorithm = sylvester_algorithm, verbose= verbose, timer = timer, tol = tol)
     
+    end # timeit_debug
+    @timeit_debug timer "Refine sylvester equation" begin
+
+    if !solved
+        println("nope")
+        𝐒₃, solved = solve_sylvester_equation(A, B, C, init = 𝐒₃, sylvester_algorithm = :doubling, verbose= verbose, timer = timer, tol = tol)
+    end
+
     end # timeit_debug
     
     @timeit_debug timer "Post-process" begin
@@ -9758,8 +9781,9 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
+                                                    sylvester_algorithm::Symbol = :gmres, 
                                                     timer::TimerOutput = TimerOutput()) where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm= sylvester_algorithm)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -9776,8 +9800,9 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
+                                                    sylvester_algorithm::Symbol = :gmres, 
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer, sylvester_algorithm = sylvester_algorithm)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -9794,8 +9819,9 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
+                                                    sylvester_algorithm::Symbol = :gmres, 
                                                     timer::TimerOutput = TimerOutput()) where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm = sylvester_algorithm)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -9812,8 +9838,9 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
+                                                    sylvester_algorithm::Symbol = :gmres, 
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer, sylvester_algorithm= sylvester_algorithm)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -9829,6 +9856,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
+                                                    sylvester_algorithm::Symbol = :gmres, 
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, tol = tol)
 
