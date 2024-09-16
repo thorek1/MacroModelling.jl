@@ -1,8 +1,8 @@
 # Available algorithms: 
 # :doubling     - fast and precise
 # :sylvester    - fast and precise, dense matrices only
-# :bicgstab     - less precise
-# :gmres        - less precise
+# :bicgstab     - less precise, fastest for large problems
+# :gmres        - less precise, fastest for large problems
 # :iterative    - slow and precise
 # :speedmapping - slow and very precise
 
@@ -641,7 +641,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
 
     end # timeit_debug
-println(reached_tol)
+    
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
 
