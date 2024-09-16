@@ -620,14 +620,9 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     end # timeit_debug
         # sol = @view reshape(𝐗, size(sol))
     end
-          
-    # function sylvester!(sol,𝐱)
-    #     copyto!(𝐗, 𝐱)
-    #     copyto!(sol, -A * 𝐗 * B + 𝐗)
-    # end
 
     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
-
+    
     @timeit_debug timer "GMRES solve" begin
     𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol/10)
     end # timeit_debug
@@ -646,7 +641,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
 
     end # timeit_debug
-
+println(reached_tol)
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
 
