@@ -1046,7 +1046,13 @@ function get_irf(𝓂::ℳ;
     
     @timeit_debug timer "Solve model" begin
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included, timer = timer)
+    solve!(𝓂, 
+            parameters = parameters, 
+            verbose = verbose, 
+            dynamics = true, 
+            algorithm = algorithm, 
+            obc = occasionally_binding_constraints || obc_shocks_included, 
+            timer = timer)
     
     end # timeit_debug
 
@@ -2952,6 +2958,7 @@ function get_loglikelihood(𝓂::ℳ,
     presample_periods::Int = 0,
     initial_covariance::Symbol = :theoretical,
     filter_algorithm::Symbol = :LagrangeNewton,
+    sylvester_algorithm::Symbol = :gmres, 
     tol::AbstractFloat = 1e-12, 
     timer::TimerOutput = TimerOutput(),
     verbose::Bool = false)::S where S <: Real
@@ -2987,7 +2994,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Get relevant steady state and solution" begin
 
-    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol, timer = timer)
+    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol, timer = timer, sylvester_algorithm = sylvester_algorithm)
 
     # end # timeit_debug
 
