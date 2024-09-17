@@ -7629,6 +7629,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     @timeit_debug timer "Mult" begin
 
     𝐗₃ *= M₃.𝐂₃
+    println("compression active")
     𝐗₃ += ∇₃ * compressed_kron³(sparse(aux))
     C = spinv * 𝐗₃# * M₃.𝐂₃
     # println(size(𝐗₃))
