@@ -7559,21 +7559,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
 
     end # timeit_debug
-    @timeit_debug timer "3rd Kronecker power" begin
-
-        # 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
-    # println(size(∇₃ * compressed_kron³(sparse(aux))))
-    # # println(size(∇₃ * compressed_kron³(sparse(aux))))
-    # println(size(A_mult_kron_power_3_B(∇₃ * M₃.𝐔∇₃, aux)))
-    # # println(size(∇₃))
-    # println(size(M₃.𝐔∇₃))
-    # println(size(compressed_kron³(sparse(aux))))
-    # println(size(∇₃ * M₃.𝐔∇₃ * ℒ.kron(aux,aux,aux) * M₃.𝐂₃))
-    # println(maximum(abs,∇₃ * M₃.𝐔∇₃ * ℒ.kron(aux,aux,aux) * M₃.𝐂₃ - ∇₃ * compressed_kron³(sparse(aux))))
-    # 𝐗₃ = A_mult_kron_power_3_B(∇₃ * M₃.𝐔∇₃, aux)
-    # ToDo: keep this in compressed form (do it for aux and then also use compressed form of na∇₃bla3)
-
-    end # timeit_debug
     @timeit_debug timer "∇₃" begin   
 
     tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
@@ -7629,12 +7614,16 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     @timeit_debug timer "Mult" begin
 
     𝐗₃ *= M₃.𝐂₃
-    println("compression active")
-    𝐗₃ += ∇₃ * compressed_kron³(sparse(aux))
-    C = spinv * 𝐗₃# * M₃.𝐂₃
-    # println(size(𝐗₃))
-    # println(size(𝐗₃ * M₃.𝐂₃))
+
     end # timeit_debug
+    @timeit_debug timer "3rd Kronecker power" begin
+
+    𝐗₃ += ∇₃ * compressed_kron³(sparse(aux))
+
+    end # timeit_debug
+
+    C = spinv * 𝐗₃# * M₃.𝐂₃
+    
     end # timeit_debug
     @timeit_debug timer "Solve sylvester equation" begin
 
