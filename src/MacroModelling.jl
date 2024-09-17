@@ -1147,8 +1147,12 @@ end
 
 function compressed_kron³(a::AbstractSparseMatrix{T};
                     tol::AbstractFloat= eps()) where T <: Real
-    n = size(a, 1)
-    m3 = n * (n + 1) * (n + 2) ÷ 6  # Number of unique triplet indices (i ≤ j ≤ k)
+    # Get the number of rows and columns
+    n_rows, n_cols = size(a, 1), size(a, 2)
+        
+    # Calculate the number of unique triplet indices for rows and columns
+    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6    # For rows: i ≤ j ≤ k
+    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6    # For columns: i ≤ j ≤ k
 
     â = collect(a)  # Convert to dense matrix for faster access
 
@@ -1156,7 +1160,7 @@ function compressed_kron³(a::AbstractSparseMatrix{T};
     # Estimate an upper bound for non-zero entries to preallocate arrays
     lennz = a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
 
-    estimated_nnz = floor(Int, m3 ^ 2 * lennz / length(a))
+    estimated_nnz = floor(Int, m3_rows * m3_cols * lennz / length(a))
 
     I = Vector{Int}(undef, estimated_nnz)
     J = Vector{Int}(undef, estimated_nnz)
@@ -1235,9 +1239,9 @@ function compressed_kron³(a::AbstractSparseMatrix{T};
 
     # Create the sparse matrix from the collected indices and values
     if VERSION >= v"1.10"
-        return sparse!(I, J, V, m3, m3)
+        return sparse!(I, J, V, m3_rows, m3_cols)
     else
-        return sparse(I, J, V, m3, m3)
+        return sparse(I, J, V, m3_rows, m3_cols)
     end
 end
 
@@ -4629,7 +4633,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
@@ -7557,7 +7561,16 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     end # timeit_debug
     @timeit_debug timer "3rd Kronecker power" begin
 
-    𝐗₃ = A_mult_kron_power_3_B(∇₃, aux)
+        # 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    # println(size(∇₃ * compressed_kron³(sparse(aux))))
+    # # println(size(∇₃ * compressed_kron³(sparse(aux))))
+    # println(size(A_mult_kron_power_3_B(∇₃ * M₃.𝐔∇₃, aux)))
+    # # println(size(∇₃))
+    # println(size(M₃.𝐔∇₃))
+    # println(size(compressed_kron³(sparse(aux))))
+    # println(size(∇₃ * M₃.𝐔∇₃ * ℒ.kron(aux,aux,aux) * M₃.𝐂₃))
+    # println(maximum(abs,∇₃ * M₃.𝐔∇₃ * ℒ.kron(aux,aux,aux) * M₃.𝐂₃ - ∇₃ * compressed_kron³(sparse(aux))))
+    # 𝐗₃ = A_mult_kron_power_3_B(∇₃ * M₃.𝐔∇₃, aux)
     # ToDo: keep this in compressed form (do it for aux and then also use compressed form of na∇₃bla3)
 
     end # timeit_debug
@@ -7565,8 +7578,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
 
-    out = ∇₃ * tmpkron + ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
-    𝐗₃ += out
+    𝐗₃ = ∇₃ * M₃.𝐔∇₃ * tmpkron + ∇₃ * M₃.𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + ∇₃ * M₃.𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
+    # 𝐗₃ += out
     
     end # timeit_debug
     @timeit_debug timer "∇₂ & ∇₁₊" begin
@@ -7615,8 +7628,11 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     end # timeit_debug
     @timeit_debug timer "Mult" begin
 
-    C = spinv * 𝐗₃ * M₃.𝐂₃
-    
+    𝐗₃ *= M₃.𝐂₃
+    𝐗₃ += ∇₃ * compressed_kron³(sparse(aux))
+    C = spinv * 𝐗₃# * M₃.𝐂₃
+    # println(size(𝐗₃))
+    # println(size(𝐗₃ * M₃.𝐂₃))
     end # timeit_debug
     end # timeit_debug
     @timeit_debug timer "Solve sylvester equation" begin
@@ -7912,8 +7928,8 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂B = choose_matrix_format(𝐒₃' * A' * ∂C, density_threshold = 1.0)
 
         # C = spinv * 𝐗₃ * M₃.𝐂₃
-        ∂𝐗₃ = spinv' * ∂C * M₃.𝐂₃'
-        ∂𝐗₃ = choose_matrix_format(∂𝐗₃, density_threshold = 1.0)
+        # ∂𝐗₃ = spinv' * ∂C * M₃.𝐂₃'
+        ∂𝐗₃ = choose_matrix_format(spinv' * ∂C * M₃.𝐂₃', density_threshold = 1.0)
         ∂spinv += ∂C * M₃.𝐂₃' * 𝐗₃'
 
         # 𝐗₃ = ∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux) 
@@ -7982,6 +7998,7 @@ function rrule(::typeof(calculate_third_order_solution),
         # ∂∇₃ += ∂𝐗₃ * ℒ.kron(ℒ.kron(aux', aux'), aux')
         # A_mult_kron_power_3_B!(∂∇₃, ∂𝐗₃, aux') # not a good idea because filling an existing matrix one by one is slow
         ∂∇₃ += A_mult_kron_power_3_B(∂𝐗₃, aux') # this is slower somehow
+        # ∂∇₃ += ∂𝐗₃ * ℒ.kron(aux', aux', aux')
         ∂kronkronaux = ∇₃' * ∂𝐗₃
 
         fill_kron_adjoint!(∂kronaux, ∂aux, ∂kronkronaux, kronaux, aux)
