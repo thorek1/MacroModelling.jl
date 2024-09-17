@@ -1148,7 +1148,7 @@ end
 function compressed_kron³(a::AbstractSparseMatrix{T};
                     tol::AbstractFloat= eps()) where T <: Real
     # Get the number of rows and columns
-    n_rows, n_cols = size(a, 1), size(a, 2)
+    n_rows, n_cols = size(a)
         
     # Calculate the number of unique triplet indices for rows and columns
     m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6    # For rows: i ≤ j ≤ k
@@ -7557,13 +7557,16 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
             zeros(n₋ + n + nₑ, nₑ₋^2)];
 
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
+    aux = choose_matrix_format(aux, density_threshold = 1.0, min_length = 10)
 
     end # timeit_debug
     @timeit_debug timer "∇₃" begin   
 
     tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
 
-    𝐗₃ = ∇₃ * M₃.𝐔∇₃ * tmpkron + ∇₃ * M₃.𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + ∇₃ * M₃.𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
+    𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+
+    𝐗₃ = 𝐔∇₃ * tmpkron + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
     # 𝐗₃ += out
     
     end # timeit_debug
@@ -7613,16 +7616,14 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     end # timeit_debug
     @timeit_debug timer "Mult" begin
 
-    𝐗₃ *= M₃.𝐂₃
-
+    C = spinv * 𝐗₃ * M₃.𝐂₃
+    
     end # timeit_debug
     @timeit_debug timer "3rd Kronecker power" begin
 
-    𝐗₃ += ∇₃ * compressed_kron³(sparse(aux))
+    C += spinv * ∇₃ * compressed_kron³(aux)
 
     end # timeit_debug
-
-    C = spinv * 𝐗₃# * M₃.𝐂₃
     
     end # timeit_debug
     @timeit_debug timer "Solve sylvester equation" begin
