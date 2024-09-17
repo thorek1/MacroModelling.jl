@@ -577,12 +577,12 @@ end
 
 
 function solve_sylvester_equation(A::DenseMatrix{Float64},
-    B::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:bicgstab};
-    # init::AbstractMatrix{Float64},
-    timer::TimerOutput = TimerOutput(),
-    tol::Float64 = 1e-8)
+                                    B::AbstractMatrix{Float64},
+                                    C::AbstractMatrix{Float64},
+                                    ::Val{:bicgstab};
+                                    # init::AbstractMatrix{Float64},
+                                    timer::TimerOutput = TimerOutput(),
+                                    tol::Float64 = 1e-8)
 
     tmp̄ = similar(C)
     𝐗 = similar(C)
@@ -747,7 +747,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     B::AbstractMatrix{Float64},
                                     C::AbstractMatrix{Float64},
                                     ::Val{:speedmapping};
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::AbstractFloat = 1e-12)
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
