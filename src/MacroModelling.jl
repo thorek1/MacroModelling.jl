@@ -1139,12 +1139,174 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     #     # push!(rows, t[2]...)
     #     # push!(cols, t[3]...)
     # end
+     
+    if VERSION >= v"1.10"
+        return sparse!(rows,cols,vals,size(A,1),n_colB*n_colC)   
+    else
+        return sparse(rows,cols,vals,size(A,1),n_colB*n_colC)   
+    end
+end
 
-    sparse(rows,cols,vals,size(A,1),n_colB*n_colC)
+function compressed_kron³(a::AbstractMatrix{T};
+                    rowmask::Vector{Int} = Int[],
+                    timer::TimerOutput = TimerOutput(),
+                    tol::AbstractFloat= eps()) where T <: Real
+    @timeit_debug timer "Compressed 3rd kronecker power" begin
+          
+    @timeit_debug timer "Preallocation" begin
+                                                      
+    # Get the number of rows and columns
+    n_rows, n_cols = size(a)
+        
+    # Calculate the number of unique triplet indices for rows and columns
+    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6    # For rows: i ≤ j ≤ k
+    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6    # For columns: i ≤ j ≤ k
+
+    if typeof(a) <: Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}}
+        â = copy(a)
+        a = sparse(a)
+    else
+        â = collect(a)  # Convert to dense matrix for faster access
+    end
+
+    # Initialize arrays to collect indices and values
+    # Estimate an upper bound for non-zero entries to preallocate arrays
+    lennz = a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
+
+    if length(rowmask) > 0
+        estimated_nnz = floor(Int, max(length(rowmask) * m3_cols * lennz / length(a), 1000))
+    else
+        estimated_nnz = floor(Int, max(m3_rows * m3_cols * (lennz / length(a))^3, 1000))
+    end
+    
+    I = Vector{Int}(undef, estimated_nnz)
+    J = Vector{Int}(undef, estimated_nnz)
+    V = Vector{T}(undef, estimated_nnz)
+
+    # k = Threads.Atomic{Int}(0)  # Counter for non-zero entries
+    # k̄ = Threads.Atomic{Int}(0)  # effectively slower than the non-threaded version
+    k = 0
+
+    end # timeit_debug
+
+    @timeit_debug timer "findnz" begin
+                
+    # Find unique non-zero row and column indices
+    rowinds, colinds, _ = findnz(a)
+    ui = unique(rowinds)
+    uj = unique(colinds)
+
+    end # timeit_debug
+
+    @timeit_debug timer "Loop" begin
+    # Triple nested loops for (i1 ≤ j1 ≤ k1) and (i2 ≤ j2 ≤ k2)
+    # Polyester.@batch threadlocal=(Vector{Int}(), Vector{Int}(), Vector{T}()) for i1 in ui
+    # Polyester.@batch minbatch = 10 for i1 in ui
+    # Threads.@threads for i1 in ui
+    for i1 in ui
+        for j1 in ui
+            if j1 ≤ i1
+                for k1 in ui
+                    if k1 ≤ j1
+                        row = (i1-1) * i1 * (i1+1) ÷ 6 + (j1-1) * j1 ÷ 2 + k1
+                        if length(rowmask) == 0 || (length(rowmask) > 0 && row in rowmask)
+                            for i2 in uj
+                                for j2 in uj
+                                    if j2 ≤ i2
+                                        for k2 in uj
+                                            if k2 ≤ j2
+                                                col = (i2-1) * i2 * (i2+1) ÷ 6 + (j2-1) * j2 ÷ 2 + k2
+
+                                                # @timeit_debug timer "Multiplication" begin
+
+                                                # Compute the six unique products
+                                                val = 0.0
+                                                @inbounds val += â[i1, i2] * â[j1, j2] * â[k1, k2]
+                                                @inbounds val += â[i1, j2] * â[j1, i2] * â[k1, k2]
+                                                @inbounds val += â[i1, k2] * â[j1, j2] * â[k1, i2]
+                                                @inbounds val += â[i1, j2] * â[j1, k2] * â[k1, i2]
+                                                @inbounds val += â[i1, k2] * â[j1, i2] * â[k1, j2]
+                                                @inbounds val += â[i1, i2] * â[j1, k2] * â[k1, j2]
+
+                                                # end # timeit_debug
+
+                                                # @timeit_debug timer "Save in vector" begin
+                                                    
+                                                # Only add non-zero values to the sparse matrix
+                                                if abs(val) > tol
+                                                    k += 1 
+                                                    # Threads.atomic_add!(k, 1)
+                                                    # Threads.atomic_max!(k̄, k[])
+
+                                                    if i1 == j1
+                                                        if i1 == k1
+                                                            divisor = 6
+                                                        else
+                                                            divisor = 2
+                                                        end
+                                                    else
+                                                        if i1 ≠ k1 && j1 ≠ k1
+                                                            divisor = 1
+                                                        else
+                                                            divisor = 2
+                                                        end
+                                                    end
+                                                    # push!(threadlocal[1],row)
+                                                    # push!(threadlocal[2],col)
+                                                    # push!(threadlocal[3],val / divisor)
+                                                    # I[k[]] = row
+                                                    # J[k[]] = col
+                                                    # V[k[]] = val / divisor 
+                                                    I[k] = row
+                                                    J[k] = col
+                                                    V[k] = val / divisor 
+                                                end
+
+                                                # end # timeit_debug
+
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    end # timeit_debug
+
+    @timeit_debug timer "Resize" begin
+
+    # out = map(fetch, threadlocal)
+
+    # I = mapreduce(v -> v[1], vcat, out)
+    # J = mapreduce(v -> v[2], vcat, out)
+    # V = mapreduce(v -> v[3], vcat, out)
+
+    # # Resize the index and value arrays to the actual number of entries
+    # resize!(I, k̄[])
+    # resize!(J, k̄[])
+    # resize!(V, k̄[])    
+    resize!(I, k)
+    resize!(J, k)
+    resize!(V, k)
+
+    end # timeit_debug
+    end # timeit_debug
+
+    # Create the sparse matrix from the collected indices and values
+    if VERSION >= v"1.10"
+        return sparse!(I, J, V, m3_rows, m3_cols)
+    else
+        return sparse(I, J, V, m3_rows, m3_cols)
+    end
 end
 
 
-function kron³(A::SparseMatrixCSC{T}, M₃::third_order_auxilliary_matrices) where T <: Real
+function kron³(A::AbstractSparseMatrix{T}, M₃::third_order_auxilliary_matrices) where T <: Real
     rows, cols, vals = findnz(A)
 
     # Dictionary to accumulate sums of values for each coordinate
@@ -1208,20 +1370,20 @@ function kron³(A::SparseMatrixCSC{T}, M₃::third_order_auxilliary_matrices) wh
     end
 end
 
-function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},B::AbstractArray{T}; tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
+function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},
+    B::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}}; 
+    tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
     n_row = size(B,1)
     n_col = size(B,2)
-
-    B̄ = collect(B)
 
     vals = T[]
     rows = Int[]
     cols = Int[]
 
-    for row in 1:size(A,1)
-        idx_mat, vals_mat = A[row,:] |> findnz
+    Ar, Ac, Av = findnz(A)
 
-        if length(vals_mat) == 0 continue end
+    for row in unique(Ar)
+        idx_mat, vals_mat = A[row,:] |> findnz
 
         for col in 1:size(B,2)^3
             col_1, col_3 = divrem((col - 1) % (n_col^2), n_col) .+ 1
@@ -1232,7 +1394,7 @@ function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},B::AbstractArray{T}; t
             for (i,idx) in enumerate(idx_mat)
                 i_1, i_3 = divrem((idx - 1) % (n_row^2), n_row) .+ 1
                 i_2 = ((idx - 1) ÷ (n_row^2)) + 1
-                @inbounds mult_val += vals_mat[i] * B̄[i_1,col_1] * B̄[i_2,col_2] * B̄[i_3,col_3]
+                @inbounds mult_val += vals_mat[i] * B[i_1,col_1] * B[i_2,col_2] * B[i_3,col_3]
             end
 
             if abs(mult_val) > tol
@@ -1246,36 +1408,6 @@ function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},B::AbstractArray{T}; t
     sparse(rows,cols,vals,size(A,1),size(B,2)^3)
 end
 
-
-function A_mult_kron_power_3_B!(X::AbstractSparseMatrix{R}, A::AbstractSparseMatrix{S},B::AbstractMatrix{T}; tol::AbstractFloat = eps()) where {R <: Real, S <: Real, T <: Real}
-    n_row = size(B,1)
-    n_col = size(B,2)
-
-    B̄ = collect(B)
-
-    for row in 1:size(A,1)
-        idx_mat, vals_mat = A[row,:] |> findnz
-
-        if length(vals_mat) == 0 continue end
-
-        for col in 1:size(B,2)^3
-            col_1, col_3 = divrem((col - 1) % (n_col^2), n_col) .+ 1
-            col_2 = ((col - 1) ÷ (n_col^2)) + 1
-
-            mult_val = 0.0
-
-            for (i,idx) in enumerate(idx_mat)
-                i_1, i_3 = divrem((idx - 1) % (n_row^2), n_row) .+ 1
-                i_2 = ((idx - 1) ÷ (n_row^2)) + 1
-                @inbounds mult_val += vals_mat[i] * B̄[i_1,col_1] * B̄[i_2,col_2] * B̄[i_3,col_3]
-            end
-
-            if abs(mult_val) > tol  # Skip small values below tolerance
-                @inbounds X[row,col] += mult_val
-            end
-        end
-    end
-end
 
 
 function translate_symbol_to_ascii(x::Symbol)
@@ -4157,12 +4289,12 @@ end
 
 
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 
-    𝓂::ℳ; 
-    verbose::Bool = false, 
-    pruning::Bool = false, 
-    sylvester_algorithm::Symbol = :doubling, 
-    timer::TimerOutput = TimerOutput(),
-    tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
+                                                        𝓂::ℳ; 
+                                                        verbose::Bool = false, 
+                                                        pruning::Bool = false, 
+                                                        sylvester_algorithm::Symbol = :doubling, 
+                                                        timer::TimerOutput = TimerOutput(),
+                                                        tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     # @timeit_debug timer "Calculate NSSS" begin
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
@@ -4199,7 +4331,11 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate second order solution" begin
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, verbose = verbose, timer = timer)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; 
+                                                    T = 𝓂.timings, 
+                                                    # sylvester_algorithm = sylvester_algorithm, 
+                                                    sylvester_algorithm = :doubling, # hard code doubling
+                                                    verbose = verbose, timer = timer)
 
     # end # timeit_debug
 
@@ -4497,7 +4633,8 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         verbose::Bool = false, 
                                                         pruning::Bool = false, 
-                                                        sylvester_algorithm::Symbol = :doubling, 
+                                                        sylvester_algorithm::Symbol = :bicgstab, 
+                                                        timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
 
@@ -4516,16 +4653,26 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     end
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
-    
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol, sylvester_algorithm = sylvester_algorithm, verbose= verbose)
 
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; 
+                                                    T = 𝓂.timings, tol = tol, 
+                                                    # sylvester_algorithm = sylvester_algorithm, 
+                                                    sylvester_algorithm = :doubling, # doubling will always be faster here
+                                                    verbose= verbose, timer = timer)
     if !solved2
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
             
-    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝓂.solution.perturbation.second_order_auxilliary_matrices, 𝓂.solution.perturbation.third_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
+                                                𝓂.solution.perturbation.second_order_auxilliary_matrices, 
+                                                𝓂.solution.perturbation.third_order_auxilliary_matrices; 
+                                                T = 𝓂.timings, 
+                                                sylvester_algorithm = sylvester_algorithm, 
+                                                tol = tol, 
+                                                verbose = verbose, 
+                                                timer = timer)
 
     if !solved3
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
@@ -4587,6 +4734,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:Newton},
                                                         𝐒₃::AbstractSparseMatrix{Float64},
                                                         x::Vector{Float64},
                                                         𝓂::ℳ;
+                                                        timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
     nᵉ = 𝓂.timings.nExo
 
@@ -7008,6 +7156,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             tol::AbstractFloat = eps(),
                                             timer::TimerOutput = TimerOutput(),
                                             verbose::Bool = false)::Tuple{<: AbstractSparseMatrix{S}, Bool} where S <: Real
+    @timeit_debug timer "Calculate second order solution" begin
+
     # inspired by Levintal
 
     # Indices and number of variables
@@ -7028,7 +7178,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     
     𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) ℒ.I(nₑ + 1)[1,:] zeros(nₑ + 1, nₑ)]# |> sparse
     # droptol!(𝐒₁₋╱𝟏ₑ,tol)
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = .99)
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0)
 
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
                                 𝐒₁
@@ -7052,21 +7202,39 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     @timeit_debug timer "Setup second order matrices" begin
 
+    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
+
+    A = spinv * ∇₁₊
+
     # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * (ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
     ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) * M₂.𝐂₂ + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔 * M₂.𝐂₂ 
     
-    X = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
+    C = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
 
-    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
-
-    B = spinv * ∇₁₊
-
-    C = M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) * M₂.𝐂₂ + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
+    B = M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) * M₂.𝐂₂ + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
     end # timeit_debug
 
     @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose, timer = timer)
+    𝐒₂, solved = solve_sylvester_equation(A, B, C, 
+                                            sylvester_algorithm = sylvester_algorithm, 
+                                            verbose = verbose, 
+                                            timer = timer, 
+                                            tol = tol)
+
+    end # timeit_debug
+
+    @timeit_debug timer "Refine sylvester equation" begin
+
+    if !solved
+        𝐒₂, solved = solve_sylvester_equation(A, B, C, 
+                                                # init = 𝐒₂, 
+                                                # sylvester_algorithm = :gmres, 
+                                                sylvester_algorithm = :doubling, 
+                                                verbose = verbose, 
+                                                timer = timer, 
+                                                tol = tol)
+    end
 
     end # timeit_debug
 
@@ -7079,6 +7247,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     end
 
     𝐒₂ *= M₂.𝐔₂
+
+    end # timeit_debug
 
     end # timeit_debug
 
@@ -7118,7 +7288,7 @@ function rrule(::typeof(calculate_second_order_solution),
     # droptol!(𝐒₁,tol)
     
     𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) ℒ.I(nₑ + 1)[1,:] zeros(nₑ + 1, nₑ)]
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = .99)
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0)
 
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
                                 𝐒₁
@@ -7166,17 +7336,17 @@ function rrule(::typeof(calculate_second_order_solution),
 
     end # timeit_debug
   
-    sp⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t = choose_matrix_format(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋', density_threshold = .99)
+    sp⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t = choose_matrix_format(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋', density_threshold = 1.0)
 
-    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = .99)
+    sp𝐒₁₊╱𝟎t = choose_matrix_format(𝐒₁₊╱𝟎', density_threshold = 1.0)
 
-    𝛔t = choose_matrix_format(M₂.𝛔', density_threshold = .99)
+    𝛔t = choose_matrix_format(M₂.𝛔', density_threshold = 1.0)
 
-    𝐔₂t = choose_matrix_format(M₂.𝐔₂', density_threshold = .99)
+    𝐔₂t = choose_matrix_format(M₂.𝐔₂', density_threshold = 1.0)
 
-    𝐂₂t = choose_matrix_format(M₂.𝐂₂', density_threshold = .99)
+    𝐂₂t = choose_matrix_format(M₂.𝐂₂', density_threshold = 1.0)
 
-    ∇₂t = choose_matrix_format(∇₂', density_threshold = .99)
+    ∇₂t = choose_matrix_format(∇₂', density_threshold = 1.0)
 
     end #timeit_debug
 
@@ -7242,9 +7412,9 @@ function rrule(::typeof(calculate_second_order_solution),
         @timeit_debug timer "Matmul3" begin
 
         # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) * M₂.𝐂₂  + ∇₂ * ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔 * M₂.𝐂₂
-        kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = choose_matrix_format(ℒ.kron(sp⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, sp⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t), density_threshold = .99)
+        kron⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = choose_matrix_format(ℒ.kron(sp⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, sp⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t), density_threshold = 1.0)
 
-        𝛔kron𝐒₁₊╱𝟎 = choose_matrix_format(𝛔t * ℒ.kron(𝐒₁₊╱𝟎', 𝐒₁₊╱𝟎'), density_threshold = .99)
+        𝛔kron𝐒₁₊╱𝟎 = choose_matrix_format(𝛔t * ℒ.kron(sp𝐒₁₊╱𝟎t, sp𝐒₁₊╱𝟎t), density_threshold = 1.0)
 
         ℒ.mul!(∂∇₂, ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂, 𝛔kron𝐒₁₊╱𝟎, 1, 1)
         
@@ -7254,7 +7424,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
         @timeit_debug timer "Matmul4" begin
 
-        ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂ = choose_matrix_format(∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂, density_threshold = .99)
+        ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂ = choose_matrix_format(∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂, density_threshold = 1.0)
 
         ∂kron𝐒₁₊╱𝟎 = ∇₂t * ∂∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹𝐂₂ * 𝛔t
 
@@ -7325,9 +7495,11 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxilliary_matrices;  # aux matrices third order
                                             T::timings,
-                                            sylvester_algorithm::Symbol = :doubling,
-                                            tol::AbstractFloat = eps(),
+                                            sylvester_algorithm::Symbol = :bicgstab,
+                                            timer::TimerOutput = TimerOutput(),
+                                            tol::AbstractFloat = 1e-12, # sylvester tol
                                             verbose::Bool = false)
+    @timeit_debug timer "Calculate third order solution" begin
     # inspired by Levintal
 
     # Indices and number of variables
@@ -7340,77 +7512,173 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     n = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
 
-    # 1st order solution
-    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]] |> sparse
-    droptol!(𝐒₁,tol)
+    @timeit_debug timer "Setup matrices" begin
 
-    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) spdiagm(ones(nₑ + 1))[1,:] zeros(nₑ + 1, nₑ)];
+    # 1st order solution
+    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]# |> sparse
+    
+    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) ℒ.I(nₑ + 1)[1,:] zeros(nₑ + 1, nₑ)]
+
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0, min_length = 10)
 
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
                                 𝐒₁
-                                spdiagm(ones(nₑ₋))[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]];
+                                ℒ.I(nₑ₋)[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]] #|> sparse
 
     𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
-                    zeros(n₋ + n + nₑ, nₑ₋)];
+                    zeros(n₋ + n + nₑ, nₑ₋)]# |> sparse
+    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10)
 
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
+    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
+    end #timeit_debug
+    @timeit_debug timer "Invert matrix" begin
 
-    ∇₁₊ = @views sparse(∇₁[:,1:n₊] * spdiagm(ones(n))[i₊,:])
+    spinv = inv(∇₁₊𝐒₁➕∇₁₀)
+    spinv = choose_matrix_format(spinv)
 
-    spinv = sparse(inv(∇₁₊𝐒₁➕∇₁₀))
-    droptol!(spinv,tol)
-
-    B = spinv * ∇₁₊
-    droptol!(B,tol)
-
-
-    tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
-    kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)
+    end # timeit_debug
     
-    # C = M₃.𝐔₃ * tmpkron + M₃.𝐔₃ * M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐔₃ * M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
-    # C += M₃.𝐔₃ * ℒ.kron(𝐒₁₋╱𝟏ₑ,ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)) # no speed up here from A_mult_kron_power_3_B; this is the bottleneck. ideally have this return reduced space directly. TODO: make kron3 faster
-    # C *= M₃.𝐂₃
-    C = M₃.𝐔₃ * (tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃ + ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
-    droptol!(C,tol)
+    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
+
+    A = spinv * ∇₁₊
+
+    @timeit_debug timer "Setup B" begin
+    @timeit_debug timer "Add tmpkron" begin
+
+    tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ, M₂.𝛔)
+    kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)
     
+    B = tmpkron
+
+    end # timeit_debug
+    @timeit_debug timer "Step 1" begin
+
+    B += M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃
+
+    end # timeit_debug
+    @timeit_debug timer "Step 2" begin
+
+    B += M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
+
+    end # timeit_debug
+    @timeit_debug timer "Mult" begin
+
+    B *= M₃.𝐂₃
+    B = choose_matrix_format(M₃.𝐔₃ * B)
+
+    end # timeit_debug
+    @timeit_debug timer "3rd Kronecker power" begin
+
+    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, timer = timer)
+
+    end # timeit_debug
+    end # timeit_debug
+    @timeit_debug timer "Setup C" begin
+    @timeit_debug timer "Initialise smaller matrices" begin
+
     ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * kron𝐒₁₋╱𝟏ₑ + 𝐒₁ * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
             𝐒₂
             zeros(n₋ + nₑ, nₑ₋^2)];
+            
+    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, density_threshold = 0.0, min_length = 10)
         
     𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:] 
             zeros(n₋ + n + nₑ, nₑ₋^2)];
 
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
+    # aux = choose_matrix_format(aux, density_threshold = 1.0, min_length = 10)
 
-    # kronaux = ℒ.kron(aux, aux)
-    # 𝐗₃ = ∇₃ * ℒ.kron(kronaux, aux)
-    𝐗₃ = A_mult_kron_power_3_B(∇₃, aux)
+    end # timeit_debug
+    @timeit_debug timer "∇₃" begin   
 
     tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
-    out = ∇₃ * tmpkron + ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃  + ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
-    𝐗₃ += out
+
+    𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+
+    𝐗₃ = 𝐔∇₃ * tmpkron + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
     
-    tmpkron10 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
+    end # timeit_debug
+    @timeit_debug timer "∇₂ & ∇₁₊" begin
+
+    𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10)
+
     tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
     tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
-    tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)
+    
+    ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10)
 
-    𝐗₃ += ∇₂ * (
-      tmpkron10
-    + tmpkron1 * tmpkron2
-    + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
-    + tmpkron11
-     ) * M₃.𝐏# |> findnz
+    𝐒₂₋╱𝟎 = [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]
+
+    𝐒₂₋╱𝟎 = choose_matrix_format(𝐒₂₋╱𝟎, density_threshold = 1.0, min_length = 10)
+
+    @timeit_debug timer "Step 1" begin
+
+    out2 = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎) # this help
+
+    end # timeit_debug
+    @timeit_debug timer "Step 2" begin
+
+    out2 += ∇₂ * tmpkron1 * tmpkron2# |> findnz
+
+    end # timeit_debug  
+    @timeit_debug timer "Step 3" begin
+
+    out2 += ∇₂ * tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ# |> findnz
+
+    end # timeit_debug
+    @timeit_debug timer "Step 4" begin
+
+    out2 += ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)# |> findnz
+
+    end # timeit_debug
+    @timeit_debug timer "Step 5" begin
+    # out2 += ∇₁₊ * mat_mult_kron(𝐒₂, collect(𝐒₁₋╱𝟏ₑ), collect(𝐒₂₋╱𝟎))
+    # out2 += mat_mult_kron(∇₁₊ * 𝐒₂, collect(𝐒₁₋╱𝟏ₑ), collect(𝐒₂₋╱𝟎))
+    out2 += ∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
     
-    𝐗₃ += @views ∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]) * M₃.𝐏
-    droptol!(𝐗₃,tol)
+    end # timeit_debug
+    @timeit_debug timer "Mult" begin
+
+    𝐗₃ += out2 * M₃.𝐏
+
+    𝐗₃ *= M₃.𝐂₃
+
+    end # timeit_debug
+    end # timeit_debug
+    @timeit_debug timer "3rd Kronecker power" begin
+
+    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), timer = timer)
     
-    X = spinv * 𝐗₃ * M₃.𝐂₃
-    droptol!(X,tol)
+    end # timeit_debug
+    @timeit_debug timer "Mult 2" begin
+
+    C = spinv * 𝐗₃# * M₃.𝐂₃
+
+    end # timeit_debug
+    end # timeit_debug
+    @timeit_debug timer "Solve sylvester equation" begin
+
+    𝐒₃, solved = solve_sylvester_equation(A, B, C, 
+                                            sylvester_algorithm = sylvester_algorithm, 
+                                            verbose = verbose, 
+                                            timer = timer, 
+                                            tol = tol)
     
-    𝐒₃, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose= verbose)
-    
+    end # timeit_debug
+    @timeit_debug timer "Refine sylvester equation" begin
+
+    if !solved
+        𝐒₃, solved = solve_sylvester_equation(A, B, C, 
+                                                sylvester_algorithm = :doubling, 
+                                                verbose = verbose, 
+                                                timer = timer, 
+                                                tol = tol)
+    end
+
+    end # timeit_debug
+    @timeit_debug timer "Post-process" begin
+
     𝐒₃ = sparse(𝐒₃)
 
     if !solved
@@ -7418,6 +7686,9 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     end
 
     𝐒₃ *= M₃.𝐔₃
+
+    end # timeit_debug
+    end # timeit_debug
 
     return 𝐒₃, solved
 end
@@ -7434,7 +7705,8 @@ function rrule(::typeof(calculate_third_order_solution),
                 M₂::second_order_auxilliary_matrices,  # aux matrices second order
                 M₃::third_order_auxilliary_matrices;  # aux matrices third order
                 T::timings,
-                sylvester_algorithm::Symbol = :doubling,
+                sylvester_algorithm::Symbol = :bicgstab,
+                timer::TimerOutput = TimerOutput(),
                 tol::AbstractFloat = eps(),
                 verbose::Bool = false)    
     # inspired by Levintal
@@ -7494,12 +7766,13 @@ function rrule(::typeof(calculate_third_order_solution),
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
 
     kronaux = ℒ.kron(aux, aux)
+    𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
     # 𝐗₃ = ∇₃ * ℒ.kron(kronaux, aux)
-    𝐗₃ = A_mult_kron_power_3_B(∇₃, aux)
+    𝐗₃ = A_mult_kron_power_3_B(𝐔∇₃, collect(aux))
 
     tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔
     tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0)
-    out = ∇₃ * tmpkron22 + ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃  + ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+    out = 𝐔∇₃ * tmpkron22 + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃  + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
     𝐗₃ += out
     
     tmpkron10 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
@@ -7527,7 +7800,6 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐒₃, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
     
     𝐒₃ = sparse(𝐒₃)
-
     if !solved
         return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
     end
@@ -7539,7 +7811,8 @@ function rrule(::typeof(calculate_third_order_solution),
     function third_order_solution_pullback(∂𝐒₃_solved) 
         ∂∇₁ = zero(∇₁)
         ∂∇₂ = zero(∇₂)
-        ∂∇₃ = zero(∇₃)
+        # ∂∇₃ = zero(∇₃)
+        ∂𝐔∇₃ = zero(𝐔∇₃)
         ∂𝐒₁ = zero(𝐒₁)
         ∂𝐒₂ = zero(𝐒₂)
         ∂spinv = zero(spinv)
@@ -7562,6 +7835,7 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂𝐒₃ = ∂𝐒₃_solved[1]
 
         ∂𝐒₃ *= M₃.𝐔₃'
+        println(ℒ.norm(∂𝐒₃))
 
         ∂X, solved = solve_sylvester_equation(Bt, Ct, ∂𝐒₃, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
 
@@ -7575,10 +7849,10 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂𝐗₃ = spinv' * ∂X * M₃.𝐂₃'
         ∂spinv += ∂X * M₃.𝐂₃' * 𝐗₃'
 
-        # 𝐗₃ = ∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux) 
-        # + ∇₃ * tmpkron22 
-        # + ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
-        # + ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+        # 𝐗₃ = 𝐔∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux) 
+        # + 𝐔∇₃ * tmpkron22 
+        # + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
+        # + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
         # + ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏
         # + ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏
 
@@ -7622,13 +7896,13 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂𝐒₂₊╱𝟎 += ∂𝐒₂₊╱𝟎𝛔 * M₂.𝛔'
 
 
-        # out = ∇₃ * tmpkron22 
-        # + ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
-        # + ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+        # out = 𝐔∇₃ * tmpkron22 
+        # + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
+        # + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
 
-        ∂∇₃ += ∂𝐗₃ * tmpkron22' + ∂𝐗₃ * M₃.𝐏₁ᵣ̃' * tmpkron22' * M₃.𝐏₁ₗ̂' + ∂𝐗₃ * M₃.𝐏₂ᵣ̃' * tmpkron22' * M₃.𝐏₂ₗ̂'
+        ∂𝐔∇₃ += ∂𝐗₃ * tmpkron22' + ∂𝐗₃ * M₃.𝐏₁ᵣ̃' * tmpkron22' * M₃.𝐏₁ₗ̂' + ∂𝐗₃ * M₃.𝐏₂ᵣ̃' * tmpkron22' * M₃.𝐏₂ₗ̂'
 
-        ∂tmpkron22 += ∇₃' * ∂𝐗₃ + M₃.𝐏₁ₗ̂' * ∇₃' * ∂𝐗₃ * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * ∇₃' * ∂𝐗₃ * M₃.𝐏₂ᵣ̃'
+        ∂tmpkron22 += 𝐔∇₃' * ∂𝐗₃ + M₃.𝐏₁ₗ̂' * 𝐔∇₃' * ∂𝐗₃ * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * 𝐔∇₃' * ∂𝐗₃ * M₃.𝐏₂ᵣ̃'
 
         # tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
         fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂tmpkron0, ∂tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
@@ -7640,8 +7914,11 @@ function rrule(::typeof(calculate_third_order_solution),
         # -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
         # ∂∇₃ += ∂𝐗₃ * ℒ.kron(ℒ.kron(aux', aux'), aux')
         # A_mult_kron_power_3_B!(∂∇₃, ∂𝐗₃, aux') # not a good idea because filling an existing matrix one by one is slow
-        ∂∇₃ += A_mult_kron_power_3_B(∂𝐗₃, aux') # this is slower somehow
-        ∂kronkronaux = ∇₃' * ∂𝐗₃
+        ∂𝐔∇₃ += A_mult_kron_power_3_B(∂𝐗₃, collect(aux')) # this is slower somehow
+        ∂kronkronaux = 𝐔∇₃' * ∂𝐗₃
+
+        # 𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+        ∂∇₃ = ∂𝐔∇₃ * M₃.𝐔∇₃'
 
         fill_kron_adjoint!(∂kronaux, ∂aux, ∂kronkronaux, kronaux, aux)
 
@@ -8511,7 +8788,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
     end
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
@@ -9055,30 +9332,33 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
+                                                timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical,
                                                 verbose::Bool = false)::S where S <: Real
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, verbose = verbose)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, verbose = verbose, timer = timer)
 end
 
 function calculate_kalman_filter_loglikelihood(observables::Vector{String}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
+                                                timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical,
                                                 verbose::Bool = false)::S where S <: Real
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, verbose = verbose)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, verbose = verbose, timer = timer)
 end
 
 function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
+                                                timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
                                                 lyapunov_algorithm::Symbol = :doubling,
@@ -9509,8 +9789,9 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
+                                                    sylvester_algorithm::Symbol = :doubling, 
                                                     timer::TimerOutput = TimerOutput()) where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm = sylvester_algorithm)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -9527,8 +9808,9 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
+                                                    sylvester_algorithm::Symbol = :doubling, 
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer, sylvester_algorithm = sylvester_algorithm)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -9545,8 +9827,9 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
+                                                    sylvester_algorithm::Symbol = :bicgstab, 
                                                     timer::TimerOutput = TimerOutput()) where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm = sylvester_algorithm)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -9563,8 +9846,9 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
+                                                    sylvester_algorithm::Symbol = :bicgstab, 
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer, sylvester_algorithm= sylvester_algorithm)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -9580,6 +9864,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
+                                                    sylvester_algorithm::Symbol = :gmres, 
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, tol = tol)
 
