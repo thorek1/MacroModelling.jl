@@ -1046,7 +1046,13 @@ function get_irf(𝓂::ℳ;
     
     @timeit_debug timer "Solve model" begin
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included, timer = timer)
+    solve!(𝓂, 
+            parameters = parameters, 
+            verbose = verbose, 
+            dynamics = true, 
+            algorithm = algorithm, 
+            obc = occasionally_binding_constraints || obc_shocks_included, 
+            timer = timer)
     
     end # timeit_debug
 
@@ -2952,13 +2958,14 @@ function get_loglikelihood(𝓂::ℳ,
     presample_periods::Int = 0,
     initial_covariance::Symbol = :theoretical,
     filter_algorithm::Symbol = :LagrangeNewton,
+    sylvester_algorithm::Symbol = :gmres, 
     tol::AbstractFloat = 1e-12, 
     timer::TimerOutput = TimerOutput(),
     verbose::Bool = false)::S where S <: Real
 
-    # if algorithm ∈ [:third_order,:pruned_third_order]
-    #     filter_algorithm = :COBYLA
-    # end
+    if algorithm ∈ [:third_order,:pruned_third_order]
+        sylvester_algorithm = :bicgstab
+    end
 
     # TODO: throw error for bounds violations, suggesting this might be due to wrong parameter ordering
     @assert length(parameter_values) == length(𝓂.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, you need to combine the estimated parameters with the other model parameters in one `Vector`. Make sure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
@@ -2987,7 +2994,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Get relevant steady state and solution" begin
 
-    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol, timer = timer)
+    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol, timer = timer, sylvester_algorithm = sylvester_algorithm)
 
     # end # timeit_debug
 
