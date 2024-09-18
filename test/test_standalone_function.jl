@@ -66,7 +66,7 @@ get_irf(RBC_CME, algorithm = :pruned_second_order)
 
 ∇₁ = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, RBC_CME)# |> Matrix
 ∇₂ = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
-∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME) * RBC_CME.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 #SS = get_steady_state(RBC_CME, derivatives = false)
 
 
