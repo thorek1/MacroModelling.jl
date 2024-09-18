@@ -1139,14 +1139,22 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     #     # push!(rows, t[2]...)
     #     # push!(cols, t[3]...)
     # end
-
-    sparse(rows,cols,vals,size(A,1),n_colB*n_colC)
+     
+    if VERSION >= v"1.10"
+        return sparse!(rows,cols,vals,size(A,1),n_colB*n_colC)   
+    else
+        return sparse(rows,cols,vals,size(A,1),n_colB*n_colC)   
+    end
 end
 
-
-
-function compressed_kron³(a::AbstractSparseMatrix{T};
+function compressed_kron³(a::AbstractMatrix{T};
+                    rowmask::Vector{Int} = Int[],
+                    timer::TimerOutput = TimerOutput(),
                     tol::AbstractFloat= eps()) where T <: Real
+    @timeit_debug timer "Compressed 3rd kronecker power" begin
+          
+    @timeit_debug timer "Preallocation" begin
+                                                      
     # Get the number of rows and columns
     n_rows, n_cols = size(a)
         
@@ -1154,14 +1162,23 @@ function compressed_kron³(a::AbstractSparseMatrix{T};
     m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6    # For rows: i ≤ j ≤ k
     m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6    # For columns: i ≤ j ≤ k
 
-    â = collect(a)  # Convert to dense matrix for faster access
+    if a isa DenseMatrix
+        â = copy(a)
+        a = sparse(a)
+    else
+        â = collect(a)  # Convert to dense matrix for faster access
+    end
 
     # Initialize arrays to collect indices and values
     # Estimate an upper bound for non-zero entries to preallocate arrays
     lennz = a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
 
-    estimated_nnz = floor(Int, m3_rows * m3_cols * lennz / length(a))
-
+    if length(rowmask) > 0
+        estimated_nnz = floor(Int, length(rowmask) * m3_cols * lennz / length(a))
+    else
+        estimated_nnz = floor(Int, m3_rows * m3_cols * (lennz / length(a))^3)
+    end
+    
     I = Vector{Int}(undef, estimated_nnz)
     J = Vector{Int}(undef, estimated_nnz)
     V = Vector{T}(undef, estimated_nnz)
@@ -1170,57 +1187,83 @@ function compressed_kron³(a::AbstractSparseMatrix{T};
     # k̄ = Threads.Atomic{Int}(0)  # effectively slower than the non-threaded version
     k = 0
 
+    end # timeit_debug
+
+    @timeit_debug timer "findnz" begin
+                
     # Find unique non-zero row and column indices
     rowinds, colinds, _ = findnz(a)
     ui = unique(rowinds)
     uj = unique(colinds)
 
+    end # timeit_debug
+
+    @timeit_debug timer "Loop" begin
     # Triple nested loops for (i1 ≤ j1 ≤ k1) and (i2 ≤ j2 ≤ k2)
+    # Polyester.@batch threadlocal=(Vector{Int}(), Vector{Int}(), Vector{T}()) for i1 in ui
+    # Polyester.@batch minbatch = 10 for i1 in ui
     # Threads.@threads for i1 in ui
     for i1 in ui
         for j1 in ui
             if j1 ≤ i1
                 for k1 in ui
                     if k1 ≤ j1
-                        idx1 = (i1-1) * i1 * (i1+1) ÷ 6 + (j1-1) * j1 ÷ 2 + k1
-                        for i2 in uj
-                            for j2 in uj
-                                if j2 ≤ i2
-                                    for k2 in uj
-                                        if k2 ≤ j2
-                                            idx2 = (i2-1) * i2 * (i2+1) ÷ 6 + (j2-1) * j2 ÷ 2 + k2
+                        row = (i1-1) * i1 * (i1+1) ÷ 6 + (j1-1) * j1 ÷ 2 + k1
+                        if length(rowmask) == 0 || (length(rowmask) > 0 && row in rowmask)
+                            for i2 in uj
+                                for j2 in uj
+                                    if j2 ≤ i2
+                                        for k2 in uj
+                                            if k2 ≤ j2
+                                                col = (i2-1) * i2 * (i2+1) ÷ 6 + (j2-1) * j2 ÷ 2 + k2
 
-                                            # Compute the six unique products
-                                            val = 0.0
-                                            @inbounds val += â[i1, i2] * â[j1, j2] * â[k1, k2]
-                                            @inbounds val += â[i1, j2] * â[j1, i2] * â[k1, k2]
-                                            @inbounds val += â[i1, k2] * â[j1, j2] * â[k1, i2]
-                                            @inbounds val += â[i1, j2] * â[j1, k2] * â[k1, i2]
-                                            @inbounds val += â[i1, k2] * â[j1, i2] * â[k1, j2]
-                                            @inbounds val += â[i1, i2] * â[j1, k2] * â[k1, j2]
+                                                # @timeit_debug timer "Multiplication" begin
 
-                                            # Only add non-zero values to the sparse matrix
-                                            if abs(val) > tol
-                                                k += 1 
-                                                # Threads.atomic_add!(k, 1)
+                                                # Compute the six unique products
+                                                val = 0.0
+                                                @inbounds val += â[i1, i2] * â[j1, j2] * â[k1, k2]
+                                                @inbounds val += â[i1, j2] * â[j1, i2] * â[k1, k2]
+                                                @inbounds val += â[i1, k2] * â[j1, j2] * â[k1, i2]
+                                                @inbounds val += â[i1, j2] * â[j1, k2] * â[k1, i2]
+                                                @inbounds val += â[i1, k2] * â[j1, i2] * â[k1, j2]
+                                                @inbounds val += â[i1, i2] * â[j1, k2] * â[k1, j2]
 
-                                                if i1 == j1
-                                                    if i1 == k1
-                                                        divisor = 6
+                                                # end # timeit_debug
+
+                                                # @timeit_debug timer "Save in vector" begin
+                                                    
+                                                # Only add non-zero values to the sparse matrix
+                                                if abs(val) > tol
+                                                    k += 1 
+                                                    # Threads.atomic_add!(k, 1)
+                                                    # Threads.atomic_max!(k̄, k[])
+
+                                                    if i1 == j1
+                                                        if i1 == k1
+                                                            divisor = 6
+                                                        else
+                                                            divisor = 2
+                                                        end
                                                     else
-                                                        divisor = 2
+                                                        if i1 ≠ k1 && j1 ≠ k1
+                                                            divisor = 1
+                                                        else
+                                                            divisor = 2
+                                                        end
                                                     end
-                                                else
-                                                    if i1 ≠ k1 && j1 ≠ k1
-                                                        divisor = 1
-                                                    else
-                                                        divisor = 2
-                                                    end
+                                                    # push!(threadlocal[1],row)
+                                                    # push!(threadlocal[2],col)
+                                                    # push!(threadlocal[3],val / divisor)
+                                                    # I[k[]] = row
+                                                    # J[k[]] = col
+                                                    # V[k[]] = val / divisor 
+                                                    I[k] = row
+                                                    J[k] = col
+                                                    V[k] = val / divisor 
                                                 end
 
-                                                I[k] = idx1
-                                                J[k] = idx2
-                                                V[k] = val / divisor 
+                                                # end # timeit_debug
+
                                             end
                                         end
                                     end
@@ -1232,10 +1275,27 @@ function compressed_kron³(a::AbstractSparseMatrix{T};
             end
         end
     end
-    # Resize the index and value arrays to the actual number of entries
+
+    end # timeit_debug
+
+    @timeit_debug timer "Resize" begin
+
+    # out = map(fetch, threadlocal)
+
+    # I = mapreduce(v -> v[1], vcat, out)
+    # J = mapreduce(v -> v[2], vcat, out)
+    # V = mapreduce(v -> v[3], vcat, out)
+
+    # # Resize the index and value arrays to the actual number of entries
+    # resize!(I, k̄[])
+    # resize!(J, k̄[])
+    # resize!(V, k̄[])    
     resize!(I, k)
     resize!(J, k)
     resize!(V, k)
+
+    end # timeit_debug
+    end # timeit_debug
 
     # Create the sparse matrix from the collected indices and values
     if VERSION >= v"1.10"
@@ -7540,7 +7600,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     end # timeit_debug
     @timeit_debug timer "3rd Kronecker power" begin
 
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ)
+    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, timer = timer)
 
     end # timeit_debug
     end # timeit_debug
@@ -7557,7 +7617,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
             zeros(n₋ + n + nₑ, nₑ₋^2)];
 
     aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
-    aux = choose_matrix_format(aux, density_threshold = 1.0, min_length = 10)
+    # aux = choose_matrix_format(aux, density_threshold = 1.0, min_length = 10)
 
     end # timeit_debug
     @timeit_debug timer "∇₃" begin   
@@ -7565,6 +7625,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
 
     𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+
+    # 𝐗₃ = A_mult_kron_power_3_B(𝐔∇₃, aux)
 
     𝐗₃ = 𝐔∇₃ * tmpkron + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
     # 𝐗₃ += out
@@ -7604,7 +7666,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     end # timeit_debug
     @timeit_debug timer "Step 5" begin
-
+    # out2 += ∇₁₊ * mat_mult_kron(𝐒₂, collect(𝐒₁₋╱𝟏ₑ), collect(𝐒₂₋╱𝟎))
+    # out2 += mat_mult_kron(∇₁₊ * 𝐒₂, collect(𝐒₁₋╱𝟏ₑ), collect(𝐒₂₋╱𝟎))
     out2 += ∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
     
     end # timeit_debug
@@ -7612,17 +7675,20 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     𝐗₃ += out2 * M₃.𝐏
 
-    end # timeit_debug
-    end # timeit_debug
-    @timeit_debug timer "Mult" begin
+    𝐗₃ *= M₃.𝐂₃
 
-    C = spinv * 𝐗₃ * M₃.𝐂₃
-    
+    end # timeit_debug
     end # timeit_debug
     @timeit_debug timer "3rd Kronecker power" begin
 
-    C += spinv * ∇₃ * compressed_kron³(aux)
+    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), timer = timer)
+    
+    end # timeit_debug
+    @timeit_debug timer "Mult 2" begin
 
+    # C += spinv * ∇₃ * compressed_kron³(aux)
+
+    C = spinv * 𝐗₃# * M₃.𝐂₃
     end # timeit_debug
     
     end # timeit_debug
