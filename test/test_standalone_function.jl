@@ -213,7 +213,8 @@ T = T)
         -0.0021014511165327685
         -0.0004090778090616675
         0.0004090778090616675],7,3375)
-    @test isapprox(∇₃,third_order_derivatives2,rtol = eps(Float32))
+    @test isapprox(∇₃ * RBC_CME.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    ,third_order_derivatives2,rtol = eps(Float32))
 
     first_order_solution2 = [ 0.9         5.41234e-16  -6.41848e-17   0.0           0.0068
     0.0223801  -0.00364902    0.00121336    6.7409e-6     0.000169094
