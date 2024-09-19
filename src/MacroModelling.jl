@@ -7376,7 +7376,10 @@ function rrule(::typeof(calculate_second_order_solution),
 
     @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₂, solved = solve_sylvester_equation(B, C, X, sylvester_algorithm = sylvester_algorithm, verbose = verbose, timer = timer)
+    𝐒₂, solved = solve_sylvester_equation(B, C, X, 
+                                            sylvester_algorithm = sylvester_algorithm, 
+                                            verbose = verbose, 
+                                            timer = timer)
 
     end # timeit_debug
 
@@ -7422,7 +7425,11 @@ function rrule(::typeof(calculate_second_order_solution),
 
         @timeit_debug timer "Sylvester" begin
 
-        ∂X, solved = solve_sylvester_equation(B', C', ∂𝐒₂, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose, timer = timer)
+        ∂X, solved = solve_sylvester_equation(B', C', ∂𝐒₂, 
+                                                sylvester_algorithm = sylvester_algorithm, 
+                                                # tol = tol, 
+                                                verbose = verbose, 
+                                                timer = timer)
         
         end # timeit_debug
 
@@ -7714,8 +7721,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                             sylvester_algorithm = sylvester_algorithm, 
                                             verbose = verbose, 
-                                            timer = timer, 
-                                            tol = tol)
+                                            # tol = tol, 
+                                            timer = timer)
     
     end # timeit_debug
     @timeit_debug timer "Refine sylvester equation" begin
@@ -7930,8 +7937,8 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                             sylvester_algorithm = sylvester_algorithm, 
                                             verbose = verbose, 
-                                            timer = timer, 
-                                            tol = tol)
+                                            # tol = tol, 
+                                            timer = timer)
     
     end # timeit_debug
     @timeit_debug timer "Refine sylvester equation" begin
@@ -7939,9 +7946,9 @@ function rrule(::typeof(calculate_third_order_solution),
     if !solved
         𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                                 sylvester_algorithm = :doubling, 
-                                                verbose = verbose, 
-                                                timer = timer, 
-                                                tol = tol)
+                                                verbose = verbose,
+                                                # tol = tol,
+                                                timer = timer)
     end
 
     𝐒₃ = sparse(𝐒₃)
@@ -7991,7 +7998,8 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ∂C, solved = solve_sylvester_equation(At, Bt, ∂𝐒₃, 
                                                 sylvester_algorithm = sylvester_algorithm, 
-                                                tol = tol, 
+                                                # tol = tol,
+                                                timer = timer,
                                                 verbose = verbose)
 
         ∂C = choose_matrix_format(∂C, density_threshold = 1.0)
