@@ -602,8 +602,8 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-8)
     @timeit_debug timer "Preallocate matrices" begin
-    tmp̄ = similar(C)
-    𝐗 = similar(C)
+    tmp̄ = collect(C)
+    𝐗 = collect(C)
     end # timeit_debug  
     
     function sylvester!(sol,𝐱)
@@ -690,6 +690,10 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
         reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
     
         end # timeit_debug
+    end
+
+    if !(typeof(C) <: DenseMatrix)
+        𝐗 = choose_matrix_format(𝐗, density_threshold = 1.0)
     end
 
     return 𝐗, reached_tol < tol, info.niter, reached_tol
