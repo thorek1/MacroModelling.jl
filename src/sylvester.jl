@@ -13,7 +13,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     C::AbstractMatrix{Float64};
                                     # init::AbstractMatrix{Float64} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-11,
+                                    tol::AbstractFloat = 1e-12,
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false)
     @timeit_debug timer "Choose matrix formats" begin
@@ -650,12 +650,12 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     @timeit_debug timer "BICGSTAB solve" begin
     # if length(init) == 0
-        𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol / 10)#, M = precond)
+        𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol / 10, atol = tol / 10)#, M = precond)
     # else
     #     𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
     end # timeit_debug
-
+    
     @timeit_debug timer "Postprocess" begin
 
     copyto!(𝐗, 𝐂)
@@ -668,8 +668,29 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     ℒ.axpy!(-1, 𝐗, tmp̄)
 
     reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
-
+    
     end # timeit_debug
+    
+    if reached_tol > tol
+        @timeit_debug timer "GMRES refinement" begin
+
+        𝐂, info = Krylov.gmres(sylvester, [vec(C);], 
+                                [vec(𝐂);], # start value helps
+                                rtol = tol / 10, atol = tol / 10)#, M = precond)
+
+        copyto!(𝐗, 𝐂)
+    
+        ℒ.mul!(tmp̄, A, 𝐗 * B)
+        ℒ.axpy!(1, C, tmp̄)
+    
+        denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
+    
+        ℒ.axpy!(-1, 𝐗, tmp̄)
+    
+        reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
+    
+        end # timeit_debug
+    end
 
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
