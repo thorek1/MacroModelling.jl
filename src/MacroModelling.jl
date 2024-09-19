@@ -7624,17 +7624,17 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
 
-    𝐗₃ = A_mult_kron_power_3_B(𝐔∇₃, aux)
+    # 𝐗₃ = A_mult_kron_power_3_B(𝐔∇₃, aux)
 
     end # timeit_debug
     @timeit_debug timer "∇₃" begin   
 
     tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
 
-    # 𝐗₃ = 𝐔∇₃ * tmpkron + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
+    𝐗₃ = 𝐔∇₃ * tmpkron + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
     
-    out = 𝐔∇₃ * tmpkron + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
-    𝐗₃ += out
+    # out = 𝐔∇₃ * tmpkron + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
+    # 𝐗₃ += out
 
     end # timeit_debug
     @timeit_debug timer "∇₂ & ∇₁₊" begin
@@ -7680,24 +7680,24 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     𝐗₃ += out2 * M₃.𝐏
 
-    end # timeit_debug
-    end # timeit_debug
-
-    # 𝐗₃ *= M₃.𝐂₃
-
     # end # timeit_debug
     # end # timeit_debug
-    # @timeit_debug timer "3rd Kronecker power" begin
 
-    # 𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), timer = timer)
+    𝐗₃ *= M₃.𝐂₃
+
+    end # timeit_debug
+    end # timeit_debug
+    @timeit_debug timer "3rd Kronecker power" begin
+
+    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), timer = timer)
     
-    # end # timeit_debug
-    # @timeit_debug timer "Mult 2" begin
+    end # timeit_debug
+    @timeit_debug timer "Mult 2" begin
 
-    # C = spinv * 𝐗₃# * M₃.𝐂₃
-    @timeit_debug timer "Mult" begin
+    C = spinv * 𝐗₃# * M₃.𝐂₃
+    # @timeit_debug timer "Mult" begin
 
-    C = spinv * 𝐗₃ * M₃.𝐂₃
+    # C = spinv * 𝐗₃ * M₃.𝐂₃
 
     end # timeit_debug
     end # timeit_debug
