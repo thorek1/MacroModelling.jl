@@ -149,6 +149,12 @@ zygdiff = Zygote.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algor
 isapprox(findiff, zygdiff)
 
 
+timer = TimerOutput()
+zygdiff = Zygote.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm, timer = timer), 𝓂.parameter_values)[1]
+timer
+
+
+
 @benchmark get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
 
 @benchmark Zygote.gradient(x-> get_loglikelihood(𝓂, data, x, algorithm = algorithm), 𝓂.parameter_values)[1]
