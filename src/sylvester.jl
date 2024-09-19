@@ -1,5 +1,5 @@
 # Available algorithms: 
-# :doubling     - fast and precise
+# :doubling     - fast and precise, expensive part: B^2
 # :sylvester    - fast and precise, dense matrices only
 # :bicgstab     - less precise, fastest for large problems
 # :gmres        - less precise, fastest for large problems
@@ -234,6 +234,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
+    @timeit_debug timer "Doubling solve" begin
     @timeit_debug timer "Setup buffers" begin
 
     𝐀  = copy(A)    
@@ -250,7 +251,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
 
     iters = max_iter
 
-    end #timeit_debug
+    end # timeit_debug
 
     for i in 1:max_iter
         @timeit_debug timer "Update C" begin
@@ -258,25 +259,25 @@ function solve_sylvester_equation(  A::Matrix{Float64},
         ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
         ℒ.axpy!(1, 𝐂, 𝐂¹)
         # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
-        end #timeit_debug
+        end # timeit_debug
 
         @timeit_debug timer "Square A" begin
         ℒ.mul!(𝐀¹,𝐀,𝐀)
         copy!(𝐀,𝐀¹)
-        end #timeit_debug
+        end # timeit_debug
 
         # 𝐀 = 𝐀^2
         @timeit_debug timer "Square B" begin
         𝐁 = 𝐁^2
         # ℒ.mul!(𝐁¹,𝐁,𝐁)
         # copy!(𝐁,𝐁¹)
-        end #timeit_debug
+        end # timeit_debug
 
 
         # droptol!(𝐀, eps())
         @timeit_debug timer "droptol B" begin
         droptol!(𝐁, eps())
-        end #timeit_debug
+        end # timeit_debug
 
         if i > 10# && i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
@@ -287,7 +288,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
 
         @timeit_debug timer "Copy C" begin
         copy!(𝐂,𝐂¹)
-        end #timeit_debug
+        end # timeit_debug
     end
 
     @timeit_debug timer "Finalise" begin
@@ -301,7 +302,8 @@ function solve_sylvester_equation(  A::Matrix{Float64},
     ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
     reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
-    end #timeit_debug
+    end # timeit_debug
+    end # timeit_debug
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -502,6 +504,8 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
+    @timeit_debug timer "Setup buffers" begin
+                                        
     𝐀  = copy(A)    
     𝐀¹ = copy(A)
     𝐁  = copy(B)
@@ -516,16 +520,24 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
 
     iters = max_iter
 
+    end # timeit_debug
+
     for i in 1:max_iter
+        @timeit_debug timer "Update C" begin
         ℒ.mul!(𝐂B, 𝐂, 𝐁)
         ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
         ℒ.axpy!(1, 𝐂, 𝐂¹)
         # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+        end # timeit_debug
 
+        @timeit_debug timer "Square A" begin
         ℒ.mul!(𝐀¹,𝐀,𝐀)
         copy!(𝐀,𝐀¹)
+        end # timeit_debug
+        @timeit_debug timer "Square B" begin
         ℒ.mul!(𝐁¹,𝐁,𝐁)
         copy!(𝐁,𝐁¹)
+        end # timeit_debug
         # 𝐀 = 𝐀^2
         # 𝐁 = 𝐁^2
 
@@ -539,9 +551,13 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
             end
         end
 
+        @timeit_debug timer "Copy C" begin
         copy!(𝐂,𝐂¹)
+        end # timeit_debug
     end
 
+    @timeit_debug timer "Finalise" begin
+        
     ℒ.mul!(𝐂B, 𝐂, 𝐁)
     ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
     ℒ.axpy!(1, 𝐂, 𝐂¹)
@@ -552,6 +568,8 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
     ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
     reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+
+    end # timeit_debug
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -577,30 +595,68 @@ end
 
 
 function solve_sylvester_equation(A::DenseMatrix{Float64},
-    B::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64},
-    ::Val{:bicgstab};
-    # init::AbstractMatrix{Float64},
-    timer::TimerOutput = TimerOutput(),
-    tol::Float64 = 1e-8)
-
+                                    B::AbstractMatrix{Float64},
+                                    C::AbstractMatrix{Float64},
+                                    ::Val{:bicgstab};
+                                    # init::AbstractMatrix{Float64},
+                                    timer::TimerOutput = TimerOutput(),
+                                    tol::Float64 = 1e-8)
+    @timeit_debug timer "Preallocate matrices" begin
     tmp̄ = similar(C)
     𝐗 = similar(C)
-
+    end # timeit_debug  
+    
     function sylvester!(sol,𝐱)
+        @timeit_debug timer "Copy1" begin
         copyto!(𝐗, 𝐱)
-        ℒ.mul!(tmp̄, 𝐗, B)
-        ℒ.mul!(𝐗, A, tmp̄, -1, 1)
+        end # timeit_debug
+        # 𝐗 = @view reshape(𝐱, size(𝐗))
+        @timeit_debug timer "Mul1" begin
+        # tmp̄ = A * 𝐗 * B 
+        ℒ.mul!(tmp̄, A, 𝐗)
+        end # timeit_debug
+        @timeit_debug timer "Mul2" begin
+        ℒ.mul!(𝐗, tmp̄, B, -1, 1)
+        # ℒ.axpby!(-1, tmp̄, 1, 𝐗)
+        end # timeit_debug
+        @timeit_debug timer "Copy2" begin
         copyto!(sol, 𝐗)
+        end # timeit_debug
+        # sol = @view reshape(𝐗, size(sol))
     end
 
     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
+    
+    # # ==== Preconditioner Setup ====
+    # # Approximate the diagonal of the Sylvester operator J = A ⊗ B - I
+    # # For AXB - X, the diagonal can be approximated as diag(A) * diag(B) - 1
+    # diag_J_matrix = ℒ.diag(A) * ℒ.diag(B)' .- 1.0
+    # diag_J = vec(diag_J_matrix)  # Vector of length 39,270
 
+    # # To avoid division by zero, set a minimum threshold
+    # diag_J = max.(abs.(diag_J), 1e-12)
+
+    # # Compute the inverse of the diagonal preconditioner
+    # inv_diag_J = 1.0 ./ diag_J
+
+    # # println(length(inv_diag_J))
+    # # Define the preconditioner as a LinearOperator
+    # function preconditioner!(y, x)
+    #     # ℒ.mul!(y, inv_diag_J, x)
+    #     @. y = inv_diag_J .* x
+    # end
+
+    # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true,true, preconditioner!)
+
+    @timeit_debug timer "BICGSTAB solve" begin
     # if length(init) == 0
-        𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol / 10)
+        𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol / 10)#, M = precond)
     # else
     #     𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
+    end # timeit_debug
+
+    @timeit_debug timer "Postprocess" begin
 
     copyto!(𝐗, 𝐂)
 
@@ -612,6 +668,8 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     ℒ.axpy!(-1, 𝐗, tmp̄)
 
     reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
+
+    end # timeit_debug
 
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
@@ -644,7 +702,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
         end # timeit_debug
         @timeit_debug timer "Copy2" begin
         copyto!(sol, 𝐗)
-    end # timeit_debug
+        end # timeit_debug
         # sol = @view reshape(𝐗, size(sol))
     end
 
@@ -673,7 +731,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     @timeit_debug timer "GMRES solve" begin
     # if length(init) == 0
-        𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol / 10)#, restart = true, M = precond)
+        𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol / 10)#, M = precond)
     # else
     #     𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)#, restart = true, M = precond)
     # end
@@ -747,7 +805,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     B::AbstractMatrix{Float64},
                                     C::AbstractMatrix{Float64},
                                     ::Val{:speedmapping};
-                                    init::AbstractMatrix{Float64},
+                                    # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::AbstractFloat = 1e-12)
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
