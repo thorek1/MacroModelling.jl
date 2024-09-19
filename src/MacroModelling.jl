@@ -1149,12 +1149,28 @@ end
 
 function compressed_kron³(a::AbstractMatrix{T};
                     rowmask::Vector{Int} = Int[],
+                    colmask::Vector{Int} = Int[],
                     timer::TimerOutput = TimerOutput(),
                     tol::AbstractFloat= eps()) where T <: Real
     @timeit_debug timer "Compressed 3rd kronecker power" begin
           
     @timeit_debug timer "Preallocation" begin
-                                                      
+    
+    a_is_adjoint = typeof(a) <: ℒ.Adjoint{T,Matrix{T}}
+    
+    if a_is_adjoint
+        â = copy(a')
+        a = sparse(a')
+
+        rmask = colmask
+        colmask = rowmask
+        rowmask = rmask
+    elseif typeof(a) <: DenseMatrix{T}
+        â = copy(a)
+        a = sparse(a)
+    else
+        â = collect(a)  # Convert to dense matrix for faster access
+    end
     # Get the number of rows and columns
     n_rows, n_cols = size(a)
         
@@ -1162,22 +1178,16 @@ function compressed_kron³(a::AbstractMatrix{T};
     m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6    # For rows: i ≤ j ≤ k
     m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6    # For columns: i ≤ j ≤ k
 
-    if typeof(a) <: Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}}
-        â = copy(a)
-        a = sparse(a)
-    else
-        â = collect(a)  # Convert to dense matrix for faster access
-    end
-
     # Initialize arrays to collect indices and values
     # Estimate an upper bound for non-zero entries to preallocate arrays
     lennz = a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
 
-    if length(rowmask) > 0
-        estimated_nnz = floor(Int, max(length(rowmask) * m3_cols * lennz / length(a), 1000))
-    else
-        estimated_nnz = floor(Int, max(m3_rows * m3_cols * (lennz / length(a))^3, 1000))
-    end
+    m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
+    m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
+
+    m3_exp = length(colmask) > 0 || length(rowmask) > 0 ? 1 : 3
+
+    estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp * 1.5, 10000))
     
     I = Vector{Int}(undef, estimated_nnz)
     J = Vector{Int}(undef, estimated_nnz)
@@ -1195,7 +1205,7 @@ function compressed_kron³(a::AbstractMatrix{T};
     rowinds, colinds, _ = findnz(a)
     ui = unique(rowinds)
     uj = unique(colinds)
-
+       
     end # timeit_debug
 
     @timeit_debug timer "Loop" begin
@@ -1208,62 +1218,66 @@ function compressed_kron³(a::AbstractMatrix{T};
             if j1 ≤ i1
                 for k1 in ui
                     if k1 ≤ j1
+
                         row = (i1-1) * i1 * (i1+1) ÷ 6 + (j1-1) * j1 ÷ 2 + k1
+
                         if length(rowmask) == 0 || (length(rowmask) > 0 && row in rowmask)
                             for i2 in uj
                                 for j2 in uj
                                     if j2 ≤ i2
                                         for k2 in uj
                                             if k2 ≤ j2
+
                                                 col = (i2-1) * i2 * (i2+1) ÷ 6 + (j2-1) * j2 ÷ 2 + k2
 
-                                                # @timeit_debug timer "Multiplication" begin
+                                                if length(colmask) == 0 || (length(colmask) > 0 && col in colmask)
+                                                    # @timeit_debug timer "Multiplication" begin
 
-                                                # Compute the six unique products
-                                                val = 0.0
-                                                @inbounds val += â[i1, i2] * â[j1, j2] * â[k1, k2]
-                                                @inbounds val += â[i1, j2] * â[j1, i2] * â[k1, k2]
-                                                @inbounds val += â[i1, k2] * â[j1, j2] * â[k1, i2]
-                                                @inbounds val += â[i1, j2] * â[j1, k2] * â[k1, i2]
-                                                @inbounds val += â[i1, k2] * â[j1, i2] * â[k1, j2]
-                                                @inbounds val += â[i1, i2] * â[j1, k2] * â[k1, j2]
+                                                    # Compute the six unique products
+                                                    val = 0.0
+                                                    @inbounds val += â[i1, i2] * â[j1, j2] * â[k1, k2]
+                                                    @inbounds val += â[i1, j2] * â[j1, i2] * â[k1, k2]
+                                                    @inbounds val += â[i1, k2] * â[j1, j2] * â[k1, i2]
+                                                    @inbounds val += â[i1, j2] * â[j1, k2] * â[k1, i2]
+                                                    @inbounds val += â[i1, k2] * â[j1, i2] * â[k1, j2]
+                                                    @inbounds val += â[i1, i2] * â[j1, k2] * â[k1, j2]
 
-                                                # end # timeit_debug
+                                                    # end # timeit_debug
 
-                                                # @timeit_debug timer "Save in vector" begin
-                                                    
-                                                # Only add non-zero values to the sparse matrix
-                                                if abs(val) > tol
-                                                    k += 1 
-                                                    # Threads.atomic_add!(k, 1)
-                                                    # Threads.atomic_max!(k̄, k[])
+                                                    # @timeit_debug timer "Save in vector" begin
+                                                        
+                                                    # Only add non-zero values to the sparse matrix
+                                                    if abs(val) > tol
+                                                        k += 1 
+                                                        # Threads.atomic_add!(k, 1)
+                                                        # Threads.atomic_max!(k̄, k[])
 
-                                                    if i1 == j1
-                                                        if i1 == k1
-                                                            divisor = 6
+                                                        if i1 == j1
+                                                            if i1 == k1
+                                                                divisor = 6
+                                                            else
+                                                                divisor = 2
+                                                            end
                                                         else
-                                                            divisor = 2
+                                                            if i1 ≠ k1 && j1 ≠ k1
+                                                                divisor = 1
+                                                            else
+                                                                divisor = 2
+                                                            end
                                                         end
-                                                    else
-                                                        if i1 ≠ k1 && j1 ≠ k1
-                                                            divisor = 1
-                                                        else
-                                                            divisor = 2
-                                                        end
+                                                        # push!(threadlocal[1],row)
+                                                        # push!(threadlocal[2],col)
+                                                        # push!(threadlocal[3],val / divisor)
+                                                        # I[k[]] = row
+                                                        # J[k[]] = col
+                                                        # V[k[]] = val / divisor 
+                                                        I[k] = row
+                                                        J[k] = col
+                                                        V[k] = val / divisor 
                                                     end
-                                                    # push!(threadlocal[1],row)
-                                                    # push!(threadlocal[2],col)
-                                                    # push!(threadlocal[3],val / divisor)
-                                                    # I[k[]] = row
-                                                    # J[k[]] = col
-                                                    # V[k[]] = val / divisor 
-                                                    I[k] = row
-                                                    J[k] = col
-                                                    V[k] = val / divisor 
+
+                                                    # end # timeit_debug
                                                 end
-
-                                                # end # timeit_debug
-
                                             end
                                         end
                                     end
@@ -1299,9 +1313,17 @@ function compressed_kron³(a::AbstractMatrix{T};
 
     # Create the sparse matrix from the collected indices and values
     if VERSION >= v"1.10"
-        return sparse!(I, J, V, m3_rows, m3_cols)
+        if a_is_adjoint
+            return sparse!(J, I, V, m3_cols, m3_rows)
+        else
+            return sparse!(I, J, V, m3_rows, m3_cols)
+        end
     else
-        return sparse(I, J, V, m3_rows, m3_cols)
+        if a_is_adjoint
+            return sparse(J, I, V, m3_cols, m3_rows)
+        else
+            return sparse(I, J, V, m3_rows, m3_cols)
+        end
     end
 end
 
@@ -7848,7 +7870,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
 
-    𝐗₃ = A_mult_kron_power_3_B(𝐔∇₃, aux)
+    # 𝐗₃ = A_mult_kron_power_3_B(𝐔∇₃, aux)
 
     end # timeit_debug
     @timeit_debug timer "∇₃" begin
@@ -7856,12 +7878,10 @@ function rrule(::typeof(calculate_third_order_solution),
     tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
     tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0 * M₂.𝛔)
 
-    out = 𝐔∇₃ * tmpkron22 + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
-    𝐗₃ += out
-    
-    # 𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+    𝐗₃ = 𝐔∇₃ * tmpkron22 + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
 
-    # 𝐗₃ = 𝐔∇₃ * tmpkron22 + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+    # out = 𝐔∇₃ * tmpkron22 + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+    # 𝐗₃ += out
     
     end # timeit_debug
     @timeit_debug timer "∇₂ & ∇₁₊" begin
@@ -7911,26 +7931,23 @@ function rrule(::typeof(calculate_third_order_solution),
 
     𝐗₃ += out2 * M₃.𝐏
 
+    # end # timeit_debug
+    # end # timeit_debug
+
+    𝐗₃ *= M₃.𝐂₃
+
     end # timeit_debug
     end # timeit_debug
-    @timeit_debug timer "Mult" begin
+    @timeit_debug timer "3rd Kronecker power" begin
 
-    C = spinv * 𝐗₃ * M₃.𝐂₃
+    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), timer = timer)
+    𝐗₃ = choose_matrix_format(𝐗₃, density_threshold = 1.0, min_length = 10)
 
-    # 𝐗₃ *= M₃.𝐂₃
+    end # timeit_debug
+    @timeit_debug timer "Mult 2" begin
 
-    # end # timeit_debug
-    # end # timeit_debug
-    # @timeit_debug timer "3rd Kronecker power" begin
-
-    # 𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), timer = timer)
-    # 𝐗₃ = choose_matrix_format(𝐗₃, density_threshold = 1.0, min_length = 10)
-
-    # end # timeit_debug
-    # @timeit_debug timer "Mult 2" begin
-
-    # C = spinv * 𝐗₃
-
+    C = spinv * 𝐗₃
+    
     end # timeit_debug
     end # timeit_debug
     @timeit_debug timer "Solve sylvester equation" begin
@@ -7973,6 +7990,7 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂∇₁ = zero(∇₁)
         ∂∇₂ = zero(∇₂)
         ∂𝐔∇₃ = zero(𝐔∇₃)
+        ∂∇₃ = zero(∇₃)
         ∂𝐒₁ = zero(𝐒₁)
         ∂𝐒₂ = zero(𝐒₂)
         ∂spinv = zero(spinv)
@@ -8008,45 +8026,46 @@ function rrule(::typeof(calculate_third_order_solution),
         # ∂B = 𝐒₃' * A' * ∂C
         ∂B = choose_matrix_format(𝐒₃' * A' * ∂C, density_threshold = 1.0)
 
-        # C = spinv * 𝐗₃ * M₃.𝐂₃
-        ∂𝐗₃ = spinv' * ∂C * M₃.𝐂₃'
+        # C = spinv * 𝐗₃
+        ∂𝐗₃ = spinv' * ∂C
         ∂𝐗₃ = choose_matrix_format(∂𝐗₃, density_threshold = 1.0)
-        ∂spinv += ∂C * M₃.𝐂₃' * 𝐗₃'
+        ∂spinv += ∂C * 𝐗₃'
 
-        # 𝐗₃ = 𝐔∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux) 
-        # + 𝐔∇₃ * tmpkron22 
-        # + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
-        # + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
-        # + ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏
-        # + ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏
+        # ∇₃ * compressed_kron³(aux) = 𝐔∇₃ * ℒ.kron(aux, aux, aux) * M₃.𝐂₃
+        # 𝐗₃ = ∇₃ * compressed_kron³(aux)
+        # + (𝐔∇₃ * tmpkron22 
+        # +  𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
+        # +  𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+        # +  ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏
+        # +  ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏) * M₃.𝐂₃
 
-        # ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏
-        ∂∇₁₊ += ∂𝐗₃ * M₃.𝐏' * tmpkron12' * 𝐒₂'
-        ∂𝐒₂ += ∇₁₊' * ∂𝐗₃ * M₃.𝐏' * tmpkron12'
-        ∂tmpkron12 = 𝐒₂' * ∇₁₊' * ∂𝐗₃ * M₃.𝐏'
+        # ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏 * M₃.𝐂₃
+        ∂∇₁₊ += ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * tmpkron12' * 𝐒₂'
+        ∂𝐒₂ += ∇₁₊' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * tmpkron12'
+        ∂tmpkron12 = 𝐒₂' * ∇₁₊' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏'
 
         # tmpkron12 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
         fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₂₋╱𝟎, ∂tmpkron12, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
         
-        # ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏
+        # ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏 * M₃.𝐂₃
 
-        ∂∇₂ += ∂𝐗₃ * M₃.𝐏' * (
+        ∂∇₂ += ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * (
            tmpkron10
          + tmpkron1 * tmpkron2
          + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
          + tmpkron11
          )'
 
-        ∂tmpkron10 = ∇₂' * ∂𝐗₃ * M₃.𝐏'
+        ∂tmpkron10 = ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏'
 
         # tmpkron10 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
         fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ∂tmpkron10, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
 
-        ∂tmpkron1 = ∇₂' * ∂𝐗₃ * M₃.𝐏' * tmpkron2' + ∇₂' * ∂𝐗₃ * M₃.𝐏' * M₃.𝐏₁ᵣ' * tmpkron2' * M₃.𝐏₁ₗ'
+        ∂tmpkron1 = ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * tmpkron2' + ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * M₃.𝐏₁ᵣ' * tmpkron2' * M₃.𝐏₁ₗ'
 
-        ∂tmpkron2 = tmpkron1' * ∇₂' * ∂𝐗₃ * M₃.𝐏' + M₃.𝐏₁ₗ' * tmpkron1' * ∇₂' * ∂𝐗₃ * M₃.𝐏' * M₃.𝐏₁ᵣ'
+        ∂tmpkron2 = tmpkron1' * ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' + M₃.𝐏₁ₗ' * tmpkron1' * ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * M₃.𝐏₁ᵣ'
 
-        ∂tmpkron11 = ∇₂' * ∂𝐗₃ * M₃.𝐏'
+        ∂tmpkron11 = ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏'
         
         # tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
         fill_kron_adjoint!(∂𝐒₁₊╱𝟎, ∂𝐒₂₊╱𝟎, ∂tmpkron1, 𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
@@ -8060,13 +8079,13 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂𝐒₂₊╱𝟎 += ∂𝐒₂₊╱𝟎𝛔 * 𝛔t
 
 
-        # out = 𝐔∇₃ * tmpkron22 
+        # out = (𝐔∇₃ * tmpkron22 
         # + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
-        # + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+        # + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃ ) * M₃.𝐂₃
 
-        ∂𝐔∇₃ += ∂𝐗₃ * tmpkron22' + ∂𝐗₃ * M₃.𝐏₁ᵣ̃' * tmpkron22' * M₃.𝐏₁ₗ̂' + ∂𝐗₃ * M₃.𝐏₂ᵣ̃' * tmpkron22' * M₃.𝐏₂ₗ̂'
+        ∂𝐔∇₃ += ∂𝐗₃ * M₃.𝐂₃' * tmpkron22' + ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏₁ᵣ̃' * tmpkron22' * M₃.𝐏₁ₗ̂' + ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏₂ᵣ̃' * tmpkron22' * M₃.𝐏₂ₗ̂'
 
-        ∂tmpkron22 += 𝐔∇₃' * ∂𝐗₃ + M₃.𝐏₁ₗ̂' * 𝐔∇₃' * ∂𝐗₃ * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * 𝐔∇₃' * ∂𝐗₃ * M₃.𝐏₂ᵣ̃'
+        ∂tmpkron22 += 𝐔∇₃' * ∂𝐗₃ * M₃.𝐂₃' + M₃.𝐏₁ₗ̂' * 𝐔∇₃' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * 𝐔∇₃' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏₂ᵣ̃'
 
         # tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
         fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂tmpkron0, ∂tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
@@ -8074,92 +8093,20 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂kron𝐒₁₊╱𝟎 = ∂tmpkron0 * 𝛔t
 
         fill_kron_adjoint!(∂𝐒₁₊╱𝟎, ∂𝐒₁₊╱𝟎, ∂kron𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
+        # println(∂𝐗₃)
+        # 𝐔∇₃ * ℒ.kron(aux, aux, aux) * M₃.𝐂₃
+        # -∇₃ * compressed_kron³(aux)
+        # ∂∇₃ += ∂𝐗₃ * compressed_kron³(aux')
 
-        # -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
-        # ∂∇₃ += ∂𝐗₃ * ℒ.kron(ℒ.kron(aux', aux'), aux')
-        # A_mult_kron_power_3_B!(∂∇₃, ∂𝐗₃, aux') # not a good idea because filling an existing matrix one by one is slow
-        ∂𝐔∇₃ += A_mult_kron_power_3_B(∂𝐗₃, aux') # this is slower somehow
-        ∂kronkronaux = 𝐔∇₃' * ∂𝐗₃
+        ∂∇₃ += ∂𝐗₃ * compressed_kron³(aux', 
+                                        rowmask = unique(findnz(∂𝐗₃)[2]), 
+                                        timer = timer)
+
+        # ∂𝐔∇₃ += A_mult_kron_power_3_B(∂𝐗₃, aux') # this is slower somehow
+        ∂kronkronaux = 𝐔∇₃' * ∂𝐗₃ * M₃.𝐂₃'
 
         # 𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
-        ∂∇₃ = ∂𝐔∇₃ * M₃.𝐔∇₃'
-
-        # # C = spinv * 𝐗₃
-        # # ∂𝐗₃ = spinv' * ∂C * M₃.𝐂₃'
-        # ∂𝐗₃ = choose_matrix_format(spinv' * ∂C, density_threshold = 1.0)
-
-        # ∂spinv += ∂C * 𝐗₃'
-
-        # # 𝐗₃ = ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]))
-        # # + (𝐔∇₃ * tmpkron22 
-        # # + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
-        # # + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
-        # # + ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏
-        # # + ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏) * M₃.𝐂₃
-
-        # # ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏 * M₃.𝐂₃
-        # ∂∇₁₊ += ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * tmpkron12' * 𝐒₂'
-        # ∂𝐒₂ += ∇₁₊' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * tmpkron12'
-        # ∂tmpkron12 = 𝐒₂' * ∇₁₊' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏'
-
-        # # tmpkron12 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
-        # fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₂₋╱𝟎, ∂tmpkron12, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
-        
-        # # ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏
-
-        # ∂∇₂ += ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * (
-        #    tmpkron10
-        #  + tmpkron1 * tmpkron2
-        #  + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
-        #  + tmpkron11
-        #  )'
-
-        # ∂tmpkron10 = ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏'
-
-        # # tmpkron10 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
-        # fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ∂tmpkron10, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
-
-        # ∂tmpkron1 = ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * tmpkron2' + ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * M₃.𝐏₁ᵣ' * tmpkron2' * M₃.𝐏₁ₗ'
-
-        # ∂tmpkron2 = tmpkron1' * ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' + M₃.𝐏₁ₗ' * tmpkron1' * ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * M₃.𝐏₁ᵣ'
-
-        # ∂tmpkron11 = ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏'
-
-        # # tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
-        # fill_kron_adjoint!(∂𝐒₁₊╱𝟎, ∂𝐒₂₊╱𝟎, ∂tmpkron1, 𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
-
-        # # tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
-        # fill_kron_adjoint_∂B!(∂tmpkron2, ∂𝐒₁₋╱𝟏ₑ, M₂.𝛔)
-
-        # # tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎𝛔)
-        # fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂𝐒₂₊╱𝟎𝛔, ∂tmpkron11, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎𝛔)
-        
-        # ∂𝐒₂₊╱𝟎 += ∂𝐒₂₊╱𝟎𝛔 * 𝛔t
-
-
-        # # out = 𝐔∇₃ * tmpkron22 
-        # # + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
-        # # + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
-
-        # ∂∇₃ += ∂𝐗₃ * M₃.𝐂₃' * tmpkron22' * M₃.𝐔∇₃' + ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏₁ᵣ̃' * tmpkron22' * M₃.𝐏₁ₗ̂' * M₃.𝐔∇₃' + ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏₂ᵣ̃' * tmpkron22' * M₃.𝐏₂ₗ̂' * M₃.𝐔∇₃'
-
-        # ∂tmpkron22 += 𝐔∇₃' * ∂𝐗₃ * M₃.𝐂₃' + M₃.𝐏₁ₗ̂' * 𝐔∇₃' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * 𝐔∇₃' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏₂ᵣ̃'
-
-        # # tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
-        # fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂tmpkron0, ∂tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
-
-        # ∂kron𝐒₁₊╱𝟎 = ∂tmpkron0 * 𝛔t
-
-        # fill_kron_adjoint!(∂𝐒₁₊╱𝟎, ∂𝐒₁₊╱𝟎, ∂kron𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-
-        # # -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
-        # # ∂∇₃ += ∂𝐗₃ * ℒ.kron(ℒ.kron(aux', aux'), aux')
-        # # A_mult_kron_power_3_B!(∂∇₃, ∂𝐗₃, aux') # not a good idea because filling an existing matrix one by one is slow
-        # # ∂∇₃ += A_mult_kron_power_3_B(∂𝐗₃, aux') # this is slower somehow
-        
-        # ∂∇₃ += ∂𝐗₃ * compressed_kron³(aux', rowmask = unique(findnz(∂𝐗₃)[2]), timer = timer)
-        # # ∂∇₃ += ∂𝐗₃ * ℒ.kron(aux', aux', aux')
-        # ∂kronkronaux = 𝐔∇₃' * ∂𝐗₃ * M₃.𝐂₃'
+        ∂∇₃ += ∂𝐔∇₃ * M₃.𝐔∇₃'
 
         fill_kron_adjoint!(∂kronaux, ∂aux, ∂kronkronaux, kronaux, aux)
 
