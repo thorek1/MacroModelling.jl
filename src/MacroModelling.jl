@@ -7768,7 +7768,7 @@ function rrule(::typeof(calculate_third_order_solution),
                 timer::TimerOutput = TimerOutput(),
                 tol::AbstractFloat = eps(),
                 verbose::Bool = false)    
-    @timeit_debug timer "Calculate third order solution - forward" begin
+    @timeit_debug timer "Third order solution - forward" begin
     # inspired by Levintal
 
     # Indices and number of variables
@@ -7954,20 +7954,58 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐒₃ = sparse(𝐒₃)
 
     end # timeit_debug
-    end # timeit_debug
 
     if !solved
         return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
     end
 
-    At = sparse(A')
+    @timeit_debug timer "Prealocate for pullback" begin
 
-    Bt = sparse(B')
+    At = choose_matrix_format(A', density_threshold = 1.0)
 
+    Bt = choose_matrix_format(B', density_threshold = 1.0)
+    
+    𝐂₃t = choose_matrix_format(M₃.𝐂₃', density_threshold = 1.0)
+
+    𝐔₃t = choose_matrix_format(M₃.𝐔₃', density_threshold = 1.0)
+
+    𝐏t = choose_matrix_format(M₃.𝐏', density_threshold = 1.0)
+
+    𝐏₁ᵣt = choose_matrix_format(M₃.𝐏₁ᵣ', density_threshold = 1.0)
+    
+    𝐏₁ₗt = choose_matrix_format(M₃.𝐏₁ₗ', density_threshold = 1.0)
+
+    ∇₂t = choose_matrix_format(∇₂', density_threshold = 1.0)
+
+    tmpkron1t = choose_matrix_format(tmpkron1', density_threshold = 1.0)
+    
+    tmpkron2t = choose_matrix_format(tmpkron2', density_threshold = 1.0)
+    
+    tmpkron22t = choose_matrix_format(tmpkron22', density_threshold = 1.0)
+    
+    tmpkron12t = choose_matrix_format(tmpkron12', density_threshold = 1.0)
+    
+    M₃𝐔∇₃t = choose_matrix_format(M₃.𝐔∇₃', density_threshold = 1.0)
+    
+    𝐔∇₃t = choose_matrix_format(𝐔∇₃', density_threshold = 1.0)
+    
+    𝐒₂t = choose_matrix_format(𝐒₂', density_threshold = 1.0)
+    
+    M₃𝐏₂ₗ̂t = choose_matrix_format(M₃.𝐏₂ₗ̂', density_threshold = 1.0)
+    
+    M₃𝐏₂ᵣ̃t = choose_matrix_format(M₃.𝐏₂ᵣ̃', density_threshold = 1.0)
+    
+    M₃𝐏₁ᵣ̃t = choose_matrix_format(M₃.𝐏₁ᵣ̃', density_threshold = 1.0)
+    
+    M₃𝐏₁ₗ̂t = choose_matrix_format(M₃.𝐏₁ₗ̂', density_threshold = 1.0)
+    
     kronaux = ℒ.kron(aux, aux)
-
+    
     𝛔t = choose_matrix_format(M₂.𝛔', density_threshold = 1.0)
 
+    end # timeit_debug
+    end # timeit_debug
+    
     function third_order_solution_pullback(∂𝐒₃_solved) 
         ∂∇₁ = zero(∇₁)
         ∂∇₂ = zero(∇₂)
@@ -7994,7 +8032,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ∂𝐒₃ = ∂𝐒₃_solved[1]
 
-        ∂𝐒₃ *= M₃.𝐔₃'
+        ∂𝐒₃ *= 𝐔₃t
 
         ∂C, solved = solve_sylvester_equation(At, Bt, ∂𝐒₃, 
                                                 sylvester_algorithm = sylvester_algorithm, 
@@ -8023,32 +8061,42 @@ function rrule(::typeof(calculate_third_order_solution),
         # + ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏) * M₃.𝐂₃
 
         # ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏 * M₃.𝐂₃
-        ∂∇₁₊ += ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * tmpkron12' * 𝐒₂'
-        ∂𝐒₂ += ∇₁₊' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * tmpkron12'
-        ∂tmpkron12 = 𝐒₂' * ∇₁₊' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏'
+        ∂∇₁₊ += ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron12t * 𝐒₂t
+        ∂𝐒₂ += ∇₁₊' * ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron12t
+        ∂tmpkron12 = 𝐒₂t * ∇₁₊' * ∂𝐗₃ * 𝐂₃t * 𝐏t
 
         # tmpkron12 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
         fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₂₋╱𝟎, ∂tmpkron12, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
         
         # ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏 * M₃.𝐂₃
+        #improve this
+        # ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * (
+        #    tmpkron10
+        #  + tmpkron1 * tmpkron2
+        #  + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
+        #  + tmpkron11
+        #  )'
 
-        ∂∇₂ += ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * (
-           tmpkron10
-         + tmpkron1 * tmpkron2
-         + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
-         + tmpkron11
-         )'
+        ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron10'
 
-        ∂tmpkron10 = ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏'
+        # ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * (tmpkron1 * tmpkron2)'
+        ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron2t * tmpkron1t
+
+        # ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * (tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ)'
+        ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * M₃.𝐏₁ᵣ' * tmpkron2t * M₃.𝐏₁ₗ' * tmpkron1t
+
+        ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron11'
+
+        ∂tmpkron10 = ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t
 
         # tmpkron10 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
         fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ∂tmpkron10, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
 
-        ∂tmpkron1 = ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * tmpkron2' + ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * M₃.𝐏₁ᵣ' * tmpkron2' * M₃.𝐏₁ₗ'
+        ∂tmpkron1 = ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron2t + ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t * 𝐏₁ᵣt * tmpkron2t * 𝐏₁ₗt
+        #improve this
+        ∂tmpkron2 = tmpkron1t * ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t + 𝐏₁ₗt * tmpkron1t * ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t * 𝐏₁ᵣt
 
-        ∂tmpkron2 = tmpkron1' * ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' + M₃.𝐏₁ₗ' * tmpkron1' * ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏' * M₃.𝐏₁ᵣ'
-
-        ∂tmpkron11 = ∇₂' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏'
+        ∂tmpkron11 = ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t
 
         # tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
         fill_kron_adjoint!(∂𝐒₁₊╱𝟎, ∂𝐒₂₊╱𝟎, ∂tmpkron1, 𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
@@ -8066,9 +8114,9 @@ function rrule(::typeof(calculate_third_order_solution),
         # + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
         # + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃ ) * M₃.𝐂₃
 
-        ∂∇₃ += ∂𝐗₃ * M₃.𝐂₃' * tmpkron22' * M₃.𝐔∇₃' + ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏₁ᵣ̃' * tmpkron22' * M₃.𝐏₁ₗ̂' * M₃.𝐔∇₃' + ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏₂ᵣ̃' * tmpkron22' * M₃.𝐏₂ₗ̂' * M₃.𝐔∇₃'
+        ∂∇₃ += ∂𝐗₃ * 𝐂₃t * tmpkron22t * M₃𝐔∇₃t + ∂𝐗₃ * 𝐂₃t * M₃𝐏₁ᵣ̃t * tmpkron22t * M₃𝐏₁ₗ̂t * M₃𝐔∇₃t + ∂𝐗₃ * 𝐂₃t * M₃𝐏₂ᵣ̃t * tmpkron22t * M₃𝐏₂ₗ̂t * M₃𝐔∇₃t
 
-        ∂tmpkron22 += 𝐔∇₃' * ∂𝐗₃ * M₃.𝐂₃' + M₃.𝐏₁ₗ̂' * 𝐔∇₃' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * 𝐔∇₃' * ∂𝐗₃ * M₃.𝐂₃' * M₃.𝐏₂ᵣ̃'
+        ∂tmpkron22 += 𝐔∇₃t * ∂𝐗₃ * 𝐂₃t + M₃𝐏₁ₗ̂t * 𝐔∇₃t * ∂𝐗₃ * 𝐂₃t * M₃𝐏₁ᵣ̃t + M₃𝐏₂ₗ̂t * 𝐔∇₃t * ∂𝐗₃ * 𝐂₃t * M₃𝐏₂ᵣ̃t
 
         # tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
         fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂tmpkron0, ∂tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
@@ -8084,7 +8132,7 @@ function rrule(::typeof(calculate_third_order_solution),
         
         ∂∇₃ += ∂𝐗₃ * compressed_kron³(aux', rowmask = unique(findnz(∂𝐗₃)[2]), timer = timer)
         # ∂∇₃ += ∂𝐗₃ * ℒ.kron(aux', aux', aux')
-        ∂kronkronaux = 𝐔∇₃' * ∂𝐗₃ * M₃.𝐂₃'
+        ∂kronkronaux = 𝐔∇₃t * ∂𝐗₃ * 𝐂₃t
 
         fill_kron_adjoint!(∂kronaux, ∂aux, ∂kronkronaux, kronaux, aux)
 
@@ -8114,7 +8162,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ∂𝐒₂ += ∂𝐒₂k𝐒₁₋╱𝟏ₑ * kron𝐒₁₋╱𝟏ₑ'
 
-        ∂kron𝐒₁₋╱𝟏ₑ += 𝐒₂' * ∂𝐒₂k𝐒₁₋╱𝟏ₑ
+        ∂kron𝐒₁₋╱𝟏ₑ += 𝐒₂t * ∂𝐒₂k𝐒₁₋╱𝟏ₑ
 
         
         # 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) + 𝐒₁ * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)]
@@ -8127,11 +8175,11 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ###
         # B = M₃.𝐔₃ * (tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃ + ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
-        ∂tmpkron += M₃.𝐔₃' * ∂B * M₃.𝐂₃'
-        ∂tmpkron += M₃.𝐏₁ₗ̄' * M₃.𝐔₃' * ∂B * M₃.𝐂₃' * M₃.𝐏₁ᵣ̃'
-        ∂tmpkron += M₃.𝐏₂ₗ̄' * M₃.𝐔₃' * ∂B * M₃.𝐂₃' * M₃.𝐏₂ᵣ̃'
+        ∂tmpkron += 𝐔₃t * ∂B * 𝐂₃t
+        ∂tmpkron += M₃.𝐏₁ₗ̄' * 𝐔₃t * ∂B * 𝐂₃t * M₃𝐏₁ᵣ̃t
+        ∂tmpkron += M₃.𝐏₂ₗ̄' * 𝐔₃t * ∂B * 𝐂₃t * M₃𝐏₂ᵣ̃t
 
-        ∂kronkron𝐒₁₋╱𝟏ₑ = M₃.𝐔₃' * ∂B * M₃.𝐂₃'
+        ∂kronkron𝐒₁₋╱𝟏ₑ = 𝐔₃t * ∂B * 𝐂₃t
 
         fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂kron𝐒₁₋╱𝟏ₑ, ∂kronkron𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ)
         
@@ -8144,16 +8192,16 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂spinv += ∂A * ∇₁₊'
         
         # ∇₁₊ =  sparse(∇₁[:,1:n₊] * spdiagm(ones(n))[i₊,:])
-        ∂∇₁[:,1:n₊] += ∂∇₁₊ * spdiagm(ones(n))[i₊,:]'
+        ∂∇₁[:,1:n₊] += ∂∇₁₊ * ℒ.I(n)[:,i₊]
 
         # spinv = sparse(inv(∇₁₊𝐒₁➕∇₁₀))
         ∂∇₁₊𝐒₁➕∇₁₀ = -spinv' * ∂spinv * spinv'
 
         # ∇₁₊𝐒₁➕∇₁₀ =  -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.diagm(ones(n))[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
-        ∂∇₁[:,1:n₊] -= ∂∇₁₊𝐒₁➕∇₁₀ * ℒ.diagm(ones(n))[i₋,:]' * 𝐒₁[i₊,1:n₋]'
+        ∂∇₁[:,1:n₊] -= ∂∇₁₊𝐒₁➕∇₁₀ * ℒ.I(n)[:,i₋] * 𝐒₁[i₊,1:n₋]'
         ∂∇₁[:,range(1,n) .+ n₊] -= ∂∇₁₊𝐒₁➕∇₁₀
 
-        ∂𝐒₁[i₊,1:n₋] -= ∇₁[:,1:n₊]' * ∂∇₁₊𝐒₁➕∇₁₀ * ℒ.diagm(ones(n))[i₋,:]'
+        ∂𝐒₁[i₊,1:n₋] -= ∇₁[:,1:n₊]' * ∂∇₁₊𝐒₁➕∇₁₀ * ℒ.I(n)[:,i₋]
 
         # # 𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
         # #                 zeros(n₋ + n + nₑ, nₑ₋)];
@@ -8163,10 +8211,10 @@ function rrule(::typeof(calculate_third_order_solution),
         # # ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ =  [ℒ.I(size(𝐒₁,1))[i₊,:] * 𝐒₁ * 𝐒₁₋╱𝟏ₑ
         # #                     𝐒₁
         # #                     spdiagm(ones(nₑ₋))[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]];
-        ∂𝐒₁ += spdiagm(ones(size(𝐒₁,1)))[:,i₊] * ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[1:length(i₊),:] * 𝐒₁₋╱𝟏ₑ'
+        ∂𝐒₁ += ℒ.I(size(𝐒₁,1))[:,i₊] * ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[1:length(i₊),:] * 𝐒₁₋╱𝟏ₑ'
         ∂𝐒₁ += ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[length(i₊) .+ (1:size(𝐒₁,1)),:]
         
-        ∂𝐒₁₋╱𝟏ₑ += 𝐒₁' * spdiagm(ones(size(𝐒₁,1)))[:,i₊] * ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[1:length(i₊),:]
+        ∂𝐒₁₋╱𝟏ₑ += 𝐒₁' * ℒ.I(size(𝐒₁,1))[:,i₊] * ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋[1:length(i₊),:]
 
         # 𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) spdiagm(ones(nₑ + 1))[1,:] zeros(nₑ + 1, nₑ)];
         ∂𝐒₁[i₋,:] += ∂𝐒₁₋╱𝟏ₑ[1:length(i₋), :]
