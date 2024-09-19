@@ -12,7 +12,7 @@ import Accessors
 import ThreadedSparseArrays
 import Polyester
 using SparseArrays
-
+using LinearAlgebra
 import ForwardDiff
 # import CSV
 # using DataFrames
@@ -105,15 +105,35 @@ Random.seed!(9)
 data = simulate(𝓂, algorithm = algorithm, periods = periods)(oobbss,:,:simulate)
 
 
-get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
+get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, sylvester_algorithm = :bicgstab)
+
+get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, sylvester_algorithm = :gmres)
+
+get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, sylvester_algorithm = :speedmapping)
+
+get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, sylvester_algorithm = :iterative)
+
+get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, sylvester_algorithm = :doubling)
+
 
 timer = TimerOutput()
-get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, timer = timer)
+get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, timer = timer)#, sylvester_algorithm = :gmres)
 timer
 
+# BLAS.set_num_threads(8)
 @benchmark get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
 
-@profview get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)
+@benchmark get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, sylvester_algorithm = :bicgstab)
+
+@benchmark get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, sylvester_algorithm = :doubling)
+
+@benchmark get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, sylvester_algorithm = :gmres)
+
+@benchmark get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, sylvester_algorithm = :iterative)
+
+# @benchmark get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm, sylvester_algorithm = :sylvester)
+
+@profview get_loglikelihood(𝓂, data, 𝓂.parameter_values, algorithm = algorithm)#, sylvester_algorithm = :gmres)
 
 # get_parameters(𝓂, values = true)
 
