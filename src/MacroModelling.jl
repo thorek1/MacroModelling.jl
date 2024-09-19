@@ -1161,7 +1161,7 @@ function compressed_kron³(a::AbstractMatrix{T};
     if a_is_adjoint
         â = copy(a')
         a = sparse(a')
-
+        
         rmask = colmask
         colmask = rowmask
         rowmask = rmask
@@ -7920,7 +7920,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     end # timeit_debug
     end # timeit_debug
-    @timeit_debug timer "3rd Kronecker power" begin
+    @timeit_debug timer "3rd Kronecker power aux" begin
 
     𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), timer = timer)
     𝐗₃ = choose_matrix_format(𝐗₃, density_threshold = 1.0, min_length = 10)
@@ -8029,11 +8029,14 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂∇₁₊ = zero(∇₁₊)
         ∂𝐒₂₋╱𝟎 = zero(𝐒₂₋╱𝟎)
 
+        @timeit_debug timer "Third order solution - pullback" begin
+
+        @timeit_debug timer "Solve sylvester equation" begin
 
         ∂𝐒₃ = ∂𝐒₃_solved[1]
 
         ∂𝐒₃ *= 𝐔₃t
-
+        #  this is very slow. check types
         ∂C, solved = solve_sylvester_equation(At, Bt, ∂𝐒₃, 
                                                 sylvester_algorithm = sylvester_algorithm, 
                                                 # tol = tol,
@@ -8042,10 +8045,16 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ∂C = choose_matrix_format(∂C, density_threshold = 1.0)
 
+        end # timeit_debug
+        @timeit_debug timer "Step 0" begin
+
         ∂A = ∂C * B' * 𝐒₃'
 
         # ∂B = 𝐒₃' * A' * ∂C
         ∂B = choose_matrix_format(𝐒₃' * A' * ∂C, density_threshold = 1.0)
+
+        end # timeit_debug
+        @timeit_debug timer "Step 1" begin
 
         # C = spinv * 𝐗₃
         # ∂𝐗₃ = spinv' * ∂C * M₃.𝐂₃'
@@ -8068,6 +8077,9 @@ function rrule(::typeof(calculate_third_order_solution),
         # tmpkron12 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
         fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₂₋╱𝟎, ∂tmpkron12, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
         
+        end # timeit_debug
+        @timeit_debug timer "Step 2" begin
+        
         # ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏 * M₃.𝐂₃
         #improve this
         # ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * (
@@ -8089,6 +8101,9 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ∂tmpkron10 = ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t
 
+        end # timeit_debug
+        @timeit_debug timer "Step 3" begin
+        
         # tmpkron10 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
         fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, ∂tmpkron10, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
 
@@ -8109,6 +8124,8 @@ function rrule(::typeof(calculate_third_order_solution),
         
         ∂𝐒₂₊╱𝟎 += ∂𝐒₂₊╱𝟎𝛔 * 𝛔t
 
+        end # timeit_debug
+        @timeit_debug timer "Step 4" begin
 
         # out = (𝐔∇₃ * tmpkron22 
         # + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
@@ -8130,13 +8147,24 @@ function rrule(::typeof(calculate_third_order_solution),
         # A_mult_kron_power_3_B!(∂∇₃, ∂𝐗₃, aux') # not a good idea because filling an existing matrix one by one is slow
         # ∂∇₃ += A_mult_kron_power_3_B(∂𝐗₃, aux') # this is slower somehow
         
-        ∂∇₃ += ∂𝐗₃ * compressed_kron³(aux', rowmask = unique(findnz(∂𝐗₃)[2]), timer = timer)
+        end # timeit_debug
+        @timeit_debug timer "Step 5" begin
+            
+        # this is very slow
+        ∂∇₃ += ∂𝐗₃ * compressed_kron³(aux', rowmask = vcat(0,unique(findnz(∂𝐗₃)[2])), timer = timer)
         # ∂∇₃ += ∂𝐗₃ * ℒ.kron(aux', aux', aux')
+        
+        end # timeit_debug
+        @timeit_debug timer "Step 6" begin
+
         ∂kronkronaux = 𝐔∇₃t * ∂𝐗₃ * 𝐂₃t
 
         fill_kron_adjoint!(∂kronaux, ∂aux, ∂kronkronaux, kronaux, aux)
 
         fill_kron_adjoint!(∂aux, ∂aux, ∂kronaux, aux, aux)
+
+        end # timeit_debug
+        @timeit_debug timer "Step 7" begin
 
         # aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
         ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ += M₃.𝐒𝐏' * ∂aux
@@ -8172,6 +8200,9 @@ function rrule(::typeof(calculate_third_order_solution),
         # ∂𝐒₂[i₋,:] += spdiagm(ones(size(𝐒₂,1)))[i₋,:]' * 𝐒₁' * ∂𝐒₂k𝐒₁₋╱𝟏ₑ[1:length(i₋),:]
         ∂𝐒₂╱𝟎 = 𝐒₁' * ∂𝐒₂k𝐒₁₋╱𝟏ₑ
         ∂𝐒₂[i₋,:] += ∂𝐒₂╱𝟎[1:length(i₋),:]
+
+        end # timeit_debug
+        @timeit_debug timer "Step 8" begin
 
         ###
         # B = M₃.𝐔₃ * (tmpkron + M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃ + M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃ + ℒ.kron(𝐒₁₋╱𝟏ₑ, kron𝐒₁₋╱𝟏ₑ)) * M₃.𝐂₃
@@ -8221,6 +8252,9 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # 𝐒₁ = [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]
         ∂𝑺₁ = [∂𝐒₁[:,1:n₋] ∂𝐒₁[:,n₋+2:end]]
+
+        end # timeit_debug
+        end # timeit_debug
 
         return NoTangent(), ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
