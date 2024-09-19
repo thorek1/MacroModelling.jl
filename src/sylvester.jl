@@ -13,7 +13,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     C::AbstractMatrix{Float64};
                                     # init::AbstractMatrix{Float64} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-12,
+                                    tol::AbstractFloat = 1e-14,
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false)
     @timeit_debug timer "Choose matrix formats" begin
