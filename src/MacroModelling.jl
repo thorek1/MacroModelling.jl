@@ -7221,7 +7221,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
-    end #timeit_debug
+    end # timeit_debug
 
     @timeit_debug timer "Invert matrix" begin
 
@@ -7329,7 +7329,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
     ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
-    end #timeit_debug
+    end # timeit_debug
 
     @timeit_debug timer "Invert matrix" begin
 
@@ -7378,7 +7378,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
     ∇₂t = choose_matrix_format(∇₂', density_threshold = 1.0)
 
-    end #timeit_debug
+    end # timeit_debug
 
     function second_order_solution_pullback(∂𝐒₂_solved) 
         @timeit_debug timer "Second order solution - pullback" begin
@@ -7561,7 +7561,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
-    end #timeit_debug
+    end # timeit_debug
     @timeit_debug timer "Invert matrix" begin
 
     spinv = inv(∇₁₊𝐒₁➕∇₁₀)
@@ -7771,7 +7771,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
-    end #timeit_debug
+    end # timeit_debug
     @timeit_debug timer "Invert matrix" begin
 
     spinv = inv(∇₁₊𝐒₁➕∇₁₀)

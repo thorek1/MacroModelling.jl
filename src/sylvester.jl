@@ -234,6 +234,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
+    @timeit_debug timer "Doubling solve" begin
     @timeit_debug timer "Setup buffers" begin
 
     𝐀  = copy(A)    
@@ -250,7 +251,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
 
     iters = max_iter
 
-    end #timeit_debug
+    end # timeit_debug
 
     for i in 1:max_iter
         @timeit_debug timer "Update C" begin
@@ -258,25 +259,25 @@ function solve_sylvester_equation(  A::Matrix{Float64},
         ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
         ℒ.axpy!(1, 𝐂, 𝐂¹)
         # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
-        end #timeit_debug
+        end # timeit_debug
 
         @timeit_debug timer "Square A" begin
         ℒ.mul!(𝐀¹,𝐀,𝐀)
         copy!(𝐀,𝐀¹)
-        end #timeit_debug
+        end # timeit_debug
 
         # 𝐀 = 𝐀^2
         @timeit_debug timer "Square B" begin
         𝐁 = 𝐁^2
         # ℒ.mul!(𝐁¹,𝐁,𝐁)
         # copy!(𝐁,𝐁¹)
-        end #timeit_debug
+        end # timeit_debug
 
 
         # droptol!(𝐀, eps())
         @timeit_debug timer "droptol B" begin
         droptol!(𝐁, eps())
-        end #timeit_debug
+        end # timeit_debug
 
         if i > 10# && i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
@@ -287,7 +288,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
 
         @timeit_debug timer "Copy C" begin
         copy!(𝐂,𝐂¹)
-        end #timeit_debug
+        end # timeit_debug
     end
 
     @timeit_debug timer "Finalise" begin
@@ -301,7 +302,8 @@ function solve_sylvester_equation(  A::Matrix{Float64},
     ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
     reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
-    end #timeit_debug
+    end # timeit_debug
+    end # timeit_debug
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -518,7 +520,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
 
     iters = max_iter
 
-    end #timeit_debug
+    end # timeit_debug
 
     for i in 1:max_iter
         @timeit_debug timer "Update C" begin
@@ -526,16 +528,16 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
         ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
         ℒ.axpy!(1, 𝐂, 𝐂¹)
         # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
-        end #timeit_debug
+        end # timeit_debug
 
         @timeit_debug timer "Square A" begin
         ℒ.mul!(𝐀¹,𝐀,𝐀)
         copy!(𝐀,𝐀¹)
-        end #timeit_debug
+        end # timeit_debug
         @timeit_debug timer "Square B" begin
         ℒ.mul!(𝐁¹,𝐁,𝐁)
         copy!(𝐁,𝐁¹)
-        end #timeit_debug
+        end # timeit_debug
         # 𝐀 = 𝐀^2
         # 𝐁 = 𝐁^2
 
@@ -551,7 +553,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
 
         @timeit_debug timer "Copy C" begin
         copy!(𝐂,𝐂¹)
-        end #timeit_debug
+        end # timeit_debug
     end
 
     @timeit_debug timer "Finalise" begin
@@ -567,7 +569,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
 
     reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
 
-    end #timeit_debug
+    end # timeit_debug
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
