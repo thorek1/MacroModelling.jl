@@ -4693,7 +4693,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
@@ -7622,18 +7622,18 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     end # timeit_debug
     @timeit_debug timer "3rd Kronecker power" begin
 
-    𝐗₃ = A_mult_kron_power_3_B(∇₃, aux)
+    𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+
+    𝐗₃ = A_mult_kron_power_3_B(𝐔∇₃, aux)
 
     end # timeit_debug
     @timeit_debug timer "∇₃" begin   
 
     tmpkron = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
 
-    # 𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
-
     # 𝐗₃ = 𝐔∇₃ * tmpkron + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
     
-    out = ∇₃ * tmpkron + ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
+    out = 𝐔∇₃ * tmpkron + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
     𝐗₃ += out
 
     end # timeit_debug
@@ -7846,7 +7846,9 @@ function rrule(::typeof(calculate_third_order_solution),
     end # timeit_debug
     @timeit_debug timer "3rd Kronecker power" begin
 
-    𝐗₃ = A_mult_kron_power_3_B(∇₃, aux)
+    𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+
+    𝐗₃ = A_mult_kron_power_3_B(𝐔∇₃, aux)
 
     end # timeit_debug
     @timeit_debug timer "∇₃" begin
@@ -7854,7 +7856,7 @@ function rrule(::typeof(calculate_third_order_solution),
     tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
     tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0 * M₂.𝛔)
 
-    out = ∇₃ * tmpkron22 + ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ + ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+    out = 𝐔∇₃ * tmpkron22 + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
     𝐗₃ += out
     
     # 𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
@@ -7970,7 +7972,7 @@ function rrule(::typeof(calculate_third_order_solution),
     function third_order_solution_pullback(∂𝐒₃_solved) 
         ∂∇₁ = zero(∇₁)
         ∂∇₂ = zero(∇₂)
-        ∂∇₃ = zero(∇₃)
+        ∂𝐔∇₃ = zero(𝐔∇₃)
         ∂𝐒₁ = zero(𝐒₁)
         ∂𝐒₂ = zero(𝐒₂)
         ∂spinv = zero(spinv)
@@ -8011,10 +8013,10 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂𝐗₃ = choose_matrix_format(∂𝐗₃, density_threshold = 1.0)
         ∂spinv += ∂C * M₃.𝐂₃' * 𝐗₃'
 
-        # 𝐗₃ = ∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux) 
-        # + ∇₃ * tmpkron22 
-        # + ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
-        # + ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+        # 𝐗₃ = 𝐔∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux) 
+        # + 𝐔∇₃ * tmpkron22 
+        # + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
+        # + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
         # + ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏
         # + ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏
 
@@ -8058,13 +8060,13 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂𝐒₂₊╱𝟎 += ∂𝐒₂₊╱𝟎𝛔 * 𝛔t
 
 
-        # out = ∇₃ * tmpkron22 
-        # + ∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
-        # + ∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
+        # out = 𝐔∇₃ * tmpkron22 
+        # + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
+        # + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
 
-        ∂∇₃ += ∂𝐗₃ * tmpkron22' + ∂𝐗₃ * M₃.𝐏₁ᵣ̃' * tmpkron22' * M₃.𝐏₁ₗ̂' + ∂𝐗₃ * M₃.𝐏₂ᵣ̃' * tmpkron22' * M₃.𝐏₂ₗ̂'
+        ∂𝐔∇₃ += ∂𝐗₃ * tmpkron22' + ∂𝐗₃ * M₃.𝐏₁ᵣ̃' * tmpkron22' * M₃.𝐏₁ₗ̂' + ∂𝐗₃ * M₃.𝐏₂ᵣ̃' * tmpkron22' * M₃.𝐏₂ₗ̂'
 
-        ∂tmpkron22 += ∇₃' * ∂𝐗₃ + M₃.𝐏₁ₗ̂' * ∇₃' * ∂𝐗₃ * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * ∇₃' * ∂𝐗₃ * M₃.𝐏₂ᵣ̃'
+        ∂tmpkron22 += 𝐔∇₃' * ∂𝐗₃ + M₃.𝐏₁ₗ̂' * 𝐔∇₃' * ∂𝐗₃ * M₃.𝐏₁ᵣ̃' + M₃.𝐏₂ₗ̂' * 𝐔∇₃' * ∂𝐗₃ * M₃.𝐏₂ᵣ̃'
 
         # tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
         fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂tmpkron0, ∂tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔)
@@ -8076,9 +8078,11 @@ function rrule(::typeof(calculate_third_order_solution),
         # -∇₃ * ℒ.kron(ℒ.kron(aux, aux), aux)
         # ∂∇₃ += ∂𝐗₃ * ℒ.kron(ℒ.kron(aux', aux'), aux')
         # A_mult_kron_power_3_B!(∂∇₃, ∂𝐗₃, aux') # not a good idea because filling an existing matrix one by one is slow
-        ∂∇₃ += A_mult_kron_power_3_B(∂𝐗₃, aux') # this is slower somehow
-        ∂kronkronaux = ∇₃' * ∂𝐗₃
+        ∂𝐔∇₃ += A_mult_kron_power_3_B(∂𝐗₃, aux') # this is slower somehow
+        ∂kronkronaux = 𝐔∇₃' * ∂𝐗₃
 
+        # 𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
+        ∂∇₃ = ∂𝐔∇₃ * M₃.𝐔∇₃'
 
         # # C = spinv * 𝐗₃
         # # ∂𝐗₃ = spinv' * ∂C * M₃.𝐂₃'

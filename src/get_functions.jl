@@ -1750,7 +1750,7 @@ function get_solution(𝓂::ℳ,
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
         𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, tol = tol)
     
-        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
                 
         𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
         𝓂.solution.perturbation.second_order_auxilliary_matrices, 
@@ -2963,9 +2963,9 @@ function get_loglikelihood(𝓂::ℳ,
     timer::TimerOutput = TimerOutput(),
     verbose::Bool = false)::S where S <: Real
 
-    if algorithm ∈ [:third_order,:pruned_third_order]
-        sylvester_algorithm = :bicgstab
-    end
+    # if algorithm ∈ [:third_order,:pruned_third_order]
+    #     sylvester_algorithm = :bicgstab
+    # end
 
     # TODO: throw error for bounds violations, suggesting this might be due to wrong parameter ordering
     @assert length(parameter_values) == length(𝓂.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, you need to combine the estimated parameters with the other model parameters in one `Vector`. Make sure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
