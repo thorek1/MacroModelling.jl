@@ -596,18 +596,21 @@ end
 
 function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     B::AbstractMatrix{Float64},
-                                    C::AbstractMatrix{Float64},
+                                    C::DenseMatrix{Float64},
                                     ::Val{:bicgstab};
                                     # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-8)
     @timeit_debug timer "Preallocate matrices" begin
-    tmp̄ = collect(C)
-    𝐗 = collect(C)
+    tmp̄ = zero(C)
+    𝐗 = zero(C)
     end # timeit_debug  
-    
+
+    # idxs = findall(abs.(C) .> eps()) # this does not work since the problem is incomplete
+
     function sylvester!(sol,𝐱)
         @timeit_debug timer "Copy1" begin
+        # @inbounds 𝐗[idxs] = 𝐱
         copyto!(𝐗, 𝐱)
         end # timeit_debug
         # 𝐗 = @view reshape(𝐱, size(𝐗))
@@ -620,21 +623,26 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
         # ℒ.axpby!(-1, tmp̄, 1, 𝐗)
         end # timeit_debug
         @timeit_debug timer "Copy2" begin
+        # @inbounds @views copyto!(sol, 𝐗[idxs])
         copyto!(sol, 𝐗)
         end # timeit_debug
         # sol = @view reshape(𝐗, size(sol))
     end
 
-    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
+    # sylvester = LinearOperators.LinearOperator(Float64, length(idxs), length(idxs), false, false, sylvester!)
+    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), false, false, sylvester!)
     
+    # unclear if this helps in most cases
     # # ==== Preconditioner Setup ====
     # # Approximate the diagonal of the Sylvester operator J = A ⊗ B - I
     # # For AXB - X, the diagonal can be approximated as diag(A) * diag(B) - 1
-    # diag_J_matrix = ℒ.diag(A) * ℒ.diag(B)' .- 1.0
-    # diag_J = vec(diag_J_matrix)  # Vector of length 39,270
+    # diag_J_matrix = ℒ.diag(B) * ℒ.diag(A)' .+ 1
+    # diag_J_matrix .+= ℒ.norm(C)
+    # # println(ℒ.norm(C))
+    # diag_J = vec(diag_J_matrix)
 
-    # # To avoid division by zero, set a minimum threshold
-    # diag_J = max.(abs.(diag_J), 1e-12)
+    # # # To avoid division by zero, set a minimum threshold
+    # # diag_J = max.(abs.(diag_J), 1e-6)
 
     # # Compute the inverse of the diagonal preconditioner
     # inv_diag_J = 1.0 ./ diag_J
@@ -642,14 +650,16 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     # # println(length(inv_diag_J))
     # # Define the preconditioner as a LinearOperator
     # function preconditioner!(y, x)
+    #     # ℒ.ldiv!(y, 1e4, x)
     #     # ℒ.mul!(y, inv_diag_J, x)
-    #     @. y = inv_diag_J .* x
+    #     @. y = inv_diag_J * x
     # end
 
-    # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true,true, preconditioner!)
+    # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), false, false, preconditioner!)
 
     @timeit_debug timer "BICGSTAB solve" begin
     # if length(init) == 0
+        # 𝐂, info = Krylov.bicgstab(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
         𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol / 10, atol = tol / 10)#, M = precond)
     # else
     #     𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
@@ -658,6 +668,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     
     @timeit_debug timer "Postprocess" begin
 
+    # @inbounds 𝐗[idxs] = 𝐂
     copyto!(𝐗, 𝐂)
 
     ℒ.mul!(tmp̄, A, 𝐗 * B)
@@ -671,13 +682,14 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     
     end # timeit_debug
     
-    if reached_tol > tol
+    if reached_tol > tol || !isfinite(reached_tol)
         @timeit_debug timer "GMRES refinement" begin
 
         𝐂, info = Krylov.gmres(sylvester, [vec(C);], 
                                 [vec(𝐂);], # start value helps
                                 rtol = tol / 10, atol = tol / 10)#, M = precond)
 
+        # @inbounds 𝐗[idxs] = 𝐂
         copyto!(𝐗, 𝐂)
     
         ℒ.mul!(tmp̄, A, 𝐗 * B)
@@ -702,7 +714,7 @@ end
 
 function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     B::AbstractMatrix{Float64},
-                                    C::AbstractMatrix{Float64},
+                                    C::DenseMatrix{Float64},
                                     ::Val{:gmres};
                                     # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
@@ -731,16 +743,16 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
         # sol = @view reshape(𝐗, size(sol))
     end
 
-    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
+    sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), false, false, sylvester!)
     
     # # ==== Preconditioner Setup ====
-    # # Approximate the diagonal of the Sylvester operator J = A ⊗ B - I
-    # # For AXB - X, the diagonal can be approximated as diag(A) * diag(B) - 1
-    # diag_J_matrix = ℒ.diag(A) * ℒ.diag(B)' .- 1.0
+    # # Approximate the diagonal of the Sylvester operator J = A ⊗ B + I
+    # # For AXB - X, the diagonal can be approximated as diag(A) * diag(B) + 1
+    # diag_J_matrix = ℒ.diag(B) * ℒ.diag(A)' .+ 1.0
     # diag_J = vec(diag_J_matrix)  # Vector of length 39,270
 
-    # # To avoid division by zero, set a minimum threshold
-    # diag_J = max.(abs.(diag_J), 1e-12)
+    # # # To avoid division by zero, set a minimum threshold
+    # # diag_J = max.(abs.(diag_J), 1e-12)
 
     # # Compute the inverse of the diagonal preconditioner
     # inv_diag_J = 1.0 ./ diag_J
@@ -752,11 +764,11 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     #     @. y = inv_diag_J .* x
     # end
 
-    # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true,true, preconditioner!)
+    # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), false, false, preconditioner!)
 
     @timeit_debug timer "GMRES solve" begin
     # if length(init) == 0
-        𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol / 10)#, M = precond)
+        𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol / 10, atol = tol / 10)#, M = precond)
     # else
     #     𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)#, restart = true, M = precond)
     # end
