@@ -4722,7 +4722,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂, timer = timer)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
@@ -6592,7 +6592,8 @@ function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
 end
 
 
-function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ) where {M,N}
+function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ; timer::TimerOutput = TimerOutput()) where {M,N}
+    @timeit_debug timer "3rd order derivatives" begin
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
@@ -6629,6 +6630,8 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
 
     # lk = ReentrantLock()
 
+    @timeit_debug timer "Loop" begin
+
     Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives[1]
         out = f(X)
         
@@ -6642,8 +6645,15 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
         # end
     end
 
+    end # timeit_debug
+
+    @timeit_debug timer "Allocation" begin
+
     Accessors.@reset 𝓂.model_third_order_derivatives[2].nzval = vals
     
+    end # timeit_debug
+    end # timeit_debug
+
     return 𝓂.model_third_order_derivatives[2]# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 
     # vals = M[]
@@ -6664,22 +6674,33 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
 end
 
 
-function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_pars, 𝓂)
-    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)
+function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_pars, 𝓂; timer::TimerOutput = TimerOutput())
+    @timeit_debug timer "3rd order derivatives - forward" begin
+    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂, timer = timer)
+    end # timeit_debug
 
     function calculate_third_order_derivatives_pullback(∂∇₁)
+        @timeit_debug timer "3rd order derivatives - pullback" begin
         X = [parameters; SS_and_pars]
 
         vals = zeros(Float64, length(𝓂.model_third_order_derivatives_SS_and_pars_vars[1]))
-
+        
+        @timeit_debug timer "Loop" begin
+    
         Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives_SS_and_pars_vars[1]
             out = f(X)
             
             @inbounds vals[out[2]] = out[1]
         end
     
+        end # timeit_debug
+        @timeit_debug timer "Allocation" begin
+
         Accessors.@reset 𝓂.model_third_order_derivatives_SS_and_pars_vars[2].nzval = vals
         
+        end # timeit_debug
+        @timeit_debug timer "Post process" begin
+
         analytical_third_order_derivatives_SS_and_pars_vars = 𝓂.model_third_order_derivatives_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
         cols_unique = unique(findnz(analytical_third_order_derivatives_SS_and_pars_vars)[2])
@@ -6687,6 +6708,9 @@ function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_p
         v∂∇₁ = ∂∇₁[cols_unique]
 
         ∂parameters_and_SS_and_pars = analytical_third_order_derivatives_SS_and_pars_vars[:,cols_unique] * v∂∇₁
+
+        end # timeit_debug
+        end # timeit_debug
 
         return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
     end
@@ -8049,7 +8073,7 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂𝐒₃ = ∂𝐒₃_solved[1]
 
         ∂𝐒₃ *= 𝐔₃t
-        #  this is very slow. check types
+        
         ∂C, solved = solve_sylvester_equation(At, Bt, ∂𝐒₃, 
                                                 sylvester_algorithm = sylvester_algorithm, 
                                                 # tol = tol,
@@ -11946,6 +11970,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 filter_algorithm::Symbol = :LagrangeNewton)
+    @timeit_debug timer "Inversion filter - forward" begin
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -12102,6 +12127,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
 
+    @timeit_debug timer "Loop" begin
     for i in axes(data_in_deviations,2)
         state¹⁻ = state₁
 
@@ -12184,7 +12210,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         state₁, state₂, state₃ = [𝐒⁻¹ * aug_state₁[i], 𝐒⁻¹ * aug_state₂[i] + 𝐒⁻² * kron_aug_state₁[i] / 2, 𝐒⁻¹ * aug_state₃[i] + 𝐒⁻² * ℒ.kron(aug_state₁̂[i], aug_state₂[i]) + 𝐒⁻³ * ℒ.kron(kron_aug_state₁[i], aug_state₁[i]) / 6]
     end
-    
+    end # timeit_debug
+
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
     llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 
@@ -12194,7 +12221,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     ∂data_in_deviations = similar(data_in_deviations)
 
+    end # timeit_debug
+
     function inversion_filter_loglikelihood_pullback(∂llh)
+        @timeit_debug timer "Inversion filter - pullback" begin
         ∂𝐒ⁱ = zero(𝐒ⁱ)
         ∂𝐒²ᵉ = zero(𝐒²ᵉ)
         ∂𝐒ⁱ³ᵉ = zero(𝐒ⁱ³ᵉ)
@@ -12222,6 +12252,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         ∂kronstate¹⁻_vol = zeros(length(state¹⁻_vol)^2)
         ∂state = [zeros(T.nPast_not_future_and_mixed), zeros(T.nPast_not_future_and_mixed), zeros(T.nPast_not_future_and_mixed)]
 
+        @timeit_debug timer "Loop" begin
         for i in reverse(axes(data_in_deviations,2))
             # state₁ = 𝐒⁻¹ * aug_state₁[i]
             ∂𝐒⁻¹ += ∂state[1] * aug_state₁[i]'
@@ -12424,6 +12455,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             # state¹⁻_vol = vcat(state¹⁻, 1)
             ∂state[1] += ∂state¹⁻_vol[1:end-1]
         end
+        end # timeit_debug
 
         ∂𝐒 = [copy(𝐒[1]) * 0, copy(𝐒[2]) * 0, copy(𝐒[3]) * 0]
 
@@ -12452,6 +12484,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         ∂state[1] = ℒ.I(T.nVars)[:,T.past_not_future_and_mixed_idx] * ∂state[1] * ∂llh
         ∂state[2] = ℒ.I(T.nVars)[:,T.past_not_future_and_mixed_idx] * ∂state[2] * ∂llh
         ∂state[3] = ℒ.I(T.nVars)[:,T.past_not_future_and_mixed_idx] * ∂state[3] * ∂llh
+
+        end # timeit_debug
 
         return NoTangent(), NoTangent(), ∂state, ∂𝐒, ∂data_in_deviations * ∂llh, NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
     end

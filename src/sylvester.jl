@@ -8,20 +8,28 @@
 
 # solves: A * X * B + C = X for X
 
-function solve_sylvester_equation(A::AbstractMatrix{Float64},
-                                    B::AbstractMatrix{Float64},
-                                    C::AbstractMatrix{Float64};
+function solve_sylvester_equation(A::M,
+                                    B::N,
+                                    C::O;
                                     # init::AbstractMatrix{Float64} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
                                     tol::AbstractFloat = 1e-14,
                                     timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false)
+                                    verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
     @timeit_debug timer "Choose matrix formats" begin
 
-    if sylvester_algorithm ≠ :sylvester
-        A = choose_matrix_format(A)# |> sparse
-
+    if sylvester_algorithm == :sylvester
+        B = collect(B)
+    else
         B = choose_matrix_format(B)# |> collect
+    end
+
+    if sylvester_algorithm ∈ [:bicgstab, :gmres, :sylvester]
+        A = collect(A)
+
+        C = collect(C)
+    else
+        A = choose_matrix_format(A)# |> sparse
 
         C = choose_matrix_format(C)# |> sparse
     end
@@ -41,19 +49,21 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
         println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
 
+    X = choose_matrix_format(X)# |> sparse
+
     return X, solved
 end
 
 
 function rrule(::typeof(solve_sylvester_equation),
-    A::AbstractMatrix{Float64},
-    B::AbstractMatrix{Float64},
-    C::AbstractMatrix{Float64};
+    A::M,
+    B::N,
+    C::O;
     # init::AbstractMatrix{Float64},
     sylvester_algorithm::Symbol = :doubling,
     tol::AbstractFloat = 1e-12,
     timer::TimerOutput = TimerOutput(),
-    verbose::Bool = false)
+    verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
 
     P, solved = solve_sylvester_equation(A, B, C, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
 
