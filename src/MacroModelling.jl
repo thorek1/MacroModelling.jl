@@ -7992,57 +7992,54 @@ function rrule(::typeof(calculate_third_order_solution),
 
     @timeit_debug timer "Preallocate for pullback" begin
 
-    # At = choose_matrix_format(A')#, density_threshold = 1.0)
+    At = choose_matrix_format(A', density_threshold = 1.0)
 
-    # Bt = choose_matrix_format(B')#, density_threshold = 1.0)
+    Bt = choose_matrix_format(B', density_threshold = 1.0)
     
-    𝐂₃t = choose_matrix_format(M₃.𝐂₃')#, density_threshold = 1.0)
+    𝐂₃t = choose_matrix_format(M₃.𝐂₃', density_threshold = 1.0)
 
-    𝐔₃t = choose_matrix_format(M₃.𝐔₃')#, density_threshold = 1.0)
+    𝐔₃t = choose_matrix_format(M₃.𝐔₃', density_threshold = 1.0)
 
-    𝐏t = choose_matrix_format(M₃.𝐏')#, density_threshold = 1.0)
+    𝐏t = choose_matrix_format(M₃.𝐏', density_threshold = 1.0)
 
-    𝐏₁ᵣt = choose_matrix_format(M₃.𝐏₁ᵣ')#, density_threshold = 1.0)
+    𝐏₁ᵣt = choose_matrix_format(M₃.𝐏₁ᵣ', density_threshold = 1.0)
     
-    𝐏₁ₗt = choose_matrix_format(M₃.𝐏₁ₗ')#, density_threshold = 1.0)
+    𝐏₁ₗt = choose_matrix_format(M₃.𝐏₁ₗ', density_threshold = 1.0)
 
-    ∇₂t = choose_matrix_format(∇₂')#, density_threshold = 1.0)
+    ∇₂t = choose_matrix_format(∇₂', density_threshold = 1.0)
 
-    tmpkron1t = choose_matrix_format(tmpkron1')#, density_threshold = 1.0)
+    tmpkron1t = choose_matrix_format(tmpkron1', density_threshold = 1.0)
     
-    tmpkron2t = choose_matrix_format(tmpkron2')#, density_threshold = 1.0)
+    tmpkron2t = choose_matrix_format(tmpkron2', density_threshold = 1.0)
     
-    tmpkron22t = choose_matrix_format(tmpkron22')#, density_threshold = 1.0)
+    tmpkron22t = choose_matrix_format(tmpkron22', density_threshold = 1.0)
     
-    tmpkron12t = choose_matrix_format(tmpkron12')#, density_threshold = 1.0)
+    tmpkron12t = choose_matrix_format(tmpkron12', density_threshold = 1.0)
     
-    M₃𝐔∇₃t = choose_matrix_format(M₃.𝐔∇₃')#, density_threshold = 1.0)
+    M₃𝐔∇₃t = choose_matrix_format(M₃.𝐔∇₃', density_threshold = 1.0)
     
-    𝐔∇₃t = choose_matrix_format(𝐔∇₃')#, density_threshold = 1.0)
+    𝐔∇₃t = choose_matrix_format(𝐔∇₃', density_threshold = 1.0)
     
-    𝐒₂t = choose_matrix_format(𝐒₂')#, density_threshold = 1.0)
+    𝐒₂t = choose_matrix_format(𝐒₂', density_threshold = 1.0)
     
-    M₃𝐏₂ₗ̂t = choose_matrix_format(M₃.𝐏₂ₗ̂')#, density_threshold = 1.0)
+    M₃𝐏₂ₗ̂t = choose_matrix_format(M₃.𝐏₂ₗ̂', density_threshold = 1.0)
     
-    M₃𝐏₂ᵣ̃t = choose_matrix_format(M₃.𝐏₂ᵣ̃')#, density_threshold = 1.0)
+    M₃𝐏₂ᵣ̃t = choose_matrix_format(M₃.𝐏₂ᵣ̃', density_threshold = 1.0)
     
-    M₃𝐏₁ᵣ̃t = choose_matrix_format(M₃.𝐏₁ᵣ̃')#, density_threshold = 1.0)
+    M₃𝐏₁ᵣ̃t = choose_matrix_format(M₃.𝐏₁ᵣ̃', density_threshold = 1.0)
     
-    M₃𝐏₁ₗ̂t = choose_matrix_format(M₃.𝐏₁ₗ̂')#, density_threshold = 1.0)
+    M₃𝐏₁ₗ̂t = choose_matrix_format(M₃.𝐏₁ₗ̂', density_threshold = 1.0)
     
     kronaux = ℒ.kron(aux, aux)
     
-    𝛔t = choose_matrix_format(M₂.𝛔')#, density_threshold = 1.0)
+    𝛔t = choose_matrix_format(M₂.𝛔', density_threshold = 1.0)
 
     ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t = choose_matrix_format(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋')
     
     ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎')
     
-    @timeit_debug timer "Preallocate tmpkron10t" begin
-
     tmpkron10t = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t)
 
-    end # timeit_debug
     end # timeit_debug
     end # timeit_debug
     
@@ -8077,7 +8074,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ∂𝐒₃ *= 𝐔₃t
         
-        ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₃, 
+        ∂C, solved = solve_sylvester_equation(At, Bt, ∂𝐒₃, 
                                                 sylvester_algorithm = sylvester_algorithm, 
                                                 # tol = tol,
                                                 timer = timer,
@@ -8130,7 +8127,7 @@ function rrule(::typeof(calculate_third_order_solution),
         #  )'
 
         ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron10t
-        # ∂∇₂ += mat_mult_kron(∂𝐗₃ * 𝐂₃t * 𝐏t, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t) # takes too long
+        # ∂∇₂ += mat_mult_kron(∂𝐗₃ * 𝐂₃t * 𝐏t, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎t)
         # ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * (tmpkron1 * tmpkron2)'
         ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron2t * tmpkron1t
 
@@ -8150,16 +8147,22 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂tmpkron11 = ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t
 
         ∂tmpkron1 = ∂tmpkron11 * tmpkron2t + ∂tmpkron11 * 𝐏₁ᵣt * tmpkron2t * 𝐏₁ₗt
-        #improve this
-        ∂tmpkron2 = tmpkron1t * ∂tmpkron11# too long
 
-        ∂tmpkron2 += 𝐏₁ₗt * ∂tmpkron2 * 𝐏₁ᵣt # this gets huge
+        ∂tmpkron2 = tmpkron1t * ∂tmpkron11
+
+        ∂tmpkron2 += 𝐏₁ₗt * ∂tmpkron2 * 𝐏₁ᵣt
+
+        # ∂tmpkron1 = ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron2t + ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t * 𝐏₁ᵣt * tmpkron2t * 𝐏₁ₗt
+        # #improve this
+        # ∂tmpkron2 = tmpkron1t * ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t + 𝐏₁ₗt * tmpkron1t * ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t * 𝐏₁ᵣt
+
+        # ∂tmpkron11 = ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t
 
         # tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
         fill_kron_adjoint!(∂𝐒₁₊╱𝟎, ∂𝐒₂₊╱𝟎, ∂tmpkron1, 𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
 
         # tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
-        fill_kron_adjoint_∂B!(∂tmpkron2, ∂𝐒₁₋╱𝟏ₑ, M₂.𝛔) # too long
+        fill_kron_adjoint_∂B!(∂tmpkron2, ∂𝐒₁₋╱𝟏ₑ, M₂.𝛔)
 
         # tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎𝛔)
         fill_kron_adjoint!(∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ∂𝐒₂₊╱𝟎𝛔, ∂tmpkron11, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎𝛔)
