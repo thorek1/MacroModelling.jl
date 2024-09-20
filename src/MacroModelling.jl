@@ -1173,11 +1173,18 @@ function compressed_kron³(a::AbstractMatrix{T};
     end
     # Get the number of rows and columns
     n_rows, n_cols = size(a)
-        
+    
     # Calculate the number of unique triplet indices for rows and columns
     m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6    # For rows: i ≤ j ≤ k
     m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6    # For columns: i ≤ j ≤ k
 
+    if rowmask == Int[0] || colmask == Int[0]
+        if a_is_adjoint
+            return sparse(Int[], Int[], T[], m3_cols, m3_rows)
+        else
+            return sparse(Int[], Int[], T[], m3_rows, m3_cols)
+        end
+    end
     # Initialize arrays to collect indices and values
     # Estimate an upper bound for non-zero entries to preallocate arrays
     lennz = a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
