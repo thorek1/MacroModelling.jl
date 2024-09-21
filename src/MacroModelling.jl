@@ -10801,6 +10801,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                                 # max_iter = 100
                                 )
     
+        if !matched
+            return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        end
+
         jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x[i])), x[i])
     
         λ[i] = jacc[i]' \ x[i] * 2
@@ -11400,6 +11404,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                                 # max_iter = 100
                                 )
 
+        if !matched
+            return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        end
+        
         ℒ.kron!(kron_buffer2, ℒ.I(T.nExo), x[i])
 
         ℒ.mul!(jacc[i], 𝐒ⁱ²ᵉ, kron_buffer2)
@@ -12182,6 +12190,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                                 # max_iter = 100
                                 )
     
+        if !matched
+            return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        end 
+        
         jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ[i] * ℒ.kron(ℒ.I(T.nExo), x[i]) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), kronxx[i])
     
         λ[i] = jacc[i]' \ x[i] * 2
@@ -12988,6 +13000,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                                 # max_iter = 100
                                 )
     
+        if !matched
+            return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        end
+
         jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ[i] * ℒ.kron(ℒ.I(T.nExo), x[i]) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), kronxx[i])
     
         λ[i] = jacc[i]' \ x[i] * 2
