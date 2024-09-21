@@ -4696,7 +4696,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         sylvester_algorithm::Symbol = :bicgstab, 
                                                         timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose, timer = timer)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -4718,7 +4718,8 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                     T = 𝓂.timings, tol = tol, 
                                                     # sylvester_algorithm = sylvester_algorithm, 
                                                     sylvester_algorithm = :doubling, # doubling will always be faster here
-                                                    verbose= verbose, timer = timer)
+                                                    verbose= verbose, 
+                                                    timer = timer)
     if !solved2
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
@@ -9523,14 +9524,16 @@ function rrule(::typeof(get_NSSS_and_parameters),
             jvp[i,:] = JVP[indexin([v], unknowns),:]
         end
     end
+
+    end # timeit_debug
+    end # timeit_debug
+
     # try block-gmres here
     function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
         # println(∂SS_and_pars)
         return NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
     end
 
-    end # timeit_debug
-    end # timeit_debug
 
     return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
 end
@@ -10530,6 +10533,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     filter_algorithm::Symbol = :LagrangeNewton)
+    @timeit_debug timer "Pruned 2nd - Inversion filter" begin
+    @timeit_debug timer "Preallocation" begin
+             
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -10583,6 +10589,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
 
     kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
 
+    end # timeit_debug
+    @timeit_debug timer "Loop" begin
+
     for i in axes(data_in_deviations, 2)
         state¹⁻ = state₁
 
@@ -10606,6 +10615,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
         
         init_guess = @ignore_derivatives zeros(size(𝐒ⁱ, 2))
 
+        @timeit_debug timer "Find shocks" begin
         x, matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kron_buffer,
@@ -10616,6 +10626,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                 shock_independent,
                                 # max_iter = 100
                                 )
+        end # timeit_debug
                      
         # if matched println("$filter_algorithm: $matched; current x: $x") end      
         # if !matched
@@ -10691,6 +10702,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
         state₁, state₂ = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
     end
 
+    end # timeit_debug
+    end # timeit_debug
+
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf and Fair and Taylor (1983)
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
@@ -10709,7 +10723,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 presample_periods::Int = 0,
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
-        
     @timeit_debug timer "Preallocation" begin
                     
     precision_factor = 1.0
@@ -10799,7 +10812,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     kronxλ = [kronxλ_tmp for _ in 1:size(data_in_deviations,2)]
     
     end # timeit_debug
-      
     @timeit_debug timer "Main loop" begin
 
     for i in axes(data_in_deviations,2)
@@ -10821,6 +10833,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
         init_guess = zeros(size(𝐒ⁱ, 2))
     
+        @timeit_debug timer "Find shocks" begin
         x[i], matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kronxx[i],
@@ -10831,6 +10844,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                                 shock_independent,
                                 # max_iter = 100
                                 )
+        end # timeit_debug
     
         if !matched
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
@@ -10867,7 +10881,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     end
     
     end # timeit_debug
-      
     end # timeit_debug
 
     ∂data_in_deviations = similar(data_in_deviations)
@@ -10888,7 +10901,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     function inversion_filter_loglikelihood_pullback(∂llh) 
         @timeit_debug timer "Inversion filter pruned 2nd - pullback" begin
-
         @timeit_debug timer "Preallocation" begin
         
         ∂𝐒ⁱ = zero(𝐒ⁱ)
@@ -10910,7 +10922,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         ∂state = [zeros(T.nPast_not_future_and_mixed), zeros(T.nPast_not_future_and_mixed)]
 
         end # timeit_debug
-        
         @timeit_debug timer "Main loop" begin
         
         for i in reverse(axes(data_in_deviations,2))
@@ -11054,7 +11065,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         end
 
         end # timeit_debug
-        
         @timeit_debug timer "Post allocation" begin
 
         ∂𝐒 = [zero(𝐒[1]), zeros(size(𝐒[2]))]
@@ -11083,7 +11093,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         ∂state[2] = ℒ.I(T.nVars)[:,T.past_not_future_and_mixed_idx] * ∂state[2] * ∂llh
 
         end # timeit_debug
-        
         end # timeit_debug
 
         return NoTangent(), NoTangent(), ∂state, ∂𝐒, ∂data_in_deviations, NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
@@ -11108,6 +11117,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
+    @timeit_debug timer "2nd - Inversion filter" begin
+    @timeit_debug timer "Preallocation" begin
+
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -11178,6 +11190,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
 
     init_guess = zeros(size(𝐒ⁱ, 2))
 
+    end # timeit_debug
+    @timeit_debug timer "Loop" begin
+
     for i in axes(data_in_deviations,2)
         state¹⁻ = state#[T.past_not_future_and_mixed_idx]
 
@@ -11199,6 +11214,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
 
         init_guess *= 0
 
+        @timeit_debug timer "Find shocks" begin
         x, matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kron_buffer,
@@ -11208,8 +11224,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                 𝐒ⁱ²ᵉ,
                                 shock_independent,
                                 # max_iter = 100
-                                )
-                                
+                                )  
+        end # timeit_debug
+
         # if !matched
         #     x, matched = find_shocks(Val(:COBYLA), 
         #                             zeros(size(𝐒ⁱ, 2)),
@@ -11294,6 +11311,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
         ℒ.mul!(state, 𝐒⁻², kronaug_state, 1/2 ,1)
     end
 
+    end # timeit_debug
+    end # timeit_debug
+
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
@@ -11311,6 +11331,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
+    @timeit_debug timer "Inversion filter 2nd - forward" begin
+        
+    @timeit_debug timer "Preallocation" begin
+
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -11407,6 +11431,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
     init_guess = zeros(size(𝐒ⁱ, 2))
 
+    end # timeit_debug
+    @timeit_debug timer "Main loop" begin
+
     @inbounds for i in axes(data_in_deviations,2)
         copyto!(aug_state[i], 1, state¹⁻, 1)
 
@@ -11424,6 +11451,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
         init_guess *= 0
     
+        @timeit_debug timer "Find shocks" begin
         x[i], matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kronxx[i],
@@ -11434,6 +11462,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                                 shock_independent,
                                 # max_iter = 100
                                 )
+        end # timeit_debug
 
         if !matched
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
@@ -11493,6 +11522,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         # stt = 𝐒⁻¹ * aug_state[i] + 𝐒⁻² * ℒ.kron(aug_state[i], aug_state[i]) / 2
     end
     
+    end # timeit_debug
+    end # timeit_debug
+
     ∂aug_state = zero(aug_state[1])
 
     ∂kronaug_state = zero(kronaug_state[1])
@@ -11506,6 +11538,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     ∂data_in_deviations = similar(data_in_deviations)
 
     function inversion_filter_loglikelihood_pullback(∂llh)
+        @timeit_debug timer "Inversion filter 2nd - pullback" begin
+
+        @timeit_debug timer "Preallocation" begin
+
         ∂𝐒ⁱ = zero(𝐒ⁱ)
         ∂𝐒ⁱ²ᵉ = zero(𝐒ⁱ²ᵉ)
         ∂𝐒ⁱ²ᵉtmp = zeros(T.nExo, T.nExo * length(λ[1]))    
@@ -11523,6 +11559,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         ∂state¹⁻_vol = zero(state¹⁻_vol)
         # ∂x = zero(x[1])
         ∂state = zeros(T.nPast_not_future_and_mixed)
+
+        end # timeit_debug
+        @timeit_debug timer "Main loop" begin
 
         for i in reverse(axes(data_in_deviations,2))
             # stt = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2
@@ -11640,6 +11679,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂state += ∂state¹⁻_vol[1:end-1]
         end
 
+        end # timeit_debug
+        @timeit_debug timer "Post allocation" begin
+
         ∂𝐒 = [copy(𝐒[1]) * 0, copy(𝐒[2]) * 0]
 
         ∂𝐒[1][cond_var_idx,end-T.nExo+1:end] += ∂𝐒¹ᵉ
@@ -11656,6 +11698,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         return NoTangent(), NoTangent(),  ℒ.I(T.nVars)[:,T.past_not_future_and_mixed_idx] * ∂state * ∂llh, ∂𝐒, ∂data_in_deviations * ∂llh, NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
     end
+
+    end # timeit_debug
+    end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
     llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
@@ -11675,7 +11720,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     timer::TimerOutput = TimerOutput(), 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    filter_algorithm::Symbol = :LagrangeNewton)
+                                                    filter_algorithm::Symbol = :LagrangeNewton) 
+    @timeit_debug timer "Inversion filter" begin
+
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -11782,6 +11829,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
     kron_buffer4 = ℒ.kron(ℒ.kron(J, J), zeros(T.nExo))
 
+    @timeit_debug timer "Loop" begin
+
     for i in axes(data_in_deviations,2)
         state¹⁻ = state[1]
 
@@ -11828,6 +11877,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         #                         )
         #                         println(x²)
 
+        @timeit_debug timer "Find shocks" begin
         x, matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kron_buffer,
@@ -11842,6 +11892,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                 shock_independent,
                                 # max_iter = 200
                                 )
+        end # timeit_debug
                                 
                                 # println(x)
         # println("$filter_algorithm: $matched; current x: $x, $(ℒ.norm(x))")
@@ -11998,6 +12049,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         state = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * kron_aug_state₁ / 2, 𝐒⁻¹ * aug_state₃ + 𝐒⁻² * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒⁻³ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
         # println(sum(state))
     end
+
+    end # timeit_debug
+    end # timeit_debug
 
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
@@ -12206,6 +12260,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         init_guess = zeros(size(𝐒ⁱ, 2))
     
+        @timeit_debug timer "Find shocks" begin
         x[i], matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kronxx[i],
@@ -12220,7 +12275,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                                 shock_independent,
                                 # max_iter = 100
                                 )
-    
+        end # timeit_debug
+
         if !matched
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end 
@@ -12558,6 +12614,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     filter_algorithm::Symbol = :LagrangeNewton)
+    @timeit_debug timer "3rd - Inversion filter" begin
+    @timeit_debug timer "Preallocation" begin
+
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -12657,6 +12716,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
 
     II = sparse(ℒ.I(T.nExo^2))
 
+    end # timeit_debug
+    @timeit_debug timer "Loop" begin
+    
     for i in axes(data_in_deviations,2)
         state¹⁻ = state
 
@@ -12680,6 +12742,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
 
         init_guess = zeros(size(𝐒ⁱ, 2))
 
+        @timeit_debug timer "Find shocks" begin
         x, matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kron_buffer,
@@ -12694,6 +12757,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                 shock_independent,
                                 # max_iter = 200
                                 )
+        end # timeit_debug
                                 
         # println("$filter_algorithm: $matched; current x: $x, $(ℒ.norm(x))")
         # if !matched
@@ -12845,6 +12909,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
         # state = state_update(state, x)
     end
 
+    end # timeit_debug
+    end # timeit_debug
+
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
@@ -12863,6 +12930,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 filter_algorithm::Symbol = :LagrangeNewton)
+    @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
+    @timeit_debug timer "Preallocation" begin
+
     precision_factor = 1.0
 
     n_obs = size(data_in_deviations,2)
@@ -12997,6 +13067,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
 
+    end # timeit_debug
+    @timeit_debug timer "Main loop" begin
+
     for i in axes(data_in_deviations,2)
         state¹⁻ = stt
     
@@ -13016,6 +13089,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         init_guess = zeros(size(𝐒ⁱ, 2))
     
+        @timeit_debug timer "Find shocks" begin
         x[i], matched = find_shocks(Val(filter_algorithm), 
                                 init_guess,
                                 kronxx[i],
@@ -13030,6 +13104,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                                 shock_independent,
                                 # max_iter = 100
                                 )
+        end # timeit_debug
     
         if !matched
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
@@ -13070,6 +13145,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     # See: https://pcubaborda.net/documents/CGIZ-final.pdf
     llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 
+    end # timeit_debug
+    end # timeit_debug
 
     ∂state = similar(state)
 
@@ -13078,6 +13155,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     ∂data_in_deviations = similar(data_in_deviations)
 
     function inversion_filter_loglikelihood_pullback(∂llh)
+        @timeit_debug timer "Inversion filter pruned 2nd - pullback" begin
+        @timeit_debug timer "Preallocation" begin
+
         ∂𝐒ⁱ = zero(𝐒ⁱ)
         ∂𝐒²ᵉ = zero(𝐒²ᵉ)
         ∂𝐒ⁱ³ᵉ = zero(𝐒ⁱ³ᵉ)
@@ -13101,6 +13181,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         ∂kronstate¹⁻_vol = zeros(length(state¹⁻_vol)^2)
         ∂state = zeros(T.nPast_not_future_and_mixed)
 
+        end # timeit_debug
+        @timeit_debug timer "Main loop" begin
+        
         for i in reverse(axes(data_in_deviations,2))
             # stt = 𝐒⁻¹ * aug_state[i] + 𝐒⁻² * ℒ.kron(aug_state[i], aug_state[i]) / 2 + 𝐒⁻³ * ℒ.kron(ℒ.kron(aug_state[i],aug_state[i]),aug_state[i]) / 6
             ∂𝐒⁻¹ += ∂state * aug_state[i]'
@@ -13247,6 +13330,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂state += ∂state¹⁻_vol[1:end-1]
         end
 
+        end # timeit_debug
+        @timeit_debug timer "Post allocation" begin
+
         ∂𝐒 = [copy(𝐒[1]) * 0, copy(𝐒[2]) * 0, copy(𝐒[3]) * 0]
 
         ∂𝐒[1][cond_var_idx,end-T.nExo+1:end] += ∂𝐒¹ᵉ
@@ -13270,6 +13356,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         return NoTangent(), NoTangent(), ℒ.I(T.nVars)[:,T.past_not_future_and_mixed_idx] * ∂state * ∂llh, ∂𝐒, ∂data_in_deviations * ∂llh, NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
     end
+
+    end # timeit_debug
+    end # timeit_debug
 
     return llh, inversion_filter_loglikelihood_pullback
 end
