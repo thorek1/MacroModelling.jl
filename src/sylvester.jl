@@ -19,26 +19,26 @@ function solve_sylvester_equation(A::M,
     @timeit_debug timer "Choose matrix formats" begin
 
     if sylvester_algorithm == :sylvester
-        B = collect(B)
+        b = collect(B)
     else
-        B = choose_matrix_format(B)# |> collect
+        b = choose_matrix_format(B)# |> collect
     end
 
     if sylvester_algorithm ∈ [:bicgstab, :gmres, :sylvester]
-        A = collect(A)
+        a = collect(A)
 
-        C = collect(C)
+        c = collect(C)
     else
-        A = choose_matrix_format(A)# |> sparse
+        a = choose_matrix_format(A)# |> sparse
 
-        C = choose_matrix_format(C)# |> sparse
+        c = choose_matrix_format(C)# |> sparse
     end
     
     end # timeit_debug
                                     
     @timeit_debug timer "Solve sylvester equation" begin
 
-    X, solved, i, reached_tol = solve_sylvester_equation(A, B, C, Val(sylvester_algorithm), 
+    x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, Val(sylvester_algorithm), 
                                                         # init = init, 
                                                         tol = tol, 
                                                         timer = timer)
@@ -49,7 +49,7 @@ function solve_sylvester_equation(A::M,
         println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
 
-    X = choose_matrix_format(X)# |> sparse
+    X = choose_matrix_format(x)# |> sparse
 
     return X, solved
 end
