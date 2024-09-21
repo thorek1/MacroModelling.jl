@@ -4356,7 +4356,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     # @timeit_debug timer "Calculate NSSS" begin
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose, timer = timer)
 
     # end # timeit_debug
 
@@ -4394,7 +4394,8 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                     T = 𝓂.timings, 
                                                     # sylvester_algorithm = sylvester_algorithm, 
                                                     sylvester_algorithm = :doubling, # hard code doubling
-                                                    verbose = verbose, timer = timer)
+                                                    verbose = verbose, 
+                                                    timer = timer)
 
     # end # timeit_debug
 
@@ -9397,17 +9398,34 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     timer = timer)
 end
 
-function get_NSSS_and_parameters(𝓂::ℳ, parameter_values::Vector{S}; verbose::Bool = false, tol::AbstractFloat = 1e-12) where S <: Float64
+function get_NSSS_and_parameters(𝓂::ℳ, 
+                                    parameter_values::Vector{S}; 
+                                    verbose::Bool = false, 
+                                    timer::TimerOutput = TimerOutput(),
+                                    tol::AbstractFloat = 1e-12) where S <: Float64
+    @timeit_debug timer "Calculate NSSS" begin
     𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+    end # timeit_debug
 end
 
 
-function rrule(::typeof(get_NSSS_and_parameters), 𝓂, parameter_values; verbose = false,  tol::AbstractFloat = 1e-12)
+function rrule(::typeof(get_NSSS_and_parameters), 
+                𝓂, 
+                parameter_values; 
+                verbose = false,  
+                timer::TimerOutput = TimerOutput(),
+                tol::AbstractFloat = 1e-12)
+    @timeit_debug timer "Calculate NSSS - forward" begin
+
     SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+
+    end # timeit_debug
 
     if solution_error > tol || isnan(solution_error)
         return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
+
+    @timeit_debug timer "Calculate NSSS - pullback" begin
 
     SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
         
@@ -9432,6 +9450,8 @@ function rrule(::typeof(get_NSSS_and_parameters), 𝓂, parameter_values; verbos
 
     # lk = ReentrantLock()
 
+    @timeit_debug timer "Loop - parameter derivatives" begin
+
     Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
         out = f(X)
         
@@ -9449,6 +9469,8 @@ function rrule(::typeof(get_NSSS_and_parameters), 𝓂, parameter_values; verbos
     
     ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
 
+    end # timeit_debug
+
     # vals = Float64[]
 
     # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
@@ -9458,6 +9480,8 @@ function rrule(::typeof(get_NSSS_and_parameters), 𝓂, parameter_values; verbos
     vals = zeros(Float64, length(𝓂.∂SS_equations_∂SS_and_pars[1]))
 
     # lk = ReentrantLock()
+
+    @timeit_debug timer "Loop - NSSS derivatives" begin
 
     Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
         out = f(X)
@@ -9477,9 +9501,13 @@ function rrule(::typeof(get_NSSS_and_parameters), 𝓂, parameter_values; verbos
 
     ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
 
+    end # timeit_debug
+
     # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
     # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
     
+    @timeit_debug timer "Implicit diff - mat inv" begin
+
     ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
@@ -9500,6 +9528,9 @@ function rrule(::typeof(get_NSSS_and_parameters), 𝓂, parameter_values; verbos
         # println(∂SS_and_pars)
         return NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
     end
+
+    end # timeit_debug
+    end # timeit_debug
 
     return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
 end
