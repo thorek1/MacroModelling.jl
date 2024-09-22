@@ -1,10 +1,10 @@
 # Available algorithms: 
-# :doubling     - fast and precise, expensive part: B^2
-# :sylvester    - fast and precise, dense matrices only
-# :bicgstab     - less precise, fastest for large problems
-# :gmres        - less precise, fastest for large problems
-# :iterative    - slow and precise
-# :speedmapping - slow and very precise
+# :doubling     - fast, expensive part: B^2
+# :sylvester    - fast, dense matrices only
+# :bicgstab     - fastest for large problems, might not reach desired precision, warm start not always helpful
+# :gmres        - fastest for large problems, might not reach desired precision
+# :iterative    - slow
+# :speedmapping - slow
 
 # solves: A * X * B + C = X for X
 
@@ -820,6 +820,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
     iters = max_iter
 
     for i in 1:max_iter
+        @timeit_debug timer "Update" begin
         ℒ.mul!(𝐂B, 𝐂, B)
         ℒ.mul!(𝐂¹, A, 𝐂B)
         ℒ.axpy!(1, C, 𝐂¹)
@@ -832,6 +833,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
         end
     
         copyto!(𝐂, 𝐂¹)
+        end # timeit_debug
     end
 
     ℒ.mul!(𝐂B, 𝐂, B)

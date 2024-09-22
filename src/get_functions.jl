@@ -2958,7 +2958,7 @@ function get_loglikelihood(𝓂::ℳ,
     presample_periods::Int = 0,
     initial_covariance::Symbol = :theoretical,
     filter_algorithm::Symbol = :LagrangeNewton,
-    sylvester_algorithm::Symbol = :gmres, 
+    sylvester_algorithm::Symbol = :bicgstab, 
     tol::AbstractFloat = 1e-12, 
     timer::TimerOutput = TimerOutput(),
     verbose::Bool = false)::S where S <: Real
