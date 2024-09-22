@@ -7,6 +7,10 @@ import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
 
+import Dates
+using Serialization
+using StatsPlots
+
 using LinearAlgebra
 BLAS.set_num_threads(Threads.nthreads() ÷ 2)
 
@@ -16,7 +20,7 @@ println("BLAS threads used: ", BLAS.get_num_threads())
 # smpler = ENV["sampler"] # "pigeons" #
 # smple = ENV["sample"] # "original" #
 # mdl = ENV["model"] # "linear" # 
-# fltr = ENV["filter"] # "kalman" # 
+fltr = ENV["filter"] # "kalman" # 
 algo = ENV["algorithm"] # "kalman" # 
 # chns = Meta.parse(ENV["chains"]) # "4" # 
 # scns = Meta.parse(ENV["scans"]) # "4" # 
@@ -26,7 +30,7 @@ smpls = Meta.parse(ENV["samples"]) # "4" #
 println("Samples: $smpls")
 # println("Model: $mdl")
 # println("Chains: $chns")
-# println("Filter: $fltr")
+println("Filter: $fltr")
 println("Algorithm: $algo")
 # println("Scans: $scns")
 println(pwd())
@@ -92,7 +96,7 @@ Normal(0.5, 0.25, 0.01, 2.0),                   # cgy
 Normal(0.3, 0.05, 0.01, 1.0),                   # calfa
 ]
 
-Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm)
+Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter)
     all_params ~ Turing.arraydist(dists)
 
     z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params
@@ -103,6 +107,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
         parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
 
         llh = get_loglikelihood(m, data(observables), parameters_combined, 
+                                filter = filter,
                                 # presample_periods = 4, initial_covariance = :diagonal, 
                                 algorithm = algorithm)
 
@@ -115,19 +120,24 @@ include("../models/Smets_Wouters_2007.jl")
 
 fixed_parameters = Smets_Wouters_2007.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007.parameters)]
 
-SS(Smets_Wouters_2007, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01, :cmap => 0.01, :cmaw => 0.01])(observables,:)
+SS(Smets_Wouters_2007, 
+    parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01, :cmap => 0.01, :cmaw => 0.01], 
+    derivatives = false) #(observables,:)
 
-SW07_loglikelihood_short = SW07_loglikelihood_function(data[:,150:end], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo))
+SW07_loglikelihood_short = SW07_loglikelihood_function(data[:,150:end], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
-SW07_loglikelihood_middle = SW07_loglikelihood_function(data[:,100:end], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo))
+SW07_loglikelihood_middle = SW07_loglikelihood_function(data[:,100:end], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
-SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo))
-
-# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-#                                         Optim.SimulatedAnnealing())
+SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
 modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
-                                        Optim.NelderMead())
+                                        Optim.SimulatedAnnealing())
+
+println("Mode loglikelihood (Simulated Annealing): $(modeSW2007.lp)")
+
+modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
+                                        Optim.NelderMead(),
+                                        initial_params = modeSW2007.values)
 
 println("Mode loglikelihood (short sample): $(modeSW2007.lp)")
 
@@ -151,7 +161,9 @@ modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood,
 println("Mode variable values: $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
 if !isfinite(modeSW2007.lp)
-    init_params = [0.7248701429457346, 0.31875152313990046, 0.7651867698318467, 0.6620223369539874, 0.316885143386958, 0.18643344917495216, 0.32397804943356734, 0.9759668805261548, 0.3105313295181706, 0.9706557936572335, 0.723241634807532, 0.17477940951141493, 0.9896361329526329, 0.9762803469828244, 0.8699807995786517, 0.8981055737966092, 4.126271804145603, 1.4997776024972307, 0.6772054796410071, 0.7386629360844853, 2.054189805699832, 0.6547852112595888, 0.5723464191765094, 0.28496127578987235, 0.30894743946090913, 1.5713304554796519, 1.913829101556369, 0.8181038764433114, 0.09967962270593514, 0.17943164999901604, 0.6828556381658487, 0.1456360631102682, 0.535222453466881, 0.4973571394378191, 0.5200653049555408, 0.20176976786183218]
+    # 1st order   [0.4894876019295857, 0.24788318367812182, 0.5182931118128361, 0.4513465115416531, 0.22526689500106026, 0.15156894421117362, 0.30227045144284304, 0.9694204574216405, 0.19152866619905887, 0.977733247208875, 0.7256812814930197, 0.12609364808227475, 0.9627930764736579, 0.9608723271236311, 0.7918895227761636, 0.9816154316311907, 6.000605704278623, 1.4274383858919004, 0.7334170320281084, 0.8979844503570699, 2.576335249409614, 0.5713813352786876, 0.3081196258828236, 0.31293462158465574, 0.5679755856499227, 1.5761869461822966, 1.9889804684367596, 0.8445471809593218, 0.08869515037144081, 0.21867275755222343, 0.6866872620656241, 0.1445162195125813, 0.3900118440603694, 0.4321094915800651, 0.5525562884207029, 0.19795760655291933]
+    init_params = [0.7336875859606048, 0.29635793589906373, 0.7885127259084761, 0.627589469317792, 0.33279740477340736, 0.18071963802733587, 0.3136301504425597, 0.9716682344909233, 0.4212412387517263, 0.9714124687443985, 0.7670313366057671, 0.21992355568749347, 0.9803757371138285, 0.9515717168366892, 0.8107798813529196, 0.8197332384776822, 4.178359103188282, 1.3532376868676554, 0.6728358960879459, 0.7234419205397767, 2.1069886214607654, 0.6485994561807753, 0.5726327821945625, 0.2750069399589326, 0.37392325592474474, 1.5618305945104742, 1.9566618052670857, 0.7982525395708631, 0.10123079234482239, 0.18389934495956148, 0.7110007143377491, 0.1734645242219083, 0.26768709319895306, 0.5067914157714182, 0.5356423461417883, 0.19654471991293343]
+    # init_params = [0.7248701429457346, 0.31875152313990046, 0.7651867698318467, 0.6620223369539874, 0.316885143386958, 0.18643344917495216, 0.32397804943356734, 0.9759668805261548, 0.3105313295181706, 0.9706557936572335, 0.723241634807532, 0.17477940951141493, 0.9896361329526329, 0.9762803469828244, 0.8699807995786517, 0.8981055737966092, 4.126271804145603, 1.4997776024972307, 0.6772054796410071, 0.7386629360844853, 2.054189805699832, 0.6547852112595888, 0.5723464191765094, 0.28496127578987235, 0.30894743946090913, 1.5713304554796519, 1.913829101556369, 0.8181038764433114, 0.09967962270593514, 0.17943164999901604, 0.6828556381658487, 0.1456360631102682, 0.535222453466881, 0.4973571394378191, 0.5200653049555408, 0.20176976786183218]
 else
     init_params = modeSW2007.values
 end
@@ -162,10 +174,17 @@ samps = @time Turing.sample(SW07_loglikelihood,
                             progress = true, 
                             initial_params = init_params)
 
+varnames = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+
+nms = names(samps)
+nms[1:length(varnames)] .= varnames
+
+samps_renamed = MCMCChains.Chains(samps.value, nms)
+
 println(samps)
 println("Mean variable values: $(mean(samps).nt.mean)")
 
-dir_name = "sw07_$(algo)_$(smpls)_samples"
+dir_name = "sw07_$(algo)_$(smpls)_samples_$(fltr)_filter"
 
 if !isdir(dir_name) mkdir(dir_name) end
 
@@ -176,10 +195,11 @@ println("Current working directory: ", pwd())
 dt = Dates.format(Dates.now(), "yyyy-mm-dd_HH")
 serialize("samples_$(dt)h.jls", samps)
 
-my_plot = StatsPlots.plot(samps)
+my_plot = StatsPlots.plot(samps_renamed)
 StatsPlots.savefig(my_plot, "samples_$(dt)h.png")
 StatsPlots.savefig(my_plot, "../samples_latest.png")
 
 #Base.show(samps)
 #println(Base.show(samps))
 Base.show(stdout, MIME"text/plain"(), samps)
+Base.show(stdout, MIME"text/plain"(), samps_renamed)
