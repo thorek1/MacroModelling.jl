@@ -1087,65 +1087,124 @@ function choose_matrix_format(A::AbstractSparseMatrix{S};
     end
 end
 
-
 function mat_mult_kron(A::AbstractSparseMatrix{R},
-                        B::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}},
-                        C::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}}; 
-                        tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
+                        B::AbstractMatrix{T},
+                        C::AbstractMatrix{T},
+                        D::AbstractMatrix{S}) where {R <: Real, T <: Real, S <: Real}
     n_rowB = size(B,1)
     n_colB = size(B,2)
 
     n_rowC = size(C,1)
     n_colC = size(C,2)
 
-    vals = T[]
-    rows = Int[]
-    cols = Int[]
+    X = zeros(size(A,1), size(D,2))
+
+    Ā = zeros(n_rowB, n_rowC)
+    ĀB = zero(B)
+    CĀB = zeros(n_colB, n_colC)
+    vCĀB = zeros(n_colB * n_colC)
 
     rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
 
     # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
     for row in rv |> unique
-        idx_mat, vals_mat = A[row,:] |> findnz
-
-        if length(vals_mat) == 0 continue end
-
-        for col in 1:(n_colB*n_colC)
-            col_1, col_2 = divrem((col - 1) % (n_colB*n_colC), n_colC) .+ 1
-
-            mult_val = 0.0
-
-            for (i,idx) in enumerate(idx_mat)
-                i_1, i_2 = divrem((idx - 1) % (n_rowB*n_rowC), n_rowC) .+ 1
-                
-                mult_val += vals_mat[i] * B[i_1,col_1] * C[i_2,col_2] # doesnt make sense with sparse matrcies here because access time takes too long
-            end
-
-            if abs(mult_val) > tol
-                # push!(threadlocal[1],mult_val)
-                # push!(threadlocal[2],row)
-                # push!(threadlocal[3],col)
-                push!(vals,mult_val)
-                push!(rows,row)
-                push!(cols,col)
-            end
-        end
+        @views copyto!(Ā, A[row, :])
+        mul!(ĀB, Ā, B)
+        mul!(CĀB, C', ĀB)
+        copyto!(vCĀB, CĀB)
+        @views mul!(X[row,:], D', vCĀB)
     end
 
-    # println((threadlocal[15]))
-    # for t in threadlocal
-    #     println(length(t[1]))
-    #     # push!(vals, t[1]...)
-    #     # push!(rows, t[2]...)
-    #     # push!(cols, t[3]...)
-    # end
-     
-    if VERSION >= v"1.10"
-        return sparse!(rows,cols,vals,size(A,1),n_colB*n_colC)   
-    else
-        return sparse(rows,cols,vals,size(A,1),n_colB*n_colC)   
-    end
+    return choose_matrix_format(X)
 end
+
+
+function mat_mult_kron(A::AbstractSparseMatrix{R},
+                        B::AbstractMatrix{T},
+                        C::AbstractMatrix{T}) where {R <: Real, T <: Real}
+    n_rowB = size(B,1)
+    n_colB = size(B,2)
+
+    n_rowC = size(C,1)
+    n_colC = size(C,2)
+
+    X = zeros(size(A,1), n_colB * n_colC)
+
+    Ā = zeros(n_rowB, n_rowC)
+    ĀB = zero(B)
+    CĀB = zeros(n_colC, n_colB)
+
+    rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
+
+    # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
+    for row in rv |> unique
+        @views copyto!(Ā, A[row, :])
+        mul!(ĀB, Ā, B)
+        mul!(CĀB, C', ĀB)
+        @views copyto!(X[row,:], CĀB)
+    end
+
+    return choose_matrix_format(X)
+end
+
+# function mat_mult_kron(A::AbstractSparseMatrix{R},
+#                         B::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}},
+#                         C::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}}; 
+#                         tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
+#     n_rowB = size(B,1)
+#     n_colB = size(B,2)
+
+#     n_rowC = size(C,1)
+#     n_colC = size(C,2)
+
+#     vals = T[]
+#     rows = Int[]
+#     cols = Int[]
+
+#     rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
+
+#     # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
+#     for row in rv |> unique
+#         idx_mat, vals_mat = A[row,:] |> findnz
+
+#         if length(vals_mat) == 0 continue end
+
+#         for col in 1:(n_colB*n_colC)
+#             col_1, col_2 = divrem((col - 1) % (n_colB*n_colC), n_colC) .+ 1
+
+#             mult_val = 0.0
+
+#             for (i,idx) in enumerate(idx_mat)
+#                 i_1, i_2 = divrem((idx - 1) % (n_rowB*n_rowC), n_rowC) .+ 1
+                
+#                 mult_val += vals_mat[i] * B[i_1,col_1] * C[i_2,col_2] # doesnt make sense with sparse matrcies here because access time takes too long
+#             end
+
+#             if abs(mult_val) > tol
+#                 # push!(threadlocal[1],mult_val)
+#                 # push!(threadlocal[2],row)
+#                 # push!(threadlocal[3],col)
+#                 push!(vals,mult_val)
+#                 push!(rows,row)
+#                 push!(cols,col)
+#             end
+#         end
+#     end
+
+#     # println((threadlocal[15]))
+#     # for t in threadlocal
+#     #     println(length(t[1]))
+#     #     # push!(vals, t[1]...)
+#     #     # push!(rows, t[2]...)
+#     #     # push!(cols, t[3]...)
+#     # end
+     
+#     if VERSION >= v"1.10"
+#         return sparse!(rows,cols,vals,size(A,1),n_colB*n_colC)   
+#     else
+#         return sparse(rows,cols,vals,size(A,1),n_colB*n_colC)   
+#     end
+# end
 
 function compressed_kron³(a::AbstractMatrix{T};
                     rowmask::Vector{Int} = Int[],
@@ -7290,13 +7349,15 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
 
     A = spinv * ∇₁₊
-
+    
     # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * (ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
-    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) * M₂.𝐂₂ + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔 * M₂.𝐂₂ 
+    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, M₂.𝐂₂) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, M₂.𝛔 * M₂.𝐂₂)
     
     C = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
 
-    B = M₂.𝐔₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) * M₂.𝐂₂ + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
+    # 𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
+
+    B = mat_mult_kron(M₂.𝐔₂, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, M₂.𝐂₂) + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
     end # timeit_debug
 
     @timeit_debug timer "Solve sylvester equation" begin
@@ -7705,7 +7766,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     𝐒₂₋╱𝟎 = choose_matrix_format(𝐒₂₋╱𝟎, density_threshold = 1.0, min_length = 10)
 
     @timeit_debug timer "Step 1" begin
-
     out2 = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎) # this help
 
     end # timeit_debug
@@ -7721,13 +7781,17 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     end # timeit_debug
     @timeit_debug timer "Step 4" begin
 
-    out2 += ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)# |> findnz
+    # out2 += ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)# |> findnz
+    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)# |> findnz
 
     end # timeit_debug
     @timeit_debug timer "Step 5" begin
-    # out2 += ∇₁₊ * mat_mult_kron(𝐒₂, collect(𝐒₁₋╱𝟏ₑ), collect(𝐒₂₋╱𝟎))
-    # out2 += mat_mult_kron(∇₁₊ * 𝐒₂, collect(𝐒₁₋╱𝟏ₑ), collect(𝐒₂₋╱𝟎))
-    out2 += ∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
+        # out2 += ∇₁₊ * mat_mult_kron(𝐒₂, collect(𝐒₁₋╱𝟏ₑ), collect(𝐒₂₋╱𝟎))
+        # out2 += mat_mult_kron(∇₁₊ * 𝐒₂, collect(𝐒₁₋╱𝟏ₑ), collect(𝐒₂₋╱𝟎))
+        # out2 += ∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
+    # 𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
+    # 𝐒₂₋╱𝟎 = choose_matrix_format(𝐒₂₋╱𝟎, density_threshold = 0.0)
+    out2 += ∇₁₊ * mat_mult_kron(𝐒₂, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
     
     end # timeit_debug
     @timeit_debug timer "Mult" begin
