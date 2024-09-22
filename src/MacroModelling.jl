@@ -1097,16 +1097,16 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     n_rowC = size(C,1)
     n_colC = size(C,2)
 
-    X = zeros(size(A,1), size(D,2))
+    X = zeros(T, size(A,1), size(D,2))
 
     # vals = T[]
     # rows = Int[]
     # cols = Int[]
 
-    Ā = zeros(n_rowC, n_rowB)
-    ĀB = zeros(n_rowC, n_colB)
-    CĀB = zeros(n_colC, n_colB)
-    vCĀB = zeros(n_colB * n_colC)
+    Ā = zeros(T, n_rowC, n_rowB)
+    ĀB = zeros(T, n_rowC, n_colB)
+    CĀB = zeros(T, n_colC, n_colB)
+    vCĀB = zeros(T, n_colB * n_colC)
     # vCĀBD = zeros(size(D,2))
 
     rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
@@ -1149,15 +1149,15 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     n_rowC = size(C,1)
     n_colC = size(C,2)
 
-    X = zeros(size(A,1), n_colB * n_colC)
+    X = zeros(T, size(A,1), n_colB * n_colC)
 
     # vals = T[]
     # rows = Int[]
     # cols = Int[]
 
-    Ā = zeros(n_rowC, n_rowB)
-    ĀB = zeros(n_rowC, n_colB)
-    CĀB = zeros(n_colC, n_colB)
+    Ā = zeros(T, n_rowC, n_rowB)
+    ĀB = zeros(T, n_rowC, n_colB)
+    CĀB = zeros(T, n_colC, n_colB)
 
     rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
 
