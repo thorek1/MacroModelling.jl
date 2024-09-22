@@ -1099,10 +1099,15 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
 
     X = zeros(size(A,1), size(D,2))
 
-    Ā = zeros(n_rowB, n_rowC)
-    ĀB = zero(B)
-    CĀB = zeros(n_colB, n_colC)
+    # vals = T[]
+    # rows = Int[]
+    # cols = Int[]
+
+    Ā = zeros(n_rowC, n_rowB)
+    ĀB = zeros(n_rowC, n_colB)
+    CĀB = zeros(n_colC, n_colB)
     vCĀB = zeros(n_colB * n_colC)
+    # vCĀBD = zeros(size(D,2))
 
     rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
 
@@ -1116,6 +1121,22 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     end
 
     return choose_matrix_format(X)
+    #     mul!(vCĀBD, D', vCĀB)
+
+    #     for (i,v) in enumerate(vCĀBD)
+    #         if abs(v) > eps()
+    #             push!(rows, row)
+    #             push!(cols, i)
+    #             push!(vals, v)
+    #         end
+    #     end
+    # end
+
+    # if VERSION >= v"1.10"
+    #     return sparse!(rows, cols, vals, size(A,1), size(D,2))   
+    # else
+    #     return sparse(rows, cols, vals, size(A,1), size(D,2))   
+    # end
 end
 
 
@@ -1130,8 +1151,12 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
 
     X = zeros(size(A,1), n_colB * n_colC)
 
-    Ā = zeros(n_rowB, n_rowC)
-    ĀB = zero(B)
+    # vals = T[]
+    # rows = Int[]
+    # cols = Int[]
+
+    Ā = zeros(n_rowC, n_rowB)
+    ĀB = zeros(n_rowC, n_colB)
     CĀB = zeros(n_colC, n_colB)
 
     rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
@@ -1141,10 +1166,25 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         @views copyto!(Ā, A[row, :])
         mul!(ĀB, Ā, B)
         mul!(CĀB, C', ĀB)
+        
         @views copyto!(X[row,:], CĀB)
     end
 
     return choose_matrix_format(X)
+    #     for (i,v) in enumerate(CĀB)
+    #         if abs(v) > eps()
+    #             push!(rows, row)
+    #             push!(cols, i)
+    #             push!(vals, v)
+    #         end
+    #     end
+    # end
+
+    # if VERSION >= v"1.10"
+    #     return sparse!(rows,cols,vals,size(A,1),n_colB*n_colC)   
+    # else
+    #     return sparse(rows,cols,vals,size(A,1),n_colB*n_colC)   
+    # end
 end
 
 # function mat_mult_kron(A::AbstractSparseMatrix{R},
@@ -7345,15 +7385,22 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     end # timeit_debug
 
     @timeit_debug timer "Setup second order matrices" begin
+    @timeit_debug timer "A" begin
 
     ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
 
     A = spinv * ∇₁₊
     
+    end # timeit_debug
+    @timeit_debug timer "C" begin
+
     # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * (ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
     ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, M₂.𝐂₂) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, M₂.𝛔 * M₂.𝐂₂)
     
     C = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
+
+    end # timeit_debug
+    @timeit_debug timer "B" begin
 
     # 𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
 
@@ -7361,6 +7408,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     B = mat_mult_kron(M₂.𝐔₂, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, M₂.𝐂₂) + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
     end # timeit_debug
 
+    end # timeit_debug
     @timeit_debug timer "Solve sylvester equation" begin
 
     𝐒₂, solved = solve_sylvester_equation(A, B, C, 
@@ -7387,13 +7435,13 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     @timeit_debug timer "Post-process" begin
 
+    𝐒₂ *= M₂.𝐔₂
+
     𝐒₂ = sparse(𝐒₂)
 
     if !solved
         return 𝐒₂, false
     end
-
-    𝐒₂ *= M₂.𝐔₂
 
     end # timeit_debug
 
@@ -7723,7 +7771,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     end # timeit_debug
     @timeit_debug timer "3rd Kronecker power" begin
-
+    # B += mat_mult_kron(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ), collect(ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)), M₃.𝐂₃) # slower than direct compression
     B += compressed_kron³(𝐒₁₋╱𝟏ₑ, timer = timer)
 
     end # timeit_debug
@@ -7802,6 +7850,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     end # timeit_debug
     @timeit_debug timer "3rd Kronecker power" begin
 
+    # 𝐗₃ += mat_mult_kron(∇₃, collect(aux), collect(ℒ.kron(aux, aux)), M₃.𝐂₃) # slower than direct compression
     𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), timer = timer)
     
     end # timeit_debug
@@ -7833,13 +7882,13 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     end # timeit_debug
     @timeit_debug timer "Post-process" begin
 
+    𝐒₃ *= M₃.𝐔₃
+
     𝐒₃ = sparse(𝐒₃)
 
     if !solved
         return 𝐒₃, solved
     end
-
-    𝐒₃ *= M₃.𝐔₃
 
     end # timeit_debug
     end # timeit_debug
