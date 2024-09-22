@@ -9542,7 +9542,11 @@ end
 
 
 
-function get_NSSS_and_parameters(𝓂::ℳ, parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; verbose::Bool = false, tol::AbstractFloat = 1e-12) where {Z,S,N}
+function get_NSSS_and_parameters(𝓂::ℳ, 
+                                parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
+                                verbose::Bool = false, 
+                                timer::TimerOutput = TimerOutput(),
+                                tol::AbstractFloat = 1e-12) where {Z,S,N}
     parameter_values = ℱ.value.(parameter_values_dual)
 
     SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
