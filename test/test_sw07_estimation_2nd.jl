@@ -18,15 +18,16 @@ println("Threads used: ", Threads.nthreads())
 println("BLAS threads used: ", BLAS.get_num_threads())
 
 # smpler = ENV["sampler"] # "pigeons" #
-# smple = ENV["sample"] # "original" #
+smple = ENV["sample"] # "original" #
 # mdl = ENV["model"] # "linear" # 
 fltr = ENV["filter"] # "kalman" # 
-algo = ENV["algorithm"] # "kalman" # 
+algo = ENV["algorithm"] # "first_order" # 
 # chns = Meta.parse(ENV["chains"]) # "4" # 
 # scns = Meta.parse(ENV["scans"]) # "4" # 
 smpls = Meta.parse(ENV["samples"]) # "4" # 
 
 # println("Sampler: $smpler")
+println("Estimation Sample: $smple")
 println("Samples: $smpls")
 # println("Model: $mdl")
 # println("Chains: $chns")
@@ -35,25 +36,35 @@ println("Algorithm: $algo")
 # println("Scans: $scns")
 println(pwd())
 
-# load data
-dat = CSV.read("./Github/MacroModelling.jl/test/data/usmodel.csv", DataFrame)
+if smple == "original"
+    # load data
+    dat = CSV.read("./Github/MacroModelling.jl/test/data/usmodel.csv", DataFrame)
 
-# load data
-data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+    # load data
+    data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
 
-# declare observables as written in csv file
-observables_old = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+    # declare observables as written in csv file
+    observables_old = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
-# Subsample
-# subset observables in data
-sample_idx = 47:230 # 1960Q1-2004Q4
+    # Subsample
+    # subset observables in data
+    sample_idx = 47:230 # 1960Q1-2004Q4
 
-data = data(observables_old, sample_idx)
+    data = data(observables_old, sample_idx)
 
-# declare observables as written in model
-observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+    # declare observables as written in model
+    observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
-data = rekey(data, :Variable => observables)
+    data = rekey(data, :Variable => observables)
+elseif smple == "full" # 1954Q4 - 2024Q2
+    include("download_data.jl") 
+elseif smple == "no_pandemic" # 1954Q4 - 2020Q1
+    include("download_data.jl") 
+    data = data[:,<(Dates.Date("2020-04-01"))]
+elseif smple == "update" # 1960Q1 - 2024Q2
+    include("download_data.jl") 
+    data = data[:,>(Dates.Date("1959-10-01"))]
+end
 
 
 # Handling distributions with varying parameters using arraydist
@@ -130,14 +141,14 @@ SW07_loglikelihood_middle = SW07_loglikelihood_function(data[:,100:end], Smets_W
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
-modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
-                                        Optim.SimulatedAnnealing())
+# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
+#                                         Optim.SimulatedAnnealing())
 
-println("Mode loglikelihood (Simulated Annealing): $(modeSW2007.lp)")
+# println("Mode loglikelihood (Simulated Annealing): $(modeSW2007.lp)")
 
 modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
-                                        Optim.NelderMead(),
-                                        initial_params = modeSW2007.values)
+                                        Optim.NelderMead())#,
+                                        # initial_params = modeSW2007.values)
 
 println("Mode loglikelihood (short sample): $(modeSW2007.lp)")
 
@@ -174,17 +185,14 @@ samps = @time Turing.sample(SW07_loglikelihood,
                             progress = true, 
                             initial_params = init_params)
 
-varnames = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
-
-nms = names(samps)
-nms[1:length(varnames)] .= varnames
-
-samps_renamed = MCMCChains.Chains(samps.value, nms)
-
 println(samps)
 println("Mean variable values: $(mean(samps).nt.mean)")
 
-dir_name = "sw07_$(algo)_$(smpls)_samples_$(fltr)_filter"
+varnames = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+nms = copy(names(samps))
+samps = replacenames(samps, Dict(nms[1:length(varnames)] .=> varnames))
+
+dir_name = "sw07_$(algo)_$(smpls)_samples_$(fltr)_filter_$(smple)_sample"
 
 if !isdir(dir_name) mkdir(dir_name) end
 
@@ -195,11 +203,10 @@ println("Current working directory: ", pwd())
 dt = Dates.format(Dates.now(), "yyyy-mm-dd_HH")
 serialize("samples_$(dt)h.jls", samps)
 
-my_plot = StatsPlots.plot(samps_renamed)
+my_plot = StatsPlots.plot(samps)
 StatsPlots.savefig(my_plot, "samples_$(dt)h.png")
 StatsPlots.savefig(my_plot, "../samples_latest.png")
 
 #Base.show(samps)
 #println(Base.show(samps))
 Base.show(stdout, MIME"text/plain"(), samps)
-Base.show(stdout, MIME"text/plain"(), samps_renamed)
