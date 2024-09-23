@@ -592,8 +592,12 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::AbstractFloat = 1e-12)
-    𝐂 = MatrixEquations.sylvd(-A, B, C)
-    
+    𝐂 = try 
+        MatrixEquations.sylvd(-A, B, C)
+    catch
+        return C, false, 0, 1.0
+    end
+
     𝐂¹ = A * 𝐂 * B + C
 
     denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
