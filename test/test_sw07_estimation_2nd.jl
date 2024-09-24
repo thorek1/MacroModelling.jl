@@ -17,6 +17,11 @@ BLAS.set_num_threads(Threads.nthreads() ÷ 2)
 println("Threads used: ", Threads.nthreads())
 println("BLAS threads used: ", BLAS.get_num_threads())
 
+smple = "full"
+fltr = "inversion"
+algo = "pruned_second_order"
+smpls = 1000
+
 # smpler = ENV["sampler"] # "pigeons" #
 smple = ENV["sample"] # "original" #
 # mdl = ENV["model"] # "linear" # 
@@ -56,6 +61,9 @@ if smple == "original"
     observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
     data = rekey(data, :Variable => observables)
+elseif smple == "original_new_data" # 1960Q1 - 2004Q4
+    include("download_data.jl") 
+    data = data[:,Interval(Dates.Date("1960-01-01"), Dates.Date("2004-10-01"))]
 elseif smple == "full" # 1954Q4 - 2024Q2
     include("download_data.jl") 
 elseif smple == "no_pandemic" # 1954Q4 - 2020Q1
@@ -135,34 +143,45 @@ SS(Smets_Wouters_2007,
     parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01, :cmap => 0.01, :cmaw => 0.01], 
     derivatives = false) #(observables,:)
 
-SW07_loglikelihood_short = SW07_loglikelihood_function(data[:,150:end], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
+SW07_loglikelihood_short = SW07_loglikelihood_function(data[:,1:50], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
-SW07_loglikelihood_middle = SW07_loglikelihood_function(data[:,100:end], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
+init_params = [0.7336875859606048, 0.29635793589906373, 0.7885127259084761, 0.627589469317792, 0.33279740477340736, 0.18071963802733587, 0.3136301504425597, 0.9716682344909233, 0.4212412387517263, 0.9714124687443985, 0.7670313366057671, 0.21992355568749347, 0.9803757371138285, 0.9515717168366892, 0.8107798813529196, 0.8197332384776822, 4.178359103188282, 1.3532376868676554, 0.6728358960879459, 0.7234419205397767, 2.1069886214607654, 0.6485994561807753, 0.5726327821945625, 0.2750069399589326, 0.37392325592474474, 1.5618305945104742, 1.9566618052670857, 0.7982525395708631, 0.10123079234482239, 0.18389934495956148, 0.7110007143377491, 0.1734645242219083, 0.26768709319895306, 0.5067914157714182, 0.5356423461417883, 0.19654471991293343]
+    
+modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
+                                        Optim.NelderMead(),
+                                        initial_params = init_params)
 
-SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
+
+for t in 50:25:size(data,2)
+    SW07_loglikelihood = SW07_loglikelihood_function(data[:,1:t], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
+
+    global modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+                                            Optim.NelderMead(),
+                                            initial_params = modeSW2007.values)
+    
+    println("Sample up to $t out of $(size(data,2))\nMode variable values:\n$(modeSW2007.values)\nMode loglikelihood: $(modeSW2007.lp)")
+end
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
 #                                         Optim.SimulatedAnnealing())
 
 # println("Mode loglikelihood (Simulated Annealing): $(modeSW2007.lp)")
 
-modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
-                                        Optim.NelderMead())#,
-                                        # initial_params = modeSW2007.values)
+# println("Mode loglikelihood (short sample): $(modeSW2007.lp)")
 
-println("Mode loglikelihood (short sample): $(modeSW2007.lp)")
+# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_middle, 
+#                                         Optim.NelderMead(),
+#                                         initial_params = modeSW2007.values)
 
-modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_middle, 
-                                        Optim.NelderMead(),
-                                        initial_params = modeSW2007.values)
+# println("Mode loglikelihood (middle sample): $(modeSW2007.lp)")
 
-println("Mode loglikelihood (middle sample): $(modeSW2007.lp)")
+# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+#                                         Optim.NelderMead(),
+#                                         initial_params = modeSW2007.values)
 
-modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-                                        Optim.NelderMead(),
-                                        initial_params = modeSW2007.values)
+# println("Mode loglikelihood (long sample - first try): $(modeSW2007.lp)")
 
-println("Mode loglikelihood (long sample - first try): $(modeSW2007.lp)")
+SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
 modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
