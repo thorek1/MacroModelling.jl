@@ -17,12 +17,6 @@ BLAS.set_num_threads(Threads.nthreads())
 println("Threads used: ", Threads.nthreads())
 println("BLAS threads used: ", BLAS.get_num_threads())
 
-# smple = "full"
-# fltr = "kalman"#"inversion"
-# algo = "first_order"#"pruned_second_order"
-# smpls = 1000
-# priors = "all"#"original"
-
 priors = try ENV["priors"] catch 
     "original" 
 end
@@ -42,6 +36,12 @@ end
 smpls = try Meta.parse(ENV["samples"]) catch 
     1000
 end
+
+# smple = "original_new_data"
+# fltr = "kalman"#"inversion"
+# algo = "first_order"#"pruned_second_order"
+# smpls = 1000
+# priors = "all"#"original"
 
 # smpler = ENV["sampler"] # "pigeons" #
 # mdl = ENV["model"] # "linear" # 
@@ -202,20 +202,6 @@ end
 #                                         Optim.SimulatedAnnealing())
 
 # println("Mode loglikelihood (Simulated Annealing): $(modeSW2007.lp)")
-
-# println("Mode loglikelihood (short sample): $(modeSW2007.lp)")
-
-# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_middle, 
-#                                         Optim.NelderMead(),
-#                                         initial_params = modeSW2007.values)
-
-# println("Mode loglikelihood (middle sample): $(modeSW2007.lp)")
-
-# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-#                                         Optim.NelderMead(),
-#                                         initial_params = modeSW2007.values)
-
-# println("Mode loglikelihood (long sample - first try): $(modeSW2007.lp)")
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
