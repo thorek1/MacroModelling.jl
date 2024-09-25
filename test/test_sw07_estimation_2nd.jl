@@ -12,36 +12,53 @@ using Serialization
 using StatsPlots
 
 using LinearAlgebra
-BLAS.set_num_threads(Threads.nthreads() ÷ 2)
+BLAS.set_num_threads(Threads.nthreads())
 
 println("Threads used: ", Threads.nthreads())
 println("BLAS threads used: ", BLAS.get_num_threads())
 
-smple = "full"
-fltr = "kalman"#"inversion"
-algo = "first_order"#"pruned_second_order"
-smpls = 1000
-priors = "all"#"original"
+# smple = "full"
+# fltr = "kalman"#"inversion"
+# algo = "first_order"#"pruned_second_order"
+# smpls = 1000
+# priors = "all"#"original"
 
-priors = ENV["priors"] # "original" #
+priors = try ENV["priors"] catch 
+    "original" 
+end
+
+smple = try ENV["sample"] catch
+     "original" 
+end
+
+fltr = try ENV["filter"] catch
+     "kalman" 
+end
+
+algo = try ENV["algorithm"] catch 
+    "first_order" 
+end 
+
+smpls = try Meta.parse(ENV["samples"]) catch 
+    1000
+end
+
 # smpler = ENV["sampler"] # "pigeons" #
-smple = ENV["sample"] # "original" #
 # mdl = ENV["model"] # "linear" # 
-fltr = ENV["filter"] # "kalman" # 
-algo = ENV["algorithm"] # "first_order" # 
 # chns = Meta.parse(ENV["chains"]) # "4" # 
 # scns = Meta.parse(ENV["scans"]) # "4" # 
-smpls = Meta.parse(ENV["samples"]) # "4" # 
 
 # println("Sampler: $smpler")
+# println("Model: $mdl")
+# println("Chains: $chns")
+# println("Scans: $scns")
+
 println("Priors: $priors")
 println("Estimation Sample: $smple")
 println("Samples: $smpls")
-# println("Model: $mdl")
-# println("Chains: $chns")
 println("Filter: $fltr")
 println("Algorithm: $algo")
-# println("Scans: $scns")
+
 println(pwd())
 
 if smple == "original"
