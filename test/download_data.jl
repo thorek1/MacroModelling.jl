@@ -3,6 +3,7 @@ using CSV
 using DataFrames
 import Dates
 using AxisKeys
+using Statistics
 
 function download_fred_data(series_names::Vector{String}; 
                             wide_format::Bool=false, 
@@ -50,7 +51,8 @@ end
 # https://www.wiwi.uni-bonn.de/bgsepapers/boncrc/CRCTR224_2022_356.pdf   p37
 # https://www.ecb.europa.eu/pub/pdf/scpwps/ecbwp722.pdf  p48
 
-series = ["GDPC1","GDPC96","CE16OV","HOANBS","HOABS","AWHNONAG","FEDFUNDS","PRS85006152","PRS84006152","FPI","B007RG3Q086SBEA","GDPDEF","PRS85006023","PRS84006023","COMPRNFB","COMPNFB","PCECC96","CNP16OV"]
+series = ["GDPC1","CE16OV","PCEC","FEDFUNDS","FPI","GDPDEF","PRS85006023","COMPNFB","CNP16OV"] 
+# "PCECC96","PRS84006023","COMPRNFB","B007RG3Q086SBEA","PRS85006152","PRS84006152","HOABS","AWHNONAG","HOANBS","GDPC96"
 # Example usage:
 df = download_fred_data(series, wide_format = false, quarterly_only = true)
 
@@ -59,22 +61,25 @@ all_data_wide = unstack(df, :DATE, :series_name, :VALUE)
 sort!(all_data_wide, :DATE)
 
 
-all_data_wide.interest_rate = @. ((all_data_wide.FEDFUNDS / 100 + 1) ^.25 - 1) * 100
+all_data_wide.interest_rate = all_data_wide.FEDFUNDS / 4
 
 all_data_wide.real_GDP_per_capita = all_data_wide.GDPC1 ./ all_data_wide.CNP16OV
-all_data_wide.real_GDP_per_capita_growth = [missing; diff(all_data_wide.real_GDP_per_capita) ./ all_data_wide.real_GDP_per_capita[1:end-1] * 100]
+all_data_wide.real_GDP_per_capita_growth = [missing; diff(log.(all_data_wide.real_GDP_per_capita)) * 100]
 
-all_data_wide.inflation = [missing; diff(all_data_wide.GDPDEF) ./ all_data_wide.GDPDEF[1:end-1] * 100]
+all_data_wide.inflation = [missing; diff(log.(all_data_wide.GDPDEF)) * 100]
 
-all_data_wide.real_investment_per_capita = all_data_wide.FPI ./ all_data_wide.B007RG3Q086SBEA ./ all_data_wide.CNP16OV
-all_data_wide.real_investment_per_capita_growth = [missing; diff(all_data_wide.real_investment_per_capita) ./ all_data_wide.real_investment_per_capita[1:end-1] * 100]
+all_data_wide.real_investment_per_capita = all_data_wide.FPI ./ all_data_wide.GDPDEF ./ all_data_wide.CNP16OV
+all_data_wide.real_investment_per_capita_growth = [missing; diff(log.(all_data_wide.real_investment_per_capita)) * 100]
 
-all_data_wide.real_consumption_per_capita = all_data_wide.PCECC96 ./ all_data_wide.CNP16OV
-all_data_wide.real_consumption_per_capita_growth = [missing; diff(all_data_wide.real_consumption_per_capita) ./ all_data_wide.real_consumption_per_capita[1:end-1] * 100]
+all_data_wide.real_consumption_per_capita = all_data_wide.PCEC ./ all_data_wide.GDPDEF ./ all_data_wide.CNP16OV
+all_data_wide.real_consumption_per_capita_growth = [missing; diff(log.(all_data_wide.real_consumption_per_capita)) * 100]
 
-all_data_wide.hours_worked = log.(all_data_wide.PRS85006023 .* all_data_wide.CE16OV ./ all_data_wide.CNP16OV) .* 100 .- 415 # 415 is about the average for the original sample
+all_data_wide.hours_worked = log.(all_data_wide.PRS85006023 .* all_data_wide.CE16OV ./ all_data_wide.CNP16OV) .* 100
+all_data_wide.hours_worked .-= all_data_wide.hours_worked[1:232] |> skipmissing |> mean
 
-all_data_wide.real_wage_per_capita_growth = @. ((all_data_wide.PRS85006152 / 100 + 1) ^.25 - 1) * 100
+all_data_wide.real_wage_per_capita = all_data_wide.COMPNFB ./ all_data_wide.GDPDEF
+all_data_wide.real_wage_per_capita_growth = [missing; diff(log.(all_data_wide.real_wage_per_capita)) * 100]
+# this series is quite different for past values
 
 
 subset_data_wide = all_data_wide[:,[:DATE, 
@@ -98,6 +103,39 @@ data = KeyedArray(Float64.(Matrix(complete_subset_data_wide[:, Not(:DATE)])'), V
 observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
 data = rekey(data, :Variable => observables)
+
+## Check with original file
+# # load data
+# dat = CSV.read("test/data/usmodel.csv", DataFrame)
+
+# # load data
+# data1 = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+
+# # declare observables as written in csv file
+# observables_old = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+
+# data1 = data1(observables_old, :)
+
+# # declare observables as written in model
+# observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+
+# data1 = rekey(data1, :Variable => observables)
+
+
+# using StatsPlots
+# using LinearAlgebra
+
+# for i in 1:7
+#     p=plot(data1[i,29:end], title = axiskeys(data,1)[i])
+#     plot!(p,data[i,<(Dates.Date("2005-01-01"))])
+
+#     display(p)
+
+#     relative_difference = norm(collect(data1[i,29:end]) .- collect(data[i,<(Dates.Date("2005-01-01"))])) / max(norm(data[i,<(Dates.Date("2005-01-01"))]), norm(data1[i,29:end]))
+
+#     println("Relative difference for series $(axiskeys(data,1)[i]): $relative_difference")
+# end
+
 
 # all_data_wide.hours_worked = all_data_wide.PRS84006023 .* all_data_wide.CE16OV ./ all_data_wide.CNP16OV
 # all_data_wide.hours_worked = all_data_wide.AWHNONAG .* all_data_wide.CE16OV ./ all_data_wide.CNP16OV
