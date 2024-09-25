@@ -10698,37 +10698,63 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     state₁ = state[1][T.past_not_future_and_mixed_idx]
     state₂ = state[2][T.past_not_future_and_mixed_idx]
 
-    kron_buffer = zeros(T.nExo^2)
+    state¹⁻_vol = vcat(state₁, 1)
+
+    aug_state₁ = [state₁; 1; ones(T.nExo)]
+    aug_state₂ = [state₂; 0; zeros(T.nExo)]
+
+    kronaug_state₁ = zeros(length(aug_state₁)^2)
 
     J = ℒ.I(T.nExo)
 
+    kron_buffer = zeros(T.nExo^2)
+
     kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
+
+    kron_buffer3 = ℒ.kron(J, zeros(T.nPast_not_future_and_mixed + 1))
+
+    kronstate¹⁻_vol = zeros((T.nPast_not_future_and_mixed + 1)^2)
+
+    shock_independent = zeros(size(data_in_deviations,1))
+
+    𝐒ⁱ = copy(𝐒¹ᵉ)
+
+    jacc = copy(𝐒¹ᵉ)
+
+    𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
+        
+    init_guess = zeros(size(𝐒ⁱ, 2))
 
     end # timeit_debug
     @timeit_debug timer "Loop" begin
 
     for i in axes(data_in_deviations, 2)
-        state¹⁻ = state₁
+        # state¹⁻ = state₁
+        # state¹⁻_vol = vcat(state¹⁻, 1)
+        # state²⁻ = state₂#[T.past_not_future_and_mixed_idx]
 
-        state¹⁻_vol = vcat(state¹⁻, 1)
+        copyto!(state¹⁻_vol, 1, state₁, 1)
 
-        state²⁻ = state₂#[T.past_not_future_and_mixed_idx]
+        # shock_independent = data_in_deviations[:,i] - (𝐒¹⁻ᵛ * state¹⁻_vol + 𝐒¹⁻ * state²⁻ + 𝐒²⁻ᵛ * ℒ.kron(state¹⁻_vol, state¹⁻_vol) / 2)
+        copyto!(shock_independent, data_in_deviations[:,i])
 
-        # shock_independent = copy(data_in_deviations[:,i])
-
-        # ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
+        ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
         
-        # ℒ.mul!(shock_independent, 𝐒¹⁻, state²⁻, -1, 1)
+        ℒ.mul!(shock_independent, 𝐒¹⁻, state₂, -1, 1)
 
-        # ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
+        ℒ.kron!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
 
-        shock_independent = data_in_deviations[:,i] - (𝐒¹⁻ᵛ * state¹⁻_vol + 𝐒¹⁻ * state²⁻ + 𝐒²⁻ᵛ * ℒ.kron(state¹⁻_vol, state¹⁻_vol) / 2)
+        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate¹⁻_vol, -1/2, 1)
 
-        𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)  
+        # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)  
+        # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * kron_buffer3
+        ℒ.kron!(kron_buffer3, J, state¹⁻_vol)
 
-        𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
-        
-        init_guess = @ignore_derivatives zeros(size(𝐒ⁱ, 2))
+        ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer3)
+
+        ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ)
+
+        init_guess *= 0
 
         @timeit_debug timer "Find shocks" begin
         x, matched = find_shocks(Val(filter_algorithm), 
@@ -10798,23 +10824,36 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
         #     println("COBYLA: $(ℒ.norm(x3-x) / max(ℒ.norm(x3), ℒ.norm(x)))")
         # end
 
-        jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x)
-    
+        # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x)
+        ℒ.kron!(kron_buffer2, J, x)
+
+        ℒ.mul!(jacc, 𝐒ⁱ²ᵉ, kron_buffer2)
+
+        ℒ.axpby!(1, 𝐒ⁱ, 2, jacc)
+
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
             if T.nExo == length(observables)
-                logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
+                logabsdets += ℒ.logabsdet(jacc)[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc ./ precision_factor))
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc))
             end
 
             shocks² += sum(abs2,x)
         end
 
-        aug_state₁ = [state₁; 1; x]
-        aug_state₂ = [state₂; 0; zero(x)]
+        # aug_state₁ = [state₁; 1; x]
+        # aug_state₂ = [state₂; 0; zero(x)]
+        copyto!(aug_state₁, 1, state₁, 1)
+        copyto!(aug_state₁, length(state₁) + 2, x, 1)
+        copyto!(aug_state₂,1,state₂,1)
 
-        state₁, state₂ = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+        # state₁, state₂ = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+        ℒ.mul!(state₁, 𝐒⁻¹, aug_state₁)
+
+        ℒ.mul!(state₂, 𝐒⁻¹, aug_state₂)
+        ℒ.kron!(kronaug_state₁, aug_state₁, aug_state₁)
+        ℒ.mul!(state₂, 𝐒⁻², kronaug_state₁, 1/2, 1)
     end
 
     end # timeit_debug
@@ -10894,6 +10933,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
     kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
     
+    kron_buffer3 = ℒ.kron(J, zeros(T.nPast_not_future_and_mixed + 1))
+
     x = [zeros(T.nExo) for _ in 1:size(data_in_deviations,2)]
     
     state¹⁻ = state₁
@@ -10902,7 +10943,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     state²⁻ = state₂
 
-    𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
+    𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(J, state¹⁻_vol)
    
     𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
     
@@ -10926,6 +10967,12 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
     kronxλ = [kronxλ_tmp for _ in 1:size(data_in_deviations,2)]
     
+    kronstate¹⁻_vol = zeros((T.nPast_not_future_and_mixed + 1)^2)
+
+    shock_independent = zeros(size(data_in_deviations,1))
+
+    init_guess = zeros(size(𝐒ⁱ, 2))
+
     end # timeit_debug
     @timeit_debug timer "Main loop" begin
 
@@ -10935,18 +10982,25 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         state¹⁻_vol = vcat(state¹⁻, 1)
     
         state²⁻ = state₂
-        
-        shock_independent = copy(data_in_deviations[:,i])
-    
+
+        copyto!(shock_independent, data_in_deviations[:,i])
+
         ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
 
         ℒ.mul!(shock_independent, 𝐒¹⁻, state²⁻, -1, 1)
 
-        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
+        ℒ.kron!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+
+        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate¹⁻_vol, -1/2, 1)
     
-        𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
-    
-        init_guess = zeros(size(𝐒ⁱ, 2))
+        # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
+        ℒ.kron!(kron_buffer3, J, state¹⁻_vol)
+
+        ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer3)
+
+        ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ)
+
+        init_guess *= 0
     
         @timeit_debug timer "Find shocks" begin
         x[i], matched = find_shocks(Val(filter_algorithm), 
@@ -10965,8 +11019,13 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end
 
-        jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x[i])), x[i])
-    
+        # jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x[i])), x[i])
+        ℒ.kron!(kron_buffer2, J, x[i])
+
+        ℒ.mul!(jacc[i], 𝐒ⁱ²ᵉ, kron_buffer2)
+
+        ℒ.axpby!(1, 𝐒ⁱ, 2, jacc[i])
+
         λ[i] = jacc[i]' \ x[i] * 2
         # ℒ.ldiv!(λ[i], tmp', x[i])
         # ℒ.rmul!(λ[i], 2)
@@ -10981,9 +11040,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
             if T.nExo == length(observables)
-                logabsdets += ℒ.logabsdet(jacc[i] ./ precision_factor)[1]
+                logabsdets += ℒ.logabsdet(jacc[i])[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i] ./ precision_factor))
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i]))
             end
     
             shocks² += sum(abs2,x[i])
@@ -11010,7 +11069,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     ∂kronIx = zero(ℒ.kron(ℒ.I(length(x[1])), x[1]))
 
-    ∂kronIstate¹⁻_vol = zero(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol))
+    ∂kronIstate¹⁻_vol = zero(ℒ.kron(J, state¹⁻_vol))
 
     ∂kronstate¹⁻_vol = zero(ℒ.kron(state¹⁻_vol, state¹⁻_vol))
 
@@ -11099,13 +11158,13 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ℒ.mul!(∂kronIx, 𝐒ⁱ²ᵉ', ∂jacc)
 
             if i < size(data_in_deviations,2)
-                fill_kron_adjoint_∂B!(∂kronIx, ∂x, -ℒ.I(T.nExo))
+                fill_kron_adjoint_∂B!(∂kronIx, ∂x, -J)
             else
-                fill_kron_adjoint_∂B!(∂kronIx, ∂x, ℒ.I(T.nExo))
+                fill_kron_adjoint_∂B!(∂kronIx, ∂x, J)
             end
 
             # ∂𝐒ⁱ²ᵉ -= ∂jacc * ℒ.kron(ℒ.I(T.nExo), x[i])'
-            ℒ.mul!(∂𝐒ⁱ²ᵉ, ∂jacc, ℒ.kron(ℒ.I(T.nExo), x[i])', -1, 1)
+            ℒ.mul!(∂𝐒ⁱ²ᵉ, ∂jacc, ℒ.kron(J, x[i])', -1, 1)
 
             # find_shocks
             ∂xλ = vcat(∂x, zero(λ[i]))
@@ -11134,7 +11193,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             # ∂kronIstate¹⁻_vol = 𝐒²⁻ᵉ' * ∂𝐒ⁱ
             ℒ.mul!(∂kronIstate¹⁻_vol, 𝐒²⁻ᵉ', ∂𝐒ⁱ)
 
-            fill_kron_adjoint_∂A!(∂kronIstate¹⁻_vol, ∂state¹⁻_vol, ℒ.I(T.nExo))
+            fill_kron_adjoint_∂A!(∂kronIstate¹⁻_vol, ∂state¹⁻_vol, J)
 
             state¹⁻_vol = aug_state₁[i][1:T.nPast_not_future_and_mixed+1]
 
@@ -11142,7 +11201,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ℒ.axpy!(1, ∂𝐒ⁱ, ∂𝐒¹ᵉ)
 
             # ∂𝐒²⁻ᵉ += ∂𝐒ⁱ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)'
-            ℒ.kron!(∂kronIstate¹⁻_vol, ℒ.I(T.nExo), state¹⁻_vol)
+            ℒ.kron!(∂kronIstate¹⁻_vol, J, state¹⁻_vol)
             ℒ.mul!(∂𝐒²⁻ᵉ, ∂𝐒ⁱ, ∂kronIstate¹⁻_vol', 1, 1)
 
 
@@ -11615,7 +11674,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             if T.nExo == length(observables)
                 logabsdets += ℒ.logabsdet(jacc_fact)[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i] ./ precision_factor))
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i]))
             end
     
             shocks² += sum(abs2,x[i])
@@ -12141,9 +12200,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
             if T.nExo == length(observables)
-                logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
+                logabsdets += ℒ.logabsdet(jacc)[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc ./ precision_factor))
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc))
             end
 
             shocks² += sum(abs2,x)
@@ -12302,9 +12361,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     state²⁻ = state₂#[T.past_not_future_and_mixed_idx]
 
     state³⁻ = state₃#[T.past_not_future_and_mixed_idx]
-    
-    state¹⁻_vol = vcat(state¹⁻, 1)
-    
+   
     𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)
     
     𝐒ⁱ²ᵉ = [zero(𝐒²ᵉ) for _ in 1:size(data_in_deviations,2)]
@@ -12415,9 +12472,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
             if T.nExo == length(observables)
-                logabsdets += ℒ.logabsdet(jacc[i] ./ precision_factor)[1]
+                logabsdets += ℒ.logabsdet(jacc[i])[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i] ./ precision_factor))
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i]))
             end
     
             shocks² += sum(abs2,x[i])
@@ -13007,9 +13064,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
             if T.nExo == length(observables)
-                logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
+                logabsdets += ℒ.logabsdet(jacc)[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc ./ precision_factor))
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc))
             end
 
             shocks² += sum(abs2,x)
@@ -13244,9 +13301,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
             if T.nExo == length(observables)
-                logabsdets += ℒ.logabsdet(jacc[i] ./ precision_factor)[1]
+                logabsdets += ℒ.logabsdet(jacc[i])[1]
             else
-                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i] ./ precision_factor))
+                logabsdets += sum(x -> log(abs(x)), ℒ.svdvals(jacc[i]))
             end
     
             shocks² += sum(abs2,x[i])
