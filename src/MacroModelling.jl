@@ -7510,8 +7510,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
     B = mat_mult_kron(M₂.𝐔₂, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, M₂.𝐂₂) + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
-    end # timeit_debug
 
+    end # timeit_debug
     end # timeit_debug
     @timeit_debug timer "Solve sylvester equation" begin
 
@@ -7522,7 +7522,6 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             timer = timer)
 
     end # timeit_debug
-
     @timeit_debug timer "Refine sylvester equation" begin
 
     if !solved && !(sylvester_algorithm == :doubling)
@@ -7536,7 +7535,6 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     end
 
     end # timeit_debug
-
     @timeit_debug timer "Post-process" begin
 
     𝐒₂ *= M₂.𝐔₂
@@ -7548,7 +7546,6 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     end
 
     end # timeit_debug
-
     end # timeit_debug
 
     return 𝐒₂, true
@@ -7599,14 +7596,12 @@ function rrule(::typeof(calculate_second_order_solution),
     ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
 
     end # timeit_debug
-
     @timeit_debug timer "Invert matrix" begin
 
     spinv = inv(∇₁₊𝐒₁➕∇₁₀)
     spinv = choose_matrix_format(spinv)
 
     end # timeit_debug
-
     @timeit_debug timer "Setup second order matrices" begin
     @timeit_debug timer "A" begin
 
@@ -7630,6 +7625,7 @@ function rrule(::typeof(calculate_second_order_solution),
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
     B = mat_mult_kron(M₂.𝐔₂, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, M₂.𝐂₂) + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
 
+    end # timeit_debug    
     end # timeit_debug
     @timeit_debug timer "Solve sylvester equation" begin
 
@@ -7640,9 +7636,6 @@ function rrule(::typeof(calculate_second_order_solution),
                                             timer = timer)
 
     end # timeit_debug
-
-    end # timeit_debug
-
     @timeit_debug timer "Post-process" begin
 
     if !solved
