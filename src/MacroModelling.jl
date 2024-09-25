@@ -10960,7 +10960,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
         # aug_state₂ = [state₂; 0; zero(x)]
         copyto!(aug_state₁, 1, state₁, 1)
         copyto!(aug_state₁, length(state₁) + 2, x, 1)
-        copyto!(aug_state₂,1,state₂,1)
+        copyto!(aug_state₂, 1, state₂, 1)
 
         # state₁, state₂ = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
         ℒ.mul!(state₁, 𝐒⁻¹, aug_state₁)
@@ -11061,7 +11061,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
    
     𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
     
-    aug_state₁ = [zeros(size(𝐒⁻¹,2)) for _ in 1:size(data_in_deviations,2)]
+    aug_state₁ = [copy([state₁; 1; ones(T.nExo)]) for _ in 1:size(data_in_deviations,2)]
     aug_state₂ = [zeros(size(𝐒⁻¹,2)) for _ in 1:size(data_in_deviations,2)]
     
     tmp = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x[1])), x[1])
@@ -11070,7 +11070,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
     λ = [zeros(size(tmp, 1)) for _ in 1:size(data_in_deviations,2)]
     
-    λ[1] = tmp' \ x[1] * 2
+    λ[1] = copy(tmp' \ x[1] * 2)
     
     fXλp_tmp = [reshape(2 * 𝐒ⁱ²ᵉ' * λ[1], size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  tmp'
                 -tmp  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
@@ -11079,7 +11079,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
     kronxλ_tmp = ℒ.kron(x[1], λ[1])
     
-    kronxλ = [kronxλ_tmp for _ in 1:size(data_in_deviations,2)]
+    kronxλ = [zero(kronxλ_tmp) for _ in 1:size(data_in_deviations,2)]
     
     kronstate¹⁻_vol = zeros((T.nPast_not_future_and_mixed + 1)^2)
 
@@ -11089,6 +11089,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     init_guess = zeros(size(𝐒ⁱ, 2))
 
+    tmp = zeros(size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
+    
+    lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
+    
     end # timeit_debug
     @timeit_debug timer "Main loop" begin
 
@@ -11150,14 +11154,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         ℒ.ldiv!(λ[i], jacc_fact', x[i])
         ℒ.rmul!(λ[i], 2)
     
+        # fXλp[i] = [reshape(2 * 𝐒ⁱ²ᵉ' * λ[i], size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  jacc[i]'
+                    # -jacc[i]  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
         ℒ.mul!(tmp, 𝐒ⁱ²ᵉ', λ[i])
         ℒ.axpby!(1, lI, 2, tmp)
 
         fXλp[i][1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp
         fXλp[i][size(𝐒ⁱ, 2)+1:end, 1:size(𝐒ⁱ, 2)] = -jacc[i]
         fXλp[i][1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] = jacc[i]'
-        # fXλp[i] = [reshape(2 * 𝐒ⁱ²ᵉ' * λ[i], size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  jacc[i]'
-                    # -jacc[i]  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
     
         ℒ.kron!(kronxx[i], x[i], x[i])
     
@@ -11177,8 +11181,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         # aug_state₁[i] = [state₁; 1; x[i]]
         # aug_state₂[i] = [state₂; 0; zero(x[1])]
         copyto!(aug_state₁[i], 1, state₁, 1)
-        copyto!(aug_state₁[i], length(state₁) + 2, x, 1)
-        copyto!(aug_state₂[i],1,state₂,1)
+        copyto!(aug_state₁[i], length(state₁) + 2, x[i], 1)
+        copyto!(aug_state₂[i], 1, state₂, 1)
 
         # state₁, state₂ = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
         ℒ.mul!(state₁, 𝐒⁻¹, aug_state₁[i])
@@ -11528,6 +11532,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
 
         # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * kron_buffer3
         ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer3)
+
         ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ)
 
         init_guess *= 0
