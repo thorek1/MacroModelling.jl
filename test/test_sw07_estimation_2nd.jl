@@ -188,8 +188,8 @@ elseif priors == "all"
 end
 
 modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
-                                        Optim.NelderMead(),
-                                        initial_params = init_params)
+                                        Optim.NelderMead())#,
+                                        # initial_params = init_params)
 
 
 for t in 100:50:size(data,2)
