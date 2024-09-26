@@ -244,7 +244,7 @@ end
 nms = copy(names(samps))
 samps = replacenames(samps, Dict(nms[1:length(varnames)] .=> varnames))
 
-dir_name = "sw07_$(algo)_$(smpls)_samples_$(fltr)_filter_$(smple)_sample"
+dir_name = "sw07_$(algo)__$(smpls)_samples__$(fltr)_filter__$(smple)_sample__$(priors)_priors"
 
 if !isdir(dir_name) mkdir(dir_name) end
 
