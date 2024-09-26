@@ -259,7 +259,7 @@ serialize("samples_$(dt)h.jls", samps)
 
 my_plot = StatsPlots.plot(samps)
 StatsPlots.savefig(my_plot, "samples_$(dt)h.png")
-StatsPlots.savefig(my_plot, "../samples_latest.png")
+StatsPlots.savefig(my_plot, "../../samples_latest.png")
 
 #Base.show(samps)
 #println(Base.show(samps))
