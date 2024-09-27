@@ -17,12 +17,20 @@ BLAS.set_num_threads(Threads.nthreads() ÷ 2)
 println("Threads used: ", Threads.nthreads())
 println("BLAS threads used: ", BLAS.get_num_threads())
 
+geo = try ENV["geo"] catch 
+    "US" 
+end
+
 priors = try ENV["priors"] catch 
     "original" 
 end
 
 smple = try ENV["sample"] catch
      "original" 
+end
+
+smplr = try ENV["sampler"] catch
+    "NUTS" 
 end
 
 fltr = try ENV["filter"] catch
@@ -48,11 +56,12 @@ end
 # chns = Meta.parse(ENV["chains"]) # "4" # 
 # scns = Meta.parse(ENV["scans"]) # "4" # 
 
-# println("Sampler: $smpler")
 # println("Model: $mdl")
 # println("Chains: $chns")
 # println("Scans: $scns")
 
+println("Sampler: $smplr")
+println("Economy: $geo")
 println("Priors: $priors")
 println("Estimation Sample: $smple")
 println("Samples: $smpls")
@@ -247,9 +256,11 @@ end
 nms = copy(names(samps))
 samps = replacenames(samps, Dict(nms[1:length(varnames)] .=> varnames))
 
+if !isdir("estimation_results") mkdir("estimation_results") end
+
 cd("estimation_results")
 
-dir_name = "sw07_$(algo)__$(smpls)_samples__$(fltr)_filter__$(smple)_sample__$(priors)_priors"
+dir_name = "$(geo)_$(algo)__$(smple)_sample__$(priors)_priors__$(fltr)_filter__$(smpls)_samples__$(smplr)_sampler"
 
 if !isdir(dir_name) mkdir(dir_name) end
 
