@@ -182,7 +182,7 @@ include("../models/Smets_Wouters_2007.jl")
 
 fixed_parameters = Smets_Wouters_2007.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007.parameters)]
 
-SW07_loglikelihood_short = SW07_loglikelihood_function(data[:,1:50], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
+SW07_loglikelihood_short = SW07_loglikelihood_function(data[:,1:100], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
 
 if priors == "original"
@@ -196,15 +196,12 @@ elseif priors == "all"
     init_params = [0.6903311071443926, 0.23619919346626797, 0.4083698788698424, 0.40325989845471827, 0.10143716370378969, 0.18068502675840892, 0.3058916878514176, 0.9955555237550752, 0.26671389363124226, 0.9236689505457307, 0.674731006441746, 0.28408249851850514, 0.9683465610132509, 0.933378182883533, 0.925027986231054, 0.903046143979153, 7.896155496461486, 1.6455318200429114, 0.8087247835156663, 0.6810460886306969, 1.9841461267764804, 0.760636151573123, 0.6382455491225867, 0.19142190630093547, 0.2673044965954749, 1.420182575070305, 1.4691204685875094, 0.9116901265919812, 0.038876128828754096, 0.06853866339690745, 0.5268979929068206, 0.10560163114659846, 0.066430553115568, 0.2533046323843139, 0.4757377383382505, 0.19839420502490226, 0.021640395369881125, 2.421353949984134, 0.18231926720206218, 10.692905462142393, 10.871558909176551]
 end
 
-# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
-#                                         Optim.NelderMead(),
-#                                         initial_params = init_params)
-
 modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
                                         Optim.SimulatedAnnealing())
 
+println("Mode variable values (Simulated Annealing - short sample): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
-for t in 100:50:size(data,2)
+for t in 150:100:size(data,2)
     SW07_loglikelihood = SW07_loglikelihood_function(data[:,1:t], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
     global modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
@@ -214,12 +211,17 @@ for t in 100:50:size(data,2)
     println("Sample up to $t out of $(size(data,2))\nMode variable values:\n$(modeSW2007.values)\nMode loglikelihood: $(modeSW2007.lp)")
 end
 
-# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
-#                                         Optim.SimulatedAnnealing())
-
-# println("Mode loglikelihood (Simulated Annealing): $(modeSW2007.lp)")
-
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
+
+if !isfinite(modeSW2007.lp)
+    i = 1
+    while !isfinite(modeSW2007.lp) || i < 10
+        global modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, Optim.SimulatedAnnealing())
+        i += 1
+    end
+end
+
+println("Mode variable values (Simulated Annealing): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
 modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
