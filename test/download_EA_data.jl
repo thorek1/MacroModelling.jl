@@ -1,3 +1,10 @@
+using Downloads
+using CSV
+using DataFrames
+import Dates
+using AxisKeys
+using Statistics
+
 dat = CSV.read("./Github/MacroModelling.jl/test/data/EA_SW_rawdata.csv", DataFrame, types = Dict(8=>Float64))
 
 dat.interest_rate = dat.shortrate / 4
@@ -17,13 +24,15 @@ dat.real_wage_per_capita = dat.wage ./ dat.hours ./ dat.defgdp
 dat.real_wage_per_capita_growth = [missing; diff(log.(dat.real_wage_per_capita)) * 100]
 
 dat.hours_worked = log.(dat.hours ./ dat.pop) .* 100
+dat.hours_growth = [missing; diff(log.(dat.hours_worked)) * 100]
 dat.hours_worked .-= dat.hours_worked[1:160] |> skipmissing |> mean
 
 subset_data_wide = dat[:,[:period, 
                         :real_GDP_per_capita_growth, 
                         :real_consumption_per_capita_growth, 
                         :real_investment_per_capita_growth, 
-                        :hours_worked, 
+                        # :hours_worked, 
+                        :hours_growth,
                         :inflation, 
                         :real_wage_per_capita_growth,
                         :interest_rate
@@ -38,6 +47,9 @@ data = KeyedArray(Float64.(Matrix(complete_subset_data_wide[:, Not(:period)])'),
                     Time = complete_subset_data_wide[:, :period])
 
 # declare observables as written in model
-observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+observables = [:dy, :dc, :dinve, 
+# :labobs, 
+:dlabobs,
+:pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
 data = rekey(data, :Variable => observables)
