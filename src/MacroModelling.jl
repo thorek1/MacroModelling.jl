@@ -2773,6 +2773,100 @@ function levenberg_marquardt(f::Function,
 end
 
 
+function gauss_newton(f::Function, 
+    initial_guess::Array{T,1}, 
+    lower_bounds::Array{T,1}, 
+    upper_bounds::Array{T,1},
+    parameters::solver_parameters
+    ) where {T <: AbstractFloat}
+    # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
+
+    xtol = 1e-12
+    ftol = 1e-12
+    rel_xtol = 1e-14
+    iterations = parameters.iterations
+    transformation_level = parameters.transformation_level
+
+    @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
+    @assert all(lower_bounds .< upper_bounds)
+
+    function f̂(x) 
+        f(undo_transform(x,transformation_level))  
+    end
+
+    upper_bounds  = transform(upper_bounds,transformation_level)
+    lower_bounds  = transform(lower_bounds,transformation_level)
+
+    current_guess = copy(transform(initial_guess,transformation_level))
+
+    ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
+
+    prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
+
+    largest_step = zero(T) + 1
+    largest_residual = zero(T) + 1
+
+    resnorm = 1.0
+    relresnorm = 1.0
+
+	for iter in 1:iterations
+        # println(current_guess)
+        # make the jacobian and f calls nonallocating
+        𝒟.jacobian!(f̂, ∇, backend, current_guess, prep)
+
+        residuals = f̂(current_guess)
+
+        resnorm = ℒ.norm(residuals)
+
+        # if resnorm < ftol # && iter > 4
+        #     println("GN worked with $iter iterations - norm: $resnorm; relative norm: $relresnorm")
+        #     return undo_transform(current_guess,transformation_level), (iter, zero(T), zero(T), resnorm) # f(undo_transform(current_guess,transformation_level)))
+        # end
+
+        ∇̂ = try 
+            ℒ.factorize(∇)
+        catch
+            # println("GN fact failed; resnorm: $resnorm")
+            # ℒ.svd(fxλp)
+            # println("factorization fails")
+            return undo_transform(current_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level)))
+        end
+        
+        ℒ.ldiv!(∇̂, residuals)
+
+        norm1 = ℒ.norm(current_guess)
+
+        ℒ.axpy!(-1, residuals, current_guess)
+
+        relresnorm = ℒ.norm(residuals) / max(norm1, ℒ.norm(current_guess))
+        
+        minmax!(current_guess, lower_bounds, upper_bounds)
+        
+        if !all(isfinite,residuals) 
+            # println("GN not finite failed; resnorm: $resnorm")
+            break 
+        elseif relresnorm < rel_xtol && resnorm < ftol
+            # println("GN worked with $iter iterations - relative norm: $relresnorm; norm: $resnorm")
+            return undo_transform(current_guess,transformation_level), (iter, zero(T), zero(T), relresnorm) # f(undo_transform(current_guess,transformation_level)))
+        end
+
+        # largest_step = maximum(abs, previous_guess - current_guess)
+        # largest_relative_step = maximum(abs, (previous_guess - current_guess) ./ previous_guess)
+        # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level)))
+        # # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
+
+        # if largest_step <= xtol || largest_residual <= ftol || largest_relative_step <= rel_xtol
+        #     return undo_transform(current_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level)))
+        #     # return undo_transform(current_guess,transformation_level,shift), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level,shift)))
+        # end
+    end
+    # println("not converged in max iter; relative norm: $relresnorm; norm: $resnorm")
+    best_guess = undo_transform(current_guess,transformation_level)
+    # best_guess = undo_transform(current_guess,transformation_level,shift)
+
+    return best_guess, (iterations, largest_step, largest_residual, f(best_guess))
+end
+
 function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
     all_variables = @ignore_derivatives sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
@@ -4494,7 +4588,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     else !cold_start
         for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
             if sol_minimum > tol
-                sol_values, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                sol_values, sol_minimum = solve_ss(gauss_newton, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                     guess, 
                                                     parameters[1],
                                                     ext,
