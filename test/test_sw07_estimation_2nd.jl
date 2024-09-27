@@ -45,12 +45,14 @@ smpls = try Meta.parse(ENV["samples"]) catch
     1000
 end
 
+# geo = "EA"
 # smple = "full"
 # fltr = "inversion"
 # algo = "pruned_second_order"
 # smpls = 2000
-# priors = "all"#"original"
+# priors = "open"#"original"
 
+# cd("/home/cdsw")
 # smpler = ENV["sampler"] # "pigeons" #
 # mdl = ENV["model"] # "linear" # 
 # chns = Meta.parse(ENV["chains"]) # "4" # 
@@ -112,44 +114,90 @@ end
 
 
 # Handling distributions with varying parameters using arraydist
-dists = [
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_ea
-InverseGamma(0.1, 2.0, 0.025,5.0, μσ = true),   # z_eb
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_eg
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_eqs
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_em
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_epinf
-InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_ew
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoa
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhob
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhog
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoqs
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoms
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhopinf
-Beta(0.5, 0.2, 0.001,0.9999, μσ = true),        # crhow
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # cmap
-Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # cmaw
-Normal(4.0, 1.5,   2.0, 15.0),                  # csadjcost
-Normal(1.50,0.375, 0.25, 3.0),                  # csigma
-Beta(0.7, 0.1, 0.001, 0.99, μσ = true),         # chabb
-Beta(0.5, 0.1, 0.3, 0.95, μσ = true),           # cprobw
-Normal(2.0, 0.75, 0.25, 10.0),                  # csigl
-Beta(0.5, 0.10, 0.5, 0.95, μσ = true),          # cprobp
-Beta(0.5, 0.15, 0.01, 0.99, μσ = true),         # cindw
-Beta(0.5, 0.15, 0.01, 0.99, μσ = true),         # cindp
-Beta(0.5, 0.15, 0.01, 0.99999, μσ = true),      # czcap
-Normal(1.25, 0.125, 1.0, 3.0),                  # cfc
-Normal(1.5, 0.25, 1.0, 3.0),                    # crpi
-Beta(0.75, 0.10, 0.5, 0.975, μσ = true),        # crr
-Normal(0.125, 0.05, 0.001, 0.5),                # cry
-Normal(0.125, 0.05, 0.001, 0.5),                # crdy
-Gamma(0.625, 0.1, 0.1, 2.0, μσ = true),         # constepinf
-Gamma(0.25, 0.1, 0.01, 2.0, μσ = true),         # constebeta
-Normal(0.0, 2.0, -10.0, 10.0),                  # constelab
-Normal(0.4, 0.10, 0.1, 0.8),                    # ctrend
-Normal(0.5, 0.25, 0.01, 2.0),                   # cgy
-Normal(0.3, 0.05, 0.01, 1.0),                   # calfa
-]
+if priors == "open"
+    dists = [
+    InverseGamma(0.1, 2.0, μσ = true),   # z_ea
+    InverseGamma(0.1, 2.0, μσ = true),   # z_eb
+    InverseGamma(0.1, 2.0, μσ = true),   # z_eg
+    InverseGamma(0.1, 2.0, μσ = true),   # z_eqs
+    InverseGamma(0.1, 2.0, μσ = true),   # z_em
+    InverseGamma(0.1, 2.0, μσ = true),   # z_epinf
+    InverseGamma(0.1, 2.0, μσ = true),   # z_ew
+    Beta(0.5, 0.2, μσ = true),        # crhoa
+    Beta(0.5, 0.2, μσ = true),        # crhob
+    Beta(0.5, 0.2, μσ = true),        # crhog
+    Beta(0.5, 0.2, μσ = true),        # crhoqs
+    Beta(0.5, 0.2, μσ = true),        # crhoms
+    Beta(0.5, 0.2, μσ = true),        # crhopinf
+    Beta(0.5, 0.2, μσ = true),        # crhow
+    Beta(0.5, 0.2, μσ = true),        # cmap
+    Beta(0.5, 0.2, μσ = true),        # cmaw
+    Normal(4.0, 1.5),                  # csadjcost
+    Normal(1.50,0.375),                  # csigma
+    Beta(0.7, 0.1, μσ = true),         # chabb
+    Beta(0.5, 0.1, μσ = true),           # cprobw
+    Normal(2.0, 0.75),                  # csigl
+    Beta(0.5, 0.10, μσ = true),          # cprobp
+    Beta(0.5, 0.15, μσ = true),         # cindw
+    Beta(0.5, 0.15, μσ = true),         # cindp
+    Beta(0.5, 0.15, μσ = true),      # czcap
+    Normal(1.25, 0.125),                  # cfc
+    Normal(1.5, 0.25),                    # crpi
+    Beta(0.75, 0.10, μσ = true),        # crr
+    Normal(0.125, 0.05),                # cry
+    Normal(0.125, 0.05),                # crdy
+    Gamma(0.625, 0.1, μσ = true),         # constepinf
+    Gamma(0.25, 0.1, μσ = true),         # constebeta
+    Normal(0.0, 2.0),                  # constelab
+    Normal(0.4, 0.10),                    # ctrend
+    Normal(0.5, 0.25),                   # cgy
+    Normal(0.3, 0.05),                   # calfa
+    Beta(0.025, 0.005, μσ = true),     # ctou    = 0.025;       % depreciation rate; AER page 592
+    Normal(1.5, 1.0),                               # clandaw = 1.5;         % average wage markup
+    Beta(0.18, 0.01, μσ = true),          # cg      = 0.18;        % exogenous spending gdp ratio; AER page 592      
+    Gamma(10, 5, μσ = true),                        # curvp   = 10;          % Kimball curvature in the goods market; AER page 592
+    Gamma(10, 5, μσ = true)                        # curvw   = 10;          % Kimball curvature in the labor market; AER page 592
+    ]
+else
+    dists = [
+    InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_ea
+    InverseGamma(0.1, 2.0, 0.025,5.0, μσ = true),   # z_eb
+    InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_eg
+    InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_eqs
+    InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_em
+    InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_epinf
+    InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_ew
+    Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoa
+    Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhob
+    Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhog
+    Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoqs
+    Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoms
+    Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhopinf
+    Beta(0.5, 0.2, 0.001,0.9999, μσ = true),        # crhow
+    Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # cmap
+    Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # cmaw
+    Normal(4.0, 1.5,   2.0, 15.0),                  # csadjcost
+    Normal(1.50,0.375, 0.25, 3.0),                  # csigma
+    Beta(0.7, 0.1, 0.001, 0.99, μσ = true),         # chabb
+    Beta(0.5, 0.1, 0.3, 0.95, μσ = true),           # cprobw
+    Normal(2.0, 0.75, 0.25, 10.0),                  # csigl
+    Beta(0.5, 0.10, 0.5, 0.95, μσ = true),          # cprobp
+    Beta(0.5, 0.15, 0.01, 0.99, μσ = true),         # cindw
+    Beta(0.5, 0.15, 0.01, 0.99, μσ = true),         # cindp
+    Beta(0.5, 0.15, 0.01, 0.99999, μσ = true),      # czcap
+    Normal(1.25, 0.125, 1.0, 3.0),                  # cfc
+    Normal(1.5, 0.25, 1.0, 3.0),                    # crpi
+    Beta(0.75, 0.10, 0.5, 0.975, μσ = true),        # crr
+    Normal(0.125, 0.05, 0.001, 0.5),                # cry
+    Normal(0.125, 0.05, 0.001, 0.5),                # crdy
+    Gamma(0.625, 0.1, 0.1, 2.0, μσ = true),         # constepinf
+    Gamma(0.25, 0.1, 0.01, 2.0, μσ = true),         # constebeta
+    Normal(0.0, 2.0, -10.0, 10.0),                  # constelab
+    Normal(0.4, 0.10, 0.1, 0.8),                    # ctrend
+    Normal(0.5, 0.25, 0.01, 2.0),                   # cgy
+    Normal(0.3, 0.05, 0.01, 1.0),                   # calfa
+    ]
+end
 
 if priors == "all"
     dists = vcat(dists,[
@@ -168,7 +216,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
         z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params
         
         ctou, clandaw, cg, curvp, curvw = fixed_parameters
-    elseif priors == "all"
+    elseif priors ∈ ["all", "open"]
         z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa, ctou, clandaw, cg, curvp, curvw = all_params
     end
     
@@ -204,9 +252,9 @@ SW07_loglikelihood_short = SW07_loglikelihood_function(data[:,1:100], Smets_Wout
 # end
 
 modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
-                                        Optim.SimulatedAnnealing())
+                                        Optim.NelderMead())
 
-println("Mode variable values (Simulated Annealing - short sample): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
+ println("Mode variable values (Simulated Annealing - short sample): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
 for t in 150:100:size(data,2)
     SW07_loglikelihood = SW07_loglikelihood_function(data[:,1:t], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
@@ -223,7 +271,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 if !isfinite(modeSW2007.lp)
     i = 1
     while !isfinite(modeSW2007.lp) || i < 10
-        global modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, Optim.SimulatedAnnealing())
+        global modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, Optim.NelderMead())
         global i += 1
     end
 end
