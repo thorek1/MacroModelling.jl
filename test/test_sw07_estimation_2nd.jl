@@ -251,9 +251,14 @@ SW07_loglikelihood_short = SW07_loglikelihood_function(data[:,1:100], Smets_Wout
 #     init_params = [0.6903311071443926, 0.23619919346626797, 0.4083698788698424, 0.40325989845471827, 0.10143716370378969, 0.18068502675840892, 0.3058916878514176, 0.9955555237550752, 0.26671389363124226, 0.9236689505457307, 0.674731006441746, 0.28408249851850514, 0.9683465610132509, 0.933378182883533, 0.925027986231054, 0.903046143979153, 7.896155496461486, 1.6455318200429114, 0.8087247835156663, 0.6810460886306969, 1.9841461267764804, 0.760636151573123, 0.6382455491225867, 0.19142190630093547, 0.2673044965954749, 1.420182575070305, 1.4691204685875094, 0.9116901265919812, 0.038876128828754096, 0.06853866339690745, 0.5268979929068206, 0.10560163114659846, 0.066430553115568, 0.2533046323843139, 0.4757377383382505, 0.19839420502490226, 0.021640395369881125, 2.421353949984134, 0.18231926720206218, 10.692905462142393, 10.871558909176551]
 # end
 
+# cache_length = Smets_Wouters_2007.NSSS_solver_cache |> length
+# for i in 3:cache_length
+#     pop!(Smets_Wouters_2007.NSSS_solver_cache)
+# end
+
 modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
                                         Optim.NelderMead())
-
+                                        
  println("Mode variable values (Simulated Annealing - short sample): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
 for t in 150:100:size(data,2)
@@ -270,7 +275,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 
 if !isfinite(modeSW2007.lp)
     i = 1
-    while !isfinite(modeSW2007.lp) || i < 10
+    while i < 10 || modeSW2007.lp < -5000 # || !isfinite(modeSW2007.lp)
         global modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, Optim.NelderMead())
         global i += 1
     end
@@ -306,7 +311,7 @@ println("Mean variable values: $(mean(samps).nt.mean)")
 
 if priors == "original"
     varnames = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
-elseif priors == "all"
+else # if priors == "all"
     varnames = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa, :ctou, :clandaw, :cg, :curvp, :curvw]
 end
 
