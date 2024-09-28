@@ -2646,6 +2646,7 @@ function levenberg_marquardt(f::Function,
 
     largest_step = zero(T)
     largest_residual = zero(T)
+    largest_relative_step = zero(T)
 
     μ¹ = μ̄¹
     μ² = μ̄²
@@ -2670,14 +2671,14 @@ function levenberg_marquardt(f::Function,
         # ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
 
         if !all(isfinite,∇̂)
-            return undo_transform(current_guess,transformation_level), (iter, Inf, Inf, upper_bounds)
+            return undo_transform(current_guess,transformation_level), (iter, Inf, Inf, Inf)
             # return undo_transform(current_guess,transformation_level,shift), (iter, Inf, Inf, upper_bounds)
         end
 
         ∇̄ = ℒ.cholesky!(∇̂, check = false)
 
         if !ℒ.issuccess(∇̄)
-            return undo_transform(current_guess,transformation_level), (iter, Inf, Inf, upper_bounds)
+            return undo_transform(current_guess,transformation_level), (iter, Inf, Inf, Inf)
             # ∇̄ = ℒ.svd(∇̂)
         end
 
@@ -2761,7 +2762,7 @@ function levenberg_marquardt(f::Function,
         # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
 
         if largest_residual <= ftol && largest_relative_step <= rel_xtol
-            return undo_transform(current_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level)))
+            return undo_transform(current_guess,transformation_level), (iter, largest_step, largest_relative_step, largest_residual)#largest_residual, f(undo_transform(current_guess,transformation_level)))
             # return undo_transform(current_guess,transformation_level,shift), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level,shift)))
         end
     end
@@ -2769,7 +2770,7 @@ function levenberg_marquardt(f::Function,
     best_guess = undo_transform(current_guess,transformation_level)
     # best_guess = undo_transform(current_guess,transformation_level,shift)
 
-    return best_guess, (iterations, largest_step, largest_residual, f(best_guess))
+    return best_guess, (iterations, largest_step, largest_relative_step, largest_residual)#, f(best_guess))
 end
 
 
@@ -2781,11 +2782,10 @@ function gauss_newton(f::Function,
     ) where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
-    xtol = 1e-12
-    ftol = 1e-12
-    rel_xtol = 1e-14
+    ftol = parameters.ftol
+    rel_xtol = parameters.rel_xtol
     iterations = parameters.iterations
-    transformation_level = parameters.transformation_level
+    transformation_level = 0 # parameters.transformation_level
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
     @assert all(lower_bounds .< upper_bounds)
@@ -2797,74 +2797,105 @@ function gauss_newton(f::Function,
     upper_bounds  = transform(upper_bounds,transformation_level)
     lower_bounds  = transform(lower_bounds,transformation_level)
 
-    current_guess = copy(transform(initial_guess,transformation_level))
+    new_guess = copy(transform(initial_guess,transformation_level))
+
+    new_residuals = f̂(new_guess)
 
     ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
 
-    prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
+    prep = 𝒟.prepare_jacobian(f̂, backend, new_guess)
 
-    largest_step = zero(T) + 1
-    largest_residual = zero(T) + 1
+    # largest_step = zero(T) + 1
+    # largest_residual = zero(T) + 1
 
-    resnorm = 1.0
-    relresnorm = 1.0
+    rel_xtol_reached = 1.0
+    rel_ftol_reached = 1.0
+    new_residuals_norm = 1.0
+    # init_residuals_norm = ℒ.norm(new_residuals)
+    # iter = 1
+    # resnorm = 1.0
+    # relresnorm = 1.0
 
 	for iter in 1:iterations
-        # println(current_guess)
-        # make the jacobian and f calls nonallocating
-        𝒟.jacobian!(f̂, ∇, backend, current_guess, prep)
+    # while iter < iterations
+        𝒟.jacobian!(f̂, ∇, backend, new_guess, prep)
 
-        residuals = f̂(current_guess)
+        # old_residuals_norm = ℒ.norm(new_residuals)
 
-        resnorm = ℒ.norm(residuals)
+        # old_residuals = copy(new_residuals)
 
+        new_residuals = f̂(new_guess)
+
+        if !all(isfinite,new_residuals) 
+            # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
+            rel_xtol_reached = 1.0
+            rel_ftol_reached = 1.0
+            new_residuals_norm = 1.0
+            break 
+        end
+        
+        if rel_xtol_reached < rel_xtol && new_residuals_norm < ftol # || rel_ftol_reached < rel_ftol
+            # println("GN worked with $iter iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")# rel_ftol: $rel_ftol_reached")
+            break
+            # return undo_transform(new_guess,transformation_level), (iter, zero(T), zero(T), min(rel_ftol, rel_xtol)) # f(undo_transform(new_guess,transformation_level)))
+        end
+
+        new_guess_norm = ℒ.norm(new_guess)
+
+        new_residuals_norm = ℒ.norm(new_residuals)
+        
         # if resnorm < ftol # && iter > 4
         #     println("GN worked with $iter iterations - norm: $resnorm; relative norm: $relresnorm")
-        #     return undo_transform(current_guess,transformation_level), (iter, zero(T), zero(T), resnorm) # f(undo_transform(current_guess,transformation_level)))
+        #     return undo_transform(new_guess,transformation_level), (iter, zero(T), zero(T), resnorm) # f(undo_transform(new_guess,transformation_level)))
         # end
 
         ∇̂ = try 
             ℒ.factorize(∇)
         catch
-            # println("GN fact failed; resnorm: $resnorm")
+            # println("GN fact failed after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
+            rel_xtol_reached = 1.0
+            rel_ftol_reached = 1.0
+            new_residuals_norm = 1.0
+            break
             # ℒ.svd(fxλp)
-            # println("factorization fails")
-            return undo_transform(current_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level)))
+            # return undo_transform(new_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(new_guess,transformation_level)))
         end
-        
-        ℒ.ldiv!(∇̂, residuals)
 
-        norm1 = ℒ.norm(current_guess)
+        # rel_ftol_reached = ℒ.norm(∇̂' \ new_residuals) / new_residuals_norm
 
-        ℒ.axpy!(-1, residuals, current_guess)
+        ℒ.ldiv!(∇̂, new_residuals)
 
-        relresnorm = ℒ.norm(residuals) / max(norm1, ℒ.norm(current_guess))
-        
-        minmax!(current_guess, lower_bounds, upper_bounds)
-        
-        if !all(isfinite,residuals) 
-            # println("GN not finite failed; resnorm: $resnorm")
+        guess_update = new_residuals
+
+        guess_update_norm = ℒ.norm(guess_update)
+
+        ℒ.axpy!(-1, guess_update, new_guess)
+
+        if !all(isfinite,new_guess) 
+            # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
+            rel_xtol_reached = 1.0
+            rel_ftol_reached = 1.0
+            new_residuals_norm = 1.0
             break 
-        elseif relresnorm < rel_xtol && resnorm < ftol
-            # println("GN worked with $iter iterations - relative norm: $relresnorm; norm: $resnorm")
-            return undo_transform(current_guess,transformation_level), (iter, zero(T), zero(T), relresnorm) # f(undo_transform(current_guess,transformation_level)))
         end
-
-        # largest_step = maximum(abs, previous_guess - current_guess)
-        # largest_relative_step = maximum(abs, (previous_guess - current_guess) ./ previous_guess)
-        # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level)))
-        # # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
-
-        # if largest_step <= xtol || largest_residual <= ftol || largest_relative_step <= rel_xtol
-        #     return undo_transform(current_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level)))
-        #     # return undo_transform(current_guess,transformation_level,shift), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level,shift)))
-        # end
+        
+        rel_xtol_reached = guess_update_norm / max(new_guess_norm, ℒ.norm(new_guess))
+        # rel_ftol_reached = new_residuals_norm / max(eps(),init_residuals_norm)
+        
+        minmax!(new_guess, lower_bounds, upper_bounds)
+        
+        # iter += 1
     end
-    # println("not converged in max iter; relative norm: $relresnorm; norm: $resnorm")
-    best_guess = undo_transform(current_guess,transformation_level)
-    # best_guess = undo_transform(current_guess,transformation_level,shift)
 
-    return best_guess, (iterations, largest_step, largest_residual, f(best_guess))
+    # if iter == iterations
+        # println("GN failed to converge - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")#; rel_ftol: $rel_ftol_reached")
+    # else
+    #     println("GN converged after $iter iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")
+    # end
+
+    best_guess = undo_transform(new_guess,transformation_level)
+    
+    return best_guess, (iterations, rel_xtol_reached, rel_xtol_reached, new_residuals_norm)
 end
 
 function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
@@ -4377,7 +4408,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 
     pars[1:2] = sort(pars[1:2], rev = true)
 
-    par_inputs = solver_parameters(1e-12, 1e-12, 1e-14, 250, pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(sqrt(eps()), sqrt(eps()), 1e-14, 250, pars..., 1, 0.0, 2)
 
     runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs]) catch end
 
@@ -4407,7 +4438,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 60, maxiter::Int =
 
     pars = Optim.minimizer(sol)
 
-    par_inputs = solver_parameters(1e-12, 1e-12, 1e-14, 250, pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(sqrt(eps()), sqrt(eps()), 1e-14, 250, pars..., 1, 0.0, 2)
 
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs])
 
@@ -4502,7 +4533,9 @@ function solve_ss(SS_optimizer::Function,
 
     sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
 
-    sol_minimum = isnan(sum(abs, info[4])) ? Inf : sum(abs, info[4])
+    sol_minimum = info[4] # isnan(sum(abs, info[4])) ? Inf : ℒ.norm(info[4])
+    
+    rel_sol_minimum = info[3]
 
     sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
 
@@ -4526,11 +4559,11 @@ function solve_ss(SS_optimizer::Function,
 
     max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
 
-    if sol_minimum < tol && verbose
+    if sol_minimum < sqrt(tol) && rel_sol_minimum < tol && verbose
         println("Block: $n_block - Solved $(extended_problem_str)using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
     end
 
-    return sol_values, sol_minimum
+    return sol_values, rel_sol_minimum, sol_minimum
 end
 
 
@@ -4544,22 +4577,37 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         ubs::Vector{Float64},
                         parameters::Vector{solver_parameters},
                         cold_start::Bool,
-                        verbose::Bool;
-                        tol::AbstractFloat = 1e-12 #, # eps(),
+                        verbose::Bool ;
+                        tol::AbstractFloat = sqrt(eps()),
+                        rtol::AbstractFloat = 1e-14,
                         # timeout = 120,
                         # starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
                         # fail_fast_solvers_only = true,
                         # verbose::Bool = false
                         )
+
+    # tol = parameters[1].ftol
+    # rtol = parameters[1].rel_xtol
+
     guess = guess_and_pars_solved_vars[1]
 
     sol_values = guess
 
     closest_parameters_and_solved_vars = sum(abs, guess_and_pars_solved_vars[2]) == Inf ? parameters_and_solved_vars : guess_and_pars_solved_vars[2]
 
-    sol_minimum  = sum(abs, ss_solve_blocks(parameters_and_solved_vars, guess))
-    
-    if sol_minimum < tol
+    res = ss_solve_blocks(parameters_and_solved_vars, guess)
+
+    sol_minimum  = ℒ.norm(res)
+
+    if !cold_start
+        ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
+
+        rel_sol_minimum = ℒ.norm(∇ \ res) / sol_minimum
+    else
+        rel_sol_minimum = 1.0
+    end
+
+    if sol_minimum < tol && rel_sol_minimum < rtol
         if verbose
             println("Block: $n_block, - Solved using previous solution; maximum residual = ", maximum(abs, ss_solve_blocks(parameters_and_solved_vars, guess)))
         end
@@ -4575,8 +4623,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         for g in guesses
             for p in parameters
                 for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
-                    if sol_minimum > tol
-                        sol_values, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                    if sol_minimum > tol || rel_sol_minimum > rtol
+                        sol_values, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                             g, 
                                                             p,
                                                             ext,
@@ -4587,31 +4635,39 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
     else !cold_start
         for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
-            if sol_minimum > tol
-                sol_values, sol_minimum = solve_ss(gauss_newton, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
-                                                    guess, 
-                                                    parameters[1],
-                                                    ext,
-                                                    false)
+            if sol_minimum > tol || rel_sol_minimum > rtol
+                sol_values, rel_sol_minimum, sol_minimum = solve_ss(gauss_newton, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                                    guess, 
+                                                                    parameters[1],
+                                                                    ext,
+                                                                    false)
             end
         end
 
-        for p in unique(parameters) # take unique because some parameters might appear more than once
-            for s in [p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
-                # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
-                    if sol_minimum > tol
-                        sol_values, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
-                                                            guess, 
-                                                            p,
-                                                            false,
-                                                            s)
-                    end
+        # if sol_minimum > tol || rel_sol_minimum > rtol
+            for p in unique(parameters) # take unique because some parameters might appear more than once
+                for s in [p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+                    # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
+                        if sol_minimum > tol || rel_sol_minimum > rtol
+                            sol_values, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                                guess, 
+                                                                p,
+                                                                false,
+                                                                s)
+                        # else
+                        #     println("GN failed but LM succeeded.")
+                        end
+                    # end
                 # end
             end
         end
     end
 
-    return sol_values, (sol_minimum, total_iters)
+    # if rel_sol_minimum > 1e-14
+    #     println("NSSS not found") 
+    # end
+
+    return sol_values, (rel_sol_minimum, total_iters)
 end
 
 
@@ -10074,6 +10130,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         luF = RF.lu!(F, check = false) ###
 
         if !ℒ.issuccess(luF)
+            # println("KF failed")
             return -Inf
         end
 
@@ -10081,6 +10138,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
 
         # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
+            # println("KF failed")
             return -Inf
         end
 
@@ -10142,6 +10200,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         luF = ℒ.lu(F, check = false) ###
 
         if !ℒ.issuccess(luF)
+            # println("KF failed")
             return -Inf
         end
 
@@ -10149,6 +10208,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
 
         # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
+            # println("KF failed")
             return -Inf
         end
 
@@ -10522,6 +10582,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
     TT = 𝓂.timings
 
     if solution_error > tol || isnan(solution_error)
+        # println("NSSS not found")
         return TT, SS_and_pars, zeros(S, 0, 0), [state], false
     end
 
@@ -10530,6 +10591,8 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
     # ∇₁ = Matrix{S}(sp∇₁)
 
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = TT)
+
+    # if !solved println("NSSS not found") end
 
     return TT, SS_and_pars, 𝐒₁, [state], solved
 end
