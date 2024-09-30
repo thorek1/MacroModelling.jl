@@ -4608,12 +4608,16 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     sol_minimum  = ℒ.norm(res)
 
     if !cold_start
-        ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
+        if sol_minimum > rtol
+            ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
 
-        rel_sol_minimum = try 
-            ℒ.norm(∇ \ res) / sol_minimum
-        catch
-            1.0
+            rel_sol_minimum = try 
+                ℒ.norm(∇ \ res) / sol_minimum
+            catch
+                1.0
+            end
+        else
+            rel_sol_minimum = 0.0
         end
     else
         rel_sol_minimum = 1.0
