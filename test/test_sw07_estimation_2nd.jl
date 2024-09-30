@@ -287,26 +287,36 @@ SW07_loglikelihood_short = SW07_loglikelihood_function(data[:,1:100], Smets_Wout
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
-modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-                                        Optim.NelderMead())
+
+LLH = -1e6
 
 # if !isfinite(modeSW2007.lp)
-    i = 1
-    while i < 10 || modeSW2007.lp < -5000 # || !isfinite(modeSW2007.lp)
-        out = try Turing.maximum_a_posteriori(SW07_loglikelihood, 
-                                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                                adtype = AutoZygote(),
-                                                initial_params = modeSW2007.values)
-        catch
-            1
-        end
-        # global modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, Optim.NelderMead())
-        global i += 1
-        if !(out == 1)
-            global modeSW2007 = out
-            println(modeSW2007.lp)
-        end
+# while i < 10 || LLH < -5000 # || !isfinite(modeSW2007.lp)
+for i in 1:10
+    modeSW2007NM = try Turing.maximum_a_posteriori(SW07_loglikelihood, Optim.NelderMead())
+    catch
+        1
     end
+
+    modeSW2007 = try Turing.maximum_a_posteriori(SW07_loglikelihood, 
+                                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                            adtype = AutoZygote(),
+                                            initial_params = modeSW2007NM.values)
+    catch
+        1
+    end
+
+    global i += 1
+
+    if !(out == 1)
+        global LLH = modeSW2007.lp
+        println(LLH)
+    end
+
+    if LLH > -3000 
+        break
+    end
+end
 # end
 
 println("Mode variable values (LBFGS): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
