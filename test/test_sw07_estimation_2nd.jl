@@ -346,11 +346,24 @@ samps = @time Turing.sample(SW07_loglikelihood,
 println(samps)
 println("Mean variable values: $(mean(samps).nt.mean)")
 
-if priors == "original"
-    varnames = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
-else # if priors == "all"
-    varnames = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa, :ctou, :clandaw, :cg, :curvp, :curvw]
+
+varnames = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+
+if priors ∈ ["all", "open"]
+    varnames = vcat(varnames,[:ctou, :clandaw, :cg, :curvp, :curvw])
 end
+
+if fltr == "inversion" || !(algo == "first_order")
+    varnames = vcat(varnames,[:z_dy, :z_dc, :z_dinve, :z_pinfobs, :z_robs, :z_dwobs])
+
+    if labor == "growth"
+        varnames = vcat(varnames,[:z_dlabobs])
+        z_dlabobs = all_params[36 + length(fixed_parameters[1]) - 5 + 6 + length(fixed_parameters[2])]
+    elseif labor == "level"
+        varnames = vcat(varnames,[:z_labobs])
+    end
+end
+
 
 nms = copy(names(samps))
 samps = replacenames(samps, Dict(nms[1:length(varnames)] .=> varnames))
