@@ -2664,7 +2664,7 @@ function levenberg_marquardt(f::Function,
 
 	for iter in 1:iterations
         # make the jacobian and f calls nonallocating
-        𝒟.jacobian!(f̂, ∇, backend, current_guess, prep)
+        𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
 
         previous_guess .= current_guess
 
@@ -2826,7 +2826,7 @@ function gauss_newton(f::Function,
 
 	for iter in 1:iterations
     # while iter < iterations
-        𝒟.jacobian!(f̂, ∇, backend, new_guess, prep)
+        𝒟.jacobian!(f̂, ∇, prep, backend, new_guess)
 
         # old_residuals_norm = ℒ.norm(new_residuals)
 
@@ -4608,12 +4608,16 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     sol_minimum  = ℒ.norm(res)
 
     if !cold_start
-        ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
+        if sol_minimum > rtol
+            ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
 
-        rel_sol_minimum = try 
-            ℒ.norm(∇ \ res) / sol_minimum
-        catch
-            1.0
+            rel_sol_minimum = try 
+                ℒ.norm(∇ \ res) / sol_minimum
+            catch
+                1.0
+            end
+        else
+            rel_sol_minimum = 0.0
         end
     else
         rel_sol_minimum = 1.0
