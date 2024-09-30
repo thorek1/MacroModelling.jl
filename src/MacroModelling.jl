@@ -1397,7 +1397,7 @@ function compressed_kron³(a::AbstractMatrix{T};
 
     m3_exp = length(colmask) > 0 || length(rowmask) > 0 ? 1 : 3
 
-    estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp * 1.5, 10000))
+    estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp, 10000))
     
     I = Vector{Int}(undef, estimated_nnz)
     J = Vector{Int}(undef, estimated_nnz)
@@ -1481,6 +1481,14 @@ function compressed_kron³(a::AbstractMatrix{T};
                                                         # I[k[]] = row
                                                         # J[k[]] = col
                                                         # V[k[]] = val / divisor 
+
+                                                        if k > estimated_nnz
+                                                            estimated_nnz = floor(Int, estimated_nnz * 1.2)
+                                                            resize!(I, estimated_nnz)
+                                                            resize!(J, estimated_nnz)
+                                                            resize!(V, estimated_nnz)
+                                                        end
+
                                                         I[k] = row
                                                         J[k] = col
                                                         V[k] = val / divisor 
@@ -4602,7 +4610,11 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     if !cold_start
         ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
 
-        rel_sol_minimum = ℒ.norm(∇ \ res) / sol_minimum
+        rel_sol_minimum = try 
+            ℒ.norm(∇ \ res) / sol_minimum
+        catch
+            1.0
+        end
     else
         rel_sol_minimum = 1.0
     end
