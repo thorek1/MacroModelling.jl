@@ -76,18 +76,20 @@ all_data_wide.real_consumption_per_capita_growth = [missing; diff(log.(all_data_
 
 all_data_wide.hours_worked = log.(all_data_wide.PRS85006023 .* all_data_wide.CE16OV ./ all_data_wide.CNP16OV) .* 100
 all_data_wide.hours_worked .-= all_data_wide.hours_worked[1:232] |> skipmissing |> mean
+all_data_wide.hours_worked_growth = [missing; diff(all_data_wide.hours_worked)]
 
 all_data_wide.real_wage_per_capita = all_data_wide.COMPNFB ./ all_data_wide.GDPDEF
 all_data_wide.real_wage_per_capita_growth = [missing; diff(log.(all_data_wide.real_wage_per_capita)) * 100]
 # this series is quite different for past values
 
 
-subset_data_wide = all_data_wide[:,[:DATE, 
-                                    :real_GDP_per_capita_growth, 
-                                    :real_consumption_per_capita_growth, 
-                                    :real_investment_per_capita_growth, 
-                                    :hours_worked, 
-                                    :inflation, 
+subset_data_wide = all_data_wide[:,[:DATE,
+                                    :real_GDP_per_capita_growth,
+                                    :real_consumption_per_capita_growth,
+                                    :real_investment_per_capita_growth,
+                                    :hours_worked,
+                                    :hours_worked_growth,
+                                    :inflation,
                                     :real_wage_per_capita_growth,
                                     :interest_rate
                                     ]]
@@ -100,9 +102,9 @@ data = KeyedArray(Float64.(Matrix(complete_subset_data_wide[:, Not(:DATE)])'), V
 
 
 # declare observables as written in model
-observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+obs = [:dy, :dc, :dinve, :labobs, :dlabobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
-data = rekey(data, :Variable => observables)
+data = rekey(data, :Variable => obs)
 
 ## Check with original file
 # # load data
