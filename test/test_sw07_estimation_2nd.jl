@@ -1,6 +1,8 @@
+# using Revise
 using MacroModelling
 using Zygote
 import Turing
+# import MicroCanonicalHMC
 # import Pigeons
 import Turing: NUTS, sample, logpdf, AutoZygote
 import Optim, LineSearches
@@ -313,6 +315,7 @@ println("Mode variable values: $(modeSW2007.values); Mode loglikelihood: $(modeS
 # end
 
 samps = @time Turing.sample(SW07_loglikelihood, 
+                            # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
                             NUTS(adtype = AutoZygote()), 
                             smpls, 
                             progress = true, 
