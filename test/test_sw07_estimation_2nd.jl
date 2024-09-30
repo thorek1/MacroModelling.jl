@@ -45,12 +45,17 @@ smpls = try Meta.parse(ENV["samples"]) catch
     1000
 end
 
+labor = try ENV["labor"] catch 
+    "level" 
+end 
+
 # geo = "EA"
 # smple = "full"
 # fltr = "inversion"
 # algo = "pruned_second_order"
 # smpls = 2000
 # priors = "open"#"original"
+# labor = "growth"
 
 # cd("/home/cdsw")
 # smpler = ENV["sampler"] # "pigeons" #
@@ -69,10 +74,15 @@ println("Estimation Sample: $smple")
 println("Samples: $smpls")
 println("Filter: $fltr")
 println("Algorithm: $algo")
+println("Labor: $labor")
 
 println(pwd())
 
-
+if labor == "growth"
+    observables = [:dy, :dc, :dinve, :dlabobs, :pinfobs, :dwobs, :robs]
+elseif labor == "level"
+    observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs]
+end
 
 
 if geo == "EA"
@@ -81,12 +91,13 @@ elseif geo == "US"
     if smple == "original"
         # load data
         dat = CSV.read("./Github/MacroModelling.jl/test/data/usmodel.csv", DataFrame)
+        dat.dlabobs = [missing; diff(dat.labobs)]
 
         # load data
         data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
 
         # declare observables as written in csv file
-        observables_old = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+        observables_old = [:dy, :dc, :dinve, :labobs, :dlabobs, :pinfobs, :dw, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
         # Subsample
         # subset observables in data
@@ -95,9 +106,9 @@ elseif geo == "US"
         data = data(observables_old, sample_idx)
 
         # declare observables as written in model
-        observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+        observables_new = [:dy, :dc, :dinve, :labobs, :dlabobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
-        data = rekey(data, :Variable => observables)
+        data = rekey(data, :Variable => observables_new)
     elseif smple == "original_new_data" # 1960Q1 - 2004Q4
         include("download_US_data.jl") 
         data = data[:,Interval(Dates.Date("1960-01-01"), Dates.Date("2004-10-01"))]
@@ -112,6 +123,7 @@ elseif geo == "US"
     end
 end
 
+data = data(observables)
 
 # Handling distributions with varying parameters using arraydist
 if priors == "open"
@@ -233,7 +245,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
 end
 
 # estimate nonlinear model
-include("../models/Smets_Wouters_2007.jl")
+include("../models/Smets_Wouters_2007_estim.jl")
 
 fixed_parameters = Smets_Wouters_2007.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007.parameters)]
 
@@ -281,7 +293,7 @@ if !isfinite(modeSW2007.lp)
     end
 end
 
-println("Mode variable values (Simulated Annealing): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
+println("Mode variable values (Nelder Mead): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
 modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
@@ -290,15 +302,15 @@ modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood,
 
 println("Mode variable values: $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
-if !isfinite(modeSW2007.lp)
-    if priors == "original"
-        init_params = [0.7336875859606048, 0.29635793589906373, 0.7885127259084761, 0.627589469317792, 0.33279740477340736, 0.18071963802733587, 0.3136301504425597, 0.9716682344909233, 0.4212412387517263, 0.9714124687443985, 0.7670313366057671, 0.21992355568749347, 0.9803757371138285, 0.9515717168366892, 0.8107798813529196, 0.8197332384776822, 4.178359103188282, 1.3532376868676554, 0.6728358960879459, 0.7234419205397767, 2.1069886214607654, 0.6485994561807753, 0.5726327821945625, 0.2750069399589326, 0.37392325592474474, 1.5618305945104742, 1.9566618052670857, 0.7982525395708631, 0.10123079234482239, 0.18389934495956148, 0.7110007143377491, 0.1734645242219083, 0.26768709319895306, 0.5067914157714182, 0.5356423461417883, 0.19654471991293343]
-    elseif priors == "all"
-        init_params = [0.9529733496330073, 0.42614535606982823, 0.4742577388945689, 0.3716366060389797, 0.24696728630860904, 0.1218130930403994, 0.4365362234507848, 0.9903848613028288, 0.1465634562548954, 0.9158671302404774, 0.663841236340643, 0.0655266169629801, 0.984704283269366, 0.9304890554643118, 0.9265705630036396, 0.9224904712859519, 7.97805743362492, 1.6312629433175978, 0.7999601457959883, 0.8485606954365501, 2.7372427463274724, 0.9031957988375723, 0.643006173765684, 0.13100697840871936, 0.2309504617062573, 1.1274603062499469, 1.2727349627156925, 0.8428930767435494, 0.057023802333110836, 0.07039191727967987, 0.6354356309438446, 0.10195057994063485, 0.054764316413866254, 0.28787999102966416, 0.259743211415718, 0.15927262539033032, 0.022988567748339406, 2.4904127252600885, 0.1829056817570428, 10.689914744490899, 11.178677844919884]
-    end
-else
+# if !isfinite(modeSW2007.lp)
+#     if priors == "original"
+#         init_params = [0.7336875859606048, 0.29635793589906373, 0.7885127259084761, 0.627589469317792, 0.33279740477340736, 0.18071963802733587, 0.3136301504425597, 0.9716682344909233, 0.4212412387517263, 0.9714124687443985, 0.7670313366057671, 0.21992355568749347, 0.9803757371138285, 0.9515717168366892, 0.8107798813529196, 0.8197332384776822, 4.178359103188282, 1.3532376868676554, 0.6728358960879459, 0.7234419205397767, 2.1069886214607654, 0.6485994561807753, 0.5726327821945625, 0.2750069399589326, 0.37392325592474474, 1.5618305945104742, 1.9566618052670857, 0.7982525395708631, 0.10123079234482239, 0.18389934495956148, 0.7110007143377491, 0.1734645242219083, 0.26768709319895306, 0.5067914157714182, 0.5356423461417883, 0.19654471991293343]
+#     elseif priors == "all"
+#         init_params = [0.9529733496330073, 0.42614535606982823, 0.4742577388945689, 0.3716366060389797, 0.24696728630860904, 0.1218130930403994, 0.4365362234507848, 0.9903848613028288, 0.1465634562548954, 0.9158671302404774, 0.663841236340643, 0.0655266169629801, 0.984704283269366, 0.9304890554643118, 0.9265705630036396, 0.9224904712859519, 7.97805743362492, 1.6312629433175978, 0.7999601457959883, 0.8485606954365501, 2.7372427463274724, 0.9031957988375723, 0.643006173765684, 0.13100697840871936, 0.2309504617062573, 1.1274603062499469, 1.2727349627156925, 0.8428930767435494, 0.057023802333110836, 0.07039191727967987, 0.6354356309438446, 0.10195057994063485, 0.054764316413866254, 0.28787999102966416, 0.259743211415718, 0.15927262539033032, 0.022988567748339406, 2.4904127252600885, 0.1829056817570428, 10.689914744490899, 11.178677844919884]
+#     end
+# else
     init_params = modeSW2007.values
-end
+# end
 
 samps = @time Turing.sample(SW07_loglikelihood, 
                             NUTS(adtype = AutoZygote()), 
