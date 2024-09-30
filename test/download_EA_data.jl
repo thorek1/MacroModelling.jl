@@ -31,7 +31,7 @@ subset_data_wide = dat[:,[:period,
                         :real_GDP_per_capita_growth, 
                         :real_consumption_per_capita_growth, 
                         :real_investment_per_capita_growth, 
-                        # :hours_worked, 
+                        :hours_worked, 
                         :hours_growth,
                         :inflation, 
                         :real_wage_per_capita_growth,
@@ -47,9 +47,9 @@ data = KeyedArray(Float64.(Matrix(complete_subset_data_wide[:, Not(:period)])'),
                     Time = complete_subset_data_wide[:, :period])
 
 # declare observables as written in model
-observables = [:dy, :dc, :dinve, 
-# :labobs, 
+obs = [:dy, :dc, :dinve, 
+:labobs, 
 :dlabobs,
 :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
-data = rekey(data, :Variable => observables)
+data = rekey(data, :Variable => obs)
