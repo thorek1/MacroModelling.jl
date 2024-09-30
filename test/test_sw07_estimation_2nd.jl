@@ -93,7 +93,7 @@ elseif geo == "US"
     if smple == "original"
         # load data
         dat = CSV.read("./Github/MacroModelling.jl/test/data/usmodel.csv", DataFrame)
-        dat.dlabobs = [missing; diff(dat.labobs)]
+        dat.dlabobs = [0.0; diff(dat.labobs)] # 0.0 is wrong but i get a float64 matrix
 
         # load data
         data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
@@ -270,39 +270,53 @@ SW07_loglikelihood_short = SW07_loglikelihood_function(data[:,1:100], Smets_Wout
 #     pop!(Smets_Wouters_2007.NSSS_solver_cache)
 # end
 
-modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
-                                        Optim.NelderMead())
+# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood_short, 
+#                                         Optim.NelderMead())
                                         
- println("Mode variable values (Simulated Annealing - short sample): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
+#  println("Mode variable values (Simulated Annealing - short sample): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
-for t in 150:100:size(data,2)
-    SW07_loglikelihood = SW07_loglikelihood_function(data[:,1:t], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
+# for t in 150:100:size(data,2)
+#     SW07_loglikelihood = SW07_loglikelihood_function(data[:,1:t], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
-    global modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-                                            Optim.NelderMead(),
-                                            initial_params = modeSW2007.values)
+#     global modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+#                                             Optim.NelderMead(),
+#                                             initial_params = modeSW2007.values)
     
-    println("Sample up to $t out of $(size(data,2))\nMode variable values:\n$(modeSW2007.values)\nMode loglikelihood: $(modeSW2007.lp)")
-end
+#     println("Sample up to $t out of $(size(data,2))\nMode variable values:\n$(modeSW2007.values)\nMode loglikelihood: $(modeSW2007.lp)")
+# end
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
-if !isfinite(modeSW2007.lp)
+modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+                                        Optim.NelderMead())
+
+# if !isfinite(modeSW2007.lp)
     i = 1
     while i < 10 || modeSW2007.lp < -5000 # || !isfinite(modeSW2007.lp)
-        global modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, Optim.NelderMead())
+        out = try Turing.maximum_a_posteriori(SW07_loglikelihood, 
+                                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                                adtype = AutoZygote(),
+                                                initial_params = modeSW2007.values)
+        catch
+            1
+        end
+        # global modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, Optim.NelderMead())
         global i += 1
+        if !(out == 1)
+            global modeSW2007 = out
+            println(modeSW2007.lp)
+        end
     end
-end
+# end
 
-println("Mode variable values (Nelder Mead): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
+println("Mode variable values (LBFGS): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
-modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                        adtype = AutoZygote(),
-                                        initial_params = modeSW2007.values)
+# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+#                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+#                                         adtype = AutoZygote(),
+#                                         initial_params = modeSW2007.values)
 
-println("Mode variable values: $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
+# println("Mode variable values: $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
 # if !isfinite(modeSW2007.lp)
 #     if priors == "original"
