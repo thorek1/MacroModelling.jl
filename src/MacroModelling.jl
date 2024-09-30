@@ -2664,7 +2664,7 @@ function levenberg_marquardt(f::Function,
 
 	for iter in 1:iterations
         # make the jacobian and f calls nonallocating
-        𝒟.jacobian!(f̂, ∇, backend, current_guess, prep)
+        𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
 
         previous_guess .= current_guess
 
@@ -2826,7 +2826,7 @@ function gauss_newton(f::Function,
 
 	for iter in 1:iterations
     # while iter < iterations
-        𝒟.jacobian!(f̂, ∇, backend, new_guess, prep)
+        𝒟.jacobian!(f̂, ∇, prep, backend, new_guess)
 
         # old_residuals_norm = ℒ.norm(new_residuals)
 
