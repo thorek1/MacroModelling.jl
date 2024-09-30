@@ -256,7 +256,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 LLH = -1e6
 init_params = []
 
-for i in 1:10
+for i in 1:50
     modeSW2007NM = try Turing.maximum_a_posteriori(SW07_loglikelihood, Optim.NelderMead())
     catch
         1
@@ -273,7 +273,13 @@ for i in 1:10
     if !(modeSW2007 == 1)
         global LLH = modeSW2007.lp
         global init_params = modeSW2007.values
-        println(LLH)
+        println("Iter $i found loglikelihood $LLH")
+    end
+    
+    if !(modeSW2007NM == 1)
+        global LLH = modeSW2007NM.lp
+        global init_params = modeSW2007NM.values
+        println("Iter $i found loglikelihood $LLH from Nelder Mead")
     end
 
     if LLH > -3000 
