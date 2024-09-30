@@ -2986,7 +2986,10 @@ function get_loglikelihood(𝓂::ℳ,
 
     bounds_violated = @ignore_derivatives check_bounds(parameter_values, 𝓂)
 
-    if bounds_violated return -Inf end
+    if bounds_violated 
+        # println("Bounds violated")
+        return -Inf 
+    end
 
     NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
 
@@ -2998,7 +3001,10 @@ function get_loglikelihood(𝓂::ℳ,
 
     # end # timeit_debug
 
-    if !solved return -Inf end
+    if !solved 
+        # println("Main call: 1st order solution not found")
+        return -Inf 
+    end
  
     if collect(axiskeys(data,1)) isa Vector{String}
         data = @ignore_derivatives rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)

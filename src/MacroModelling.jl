@@ -7509,7 +7509,7 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
     M̂ = RF.lu(∇₊ * 𝐒ᵗ * expand[2] + ∇₀, check = false)
     
     if !ℒ.issuccess(M̂)
-        return (hcat(𝐒ᵗ, zeros(size(𝐒ᵗ,1),T.nExo)), solved), x -> NoTangent(), NoTangent(), NoTangent()
+        return (hcat(𝐒ᵗ, zeros(size(𝐒ᵗ,1),T.nExo)), false), x -> NoTangent(), NoTangent(), NoTangent()
     end
     
     M = inv(M̂)
@@ -10132,6 +10132,11 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
     Ptmp = similar(P)
 
     for t in 1:size(data_in_deviations, 2)
+        if !all(isfinite.(z)) 
+            # println("KF not finite at step $t")
+            return -Inf 
+        end
+
         ℒ.axpby!(1, data_in_deviations[:, t], -1, z)
         # v = data_in_deviations[:, t] - z
 
@@ -10205,6 +10210,11 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
     K = similar(C')
 
     for t in 1:size(data_in_deviations, 2)
+        if !all(isfinite.(z)) 
+            # println("KF not finite at step $t")
+            return -Inf 
+        end
+
         v = data_in_deviations[:, t] - z
 
         F = C * P * C'
@@ -10273,6 +10283,11 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
     loglik = 0.0
 
     for t in 2:T
+        if !all(isfinite.(z)) 
+            # println("KF not finite at step $t")
+            return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
+        end
+
         v[t] .= data_in_deviations[:, t-1] .- z#[t-1]
 
         # CP[t] .= C * P̄[t-1]
@@ -10326,7 +10341,7 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
     end
 
     llh = -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
-    
+
     # initialise derivative variables
     ∂A = zero(A)
     ∂F = zero(F)
@@ -10493,6 +10508,8 @@ end
 
 
 function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: Real
+    if !all(isfinite.(parameter_values)) return true end
+
     if length(𝓂.bounds) > 0 
         for (k,v) in 𝓂.bounds
             if k ∈ 𝓂.parameters
@@ -10604,7 +10621,6 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = TT)
 
-    # if !solved println("NSSS not found") end
 
     return TT, SS_and_pars, 𝐒₁, [state], solved
 end
