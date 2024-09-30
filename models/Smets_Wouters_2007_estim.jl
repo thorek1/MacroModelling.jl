@@ -121,21 +121,21 @@
 
 	ygap[0] = 100 * log(y[0] / yflex[0])
 
-	dy[0] = ctrend + 100 * (y[0] / y[-1] - 1)
+	dy[0] = ctrend + 100 * (y[0] / y[-1] - 1) + z_dy / 100 * e_dy[x]
 
-	dc[0] = ctrend + 100 * (c[0] / c[-1] - 1)
+	dc[0] = ctrend + 100 * (c[0] / c[-1] - 1) + z_dc / 100 * e_dc[x]
 
-	dinve[0] = ctrend + 100 * (inve[0] / inve[-1] - 1)
+	dinve[0] = ctrend + 100 * (inve[0] / inve[-1] - 1) + z_dinve / 100 * e_dinve[x]
 
-	pinfobs[0] = 100 * (pinf[0] - 1)
+	pinfobs[0] = 100 * (pinf[0] - 1) + z_pinfobs / 100 * e_pinfobs[x]
 
-	robs[0] = 100 * (r[0] - 1)
+	robs[0] = 100 * (r[0] - 1) + z_robs / 100 * e_robs[x]
 
-	dwobs[0] = ctrend + 100 * (w[0] / w[-1] - 1)
+	dwobs[0] = ctrend + 100 * (w[0] / w[-1] - 1) + z_dwobs / 100 * e_dwobs[x]
 
-	dlabobs[0] = 100 * (lab[0] / lab[-1] - 1)
+	dlabobs[0] = 100 * (lab[0] / lab[-1] - 1) + z_dlabobs / 100 * e_dlabobs[x]
 
-	labobs[0] = constelab + 100 * (lab[0] / lab[ss] - 1)
+	labobs[0] = constelab + 100 * (lab[0] / lab[ss] - 1) + z_labobs / 100 * e_labobs[x]
 
 end
 
@@ -249,5 +249,14 @@ end
 
 	z_epinf	= 0.1455
 
+	z_dy		= 0
+	z_dc		= 0
+	z_dinve		= 0
+	z_pinfobs	= 0
+	z_robs		= 0
+	z_dwobs		= 0
+	z_dlabobs	= 0
+	z_labobs	= 0
+	
 	1e-6 > ygap > -1e-6
 end

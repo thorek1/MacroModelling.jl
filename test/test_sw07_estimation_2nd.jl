@@ -215,27 +215,58 @@ end
 
 if priors == "all"
     dists = vcat(dists,[
-                        Beta(0.025, 0.005, 0.0025, .05, μσ = true),     # ctou    = 0.025;       % depreciation rate; AER page 592
-                        Normal(1.5, 0.5),                               # clandaw = 1.5;         % average wage markup
-                        Beta(0.18, 0.01, 0.1, 0.3, μσ = true),          # cg      = 0.18;        % exogenous spending gdp ratio; AER page 592      
-                        Gamma(10, 2, μσ = true),                        # curvp   = 10;          % Kimball curvature in the goods market; AER page 592
-                        Gamma(10, 2, μσ = true)                        # curvw   = 10;          % Kimball curvature in the labor market; AER page 592
+        Beta(0.025, 0.005, 0.0025, .05, μσ = true),     # ctou    = 0.025;       % depreciation rate; AER page 592
+        Normal(1.5, 0.5),                               # clandaw = 1.5;         % average wage markup
+        Beta(0.18, 0.01, 0.1, 0.3, μσ = true),          # cg      = 0.18;        % exogenous spending gdp ratio; AER page 592      
+        Gamma(10, 2, μσ = true),                        # curvp   = 10;          % Kimball curvature in the goods market; AER page 592
+        Gamma(10, 2, μσ = true)                        # curvw   = 10;          % Kimball curvature in the labor market; AER page 592
                         ])
+end
+
+if fltr == "inversion" || !(algo == "first_order")
+    dists = vcat(dists,[
+        InverseGamma(0.05, 1.0, μσ = true),   # z_dy
+        InverseGamma(0.05, 1.0, μσ = true),   # z_dc
+        InverseGamma(0.05, 1.0, μσ = true),   # z_dinve
+        InverseGamma(0.05, 1.0, μσ = true),   # z_pinfobs
+        InverseGamma(0.05, 1.0, μσ = true),   # z_robs
+        InverseGamma(0.05, 1.0, μσ = true)    # z_dwobs
+                        ])
+
+    if labor == "growth"
+        dists = vcat(dists,[InverseGamma(0.05, 1.0, μσ = true)])   # z_dlabobs
+    elseif labor == "level"
+        dists = vcat(dists,[InverseGamma(0.05, 1.0, μσ = true)])   # z_labobs
+    end
 end
 
 Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter)
     all_params ~ Turing.arraydist(dists)
     
+    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params[1:36]
+
     if priors == "original"
-        z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params
-        
-        ctou, clandaw, cg, curvp, curvw = fixed_parameters
+        ctou, clandaw, cg, curvp, curvw = fixed_parameters[1]
     elseif priors ∈ ["all", "open"]
-        z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa, ctou, clandaw, cg, curvp, curvw = all_params
+        ctou, clandaw, cg, curvp, curvw = all_params[36 .+ (1:5)]
+    end
+
+    if fltr == "inversion" || !(algo == "first_order")
+        z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs = all_params[36 + length(fixed_parameters[1]) - 5 .+ (1:6)]
+
+        if labor == "growth"
+            z_labobs = fixed_parameters[2][1]
+            z_dlabobs = all_params[36 + length(fixed_parameters[1]) - 5 + 6 + length(fixed_parameters[2])]
+        elseif labor == "level"
+            z_labobs = all_params[36 + length(fixed_parameters[1]) - 5 + 6 + length(fixed_parameters[2])]
+            z_dlabobs = fixed_parameters[2][1]
+        end
+    else
+        z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs, z_dlabobs, z_labobs = fixed_parameters[2]
     end
     
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+        parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf, z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs, z_dlabobs, z_labobs]
 
         llh = get_loglikelihood(m, data(observables), parameters_combined, 
                                 filter = filter,
@@ -249,7 +280,24 @@ end
 # estimate nonlinear model
 include("../models/Smets_Wouters_2007_estim.jl")
 
-fixed_parameters = Smets_Wouters_2007.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007.parameters)]
+fixed_parameters = Vector{Vector{Float64}}(undef,0)
+
+if priors == "original"
+    push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007.parameters)])
+elseif priors ∈ ["all", "open"]
+    push!(fixed_parameters, Float64[])
+end
+
+if fltr == "inversion" || !(algo == "first_order")
+    if labor == "growth"
+        push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_labobs], Smets_Wouters_2007.parameters)])
+    elseif labor == "level"
+        push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_dlabobs], Smets_Wouters_2007.parameters)])
+    end
+else
+    push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_dy, :z_dc, :z_dinve, :z_pinfobs, :z_robs, :z_dwobs, :z_dlabobs, :z_labobs], Smets_Wouters_2007.parameters)])
+end
+
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
