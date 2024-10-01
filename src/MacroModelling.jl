@@ -4652,11 +4652,15 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     else !cold_start
         for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
             if sol_minimum > tol || rel_sol_minimum > rtol
+                # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
                 sol_values, rel_sol_minimum, sol_minimum = solve_ss(gauss_newton, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                                     guess, 
                                                                     parameters[1],
                                                                     ext,
-                                                                    false)
+                                                                    false)                    
+                # if !(sol_minimum > tol || rel_sol_minimum > rtol)
+                #     println("Block: $n_block GN succeeded - $ext - $sol_minimum - $rel_sol_minimum")
+                # end                      
             end
         end
 
@@ -4671,7 +4675,9 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                                                                 false,
                                                                 s)
                         # else
-                        #     println("GN failed but LM succeeded.")
+                            # if !(sol_minimum > tol || rel_sol_minimum > rtol)
+                            #     println("Block: $n_block GN failed but LM succeeded - $s - $sol_minimum - $rel_sol_minimum")
+                            # end
                         end
                     # end
                 # end
@@ -6760,7 +6766,11 @@ end
 
 
 
-function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::Matrix{M} where {M,N}
+function calculate_jacobian(parameters::Vector{M},
+                            SS_and_pars::Vector{N},
+                            𝓂::ℳ;
+                            timer::TimerOutput = TimerOutput())::Matrix{M} where {M,N}
+    @timeit_debug timer "Calculate jacobian" begin
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
@@ -6785,6 +6795,8 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
     
     # lk = ReentrantLock()
 
+    @timeit_debug timer "Loop" begin
+
     Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian[1]
     # for f in 𝓂.model_jacobian[1]
         # val, idx = f(X)#::Tuple{<: Real, Int}
@@ -6807,14 +6819,26 @@ function calculate_jacobian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂:
 
     𝓂.model_jacobian[3][𝓂.model_jacobian[2]] .= vals
 
+    end # timeit_debug
+    end # timeit_debug
+
     return 𝓂.model_jacobian[3]
 end
 
 
-function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
+function rrule(::typeof(calculate_jacobian), 
+                parameters, 
+                SS_and_pars, 
+                𝓂;
+                timer::TimerOutput = TimerOutput())
+    @timeit_debug timer "Calculate jacobian - forward" begin
+
     jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
+    end # timeit_debug
+
     function calculate_jacobian_pullback(∂∇₁)
+        @timeit_debug timer "Calculate jacobian - reverse" begin
         X = [parameters; SS_and_pars]
 
         # vals = Float64[]
@@ -6826,6 +6850,8 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
         vals = zeros(Float64, length(𝓂.model_jacobian_SS_and_pars_vars[1]))
 
         # lk = ReentrantLock()
+
+        @timeit_debug timer "Loop" begin
 
         Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
             out = f(X)
@@ -6849,6 +6875,9 @@ function rrule(::typeof(calculate_jacobian), parameters, SS_and_pars, 𝓂)
         v∂∇₁ = ∂∇₁[cols_unique]
 
         ∂parameters_and_SS_and_pars = analytical_jacobian_SS_and_pars_vars[:,cols_unique] * v∂∇₁
+
+        end # timeit_debug
+        end # timeit_debug
 
         return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
     end
@@ -7463,8 +7492,15 @@ end
 
 function calculate_first_order_solution(∇₁::Matrix{Float64}; 
                                         T::timings, 
-                                        explosive::Bool = false)::Tuple{Matrix{Float64}, Bool}
+                                        explosive::Bool = false,
+                                        timer::TimerOutput = TimerOutput())::Tuple{Matrix{Float64}, Bool}
+    @timeit_debug timer "Calculate 1st order solution" begin
+    @timeit_debug timer "Quadratic matrix solution" begin
+
     A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
+
+    end # timeit_debug
+    @timeit_debug timer "Exogenous part solution" begin
 
     if !solved
         return hcat(A, zeros(size(A,1),T.nExo)), solved
@@ -7490,12 +7526,19 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     ℒ.rmul!(∇ₑ, -1)
     # B = -(C \ ∇ₑ) # otherwise Zygote doesnt diff it
 
+    end # timeit_debug
+    end # timeit_debug
+
     return hcat(A, ∇ₑ), solved
 end
 
 
 
-function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = false)
+function rrule(::typeof(calculate_first_order_solution), 
+                ∇₁; 
+                T, 
+                explosive = false,
+                timer::TimerOutput = TimerOutput())
     # Forward pass to compute the output and intermediate values needed for the backward pass
     𝐒ᵗ, solved = riccati_forward(∇₁, T = T, explosive = explosive)
 
@@ -7556,7 +7599,10 @@ function rrule(::typeof(calculate_first_order_solution), ∇₁; T, explosive = 
     return (hcat(𝐒ᵗ, 𝐒ᵉ), solved), first_order_solution_pullback
 end
 
-function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}},Bool} where {Z,S,N}
+function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; 
+                                        T::timings, 
+                                        explosive::Bool = false,
+                                        timer::TimerOutput = TimerOutput())::Tuple{Matrix{ℱ.Dual{Z,S,N}},Bool} where {Z,S,N}
     A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
 
     if !solved
@@ -10094,27 +10140,45 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     𝐁 = B * B'
 
     # Gaussian Prior
-    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose, timer = timer)
 
-    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods)
+    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods, timer = timer)
 end
 
 # TODO: use higher level wrapper, like for lyapunov/sylvester
 # Specialization for :theoretical
-function get_initial_covariance(::Val{:theoretical}, A::AbstractMatrix{S}, B::AbstractMatrix{S}; lyapunov_algorithm::Symbol = :doubling, verbose::Bool = false)::Matrix{S} where S <: Real
-    P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+function get_initial_covariance(::Val{:theoretical}, 
+                                A::AbstractMatrix{S}, 
+                                B::AbstractMatrix{S}; 
+                                lyapunov_algorithm::Symbol = :doubling, 
+                                verbose::Bool = false,
+                                timer::TimerOutput = TimerOutput())::Matrix{S} where S <: Real
+    P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose, timer = timer)
     return P
 end
 
 
 # Specialization for :diagonal
-function get_initial_covariance(::Val{:diagonal}, A::AbstractMatrix{S}, B::AbstractMatrix{S}; lyapunov_algorithm::Symbol = :doubling, verbose::Bool = false)::Matrix{S} where S <: Real
+function get_initial_covariance(::Val{:diagonal}, 
+                                A::AbstractMatrix{S}, 
+                                B::AbstractMatrix{S}; 
+                                lyapunov_algorithm::Symbol = :doubling, 
+                                verbose::Bool = false,
+                                timer::TimerOutput = TimerOutput())::Matrix{S} where S <: Real
     P = @ignore_derivatives collect(ℒ.I(size(A, 1)) * 10.0)
     return P
 end
 
 
-function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}, P::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S <: Float64
+function run_kalman_iterations(A::Matrix{S}, 
+                                𝐁::Matrix{S},
+                                C::Matrix{Float64}, 
+                                P::Matrix{S}, 
+                                data_in_deviations::Matrix{S}; 
+                                presample_periods::Int = 0,
+                                timer::TimerOutput = TimerOutput())::S where S <: Float64
+    @timeit_debug timer "Calculate Kalman filter" begin
+
     u = zeros(S, size(C,2))
 
     z = C * u
@@ -10135,6 +10199,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
     tmp = similar(P)
     Ptmp = similar(P)
 
+    @timeit_debug timer "Loop" begin
     for t in 1:size(data_in_deviations, 2)
         if !all(isfinite.(z)) 
             # println("KF not finite at step $t")
@@ -10148,7 +10213,9 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         mul!(F, Ctmp, C')
         # F = C * P * C'
 
-        luF = RF.lu!(F, check = false) ###
+        @timeit_debug timer "LU factorisation" begin
+        luF = RF.lu!(F, check = false) ### has to be LU since F will always be symmetric and positive semi-definite but not positive definite (due to linear dependencies)
+        end # timeit_debug
 
         if !ℒ.issuccess(luF)
             # println("KF failed")
@@ -10165,6 +10232,7 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
 
         # invF = inv(luF) ###
 
+        @timeit_debug timer "LU div" begin
         if t > presample_periods
             ℒ.ldiv!(ztmp, luF, z)
             loglik += log(Fdet) + ℒ.dot(z', ztmp) ###
@@ -10178,6 +10246,9 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         ℒ.rdiv!(K, luF)
         # K = P * Ct / luF
         # K = P * C' * invF
+
+        end # timeit_debug
+        @timeit_debug timer "Matmul" begin
 
         mul!(tmp, K, C)
         mul!(Ptmp, tmp, P)
@@ -10195,14 +10266,26 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
 
         mul!(z, C, u)
         # z = C * u
+
+        end # timeit_debug
     end
+
+    end # timeit_debug
+    end # timeit_debug
 
     return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
 end
 
 
 
-function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}, P::Matrix{S}, data_in_deviations::Matrix{S}; presample_periods::Int = 0)::S where S <: ℱ.Dual
+function run_kalman_iterations(A::Matrix{S}, 
+                                𝐁::Matrix{S}, 
+                                C::Matrix{Float64}, 
+                                P::Matrix{S}, 
+                                data_in_deviations::Matrix{S}; 
+                                presample_periods::Int = 0,
+                                timer::TimerOutput = TimerOutput())::S where S <: ℱ.Dual
+    @timeit_debug timer "Calculate Kalman filter - forward mode AD" begin
     u = zeros(S, size(C,2))
 
     z = C * u
@@ -10253,11 +10336,21 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
         z = C * u
     end
 
+    end # timeit_debug
+
     return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
 end
 
 
-function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviations; presample_periods = 0)
+function rrule(::typeof(run_kalman_iterations), 
+                    A, 
+                    𝐁, 
+                    C, 
+                    P, 
+                    data_in_deviations; 
+                    presample_periods = 0,
+                    timer::TimerOutput = TimerOutput())
+    @timeit_debug timer "Calculate Kalman filter - forward" begin
     T = size(data_in_deviations, 2) + 1
 
     z = zeros(size(data_in_deviations, 1))
@@ -10286,6 +10379,8 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
 
     loglik = 0.0
 
+    @timeit_debug timer "Loop" begin
+        
     for t in 2:T
         if !all(isfinite.(z)) 
             # println("KF not finite at step $t")
@@ -10358,14 +10453,19 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
     vtmp = zero(v[1])
     Ptmp = zero(P[1])
 
+    end # timeit_debug
+    end # timeit_debug
+
     # pullback
     function kalman_pullback(∂llh)
+        @timeit_debug timer "Calculate Kalman filter - reverse" begin
         ℒ.rmul!(∂A, 0)
         ℒ.rmul!(∂Faccum, 0)
         ℒ.rmul!(∂P, 0)
         ℒ.rmul!(∂ū, 0)
         ℒ.rmul!(∂𝐁, 0)
 
+        @timeit_debug timer "Loop" begin
         for t in T:-1:2
             if t > presample_periods + 1
                 # ∂llh∂F
@@ -10502,6 +10602,9 @@ function rrule(::typeof(run_kalman_iterations), A, 𝐁, C, P, data_in_deviation
         ℒ.rmul!(∂𝐁, -∂llh/2)
         ℒ.rmul!(∂data_in_deviations, -∂llh/2)
 
+        end # timeit_debug
+        end # timeit_debug
+
         return NoTangent(), ∂A, ∂𝐁, NoTangent(), ∂P, ∂data_in_deviations, NoTangent()
     end
     
@@ -10608,7 +10711,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                     tol::AbstractFloat; 
                                                     sylvester_algorithm::Symbol = :gmres, 
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, tol = tol)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, tol = tol, timer = timer)
 
     state = zeros(𝓂.timings.nVars)
 
@@ -10619,12 +10722,9 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
         return TT, SS_and_pars, zeros(S, 0, 0), [state], false
     end
 
-    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂)# |> Matrix
+    ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂, timer = timer)# |> Matrix
 
-    # ∇₁ = Matrix{S}(sp∇₁)
-
-    𝐒₁, solved = calculate_first_order_solution(∇₁; T = TT)
-
+    𝐒₁, solved = calculate_first_order_solution(∇₁; T = TT, timer = timer)
 
     return TT, SS_and_pars, 𝐒₁, [state], solved
 end
@@ -10690,6 +10790,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     filter_algorithm::Symbol = :LagrangeNewton)
+    @timeit_debug timer "Inversion filter" begin    
     # first order
     state = copy(state[1])
 
@@ -10761,6 +10862,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
     
     𝐒obs = 𝐒[cond_var_idx,1:end-T.nExo]
 
+    @timeit_debug timer "Loop" begin    
     for i in axes(data_in_deviations,2)
         @views ℒ.mul!(y, 𝐒obs, state[T.past_not_future_and_mixed_idx])
         @views ℒ.axpby!(1, data_in_deviations[:,i], -1, y)
@@ -10776,6 +10878,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
         # state = 𝐒 * vcat(state[T.past_not_future_and_mixed_idx], x)
     end
     # TODO: use subset of observables and states when propagating states (see kalman filter)
+
+    end # timeit_debug
+    end # timeit_debug
 
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
     # return -(logabsdets + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
@@ -10872,10 +10977,11 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     M²  = 𝐒[t⁻,1:end-T.nExo]' - M¹ * 𝐒[t⁻,end-T.nExo+1:end]'
     M³  = invjac' * 𝐒[t⁻,end-T.nExo+1:end]'
 
-    ∂Stmp = [M¹ for _ in 1:size(data_in_deviations,2)-1]
+    ∂Stmp = [copy(M¹) for _ in 1:size(data_in_deviations,2)-1]
 
     for t in 2:size(data_in_deviations,2)-1
-        ∂Stmp[t] = M² * ∂Stmp[t-1]
+        ℒ.mul!(∂Stmp[t], M², ∂Stmp[t-1])
+        # ∂Stmp[t] = M² * ∂Stmp[t-1]
     end
 
     tmp1 = zeros(Float64, T.nExo, length(t⁻) + T.nExo)
@@ -11337,10 +11443,11 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         ℒ.axpby!(1, 𝐒ⁱ, 2, jacc[i])
 
-        jacc_fact = ℒ.factorize(jacc[i])
+        jacc_fact = ℒ.factorize(collect(jacc[i]')) # otherwise this fails for nshocks > nexo
 
         # λ[i] = jacc[i]' \ x[i] * 2
-        ℒ.ldiv!(λ[i], jacc_fact', x[i])
+        ℒ.ldiv!(λ[i], jacc_fact, x[i])
+        
         ℒ.rmul!(λ[i], 2)
     
         # fXλp[i] = [reshape(2 * 𝐒ⁱ²ᵉ' * λ[i], size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  jacc[i]'
@@ -11998,10 +12105,12 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         ℒ.axpby!(1, 𝐒ⁱ, 2, jacc[i])
         # jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x[i])), x[i])
     
-        jacc_fact = ℒ.factorize(jacc[i])
+        jacc_fact = ℒ.factorize(collect(jacc[i]'))
 
         # λ[i] = jacc[i]' \ x[i] * 2
-        ℒ.ldiv!(λ[i], jacc_fact', x[i])
+        ℒ.ldiv!(λ[i], jacc_fact, x[i])
+
+        # ℒ.ldiv!(λ[i], jacc_fact', x[i])
         ℒ.rmul!(λ[i], 2)
     
         # fXλp[i] = [reshape(2 * 𝐒ⁱ²ᵉ' * λ[i], size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  jacc[i]'
