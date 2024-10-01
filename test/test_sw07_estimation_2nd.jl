@@ -225,18 +225,18 @@ end
 
 if fltr == "inversion" || !(algo == "first_order")
     dists = vcat(dists,[
-        InverseGamma(0.05, 1.0, μσ = true),   # z_dy
-        InverseGamma(0.05, 1.0, μσ = true),   # z_dc
-        InverseGamma(0.05, 1.0, μσ = true),   # z_dinve
-        InverseGamma(0.05, 1.0, μσ = true),   # z_pinfobs
-        InverseGamma(0.05, 1.0, μσ = true),   # z_robs
-        InverseGamma(0.05, 1.0, μσ = true)    # z_dwobs
+        InverseGamma(0.01, 1.0, μσ = true),   # z_dy
+        InverseGamma(0.01, 1.0, μσ = true),   # z_dc
+        InverseGamma(0.01, 1.0, μσ = true),   # z_dinve
+        InverseGamma(0.01, 1.0, μσ = true),   # z_pinfobs
+        InverseGamma(0.01, 1.0, μσ = true),   # z_robs
+        InverseGamma(0.01, 1.0, μσ = true)    # z_dwobs
                         ])
 
     if labor == "growth"
-        dists = vcat(dists,[InverseGamma(0.05, 1.0, μσ = true)])   # z_dlabobs
+        dists = vcat(dists,[InverseGamma(0.01, 1.0, μσ = true)])   # z_dlabobs
     elseif labor == "level"
-        dists = vcat(dists,[InverseGamma(0.05, 1.0, μσ = true)])   # z_labobs
+        dists = vcat(dists,[InverseGamma(0.01, 1.0, μσ = true)])   # z_labobs
     end
 end
 
@@ -299,42 +299,53 @@ else
 end
 
 
-SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
-
 LLH = -1e6
 init_params = []
 
-for i in 1:50
-    modeSW2007NM = try Turing.maximum_a_posteriori(SW07_loglikelihood, Optim.NelderMead())
-    catch
-        1
-    end
-
-    modeSW2007 = try Turing.maximum_a_posteriori(SW07_loglikelihood, 
-                                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                            adtype = AutoZygote(),
-                                            initial_params = modeSW2007NM.values)
-    catch
-        1
-    end
-
-    if !(modeSW2007 == 1)
-        global LLH = modeSW2007.lp
-        global init_params = modeSW2007.values
-        println("Iter $i found loglikelihood $LLH")
-    end
+for l in range(100, size(data,2), 3)
+    l = floor(Int,l)
     
-    if !(modeSW2007NM == 1)
-        global LLH = modeSW2007NM.lp
-        global init_params = modeSW2007NM.values
-        println("Iter $i found loglikelihood $LLH from Nelder Mead")
-    end
+    SW07_llh = SW07_loglikelihood_function(data[:,1:l], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
-    if LLH > -3000 
-        println("Mode variable values (LBFGS): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
-        break
+    for i in 1:50
+        modeSW2007NM = try 
+            if length(init_params) > 0
+                Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead(), initial_params = init_params)
+            else
+                Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead())
+            end
+        catch
+            1
+        end
+
+        modeSW2007 = try Turing.maximum_a_posteriori(SW07_llh, 
+                                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                                adtype = AutoZygote(),
+                                                initial_params = modeSW2007NM.values)
+        catch
+            1
+        end
+
+        if !(modeSW2007NM == 1)
+            global LLH = modeSW2007NM.lp
+            global init_params = modeSW2007NM.values
+            println("Iter $i, data up to $l, found loglikelihood $LLH from Nelder Mead")
+        end
+
+        if !(modeSW2007 == 1)
+            global LLH = modeSW2007.lp
+            global init_params = modeSW2007.values
+            println("Iter $i, data up to $l, found loglikelihood $LLH from LBFGS")
+        end
+        
+        if LLH > -3000 
+            println("Mode variable values: $(init_params); Mode loglikelihood: $(LLH)")
+            break
+        end
     end
 end
+
+SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
 samps = @time Turing.sample(SW07_loglikelihood, 
                             # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
@@ -387,6 +398,4 @@ my_plot = StatsPlots.plot(samps)
 StatsPlots.savefig(my_plot, "samples_$(dt)h.png")
 StatsPlots.savefig(my_plot, "../../samples_latest.png")
 
-#Base.show(samps)
-#println(Base.show(samps))
 Base.show(stdout, MIME"text/plain"(), samps)
