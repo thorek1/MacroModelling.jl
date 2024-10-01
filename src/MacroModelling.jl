@@ -11363,6 +11363,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
     jacc = [zero(tmp) for _ in 1:size(data_in_deviations,2)]
     
+    jacct = copy(tmp')
+
     λ = [zeros(size(tmp, 1)) for _ in 1:size(data_in_deviations,2)]
     
     λ[1] = copy(tmp' \ x[1] * 2)
@@ -11443,11 +11445,13 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         ℒ.axpby!(1, 𝐒ⁱ, 2, jacc[i])
 
-        jacc_fact = ℒ.factorize(collect(jacc[i]')) # otherwise this fails for nshocks > nexo
+        copy!(jacct, jacc[i]')
+
+        jacc_fact = ℒ.factorize(jacct) # otherwise this fails for nshocks > nexo
 
         # λ[i] = jacc[i]' \ x[i] * 2
         ℒ.ldiv!(λ[i], jacc_fact, x[i])
-        
+
         ℒ.rmul!(λ[i], 2)
     
         # fXλp[i] = [reshape(2 * 𝐒ⁱ²ᵉ' * λ[i], size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2 * ℒ.I(size(𝐒ⁱ, 2))  jacc[i]'
@@ -11457,7 +11461,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         fXλp[i][1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp
         fXλp[i][size(𝐒ⁱ, 2)+1:end, 1:size(𝐒ⁱ, 2)] = -jacc[i]
-        fXλp[i][1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] = jacc[i]'
+        fXλp[i][1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] = jacct
     
         ℒ.kron!(kronxx[i], x[i], x[i])
     
@@ -12034,7 +12038,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     tmp = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x[1])), x[1])
     
     jacc = [zero(tmp) for _ in 1:size(data_in_deviations,2)]
-    
+
+    jacct = copy(tmp')
+
     λ = [zeros(size(tmp, 1)) for _ in 1:size(data_in_deviations,2)]
     
     λ[1] = tmp' \ x[1] * 2
@@ -12104,8 +12110,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         ℒ.axpby!(1, 𝐒ⁱ, 2, jacc[i])
         # jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x[i])), x[i])
-    
-        jacc_fact = ℒ.factorize(collect(jacc[i]'))
+
+        copy!(jacct, jacc[i]')
+
+        jacc_fact = ℒ.factorize(jacct)
 
         # λ[i] = jacc[i]' \ x[i] * 2
         ℒ.ldiv!(λ[i], jacc_fact, x[i])
@@ -12121,7 +12129,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         fXλp[i][1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp
         fXλp[i][size(𝐒ⁱ, 2)+1:end, 1:size(𝐒ⁱ, 2)] = -jacc[i]
-        fXλp[i][1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] = jacc[i]'
+        fXλp[i][1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] = jacct
 
         ℒ.kron!(kronxx[i], x[i], x[i])
     
