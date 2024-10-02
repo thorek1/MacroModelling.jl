@@ -379,7 +379,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 
 samps = @time Turing.sample(SW07_loglikelihood, 
                             # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
-                            NUTS(2000, 0.65, adtype = AutoZygote()), 
+                            NUTS(1000, 0.65, adtype = AutoZygote()), 
                             smpls, 
                             initial_params = init_params, 
                             progress = true)
