@@ -270,11 +270,14 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
             z_labobs = all_params[36 + length(fixed_parameters[1]) - 5 + 6 + length(fixed_parameters[2])]
             z_dlabobs = fixed_parameters[2][1]
         end
+
+        parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf, z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs, z_dlabobs, z_labobs]
+    else
+        parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
     end
     
+    
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf, z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs, z_dlabobs, z_labobs]
-
         llh = get_loglikelihood(m, data(observables), parameters_combined, 
                                 filter = filter,
                                 # timer = timer,
@@ -309,60 +312,60 @@ if msrmt_err
 end
 
 
-LLH = -1e6
-init_params = []
+# LLH = -1e6
+# init_params = []
 
-for l in range(100, size(data,2), 3)
-    l = floor(Int,l)
+# for l in range(100, size(data,2), 3)
+#     l = floor(Int,l)
     
-    SW07_llh = SW07_loglikelihood_function(data[:,1:l], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
+#     SW07_llh = SW07_loglikelihood_function(data[:,1:l], Smets_Wouters_2007, observables, fixed_parameters, algo, fltr)
 
-for i in 1:50
-        modeSW2007NM = try 
-            if length(init_params) > 0
-                Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead(), initial_params = init_params)
-            else
-                Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead())
-            end
-    catch
-        1
-    end
+# for i in 1:50
+#         modeSW2007NM = try 
+#             if length(init_params) > 0 && isfinite(LLH)
+#                 Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead(), initial_params = init_params)
+#             else
+#                 Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead())
+#             end
+#     catch
+#         1
+#     end
 
-        modeSW2007 = try Turing.maximum_a_posteriori(SW07_llh, 
-                                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                            adtype = AutoZygote(),
-                                            initial_params = modeSW2007NM.values)
-    catch
-        1
-    end
+#         modeSW2007 = try Turing.maximum_a_posteriori(SW07_llh, 
+#                                             Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+#                                             adtype = AutoZygote(),
+#                                             initial_params = modeSW2007NM.values)
+#     catch
+#         1
+#     end
 
-    if !(modeSW2007NM == 1)
-        global LLH = modeSW2007NM.lp
-        global init_params = modeSW2007NM.values
-            println("Iter $i, data up to $l, found loglikelihood $LLH from Nelder Mead")
-    end
+#     if !(modeSW2007NM == 1)
+#         global LLH = modeSW2007NM.lp
+#         global init_params = modeSW2007NM.values
+#             println("Iter $i, data up to $l, found loglikelihood $LLH from Nelder Mead")
+#     end
 
-    if !(modeSW2007 == 1)
-        global LLH = modeSW2007.lp
-        global init_params = modeSW2007.values
-            println("Iter $i, data up to $l, found loglikelihood $LLH from LBFGS")
-    end
+#     if !(modeSW2007 == 1)
+#         global LLH = modeSW2007.lp
+#         global init_params = modeSW2007.values
+#             println("Iter $i, data up to $l, found loglikelihood $LLH from LBFGS")
+#     end
     
-    if LLH > -3000 
-        println("Mode variable values: $(init_params); Mode loglikelihood: $(LLH)")
-        break
-    end
-end
-end
+#     if LLH > -3000 
+#         println("Mode variable values: $(init_params); Mode loglikelihood: $(LLH)")
+#         break
+#     end
+# end
+# end
 
-SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
+SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr)
 
 samps = @time Turing.sample(SW07_loglikelihood, 
                             # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
-                            NUTS(adtype = AutoZygote()), 
+                            NUTS(2000, 0.65, adtype = AutoZygote()), 
                             smpls, 
-                            progress = true, 
-                            initial_params = init_params)
+                            # initial_params = init_params, 
+                            progress = true)
 
 println(samps)
 println("Mean variable values: $(mean(samps).nt.mean)")
