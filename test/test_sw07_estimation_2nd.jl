@@ -1,3 +1,5 @@
+#TODO: check why Pigeons is so much slower (more allocs) compared to a few days ago; check higher order correctness; check EA data
+
 # using Revise
 using MacroModelling
 using Zygote
