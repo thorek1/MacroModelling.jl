@@ -1,4 +1,4 @@
-#TODO: check why Pigeons is so much slower (more allocs) compared to a few days ago; check higher order correctness; check EA data
+#TODO: check why Pigeons is so much slower (more allocs) compared to a few days ago; check higher order correctness; check EA data (labor is off, rest is more or less ok)
 
 # using Revise
 using MacroModelling
@@ -96,6 +96,8 @@ if labor == "growth"
     observables = [:dy, :dc, :dinve, :dlabobs, :pinfobs, :dwobs, :robs]
 elseif labor == "level"
     observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs]
+elseif labor == "none"
+    observables = [:dy, :dc, :dinve, :pinfobs, :dwobs, :robs]
 end
 
 
