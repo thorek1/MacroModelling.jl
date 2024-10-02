@@ -166,10 +166,10 @@ if priors == "open"
     Beta(0.5, 0.15, μσ = true),         # cindp
     Beta(0.5, 0.15, μσ = true),      # czcap
     Normal(1.25, 0.125),                  # cfc
-    Normal(1.5, 0.25),                    # crpi
+    Gamma(1.5, 0.25, μσ = true),                    # crpi
     Beta(0.75, 0.10, μσ = true),        # crr
-    Normal(0.125, 0.05),                # cry
-    Normal(0.125, 0.05),                # crdy
+    Gamma(0.125, 0.05, μσ = true),                # cry
+    Gamma(0.125, 0.05, μσ = true),                # crdy
     Gamma(0.625, 0.1, μσ = true),         # constepinf
     Gamma(0.25, 0.1, μσ = true),         # constebeta
     Normal(0.0, 2.0),                  # constelab
