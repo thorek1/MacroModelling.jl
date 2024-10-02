@@ -346,7 +346,7 @@ for l in range(50, size(data,2), 4)
             1
         end
 
-        if !(modeSW2007SA == 1)
+        if !(modeSW2007SA == 1) && isfinite(LLH)
             global LLH = modeSW2007SA.lp
             global init_params = modeSW2007SA.values
             println("Iter $i, data up to $l, found loglikelihood $LLH from Simulated Annealing")
@@ -362,7 +362,7 @@ for l in range(50, size(data,2), 4)
             1
         end
 
-        if !(modeSW2007NM == 1)
+        if !(modeSW2007NM == 1) && isfinite(LLH)
             global LLH = modeSW2007NM.lp
             global init_params = modeSW2007NM.values
             println("Iter $i, data up to $l, found loglikelihood $LLH from Nelder Mead")
@@ -376,7 +376,7 @@ for l in range(50, size(data,2), 4)
             1
         end
 
-        if !(modeSW2007 == 1)
+        if !(modeSW2007 == 1) && isfinite(LLH)
             global LLH = modeSW2007.lp
             global init_params = modeSW2007.values
             println("Iter $i, data up to $l, found loglikelihood $LLH from LBFGS")
@@ -395,7 +395,7 @@ samps = @time Turing.sample(SW07_loglikelihood,
                             # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
                             NUTS(1000, 0.65, adtype = AutoZygote()), 
                             smpls, 
-                            initial_params = init_params, 
+                            initial_params = isfinite(LLH) ? init_params : nothing, 
                             progress = true)
 
 println(samps)
