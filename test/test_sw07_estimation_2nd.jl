@@ -66,6 +66,7 @@ end
 # smpls = 2000
 # priors = "open"#"original"
 # labor = "growth"
+# msrmt_err = true
 
 # cd("/home/cdsw")
 # smpler = ENV["sampler"] # "pigeons" #
@@ -312,51 +313,67 @@ if msrmt_err
 end
 
 
-# LLH = -1e6
-# init_params = []
+LLH = -1e6
+init_params = []
 
-# for l in range(100, size(data,2), 3)
-#     l = floor(Int,l)
+for l in range(50, size(data,2), 4)
+    l = floor(Int,l)
     
-#     SW07_llh = SW07_loglikelihood_function(data[:,1:l], Smets_Wouters_2007, observables, fixed_parameters, algo, fltr)
+    SW07_llh = SW07_loglikelihood_function(data[:,1:l], Smets_Wouters_2007, observables, fixed_parameters, algo, fltr)
 
-# for i in 1:50
-#         modeSW2007NM = try 
-#             if length(init_params) > 0 && isfinite(LLH)
-#                 Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead(), initial_params = init_params)
-#             else
-#                 Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead())
-#             end
-#     catch
-#         1
-#     end
+    for i in 1:50
+        modeSW2007SA = try 
+            if length(init_params) > 0 && isfinite(LLH)
+                Turing.maximum_a_posteriori(SW07_llh, Optim.SimulatedAnnealing(), initial_params = init_params)
+            else
+                Turing.maximum_a_posteriori(SW07_llh, Optim.SimulatedAnnealing())
+            end
+        catch
+            1
+        end
 
-#         modeSW2007 = try Turing.maximum_a_posteriori(SW07_llh, 
-#                                             Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-#                                             adtype = AutoZygote(),
-#                                             initial_params = modeSW2007NM.values)
-#     catch
-#         1
-#     end
+        if !(modeSW2007SA == 1)
+            global LLH = modeSW2007SA.lp
+            global init_params = modeSW2007SA.values
+            println("Iter $i, data up to $l, found loglikelihood $LLH from Simulated Annealing")
+        end
 
-#     if !(modeSW2007NM == 1)
-#         global LLH = modeSW2007NM.lp
-#         global init_params = modeSW2007NM.values
-#             println("Iter $i, data up to $l, found loglikelihood $LLH from Nelder Mead")
-#     end
+        modeSW2007NM = try 
+            if length(init_params) > 0 && isfinite(LLH)
+                Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead(), initial_params = init_params)
+            else
+                Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead())
+            end
+        catch
+            1
+        end
 
-#     if !(modeSW2007 == 1)
-#         global LLH = modeSW2007.lp
-#         global init_params = modeSW2007.values
-#             println("Iter $i, data up to $l, found loglikelihood $LLH from LBFGS")
-#     end
-    
-#     if LLH > -3000 
-#         println("Mode variable values: $(init_params); Mode loglikelihood: $(LLH)")
-#         break
-#     end
-# end
-# end
+        if !(modeSW2007NM == 1)
+            global LLH = modeSW2007NM.lp
+            global init_params = modeSW2007NM.values
+            println("Iter $i, data up to $l, found loglikelihood $LLH from Nelder Mead")
+        end
+
+        modeSW2007 = try Turing.maximum_a_posteriori(SW07_llh, 
+                                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                                adtype = AutoZygote(),
+                                                initial_params = modeSW2007NM.values)
+        catch
+            1
+        end
+
+        if !(modeSW2007 == 1)
+            global LLH = modeSW2007.lp
+            global init_params = modeSW2007.values
+            println("Iter $i, data up to $l, found loglikelihood $LLH from LBFGS")
+        end
+        
+        if LLH > -3000 
+            println("Mode variable values: $(init_params); Mode loglikelihood: $(LLH)")
+            break
+        end
+    end
+end
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr)
 
