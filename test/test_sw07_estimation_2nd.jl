@@ -28,19 +28,19 @@ priors = try ENV["priors"] catch
 end
 
 smple = try ENV["sample"] catch
-     "original" 
+    "original" 
 end
 
 smplr = try ENV["sampler"] catch
     "NUTS" 
 end
 
-fltr = try ENV["filter"] catch
-     "kalman" 
+fltr = try Symbol(ENV["filter"]) catch
+    :kalman
 end
 
-algo = try ENV["algorithm"] catch 
-    "first_order" 
+algo = try Symbol(ENV["algorithm"]) catch 
+    :first_order
 end 
 
 smpls = try Meta.parse(ENV["samples"]) catch 
@@ -51,10 +51,18 @@ labor = try ENV["labor"] catch
     "level" 
 end 
 
+msrmt_err = try Meta.parse(ENV["measurement_error"]) catch 
+    # if fltr == :inversion || !(algo == :first_order)
+    #     true
+    # else
+        false
+    # end
+end 
+
 # geo = "EA"
 # smple = "full"
-# fltr = "inversion"
-# algo = "pruned_second_order"
+# fltr = :inversion
+# algo = :second_order
 # smpls = 2000
 # priors = "open"#"original"
 # labor = "growth"
@@ -77,6 +85,7 @@ println("Samples: $smpls")
 println("Filter: $fltr")
 println("Algorithm: $algo")
 println("Labor: $labor")
+println("Measurement errors: $msrmt_err")
 
 println(pwd())
 
@@ -223,20 +232,20 @@ if priors == "all"
                         ])
 end
 
-if fltr == "inversion" || !(algo == "first_order")
+if msrmt_err
     dists = vcat(dists,[
-        InverseGamma(0.01, 1.0, μσ = true),   # z_dy
-        InverseGamma(0.01, 1.0, μσ = true),   # z_dc
-        InverseGamma(0.01, 1.0, μσ = true),   # z_dinve
-        InverseGamma(0.01, 1.0, μσ = true),   # z_pinfobs
-        InverseGamma(0.01, 1.0, μσ = true),   # z_robs
-        InverseGamma(0.01, 1.0, μσ = true)    # z_dwobs
+        InverseGamma(0.1, 2.0, μσ = true),   # z_dy
+        InverseGamma(0.1, 2.0, μσ = true),   # z_dc
+        InverseGamma(0.1, 2.0, μσ = true),   # z_dinve
+        InverseGamma(0.1, 2.0, μσ = true),   # z_pinfobs
+        InverseGamma(0.1, 2.0, μσ = true),   # z_robs
+        InverseGamma(0.1, 2.0, μσ = true)    # z_dwobs
                         ])
 
     if labor == "growth"
-        dists = vcat(dists,[InverseGamma(0.01, 1.0, μσ = true)])   # z_dlabobs
+        dists = vcat(dists,[InverseGamma(0.1, 2.0, μσ = true)])   # z_dlabobs
     elseif labor == "level"
-        dists = vcat(dists,[InverseGamma(0.01, 1.0, μσ = true)])   # z_labobs
+        dists = vcat(dists,[InverseGamma(0.1, 2.0, μσ = true)])   # z_labobs
     end
 end
 
@@ -251,7 +260,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
         ctou, clandaw, cg, curvp, curvw = all_params[36 .+ (1:5)]
     end
 
-    if fltr == "inversion" || !(algo == "first_order")
+    if msrmt_err
         z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs = all_params[36 + length(fixed_parameters[1]) - 5 .+ (1:6)]
 
         if labor == "growth"
@@ -261,8 +270,6 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
             z_labobs = all_params[36 + length(fixed_parameters[1]) - 5 + 6 + length(fixed_parameters[2])]
             z_dlabobs = fixed_parameters[2][1]
         end
-    else
-        z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs, z_dlabobs, z_labobs = fixed_parameters[2]
     end
     
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
@@ -270,6 +277,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
 
         llh = get_loglikelihood(m, data(observables), parameters_combined, 
                                 filter = filter,
+                                # timer = timer,
                                 # presample_periods = 4, initial_covariance = :diagonal, 
                                 algorithm = algorithm)
 
@@ -278,7 +286,11 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
 end
 
 # estimate nonlinear model
-include("../models/Smets_Wouters_2007_estim.jl")
+if msrmt_err
+    include("../models/Smets_Wouters_2007_estim_measurement_errors.jl")
+else
+    include("../models/Smets_Wouters_2007_estim.jl")
+end
 
 fixed_parameters = Vector{Vector{Float64}}(undef,0)
 
@@ -288,14 +300,12 @@ elseif priors ∈ ["all", "open"]
     push!(fixed_parameters, Float64[])
 end
 
-if fltr == "inversion" || !(algo == "first_order")
+if msrmt_err
     if labor == "growth"
         push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_labobs], Smets_Wouters_2007.parameters)])
     elseif labor == "level"
         push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_dlabobs], Smets_Wouters_2007.parameters)])
     end
-else
-    push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_dy, :z_dc, :z_dinve, :z_pinfobs, :z_robs, :z_dwobs, :z_dlabobs, :z_labobs], Smets_Wouters_2007.parameters)])
 end
 
 
@@ -307,42 +317,42 @@ for l in range(100, size(data,2), 3)
     
     SW07_llh = SW07_loglikelihood_function(data[:,1:l], Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
 
-    for i in 1:50
+for i in 1:50
         modeSW2007NM = try 
             if length(init_params) > 0
                 Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead(), initial_params = init_params)
             else
                 Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead())
             end
-        catch
-            1
-        end
+    catch
+        1
+    end
 
         modeSW2007 = try Turing.maximum_a_posteriori(SW07_llh, 
-                                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                                adtype = AutoZygote(),
-                                                initial_params = modeSW2007NM.values)
-        catch
-            1
-        end
-
-        if !(modeSW2007NM == 1)
-            global LLH = modeSW2007NM.lp
-            global init_params = modeSW2007NM.values
-            println("Iter $i, data up to $l, found loglikelihood $LLH from Nelder Mead")
-        end
-
-        if !(modeSW2007 == 1)
-            global LLH = modeSW2007.lp
-            global init_params = modeSW2007.values
-            println("Iter $i, data up to $l, found loglikelihood $LLH from LBFGS")
-        end
-        
-        if LLH > -3000 
-            println("Mode variable values: $(init_params); Mode loglikelihood: $(LLH)")
-            break
-        end
+                                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                            adtype = AutoZygote(),
+                                            initial_params = modeSW2007NM.values)
+    catch
+        1
     end
+
+    if !(modeSW2007NM == 1)
+        global LLH = modeSW2007NM.lp
+        global init_params = modeSW2007NM.values
+            println("Iter $i, data up to $l, found loglikelihood $LLH from Nelder Mead")
+    end
+
+    if !(modeSW2007 == 1)
+        global LLH = modeSW2007.lp
+        global init_params = modeSW2007.values
+            println("Iter $i, data up to $l, found loglikelihood $LLH from LBFGS")
+    end
+    
+    if LLH > -3000 
+        println("Mode variable values: $(init_params); Mode loglikelihood: $(LLH)")
+        break
+    end
+end
 end
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, Symbol(algo), Symbol(fltr))
@@ -364,7 +374,7 @@ if priors ∈ ["all", "open"]
     varnames = vcat(varnames,[:ctou, :clandaw, :cg, :curvp, :curvw])
 end
 
-if fltr == "inversion" || !(algo == "first_order")
+if msrmt_err
     varnames = vcat(varnames,[:z_dy, :z_dc, :z_dinve, :z_pinfobs, :z_robs, :z_dwobs])
 
     if labor == "growth"
