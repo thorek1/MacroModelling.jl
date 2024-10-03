@@ -1397,7 +1397,7 @@ function compressed_kron³(a::AbstractMatrix{T};
 
     m3_exp = length(colmask) > 0 || length(rowmask) > 0 ? 1 : 3
 
-    estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp, 10000))
+    estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp * 1.5, 10000))
     
     I = Vector{Int}(undef, estimated_nnz)
     J = Vector{Int}(undef, estimated_nnz)
@@ -2857,17 +2857,26 @@ function gauss_newton(f::Function,
         #     return undo_transform(new_guess,transformation_level), (iter, zero(T), zero(T), resnorm) # f(undo_transform(new_guess,transformation_level)))
         # end
 
-        ∇̂ = try 
-            ℒ.factorize(∇)
-        catch
-            # println("GN fact failed after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
+        ∇̂ = ℒ.lu!(∇, check = false)
+        
+        if !ℒ.issuccess(∇̂)
             rel_xtol_reached = 1.0
             rel_ftol_reached = 1.0
             new_residuals_norm = 1.0
             break
-            # ℒ.svd(fxλp)
-            # return undo_transform(new_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(new_guess,transformation_level)))
         end
+
+        # ∇̂ = try 
+        #     ℒ.factorize(∇)
+        # catch
+        #     # println("GN fact failed after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
+        #     rel_xtol_reached = 1.0
+        #     rel_ftol_reached = 1.0
+        #     new_residuals_norm = 1.0
+        #     break
+        #     # ℒ.svd(fxλp)
+        #     # return undo_transform(new_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(new_guess,transformation_level)))
+        # end
 
         # rel_ftol_reached = ℒ.norm(∇̂' \ new_residuals) / new_residuals_norm
 
@@ -4611,11 +4620,9 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         if sol_minimum > rtol
             ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
 
-            rel_sol_minimum = try 
-                ℒ.norm(∇ \ res) / sol_minimum
-            catch
-                1.0
-            end
+            ∇̂ = ℒ.lu!(∇, check = false)
+                    
+            rel_sol_minimum = ℒ.issuccess(∇̂) ? ℒ.norm(∇̂ \ res) / sol_minimum : 1.0
         else
             rel_sol_minimum = 0.0
         end
