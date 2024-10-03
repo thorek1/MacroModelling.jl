@@ -133,7 +133,7 @@
 
 	dwobs[0] = ctrend + 100 * (w[0] / w[-1] - 1) # + z_dwobs / 100 * e_dwobs[x]
 
-	dlabobs[0] = 100 * (lab[0] / lab[-1] - 1) # + z_dlabobs / 100 * e_dlabobs[x]
+	dlabobs[0] = constelab + 100 * (lab[0] / lab[-1] - 1) # + z_dlabobs / 100 * e_dlabobs[x]
 
 	labobs[0] = constelab + 100 * (lab[0] / lab[ss] - 1) # + z_labobs / 100 * e_labobs[x]
 
