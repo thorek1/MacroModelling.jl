@@ -4745,6 +4745,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     if solution_error > tol || isnan(solution_error)
+        # println("NSSS not found") 
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
@@ -4761,6 +4762,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     # end # timeit_debug
 
     if !solved
+        # println("1st order solution not found") 
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
@@ -4782,6 +4784,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     # end # timeit_debug
 
     if !solved2
+        # println("2nd order solution not found") 
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
@@ -4796,6 +4799,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
     if !ℒ.issuccess(tmp̄)
+        # println("SSS not found") 
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
@@ -7466,6 +7470,10 @@ function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
     # Forward pass to compute the output and intermediate values needed for the backward pass
     A, solved = riccati_forward(∇₁, T = T, explosive = explosive)
 
+    if !solved
+        return (A, solved), x -> NoTangent(), NoTangent()
+    end
+
     expand = @views [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:],
                     ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
 
@@ -7485,6 +7493,10 @@ function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
 
         ss, solved = solve_sylvester_equation(tmp2, Â', -tmp1, sylvester_algorithm = :sylvester)
 
+        if !solved
+            return (A, solved), x -> NoTangent(), NoTangent()
+        end
+        
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (ss * Â' * Â')[:,T.future_not_past_and_mixed_idx]
         ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .= ss * Â'
         ∂∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] .= ss[:,T.past_not_future_and_mixed_idx]
@@ -7858,7 +7870,7 @@ function rrule(::typeof(calculate_second_order_solution),
     @timeit_debug timer "Post-process" begin
 
     if !solved
-        return 𝐒₂, solved
+        return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
     end # timeit_debug
@@ -7902,6 +7914,10 @@ function rrule(::typeof(calculate_second_order_solution),
                                                 # tol = tol, 
                                                 verbose = verbose, 
                                                 timer = timer)
+        
+        if !solved
+            return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
         
         end # timeit_debug
 
@@ -8212,6 +8228,10 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                                 tol = tol)
     end
 
+    if !solved
+        return 𝐒₃, solved
+    end
+
     end # timeit_debug
     @timeit_debug timer "Post-process" begin
 
@@ -8219,9 +8239,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     𝐒₃ = sparse(𝐒₃)
 
-    if !solved
-        return 𝐒₃, solved
-    end
 
     end # timeit_debug
     end # timeit_debug
@@ -8428,13 +8445,13 @@ function rrule(::typeof(calculate_third_order_solution),
                                                 timer = timer)
     end
 
-    𝐒₃ = sparse(𝐒₃)
-
-    end # timeit_debug
-
     if !solved
         return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
     end
+
+    𝐒₃ = sparse(𝐒₃)
+
+    end # timeit_debug
 
     @timeit_debug timer "Preallocate for pullback" begin
 
@@ -8525,6 +8542,10 @@ function rrule(::typeof(calculate_third_order_solution),
                                                 # tol = tol,
                                                 timer = timer,
                                                 verbose = verbose)
+
+        if !solved
+            return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
+        end
 
         ∂C = choose_matrix_format(∂C, density_threshold = 1.0)
 
@@ -11878,6 +11899,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
             #                             𝐒ⁱ²ᵉ,
             #                             shock_independent)
                 if !matched
+                    # println("Inversion filter failed at step $i") 
                     return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
                 end 
             # end
