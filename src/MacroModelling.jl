@@ -2662,9 +2662,13 @@ function levenberg_marquardt(f::Function,
     p¹ = p̄¹
     p² = p̄²
 
+    grad_iter = 0
+    func_iter = 0
+
 	for iter in 1:iterations
         # make the jacobian and f calls nonallocating
         𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
+        grad_iter += 1
 
         previous_guess .= current_guess
 
@@ -2672,21 +2676,23 @@ function levenberg_marquardt(f::Function,
         ℒ.mul!(∇̂, ∇', ∇)
 
         μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
+        func_iter += 1
 
         for i in 1:size(∇̂,1)
-            ∇̂[i,i] += μ¹s + μ² * ∇̂[i,i]^p²
+            ∇̂[i,i] += μ¹s
+            ∇̂[i,i] += μ² * ∇̂[i,i]^p²
         end
         # ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
 
         if !all(isfinite,∇̂)
-            return undo_transform(current_guess,transformation_level), (iter, Inf, Inf, Inf)
+            return undo_transform(current_guess,transformation_level), (grad_iter, func_iter, Inf, Inf)
             # return undo_transform(current_guess,transformation_level,shift), (iter, Inf, Inf, upper_bounds)
         end
 
         ∇̄ = ℒ.cholesky!(∇̂, check = false)
 
         if !ℒ.issuccess(∇̄)
-            return undo_transform(current_guess,transformation_level), (iter, Inf, Inf, Inf)
+            return undo_transform(current_guess,transformation_level), (grad_iter, func_iter, Inf, Inf)
             # ∇̄ = ℒ.svd(∇̂)
         end
 
@@ -2699,8 +2705,10 @@ function levenberg_marquardt(f::Function,
 
         P = sum(abs2, f̂(previous_guess))
         P̃ = P
-
+        
         P̋ = sum(abs2, f̂(current_guess))
+
+        func_iter += 3
 
         α = 1.0
         ᾱ = 1.0
@@ -2710,6 +2718,7 @@ function levenberg_marquardt(f::Function,
         guess_update .= current_guess - previous_guess
         g = f̂(previous_guess)' * ∇ * guess_update
         U = sum(abs2,guess_update)
+        func_iter += 1
 
         if P̋ > ρ * P 
             linesearch_iterations = 0
@@ -2744,7 +2753,8 @@ function levenberg_marquardt(f::Function,
                 
                 P = P̋
 
-                P̋ = sum(abs2,f̂(current_guess))
+                P̋ = sum(abs2, f̂(current_guess))
+                func_iter += 1
 
                 ν̂ *= α
 
@@ -2764,13 +2774,13 @@ function levenberg_marquardt(f::Function,
             p² = min(p² / λ̂², p̄²)
         end
 
-        largest_step = ℒ.norm(previous_guess - current_guess) # maximum(abs, previous_guess - current_guess)
+        # largest_step = ℒ.norm(previous_guess - current_guess) # maximum(abs, previous_guess - current_guess)
         largest_relative_step = largest_step / max(ℒ.norm(previous_guess), ℒ.norm(current_guess)) # maximum(abs, (previous_guess - current_guess) ./ previous_guess)
         largest_residual = ℒ.norm(f̂(current_guess)) # maximum(abs, f(undo_transform(current_guess,transformation_level)))
         # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
 
         if largest_residual <= ftol && largest_relative_step <= rel_xtol
-            return undo_transform(current_guess,transformation_level), (iter, largest_step, largest_relative_step, largest_residual)#largest_residual, f(undo_transform(current_guess,transformation_level)))
+            return undo_transform(current_guess, transformation_level), (grad_iter, func_iter, largest_relative_step, largest_residual)#largest_residual, f(undo_transform(current_guess,transformation_level)))
             # return undo_transform(current_guess,transformation_level,shift), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level,shift)))
         end
     end
@@ -2778,7 +2788,7 @@ function levenberg_marquardt(f::Function,
     best_guess = undo_transform(current_guess,transformation_level)
     # best_guess = undo_transform(current_guess,transformation_level,shift)
 
-    return best_guess, (iterations, largest_step, largest_relative_step, largest_residual)#, f(best_guess))
+    return best_guess, (grad_iter, func_iter, largest_relative_step, largest_residual)#, f(best_guess))
 end
 
 
@@ -2820,7 +2830,7 @@ function gauss_newton(f::Function,
     rel_ftol_reached = 1.0
     new_residuals_norm = 1.0
     # init_residuals_norm = ℒ.norm(new_residuals)
-    # iter = 1
+    iters = [0,0]
     # resnorm = 1.0
     # relresnorm = 1.0
 
@@ -2844,6 +2854,7 @@ function gauss_newton(f::Function,
         
         if rel_xtol_reached < rel_xtol && new_residuals_norm < ftol # || rel_ftol_reached < rel_ftol
             # println("GN worked with $iter iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")# rel_ftol: $rel_ftol_reached")
+            iters = [iter,iter]
             break
             # return undo_transform(new_guess,transformation_level), (iter, zero(T), zero(T), min(rel_ftol, rel_xtol)) # f(undo_transform(new_guess,transformation_level)))
         end
@@ -2863,6 +2874,7 @@ function gauss_newton(f::Function,
             rel_xtol_reached = 1.0
             rel_ftol_reached = 1.0
             new_residuals_norm = 1.0
+            iters = [iter,iter]
             break
         end
 
@@ -2893,6 +2905,7 @@ function gauss_newton(f::Function,
             rel_xtol_reached = 1.0
             rel_ftol_reached = 1.0
             new_residuals_norm = 1.0
+            iters = [iter,iter]
             break 
         end
         
@@ -2912,7 +2925,7 @@ function gauss_newton(f::Function,
 
     best_guess = undo_transform(new_guess,transformation_level)
     
-    return best_guess, (iterations, rel_xtol_reached, rel_xtol_reached, new_residuals_norm)
+    return best_guess, (iters[1], iters[2], rel_xtol_reached, new_residuals_norm)
 end
 
 function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
@@ -3260,9 +3273,11 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
                                                             
     push!(SS_solve_func,:(iters += solution[2][2])) 
     push!(SS_solve_func,:(solution_error += solution[2][1])) 
+    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed after solving block with error $solution_error") end; return [0.0], (solution_error,1) end))
 
     if length(ss_and_aux_equations_error) > 0
         push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error...))))
+        push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for aux variables with error $(solution_error)") end; return [0.0], (solution_error,1) end))
     end
 
     push!(SS_solve_func,:(sol = solution[1]))
@@ -3789,6 +3804,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             if parsed_eq_to_solve_for != minmax_fixed_eqs
                 [push!(atoms_in_equations, a) for a in setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs))]
                 push!(min_max_errors,:(solution_error += abs($parsed_eq_to_solve_for)))
+                push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for min max terms in equations with error $solution_error") end; return [0.0], (solution_error,1) end))
                 eq_to_solve = eval(minmax_fixed_eqs)
             end
             
@@ -3830,6 +3846,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
                     push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, 𝓂.solved_vars[end], 𝓂.solved_vals[end])))))
+                    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for analytical aux variables with error $solution_error") end; return [0.0], (solution_error,1) end))
+
                     unique_➕_eqs[𝓂.solved_vals[end]] = 𝓂.solved_vars[end]
                 else
                     vars_to_exclude = [vcat(Symbol.(var_to_solve_for), 𝓂.➕_vars), Symbol[]]
@@ -3839,6 +3857,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     if length(vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)) > 0
                         push!(SS_solve_func,vcat(ss_and_aux_equations, ss_and_aux_equations_dep)...)
                         push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)...))))
+                        push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for analytical variables with error $solution_error") end; return [0.0], (solution_error,1) end))
                     end
                     
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
@@ -3846,6 +3865,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 if haskey(𝓂.bounds, 𝓂.solved_vars[end]) && 𝓂.solved_vars[end] ∉ 𝓂.➕_vars
                     push!(SS_solve_func,:(solution_error += abs(min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vars[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2])) - $(𝓂.solved_vars[end]))))
+                    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for bounded variables with error $solution_error") end; return [0.0], (solution_error,1) end))
                 end
             end
         else
@@ -4514,7 +4534,7 @@ function solve_ss(SS_optimizer::Function,
                     lbs::Vector{Float64},
                     ubs::Vector{Float64},
                     tol::AbstractFloat,
-                    total_iters::Int,
+                    total_iters::Vector{Int},
                     n_block::Int,
                     verbose::Bool,
                     guess::Vector{Float64},
@@ -4556,8 +4576,9 @@ function solve_ss(SS_optimizer::Function,
 
     sol_values = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], sol_new))
 
-    total_iters += info[1]
-    
+    total_iters[1] += info[1]
+    total_iters[2] += info[2]
+
     extended_problem_str = extended_problem ? "(extended problem) " : ""
 
     if separate_starting_value isa Bool
@@ -4580,7 +4601,7 @@ function solve_ss(SS_optimizer::Function,
         println("Block: $n_block - Solved $(extended_problem_str)using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
     end
 
-    return sol_values, rel_sol_minimum, sol_minimum
+    return sol_values, total_iters, rel_sol_minimum, sol_minimum
 end
 
 
@@ -4640,7 +4661,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
     end
 
-    total_iters = 0
+    total_iters = [0,0]
 
     SS_optimizer = levenberg_marquardt
 
@@ -4651,7 +4672,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             for p in parameters
                 for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
                     if sol_minimum > tol || rel_sol_minimum > rtol
-                        sol_values, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                             g, 
                                                             p,
                                                             ext,
@@ -4664,17 +4685,19 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
             if sol_minimum > tol || rel_sol_minimum > rtol
                 # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
-                sol_values, rel_sol_minimum, sol_minimum = solve_ss(gauss_newton, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, 
+                sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(gauss_newton, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
+                                                                    total_iters, 
+                                                                    n_block, 
                                                                     false, #verbose
                                                                     guess, 
                                                                     parameters[1],
                                                                     ext,
-                                                                    false)                    
+                                                                    false)                 
                 if !(sol_minimum > tol || rel_sol_minimum > rtol)
                     solved_yet = true
 
                     if verbose
-                        println("Block: $n_block, - Solved with Gauss-Newton using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum")
+                        println("Block: $n_block, - Solved with Gauss-Newton using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum - $total_iters")
                     end
                 end                      
             end
@@ -4682,11 +4705,11 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
 
         if sol_minimum > tol || rel_sol_minimum > rtol
-            for p in unique(parameters)[1:3] # take unique because some parameters might appear more than once
-                for s in [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+            for p in unique(parameters)#[1:3] # take unique because some parameters might appear more than once
+                for s in [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897] #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                     # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
                         if sol_minimum > tol || rel_sol_minimum > rtol
-                            sol_values, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, 
+                            sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, 
                                                                 false, # verbose
                                                                 guess, 
                                                                 p,
@@ -4695,8 +4718,10 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                             if !solved_yet && !(sol_minimum > tol || rel_sol_minimum > rtol)     
                                 solved_yet = true
                                 if verbose
-                                    n1 = (indexin([p], unique(parameters))[1] - 1) * length([p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688]) + indexin([s], [p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688])[1]
-                                    println("Block: $n_block, - Solved with modified Levenberg-Marquardt - $n1/$(length([p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688]) *length(unique(parameters))) - $sol_minimum - $rel_sol_minimum")
+                                    loop1 = unique(parameters)#[1:3]
+                                    loop2 = [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]
+                                    n1 = (indexin([p], loop1)[1] - 1) * length(loop2) + indexin([s], loop2)[1]
+                                    println("Block: $n_block, - Solved with modified Levenberg-Marquardt - $n1/$(length(loop2) *length(loop1)) - $sol_minimum - $rel_sol_minimum - $total_iters")
                                 end
                             end 
                         end
@@ -4706,11 +4731,13 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
     end
 
-    # if !solved_yet
-    #     println("NSSS not found, all atempts failed") 
-    # end
+    if verbose
+        if !solved_yet
+            println("Block: $n_block, - Solution not found after $(total_iters[1]) gradient evaluations and $(total_iters[2]) function evaluations")
+        end
+    end
 
-    return sol_values, (rel_sol_minimum, total_iters)
+    return sol_values, (rel_sol_minimum, total_iters[1])
 end
 
 
@@ -4755,13 +4782,13 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose, timer = timer)
 
     # end # timeit_debug
+    
+    if solution_error > tol || isnan(solution_error)
+        # if verbose println("NSSS not found") end # handled within solve function
+        return zeros(𝓂.timings.nVars), false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+    end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
-
-    if solution_error > tol || isnan(solution_error)
-        if verbose println("NSSS not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
-    end
 
     # @timeit_debug timer "Calculate Jacobian" begin
 
@@ -5103,13 +5130,13 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose, timer = timer)
-
-    all_SS = expand_steady_state(SS_and_pars,𝓂)
-
+    
     if solution_error > tol || isnan(solution_error)
         if verbose println("NSSS not found") end
-        return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return zeros(𝓂.timings.nVars), false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
+    
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
@@ -10703,11 +10730,15 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
                                                     timer::TimerOutput = TimerOutput()) where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
 
+    TT = 𝓂.timings
+
+    if !converged
+        return TT, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
+    end
+
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     state = collect(sss) - all_SS
-
-    TT = 𝓂.timings
 
     return TT, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
 end
@@ -10723,11 +10754,16 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
 
+    TT = 𝓂.timings
+
+    if !converged
+        return TT, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)], converged
+    end
+
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
 
-    TT = 𝓂.timings
 
     return TT, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
 end
@@ -10743,11 +10779,15 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
                                                     timer::TimerOutput = TimerOutput()) where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
 
+    TT = 𝓂.timings
+
+    if !converged
+        return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
+    end
+
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     state = collect(sss) - all_SS
-
-    TT = 𝓂.timings
 
     return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
 end
@@ -10763,11 +10803,15 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer, sylvester_algorithm= sylvester_algorithm, verbose = verbose)
 
+    TT = 𝓂.timings
+
+    if !converged
+        return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)], converged
+    end
+
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
-
-    TT = 𝓂.timings
 
     return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
 end
@@ -10916,7 +10960,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
 
     if T.nExo == length(observables)
         jacdecomp = ℒ.lu(jac, check = false)
-        
+
         if !ℒ.issuccess(jacdecomp)
             if verbose println("Inversion filter failed") end
             return -Inf
