@@ -4720,7 +4720,15 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                                 if verbose
                                     loop1 = unique(parameters)#[1:3]
                                     loop2 = [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]
-                                    n1 = (findfirst(x -> x == p, loop1)[1] - 1) * length(loop2) + findfirst(x -> x == s, loop2)
+                                    p_in_loop1 = findfirst(x -> x == p, loop1)
+                                    s_in_loop2 = findfirst(x -> x == s, loop2)
+                                    if p_in_loop1 isa Nothing
+                                        p_in_loop1 = 1
+                                    end
+                                    if s_in_loop2 isa Nothing
+                                        s_in_loop2 = 1
+                                    end
+                                    n1 = (p_in_loop1 - 1) * length(loop2) + s_in_loop2
                                     println("Block: $n_block, - Solved with modified Levenberg-Marquardt - $n1/$(length(loop2) *length(loop1)) - $sol_minimum - $rel_sol_minimum - $total_iters")
                                 end
                             end 
