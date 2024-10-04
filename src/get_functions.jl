@@ -2997,7 +2997,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Get relevant steady state and solution" begin
 
-    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol, timer = timer, sylvester_algorithm = sylvester_algorithm)
+    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol, timer = timer, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
 
     # end # timeit_debug
 

@@ -9891,6 +9891,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     warmup_iterations = warmup_iterations, 
                                                     presample_periods = presample_periods, 
                                                     filter_algorithm = filter_algorithm, 
+                                                    verbose = verbose,
                                                     timer = timer)
 end
 
@@ -10200,7 +10201,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     # Gaussian Prior
     P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose, timer = timer)
 
-    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods, timer = timer)
+    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods, timer = timer, verbose = verbose)
 end
 
 # TODO: use higher level wrapper, like for lyapunov/sylvester
@@ -10234,6 +10235,7 @@ function run_kalman_iterations(A::Matrix{S},
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S}; 
                                 presample_periods::Int = 0,
+                                verbose::Bool = false,
                                 timer::TimerOutput = TimerOutput())::S where S <: Float64
     @timeit_debug timer "Calculate Kalman filter" begin
 
@@ -10260,7 +10262,7 @@ function run_kalman_iterations(A::Matrix{S},
     @timeit_debug timer "Loop" begin
     for t in 1:size(data_in_deviations, 2)
         if !all(isfinite.(z)) 
-            # println("KF not finite at step $t")
+            if verbose println("KF not finite at step $t") end
             return -Inf 
         end
 
@@ -10276,7 +10278,7 @@ function run_kalman_iterations(A::Matrix{S},
         end # timeit_debug
 
         if !ℒ.issuccess(luF)
-            # println("KF failed")
+            if verbose println("KF factorisation failed step $t") end
             return -Inf
         end
 
@@ -10284,7 +10286,7 @@ function run_kalman_iterations(A::Matrix{S},
 
         # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
-            # println("KF failed")
+            if verbose println("KF factorisation failed step $t") end
             return -Inf
         end
 
@@ -10342,6 +10344,7 @@ function run_kalman_iterations(A::Matrix{S},
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S}; 
                                 presample_periods::Int = 0,
+                                verbose::Bool = false,
                                 timer::TimerOutput = TimerOutput())::S where S <: ℱ.Dual
     @timeit_debug timer "Calculate Kalman filter - forward mode AD" begin
     u = zeros(S, size(C,2))
@@ -10356,7 +10359,7 @@ function run_kalman_iterations(A::Matrix{S},
 
     for t in 1:size(data_in_deviations, 2)
         if !all(isfinite.(z)) 
-            # println("KF not finite at step $t")
+            if verbose println("KF not finite at step $t") end
             return -Inf 
         end
 
@@ -10367,7 +10370,7 @@ function run_kalman_iterations(A::Matrix{S},
         luF = ℒ.lu(F, check = false) ###
 
         if !ℒ.issuccess(luF)
-            # println("KF failed")
+            if verbose println("KF factorisation failed step $t") end
             return -Inf
         end
 
@@ -10375,7 +10378,7 @@ function run_kalman_iterations(A::Matrix{S},
 
         # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
-            # println("KF failed")
+            if verbose println("KF factorisation failed step $t") end
             return -Inf
         end
 
@@ -10407,6 +10410,7 @@ function rrule(::typeof(run_kalman_iterations),
                     P, 
                     data_in_deviations; 
                     presample_periods = 0,
+                    verbose::Bool = false,
                     timer::TimerOutput = TimerOutput())
     @timeit_debug timer "Calculate Kalman filter - forward" begin
     T = size(data_in_deviations, 2) + 1
@@ -10441,7 +10445,7 @@ function rrule(::typeof(run_kalman_iterations),
         
     for t in 2:T
         if !all(isfinite.(z)) 
-            # println("KF not finite at step $t")
+            if verbose println("KF not finite at step $t") end
             return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
         end
 
@@ -10456,6 +10460,7 @@ function rrule(::typeof(run_kalman_iterations),
         luF = RF.lu(F, check = false)
     
         if !ℒ.issuccess(luF)
+            if verbose println("KF factorisation failed step $t") end
             return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
@@ -10463,6 +10468,7 @@ function rrule(::typeof(run_kalman_iterations),
 
         # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
+            if verbose println("KF factorisation failed step $t") end
             return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
         
@@ -10852,6 +10858,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    verbose::Bool = false,
                                                     filter_algorithm::Symbol = :LagrangeNewton)
     @timeit_debug timer "Inversion filter" begin    
     # first order
@@ -10908,10 +10915,13 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
     jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
 
     if T.nExo == length(observables)
-        jacdecomp = RF.lu(jac, check = false)
+        jacdecomp = ℒ.lu(jac, check = false)
+        
         if !ℒ.issuccess(jacdecomp)
+            if verbose println("Inversion filter failed") end
             return -Inf
         end
+
         logabsdets = ℒ.logabsdet(jac ./ precision_factor)[1]
         invjac = inv(jacdecomp)
     else
@@ -10961,6 +10971,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0, 
                 presample_periods::Int = 0,
+                verbose::Bool = false,
                 filter_algorithm::Symbol = :LagrangeNewton)
     @timeit_debug timer "Inversion filter - forward" begin    
             
@@ -10993,7 +11004,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     if T.nExo == length(observables)
         logabsdets = ℒ.logabsdet(-jac' ./ precision_factor)[1]
-        jacdecomp = ℒ.lu(jac)
+
+        jacdecomp = ℒ.lu(jac, check = false)
+
+        if !ℒ.issuccess(jacdecomp)
+            if verbose println("Inversion filter failed") end
+            return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
+
         invjac = inv(jacdecomp)
     else
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(-jac' ./ precision_factor))
@@ -11021,7 +11039,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
     llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
     
-    if llh < -1e10
+    if llh < -1e12
         return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
@@ -11119,6 +11137,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    verbose::Bool = false,
                                                     filter_algorithm::Symbol = :LagrangeNewton)
     @timeit_debug timer "Pruned 2nd - Inversion filter" begin
     @timeit_debug timer "Preallocation" begin
@@ -11264,6 +11283,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
             #                             𝐒ⁱ²ᵉ,
             #                             shock_independent)
                 if !matched
+                    if verbose println("Inversion filter failed at step $i") end
                     return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
                 end 
             # end
@@ -11347,6 +11367,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
+                verbose::Bool = false,
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     @timeit_debug timer "Preallocation" begin
@@ -11498,6 +11519,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         end # timeit_debug
     
         if !matched
+            if verbose println("Inversion filter failed at step $i") end
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end
 
@@ -11798,6 +11820,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    verbose::Bool = false,
                                                     filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     @timeit_debug timer "2nd - Inversion filter" begin
     @timeit_debug timer "Preallocation" begin
@@ -11934,7 +11957,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
             #                             𝐒ⁱ²ᵉ,
             #                             shock_independent)
                 if !matched
-                    # println("Inversion filter failed at step $i") 
+                    if verbose println("Inversion filter failed at step $i") end
                     return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
                 end 
             # end
@@ -12019,6 +12042,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
+                verbose::Bool = false,
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     @timeit_debug timer "Inversion filter 2nd - forward" begin
         
@@ -12165,6 +12189,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         end # timeit_debug
 
         if !matched
+            if verbose println("Inversion filter failed at step $i") end
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end
         
@@ -12440,6 +12465,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     timer::TimerOutput = TimerOutput(), 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    verbose::Bool = false,
                                                     filter_algorithm::Symbol = :LagrangeNewton) 
     @timeit_debug timer "Inversion filter" begin
 
@@ -12674,6 +12700,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         # end
 
         if !matched
+            if verbose println("Inversion filter failed at step $i") end
             return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
         end 
             # println("COBYLA: $matched; current x: $x")
@@ -12790,6 +12817,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
+                verbose::Bool = false,
                 filter_algorithm::Symbol = :LagrangeNewton)
     @timeit_debug timer "Inversion filter - forward" begin
     precision_factor = 1.0
@@ -12996,6 +13024,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         end # timeit_debug
 
         if !matched
+            if verbose println("Inversion filter failed at step $i") end
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end 
         
@@ -13331,6 +13360,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    verbose::Bool = false,
                                                     filter_algorithm::Symbol = :LagrangeNewton)
     @timeit_debug timer "3rd - Inversion filter" begin
     @timeit_debug timer "Preallocation" begin
@@ -13536,6 +13566,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
         # end
 
         if !matched
+            if verbose println("Inversion filter failed at step $i") end
             return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
         end 
             # println("COBYLA: $matched; current x: $x")
@@ -13647,6 +13678,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
+                verbose::Bool = false,
                 filter_algorithm::Symbol = :LagrangeNewton)
     @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     @timeit_debug timer "Preallocation" begin
@@ -13825,6 +13857,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         end # timeit_debug
     
         if !matched
+            if verbose println("Inversion filter failed at step $i") end
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end
 
