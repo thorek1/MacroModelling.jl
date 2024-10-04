@@ -4606,6 +4606,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     # tol = parameters[1].ftol
     # rtol = parameters[1].rel_xtol
 
+    solved_yet = false
+
     guess = guess_and_pars_solved_vars[1]
 
     sol_values = guess
@@ -4631,6 +4633,8 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     end
 
     if sol_minimum < tol && rel_sol_minimum < rtol
+        solved_yet = true
+
         if verbose
             println("Block: $n_block, - Solved using previous solution; maximum residual = ", maximum(abs, ss_solve_blocks(parameters_and_solved_vars, guess)))
         end
@@ -4660,40 +4664,50 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
             if sol_minimum > tol || rel_sol_minimum > rtol
                 # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
-                sol_values, rel_sol_minimum, sol_minimum = solve_ss(gauss_newton, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                sol_values, rel_sol_minimum, sol_minimum = solve_ss(gauss_newton, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, 
+                                                                    false, #verbose
                                                                     guess, 
                                                                     parameters[1],
                                                                     ext,
                                                                     false)                    
-                # if !(sol_minimum > tol || rel_sol_minimum > rtol)
-                #     println("Block: $n_block GN succeeded - $ext - $sol_minimum - $rel_sol_minimum")
-                # end                      
+                if !(sol_minimum > tol || rel_sol_minimum > rtol)
+                    solved_yet = true
+
+                    if verbose
+                        println("Block: $n_block, - Solved with Gauss-Newton using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum")
+                    end
+                end                      
             end
         end
 
-        # if sol_minimum > tol || rel_sol_minimum > rtol
-            for p in unique(parameters) # take unique because some parameters might appear more than once
-                for s in [p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+
+        if sol_minimum > tol || rel_sol_minimum > rtol
+            for p in unique(parameters)[1:3] # take unique because some parameters might appear more than once
+                for s in [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                     # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
                         if sol_minimum > tol || rel_sol_minimum > rtol
-                            sol_values, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                            sol_values, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, 
+                                                                false, # verbose
                                                                 guess, 
                                                                 p,
                                                                 false,
                                                                 s)
-                        # else
-                            # if !(sol_minimum > tol || rel_sol_minimum > rtol)
-                            #     println("Block: $n_block GN failed but LM succeeded - $s - $sol_minimum - $rel_sol_minimum")
-                            # end
+                            if !solved_yet && !(sol_minimum > tol || rel_sol_minimum > rtol)     
+                                solved_yet = true
+                                if verbose
+                                    n1 = (indexin([p], unique(parameters))[1] - 1) * length([p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688]) + indexin([s], [p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688])[1]
+                                    println("Block: $n_block, - Solved with modified Levenberg-Marquardt - $n1/$(length([p.starting_value, 1.206, 1.5, 2.0, 0.897, 0.7688]) *length(unique(parameters))) - $sol_minimum - $rel_sol_minimum")
+                                end
+                            end 
                         end
                     # end
-                # end
+                end
             end
         end
     end
 
-    # if rel_sol_minimum > 1e-14
-    #     println("NSSS not found") 
+    # if !solved_yet
+    #     println("NSSS not found, all atempts failed") 
     # end
 
     return sol_values, (rel_sol_minimum, total_iters)
@@ -4745,7 +4759,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     if solution_error > tol || isnan(solution_error)
-        # println("NSSS not found") 
+        if verbose println("NSSS not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
@@ -4762,7 +4776,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     # end # timeit_debug
 
     if !solved
-        # println("1st order solution not found") 
+        if verbose println("1st order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
@@ -4784,7 +4798,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     # end # timeit_debug
 
     if !solved2
-        # println("2nd order solution not found") 
+        if verbose println("2nd order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
@@ -4799,7 +4813,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
     if !ℒ.issuccess(tmp̄)
-        # println("SSS not found") 
+        if verbose println("SSS not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
@@ -4819,6 +4833,12 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
     
         SSSstates, converged = calculate_second_order_stochastic_steady_state(Val(:Newton), 𝐒₁, 𝐒₂, SSSstates, 𝓂, timer = timer)
+        
+        if !converged
+            if verbose println("SSS not found") end
+            return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        end
+
         state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2
         # state, converged = second_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂)]; dims = [size(𝐒₁); size(𝐒₂)], 𝓂 = 𝓂)
     end
@@ -5087,6 +5107,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     if solution_error > tol || isnan(solution_error)
+        if verbose println("NSSS not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
@@ -5095,6 +5116,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
     
     if !solved
+        if verbose println("1st order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
@@ -5107,6 +5129,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                     verbose= verbose, 
                                                     timer = timer)
     if !solved2
+        if verbose println("2nd order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
@@ -5122,6 +5145,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                 timer = timer)
 
     if !solved3
+        if verbose println("3rd order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
@@ -5134,6 +5158,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
     if !ℒ.issuccess(tmp̄)
+        if verbose println("SSS not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
@@ -5157,6 +5182,11 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
         SSSstates, converged = calculate_third_order_stochastic_steady_state(Val(:Newton), 𝐒₁, 𝐒₂, 𝐒₃, SSSstates, 𝓂)
         
+        if !converged
+            if verbose println("SSS not found") end
+            return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        end
+
         state = A * SSSstates + B̂ * ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1)) / 2 + Ĉ * ℒ.kron(vcat(SSSstates,1),  ℒ.kron(vcat(SSSstates,1), vcat(SSSstates,1))) / 6
         # state, converged = third_order_stochastic_steady_state_iterative_solution([sparsevec(𝐒₁); vec(𝐒₂); vec(𝐒₃)]; dims = [size(𝐒₁); size(𝐒₂); size(𝐒₃)], 𝓂 = 𝓂)
         # state, converged = third_order_stochastic_steady_state_iterative_solution_forward([sparsevec(𝐒₁); vec(𝐒₂); vec(𝐒₃)]; dims = [size(𝐒₁); size(𝐒₂); size(𝐒₃)], 𝓂 = 𝓂)
@@ -10663,8 +10693,9 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
                                                     sylvester_algorithm::Symbol = :doubling, 
+                                                    verbose::Bool = false,
                                                     timer::TimerOutput = TimerOutput()) where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm = sylvester_algorithm)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -10682,8 +10713,9 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
                                                     sylvester_algorithm::Symbol = :doubling, 
+                                                    verbose::Bool = false,
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer, sylvester_algorithm = sylvester_algorithm)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -10701,8 +10733,9 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
                                                     sylvester_algorithm::Symbol = :bicgstab, 
+                                                    verbose::Bool = false,
                                                     timer::TimerOutput = TimerOutput()) where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm = sylvester_algorithm)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, timer = timer, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -10720,8 +10753,9 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
                                                     sylvester_algorithm::Symbol = :bicgstab, 
+                                                    verbose::Bool = false,
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
-    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer, sylvester_algorithm= sylvester_algorithm)
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, timer = timer, sylvester_algorithm= sylvester_algorithm, verbose = verbose)
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
@@ -10738,8 +10772,9 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
                                                     sylvester_algorithm::Symbol = :gmres, 
+                                                    verbose::Bool = false,
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, tol = tol, timer = timer)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, tol = tol, timer = timer, verbose = verbose)
 
     state = zeros(𝓂.timings.nVars)
 
