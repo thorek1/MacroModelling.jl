@@ -4683,23 +4683,25 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
     else !cold_start
         for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
-            if sol_minimum > tol || rel_sol_minimum > rtol
-                # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
-                sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(gauss_newton, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
-                                                                    total_iters, 
-                                                                    n_block, 
-                                                                    false, #verbose
-                                                                    guess, 
-                                                                    parameters[1],
-                                                                    ext,
-                                                                    false)                 
-                if !(sol_minimum > tol || rel_sol_minimum > rtol)
-                    solved_yet = true
+            for algo in [gauss_newton, levenberg_marquardt]
+                if sol_minimum > tol || rel_sol_minimum > rtol
+                    # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
+                    sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
+                                                                        total_iters, 
+                                                                        n_block, 
+                                                                        false, #verbose
+                                                                        guess, 
+                                                                        parameters[1],
+                                                                        ext,
+                                                                        false)                 
+                    if !(sol_minimum > tol || rel_sol_minimum > rtol)
+                        solved_yet = true
 
-                    if verbose
-                        println("Block: $n_block, - Solved with Gauss-Newton using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum - $total_iters")
-                    end
-                end                      
+                        if verbose
+                            println("Block: $n_block, - Solved with $algo using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum - $total_iters")
+                        end
+                    end                      
+                end
             end
         end
 
