@@ -3,11 +3,26 @@
 ## High priority
 
 - [ ] ss transition by entering new parameters at given periods
+- [ ] allow to define y[ss] = 1 in parameters block
+- [ ] check tols throughout. adopt max(abs,rel*norm) tols
+- [ ] fix presample period for higher order estim
+- [ ] newton SS solver once sol was found
+- [ ] redo diffs (DiffInt or ForwardDiff or FastDiff)
+- [ ] swtich from sympy to Symbolics
+- [ ] optimize second order estim with SW07 or NAWM
+- [ ] optimize third order with smaller model
 - [ ] add argument to plotting functions to replace names in plots (e.g input a dictionnary: Dict(:dinve => "Investment growth"))
 - [ ] programmatic model writing: accept {i}[0] as definition for variable
+- [ ] fix higher order shock finder (3rd order) and check results for pruned second order. are the right state values taken for 1st and second order subprocesses?
+- [ ] take analytical derivatives of NSSS funcs to reduce allocation and speed up the NSSS solver
+- [ ] try a newton version of binder pesaran
+- [ ] in the docs make it clear that for estimation you need to have variables which have the name of the observables in the dataframe and the parameters must be handed over to the get_loglikelihood function in the same order as declared. check with get_parameters
 - [ ] check out dense sparse matmul on transposed matrices
 - [ ] check out DiffInterface for NSSS solver
 - [ ] write plotting callback for NSSS solver
+- [ ] time NSSS solver and estimation codes
+- [ ] move korn_s_s_s to higher order aux variables
+- [ ] write own interior point solver
 - [ ] append forecast (no shocks) after estimated variables
 - [ ] write more tests for the plots
 - [ ] add background part in docs on NSSS solver (use material from presentation)
@@ -103,6 +118,8 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] weed out SS solver and saved objects
 
+- [x] insight: spgemm in SparseArrays is the fastest way. threading doesnt work well due to memory/cache issues, csr format doesnt give many gains. other libraries dont improve over standard implementation (Finch...)
+- [x] use kalman filter to initialize inversion filter for third order or some other simplification; didnt do it bcs it seems the inversion filter is well behaved for reasonable shock sizes
 - [x] implement estimation tests for all models
 - [x] make plotting options as dynamic setting instead of default, accept kwargs
 - [x] streamline estimation part (dont do string matching... but rely on precomputed indices...)

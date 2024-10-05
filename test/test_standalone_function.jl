@@ -65,8 +65,8 @@ get_irf(RBC_CME, algorithm = :pruned_third_order)
 get_irf(RBC_CME, algorithm = :pruned_second_order)
 
 ∇₁ = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, RBC_CME)# |> Matrix
-∇₂ = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
-∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)
+∇₂ = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 #SS = get_steady_state(RBC_CME, derivatives = false)
 
 
@@ -213,7 +213,8 @@ T = T)
         -0.0021014511165327685
         -0.0004090778090616675
         0.0004090778090616675],7,3375)
-    @test isapprox(∇₃,third_order_derivatives2,rtol = eps(Float32))
+    @test isapprox(∇₃ * RBC_CME.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    ,third_order_derivatives2,rtol = eps(Float32))
 
     first_order_solution2 = [ 0.9         5.41234e-16  -6.41848e-17   0.0           0.0068
     0.0223801  -0.00364902    0.00121336    6.7409e-6     0.000169094
@@ -353,7 +354,7 @@ end
 @testset verbose = true "NSSS and std derivatives" begin
     # derivatives of paramteres wrt standard deviations
     stdev_deriv = ForwardDiff.jacobian(x -> get_statistics(RBC_CME, x, parameters = RBC_CME.parameters, standard_deviation = RBC_CME.var)[1], RBC_CME.parameter_values)
-    stdev_deriv[9]
+
     @test isapprox(stdev_deriv[5,6],1.3135107627695757, rtol = 1e-6)
 
     # derivatives of paramteres wrt non stochastic steady state
@@ -688,21 +689,20 @@ end
 
 @testset verbose = true "μ, σ + μ, σ derivatives" begin
     # Test diff of SS and SSS
+    # WARNING: when debugging be aware that FIniteDifferences changes the parameters permanently. if you check after running FinDiff you need to use the old initial parameters
     include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
 
-    μdiff = get_mean(m)
-
-    μdiff2 = get_mean(m, algorithm = :pruned_second_order)
-
-    σdiff = get_std(m)
-
-    σdiff2 = get_std(m, algorithm = :pruned_second_order)
-
-    σdiff3 = get_std(m, algorithm = :pruned_third_order)
-
-    𝓂 = m
-
     parameters = copy(m.parameter_values)
+
+    μdiff = get_mean(m, parameters = parameters)
+
+    μdiff2 = get_mean(m, parameters = parameters, algorithm = :pruned_second_order)
+
+    σdiff = get_std(m, parameters = parameters)
+
+    σdiff2 = get_std(m, parameters = parameters, algorithm = :pruned_second_order)
+
+    σdiff3 = get_std(m, parameters = parameters, algorithm = :pruned_third_order)
 
     μfinitediff = FiniteDifferences.jacobian(central_fdm(4,1), 
             x -> collect(get_mean(m; parameters = x, derivatives = false)), 
@@ -737,7 +737,6 @@ end
     @test isapprox(σ3finitediff, σdiff3[:,2:end], rtol = 1e-6)
 end
 m = nothing
-𝓂 = nothing
 
 
 

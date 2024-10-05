@@ -13,7 +13,7 @@ dat = CSV.read("data/usmodel.csv", DataFrame)
 data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
 
 # declare observables
-observables = [:dy, :dc]#, :dinve, :labobs, :pinfobs, :dw, :robs]
+observables = [:dy]#, :dinve, :labobs, :pinfobs, :dw, :robs]
 
 # Subsample from 1966Q1 - 2004Q4
 # subset observables in data
@@ -90,7 +90,7 @@ Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(Caldara_et_al_2012_lo
 pt = @time Pigeons.pigeons(target = Caldara_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
-            n_rounds = 6, # 7 fails with out of support error
+            n_rounds = 8,
             multithreaded = true)
 
 samps = MCMCChains.Chains(pt)

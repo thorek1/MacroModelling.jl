@@ -6,6 +6,7 @@ import Zygote, FiniteDifferences
 import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
 using JET
+import LinearAlgebra as ℒ
 
 test_set = ENV["TEST_SET"]
 
@@ -1811,7 +1812,7 @@ if test_set == "basic"
         # solve!(Smets_Wouters_2003, verbose = true)
 
 
-        @test isapprox(get_steady_state(Smets_Wouters_2003, verbose = true)(Smets_Wouters_2003.timings.var),
+        @test isapprox(get_steady_state(Smets_Wouters_2003, verbose = true)(Smets_Wouters_2003.timings.var,[:Steady_state]),
                         [  1.2043777509278788
                         1.2043777484127967
                         0.362
