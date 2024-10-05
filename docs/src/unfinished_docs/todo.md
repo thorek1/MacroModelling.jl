@@ -3,7 +3,7 @@
 ## High priority
 
 - [ ] ss transition by entering new parameters at given periods
-- [ ] add argument to plotting functions to replace names in plots (e.g input a dictionnary: Dict(:dinve => "Investment growth"))
+- [ ] add argument to plotting functions to replace names in plots (e.g. input a dictionnary: Dict(:dinve => "Investment growth"))
 - [ ] programmatic model writing: accept {i}[0] as definition for variable
 - [ ] check out dense sparse matmul on transposed matrices
 - [ ] check out DiffInterface for NSSS solver
