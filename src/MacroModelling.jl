@@ -4683,23 +4683,25 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
     else !cold_start
         for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
-            if sol_minimum > tol || rel_sol_minimum > rtol
-                # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
-                sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(gauss_newton, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
-                                                                    total_iters, 
-                                                                    n_block, 
-                                                                    false, #verbose
-                                                                    guess, 
-                                                                    parameters[1],
-                                                                    ext,
-                                                                    false)                 
-                if !(sol_minimum > tol || rel_sol_minimum > rtol)
-                    solved_yet = true
+            for algo in [gauss_newton, levenberg_marquardt]
+                if sol_minimum > tol || rel_sol_minimum > rtol
+                    # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
+                    sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
+                                                                        total_iters, 
+                                                                        n_block, 
+                                                                        false, #verbose
+                                                                        guess, 
+                                                                        parameters[1],
+                                                                        ext,
+                                                                        false)                 
+                    if !(sol_minimum > tol || rel_sol_minimum > rtol)
+                        solved_yet = true
 
-                    if verbose
-                        println("Block: $n_block, - Solved with Gauss-Newton using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum - $total_iters")
-                    end
-                end                      
+                        if verbose
+                            println("Block: $n_block, - Solved with $algo using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum - $total_iters")
+                        end
+                    end                      
+                end
             end
         end
 
@@ -4720,7 +4722,15 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                                 if verbose
                                     loop1 = unique(parameters)#[1:3]
                                     loop2 = [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]
-                                    n1 = (indexin([p], loop1)[1] - 1) * length(loop2) + indexin([s], loop2)[1]
+                                    p_in_loop1 = findfirst(x -> x == p, loop1)
+                                    s_in_loop2 = findfirst(x -> x == s, loop2)
+                                    if p_in_loop1 isa Nothing
+                                        p_in_loop1 = 1
+                                    end
+                                    if s_in_loop2 isa Nothing
+                                        s_in_loop2 = 1
+                                    end
+                                    n1 = (p_in_loop1 - 1) * length(loop2) + s_in_loop2
                                     println("Block: $n_block, - Solved with modified Levenberg-Marquardt - $n1/$(length(loop2) *length(loop1)) - $sol_minimum - $rel_sol_minimum - $total_iters")
                                 end
                             end 
@@ -10074,9 +10084,9 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
     SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
 
-    # if solution_error > tol || isnan(solution_error)
-    #     return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    # end
+    if solution_error > tol || isnan(solution_error)
+        return (SS_and_pars, (10, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    end
 
     SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
         
@@ -10152,7 +10162,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-        return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (SS_and_pars, (10, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
