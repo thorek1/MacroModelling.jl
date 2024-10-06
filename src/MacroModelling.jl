@@ -2685,12 +2685,16 @@ function levenberg_marquardt(f::Function,
         # ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
 
         if !all(isfinite,∇̂)
+            largest_relative_step = 1.0
+            largest_residual = 1.0
             break
         end
 
         ∇̄ = ℒ.cholesky!(∇̂, check = false)
 
         if !ℒ.issuccess(∇̄)
+            largest_relative_step = 1.0
+            largest_residual = 1.0
             break
         end
 
@@ -2783,9 +2787,11 @@ function levenberg_marquardt(f::Function,
 
         # allow for norm increases (in both measures) as this can lead to the solution
         
-        if largest_relative_step <= rel_xtol
-            if largest_residual <= ftol
+        if largest_residual <= ftol
+            if largest_relative_step <= rel_xtol
                 break
+            # else
+            #     println("Iteration: $iter; ftol: $largest_residual; rel_xtol: $largest_relative_step")
             end
         end
     end
