@@ -2652,9 +2652,9 @@ function levenberg_marquardt(f::Function,
 
     prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
 
-    largest_step = zero(T)
-    largest_residual = zero(T)
-    largest_relative_step = zero(T)
+    largest_step = T(1.0)
+    largest_residual = T(1.0)
+    largest_relative_step = T(1.0)
 
     μ¹ = μ̄¹
     μ² = μ̄²
@@ -2670,13 +2670,15 @@ function levenberg_marquardt(f::Function,
         𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
         grad_iter += 1
 
+        previous_largest_residual = ℒ.norm(f̂(current_guess))
+
         previous_guess .= current_guess
 
         # ∇̂ .= ∇' * ∇
         ℒ.mul!(∇̂, ∇', ∇)
 
         μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
-        func_iter += 1
+        func_iter += 2
 
         for i in 1:size(∇̂,1)
             ∇̂[i,i] += μ¹s
@@ -2685,14 +2687,16 @@ function levenberg_marquardt(f::Function,
         # ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
 
         if !all(isfinite,∇̂)
-            return undo_transform(current_guess,transformation_level), (grad_iter, func_iter, Inf, Inf)
+            break
+            # return undo_transform(current_guess,transformation_level), (grad_iter, func_iter, Inf, Inf)
             # return undo_transform(current_guess,transformation_level,shift), (iter, Inf, Inf, upper_bounds)
         end
 
         ∇̄ = ℒ.cholesky!(∇̂, check = false)
 
         if !ℒ.issuccess(∇̄)
-            return undo_transform(current_guess,transformation_level), (grad_iter, func_iter, Inf, Inf)
+            break
+            # return undo_transform(current_guess,transformation_level), (grad_iter, func_iter, Inf, Inf)
             # ∇̄ = ℒ.svd(∇̂)
         end
 
@@ -2783,9 +2787,23 @@ function levenberg_marquardt(f::Function,
         largest_residual = ℒ.norm(f̂(current_guess)) # maximum(abs, f(undo_transform(current_guess,transformation_level)))
         # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
 
-        if largest_residual <= ftol && largest_relative_step <= rel_xtol
-            return undo_transform(current_guess, transformation_level), (grad_iter, func_iter, largest_relative_step, largest_residual)#largest_residual, f(undo_transform(current_guess,transformation_level)))
-            # return undo_transform(current_guess,transformation_level,shift), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level,shift)))
+        # if largest_residual <= ftol println("Iteration $iter; largest_residual ($ftol): $largest_residual; largest_relative_step ($rel_xtol): $largest_relative_step") end
+
+        if iter > 5 && largest_relative_step > sqrt(rel_xtol) && largest_residual > previous_largest_residual
+            # println("LM: $iter, Norm increase")
+            break
+            # return undo_transform(current_guess,transformation_level), (grad_iter, func_iter, largest_relative_step, largest_residual)
+        end
+
+        if largest_relative_step <= rel_xtol
+            if largest_residual <= ftol
+                break
+            #     println("success")
+            #     return undo_transform(current_guess, transformation_level), (grad_iter, func_iter, largest_relative_step, largest_residual)#largest_residual, f(undo_transform(current_guess,transformation_level)))
+            #     # return undo_transform(current_guess,transformation_level,shift), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level,shift)))
+            # elseif largest_relative_step <= rel_xtol^2
+            #     return undo_transform(current_guess,transformation_level), (grad_iter, func_iter, largest_relative_step, largest_residual)
+            end
         end
     end
 
@@ -4005,7 +4023,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     #                             end
     #                         end))
 
-    push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < 1e-12)
+        # push!(SS_solve_func,:(println("Accumulated solution error $solution_error and current best: $current_best")))
+        push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < 1e-12)
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
                                 # solved_scale = scale
                             end))
@@ -4459,7 +4478,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 
     pars[1:2] = sort(pars[1:2], rev = true)
 
-    par_inputs = solver_parameters(1e-11, 1e-11, 1e-14, 250, pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(1e-11, 1e-11, sqrt(eps()), 250, pars..., 1, 0.0, 2)
 
     runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs]) catch end
 
@@ -4489,7 +4508,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 60, maxiter::Int =
 
     pars = Optim.minimizer(sol)
 
-    par_inputs = solver_parameters(1e-11, 1e-11, 1e-14, 250, pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(1e-11, 1e-11, sqrt(eps()), 250, pars..., 1, 0.0, 2)
 
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs])
 
@@ -4631,7 +4650,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         cold_start::Bool,
                         verbose::Bool ;
                         tol::AbstractFloat = 1e-11,
-                        rtol::AbstractFloat = 1e-14,
+                        rtol::AbstractFloat = sqrt(eps()),
                         # timeout = 120,
                         # starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
                         # fail_fast_solvers_only = true,
@@ -4769,7 +4788,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
     end
 
-    return sol_values, (rel_sol_minimum, total_iters[1])
+    return sol_values, (sol_minimum, total_iters[1])
 end
 
 
