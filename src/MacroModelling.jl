@@ -2670,8 +2670,6 @@ function levenberg_marquardt(f::Function,
         𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
         grad_iter += 1
 
-        previous_largest_residual = ℒ.norm(f̂(current_guess))
-
         previous_guess .= current_guess
 
         # ∇̂ .= ∇' * ∇
@@ -2688,16 +2686,12 @@ function levenberg_marquardt(f::Function,
 
         if !all(isfinite,∇̂)
             break
-            # return undo_transform(current_guess,transformation_level), (grad_iter, func_iter, Inf, Inf)
-            # return undo_transform(current_guess,transformation_level,shift), (iter, Inf, Inf, upper_bounds)
         end
 
         ∇̄ = ℒ.cholesky!(∇̂, check = false)
 
         if !ℒ.issuccess(∇̄)
             break
-            # return undo_transform(current_guess,transformation_level), (grad_iter, func_iter, Inf, Inf)
-            # ∇̄ = ℒ.svd(∇̂)
         end
 
         ℒ.mul!(guess_update, ∇', f̂(current_guess))
@@ -2787,28 +2781,16 @@ function levenberg_marquardt(f::Function,
         largest_residual = ℒ.norm(f̂(current_guess)) # maximum(abs, f(undo_transform(current_guess,transformation_level)))
         # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
 
-        # if largest_residual <= ftol println("Iteration $iter; largest_residual ($ftol): $largest_residual; largest_relative_step ($rel_xtol): $largest_relative_step") end
-
-        if iter > 5 && largest_relative_step > sqrt(rel_xtol) && largest_residual > previous_largest_residual
-            # println("LM: $iter, Norm increase")
-            break
-            # return undo_transform(current_guess,transformation_level), (grad_iter, func_iter, largest_relative_step, largest_residual)
-        end
-
+        # allow for norm increases (in both measures) as this can lead to the solution
+        
         if largest_relative_step <= rel_xtol
             if largest_residual <= ftol
                 break
-            #     println("success")
-            #     return undo_transform(current_guess, transformation_level), (grad_iter, func_iter, largest_relative_step, largest_residual)#largest_residual, f(undo_transform(current_guess,transformation_level)))
-            #     # return undo_transform(current_guess,transformation_level,shift), (iter, largest_step, largest_residual, f(undo_transform(current_guess,transformation_level,shift)))
-            # elseif largest_relative_step <= rel_xtol^2
-            #     return undo_transform(current_guess,transformation_level), (grad_iter, func_iter, largest_relative_step, largest_residual)
             end
         end
     end
 
     best_guess = undo_transform(current_guess,transformation_level)
-    # best_guess = undo_transform(current_guess,transformation_level,shift)
 
     return best_guess, (grad_iter, func_iter, largest_relative_step, largest_residual)#, f(best_guess))
 end
@@ -2876,9 +2858,7 @@ function gauss_newton(f::Function,
         
         if rel_xtol_reached < rel_xtol && new_residuals_norm < ftol # || rel_ftol_reached < rel_ftol
             # println("GN worked with $iter iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")# rel_ftol: $rel_ftol_reached")
-            # iters = [iter,iter]
             break
-            # return undo_transform(new_guess,transformation_level), (iter, zero(T), zero(T), min(rel_ftol, rel_xtol)) # f(undo_transform(new_guess,transformation_level)))
         end
 
         new_guess_norm = ℒ.norm(new_guess)
@@ -4023,7 +4003,6 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     #                             end
     #                         end))
 
-        # push!(SS_solve_func,:(println("Accumulated solution error $solution_error and current best: $current_best")))
         push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < 1e-12)
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
                                 # solved_scale = scale

@@ -1518,16 +1518,16 @@ macro parameters(𝓂,ex...)
             end
             # time_SS_real_solve = @elapsed 
             SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose, true, mod.$𝓂.solver_parameters)
-            println(solution_error)
-            # select_fastest_SS_solver_parameters!(mod.$𝓂)
+
+            select_fastest_SS_solver_parameters!(mod.$𝓂)
 
             found_solution = true
 
-            # if solution_error > 1e-12
-            #     # start_time = time()
-            #     found_solution = find_SS_solver_parameters!(mod.$𝓂)
-            #     # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
-            # end
+            if solution_error > 1e-12
+                # start_time = time()
+                found_solution = find_SS_solver_parameters!(mod.$𝓂)
+                # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
+            end
             
             if !found_solution
                 @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
