@@ -4683,7 +4683,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
     else !cold_start
         for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
-            for algo in [gauss_newton]#, levenberg_marquardt]
+            for algo in [gauss_newton, levenberg_marquardt]
                 if sol_minimum > tol || rel_sol_minimum > rtol
                     # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
                     sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
