@@ -2787,8 +2787,7 @@ function levenberg_marquardt(f::Function,
 
         # allow for norm increases (in both measures) as this can lead to the solution
         
-        if largest_residual <= ftol
-            if largest_relative_step <= rel_xtol
+        if largest_residual <= ftol || largest_step <= xtol || largest_relative_step <= rel_xtol
                 break
             # else
             #     println("Iteration: $iter; ftol: $largest_residual; rel_xtol: $largest_relative_step")
@@ -2811,6 +2810,7 @@ function gauss_newton(f::Function,
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
     ftol = parameters.ftol
+    xtol = parameters.xtol
     rel_xtol = parameters.rel_xtol
     iterations = parameters.iterations
     transformation_level = 0 # parameters.transformation_level
@@ -2862,7 +2862,7 @@ function gauss_newton(f::Function,
             break 
         end
         
-        if rel_xtol_reached < rel_xtol && new_residuals_norm < ftol # || rel_ftol_reached < rel_ftol
+        if new_residuals_norm < ftol || rel_xtol_reached < rel_xtol || guess_update_norm < xtol # || rel_ftol_reached < rel_ftol
             # println("GN worked with $iter iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")# rel_ftol: $rel_ftol_reached")
             break
         end
@@ -4463,7 +4463,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 
     pars[1:2] = sort(pars[1:2], rev = true)
 
-    par_inputs = solver_parameters(1e-12, 1e-12, sqrt(eps()), 250, pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(eps(), 1e-12, sqrt(eps()), 250, pars..., 1, 0.0, 2)
 
     runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs]) catch end
 
@@ -4493,7 +4493,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 60, maxiter::Int =
 
     pars = Optim.minimizer(sol)
 
-    par_inputs = solver_parameters(1e-12, 1e-12, sqrt(eps()), 250, pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(eps(), 1e-12, sqrt(eps()), 250, pars..., 1, 0.0, 2)
 
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs])
 
@@ -4558,7 +4558,11 @@ function solve_ss(SS_optimizer::Function,
                     guess::Vector{Float64},
                     solver_params::solver_parameters,
                     extended_problem::Bool,
-                    separate_starting_value::Union{Bool,Float64})
+                    separate_starting_value::Union{Bool,Float64})          
+    ftol = solver_params.ftol
+    xtol = solver_params.xtol
+    rel_xtol = solver_params.rel_xtol
+
     if separate_starting_value isa Float64
         sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(separate_starting_value, length(guess))))
         sol_values_init[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
@@ -4615,7 +4619,7 @@ function solve_ss(SS_optimizer::Function,
 
     max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
 
-    if sol_minimum < sqrt(tol) && rel_sol_minimum < tol && verbose
+    if sol_minimum < ftol && verbose
         println("Block: $n_block - Solved $(extended_problem_str)using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
     end
 
@@ -4658,7 +4662,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     sol_minimum  = ℒ.norm(res)
 
     if !cold_start
-        if sol_minimum > rtol
+        if sol_minimum > tol
             ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
 
             ∇̂ = ℒ.lu!(∇, check = false)
@@ -4679,7 +4683,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         rel_sol_minimum = 1.0
     end
 
-    if sol_minimum < tol && rel_sol_minimum < rtol
+    if sol_minimum < tol
         solved_yet = true
 
         if verbose
@@ -4697,7 +4701,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         for g in guesses
             for p in parameters
                 for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
-                    if sol_minimum > tol || rel_sol_minimum > rtol
+                    if sol_minimum > tol# || rel_sol_minimum > rtol
                         sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                             g, 
                                                             p,
@@ -4710,7 +4714,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
     else !cold_start
         for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
             for algo in [gauss_newton, levenberg_marquardt]
-                if sol_minimum > tol || rel_sol_minimum > rtol
+                if sol_minimum > tol# || rel_sol_minimum > rtol
                     # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
                     sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
                                                                         total_iters, 
@@ -4720,7 +4724,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                                                                         parameters[1],
                                                                         ext,
                                                                         false)                 
-                    if !(sol_minimum > tol || rel_sol_minimum > rtol)
+                    if !(sol_minimum > tol)# || rel_sol_minimum > rtol)
                         solved_yet = true
 
                         if verbose
@@ -4732,18 +4736,18 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
 
 
-        if sol_minimum > tol || rel_sol_minimum > rtol
+        if sol_minimum > tol# || rel_sol_minimum > rtol
             for p in unique(parameters)#[1:3] # take unique because some parameters might appear more than once
                 for s in [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897] #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                     # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
-                        if sol_minimum > tol || rel_sol_minimum > rtol
+                        if sol_minimum > tol# || rel_sol_minimum > rtol
                             sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, 
                                                                 false, # verbose
                                                                 guess, 
                                                                 p,
                                                                 false,
                                                                 s)
-                            if !solved_yet && !(sol_minimum > tol || rel_sol_minimum > rtol)     
+                            if !solved_yet && !(sol_minimum > tol)# || rel_sol_minimum > rtol)     
                                 solved_yet = true
                                 if verbose
                                     loop1 = unique(parameters)#[1:3]
