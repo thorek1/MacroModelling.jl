@@ -4445,7 +4445,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 
     pars[1:2] = sort(pars[1:2], rev = true)
 
-    par_inputs = solver_parameters(sqrt(eps()), sqrt(eps()), 1e-14, 250, pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(1e-11, 1e-11, 1e-14, 250, pars..., 1, 0.0, 2)
 
     runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs]) catch end
 
@@ -4475,7 +4475,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 60, maxiter::Int =
 
     pars = Optim.minimizer(sol)
 
-    par_inputs = solver_parameters(sqrt(eps()), sqrt(eps()), 1e-14, 250, pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(1e-11, 1e-11, 1e-14, 250, pars..., 1, 0.0, 2)
 
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs])
 
@@ -4616,7 +4616,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         parameters::Vector{solver_parameters},
                         cold_start::Bool,
                         verbose::Bool ;
-                        tol::AbstractFloat = sqrt(eps()),
+                        tol::AbstractFloat = 1e-11,
                         rtol::AbstractFloat = 1e-14,
                         # timeout = 120,
                         # starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
@@ -10085,6 +10085,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
 
     if solution_error > tol || isnan(solution_error)
+        if verbose println("Failed to find NSSS") end
         return (SS_and_pars, (10, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
@@ -10162,6 +10163,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
+        if verbose println("Failed to calculate implicit derivative of NSSS") end
         return (SS_and_pars, (10, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
@@ -10742,7 +10744,8 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
 
     TT = 𝓂.timings
 
-    if !converged
+    if !converged || solution_error > 1e-12
+        if verbose println("Could not find 2nd order stochastic steady state") end
         return TT, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
     end
 
@@ -10766,7 +10769,8 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
 
     TT = 𝓂.timings
 
-    if !converged
+    if !converged || solution_error > 1e-12
+        if verbose println("Could not find 2nd order stochastic steady state") end
         return TT, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)], converged
     end
 
@@ -10791,7 +10795,8 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
 
     TT = 𝓂.timings
 
-    if !converged
+    if !converged || solution_error > 1e-12
+        if verbose println("Could not find 3rd order stochastic steady state") end
         return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
     end
 
@@ -10815,7 +10820,8 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
 
     TT = 𝓂.timings
 
-    if !converged
+    if !converged || solution_error > 1e-12
+        if verbose println("Could not find 3rd order stochastic steady state") end
         return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)], converged
     end
 
