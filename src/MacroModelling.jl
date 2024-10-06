@@ -2776,7 +2776,7 @@ function levenberg_marquardt(f::Function,
 
         best_previous_guess = undo_transform(previous_guess,transformation_level)
         best_current_guess = undo_transform(current_guess,transformation_level)
-        
+
         largest_step = ℒ.norm(best_previous_guess - best_current_guess) # maximum(abs, previous_guess - current_guess)
         largest_relative_step = largest_step / max(ℒ.norm(best_previous_guess), ℒ.norm(best_current_guess)) # maximum(abs, (previous_guess - current_guess) ./ previous_guess)
         
@@ -4459,7 +4459,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 
     pars[1:2] = sort(pars[1:2], rev = true)
 
-    par_inputs = solver_parameters(1e-11, 1e-11, 1e-14, 250, pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(1e-12, 1e-12, 1e-14, 250, pars..., 1, 0.0, 2)
 
     runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs]) catch end
 
@@ -4489,7 +4489,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 60, maxiter::Int =
 
     pars = Optim.minimizer(sol)
 
-    par_inputs = solver_parameters(1e-11, 1e-11, 1e-14, 250, pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(1e-12, 1e-12, 1e-14, 250, pars..., 1, 0.0, 2)
 
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs])
 
@@ -4630,7 +4630,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         parameters::Vector{solver_parameters},
                         cold_start::Bool,
                         verbose::Bool ;
-                        tol::AbstractFloat = 1e-11,
+                        tol::AbstractFloat = 1e-12,
                         rtol::AbstractFloat = 1e-14,
                         # timeout = 120,
                         # starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
