@@ -2676,7 +2676,7 @@ function levenberg_marquardt(f::Function,
         ℒ.mul!(∇̂, ∇', ∇)
 
         μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
-        func_iter += 2
+        func_iter += 1
 
         for i in 1:size(∇̂,1)
             ∇̂[i,i] += μ¹s
