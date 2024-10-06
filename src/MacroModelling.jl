@@ -2788,10 +2788,10 @@ function levenberg_marquardt(f::Function,
         # allow for norm increases (in both measures) as this can lead to the solution
         
         if largest_residual <= ftol || largest_step <= xtol || largest_relative_step <= rel_xtol
-                break
+            break
             # else
             #     println("Iteration: $iter; ftol: $largest_residual; rel_xtol: $largest_relative_step")
-            end
+            # end
         end
     end
 
