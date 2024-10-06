@@ -2839,6 +2839,7 @@ function gauss_newton(f::Function,
     rel_xtol_reached = 1.0
     rel_ftol_reached = 1.0
     new_residuals_norm = 1.0
+    guess_update_norm = 1.0
     # init_residuals_norm = ℒ.norm(new_residuals)
     iters = [0,0]
     # resnorm = 1.0
