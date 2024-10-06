@@ -308,7 +308,7 @@ csv_file_path = "samples_$(dt)h.csv"
 # function callback(rng, model, sampler, sample, i)
 # function callback(rng, model, sampler, sample, state, i; kwargs...)
 function callback(rng, model, sampler, sample, state, i; kwargs...)
-    println(sample)
+    # println(sample)
     df = DataFrame(iteration = Float64[])
 
     # Prepare a row for the DataFrame
