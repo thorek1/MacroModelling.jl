@@ -2774,8 +2774,12 @@ function levenberg_marquardt(f::Function,
             p² = min(p² / λ̂², p̄²)
         end
 
-        # largest_step = ℒ.norm(previous_guess - current_guess) # maximum(abs, previous_guess - current_guess)
-        largest_relative_step = largest_step / max(ℒ.norm(previous_guess), ℒ.norm(current_guess)) # maximum(abs, (previous_guess - current_guess) ./ previous_guess)
+        best_previous_guess = undo_transform(previous_guess,transformation_level)
+        best_current_guess = undo_transform(current_guess,transformation_level)
+        
+        largest_step = ℒ.norm(best_previous_guess - best_current_guess) # maximum(abs, previous_guess - current_guess)
+        largest_relative_step = largest_step / max(ℒ.norm(best_previous_guess), ℒ.norm(best_current_guess)) # maximum(abs, (previous_guess - current_guess) ./ previous_guess)
+        
         largest_residual = ℒ.norm(f̂(current_guess)) # maximum(abs, f(undo_transform(current_guess,transformation_level)))
         # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
 
@@ -2854,15 +2858,21 @@ function gauss_newton(f::Function,
         
         if rel_xtol_reached < rel_xtol && new_residuals_norm < ftol # || rel_ftol_reached < rel_ftol
             # println("GN worked with $iter iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")# rel_ftol: $rel_ftol_reached")
-            iters = [iter,iter]
+            # iters = [iter,iter]
             break
             # return undo_transform(new_guess,transformation_level), (iter, zero(T), zero(T), min(rel_ftol, rel_xtol)) # f(undo_transform(new_guess,transformation_level)))
         end
 
         new_guess_norm = ℒ.norm(new_guess)
 
+        old_residuals_norm = new_residuals_norm
+
         new_residuals_norm = ℒ.norm(new_residuals)
         
+        if iter > 5 && ℒ.norm(rel_xtol_reached) > 1e-12 && new_residuals_norm > old_residuals_norm
+            # println("GN: $iter, Norm increase")
+            break
+        end
         # if resnorm < ftol # && iter > 4
         #     println("GN worked with $iter iterations - norm: $resnorm; relative norm: $relresnorm")
         #     return undo_transform(new_guess,transformation_level), (iter, zero(T), zero(T), resnorm) # f(undo_transform(new_guess,transformation_level)))
@@ -2871,10 +2881,11 @@ function gauss_newton(f::Function,
         ∇̂ = ℒ.lu!(∇, check = false)
         
         if !ℒ.issuccess(∇̂)
+            # println("GN factorisation failed after $iter iterations; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
             rel_xtol_reached = 1.0
             rel_ftol_reached = 1.0
             new_residuals_norm = 1.0
-            iters = [iter,iter]
+            # iters = [iter,iter]
             break
         end
 
@@ -2905,22 +2916,25 @@ function gauss_newton(f::Function,
             rel_xtol_reached = 1.0
             rel_ftol_reached = 1.0
             new_residuals_norm = 1.0
-            iters = [iter,iter]
+            # iters = [iter,iter]
             break 
         end
         
+        minmax!(new_guess, lower_bounds, upper_bounds)
+
         rel_xtol_reached = guess_update_norm / max(new_guess_norm, ℒ.norm(new_guess))
         # rel_ftol_reached = new_residuals_norm / max(eps(),init_residuals_norm)
         
-        minmax!(new_guess, lower_bounds, upper_bounds)
-        
-        # iter += 1
+        iters[1] += 1
+        iters[2] += 1
+
+        # println("GN: $(iters[1]) iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")
     end
 
-    # if iter == iterations
-        # println("GN failed to converge - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")#; rel_ftol: $rel_ftol_reached")
+    # if iters[1] == iterations
+    #     println("GN failed to converge - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")#; rel_ftol: $rel_ftol_reached")
     # else
-    #     println("GN converged after $iter iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")
+    #     println("GN converged after $(iters[1]) iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")
     # end
 
     best_guess = undo_transform(new_guess,transformation_level)
@@ -4644,8 +4658,16 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
 
             ∇̂ = ℒ.lu!(∇, check = false)
-                    
-            rel_sol_minimum = ℒ.issuccess(∇̂) ? ℒ.norm(∇̂ \ res) / sol_minimum : 1.0
+            
+            if ℒ.issuccess(∇̂)
+                guess_update = ∇̂ \ res
+
+                new_guess = guess - guess_update
+
+                rel_sol_minimum = ℒ.norm(guess_update) / max(ℒ.norm(new_guess), sol_minimum)
+            else
+                rel_sol_minimum = 1.0
+            end
         else
             rel_sol_minimum = 0.0
         end
