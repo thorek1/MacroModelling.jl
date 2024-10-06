@@ -1,4 +1,9 @@
-#TODO: check why Pigeons is so much slower (more allocs) compared to a few days ago; check higher order correctness; check EA data (labor is off, rest is more or less ok)
+# TODO: 
+# check why test fail for SS
+# rewrite inversion_filter to take into account constrained optim problem
+# check why Pigeons is so much slower (more allocs) compared to a few days ago; 
+# check higher order correctness; 
+# check EA data (labor is off, rest is more or less ok)
 
 # using Revise
 using MacroModelling
@@ -92,6 +97,7 @@ println("Measurement errors: $msrmt_err")
 
 println(pwd())
 
+## Observables
 if labor == "growth"
     observables = [:dy, :dc, :dinve, :dlabobs, :pinfobs, :dwobs, :robs]
 elseif labor == "level"
@@ -100,7 +106,7 @@ elseif labor == "none"
     observables = [:dy, :dc, :dinve, :pinfobs, :dwobs, :robs]
 end
 
-
+## Load data
 if geo == "EA"
     include("download_EA_data.jl") # 1970Q4 - 2024Q2
 elseif geo == "US"
@@ -141,16 +147,40 @@ end
 
 data = data(observables)
 
+## Load model
+if msrmt_err
+    include("../models/Smets_Wouters_2007_estim_measurement_errors.jl")
+else
+    include("../models/Smets_Wouters_2007_estim.jl")
+end
+
+fixed_parameters = Vector{Vector{Float64}}(undef,0)
+
+if priors == "original"
+    push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007.parameters)])
+elseif priors ∈ ["all", "open"]
+    push!(fixed_parameters, Float64[])
+end
+
+if msrmt_err
+    if labor == "growth"
+        push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_labobs], Smets_Wouters_2007.parameters)])
+    elseif labor == "level"
+        push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_dlabobs], Smets_Wouters_2007.parameters)])
+    end
+end
+
+## Priors
 # Handling distributions with varying parameters using arraydist
 if priors == "open"
     dists = [
-    InverseGamma(0.1, 2.0, μσ = true),   # z_ea
-    InverseGamma(0.1, 2.0, μσ = true),   # z_eb
-    InverseGamma(0.1, 2.0, μσ = true),   # z_eg
-    InverseGamma(0.1, 2.0, μσ = true),   # z_eqs
-    InverseGamma(0.1, 2.0, μσ = true),   # z_em
-    InverseGamma(0.1, 2.0, μσ = true),   # z_epinf
-    InverseGamma(0.1, 2.0, μσ = true),   # z_ew
+    InverseGamma(0.1, 3.0, μσ = true),   # z_ea
+    InverseGamma(0.1, 3.0, μσ = true),   # z_eb
+    InverseGamma(0.1, 3.0, μσ = true),   # z_eg
+    InverseGamma(0.1, 3.0, μσ = true),   # z_eqs
+    InverseGamma(0.1, 3.0, μσ = true),   # z_em
+    InverseGamma(0.1, 3.0, μσ = true),   # z_epinf
+    InverseGamma(0.1, 3.0, μσ = true),   # z_ew
     Beta(0.5, 0.2, μσ = true),        # crhoa
     Beta(0.5, 0.2, μσ = true),        # crhob
     Beta(0.5, 0.2, μσ = true),        # crhog
@@ -254,6 +284,56 @@ if msrmt_err
     end
 end
 
+## Turing callback
+if !isdir("estimation_results") mkdir("estimation_results") end
+
+cd("estimation_results")
+
+dir_name = "$(geo)_$(algo)__$(smple)_sample__$(priors)_priors__$(fltr)_filter__$(smpls)_samples__$(smplr)_sampler"
+
+if !isdir(dir_name) mkdir(dir_name) end
+
+cd(dir_name)
+
+println("Current working directory: ", pwd())
+
+
+# define callback
+# Define the path for the CSV file
+dt = Dates.format(Dates.now(), "yyyy-mm-dd_HH")
+csv_file_path = "samples_$(dt)h.csv"
+
+# # Initialize a DataFrame to store the data
+# df = DataFrame(iteration = Float64[])
+# function callback(rng, model, sampler, sample, i)
+# function callback(rng, model, sampler, sample, state, i; kwargs...)
+function callback(rng, model, sampler, sample, state, i; kwargs...)
+    println(sample)
+    df = DataFrame(iteration = Float64[])
+
+    # Prepare a row for the DataFrame
+    row = Dict("iteration" => Float64(i))
+    for (name, value) in sample.θ
+        row[string(name)] = value
+    end
+    
+    # If the DataFrame `df` does not have columns for these names, add them
+    for name in keys(row)
+        if !any(name .== names(df))
+            df[!, name] = Union{Missing, Any}[missing for _ in 1:nrow(df)]
+        end
+    end
+    
+    # Append the new data to the DataFrame
+    push!(df, row)
+    # println(df)
+    # Write the updated DataFrame to the CSV file
+    # Note: To avoid performance issues, consider writing periodically instead of on every callback
+    CSV.write(csv_file_path, df, append=true)
+end
+
+
+## Turing model definition
 Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter)
     all_params ~ Turing.arraydist(dists)
     
@@ -295,38 +375,24 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
     end
 end
 
-# estimate nonlinear model
-if msrmt_err
-    include("../models/Smets_Wouters_2007_estim_measurement_errors.jl")
-else
-    include("../models/Smets_Wouters_2007_estim.jl")
-end
 
-fixed_parameters = Vector{Vector{Float64}}(undef,0)
-
-if priors == "original"
-    push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007.parameters)])
-elseif priors ∈ ["all", "open"]
-    push!(fixed_parameters, Float64[])
-end
-
-if msrmt_err
-    if labor == "growth"
-        push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_labobs], Smets_Wouters_2007.parameters)])
-    elseif labor == "level"
-        push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_dlabobs], Smets_Wouters_2007.parameters)])
-    end
-end
-
-
+## Load initial parameters found to be useful from previous runs
 if !msrmt_err
     if geo == "EA"
         if priors == "original"
-            init_params = [1.0539813334864006, 1.790429623465026, 0.9612222743988239, 2.245019416637746, 1.8289708051323972, 2.358601316186861, 1.0789156261697992, 0.8568570601272402, 0.5139803858707833, 0.5086054051557977, 0.746210025525195, 0.2216391679710211, 0.19408834744356726, 0.25466129806674787, 0.30052398003282593, 0.24194224912107154, 3.765673288590403, 1.0977662596765847, 0.15765142087879247, 0.5912277797105701, 2.4184271279443204, 0.674638689237271, 0.2907071570692985, 0.2739634874939473, 0.41260499766712827, 2.430495316537354, 1.6681265382886468, 0.6276427598244203, 0.18302843368856803, 0.16329242389824458, 0.6958098238409626, 0.8548003732242354, -6.430609194624573, 0.6565910012337266, 0.6119056581112686, 0.1572641393297738]
-            # init_params = [0.9402697855190816, 1.0641239635812076, 0.6011436583516284, 0.8670182620644392, 0.20640860226785046, 0.1856857208217943, 0.5255835232525442, 0.9960962084440508, 0.08160402420965861, 0.8653512010135149, 0.9744072435163497, 0.5291848669042267, 0.8967104272151635, 0.8959743162864988, 0.6058602943584073, 0.7723502513424746, 6.857865255029908, 1.5303217160632798, 0.8555085690933164, 0.8730857626622777, 1.4949673614587475, 0.7886765516330885, 0.5599881504710812, 0.11871254613452384, 0.8148513410110766, 1.2350588282243782, 1.6069552041393589, 0.8917708276180196, 0.06630827109294861, 0.019885519304454532, 0.6071403118071758, 0.2286762642462631, 9.839321503302711, 0.5082099734632451, 0.23876321194697436, 0.17299221069235832]
+            if algo ∈ [:first_order, :second_order, :third_order]
+                init_params = [1.0539813334864006, 1.790429623465026, 0.9612222743988239, 2.245019416637746, 1.8289708051323972, 2.358601316186861, 1.0789156261697992, 0.8568570601272402, 0.5139803858707833, 0.5086054051557977, 0.746210025525195, 0.2216391679710211, 0.19408834744356726, 0.25466129806674787, 0.30052398003282593, 0.24194224912107154, 3.765673288590403, 1.0977662596765847, 0.15765142087879247, 0.5912277797105701, 2.4184271279443204, 0.674638689237271, 0.2907071570692985, 0.2739634874939473, 0.41260499766712827, 2.430495316537354, 1.6681265382886468, 0.6276427598244203, 0.18302843368856803, 0.16329242389824458, 0.6958098238409626, 0.8548003732242354, -6.430609194624573, 0.6565910012337266, 0.6119056581112686, 0.1572641393297738]
+                # init_params = [0.9402697855190816, 1.0641239635812076, 0.6011436583516284, 0.8670182620644392, 0.20640860226785046, 0.1856857208217943, 0.5255835232525442, 0.9960962084440508, 0.08160402420965861, 0.8653512010135149, 0.9744072435163497, 0.5291848669042267, 0.8967104272151635, 0.8959743162864988, 0.6058602943584073, 0.7723502513424746, 6.857865255029908, 1.5303217160632798, 0.8555085690933164, 0.8730857626622777, 1.4949673614587475, 0.7886765516330885, 0.5599881504710812, 0.11871254613452384, 0.8148513410110766, 1.2350588282243782, 1.6069552041393589, 0.8917708276180196, 0.06630827109294861, 0.019885519304454532, 0.6071403118071758, 0.2286762642462631, 9.839321503302711, 0.5082099734632451, 0.23876321194697436, 0.17299221069235832]
+            else
+                init_params = [2.5989822151536535, 0.6578044451220171, 0.9281310531821928, 1.8852968089406528, 0.8186057477776528, 1.624749728115599, 1.369464287917585, 0.41507938838632535, 0.721658080649216, 0.6664692672787901, 0.8514498174369488, 0.4890983016708977, 0.5624499122468842, 0.5414859476317512, 0.18714280089686092, 0.24684006940138484, 8.398955355725677, 1.0006070838317087, 0.12254688311712678, 0.5509201816084156, 2.195979154320753, 0.5881723445941589, 0.8508888247348659, 0.8686808809823324, 0.4526443895917511, 2.1036428455911094, 2.618645870807919, 0.5776965506871476, 0.30373468432509065, 0.0638034232215675, 1.5107565101005929, 0.8497814956065451, -6.561209938565711, 0.5803935558464064, 1.7440087116410714, 0.2280110157450484]
+            end
         elseif priors ∈ ["all", "open"]
-            init_params = [1.0539813334864006, 1.790429623465026, 0.9612222743988239, 2.245019416637746, 1.8289708051323972, 2.358601316186861, 1.0789156261697992, 0.8568570601272402, 0.5139803858707833, 0.5086054051557977, 0.746210025525195, 0.2216391679710211, 0.19408834744356726, 0.25466129806674787, 0.30052398003282593, 0.24194224912107154, 3.765673288590403, 1.0977662596765847, 0.15765142087879247, 0.5912277797105701, 2.4184271279443204, 0.674638689237271, 0.2907071570692985, 0.2739634874939473, 0.41260499766712827, 2.430495316537354, 1.6681265382886468, 0.6276427598244203, 0.18302843368856803, 0.16329242389824458, 0.6958098238409626, 0.8548003732242354, -6.430609194624573, 0.6565910012337266, 0.6119056581112686, 0.1572641393297738, 0.025, 1.5, 0.18, 10, 10]
-            # init_params = [0.7313106904457178, 0.09700895799848093, 0.5920640699440656, 1.265361545704499, 0.27297506922164955, 0.195953368384533, 0.5442225915559922, 0.9955500976192675, 0.9725651688203177, 0.8866959058966631, 0.37038470114816974, 0.5775705282809267, 0.9873994492006416, 0.890191474044162, 0.5274740205652197, 0.7215671001774427, 5.4994704577984965, 1.2486546742085023, 0.42324160155361734, 0.618867961816553, 0.07760841574345216, 0.6101273580974104, 0.6893261256964629, 0.19027202373062296, 0.8062387668960043, 1.1899316448115973, 2.0445068173053076, 0.8402388639664063, 0.024030692850014076, 0.07557280727782609, 0.7888835120052056, 0.3196699135160988, 16.1094568737249, 0.5609215600824993, 0.3145230845675469, 0.17801096063423938, 0.018195041145224043, 3.050466433163007, 0.1957715762720714, 12.013367486745231, 14.358322495821245]
+            if algo ∈ [:first_order, :second_order, :third_order]
+                init_params = [1.0539813334864006, 1.790429623465026, 0.9612222743988239, 2.245019416637746, 1.8289708051323972, 2.358601316186861, 1.0789156261697992, 0.8568570601272402, 0.5139803858707833, 0.5086054051557977, 0.746210025525195, 0.2216391679710211, 0.19408834744356726, 0.25466129806674787, 0.30052398003282593, 0.24194224912107154, 3.765673288590403, 1.0977662596765847, 0.15765142087879247, 0.5912277797105701, 2.4184271279443204, 0.674638689237271, 0.2907071570692985, 0.2739634874939473, 0.41260499766712827, 2.430495316537354, 1.6681265382886468, 0.6276427598244203, 0.18302843368856803, 0.16329242389824458, 0.6958098238409626, 0.8548003732242354, -6.430609194624573, 0.6565910012337266, 0.6119056581112686, 0.1572641393297738, 0.025, 1.5, 0.18, 10, 10]
+                # init_params = [0.7313106904457178, 0.09700895799848093, 0.5920640699440656, 1.265361545704499, 0.27297506922164955, 0.195953368384533, 0.5442225915559922, 0.9955500976192675, 0.9725651688203177, 0.8866959058966631, 0.37038470114816974, 0.5775705282809267, 0.9873994492006416, 0.890191474044162, 0.5274740205652197, 0.7215671001774427, 5.4994704577984965, 1.2486546742085023, 0.42324160155361734, 0.618867961816553, 0.07760841574345216, 0.6101273580974104, 0.6893261256964629, 0.19027202373062296, 0.8062387668960043, 1.1899316448115973, 2.0445068173053076, 0.8402388639664063, 0.024030692850014076, 0.07557280727782609, 0.7888835120052056, 0.3196699135160988, 16.1094568737249, 0.5609215600824993, 0.3145230845675469, 0.17801096063423938, 0.018195041145224043, 3.050466433163007, 0.1957715762720714, 12.013367486745231, 14.358322495821245]
+            else
+                init_params = [2.5989822151536535, 0.6578044451220171, 0.9281310531821928, 1.8852968089406528, 0.8186057477776528, 1.624749728115599, 1.369464287917585, 0.41507938838632535, 0.721658080649216, 0.6664692672787901, 0.8514498174369488, 0.4890983016708977, 0.5624499122468842, 0.5414859476317512, 0.18714280089686092, 0.24684006940138484, 8.398955355725677, 1.0006070838317087, 0.12254688311712678, 0.5509201816084156, 2.195979154320753, 0.5881723445941589, 0.8508888247348659, 0.8686808809823324, 0.4526443895917511, 2.1036428455911094, 2.618645870807919, 0.5776965506871476, 0.30373468432509065, 0.0638034232215675, 1.5107565101005929, 0.8497814956065451, -6.561209938565711, 0.5803935558464064, 1.7440087116410714, 0.2280110157450484, 0.025, 1.5, 0.18, 10, 10]
+            end
         end
     elseif geo == "US"
         if priors == "original"
@@ -396,12 +462,13 @@ end
 println("Mode variable values: $(init_params); Mode loglikelihood: $(LLH)")
 
 
-samps = @time Turing.sample(SW07_llh, 
+samps = @time Turing.sample(SW07_llh,
                             # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
-                            NUTS(1000, 0.65, adtype = AutoZygote()), 
-                            smpls, 
-                            initial_params = isfinite(LLH) ? init_params : nothing, 
-                            progress = true)
+                            NUTS(1000, 0.65, adtype = AutoZygote()),
+                            smpls;
+                            initial_params = isfinite(LLH) ? init_params : nothing,
+                            progress = true,
+                            callback = callback)
 
 println(samps)
 println("Mean variable values: $(mean(samps).nt.mean)")
@@ -427,18 +494,6 @@ end
 
 nms = copy(names(samps))
 samps = replacenames(samps, Dict(nms[1:length(varnames)] .=> varnames))
-
-if !isdir("estimation_results") mkdir("estimation_results") end
-
-cd("estimation_results")
-
-dir_name = "$(geo)_$(algo)__$(smple)_sample__$(priors)_priors__$(fltr)_filter__$(smpls)_samples__$(smplr)_sampler"
-
-if !isdir(dir_name) mkdir(dir_name) end
-
-cd(dir_name)
-
-println("Current working directory: ", pwd())
 
 dt = Dates.format(Dates.now(), "yyyy-mm-dd_HH")
 serialize("samples_$(dt)h.jls", samps)
