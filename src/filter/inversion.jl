@@ -3489,22 +3489,25 @@ end
 
 
 function filter_data_with_model(𝓂::ℳ,
-    data_in_deviations::KeyedArray{Float64},
-    ::Val{:first_order}, # algo
-    ::Val{:inversion}; # filter
-    warmup_iterations::Int = 0,
-    smooth::Bool = true,
-    verbose::Bool = false)
+                                data_in_deviations::KeyedArray{Float64},
+                                ::Val{:first_order}, # algo
+                                ::Val{:inversion}; # filter
+                                warmup_iterations::Int = 0,
+                                smooth::Bool = true,
+                                verbose::Bool = false)
+    T = 𝓂.timings
 
-    algorithm = :first_order
+    variables = zeros(T.nVars, size(data_in_deviations,2))
+    shocks = zeros(T.nExo, size(data_in_deviations,2))
+    
+    decomposition = zeros(T.nVars, T.nExo + 2, size(data_in_deviations, 2))
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose)
 
     if solution_error > 1e-12 || isnan(solution_error)
         @error "No solution for these parameters."
+        return variables, shocks, [], decomposition
     end
-
-    T = 𝓂.timings
 
     state = zeros(T.nVars)
 
@@ -3516,6 +3519,7 @@ function filter_data_with_model(𝓂::ℳ,
     
     if !solved 
         @error "No solution for these parameters."
+        return variables, shocks, [], decomposition
     end
 
     precision_factor = 1.0
@@ -3556,17 +3560,14 @@ function filter_data_with_model(𝓂::ℳ,
     y = zeros(length(cond_var_idx))
     x = zeros(T.nExo)
 
-    variables = zeros(T.nVars, size(data_in_deviations,2))
-    shocks = zeros(T.nExo, size(data_in_deviations,2))
-    
     jac = 𝐒₁[cond_var_idx, end-T.nExo+1:end]
 
     if T.nExo == length(observables)
         jacdecomp = ℒ.lu(jac, check = false)
 
         if !ℒ.issuccess(jacdecomp)
-            if verbose println("Inversion filter failed") end
-            return -Inf
+            @error "Inversion filter failed"
+            return variables, shocks, [], decomposition
         end
 
         invjac = inv(jacdecomp)
@@ -3583,12 +3584,11 @@ function filter_data_with_model(𝓂::ℳ,
         ℒ.mul!(x, invjac, y)
 
         ℒ.mul!(state, 𝐒₁, vcat(state[T.past_not_future_and_mixed_idx], x))
+
         shocks[:,i] .= x
         variables[:,i] .= state
         # state = 𝐒₁ * vcat(state[T.past_not_future_and_mixed_idx], x)
     end
-
-    decomposition = zeros(T.nVars, T.nExo + 2, size(data_in_deviations, 2))
 
     decomposition[:,end,:] .= variables
 
@@ -3619,10 +3619,211 @@ function filter_data_with_model(𝓂::ℳ,
     ::Val{:second_order}, # algo
     ::Val{:inversion}; # filter
     warmup_iterations::Int = 0,
+    filter_algorithm::Symbol = :LagrangeNewton,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    variables, shocks, initial_state = inversion_filter(𝓂, data_in_deviations, :second_order, warmup_iterations = warmup_iterations)
+    T = 𝓂.timings
+
+    variables = zeros(T.nVars, size(data_in_deviations,2))
+    shocks = zeros(T.nExo, size(data_in_deviations,2))
+
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+    if !converged || solution_error > 1e-12
+        @error "Could not find 2nd order stochastic steady state"
+        return variables, shocks, [], []
+    end
+
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
+
+    full_state = collect(sss) - all_SS
+
+    observables = get_and_check_observables(𝓂, data_in_deviations)
+
+    precision_factor = 1.0
+
+    n_obs = size(data_in_deviations,2)
+
+    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+
+    # s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    
+    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
+    shock_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+    shock²_idxs = tmp.nzind
+    
+    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
+
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
+    var_vol²_idxs = tmp.nzind
+    
+    # tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
+    # var²_idxs = tmp.nzind
+    
+    𝐒⁻¹ = 𝐒₁[T.past_not_future_and_mixed_idx,:]
+    # 𝐒¹⁻ = 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed]
+    𝐒¹⁻ᵛ = 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
+    𝐒¹ᵉ = 𝐒₁[cond_var_idx,end-T.nExo+1:end]
+
+    𝐒²⁻ᵛ = 𝐒₂[cond_var_idx,var_vol²_idxs]
+    # 𝐒²⁻ = 𝐒₂[cond_var_idx,var²_idxs]
+    𝐒²⁻ᵉ = 𝐒₂[cond_var_idx,shockvar²_idxs]
+    𝐒²ᵉ = 𝐒₂[cond_var_idx,shock²_idxs]
+    𝐒⁻² = 𝐒₂[T.past_not_future_and_mixed_idx,:]
+
+    𝐒²⁻ᵛ    = length(𝐒²⁻ᵛ.nzval)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
+    # 𝐒²⁻     = length(𝐒²⁻.nzval)     / length(𝐒²⁻)   > .1 ? collect(𝐒²⁻)     : 𝐒²⁻
+    𝐒²⁻ᵉ    = length(𝐒²⁻ᵉ.nzval)    / length(𝐒²⁻ᵉ)  > .1 ? collect(𝐒²⁻ᵉ)    : 𝐒²⁻ᵉ
+    𝐒²ᵉ     = length(𝐒²ᵉ.nzval)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
+    𝐒⁻²     = length(𝐒⁻².nzval)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
+
+    state = full_state[T.past_not_future_and_mixed_idx]
+
+    state¹⁻_vol = vcat(state, 1)
+
+    aug_state = [zeros(T.nPast_not_future_and_mixed); 1; zeros(T.nExo)]
+
+    kronaug_state = zeros((T.nPast_not_future_and_mixed + 1 + T.nExo)^2)
+
+    kron_buffer = zeros(T.nExo^2)
+
+    J = ℒ.I(T.nExo)
+
+    kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
+
+    kron_buffer3 = ℒ.kron(J, zeros(T.nPast_not_future_and_mixed + 1))
+
+    shock_independent = zeros(size(data_in_deviations,1))
+
+    kronstate¹⁻_vol = zeros((T.nPast_not_future_and_mixed + 1)^2)
+
+    𝐒ⁱ = copy(𝐒¹ᵉ)
+
+    jacc = copy(𝐒¹ᵉ)
+
+    𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
+
+    init_guess = zeros(size(𝐒ⁱ, 2))
+
+    for i in axes(data_in_deviations,2)
+        # state¹⁻ = state#[T.past_not_future_and_mixed_idx]
+        # state¹⁻_vol = vcat(state¹⁻, 1)
+        
+        copyto!(state¹⁻_vol, 1, state, 1)
+
+        copyto!(shock_independent, data_in_deviations[:,i])
+
+        ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
+
+        ℒ.kron!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+
+        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate¹⁻_vol, -1/2, 1)
+        # shock_independent = data_in_deviations[:,i] - (𝐒¹⁻ᵛ * state¹⁻_vol + 𝐒²⁻ᵛ * ℒ.kron(state¹⁻_vol, state¹⁻_vol) / 2)
+        ℒ.kron!(kron_buffer3, J, state¹⁻_vol)
+
+        # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * kron_buffer3
+        ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer3)
+
+        ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ)
+
+        init_guess *= 0
+
+        x, matched = find_shocks(Val(filter_algorithm), 
+                                init_guess,
+                                kron_buffer,
+                                kron_buffer2,
+                                J,
+                                𝐒ⁱ,
+                                𝐒ⁱ²ᵉ,
+                                shock_independent,
+                                # max_iter = 100
+                                )
+
+        # if !matched
+        #     x, matched = find_shocks(Val(:COBYLA), 
+        #                             zeros(size(𝐒ⁱ, 2)),
+        #                             kron_buffer,
+        #                             kron_buffer2,
+        #                             J,
+        #                             𝐒ⁱ,
+        #                             𝐒ⁱ²ᵉ,
+        #                             shock_independent,
+        #                             # max_iter = 500
+        #                             )
+            # if !matched
+            #     x, matched = find_shocks(Val(filter_algorithm), 
+            #                             x,
+            #                             kron_buffer,
+            #                             kron_buffer2,
+            #                             J,
+            #                             𝐒ⁱ,
+            #                             𝐒ⁱ²ᵉ,
+            #                             shock_independent)
+                if !matched
+                    @error "Inversion filter failed at step $i"
+                    return variables, shocks, [], []
+                end 
+            # end
+        # end
+
+        # x2, mat = find_shocks(Val(:SLSQP), 
+        #                         x,
+        #                         kron_buffer,
+        #                         kron_buffer2,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 500
+        #                         )
+            
+        # x3, mat2 = find_shocks(Val(:COBYLA), 
+        #                         x,
+        #                         kron_buffer,
+        #                         kron_buffer2,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 500
+        #                         )
+        # if mat
+        #     println("SLSQP: $(ℒ.norm(x2-x) / max(ℒ.norm(x2), ℒ.norm(x)))")
+        # elseif mat2
+        #     println("COBYLA: $(ℒ.norm(x3-x) / max(ℒ.norm(x3), ℒ.norm(x)))")
+        # end
+
+        # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x)
+        ℒ.kron!(kron_buffer2, J, x)
+
+        ℒ.mul!(jacc, 𝐒ⁱ²ᵉ, kron_buffer2)
+
+        ℒ.axpby!(1, 𝐒ⁱ, 2, jacc)
+
+        # aug_state = [state; 1; x]
+        # aug_state[1:T.nPast_not_future_and_mixed] = state
+        # aug_state[end-T.nExo+1:end] = x
+        copyto!(aug_state, 1, state, 1)
+        copyto!(aug_state, length(state) + 2, x, 1)
+
+        # res = 𝐒[1][cond_var_idx, :] * aug_state + 𝐒[2][cond_var_idx, :] * ℒ.kron(aug_state, aug_state) / 2 - data_in_deviations[:,i]
+        # println("Match with data: $res")
+
+        # state = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2
+        ℒ.kron!(kronaug_state, aug_state, aug_state)
+        ℒ.mul!(full_state, 𝐒₁, aug_state)
+        ℒ.mul!(full_state, 𝐒₂, kronaug_state, 1/2 ,1)
+
+        shocks[:,i] .= x
+        variables[:,i] .= full_state
+
+        state .= full_state[T.past_not_future_and_mixed_idx]
+    end
 
     return variables, shocks, [], []
 end

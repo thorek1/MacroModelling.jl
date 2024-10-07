@@ -4970,10 +4970,12 @@ function calculate_second_order_stochastic_steady_state(::Val{:Newton},
         if !ℒ.issuccess(∂x̂)
             return x, false
         end
-        
-        Δx = ∂x̂ \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 - x)
 
-        if i > 3 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
+        x̂ = A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2
+
+        Δx = ∂x̂ \ (x̂ - x)
+        
+        if i > 3 && isapprox(x̂, x, rtol = tol)
             break
         end
         
