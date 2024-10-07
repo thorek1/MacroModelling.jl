@@ -4109,16 +4109,311 @@ function filter_data_with_model(𝓂::ℳ,
 end
 
 function filter_data_with_model(𝓂::ℳ,
-    data_in_deviations::KeyedArray{Float64},
-    ::Val{:third_order}, # algo
-    ::Val{:inversion}; # filter
-    warmup_iterations::Int = 0,
-    filter_algorithm::Symbol = :LagrangeNewton,
-    smooth::Bool = true,
-    verbose::Bool = false)
+                                data_in_deviations::KeyedArray{Float64},
+                                ::Val{:third_order}, # algo
+                                ::Val{:inversion}; # filter
+                                warmup_iterations::Int = 0,
+                                filter_algorithm::Symbol = :LagrangeNewton,
+                                smooth::Bool = true,
+                                verbose::Bool = false)
+    T = 𝓂.timings
 
-    variables, shocks, initial_state = inversion_filter(𝓂, data_in_deviations, :third_order, warmup_iterations = warmup_iterations)
+    variables = zeros(T.nVars, size(data_in_deviations,2))
+    shocks = zeros(T.nExo, size(data_in_deviations,2))
+    
+    observables = get_and_check_observables(𝓂, data_in_deviations)
 
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+
+    if !converged || solution_error > 1e-12
+        @error "Could not find 3rd order stochastic steady state"
+        return variables, shocks, [], []
+    end
+
+    𝐒 = [𝐒₁, 𝐒₂, 𝐒₃]
+    
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
+
+    state = collect(sss) - all_SS
+
+
+    precision_factor = 1.0
+
+    n_obs = size(data_in_deviations,2)
+
+    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+
+    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
+    shock_idxs = tmp.nzind
+
+    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺) |> sparse
+    shock_idxs2 = tmp.nzind
+
+    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+    shock²_idxs = tmp.nzind
+
+    shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
+
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
+    var_vol²_idxs = tmp.nzind
+
+    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
+    var²_idxs = tmp.nzind
+
+    𝐒⁻¹ = 𝐒[1][T.past_not_future_and_mixed_idx,:]
+    𝐒¹⁻ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
+    𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
+    𝐒¹ᵉ = 𝐒[1][cond_var_idx,end-T.nExo+1:end]
+
+    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx,var_vol²_idxs]
+    𝐒²⁻ = 𝐒[2][cond_var_idx,var²_idxs]
+    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx,shockvar²_idxs]
+    𝐒²ᵉ = 𝐒[2][cond_var_idx,shock²_idxs]
+    𝐒⁻² = 𝐒[2][T.past_not_future_and_mixed_idx,:]
+
+    𝐒²⁻ᵛ    = length(𝐒²⁻ᵛ.nzval)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
+    𝐒²⁻     = length(𝐒²⁻.nzval)     / length(𝐒²⁻)   > .1 ? collect(𝐒²⁻)     : 𝐒²⁻
+    𝐒²⁻ᵉ    = length(𝐒²⁻ᵉ.nzval)    / length(𝐒²⁻ᵉ)  > .1 ? collect(𝐒²⁻ᵉ)    : 𝐒²⁻ᵉ
+    𝐒²ᵉ     = length(𝐒²ᵉ.nzval)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
+    𝐒⁻²     = length(𝐒⁻².nzval)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
+
+    state = state[T.past_not_future_and_mixed_idx]
+
+    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
+    var_vol³_idxs = tmp.nzind
+
+    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
+    shock_idxs2 = tmp.nzind
+
+    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse
+    shock_idxs3 = tmp.nzind
+
+    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
+    shock³_idxs = tmp.nzind
+
+    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
+    shockvar1_idxs = tmp.nzind
+
+    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
+    shockvar2_idxs = tmp.nzind
+
+    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
+    shockvar3_idxs = tmp.nzind
+
+    shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+
+    shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)#, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+
+    𝐒³⁻ᵛ  = 𝐒[3][cond_var_idx,var_vol³_idxs]
+    𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs]
+    𝐒³⁻ᵉ  = 𝐒[3][cond_var_idx,shockvar³_idxs]
+    𝐒³ᵉ   = 𝐒[3][cond_var_idx,shock³_idxs]
+    𝐒⁻³   = 𝐒[3][T.past_not_future_and_mixed_idx,:]
+
+    𝐒³⁻ᵛ    = length(𝐒³⁻ᵛ.nzval)    / length(𝐒³⁻ᵛ)  > .1 ? collect(𝐒³⁻ᵛ)    : 𝐒³⁻ᵛ
+    𝐒³⁻ᵉ    = length(𝐒³⁻ᵉ.nzval)    / length(𝐒³⁻ᵉ)  > .1 ? collect(𝐒³⁻ᵉ)    : 𝐒³⁻ᵉ
+    𝐒³ᵉ     = length(𝐒³ᵉ.nzval)     / length(𝐒³ᵉ)   > .1 ? collect(𝐒³ᵉ)     : 𝐒³ᵉ
+    𝐒⁻³     = length(𝐒⁻³.nzval)     / length(𝐒⁻³)   > .1 ? collect(𝐒⁻³)     : 𝐒⁻³
+
+    kron_buffer = zeros(T.nExo^2)
+
+    kron_buffer² = zeros(T.nExo^3)
+
+    J = ℒ.I(T.nExo)
+
+    kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
+
+    kron_buffer3 = ℒ.kron(J, kron_buffer)
+
+    kron_buffer4 = ℒ.kron(ℒ.kron(J, J), zeros(T.nExo))
+
+    II = sparse(ℒ.I(T.nExo^2))
+
+    for i in axes(data_in_deviations,2)
+        state¹⁻ = state
+
+        state¹⁻_vol = vcat(state¹⁻, 1)
+        
+        shock_independent = collect(data_in_deviations[:,i])
+
+        ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
+        
+        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
+        
+        ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
+
+        𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
+    
+        𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state¹⁻_vol) / 2
+
+        𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
+
+        # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
+
+        init_guess = zeros(size(𝐒ⁱ, 2))
+
+        x, matched = find_shocks(Val(filter_algorithm), 
+                                init_guess,
+                                kron_buffer,
+                                kron_buffer²,
+                                kron_buffer2,
+                                kron_buffer3,
+                                kron_buffer4,
+                                J,
+                                𝐒ⁱ,
+                                𝐒ⁱ²ᵉ,
+                                𝐒ⁱ³ᵉ,
+                                shock_independent,
+                                # max_iter = 200
+                                )
+                                
+        # println("$filter_algorithm: $matched; current x: $x, $(ℒ.norm(x))")
+        # if !matched
+
+        # backup_solver = :COBYLA
+
+        # if filter_algorithm ≠ backup_solver
+        #     x̂, matched2 = find_shocks(Val(backup_solver), 
+        #                         zeros(size(𝐒ⁱ, 2)),
+        #                         kron_buffer,
+        #                         kron_buffer²,
+        #                         kron_buffer2,
+        #                         kron_buffer3,
+        #                         kron_buffer4,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         𝐒ⁱ³ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 5000
+        #                         )
+        #     if ℒ.norm(x̂) * (1 - eps(Float32)) < ℒ.norm(x)
+        #         x̄, matched3 = find_shocks(Val(filter_algorithm), 
+        #                             x̂,
+        #                             kron_buffer,
+        #                             kron_buffer²,
+        #                             kron_buffer2,
+        #                             kron_buffer3,
+        #                             kron_buffer4,
+        #                             J,
+        #                             𝐒ⁱ,
+        #                             𝐒ⁱ²ᵉ,
+        #                             𝐒ⁱ³ᵉ,
+        #                             shock_independent,
+        #                             # max_iter = 200
+        #                             )
+                              
+        #         if matched3 && ℒ.norm(x̄) * (1 - eps(Float32)) < ℒ.norm(x̂)
+        #             println("$i - $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm ($matched) - $(ℒ.norm(x))")
+        #             x = x̄
+        #             matched = matched3
+        #         elseif matched2
+        #             println("$i - $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), $filter_algorithm ($matched) - $(ℒ.norm(x))")
+        #             x = x̂
+        #             matched = matched2
+        #         else
+        #             y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
+
+        #             norm1 = ℒ.norm(y)
+
+        #             norm2 = ℒ.norm(shock_independent)
+
+        #             println("$i - $filter_algorithm ($matched) - $(ℒ.norm(x)), $backup_solver ($matched2) - $(ℒ.norm(x̂)), $filter_algorithm restart ($matched3) - $(ℒ.norm(x̄)), residual norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
+        #         end
+        #     else
+        #         println("$i - $filter_algorithm ($matched) - $(ℒ.norm(x)), $backup_solver ($matched2) - $(ℒ.norm(x̂))")
+        #     end
+        # end
+        if !matched
+            @error "Inversion filter failed at step $i"
+            return variables, shocks, [], []
+        end 
+            # println("COBYLA: $matched; current x: $x")
+            # if !matched
+            #     x, matched = find_shocks(Val(filter_algorithm), 
+            #                             x,
+            #                             kron_buffer,
+            #                             kron_buffer²,
+            #                             kron_buffer2,
+            #                             kron_buffer3,
+            #                             J,
+            #                             𝐒ⁱ,
+            #                             𝐒ⁱ²ᵉ,
+            #                             𝐒ⁱ³ᵉ,
+            #                             shock_independent)
+            #     println("$filter_algorithm: $matched; current x: $x")
+            #     if !matched
+            #         x, matched = find_shocks(Val(:COBYLA), 
+            #                                 x,
+            #                                 kron_buffer,
+            #                                 kron_buffer²,
+            #                                 kron_buffer2,
+            #                                 kron_buffer3,
+            #                                 J,
+            #                                 𝐒ⁱ,
+            #                                 𝐒ⁱ²ᵉ,
+            #                                 𝐒ⁱ³ᵉ,
+            #                                 shock_independent)
+            #         println("COBYLA: $matched; current x: $x")
+            #     end
+            # end
+        # end
+
+        # x2, mat = find_shocks(Val(:COBYLA), 
+        #                         init_guess,
+        #                         kron_buffer,
+        #                         kron_buffer²,
+        #                         kron_buffer2,
+        #                         kron_buffer3,
+        #                         kron_buffer4,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         𝐒ⁱ³ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 200
+        #                         )
+            
+        # x3, mat2 = find_shocks(Val(filter_algorithm), 
+        #                         x2,
+        #                         kron_buffer,
+        #                         kron_buffer²,
+        #                         kron_buffer2,
+        #                         kron_buffer3,
+        #                         kron_buffer4,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         𝐒ⁱ³ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 500
+        #                         )
+        # # if mat
+        #     println("COBYLA - $mat: $x2, $(ℒ.norm(x2))")
+        # # end
+        # # if mat2
+        #     println("LagrangeNewton restart - $mat2: $x3, $(ℒ.norm(x3))")
+        # # end
+
+        aug_state = [state; 1; x]
+
+        # res = 𝐒[1][cond_var_idx, :] * aug_state + 𝐒[2][cond_var_idx, :] * ℒ.kron(aug_state, aug_state) / 2 + 𝐒[3][cond_var_idx, :] * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6 - data_in_deviations[:,i]
+        # println("Match with data: $res")
+
+        # state = 𝐒⁻¹ * aug_state + 𝐒⁻² * ℒ.kron(aug_state, aug_state) / 2 + 𝐒⁻³ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+        full_state = 𝐒[1] * aug_state + 𝐒[2] * ℒ.kron(aug_state, aug_state) / 2 + 𝐒[3] * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+        # state = state_update(state, x)
+        
+        shocks[:,i] .= x
+        variables[:,i] .= full_state
+
+        state .= full_state[T.past_not_future_and_mixed_idx]
+    end
+    
     return variables, shocks, [], []
 end
 
