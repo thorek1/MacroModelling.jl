@@ -74,7 +74,7 @@ function get_shock_decomposition(𝓂::ℳ,
 
     pruning = false
 
-    @assert !(algorithm ∈ [:second_order, :third_order]) "Decomposition  implemented for first order, pruned second and third order. Second and third order solution decomposition is not yet implemented."
+    @assert !(algorithm ∈ [:second_order, :third_order]) "Decomposition implemented for first order, pruned second order and pruned third order. Second and third order solution decomposition is not yet implemented."
     
     if algorithm ∈ [:pruned_second_order, :pruned_third_order]
         filter = :inversion
