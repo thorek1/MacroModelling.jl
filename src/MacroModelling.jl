@@ -338,41 +338,6 @@ function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
 end
 
 
-
-function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
-    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
-
-    if length(jac) > 0
-        # jac .= 𝒜.jacobian(𝒷(), xx -> begin
-        #                                 Shocks[Free_shock_idx] .= xx
-
-        #                                 new_State = State_update(State, convert(typeof(xx), Shocks))
-
-        #                                 cond_vars = Pruning ? sum(new_State) : new_State
-                                        
-        #                                 return precision_factor .* abs.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
-        #                             end, X)[1]'
-        jac .= 𝒟.jacobian(xx -> begin
-                                    Shocks[Free_shock_idx] .= xx
-
-                                    new_State = State_update(State, convert(typeof(xx), Shocks))
-
-                                    cond_vars = Pruning ? sum(new_State) : new_State
-                                    
-                                    return precision_factor .* abs.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
-                                end, backend, X)'
-    end
-
-    Shocks[Free_shock_idx] .= X
-
-    new_State = State_update(State, convert(typeof(X), Shocks))
-
-    cond_vars = Pruning ? sum(new_State) : new_State
-
-    res .= precision_factor .* abs.(Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
-end
-
-
 function minimize_distance_to_conditions(X::Vector{S}, p)::S where S
     Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
 
@@ -383,210 +348,6 @@ function minimize_distance_to_conditions(X::Vector{S}, p)::S where S
     cond_vars = Pruning ? sum(new_State) : new_State
 
     return precision_factor * sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
-end
-
-
-
-function minimize_distance_to_conditions!(X::Vector{S}, grad::Vector{S}, p) where S
-    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
-
-    if length(grad) > 0
-        # grad .= 𝒜.gradient(𝒷(), xx -> begin
-        #                                 Shocks[Free_shock_idx] .= xx
-
-        #                                 new_State = State_update(State, convert(typeof(xx), Shocks))
-
-        #                                 cond_vars = Pruning ? sum(new_State) : new_State
-                                        
-        #                                 return precision_factor * sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
-        #                             end, X)[1]
-        grad .= 𝒟.gradient(xx -> begin
-                                        Shocks[Free_shock_idx] .= xx
-
-                                        new_State = State_update(State, convert(typeof(xx), Shocks))
-
-                                        cond_vars = Pruning ? sum(new_State) : new_State
-                                        
-                                        return precision_factor * sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
-                                    end, backend, X)
-
-    end
-
-    Shocks[Free_shock_idx] .= X
-
-    new_State = State_update(State, convert(typeof(X), Shocks))
-
-    cond_vars = Pruning ? sum(new_State) : new_State
-
-    return precision_factor * sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
-end
-
-
-# function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
-#     conditions, state_update, shocks, cond_var_idx, free_shock_idx, state, 𝒷 = p
-    
-#     if length(jac) > 0
-#         jac .= 𝒜.jacobian(𝒷(), xx -> begin
-#                                         shocks[free_shock_idx] .= xx
-#                                         return abs2.(conditions[cond_var_idx] - state_update(state, convert(typeof(xx), shocks))[cond_var_idx])
-#                                     end, X)[1]'
-#     end
-
-#     shocks[free_shock_idx] .= X
-
-#     res .= abs2.(conditions[cond_var_idx] - state_update(state, convert(typeof(X), shocks))[cond_var_idx])
-# end
-
-
-
-
-
-function minimize_distance_to_initial_data!(X::Vector{S}, grad::Vector{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
-    if state isa Vector{T}
-        pruning = false
-    else
-        pruning = true
-    end
-
-    if length(grad) > 0
-        # grad .= 𝒜.gradient(𝒷(), xx -> begin
-        #                                 state_copy = deepcopy(state)
-
-        #                                 XX = reshape(xx, length(X) ÷ warmup_iters, warmup_iters)
-
-        #                                 for i in 1:warmup_iters
-        #                                     state_copy = state_update(state_copy, XX[:,i])
-        #                                 end
-
-        #                                 return precision_factor .* sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
-        #                             end, X)[1]
-        grad .= 𝒟.gradient(xx -> begin
-                                        state_copy = deepcopy(state)
-
-                                        XX = reshape(xx, length(X) ÷ warmup_iters, warmup_iters)
-
-                                        for i in 1:warmup_iters
-                                            state_copy = state_update(state_copy, XX[:,i])
-                                        end
-
-                                        return precision_factor .* sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
-                                    end, backend, X)
-    end
-
-    state_copy = deepcopy(state)
-
-    XX = reshape(X, length(X) ÷ warmup_iters, warmup_iters)
-
-    for i in 1:warmup_iters
-        state_copy = state_update(state_copy, XX[:,i])
-    end
-
-    return precision_factor .* sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
-end
-
-
-
-
-function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
-    if state isa Vector{T}
-        pruning = false
-    else
-        pruning = true
-    end
-
-    if length(jac) > 0
-        # jac .= 𝒜.jacobian(𝒷(), xx -> begin
-        #                                 state_copy = deepcopy(state)
-
-        #                                 XX = reshape(xx, length(X) ÷ warmup_iters, warmup_iters)
-
-        #                                 for i in 1:warmup_iters
-        #                                     state_copy = state_update(state_copy, XX[:,i])
-        #                                 end
-
-        #                                 return precision_factor .* abs.(data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
-        #                             end, X)[1]'
-        jac .= 𝒟.jacobian(xx -> begin
-                                        state_copy = deepcopy(state)
-
-                                        XX = reshape(xx, length(X) ÷ warmup_iters, warmup_iters)
-
-                                        for i in 1:warmup_iters
-                                            state_copy = state_update(state_copy, XX[:,i])
-                                        end
-
-                                        return precision_factor .* abs.(data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
-                                    end, backend, X)'
-    end
-
-    if length(res) > 0
-        state_copy = deepcopy(state)
-
-        XX = reshape(X, length(X) ÷ warmup_iters, warmup_iters)
-
-        for i in 1:warmup_iters
-            state_copy = state_update(state_copy, XX[:,i])
-        end
-
-        res .= abs.(data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
-    end
-end
-
-
-
-function minimize_distance_to_initial_data(X::Vector{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64, pruning::Bool)::S where {S, T}
-    state_copy = deepcopy(state)
-
-    XX = reshape(X, length(X) ÷ warmup_iters, warmup_iters)
-
-    for i in 1:warmup_iters
-        state_copy = state_update(state_copy, XX[:,i])
-    end
-
-    return precision_factor .* sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
-end
-
-
-
-
-
-function minimize_distance_to_data(X::Vector{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64, pruning::Bool)::S where {S, T}
-    return precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
-end
-
-
-function minimize_distance_to_data!(X::Vector{S}, grad::Vector{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
-    if State isa Vector{T}
-        pruning = false
-    else
-        pruning = true
-    end
-    
-    if length(grad) > 0
-        # grad .= 𝒜.gradient(𝒷(), xx -> precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]
-        grad .= 𝒟.gradient(xx -> precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), backend, X)
-    end
-
-    return precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
-end
-
-
-
-function match_data_sequence!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
-    if State isa Vector{T}
-        pruning = false
-    else
-        pruning = true
-    end
-    
-    if length(jac) > 0
-        # jac .= 𝒜.jacobian(𝒷(), xx -> precision_factor .* abs.(Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]'
-        jac .= 𝒟.jacobian(xx -> precision_factor .* abs.(Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), backend, X)[1]'
-    end
-
-    if length(res) > 0
-        res .= precision_factor .* abs.(Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
-    end
 end
 
 
@@ -764,23 +525,6 @@ function write_obc_violation_equations(𝓂)
 
     return eqs
 end
-
-# function parse_obc_shock_bounds(expr::Expr)
-#     # Determine the order of the shock and bound in the expression
-#     shock_first = isa(expr.args[2], Symbol)
-    
-#     # Extract the shock and bound from the expression
-#     shock = shock_first ? expr.args[2] : expr.args[3]
-#     bound_expr = shock_first ? expr.args[3] : expr.args[2]
-    
-#     # Evaluate the bound expression to get a numerical value
-#     bound = eval(bound_expr) |> Float64
-    
-#     # Determine whether the bound is a lower or upper bound based on the comparison operator and order
-#     is_upper_bound = (expr.args[1] in (:<, :≤) && shock_first) || (expr.args[1] in (:>, :≥) && !shock_first)
-    
-#     return shock, is_upper_bound, bound
-# end
 
 
 function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
@@ -1295,64 +1039,6 @@ function mat_mult_kron(A::DenseMatrix{R},
     # end
 end
 
-# function mat_mult_kron(A::AbstractSparseMatrix{R},
-#                         B::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}},
-#                         C::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}}; 
-#                         tol::AbstractFloat = eps()) where {R <: Real, T <: Real}
-#     n_rowB = size(B,1)
-#     n_colB = size(B,2)
-
-#     n_rowC = size(C,1)
-#     n_colC = size(C,2)
-
-#     vals = T[]
-#     rows = Int[]
-#     cols = Int[]
-
-#     rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
-
-#     # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
-#     for row in rv |> unique
-#         idx_mat, vals_mat = A[row,:] |> findnz
-
-#         if length(vals_mat) == 0 continue end
-
-#         for col in 1:(n_colB*n_colC)
-#             col_1, col_2 = divrem((col - 1) % (n_colB*n_colC), n_colC) .+ 1
-
-#             mult_val = 0.0
-
-#             for (i,idx) in enumerate(idx_mat)
-#                 i_1, i_2 = divrem((idx - 1) % (n_rowB*n_rowC), n_rowC) .+ 1
-                
-#                 mult_val += vals_mat[i] * B[i_1,col_1] * C[i_2,col_2] # doesnt make sense with sparse matrcies here because access time takes too long
-#             end
-
-#             if abs(mult_val) > tol
-#                 # push!(threadlocal[1],mult_val)
-#                 # push!(threadlocal[2],row)
-#                 # push!(threadlocal[3],col)
-#                 push!(vals,mult_val)
-#                 push!(rows,row)
-#                 push!(cols,col)
-#             end
-#         end
-#     end
-
-#     # println((threadlocal[15]))
-#     # for t in threadlocal
-#     #     println(length(t[1]))
-#     #     # push!(vals, t[1]...)
-#     #     # push!(rows, t[2]...)
-#     #     # push!(cols, t[3]...)
-#     # end
-     
-#     if VERSION >= v"1.10"
-#         return sparse!(rows,cols,vals,size(A,1),n_colB*n_colC)   
-#     else
-#         return sparse(rows,cols,vals,size(A,1),n_colB*n_colC)   
-#     end
-# end
 
 function compressed_kron³(a::AbstractMatrix{T};
                     rowmask::Vector{Int} = Int[],
@@ -1653,36 +1339,6 @@ function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},
 end
 
 
-# function A_mult_kron_power_3_B!(X::AbstractSparseMatrix{R}, A::AbstractSparseMatrix{S},B::AbstractMatrix{T}; tol::AbstractFloat = eps()) where {R <: Real, S <: Real, T <: Real}
-#     n_row = size(B,1)
-#     n_col = size(B,2)
-
-#     B̄ = collect(B)
-
-#     for row in 1:size(A,1)
-#         idx_mat, vals_mat = A[row,:] |> findnz
-
-#         if length(vals_mat) == 0 continue end
-
-#         for col in 1:size(B,2)^3
-#             col_1, col_3 = divrem((col - 1) % (n_col^2), n_col) .+ 1
-#             col_2 = ((col - 1) ÷ (n_col^2)) + 1
-
-#             mult_val = 0.0
-
-#             for (i,idx) in enumerate(idx_mat)
-#                 i_1, i_3 = divrem((idx - 1) % (n_row^2), n_row) .+ 1
-#                 i_2 = ((idx - 1) ÷ (n_row^2)) + 1
-#                 @inbounds mult_val += vals_mat[i] * B̄[i_1,col_1] * B̄[i_2,col_2] * B̄[i_3,col_3]
-#             end
-
-#             if abs(mult_val) > tol  # Skip small values below tolerance
-#                 @inbounds X[row,col] += mult_val
-#             end
-#         end
-#     end
-# end
-
 
 function translate_symbol_to_ascii(x::Symbol)
     ss = Unicode.normalize(replace(string(x),  "◖" => "__", "◗" => "__"), :NFD)
@@ -1728,110 +1384,7 @@ function translate_expression_to_ascii(exp::Expr)
                 x,
     exp)
 end
-                
 
-
-# function jacobian_wrt_values(A, B)
-#     # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
-
-#     # Compute the Kronecker product and subtract from identity
-#     C = ℒ.I - ℒ.kron(A, B)
-
-#     # Extract the row, column, and value indices from C
-#     rows, cols, vals = findnz(C)
-
-#     # Lists to store the 2D indices after the operations
-#     final_rows = zeros(Int,length(rows))
-#     final_cols = zeros(Int,length(rows))
-
-#     Threads.@threads for i = 1:length(rows)
-#         # Convert the 1D row index to its 2D components
-#         i1, i2 = divrem(rows[i]-1, size(B,1)) .+ 1
-
-#         # Convert the 1D column index to its 2D components
-#         j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
-
-#         # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
-#         final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(B,1), size(B,1)), i1, j2, j1, i2) - 1, size(A,1) * size(B,1)) .+ 1
-
-#         # Store the 2D indices
-#         final_rows[i] = final_row
-#         final_cols[i] = final_col
-#     end
-
-#     return sparse(final_rows, final_cols, vals, size(A,1) * size(B,1), size(A,1) * size(B,1))
-# end
-
-
-
-
-# function jacobian_wrt_A(A, X)
-#     # does this without creating dense arrays: reshape(permutedims(reshape(ℒ.I - ℒ.kron(A, B) ,size(B,1), size(A,1), size(A,1), size(B,1)), [2, 3, 4, 1]), size(A,1) * size(B,1), size(A,1) * size(B,1))
-
-#     # Compute the Kronecker product and subtract from identity
-#     C = ℒ.kron(ℒ.I(size(A,1)), sparse(A * X))
-
-#     # Extract the row, column, and value indices from C
-#     rows, cols, vals = findnz(C)
-
-#     # Lists to store the 2D indices after the operations
-#     final_rows = zeros(Int,length(rows))
-#     final_cols = zeros(Int,length(rows))
-
-#     Threads.@threads for i = 1:length(rows)
-#         # Convert the 1D row index to its 2D components
-#         i1, i2 = divrem(rows[i]-1, size(A,1)) .+ 1
-
-#         # Convert the 1D column index to its 2D components
-#         j1, j2 = divrem(cols[i]-1, size(A,1)) .+ 1
-
-#         # Convert the 4D index (i1, j2, j1, i2) to a 2D index in the final matrix
-#         final_col, final_row = divrem(Base._sub2ind((size(A,1), size(A,1), size(A,1), size(A,1)), i2, i1, j1, j2) - 1, size(A,1) * size(A,1)) .+ 1
-
-#         # Store the 2D indices
-#         final_rows[i] = final_row
-#         final_cols[i] = final_col
-#     end
-
-#     r,c,_ = findnz(A) 
-    
-#     non_zeros_only = spzeros(Int,size(A,1)^2,size(A,1)^2)
-    
-#     non_zeros_only[CartesianIndex.(r .+ (c.-1) * size(A,1), r .+ (c.-1) * size(A,1))] .= 1
-    
-#     return sparse(final_rows, final_cols, vals, size(A,1) * size(A,1), size(A,1) * size(A,1)) + ℒ.kron(sparse(X * A'), ℒ.I(size(A,1)))' * non_zeros_only
-# end
-
-
-# # higher order solutions moment helper functions
-
-# function warshall_algorithm!(R::SparseMatrixCSC{Bool,Int64})
-#     # Size of the matrix
-#     n, m = size(R)
-    
-#     @assert n == m "Warshall algorithm only works for square matrices."
-
-#     # The core idea of the Warshall algorithm is to consider each node (in this case, block)
-#     # as an intermediate node and check if a path can be created between two nodes by using the
-#     # intermediate node.
-    
-#     # k is the intermediate node (or block).
-#     for k in 1:n
-#         # i is the starting node (or block).
-#         for i in 1:n
-#             # j is the ending node (or block).
-#             for j in 1:n
-#                 # If there is a direct path from i to k AND a direct path from k to j, 
-#                 # then a path from i to j exists via k.
-#                 # Thus, set the value of R[i, j] to 1 (true).
-#                 R[i, j] = R[i, j] || (R[i, k] && R[k, j])
-#             end
-#         end
-#     end
-    
-#     # Return the transitive closure matrix.
-#     return R
-# end
 
 function combine_pairs(v::Vector{Pair{Vector{Symbol}, Vector{Symbol}}})
     i = 1
@@ -1894,59 +1447,6 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     return combine_pairs(orders)
 end
 
-# function determine_efficient_order(∇₁::SparseMatrixCSC{<: Real}, 
-#                                     T::timings, 
-#                                     variables::Union{Symbol_input,String_input};
-#                                     tol::AbstractFloat = eps())
-
-#     droptol!(∇₁, tol)
-
-#     if variables == :full_covar
-#         return [T.var => T.var]
-#     else
-#         var_idx = parse_variables_input_to_index(variables, T)
-#         observables = T.var[var_idx]
-#     end
-
-#     expand = [  spdiagm(ones(T.nVars))[T.future_not_past_and_mixed_idx,:],
-#                 spdiagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]] 
-    
-#     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-#     ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-#     ∇₋ = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
-
-#     incidence = abs.(∇₊) + abs.(∇₀) + abs.(∇₋)
-
-#     Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(incidence))
-#     R̂ = []
-#     for i in 1:n_blocks
-#         [push!(R̂, n_blocks - i + 1) for ii in R[i]:R[i+1] - 1]
-#     end
-#     push!(R̂,1)
-    
-#     vars = hcat(P, R̂)'
-#     eqs  = hcat(Q, R̂)'
-    
-#     dependency_matrix = incidence[vars[1,:], eqs[1,:]] .!= 0
-    
-#     warshall_algorithm!(dependency_matrix)
-
-#     solve_order = Vector{Symbol}[]
-#     already_solved_for = Set{Symbol}()
-#     corresponding_dependencies = Vector{Symbol}[]
-
-#     for obs in intersect(T.var[eqs[1,:]], observables)
-#         dependencies = T.var[eqs[1,:]][findall(dependency_matrix[indexin([obs], T.var[eqs[1,:]])[1],:])]
-#         to_be_solved_for = setdiff(intersect(observables, dependencies), already_solved_for)
-#         if length(to_be_solved_for) > 0
-#             push!(solve_order, to_be_solved_for)
-#             push!(corresponding_dependencies, dependencies)
-#         end
-#         push!(already_solved_for, intersect(observables, dependencies)...)
-#     end
-
-#     return solve_order .=> corresponding_dependencies
-# end
 
 function get_and_check_observables(𝓂::ℳ, data::KeyedArray{Float64})::Vector{Symbol}
     @assert size(data,1) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
@@ -2972,18 +2472,6 @@ function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
     return X * SS_and_pars
 end
 
-
-
-
-# function add_auxilliary_variables_to_steady_state(SS_and_pars::Vector{Float64},𝓂::ℳ)
-#     all_variables = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
-#     all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-    
-#     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
-
-#     [SS_and_pars[indexin([s],vars_in_ss_equations)...] for s in all_variables]
-# end
 
 
 function create_symbols_eqs!(𝓂::ℳ)
@@ -4788,35 +4276,6 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 end
 
 
-# function second_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂::SparseVector{Float64};  dims::Vector{Tuple{Int,Int}},  𝓂::ℳ, tol::AbstractFloat = eps())
-#     len𝐒₁ = dims[1][1] * dims[1][2]
-
-#     𝐒₁ = reshape(𝐒₁𝐒₂[1 : len𝐒₁],dims[1])
-#     𝐒₂ = sparse(reshape(𝐒₁𝐒₂[len𝐒₁ + 1 : end],dims[2]))
-        
-#     state = zeros(𝓂.timings.nVars)
-#     shock = zeros(𝓂.timings.nExo)
-
-#     aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-#     1
-#     shock]
-
-#     sol = @suppress begin
-#         speedmapping(state; 
-#                     m! = (SSS, sss) -> begin 
-#                                         aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
-#                                                     1
-#                                                     shock]
-
-#                                         SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
-#                     end, 
-#         tol = tol, maps_limit = 10000)
-#     end
-
-#     return sol.minimizer, sol.converged
-# end
-
-
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 
                                                         𝓂::ℳ; 
                                                         verbose::Bool = false, 
@@ -5137,38 +4596,6 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     return (x, solved), second_order_stochastic_steady_state_pullback
 end
 
-
-
-
-# function third_order_stochastic_steady_state_iterative_solution_forward(𝐒₁𝐒₂𝐒₃::SparseVector{Float64}; dims::Vector{Tuple{Int,Int}}, 𝓂::ℳ, tol::AbstractFloat = eps())
-#     len𝐒₁ = dims[1][1] * dims[1][2]
-#     len𝐒₂ = dims[2][1] * dims[2][2]
-
-#     𝐒₁ = reshape(𝐒₁𝐒₂𝐒₃[1 : len𝐒₁],dims[1])
-#     𝐒₂ = sparse(reshape(𝐒₁𝐒₂𝐒₃[len𝐒₁ .+ (1 : len𝐒₂)],dims[2]))
-#     𝐒₃ = sparse(reshape(𝐒₁𝐒₂𝐒₃[len𝐒₁ + len𝐒₂ + 1 : end],dims[3]))
-
-#     state = zeros(𝓂.timings.nVars)
-#     shock = zeros(𝓂.timings.nExo)
-
-#     aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-#     1
-#     shock]
-
-#     sol = @suppress begin
-#         speedmapping(state; 
-#                     m! = (SSS, sss) -> begin 
-#                                         aug_state .= [sss[𝓂.timings.past_not_future_and_mixed_idx]
-#                                                     1
-#                                                     shock]
-
-#                                         SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-#                     end, 
-#         tol = tol, maps_limit = 10000)
-#     end
-
-#     return sol.minimizer, sol.converged
-# end
 
 
 function calculate_third_order_stochastic_steady_state( parameters::Vector{M}, 
@@ -10321,51 +9748,6 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     return TT, SS_and_pars, 𝐒₁, [state], solved
 end
-
-    # reduce_system = false
-
-    # if reduce_system
-    #     variable_to_equation = @ignore_derivatives find_variables_to_exclude(𝓂, observables)
-    
-    #     rows_to_exclude = Int[]
-    #     cant_exclude = Symbol[]
-
-    #     for (ks, vidx) in variable_to_equation
-    #         iidd =  @ignore_derivatives indexin([ks] ,𝓂.timings.var)[1]
-    #         if !isnothing(iidd)
-    #             # if all(.!(∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] .== 0))
-    #             if minimum(abs, ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]) / maximum(abs, ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]) > 1e-12
-    #                 for v in vidx
-    #                     if v ∉ rows_to_exclude
-    #                         @ignore_derivatives push!(rows_to_exclude, v)
-    #                         # ∇₁[vidx,:] .-= ∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd]
-    #                         broadcaster = @ignore_derivatives create_broadcaster(vidx, size(∇₁,1))
-    #                         # broadcaster = spzeros(size(∇₁,1), length(vidx))
-    #                         # for (i, vid) in enumerate(vidx)
-    #                         #     broadcaster[vid,i] = 1.0
-    #                         # end
-    #                         ∇₁ -= broadcaster * (∇₁[v,:]' .* ∇₁[vidx, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd] ./ ∇₁[v, 𝓂.timings.nFuture_not_past_and_mixed .+ iidd])
-    #                         break
-    #                     end
-    #                 end
-    #             else
-    #                 @ignore_derivatives push!(cant_exclude, ks)
-    #             end
-    #         end
-    #     end
-
-    #     rows_to_include = @ignore_derivatives setdiff(1:𝓂.timings.nVars, rows_to_exclude)
-    
-    #     cols_to_exclude = @ignore_derivatives indexin(setdiff(𝓂.timings.present_only, union(observables, cant_exclude)), 𝓂.timings.var)
-
-    #     present_idx = @ignore_derivatives 𝓂.timings.nFuture_not_past_and_mixed .+ (setdiff(range(1, 𝓂.timings.nVars), cols_to_exclude))
-
-    #     ∇₁ = Matrix{S}(∇₁[rows_to_include, vcat(1:𝓂.timings.nFuture_not_past_and_mixed, present_idx , 𝓂.timings.nFuture_not_past_and_mixed + 𝓂.timings.nVars + 1 : size(∇₁,2))])
-    
-    #     @ignore_derivatives if !haskey(𝓂.estimation_helper, union(observables, cant_exclude)) create_timings_for_estimation!(𝓂, union(observables, cant_exclude)) end
-
-    #     TT = @ignore_derivatives 𝓂.estimation_helper[union(observables, cant_exclude)]
-    # else
 
 # if VERSION >= v"1.9"
 #     @setup_workload begin
