@@ -173,6 +173,8 @@ function plot_model_estimates(𝓂::ℳ,
 
     date_axis = axiskeys(data,2)
 
+    extra_legend_space += length(string(date_axis[1])) > 6 ? .1 : 0.0
+
     @assert presample_periods < size(data,2) "The number of presample periods must be less than the number of periods in the data."
 
     periods = presample_periods+1:size(data,2)
@@ -203,9 +205,12 @@ function plot_model_estimates(𝓂::ℳ,
         if i > length(var_idx) # Shock decomposition
             push!(pp,begin
                     StatsPlots.plot()
-                    StatsPlots.plot!(date_axis, shocks_to_plot[shock_idx[i - length(var_idx)],periods],
+                    StatsPlots.plot!(#date_axis, 
+                        shocks_to_plot[shock_idx[i - length(var_idx)],periods],
                         title = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[i - length(var_idx)]]) * "₍ₓ₎", 
                         ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
+                        xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
+                        xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                         color = shock_decomposition ? estimate_color : :auto)
                     StatsPlots.hline!([0],
                         color = :black,
@@ -224,9 +229,11 @@ function plot_model_estimates(𝓂::ℳ,
                     if shock_decomposition
                         additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
 
-                        StatsPlots.groupedbar!(date_axis,
+                        StatsPlots.groupedbar!(#date_axis,
                             decomposition[var_idx[i],[additional_indices..., shock_idx...],periods]', 
                             bar_position = :stack, 
+                            xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
+                            xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                             lc = :transparent,  # Line color set to transparent
                             lw = 0,  # This removes the lines around the bars
                             legend = :none, 
@@ -235,36 +242,44 @@ function plot_model_estimates(𝓂::ℳ,
                             alpha = transparency)
                     end
 
-                    StatsPlots.plot!(date_axis,
+                    StatsPlots.plot!(#date_axis,
                         variables_to_plot[var_idx[i],periods] .+ SS,
                         title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
                         ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
+                        xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
+                        xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                         label = "", 
                         # xformatter = x -> string(date_axis[Int(x)]),
                         color = shock_decomposition ? estimate_color : :auto)
 
                     if var_idx[i] ∈ obs_idx 
-                        StatsPlots.plot!(date_axis,
+                        StatsPlots.plot!(#date_axis,
                             data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
                             title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
                             ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
                             label = "", 
+                            xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
+                            xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                             # xformatter = x -> string(date_axis[Int(x)]),
                             color = shock_decomposition ? data_color : :auto) 
                     end
 
                     if can_dual_axis 
                         StatsPlots.plot!(StatsPlots.twinx(),
-                            date_axis, 
+                            # date_axis, 
                             100*((variables_to_plot[var_idx[i],periods] .+ SS) ./ SS .- 1), 
                             ylabel = LaTeXStrings.L"\% \Delta", 
+                            xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
+                            xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                             label = "") 
 
                         if var_idx[i] ∈ obs_idx 
                             StatsPlots.plot!(StatsPlots.twinx(),
-                                date_axis, 
+                                # date_axis, 
                                 100*((data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS) ./ SS .- 1), 
                                 ylabel = LaTeXStrings.L"\% \Delta", 
+                                xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
+                                xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                                 label = "") 
                         end
                     end
