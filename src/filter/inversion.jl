@@ -1,3 +1,29 @@
+# Specialization for :inversion filter
+function calculate_loglikelihood(::Val{:inversion}, 
+                                algorithm, observables, 
+                                𝐒, 
+                                data_in_deviations, 
+                                TT, 
+                                presample_periods, 
+                                initial_covariance, 
+                                state, 
+                                warmup_iterations, 
+                                filter_algorithm, 
+                                verbose; 
+                                timer::TimerOutput = TimerOutput())
+    return calculate_inversion_filter_loglikelihood(Val(algorithm), 
+                                                    state, 
+                                                    𝐒, 
+                                                    data_in_deviations, 
+                                                    observables, 
+                                                    TT, 
+                                                    warmup_iterations = warmup_iterations, 
+                                                    presample_periods = presample_periods, 
+                                                    filter_algorithm = filter_algorithm, 
+                                                    verbose = verbose,
+                                                    timer = timer)
+end
+
 
 function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     state::Vector{Vector{Float64}}, 

@@ -9918,57 +9918,6 @@ function create_broadcaster(indices::Vector{Int}, n::Int)
     return broadcaster  
 end
 
-
-# Specialization for :kalman filter
-function calculate_loglikelihood(::Val{:kalman}, 
-                                algorithm, 
-                                observables, 
-                                𝐒, 
-                                data_in_deviations, 
-                                TT, 
-                                presample_periods, 
-                                initial_covariance, 
-                                state, 
-                                warmup_iterations, 
-                                filter_algorithm, 
-                                verbose; 
-                                timer::TimerOutput = TimerOutput())
-    return calculate_kalman_filter_loglikelihood(observables, 
-                                                𝐒, 
-                                                data_in_deviations, 
-                                                TT, 
-                                                presample_periods = presample_periods, 
-                                                initial_covariance = initial_covariance, 
-                                                verbose = verbose, 
-                                                timer = timer)
-end
-
-# Specialization for :inversion filter
-function calculate_loglikelihood(::Val{:inversion}, 
-                                algorithm, observables, 
-                                𝐒, 
-                                data_in_deviations, 
-                                TT, 
-                                presample_periods, 
-                                initial_covariance, 
-                                state, 
-                                warmup_iterations, 
-                                filter_algorithm, 
-                                verbose; 
-                                timer::TimerOutput = TimerOutput())
-    return calculate_inversion_filter_loglikelihood(Val(algorithm), 
-                                                    state, 
-                                                    𝐒, 
-                                                    data_in_deviations, 
-                                                    observables, 
-                                                    TT, 
-                                                    warmup_iterations = warmup_iterations, 
-                                                    presample_periods = presample_periods, 
-                                                    filter_algorithm = filter_algorithm, 
-                                                    verbose = verbose,
-                                                    timer = timer)
-end
-
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                     parameter_values::Vector{S}; 
                                     verbose::Bool = false, 

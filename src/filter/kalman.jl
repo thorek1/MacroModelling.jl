@@ -1,3 +1,26 @@
+# Specialization for :kalman filter
+function calculate_loglikelihood(::Val{:kalman}, 
+                                algorithm, 
+                                observables, 
+                                𝐒, 
+                                data_in_deviations, 
+                                TT, 
+                                presample_periods, 
+                                initial_covariance, 
+                                state, 
+                                warmup_iterations, 
+                                filter_algorithm, 
+                                verbose; 
+                                timer::TimerOutput = TimerOutput())
+    return calculate_kalman_filter_loglikelihood(observables, 
+                                                𝐒, 
+                                                data_in_deviations, 
+                                                TT, 
+                                                presample_periods = presample_periods, 
+                                                initial_covariance = initial_covariance, 
+                                                verbose = verbose, 
+                                                timer = timer)
+end
 
 function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
