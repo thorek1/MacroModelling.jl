@@ -3336,7 +3336,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     if warmup_iterations > 0
         if warmup_iterations >= 1
-            jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
+            jac = 𝐒₁[cond_var_idx,end-T.nExo+1:end]
             if warmup_iterations >= 2
                 jac = hcat(𝐒₁[cond_var_idx,1:T.nPast_not_future_and_mixed] * 𝐒₁[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
                 if warmup_iterations >= 3
