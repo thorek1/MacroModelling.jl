@@ -136,7 +136,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
 end
 
 
-
+## TODO: redo this rrule based on the higher order ones. the accumulated matmul might not be necessary at all
 function rrule(::typeof(calculate_inversion_filter_loglikelihood), 
                 ::Val{:first_order}, 
                 state::Vector{Vector{Float64}}, 
@@ -3498,32 +3498,118 @@ function filter_data_with_model(𝓂::ℳ,
 
     algorithm = :first_order
 
-    variables, shocks, initial_state = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose)
 
-    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+    if solution_error > 1e-12 || isnan(solution_error)
+        @error "No solution for these parameters."
+    end
 
-    decomposition = zeros(𝓂.timings.nVars, 𝓂.timings.nExo + 2, size(data_in_deviations, 2))
+    T = 𝓂.timings
+
+    state = zeros(T.nVars)
+
+    initial_state = zeros(T.nVars)
+
+    ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
+
+    𝐒₁, solved = calculate_first_order_solution(∇₁; T = T)
+    
+    if !solved 
+        @error "No solution for these parameters."
+    end
+
+    precision_factor = 1.0
+
+    n_obs = size(data_in_deviations,2)
+
+    observables = get_and_check_observables(𝓂, data_in_deviations)
+
+    cond_var_idx = indexin(observables, sort(union(T.aux,T.var,T.exo_present)))
+
+    if warmup_iterations > 0
+        if warmup_iterations >= 1
+            jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
+            if warmup_iterations >= 2
+                jac = hcat(𝐒₁[cond_var_idx,1:T.nPast_not_future_and_mixed] * 𝐒₁[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
+                if warmup_iterations >= 3
+                    Sᵉ = 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+                    for e in 1:warmup_iterations-2
+                        jac = hcat(𝐒₁[cond_var_idx,1:T.nPast_not_future_and_mixed] * Sᵉ * 𝐒₁[T.past_not_future_and_mixed_idx,end-T.nExo+1:end], jac)
+                        Sᵉ *= 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+                    end
+                end
+            end
+        end
+    
+        jacdecomp = ℒ.svd(jac)
+
+        x = jacdecomp \ data_in_deviations[:,1]
+    
+        warmup_shocks = reshape(x, T.nExo, warmup_iterations)
+    
+        for i in 1:warmup_iterations-1
+            ℒ.mul!(state, 𝐒₁, vcat(state[T.past_not_future_and_mixed_idx], warmup_shocks[:,i]))
+            # state = state_update(state, warmup_shocks[:,i])
+        end
+    end
+
+    y = zeros(length(cond_var_idx))
+    x = zeros(T.nExo)
+
+    variables = zeros(T.nVars, size(data_in_deviations,2))
+    shocks = zeros(T.nExo, size(data_in_deviations,2))
+    
+    jac = 𝐒₁[cond_var_idx, end-T.nExo+1:end]
+
+    if T.nExo == length(observables)
+        jacdecomp = ℒ.lu(jac, check = false)
+
+        if !ℒ.issuccess(jacdecomp)
+            if verbose println("Inversion filter failed") end
+            return -Inf
+        end
+
+        invjac = inv(jacdecomp)
+    else
+        jacdecomp = ℒ.svd(jac)
+        
+        invjac = inv(jacdecomp)
+    end
+
+    for i in axes(data_in_deviations,2)
+        @views ℒ.mul!(y, 𝐒₁[cond_var_idx,1:end-T.nExo], state[T.past_not_future_and_mixed_idx])
+        @views ℒ.axpby!(1, data_in_deviations[:,i], -1, y)
+
+        ℒ.mul!(x, invjac, y)
+
+        ℒ.mul!(state, 𝐒₁, vcat(state[T.past_not_future_and_mixed_idx], x))
+        shocks[:,i] .= x
+        variables[:,i] .= state
+        # state = 𝐒₁ * vcat(state[T.past_not_future_and_mixed_idx], x)
+    end
+
+    decomposition = zeros(T.nVars, T.nExo + 2, size(data_in_deviations, 2))
 
     decomposition[:,end,:] .= variables
 
-    for i in 1:𝓂.timings.nExo
-        sck = zeros(𝓂.timings.nExo)
+    for i in 1:T.nExo
+        sck = zeros(T.nExo)
         sck[i] = shocks[i, 1]
-        decomposition[:,i,1] = state_update(initial_state , sck)
+        decomposition[:,i,1] .= 𝐒₁ * vcat(initial_state[T.past_not_future_and_mixed_idx], sck) # state_update(initial_state , sck)
     end
 
-    decomposition[:,end - 1,1] .= decomposition[:,end,1] - sum(decomposition[:,1:end-2,1], dims=2)
+    decomposition[:, end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:, 1:end-2, 1], dims=2)
 
     for i in 2:size(data_in_deviations,2)
-        for ii in 1:𝓂.timings.nExo
-            sck = zeros(𝓂.timings.nExo)
+        for ii in 1:T.nExo
+            sck = zeros(T.nExo)
             sck[ii] = shocks[ii, i]
-            decomposition[:,ii,i] = state_update(decomposition[:,ii, i-1], sck)
+            decomposition[:, ii, i] .= 𝐒₁ * vcat(decomposition[T.past_not_future_and_mixed_idx, ii, i-1], sck) # state_update(decomposition[:,ii, i-1], sck)
         end
 
-        decomposition[:,end - 1,i] .= decomposition[:,end,i] - sum(decomposition[:,1:end-2,i], dims=2)
+        decomposition[:, end - 1, i] .= decomposition[:, end, i] - sum(decomposition[:, 1:end-2, i], dims=2)
     end
-
+    
     return variables, shocks, [], decomposition
 end
 
