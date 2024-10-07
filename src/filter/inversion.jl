@@ -1649,14 +1649,14 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
     n_obs = size(data_in_deviations,2)
 
-    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+    cond_var_idx = @ignore_derivatives indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    s_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = @ignore_derivatives BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
 
     tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
     shockvar_idxs = tmp.nzind
@@ -3834,29 +3834,252 @@ function filter_data_with_model(𝓂::ℳ,
     ::Val{:pruned_second_order}, # algo
     ::Val{:inversion}; # filter
     warmup_iterations::Int = 0,
+    filter_algorithm::Symbol = :LagrangeNewton,
     smooth::Bool = true,
     verbose::Bool = false)
 
-    algorithm = :pruned_second_order
+    T = 𝓂.timings
 
-    variables, shocks, initial_state = inversion_filter(𝓂, data_in_deviations, algorithm, warmup_iterations = warmup_iterations)
+    variables = zeros(T.nVars, size(data_in_deviations,2))
+    shocks = zeros(T.nExo, size(data_in_deviations,2))
+    decomposition = zeros(𝓂.timings.nVars, 𝓂.timings.nExo + 3, size(data_in_deviations, 2))
 
-    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+    observables = get_and_check_observables(𝓂, data_in_deviations)
+    
+    sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true, verbose = verbose)
+
+    if solution_error > 1e-12 || isnan(solution_error)
+        @error "No solution for these parameters."
+        return variables, shocks, [], decomposition
+    end
+
+    if !converged
+        @error "No solution for these parameters."
+        return variables, shocks, [], decomposition
+    end
+
+    𝐒 = [𝐒₁, 𝐒₂]
+
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
+
+    state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
+     
+    precision_factor = 1.0
+
+    n_obs = size(data_in_deviations,2)
+
+    cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
+
+    s_in_s⁺  = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺  = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    
+    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
+    shock_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+    shock²_idxs = tmp.nzind
+    
+    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
+
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
+    var_vol²_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
+    var²_idxs = tmp.nzind
+    
+    𝐒⁻¹  = 𝐒[1][T.past_not_future_and_mixed_idx, :]
+    𝐒¹⁻  = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed]
+    𝐒¹⁻ᵛ = 𝐒[1][cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
+    𝐒¹ᵉ  = 𝐒[1][cond_var_idx, end-T.nExo+1:end]
+
+    𝐒²⁻ᵛ = 𝐒[2][cond_var_idx, var_vol²_idxs]
+    𝐒²⁻  = 𝐒[2][cond_var_idx, var²_idxs]
+    𝐒²⁻ᵉ = 𝐒[2][cond_var_idx, shockvar²_idxs]
+    𝐒²ᵉ  = 𝐒[2][cond_var_idx, shock²_idxs]
+    𝐒⁻²  = 𝐒[2][T.past_not_future_and_mixed_idx, :]
+
+    𝐒²⁻ᵛ    = length(𝐒²⁻ᵛ.nzval)    / length(𝐒²⁻ᵛ)  > .1 ? collect(𝐒²⁻ᵛ)    : 𝐒²⁻ᵛ
+    𝐒²⁻     = length(𝐒²⁻.nzval)     / length(𝐒²⁻)   > .1 ? collect(𝐒²⁻)     : 𝐒²⁻
+    𝐒²⁻ᵉ    = length(𝐒²⁻ᵉ.nzval)    / length(𝐒²⁻ᵉ)  > .1 ? collect(𝐒²⁻ᵉ)    : 𝐒²⁻ᵉ
+    𝐒²ᵉ     = length(𝐒²ᵉ.nzval)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
+    𝐒⁻²     = length(𝐒⁻².nzval)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
+
+    initial_state = copy(state)
+
+    state₁ = state[1][T.past_not_future_and_mixed_idx]
+    state₂ = state[2][T.past_not_future_and_mixed_idx]
+
+    state¹⁻_vol = vcat(state₁, 1)
+
+    aug_state₁ = [state₁; 1; ones(T.nExo)]
+    aug_state₂ = [state₂; 0; zeros(T.nExo)]
+
+    kronaug_state₁ = zeros(length(aug_state₁)^2)
+
+    J = ℒ.I(T.nExo)
+
+    kron_buffer = zeros(T.nExo^2)
+
+    kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
+
+    kron_buffer3 = ℒ.kron(J, zeros(T.nPast_not_future_and_mixed + 1))
+
+    kronstate¹⁻_vol = zeros((T.nPast_not_future_and_mixed + 1)^2)
+
+    shock_independent = zeros(size(data_in_deviations,1))
+
+    𝐒ⁱ = copy(𝐒¹ᵉ)
+
+    jacc = copy(𝐒¹ᵉ)
+
+    𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 
+        
+    init_guess = zeros(size(𝐒ⁱ, 2))
+
+    for i in axes(data_in_deviations, 2)
+        # state¹⁻ = state₁
+        # state¹⁻_vol = vcat(state¹⁻, 1)
+        # state²⁻ = state₂#[T.past_not_future_and_mixed_idx]
+
+        copyto!(state¹⁻_vol, 1, state₁, 1)
+
+        # shock_independent = data_in_deviations[:,i] - (𝐒¹⁻ᵛ * state¹⁻_vol + 𝐒¹⁻ * state²⁻ + 𝐒²⁻ᵛ * ℒ.kron(state¹⁻_vol, state¹⁻_vol) / 2)
+        copyto!(shock_independent, data_in_deviations[:,i])
+
+        ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state¹⁻_vol, -1, 1)
+        
+        ℒ.mul!(shock_independent, 𝐒¹⁻, state₂, -1, 1)
+
+        ℒ.kron!(kronstate¹⁻_vol, state¹⁻_vol, state¹⁻_vol)
+
+        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kronstate¹⁻_vol, -1/2, 1)
+
+        # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol)  
+        # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * kron_buffer3
+        ℒ.kron!(kron_buffer3, J, state¹⁻_vol)
+
+        ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer3)
+
+        ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ)
+
+        init_guess *= 0
+
+        x, matched = find_shocks(Val(filter_algorithm), 
+                                init_guess,
+                                kron_buffer,
+                                kron_buffer2,
+                                J,
+                                𝐒ⁱ,
+                                𝐒ⁱ²ᵉ,
+                                shock_independent,
+                                # max_iter = 100
+                                )
+                     
+        # if matched println("$filter_algorithm: $matched; current x: $x") end      
+        # if !matched
+        #     x, matched = find_shocks(Val(:COBYLA), 
+        #                             zeros(size(𝐒ⁱ, 2)),
+        #                             kron_buffer,
+        #                             kron_buffer2,
+        #                             J,
+        #                             𝐒ⁱ,
+        #                             𝐒ⁱ²ᵉ,
+        #                             shock_independent,
+        #                             # max_iter = 500
+        #                             )
+            # println("COBYLA: $matched; current x: $x")
+            # if !matched
+            #     x, matched = find_shocks(Val(filter_algorithm), 
+            #                             x,
+            #                             kron_buffer,
+            #                             kron_buffer2,
+            #                             J,
+            #                             𝐒ⁱ,
+            #                             𝐒ⁱ²ᵉ,
+            #                             shock_independent)
+                if !matched
+                    @error "Inversion filter failed at step $i"
+                    return variables, shocks, [], decomposition
+                end
+            # end
+        # end
+
+        # x2, mat = find_shocks(Val(:SLSQP), 
+        #                         x,
+        #                         kron_buffer,
+        #                         kron_buffer2,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 500
+        #                         )
+            
+        # x3, mat2 = find_shocks(Val(:COBYLA), 
+        #                         x,
+        #                         kron_buffer,
+        #                         kron_buffer2,
+        #                         J,
+        #                         𝐒ⁱ,
+        #                         𝐒ⁱ²ᵉ,
+        #                         shock_independent,
+        #                         # max_iter = 500
+        #                         )
+        # if mat
+        #     println("SLSQP: $(ℒ.norm(x2-x) / max(ℒ.norm(x2), ℒ.norm(x)))")
+        # elseif mat2
+        #     println("COBYLA: $(ℒ.norm(x3-x) / max(ℒ.norm(x3), ℒ.norm(x)))")
+        # end
+
+        # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x)
+        ℒ.kron!(kron_buffer2, J, x)
+
+        ℒ.mul!(jacc, 𝐒ⁱ²ᵉ, kron_buffer2)
+
+        ℒ.axpby!(1, 𝐒ⁱ, 2, jacc)
+
+        # aug_state₁ = [state₁; 1; x]
+        # aug_state₂ = [state₂; 0; zero(x)]
+        copyto!(aug_state₁, 1, state₁, 1)
+        copyto!(aug_state₁, length(state₁) + 2, x, 1)
+        copyto!(aug_state₂, 1, state₂, 1)
+
+        # state₁, state₂ = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * ℒ.kron(aug_state₁, aug_state₁) / 2] # strictly following Andreasen et al. (2018)
+        # ℒ.mul!(state₁, 𝐒⁻¹, aug_state₁)
+        ℒ.mul!(state[1], 𝐒[1], aug_state₁)
+        state₁ .= state[1][T.past_not_future_and_mixed_idx]
+
+        ℒ.kron!(kronaug_state₁, aug_state₁, aug_state₁)
+        # ℒ.mul!(state₂, 𝐒⁻¹, aug_state₂)
+        # ℒ.mul!(state₂, 𝐒⁻², kronaug_state₁, 1/2, 1)
+        ℒ.mul!(state[2], 𝐒[1], aug_state₂)
+        ℒ.mul!(state[2], 𝐒[2], kronaug_state₁, 1/2, 1)
+        state₂ .= state[2][T.past_not_future_and_mixed_idx]
+
+        variables[:,i] .= sum(state)
+        shocks[:,i] .= x
+    end
 
     states = [initial_state for _ in 1:𝓂.timings.nExo + 1]
-
-    decomposition = zeros(𝓂.timings.nVars, 𝓂.timings.nExo + 3, size(data_in_deviations, 2))
 
     decomposition[:, end, :] .= variables
 
     for i in 1:𝓂.timings.nExo
         sck = zeros(𝓂.timings.nExo)
         sck[i] = shocks[i, 1]
-        states[i] = state_update(initial_state , sck)
+
+        aug_state₁ = [initial_state[1][T.past_not_future_and_mixed_idx]; 1; sck]
+        aug_state₂ = [initial_state[2][T.past_not_future_and_mixed_idx]; 0; zero(sck)]
+
+        states[i] = [𝐒[1] * aug_state₁, 𝐒[1] * aug_state₂ + 𝐒[2] * ℒ.kron(aug_state₁, aug_state₁) / 2] # state_update(initial_state , sck)
         decomposition[:,i,1] = sum(states[i])
     end
 
-    states[end] = state_update(initial_state, shocks[:, 1])
+    aug_state₁ = [initial_state[1][T.past_not_future_and_mixed_idx]; 1; shocks[:, 1]]
+    aug_state₂ = [initial_state[2][T.past_not_future_and_mixed_idx]; 0; zero(shocks[:, 1])]
+
+    states[end] = [𝐒[1] * aug_state₁, 𝐒[1] * aug_state₂ + 𝐒[2] * ℒ.kron(aug_state₁, aug_state₁) / 2] # state_update(initial_state, shocks[:, 1])
 
     decomposition[:, end - 2, 1] = sum(states[end]) - sum(decomposition[:, 1:end - 3, 1], dims = 2)
     decomposition[:, end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:, 1:end - 2, 1], dims = 2)
@@ -3865,11 +4088,18 @@ function filter_data_with_model(𝓂::ℳ,
         for ii in 1:𝓂.timings.nExo
             sck = zeros(𝓂.timings.nExo)
             sck[ii] = shocks[ii, i]
-            states[ii] = state_update(states[ii] , sck)
+            
+            aug_state₁ = [states[ii][1][T.past_not_future_and_mixed_idx]; 1; sck]
+            aug_state₂ = [states[ii][2][T.past_not_future_and_mixed_idx]; 0; zero(sck)]
+    
+            states[ii] = [𝐒[1] * aug_state₁, 𝐒[1] * aug_state₂ + 𝐒[2] * ℒ.kron(aug_state₁, aug_state₁) / 2] # state_update(states[ii] , sck)
             decomposition[:, ii, i] = sum(states[ii])
         end
 
-        states[end] = state_update(states[end] , shocks[:, i])
+        aug_state₁ = [states[end][1][T.past_not_future_and_mixed_idx]; 1; shocks[:, i]]
+        aug_state₂ = [states[end][2][T.past_not_future_and_mixed_idx]; 0; zero(shocks[:, i])]
+    
+        states[end] = [𝐒[1] * aug_state₁, 𝐒[1] * aug_state₂ + 𝐒[2] * ℒ.kron(aug_state₁, aug_state₁) / 2] # state_update(states[end] , shocks[:, i])
 
         decomposition[:, end - 2, i] = sum(states[end]) - sum(decomposition[:, 1:end - 3, i], dims = 2)
         decomposition[:, end - 1, i] .= decomposition[:, end, i] - sum(decomposition[:, 1:end - 2, i], dims = 2)
@@ -3883,6 +4113,7 @@ function filter_data_with_model(𝓂::ℳ,
     ::Val{:third_order}, # algo
     ::Val{:inversion}; # filter
     warmup_iterations::Int = 0,
+    filter_algorithm::Symbol = :LagrangeNewton,
     smooth::Bool = true,
     verbose::Bool = false)
 
@@ -3897,6 +4128,7 @@ function filter_data_with_model(𝓂::ℳ,
     ::Val{:pruned_third_order}, # algo
     ::Val{:inversion}; # filter
     warmup_iterations::Int = 0,
+    filter_algorithm::Symbol = :LagrangeNewton,
     smooth::Bool = true,
     verbose::Bool = false)
 
