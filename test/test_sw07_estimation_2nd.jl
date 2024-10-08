@@ -334,9 +334,22 @@ function callback(rng, model, sampler, sample, state, i; kwargs...)
 end
 
 
+
 ## Turing model definition
-Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter)
-    all_params ~ Turing.arraydist(dists)
+# bounds
+
+lo_bnds = vcat(zeros(7), zeros(7), zeros(18), -30, zeros(3), zeros(5))
+up_bnds = vcat(fill(2, 7), fill(1, 7), fill(1, 2), 30, 10, fill(1, 2), 30, fill(1, 4), 10, 5, 1, 2, 2, 100, 100, 30, 5, 1, 1, 1, 10, 1, 100, 100)
+
+Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter, bounds)
+    for (i,x) in enumerate(all_params)
+        if x < bounds[1][i] || x > bounds[2][i] 
+            Turing.@addlogprob! -Inf
+        else
+            all_params ~ Turing.arraydist(dists)
+        end
+    end
+
     
     z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params[1:36]
 
@@ -414,7 +427,7 @@ end
 LLH = -1e-6
 
 
-SW07_llh = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr)
+SW07_llh = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, bounds)
 
 # Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr), (all_params = init_params,))
 # Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :pruned_second_order, fltr), (all_params = init_params,))
