@@ -59,10 +59,10 @@ jobs:
             os: ubuntu-latest
             arch: x64
             test_set: "3rd_order_estimation"
-          # - version: '1.11'
-          #   os: macOS-latest
-          #   arch: x64
-          #   test_set: "basic"
+          - version: '1.10'
+            os: macOS-latest
+            arch: x64
+            test_set: "basic"
           - version: 'nightly'
             os: ubuntu-latest
             arch: x64
