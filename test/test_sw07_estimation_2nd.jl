@@ -58,6 +58,10 @@ labor = try ENV["labor"] catch
     "level" 
 end 
 
+rnds = try Meta.parse(ENV["rounds"]) catch
+    4
+end
+
 msrmt_err = try Meta.parse(ENV["measurement_error"]) catch 
     # if fltr == :inversion || !(algo == :first_order)
     #     true
@@ -74,6 +78,7 @@ end
 # priors = "open"#"original"
 # labor = "growth"
 # msrmt_err = true
+# smplr = "pigeons"
 
 # cd("/home/cdsw")
 # smpler = ENV["sampler"] # "pigeons" #
@@ -94,6 +99,7 @@ println("Filter: $fltr")
 println("Algorithm: $algo")
 println("Labor: $labor")
 println("Measurement errors: $msrmt_err")
+println("Rounds (Pigeons): $rnds")
 
 println(pwd())
 
@@ -481,7 +487,7 @@ if smplr == "NUTS"
                                 initial_params = isfinite(LLH) ? init_params : nothing,
                                 progress = true,
                                 callback = callback)
-elseif smpler == "pigeons"
+elseif smplr == "pigeons"
     # generate a Pigeons log potential
     sw07_lp = Pigeons.TuringLogPotential(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr))
 
@@ -507,7 +513,7 @@ elseif smpler == "pigeons"
                 record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
                 multithreaded = true,
                 n_chains = 2,
-                n_rounds = 1)
+                n_rounds = rnds)
 
     cd("../..")
 
