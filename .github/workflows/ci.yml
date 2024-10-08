@@ -9,12 +9,12 @@ jobs:
       GKSwstype: "nul"
     name: ${{ matrix.test_set }} - ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.version == 'nightly' || matrix.version == '^1.11.0-0' }}
+    continue-on-error: ${{ matrix.version == 'nightly' || matrix.version == '^1.12.0-0' }}
     strategy:
       fail-fast: false
       matrix:
         test_set: ["basic", "plots", "higher_order", "estimation"]
-        version: ['1.10']
+        version: ['1.11']
         os: [ubuntu-latest, macos-latest, windows-latest]
         arch: [x64, arm64]
         exclude:
@@ -27,39 +27,39 @@ jobs:
         include:
           - os: ubuntu-latest
             prefix: xvfb-run
-          # - version: '1.10'
+          # - version: '1.11'
           #   os: macos-latest
           #   arch: x64
           #   test_set: "solver0"
-          # - version: '1.10'
+          # - version: '1.11'
           #   os: macos-latest
           #   arch: x64
           #   test_set: "solver1"
-          # - version: '1.10'
+          # - version: '1.11'
           #   os: macos-latest
           #   arch: x64
           #   test_set: "solver2"
-          # - version: '1.10'
+          # - version: '1.11'
           #   os: macos-latest
           #   arch: x64
           #   test_set: "solver3"
-          - version: '1.10'
+          - version: '1.11'
             os: ubuntu-latest
             arch: x64
             test_set: "estimate_sw07"
-          - version: '1.10'
+          - version: '1.11'
             os: ubuntu-latest
             arch: x64
             test_set: "1st_order_inversion_estimation"
-          - version: '1.10'
+          - version: '1.11'
             os: ubuntu-latest
             arch: x64
             test_set: "2nd_order_estimation"
-          - version: '1.10'
+          - version: '1.11'
             os: ubuntu-latest
             arch: x64
             test_set: "3rd_order_estimation"
-          # - version: '1.10'
+          # - version: '1.11'
           #   os: macOS-latest
           #   arch: x64
           #   test_set: "basic"
@@ -68,7 +68,7 @@ jobs:
             arch: x64
             test_set: "basic"
             allow_failure: true
-          - version: '^1.11.0-0'
+          - version: '^1.12.0-0'
             os: macos-latest
             arch: arm64
             test_set: "basic"
@@ -86,7 +86,7 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" >> $GITHUB_ENV
       - name: Set JULIA_NUM_THREADS for estimation tests
-        if: (matrix.version == '1.10' && (matrix.test_set == 'estimation' || matrix.test_set == 'estimate_sw07' || matrix.test_set == '1st_order_inversion_estimation' || matrix.test_set == '2nd_order_estimation' || matrix.test_set == '3rd_order_estimation'))
+        if: (matrix.version == '1.11' && (matrix.test_set == 'estimation' || matrix.test_set == 'estimate_sw07' || matrix.test_set == '1st_order_inversion_estimation' || matrix.test_set == '2nd_order_estimation' || matrix.test_set == '3rd_order_estimation'))
         run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
       - uses: actions/cache@v4
         env:
