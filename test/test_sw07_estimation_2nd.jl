@@ -1,9 +1,12 @@
 # TODO: 
-# check why test fail for SS
-# rewrite inversion_filter to take into account constrained optim problem
-# check why Pigeons is so much slower (more allocs) compared to a few days ago; 
 # check higher order correctness; 
+# check measurement error parameters;
+
+# check why test fail for SS - low tols -> fixed it
 # check EA data (labor is off, rest is more or less ok)
+# check why Pigeons is so much slower (more allocs) compared to a few days ago - because SS criteria were seldomly met and he spent unnecessary time trying to find it
+# rewrite inversion_filter to take into account constrained optim problem - done
+
 
 # using Revise
 using MacroModelling
@@ -467,19 +470,21 @@ if !(modeSW2007NM == 1) && isfinite(modeSW2007NM.lp)
     println("Nelder Mead: $LLH")
 end
 
-modeSW2007 = try Turing.maximum_a_posteriori(SW07_llh, 
-                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                        adtype = AutoZygote(),
-                                        initial_params = init_params)#,
-                                        # show_trace = true)
-catch
-    1
-end
+if !(smplr == "pigeons")
+    modeSW2007 = try Turing.maximum_a_posteriori(SW07_llh, 
+                                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                            adtype = AutoZygote(),
+                                            initial_params = init_params)#,
+                                            # show_trace = true)
+    catch
+        1
+    end
 
-if !(modeSW2007 == 1) && isfinite(modeSW2007.lp)
-    global LLH = modeSW2007.lp
-    global init_params = modeSW2007.values
-    println("LBFGS: $LLH")
+    if !(modeSW2007 == 1) && isfinite(modeSW2007.lp)
+        global LLH = modeSW2007.lp
+        global init_params = modeSW2007.values
+        println("LBFGS: $LLH")
+    end
 end
 
 println("Mode variable values: $(init_params); Mode loglikelihood: $(LLH)")
@@ -512,13 +517,21 @@ elseif smplr == "pigeons"
 
     cd(dir_name)
 
-    pt = Pigeons.pigeons(target = sw07_lp,
-                # explorer = Pigeons.AutoMALA(default_autodiff_backend = :Zygote),
-                checkpoint = true,
-                record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
-                multithreaded = true,
-                n_chains = 2,
-                n_rounds = rnds)
+    if !isdir("results/latest")
+        pt = Pigeons.PT("results/latest")
+
+        # do two more rounds of sampling
+        pt = Pigeons.increment_n_rounds!(pt, 1)
+        pt = Pigeons.pigeons(pt)
+    else
+        pt = Pigeons.pigeons(target = sw07_lp,
+                            # explorer = Pigeons.AutoMALA(default_autodiff_backend = :Zygote),
+                            checkpoint = true,
+                            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
+                            multithreaded = false,
+                            n_chains = 2,
+                            n_rounds = rnds)
+    end
 
     cd("../..")
 
