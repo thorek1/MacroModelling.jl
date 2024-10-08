@@ -10,7 +10,7 @@ using MacroModelling
 using Zygote
 import Turing
 # import MicroCanonicalHMC
-# import Pigeons
+import Pigeons
 import Turing: NUTS, sample, logpdf, AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
@@ -285,23 +285,24 @@ if msrmt_err
 end
 
 ## Turing callback
-if !isdir("estimation_results") mkdir("estimation_results") end
+dir_name1 = "estimation_results"
+if !isdir(dir_name1) mkdir(dir_name1) end
 
-cd("estimation_results")
+# cd(dir_name1)
 
-dir_name = "$(geo)_$(algo)__$(smple)_sample__$(priors)_priors__$(fltr)_filter__$(smpls)_samples__$(smplr)_sampler"
+dir_name = dir_name1 * "/$(geo)_$(algo)__$(smple)_sample__$(priors)_priors__$(fltr)_filter__$(smpls)_samples__$(smplr)_sampler"
 
 if !isdir(dir_name) mkdir(dir_name) end
 
-cd(dir_name)
+# cd(dir_name)
 
-println("Current working directory: ", pwd())
+# println("Current working directory: ", pwd())
 
 
 # define callback
 # Define the path for the CSV file
 dt = Dates.format(Dates.now(), "yyyy-mm-dd_HH")
-csv_file_path = "samples_$(dt)h.csv"
+csv_file_path = dir_name * "/samples_$(dt)h.csv"
 
 # # Initialize a DataFrame to store the data
 # df = DataFrame(iteration = Float64[])
@@ -415,7 +416,7 @@ LLH = -1e-6
 
 SW07_llh = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr)
 
-# Turing.logjoint(SW07_loglikelihood_function(data[:,1:150], Smets_Wouters_2007, observables, fixed_parameters, algo, fltr), (all_params = init_params,))
+# Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr), (all_params = init_params,))
 # Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :pruned_second_order, fltr), (all_params = init_params,))
 # Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :first_order, :inversion), (all_params = init_params,))
 
@@ -467,14 +468,47 @@ end
 
 println("Mode variable values: $(init_params); Mode loglikelihood: $(LLH)")
 
+if smplr == "NUTS"
+    samps = @time Turing.sample(SW07_llh,
+                                # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
+                                NUTS(1000, 0.65, adtype = AutoZygote()),
+                                smpls;
+                                initial_params = isfinite(LLH) ? init_params : nothing,
+                                progress = true,
+                                callback = callback)
+elseif smpler == "pigeons"
+    # generate a Pigeons log potential
+    sw07_lp = Pigeons.TuringLogPotential(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr))
 
-samps = @time Turing.sample(SW07_llh,
-                            # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
-                            NUTS(1000, 0.65, adtype = AutoZygote()),
-                            smpls;
-                            initial_params = isfinite(LLH) ? init_params : nothing,
-                            progress = true,
-                            callback = callback)
+    const SW07_LP = typeof(sw07_lp)
+    
+    
+    function Pigeons.initialization(target::SW07_LP, rng::AbstractRNG, _::Int64)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+        # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
+        
+        result = DynamicPPL.initialize_parameters!!(result, init_params, DynamicPPL.SampleFromPrior(), target.model)
+
+        return result
+    end
+    
+    pt = Pigeons.pigeons(target = sw07_lp, n_rounds = 0, n_chains = 1)
+
+    cd(dir_name)
+
+    pt = Pigeons.pigeons(target = sw07_lp,
+                # explorer = Pigeons.AutoMALA(default_autodiff_backend = :Zygote),
+                checkpoint = true,
+                record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
+                multithreaded = true,
+                n_chains = 2,
+                n_rounds = 1)
+
+    cd("../..")
+
+    samps = MCMCChains.Chains(pt)
+end
+
 
 println(samps)
 println("Mean variable values: $(mean(samps).nt.mean)")
@@ -502,10 +536,10 @@ nms = copy(names(samps))
 samps = replacenames(samps, Dict(nms[1:length(varnames)] .=> varnames))
 
 dt = Dates.format(Dates.now(), "yyyy-mm-dd_HH")
-serialize("samples_$(dt)h.jls", samps)
+serialize(dir_name * "/samples_$(dt)h.jls", samps)
 
 my_plot = StatsPlots.plot(samps)
-StatsPlots.savefig(my_plot, "samples_$(dt)h.png")
-StatsPlots.savefig(my_plot, "../../samples_latest.png")
+StatsPlots.savefig(my_plot, dir_name * "/samples_$(dt)h.png")
+StatsPlots.savefig(my_plot, "samples_latest.png")
 
 Base.show(stdout, MIME"text/plain"(), samps)
