@@ -5,7 +5,7 @@ Convenience wrapper for the truncated Beta distribution.
 If `μσ = true` then `μ` and `σ` are translated to the parameters of the distribution. Otherwise `μ` and `σ` represent the parameters of the distribution.
 
 # Arguments
-- `μ` [Type: `Real`]: mean or first parameter of the distribution, 
+- `μ` [Type: `Real`]: mean or first parameter of the distribution
 - `σ` [Type: `Real`]: standard deviation or first parameter of the distribution
 - `lower_bound` [Type: `Real`]: truncation lower bound of the distribution
 - `upper_bound` [Type: `Real`]: truncation upper bound of the distribution
@@ -24,7 +24,7 @@ Convenience wrapper for the Beta distribution.
 If `μσ = true` then `μ` and `σ` are translated to the parameters of the distribution. Otherwise `μ` and `σ` represent the parameters of the distribution.
 
 # Arguments
-- `μ` [Type: `Real`]: mean or first parameter of the distribution, 
+- `μ` [Type: `Real`]: mean or first parameter of the distribution
 - `σ` [Type: `Real`]: standard deviation or first parameter of the distribution
 # Keyword Arguments
 - `μσ` [Type: `Bool`]: switch whether μ and σ represent the moments of the distribution or their parameters
@@ -42,7 +42,7 @@ Convenience wrapper for the truncated Inverse Gamma distribution.
 If `μσ = true` then `μ` and `σ` are translated to the parameters of the distribution. Otherwise `μ` and `σ` represent the parameters of the distribution.
 
 # Arguments
-- `μ` [Type: `Real`]: mean or first parameter of the distribution, 
+- `μ` [Type: `Real`]: mean or first parameter of the distribution
 - `σ` [Type: `Real`]: standard deviation or first parameter of the distribution
 - `lower_bound` [Type: `Real`]: truncation lower bound of the distribution
 - `upper_bound` [Type: `Real`]: truncation upper bound of the distribution
@@ -61,7 +61,7 @@ Convenience wrapper for the Inverse Gamma distribution.
 If `μσ = true` then `μ` and `σ` are translated to the parameters of the distribution. Otherwise `μ` and `σ` represent the parameters of the distribution.
 
 # Arguments
-- `μ` [Type: `Real`]: mean or first parameter of the distribution, 
+- `μ` [Type: `Real`]: mean or first parameter of the distribution
 - `σ` [Type: `Real`]: standard deviation or first parameter of the distribution
 # Keyword Arguments
 - `μσ` [Type: `Bool`]: switch whether μ and σ represent the moments of the distribution or their parameters
@@ -79,7 +79,7 @@ Convenience wrapper for the truncated Inverse Gamma distribution.
 If `μσ = true` then `μ` and `σ` are translated to the parameters of the distribution. Otherwise `μ` and `σ` represent the parameters of the distribution.
 
 # Arguments
-- `μ` [Type: `Real`]: mean or first parameter of the distribution, 
+- `μ` [Type: `Real`]: mean or first parameter of the distribution
 - `σ` [Type: `Real`]: standard deviation or first parameter of the distribution
 - `lower_bound` [Type: `Real`]: truncation lower bound of the distribution
 - `upper_bound` [Type: `Real`]: truncation upper bound of the distribution
@@ -98,7 +98,7 @@ Convenience wrapper for the Gamma distribution.
 If `μσ = true` then `μ` and `σ` are translated to the parameters of the distribution. Otherwise `μ` and `σ` represent the parameters of the distribution.
 
 # Arguments
-- `μ` [Type: `Real`]: mean or first parameter of the distribution, 
+- `μ` [Type: `Real`]: mean or first parameter of the distribution,
 - `σ` [Type: `Real`]: standard deviation or first parameter of the distribution
 # Keyword Arguments
 - `μσ` [Type: `Bool`]: switch whether μ and σ represent the moments of the distribution or their parameters
@@ -116,7 +116,7 @@ $(SIGNATURES)
 Convenience wrapper for the truncated Normal distribution.
 
 # Arguments
-- `μ` [Type: `Real`]: mean of the distribution, 
+- `μ` [Type: `Real`]: mean of the distribution 
 - `σ` [Type: `Real`]: standard deviation of the distribution
 - `lower_bound` [Type: `Real`]: truncation lower bound of the distribution
 - `upper_bound` [Type: `Real`]: truncation upper bound of the distribution
@@ -127,3 +127,21 @@ function Normal(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real)
 end
 
 Normal(x,y) = Turing.Normal(x,y)
+
+
+"""
+$(SIGNATURES)
+Convenience wrapper for the truncated Cauchy distribution.
+
+# Arguments
+- `μ` [Type: `Real`]: location,
+- `σ` [Type: `Real`]: scale
+- `lower_bound` [Type: `Real`]: truncation lower bound of the distribution
+- `upper_bound` [Type: `Real`]: truncation upper bound of the distribution
+
+"""
+function Cauchy(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real)
+    Turing.truncated(Turing.Cauchy(μ, σ), lower_bound, upper_bound)
+end
+
+Cauchy(x,y) = Turing.Cauchy(x,y)
