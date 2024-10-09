@@ -318,7 +318,7 @@ mutable struct ℳ
 
     # var_solved_list
     # var_solved_calib_list
-    # var_redundant_list
+    var_redundant_list::Vector{Set{Symbol}}
     # var_redundant_calib_list
 
     # par_list::Vector{Set{Symbol}}

@@ -9,6 +9,7 @@ import SpecialFunctions: erfcinv, erfc
 import SpecialFunctions
 import SymPyPythonCall as SPyPyC
 import Symbolics
+import Nemo
 import Accessors
 import TimerOutputs
 import TimerOutputs: TimerOutput, @timeit, @timeit_debug
@@ -1737,7 +1738,7 @@ function simplify(ex::Expr)
     return ex |>
             convert_to_ss_equation |>
             x -> Symbolics.parse_expr_to_symbolic(x, @__MODULE__) |>
-            string |>
+            string |> 
             Meta.parse
     # ex_ss = convert_to_ss_equation(ex)
 
@@ -2573,6 +2574,63 @@ function create_symbols_eqs!(𝓂::ℳ)
                 )
 end
 
+
+function remove_redundant_SS_vars!(𝓂::ℳ; avoid_solve::Bool = false)
+    if avoid_solve return nothing end
+
+    var_present_list = 𝓂.var_present_list_aux_SS
+    var_past_list = 𝓂.var_past_list_aux_SS
+    var_future_list = 𝓂.var_future_list_aux_SS
+    ss_list = 𝓂.ss_list_aux_SS
+    var_list = 𝓂.var_list_aux_SS
+
+    var_redundant_list = [Set{Symbol}() for _ in 1:length(𝓂.ss_aux_equations)]
+
+    # check variables which appear in two time periods. they might be redundant in steady state
+    redundant_vars = intersect.(
+        union.(
+            intersect.(var_future_list,var_present_list),
+            intersect.(var_future_list,var_past_list),
+            intersect.(var_present_list,var_past_list),
+            intersect.(ss_list,var_present_list),
+            intersect.(ss_list,var_past_list),
+            intersect.(ss_list,var_future_list)
+        ),
+    var_list)
+
+    redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(var_list) .> 1))
+
+    for i in redundant_idx
+        for var_to_solve_for in redundant_vars[i]   
+            eval(:(Symbolics.@variables $var_to_solve_for))
+            
+            parsed_expr = Symbolics.parse_expr_to_symbolic(𝓂.ss_aux_equations[i], @__MODULE__) |> Symbolics.expand
+
+            solved_expr = try Symbolics.symbolic_solve(parsed_expr, eval(var_to_solve_for))
+            catch
+                nothing
+            end
+
+            if isnothing(solved_expr)
+                solved_expr = try Symbolics.symbolic_solve(1/parsed_expr, eval(var_to_solve_for))
+                catch
+                    continue
+                end
+            end
+
+            solved_expr = Symbolics.fast_substitute(solved_expr, Dict(1//0 => 0, -1//0 => 0))
+
+            if solved_expr isa Vector{Int} && solved_expr == [0] # take out variable if it is redundant from that equation only
+                push!(var_redundant_list[i], var_to_solve_for)
+
+                𝓂.ss_aux_equations[i] = Symbolics.fast_substitute(parsed_expr, Dict(eval(:($var_to_solve_for)) => 1)) |> 
+                string |> 
+                Meta.parse
+            end
+        end
+    end
+    copy!(𝓂.var_redundant_list, var_redundant_list)
+end
 
 
 function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve::Bool = false)
@@ -4208,6 +4266,9 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                                                             p,
                                                             ext,
                                                             false)
+                    end
+                    if !(sol_minimum > tol)
+                        solved_yet = true
                     end
                 end
             end

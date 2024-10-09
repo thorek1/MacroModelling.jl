@@ -842,6 +842,8 @@ macro model(𝓂,ex...)
                         $var_present_list_aux_SS,
                         $var_past_list_aux_SS,
 
+                        Vector{Set{Symbol}}(), # $var_redundant_list,
+
                         $dyn_var_future_list,
                         $dyn_var_present_list,
                         $dyn_var_past_list, 
@@ -1460,11 +1462,13 @@ macro parameters(𝓂,ex...)
             start_time = time()
 
             if !$silent print("Remove redundant variables in non stochastic steady state problem:\t") end
+            
+            remove_redundant_SS_vars!(mod.$𝓂, avoid_solve = !$simplify) 
 
             symbolics = create_symbols_eqs!(mod.$𝓂)
 
-            remove_redundant_SS_vars!(mod.$𝓂, symbolics, avoid_solve = !$simplify) 
-
+            # remove_redundant_SS_vars!(mod.$𝓂, symbolics, avoid_solve = !$simplify) 
+            
             if !$silent println(round(time() - start_time, digits = 3), " seconds") end
 
 
