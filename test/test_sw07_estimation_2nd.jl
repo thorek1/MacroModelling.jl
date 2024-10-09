@@ -361,13 +361,13 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
     end
 
     if msrmt_err
-        z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs = all_params[36 + length(fixed_parameters[1]) - 5 .+ (1:6)]
+        z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs = all_params[36 + 5 - length(fixed_parameters[1]) .+ (1:6)]
 
         if labor == "growth"
             z_labobs = fixed_parameters[2][1]
-            z_dlabobs = all_params[36 + length(fixed_parameters[1]) - 5 + 6 + length(fixed_parameters[2])]
+            z_dlabobs = all_params[end] # 36 + 5 - length(fixed_parameters[1]) + 6 + length(fixed_parameters[2])]
         elseif labor == "level"
-            z_labobs = all_params[36 + length(fixed_parameters[1]) - 5 + 6 + length(fixed_parameters[2])]
+            z_labobs = all_params[end] # 36 + 5 - length(fixed_parameters[1]) + 6 + length(fixed_parameters[2])]
             z_dlabobs = fixed_parameters[2][1]
         end
 
@@ -513,17 +513,17 @@ elseif smplr == "pigeons"
         return result
     end
     
-    pt = Pigeons.pigeons(target = sw07_lp, n_rounds = 0, n_chains = 1)
-
     cd(dir_name)
 
-    if !isdir("results/latest")
-        pt = Pigeons.PT("results/latest")
+    # if !isdir("results/latest")
+    #     pt = Pigeons.PT("results/latest")
 
-        # do two more rounds of sampling
-        pt = Pigeons.increment_n_rounds!(pt, 1)
-        pt = Pigeons.pigeons(pt)
-    else
+    #     # do two more rounds of sampling
+    #     pt = Pigeons.increment_n_rounds!(pt, 1)
+    #     pt = Pigeons.pigeons(pt)
+    # else
+        pt = Pigeons.pigeons(target = sw07_lp, n_rounds = 0, n_chains = 1)
+
         pt = Pigeons.pigeons(target = sw07_lp,
                             # explorer = Pigeons.AutoMALA(default_autodiff_backend = :Zygote),
                             checkpoint = true,
@@ -531,7 +531,7 @@ elseif smplr == "pigeons"
                             multithreaded = false,
                             n_chains = 2,
                             n_rounds = rnds)
-    end
+    # end
 
     cd("../..")
 
