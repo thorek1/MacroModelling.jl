@@ -101,7 +101,11 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
         logabsdets = ℒ.logabsdet(jac ./ precision_factor)[1]
         invjac = inv(jacdecomp)
     else
-        jacdecomp = ℒ.svd(jac)
+        jacdecomp = try ℒ.svd(jac)
+        catch
+            if verbose println("Inversion filter failed") end
+            return -Inf
+        end
         
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac ./ precision_factor))
         invjac = try inv(jacdecomp)
