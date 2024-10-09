@@ -1734,20 +1734,25 @@ Max = max
 Min = min
 
 function simplify(ex::Expr)
-    ex_ss = convert_to_ss_equation(ex)
+    return ex |>
+            convert_to_ss_equation |>
+            x -> Symbolics.parse_expr_to_symbolic(x, @__MODULE__) |>
+            string |>
+            Meta.parse
+    # ex_ss = convert_to_ss_equation(ex)
 
-    for x in get_symbols(ex_ss)
-	    # eval(:($x = SPyPyC.symbols($(string(x)), real = true, finite = true)))
-        eval(:(Symbolics.@variables $x))
-    end
+    # for x in get_symbols(ex_ss)
+	#     # eval(:($x = SPyPyC.symbols($(string(x)), real = true, finite = true)))
+    #     Symbolics.@variables $x
+    # end
 
-	parsed = ex_ss |> eval |> string |> Meta.parse
+	# parsed = ex_ss |> eval |> string |> Meta.parse
 
-    postwalk(x ->   x isa Expr ? 
-                        x.args[1] == :conjugate ? 
-                            x.args[2] : 
-                        x : 
-                    x, parsed)
+    # postwalk(x ->   x isa Expr ? 
+    #                     x.args[1] == :conjugate ? 
+    #                         x.args[2] : 
+    #                     x : 
+    #                 x, parsed)
 end
 
 function convert_to_ss_equation(eq::Expr)
