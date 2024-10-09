@@ -1737,7 +1737,8 @@ function simplify(ex::Expr)
     ex_ss = convert_to_ss_equation(ex)
 
     for x in get_symbols(ex_ss)
-	    eval(:($x = SPyPyC.symbols($(string(x)), real = true, finite = true)))
+	    # eval(:($x = SPyPyC.symbols($(string(x)), real = true, finite = true)))
+        eval(:(Symbolics.@variables $x))
     end
 
 	parsed = ex_ss |> eval |> string |> Meta.parse
