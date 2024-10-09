@@ -25,7 +25,7 @@ dat.real_wage_per_capita_growth = [missing; diff(log.(dat.real_wage_per_capita))
 
 dat.hours_worked = log.(dat.hours ./ dat.pop) .* 100
 dat.hours_growth = [missing; diff(log.(dat.hours_worked)) * 100]
-dat.hours_worked .-= dat.hours_worked[1:160] |> skipmissing |> mean
+dat.hours_worked .-= dat.hours_worked[121:200] |> skipmissing |> mean # avg. between 2000Q1 and 2019Q4
 
 subset_data_wide = dat[:,[:period, 
                         :real_GDP_per_capita_growth, 
