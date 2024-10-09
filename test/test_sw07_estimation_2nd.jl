@@ -118,6 +118,13 @@ end
 ## Load data
 if geo == "EA"
     include("download_EA_data.jl") # 1970Q4 - 2024Q2
+    if smple == "original"
+        # subset observables in data
+        sample_idx = 78:size(data,2) # 1990Q1-2024Q4
+
+        data = data[:, sample_idx]
+    # elseif smple == "full" # 1970Q4 - 2024Q2
+    end
 elseif geo == "US"
     if smple == "original"
         # load data
@@ -183,13 +190,13 @@ end
 # Handling distributions with varying parameters using arraydist
 if priors == "open"
     dists = [
-    InverseGamma(0.1, 3.0, μσ = true),   # z_ea
-    InverseGamma(0.1, 3.0, μσ = true),   # z_eb
-    InverseGamma(0.1, 3.0, μσ = true),   # z_eg
-    InverseGamma(0.1, 3.0, μσ = true),   # z_eqs
-    InverseGamma(0.1, 3.0, μσ = true),   # z_em
-    InverseGamma(0.1, 3.0, μσ = true),   # z_epinf
-    InverseGamma(0.1, 3.0, μσ = true),   # z_ew
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ea
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eb
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eg
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eqs
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_em
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_epinf
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ew
     Beta(0.5, 0.2, μσ = true),        # crhoa
     Beta(0.5, 0.2, μσ = true),        # crhob
     Beta(0.5, 0.2, μσ = true),        # crhog
@@ -216,7 +223,7 @@ if priors == "open"
     Gamma(0.625, 0.1, μσ = true),         # constepinf
     Gamma(0.25, 0.1, μσ = true),         # constebeta
     Normal(0.0, 2.0),                  # constelab
-    Normal(0.4, 0.10),                    # ctrend
+    Normal(0.4, 0.2),                    # ctrend
     Normal(0.5, 0.25),                   # cgy
     Normal(0.3, 0.05),                   # calfa
     Beta(0.025, 0.005, μσ = true),     # ctou    = 0.025;       % depreciation rate; AER page 592
@@ -278,18 +285,18 @@ end
 
 if msrmt_err
     dists = vcat(dists,[
-        InverseGamma(0.1, 3.0, μσ = true),   # z_dy
-        InverseGamma(0.1, 3.0, μσ = true),   # z_dc
-        InverseGamma(0.1, 3.0, μσ = true),   # z_dinve
-        InverseGamma(0.1, 3.0, μσ = true),   # z_pinfobs
-        InverseGamma(0.1, 3.0, μσ = true),   # z_robs
-        InverseGamma(0.1, 3.0, μσ = true)    # z_dwobs
+        Cauchy(0.0, 2.0, 0.0, 10.0),   # z_dy
+        Cauchy(0.0, 2.0, 0.0, 10.0),   # z_dc
+        Cauchy(0.0, 2.0, 0.0, 10.0),   # z_dinve
+        Cauchy(0.0, 2.0, 0.0, 10.0),   # z_pinfobs
+        Cauchy(0.0, 2.0, 0.0, 10.0),   # z_robs
+        Cauchy(0.0, 2.0, 0.0, 10.0)    # z_dwobs
                         ])
 
     if labor == "growth"
-        dists = vcat(dists,[InverseGamma(0.1, 3.0, μσ = true)])   # z_dlabobs
+        dists = vcat(dists,[Cauchy(0.0, 2.0, 0.0, 10.0)])   # z_dlabobs
     elseif labor == "level"
-        dists = vcat(dists,[InverseGamma(0.1, 3.0, μσ = true)])   # z_labobs
+        dists = vcat(dists,[Cauchy(0.0, 2.0, 0.0, 10.0)])   # z_labobs
     end
 end
 
@@ -349,7 +356,7 @@ end
 # lo_bnds = vcat(zeros(7), zeros(7), zeros(18), -30, zeros(3), zeros(5))
 # up_bnds = vcat(fill(2, 7), fill(1, 7), fill(1, 2), 30, 10, fill(1, 2), 30, fill(1, 4), 10, 5, 1, 2, 2, 100, 100, 30, 5, 1, 1, 1, 10, 1, 100, 100)
 
-Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter)
+Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter, dists)
     all_params ~ Turing.arraydist(dists)
 
     z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params[1:36]
@@ -434,7 +441,7 @@ end
 LLH = -1e-6
 
 
-SW07_llh = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr)
+SW07_llh = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, dists)
 
 # Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr), (all_params = init_params,))
 # Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :pruned_second_order, fltr), (all_params = init_params,))
@@ -499,7 +506,7 @@ if smplr == "NUTS"
                                 callback = callback)
 elseif smplr == "pigeons"
     # generate a Pigeons log potential
-    sw07_lp = Pigeons.TuringLogPotential(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr))
+    sw07_lp = Pigeons.TuringLogPotential(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, dists))
 
     const SW07_LP = typeof(sw07_lp)
     
