@@ -2606,13 +2606,13 @@ function remove_redundant_SS_vars!(𝓂::ℳ; avoid_solve::Bool = false)
             
             parsed_expr = Symbolics.parse_expr_to_symbolic(𝓂.ss_aux_equations[i], @__MODULE__) |> Symbolics.expand
 
-            solved_expr = try Symbolics.symbolic_solve(parsed_expr, eval(var_to_solve_for))
+            solved_expr = try @suppress Symbolics.symbolic_solve(parsed_expr, eval(var_to_solve_for))
             catch
                 nothing
             end
 
             if isnothing(solved_expr)
-                solved_expr = try Symbolics.symbolic_solve(1/parsed_expr, eval(var_to_solve_for))
+                solved_expr = try @suppress Symbolics.symbolic_solve(1/parsed_expr, eval(var_to_solve_for))
                 catch
                     continue
                 end
