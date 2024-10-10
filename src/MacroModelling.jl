@@ -71,6 +71,7 @@ module __sym_wrangle_space__
     import Symbolics
     import Nemo
     import Suppressor: @suppress
+    Symbolics.@variables pi, Pi
 end
 
 # Type definitions
@@ -2614,13 +2615,19 @@ function remove_redundant_SS_vars!(𝓂::ℳ; avoid_solve::Bool = false)
                 Symbolics.@variables $var_to_solve_for
                 
                 solved_expr = try @suppress Symbolics.symbolic_solve($parsed_expr, $var_to_solve_for)
-                catch
+                catch e
+                    # println(e)
+                    # println($var_to_solve_for)
+                    # println($parsed_expr)
                     nothing
                 end
     
                 if isnothing(solved_expr)
                     solved_expr = try @suppress Symbolics.symbolic_solve(1/$parsed_expr, $var_to_solve_for)
-                    catch
+                    catch e
+                        println(e)
+                        println($var_to_solve_for)
+                        println($parsed_expr)
                         nothing
                     end
                 end
