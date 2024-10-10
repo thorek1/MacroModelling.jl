@@ -522,7 +522,7 @@ elseif smplr == "pigeons"
     
     cd(dir_name)
 
-    if !isdir("results/latest")
+    if isdir("results/latest")
         pt = Pigeons.PT("results/latest")
 
         # do two more rounds of sampling
