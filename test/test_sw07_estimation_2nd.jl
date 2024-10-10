@@ -82,8 +82,8 @@ end
 # labor = "growth"
 # msrmt_err = true
 # smplr = "pigeons"
-
-# cd("/home/cdsw")
+# rnds = 10
+if !(pwd() == "/home/cdsw") cd("/home/cdsw") end
 # smpler = ENV["sampler"] # "pigeons" #
 # mdl = ENV["model"] # "linear" # 
 # chns = Meta.parse(ENV["chains"]) # "4" # 
@@ -522,13 +522,13 @@ elseif smplr == "pigeons"
     
     cd(dir_name)
 
-    # if !isdir("results/latest")
-    #     pt = Pigeons.PT("results/latest")
+    if !isdir("results/latest")
+        pt = Pigeons.PT("results/latest")
 
-    #     # do two more rounds of sampling
-    #     pt = Pigeons.increment_n_rounds!(pt, 1)
-    #     pt = Pigeons.pigeons(pt)
-    # else
+        # do two more rounds of sampling
+        pt = Pigeons.increment_n_rounds!(pt, 1)
+        pt = Pigeons.pigeons(pt)
+    else
         pt = Pigeons.pigeons(target = sw07_lp, n_rounds = 0, n_chains = 1)
 
         pt = Pigeons.pigeons(target = sw07_lp,
@@ -538,7 +538,7 @@ elseif smplr == "pigeons"
                             multithreaded = false,
                             n_chains = 2,
                             n_rounds = rnds)
-    # end
+    end
 
     cd("../..")
 
