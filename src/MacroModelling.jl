@@ -67,6 +67,12 @@ Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
 
+module __sym_wrangle_space__
+    import Symbolics
+    import Nemo
+    import Suppressor: @suppress
+end
+
 # Type definitions
 const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
 const String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}}}
@@ -1737,7 +1743,7 @@ Min = min
 function simplify(ex::Expr)
     return ex |>
             convert_to_ss_equation |>
-            x -> Symbolics.parse_expr_to_symbolic(x, @__MODULE__) |>
+            x -> Symbolics.parse_expr_to_symbolic(x, __sym_wrangle_space__) |>
             string |> 
             Meta.parse
     # ex_ss = convert_to_ss_equation(ex)
@@ -2602,33 +2608,46 @@ function remove_redundant_SS_vars!(𝓂::ℳ; avoid_solve::Bool = false)
 
     for i in redundant_idx
         for var_to_solve_for in redundant_vars[i]   
-            eval(:(Symbolics.@variables $var_to_solve_for))
-            
-            parsed_expr = Symbolics.parse_expr_to_symbolic(𝓂.ss_aux_equations[i], @__MODULE__) |> Symbolics.expand
-
-            solved_expr = try @suppress Symbolics.symbolic_solve(parsed_expr, eval(var_to_solve_for))
-            catch
-                nothing
-            end
-
-            if isnothing(solved_expr)
-                solved_expr = try @suppress Symbolics.symbolic_solve(1/parsed_expr, eval(var_to_solve_for))
+            parsed_expr = Symbolics.parse_expr_to_symbolic((𝓂.ss_aux_equations[i]), __sym_wrangle_space__) |> Symbolics.expand
+    
+            @eval __sym_wrangle_space__ begin
+                Symbolics.@variables $var_to_solve_for
+                
+                solved_expr = try @suppress Symbolics.symbolic_solve($parsed_expr, $var_to_solve_for)
                 catch
-                    continue
+                    nothing
+                end
+    
+                if isnothing(solved_expr)
+                    solved_expr = try @suppress Symbolics.symbolic_solve(1/$parsed_expr, $var_to_solve_for)
+                    catch
+                        nothing
+                    end
+                end
+    
+                if !isnothing(solved_expr)
+                    solved_expr = Symbolics.fast_substitute(solved_expr, Dict(1//0 => 0, -1//0 => 0))
+    
+                    if solved_expr isa Vector{Int} && solved_expr == [0] # take out variable if it is redundant from that equation only
+                        # push!(var_redundant_list[i], var_to_solve_for)
+    
+                        tmp = Symbolics.fast_substitute($parsed_expr, Dict($var_to_solve_for => 1)) |> 
+                        string |> 
+                        Meta.parse
+                    end
                 end
             end
-
-            solved_expr = Symbolics.fast_substitute(solved_expr, Dict(1//0 => 0, -1//0 => 0))
-
+    
+            solved_expr = __sym_wrangle_space__.solved_expr 
+    
             if solved_expr isa Vector{Int} && solved_expr == [0] # take out variable if it is redundant from that equation only
                 push!(var_redundant_list[i], var_to_solve_for)
-
-                𝓂.ss_aux_equations[i] = Symbolics.fast_substitute(parsed_expr, Dict(eval(:($var_to_solve_for)) => 1)) |> 
-                string |> 
-                Meta.parse
+    
+                𝓂.ss_aux_equations[i] = __sym_wrangle_space__.tmp
             end
         end
     end
+
     copy!(𝓂.var_redundant_list, var_redundant_list)
 end
 
