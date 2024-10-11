@@ -6813,7 +6813,8 @@ function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = 
     ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
     ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
 
-    Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
+    Q    = @views ℒ.factorize(∇₀[:,T.present_only_idx])
+    # Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
     Qinv = Q.Q'
 
     mul!(n₀₊, Qinv, ∇₊)
