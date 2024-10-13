@@ -1,3 +1,7 @@
+# Solves A * X ^ 2 + B * X + C = 0
+# Algorithms:
+# Schur decomposition - fastest, most reliable
+# Doubling algorithm - fast, reliable
 
 function solve_quadratic_matrix_equation(A::Matrix{S}, 
                                         B::Matrix{S}, 
@@ -6,18 +10,20 @@ function solve_quadratic_matrix_equation(A::Matrix{S},
                                         T::timings; 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where S
+    n₋₋ = zeros(T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
+    
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
     sort!(comb)
 
-    indices_future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
-    indices_past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
+    future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
+    past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
     indices_past_not_future_in_comb = indexin(T.past_not_future_idx, comb)
 
-    Ã₊ = @view A[:,indices_future_not_past_and_mixed_in_comb]
+    Ã₊ = @view A[:,future_not_past_and_mixed_in_comb]
     
-    Ã₋ = @view C[:,indices_past_not_future_and_mixed_in_comb]
+    Ã₋ = @view C[:,past_not_future_and_mixed_in_comb]
     
-    Ã₀₊ = @view B[:,indices_future_not_past_and_mixed_in_comb]
+    Ã₀₊ = @view B[:,future_not_past_and_mixed_in_comb]
 
     Ã₀₋ = @views B[:,indices_past_not_future_in_comb] * ℒ.I(T.nPast_not_future_and_mixed)[T.not_mixed_in_past_idx,:]
 
@@ -62,7 +68,7 @@ function solve_quadratic_matrix_equation(A::Matrix{S},
     
     sol = vcat(L[T.not_mixed_in_past_idx,:], D)
 
-    return sol[T.dynamic_order,:] * ℒ.I(length(comb))[indices_past_not_future_and_mixed_in_comb,:]
+    return sol[T.dynamic_order,:] * ℒ.I(length(comb))[past_not_future_and_mixed_in_comb,:]
 end
 
 

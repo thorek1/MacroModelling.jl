@@ -519,48 +519,44 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     @timeit_debug timer "Calculate 1st order solution" begin
     @timeit_debug timer "Quadratic matrix solution" begin
 
-    n₀₊ = zeros(T.nVars, T.nFuture_not_past_and_mixed)
-    n₀₀ = zeros(T.nVars, T.nVars)
-    n₀₋ = zeros(T.nVars, T.nPast_not_future_and_mixed)
-    n₋₋ = zeros(T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
-    nₚ₋ = zeros(T.nPresent_only, T.nPast_not_future_and_mixed)
-    nₜₚ = zeros(T.nVars - T.nPresent_only, T.nPast_not_future_and_mixed)
-
-    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
-    ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
-
-    Q    = @views ℒ.factorize(∇₀[:,T.present_only_idx])
-    # Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
-    Qinv = Q.Q'
-
-    ℒ.mul!(n₀₊, Qinv, ∇₊)
-    ℒ.mul!(n₀₀, Qinv, ∇₀)
-    ℒ.mul!(n₀₋, Qinv, ∇₋)
-    A₊ = n₀₊
-    A₀ = n₀₀
-    A₋ = n₀₋
-
     dynIndex = T.nPresent_only+1:T.nVars
+
+    reverse_dynamic_order = indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx)
 
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
     sort!(comb)
 
-    indices_future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
+    future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
+    past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
+    
+    A₊ = zeros(T.nVars, T.nFuture_not_past_and_mixed)
+    A₀ = zeros(T.nVars, T.nVars)
+    A₋ = zeros(T.nVars, T.nPast_not_future_and_mixed)
+    nₚ₋ = zeros(T.nPresent_only, T.nPast_not_future_and_mixed)
+    M = similar(A₀)
 
-    Ã₊  = A₊[dynIndex,:] * ℒ.I(length(comb))[indices_future_not_past_and_mixed_in_comb,:]
+    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
+    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]    
+    ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
+    ∇ₑ = copy(∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end])
+    
+    Q    = @views ℒ.factorize(∇₀[:,T.present_only_idx])
+    # Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
+    Qinv = Q.Q'
 
-    Ã₀ = A₀[dynIndex, comb]
+    ℒ.mul!(A₊, Qinv, ∇₊)
+    ℒ.mul!(A₀, Qinv, ∇₀)
+    ℒ.mul!(A₋, Qinv, ∇₋)
 
-    indices_past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
+    Ã₊ = @views A₊[dynIndex,:] * ℒ.I(length(comb))[future_not_past_and_mixed_in_comb,:]
+    Ã₀ = @views A₀[dynIndex, comb]
+    Ã₋ = @views A₋[dynIndex,:] * ℒ.I(length(comb))[past_not_future_and_mixed_in_comb,:]
 
-    Ã₋ = A₋[dynIndex,:] * ℒ.I(length(comb))[indices_past_not_future_and_mixed_in_comb,:]
-
-    A = Ã₊
-    B = Ã₀
-    C = Ã₋
-
-    sol = solve_quadratic_matrix_equation(A,B,C, Val(quadratix_matrix_equation_solver), T, verbose = verbose)
+    sol = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, 
+                                            Val(quadratix_matrix_equation_solver), 
+                                            T, 
+                                            timer = timer,
+                                            verbose = verbose)
 
     Ā₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_only_idx]
     A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
@@ -569,17 +565,16 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
 
     Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
 
-    reverse_dynamic_order = indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx)
-
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     if T.nPresent_only > 0
-        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, sol[:,indices_past_not_future_and_mixed_in_comb], 1, 1)
+        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, sol[:,past_not_future_and_mixed_in_comb], 1, 1)
         ℒ.mul!(nₚ₋, A₊ᵤ, D)
         ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
         ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
         ℒ.rmul!(A₋ᵤ,-1)
     end
-    A    = vcat(A₋ᵤ, sol[reverse_dynamic_order,indices_past_not_future_and_mixed_in_comb])
+    
+    A    = vcat(A₋ᵤ, sol[reverse_dynamic_order,past_not_future_and_mixed_in_comb])
 
     end # timeit_debug
     @timeit_debug timer "Exogenous part solution" begin
@@ -587,14 +582,10 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     Jm = @view(ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:])
 
     ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:]
-    ∇₀ = copy(∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)])
-    ∇ₑ = copy(∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end])
-    
-    M = similar(∇₀)
+
     ℒ.mul!(M, A[T.reorder,:], Jm)
     ℒ.mul!(∇₀, ∇₊, M, 1, 1)
     C = ℒ.lu!(∇₀, check = false)
-    # C = RF.lu!(∇₊ * A * Jm + ∇₀, check = false)
     
     if !ℒ.issuccess(C)
         return hcat(A[T.reorder,:], zeros(length(T.reorder),T.nExo)), false
@@ -602,7 +593,6 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     
     ℒ.ldiv!(C, ∇ₑ)
     ℒ.rmul!(∇ₑ, -1)
-    # B = -(C \ ∇ₑ) # otherwise Zygote doesnt diff it
 
     end # timeit_debug
     end # timeit_debug
