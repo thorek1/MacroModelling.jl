@@ -9,9 +9,9 @@ function solve_quadratic_matrix_equation(A::Matrix{S},
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
     sort!(comb)
 
-    indices_future_not_past_and_mixed_in_comb = findall(x -> x in T.future_not_past_and_mixed_idx, comb)
-    indices_past_not_future_and_mixed_in_comb = findall(x -> x in T.past_not_future_and_mixed_idx, comb)
-    indices_past_not_future_in_comb = findall(x -> x in T.past_not_future_idx, comb)
+    indices_future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
+    indices_past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
+    indices_past_not_future_in_comb = indexin(T.past_not_future_idx, comb)
 
     Ã₊ = @view A[:,indices_future_not_past_and_mixed_in_comb]
     

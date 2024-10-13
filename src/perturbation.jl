@@ -546,13 +546,13 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
     sort!(comb)
 
-    indices_future_not_past_and_mixed_in_comb = findall(x -> x in T.future_not_past_and_mixed_idx, comb)
+    indices_future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
 
     Ã₊  = A₊[dynIndex,:] * ℒ.I(length(comb))[indices_future_not_past_and_mixed_in_comb,:]
 
     Ã₀ = A₀[dynIndex, comb]
 
-    indices_past_not_future_and_mixed_in_comb = findall(x -> x in T.past_not_future_and_mixed_idx, comb)
+    indices_past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
 
     Ã₋ = A₋[dynIndex,:] * ℒ.I(length(comb))[indices_past_not_future_and_mixed_in_comb,:]
 
