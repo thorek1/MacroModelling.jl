@@ -7142,7 +7142,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂, timer = timer)# |> Matrix
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = TT, timer = timer, initial_guess = 𝓂.solution.perturbation.qme_solution)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = TT, timer = timer, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
 
     𝓂.solution.perturbation.qme_solution = qme_sol
 
