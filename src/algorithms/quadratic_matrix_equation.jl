@@ -185,6 +185,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     solved = false
 
+    iter = max_iter
     end # timeit_debug
     @timeit_debug timer "Loop" begin
 
@@ -268,8 +269,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
         # Check for convergence
         if Xtol < tol# || Ytol < tol # i % 2 == 0 && 
-            if verbose println("Converged in $i iterations.") end
             solved = true
+            iter = i
             break
         end
 
@@ -286,6 +287,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     end # timeit_debug
 
     ℒ.axpy!(1, initial_guess, X_new)
+
+    if verbose println("Quadratic matrix equation solver: doubling - converged: $solved in $iter iterations to tolerance: $Xtol") end
 
     return X_new, solved
 end
@@ -332,8 +335,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     # if verbose println("Converged: $converged in $(sol.maps) iterations to tolerance: $reached_tol") end
 
-    if verbose println("Converged: $(sol.converged) in $(sol.maps) iterations to tolerance: $(sol.norm_∇)") end
-
+    if verbose println("Quadratic matrix equation solver: linear_time_iteration - converged: $(sol.converged) in $(sol.maps) iterations to tolerance: $(sol.norm_∇)") end
+    
     end # timeit_debug
 
     return X, sol.converged
@@ -376,8 +379,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     X = -sol.minimizer
 
-    if verbose println("Converged: $(sol.converged) in $(sol.maps) iterations to tolerance: $(sol.norm_∇)") end
-
+    if verbose println("Quadratic matrix equation solver: linear_time_iteration - converged: $(sol.converged) in $(sol.maps) iterations to tolerance: $(sol.norm_∇)") end
+    
     return X, sol.converged
 end
 
