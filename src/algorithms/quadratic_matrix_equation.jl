@@ -366,7 +366,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         T::timings; 
                                         quadratic_matrix_equation_solver::Symbol = :schur, 
                                         timer::TimerOutput = TimerOutput(),
-                                        verbose::Bool = falseT::timings, explosive::Bool = false) where {Z,S,N}
+                                        verbose::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
     B̂ = ℱ.value.(B)
