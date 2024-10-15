@@ -3864,7 +3864,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         verbose::Bool = false, 
                                                         pruning::Bool = false, 
-                                                        quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                        quadratic_matrix_equation_solver::Symbol = :doubling, 
                                                         sylvester_algorithm::Symbol = :doubling, 
                                                         timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
@@ -4192,7 +4192,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         verbose::Bool = false, 
                                                         pruning::Bool = false, 
-                                                        quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                        quadratic_matrix_equation_solver::Symbol = :doubling, 
                                                         sylvester_algorithm::Symbol = :bicgstab, 
                                                         timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
@@ -7038,7 +7038,7 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                    quadratic_matrix_equation_solver::Symbol = :doubling, 
                                                     sylvester_algorithm::Symbol = :doubling, 
                                                     verbose::Bool = false,
                                                     timer::TimerOutput = TimerOutput()) where S <: Real
@@ -7069,7 +7069,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                    quadratic_matrix_equation_solver::Symbol = :doubling, 
                                                     sylvester_algorithm::Symbol = :doubling, 
                                                     verbose::Bool = false,
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
@@ -7102,7 +7102,7 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                    quadratic_matrix_equation_solver::Symbol = :doubling, 
                                                     sylvester_algorithm::Symbol = :bicgstab, 
                                                     verbose::Bool = false,
                                                     timer::TimerOutput = TimerOutput()) where S <: Real
@@ -7133,7 +7133,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                    quadratic_matrix_equation_solver::Symbol = :doubling, 
                                                     sylvester_algorithm::Symbol = :bicgstab, 
                                                     verbose::Bool = false,
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
@@ -7164,7 +7164,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                    quadratic_matrix_equation_solver::Symbol = :doubling, 
                                                     sylvester_algorithm::Symbol = :gmres, 
                                                     verbose::Bool = false,
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
