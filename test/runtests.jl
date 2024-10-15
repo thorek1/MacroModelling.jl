@@ -612,20 +612,19 @@ if test_set == "basic"
             std_z_delta = .005
         end
 
-        get_solution(RBC_CME)
+        sol = get_solution(RBC_CME)
 
-        get_solution(RBC_CME, algorithm = :linear_time_iteration)
+        sol1 = get_solution(RBC_CME, algorithm = :linear_time_iteration, verbose = true)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
+        @test isapprox(sol, sol1, atol = 1e-4)
 
-        get_solution(RBC_CME, algorithm = :quadratic_iteration)
+        sol2 = get_solution(RBC_CME, algorithm = :quadratic_iteration, verbose = true)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        @test isapprox(sol, sol2, atol = 1e-4)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C, RBC_CME.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        sol3 = get_solution(RBC_CME, algorithm = :first_order_doubling, verbose = true)
 
-
-
+        @test isapprox(sol, sol3, atol = 1e-4)
 
 
         # exo multi lead/lag >> 1
@@ -675,22 +674,28 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_exo_mult)
+        m = RBC_CME_exo_mult
+        
+        sol_exo = get_solution(m)
 
-        get_solution(RBC_CME_exo_mult, algorithm = :linear_time_iteration)
+        sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_mult.solution.perturbation.first_order.solution_matrix[[1:4...,16:end...],15], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_mult.solution.perturbation.first_order.solution_matrix[[1:4...,16:end...],[1,10:12...,14]], atol = 1e-4)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_exo_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
+        @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
 
-        get_solution(RBC_CME_exo_mult, algorithm = :quadratic_iteration)
+        sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_mult.solution.perturbation.quadratic_iteration.solution_matrix[[1:4...,16:end...],[1,10:12...,14]], atol = 1e-4)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        # @test isapprox(RBC_CME_exo_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_exo_mult.solution.perturbation.first_order.C, RBC_CME_exo_mult.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
+        RBC_CME_exo_mult = nothing
+
 
         # endo/exo multi lead/lag >> 1
         @model RBC_CME_all_mult begin
@@ -740,24 +745,27 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_all_mult)
+        m = RBC_CME_all_mult
+        
+        sol_exo = get_solution(m)
 
-        get_solution(RBC_CME_all_mult, algorithm = :linear_time_iteration)
+        sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix[[1,6,7,10,22:end...],21], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix[[1,6,7,10,22:end...],[1,12:14...,16]], atol = 1e-4)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_all_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
+        @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_all_mult, algorithm = :quadratic_iteration)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix[[1,6,7,10,22:end...],21], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_all_mult.solution.perturbation.quadratic_iteration.solution_matrix[[1,6,7,10,22:end...],[1,12:14...,16]], atol = 1e-4)
-        # [[1:4...,16:end...],[1,10:12...,14]]
-        # @test isapprox(RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_all_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_all_mult.solution.perturbation.first_order.C, RBC_CME_all_mult.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
-        RBC_CME_exo_mult = nothing
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
+        RBC_CME_all_mult = nothing
 
 
         # exo lead >> 1
@@ -807,23 +815,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_exo_lead1)
+        m = RBC_CME_exo_lead1
+        
+        sol_exo = get_solution(m)
 
-        get_solution(RBC_CME_exo_lead1, algorithm = :linear_time_iteration)
+        sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],12], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[1:4...]], RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix[[1:4...,13:15...],[1:4...]], atol = 1e-4)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead1.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
+        @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_exo_lead1, algorithm = :quadratic_iteration)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],12], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[1:4...]], RBC_CME_exo_lead1.solution.perturbation.quadratic_iteration.solution_matrix[[1:4...,13:15...],[1:4...]], atol = 1e-4)
+        sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead1.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_exo_lead1.solution.perturbation.first_order.C, RBC_CME_exo_lead1.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
+        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_exo_lead1 = nothing
 
 
@@ -875,26 +886,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_exo_lag_mult)
+        m = RBC_CME_exo_lag_mult
+        
+        sol_exo = get_solution(m)
 
-        get_solution(RBC_CME_exo_lag_mult, algorithm = :linear_time_iteration)
+        sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lag_mult.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],12], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag_mult.solution.perturbation.first_order.solution_matrix[[1:4...,13:15...],[1,10:12...,14]], atol = 1e-4)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_exo_lag_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
+        @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_exo_lag_mult, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_exo_lag_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag_mult.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_exo_lag_mult.solution.perturbation.first_order.C, RBC_CME_exo_lag_mult.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
-        # irf(RBC_CME_exo_lag_mult)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        # irf(RBC_CME)
+        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
 
-        # irf(RBC_CME_exo_lag1)
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
+        m = nothing
         RBC_CME_exo_lag_mult = nothing
 
 
@@ -945,20 +956,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_exo_lag1)
+        m = RBC_CME_exo_lag1
+        
+        sol_exo = get_solution(m)
 
-        get_solution(RBC_CME_exo_lag1, algorithm = :linear_time_iteration)
+        sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],12], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],[1,10:12...,9]], atol = 1e-4)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag1.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_exo_lag1.solution.perturbation.first_order.C, RBC_CME_exo_lag1.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_exo_lag1, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag1.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_exo_lag1 = nothing
 
 
@@ -1009,20 +1026,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_exo_lead)
+        m = RBC_CME_exo_lead
+        
+        sol_exo = get_solution(m)
 
-        get_solution(RBC_CME_exo_lead, algorithm = :linear_time_iteration)
+        sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix[[1:4...,6:8...],5], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[1:(end-1)...]], RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix[[1:4...,6:end...],[1:(end-1)...]], atol = 1e-4)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_exo_lead.solution.perturbation.first_order.C, RBC_CME_exo_lead.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_exo_lead, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_exo_lead = nothing
 
 
@@ -1073,20 +1096,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_exo_lag)
+        m = RBC_CME_exo_lag
 
-        get_solution(RBC_CME_exo_lag, algorithm = :linear_time_iteration)
+        sol_exo = get_solution(m)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix[[1:4...,6:8...],5], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix[[1:4...,6:end...],[1,3,4,5,2]], atol = 1e-4)
+        sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        @test isapprox(RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_exo_lag.solution.perturbation.first_order.C, RBC_CME_exo_lag.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        get_solution(RBC_CME_exo_lag, algorithm = :quadratic_iteration)
+        @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        @test isapprox(RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
+        sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
+
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_exo_lag = nothing
 
         # Lags > 1
@@ -1136,21 +1165,27 @@ if test_set == "basic"
             rho_z_delta = .9
             std_z_delta = .005
         end
+
+        m = RBC_CME_lag
         
-        get_solution(RBC_CME_lag)
+        sol_exo = get_solution(m)
 
-        @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lag.solution.perturbation.first_order.solution_matrix[[1,4,5,8:11...],[1,4:end...]]
-        # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lag.solution.perturbation.first_order.C[[1,4,5,8:11...],:]
+        sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        get_solution(RBC_CME_lag, algorithm = :linear_time_iteration)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lag.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_lag.solution.perturbation.first_order.C, RBC_CME_lag.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_lag, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lag.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_lag = nothing
 
         # Leads > 1
@@ -1200,20 +1235,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_lead)
+        m = RBC_CME_lead
+        
+        sol_exo = get_solution(m)
 
-        @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lead.solution.perturbation.first_order.solution_matrix[[1,4,5,8:11...],:]
-        # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lead.solution.perturbation.first_order.C[[1,4,5,8:11...],:]
+        sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        get_solution(RBC_CME_lead, algorithm = :linear_time_iteration)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_lead.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_lead.solution.perturbation.first_order.C, RBC_CME_lead.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_lead, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_lead.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_lead = nothing
 
 
@@ -1265,20 +1306,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_lead_lag)
+        m = RBC_CME_lead_lag
+        
+        sol_exo = get_solution(m)
 
-        @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lead_lag.solution.perturbation.first_order.solution_matrix[[1,6,7,10:13...],[1,4:end...]]
-        # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lead_lag.solution.perturbation.first_order.C[[1,6,7,(10:13)...],:]
+        sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        get_solution(RBC_CME_lead_lag, algorithm = :linear_time_iteration)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_lead_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_lead_lag.solution.perturbation.first_order.C, RBC_CME_lead_lag.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_lead_lag, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_lead_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_lead_lag = nothing
 
 
@@ -1332,20 +1379,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_lead_lag10)
+        m = RBC_CME_lead_lag10
+        
+        sol_exo = get_solution(m)
 
-        @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lead_lag10.solution.perturbation.first_order.solution_matrix[[1,13,14,18:21...],[1,4:end...]]
-        # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lead_lag10.solution.perturbation.first_order.C[[1,13,14,(18:21)...],:]
+        sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        get_solution(RBC_CME_lead_lag10, algorithm = :linear_time_iteration)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_lead_lag10.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag10.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_lead_lag10.solution.perturbation.first_order.C, RBC_CME_lead_lag10.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_lead_lag10, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_lead_lag10.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag10.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_lead_lag10 = nothing
 
 
@@ -1399,20 +1452,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_lead_lag20)
+        m = RBC_CME_lead_lag20
+        
+        sol_exo = get_solution(m)
 
-        @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lead_lag20.solution.perturbation.first_order.solution_matrix[[1,20,21,(26:29)...],[1,11:end...]]
-        # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lead_lag20.solution.perturbation.first_order.C[[1,20,21,(26:29)...],:]
+        sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        get_solution(RBC_CME_lead_lag20, algorithm = :linear_time_iteration)
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_lead_lag20.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag20.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_lead_lag20.solution.perturbation.first_order.C, RBC_CME_lead_lag20.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_lead_lag20, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_lead_lag20.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag20.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_lead_lag20 = nothing
     end
 

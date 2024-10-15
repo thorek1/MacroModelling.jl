@@ -1,7 +1,7 @@
 
 import MacroTools: unblock, postwalk, @capture
 
-const all_available_algorithms = [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+const all_available_algorithms = [:linear_time_iteration, :riccati, :first_order, :first_order_doubling, :quadratic_iteration, :binder_pesaran, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
 
 """
@@ -919,8 +919,6 @@ macro model(𝓂,ex...)
 
                         solution(
                             perturbation(   perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), (x,y)->nothing, nothing),
-                                            perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), (x,y)->nothing, nothing),
-                                            perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), (x,y)->nothing, nothing),
                                             second_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [], (x,y)->nothing, nothing),
                                             second_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [], (x,y)->nothing, nothing),
                                             third_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [], (x,y)->nothing, nothing),

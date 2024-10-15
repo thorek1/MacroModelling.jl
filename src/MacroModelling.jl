@@ -149,7 +149,7 @@ export irf, girf
 
 # Remove comment for debugging
 # export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
-# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, calculate_quadratic_iteration_solution, calculate_linear_time_iteration_solution, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
+# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
 
 
 # StatsFuns
@@ -4525,6 +4525,10 @@ function solve!(𝓂::ℳ;
         obc_not_solved = isnothing(𝓂.solution.perturbation.first_order.state_update_obc)
         if  ((:riccati             == algorithm) && ((:riccati             ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:first_order         == algorithm) && ((:first_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:first_order_doubling         == algorithm) && ((:first_order_doubling         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:binder_pesaran  == algorithm) && ((:binder_pesaran   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:quadratic_iteration  == algorithm) && ((:quadratic_iteration   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:linear_time_iteration  == algorithm) && ((:linear_time_iteration   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:second_order        == algorithm) && ((:second_order        ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_second_order == algorithm) && ((:pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
@@ -4548,7 +4552,17 @@ function solve!(𝓂::ℳ;
 
             @timeit_debug timer "Calculate first order solution" begin
 
-            S₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+            if algorithm == :first_order_doubling 
+                qme_solver = :doubling
+            elseif algorithm ∈ [:quadratic_iteration, :binder_pesaran]
+                qme_solver = :quadratic_iteration
+            elseif algorithm == :linear_time_iteration 
+                qme_solver = :linear_time_iteration
+            else # default option
+                qme_solver = :schur
+            end
+
+            S₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, quadratic_matrix_equation_solver = qme_solver, verbose = verbose)
              
             end # timeit_debug
 
@@ -4565,7 +4579,7 @@ function solve!(𝓂::ℳ;
 
                 ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
-                Ŝ₁, solved = calculate_first_order_solution(∇̂₁; T = 𝓂.timings)
+                Ŝ₁, solved = calculate_first_order_solution(∇̂₁; T = 𝓂.timings, quadratic_matrix_equation_solver = qme_solver, verbose = verbose)
 
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
 
@@ -4583,7 +4597,6 @@ function solve!(𝓂::ℳ;
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
             𝓂.solution.outdated_NSSS = solution_error > tol
-
         end
 
         obc_not_solved = isnothing(𝓂.solution.perturbation.second_order.state_update_obc)
@@ -4722,96 +4735,6 @@ function solve!(𝓂::ℳ;
             𝓂.solution.perturbation.pruned_third_order = third_order_perturbation_solution(𝐒₃, stochastic_steady_state, state_update₃, state_update₃̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_third_order])
-        end
-        
-        obc_not_solved = isnothing(𝓂.solution.perturbation.quadratic_iteration.state_update_obc)
-        if  ((:binder_pesaran  == algorithm) && ((:binder_pesaran   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:quadratic_iteration  == algorithm) && ((:quadratic_iteration   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
-            
-            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
-
-            if solution_error > tol
-                @warn "Could not find non stochastic steady steady."
-            end
-
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)#|> Matrix
-            
-            S₁, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
-            
-            state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                            shock]
-                return S₁ * aug_state # you need a return statement for forwarddiff to work
-            end
-            
-            if obc
-                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1, verbose = false)
-
-                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
-            
-                Ŝ₁, converged = calculate_quadratic_iteration_solution(∇₁; T = 𝓂.timings)
-            
-                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
-
-                state_update₁̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
-                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                                shock]
-                    return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
-                end
-            else
-                state_update₁̂ = nothing
-            end
-
-            𝓂.solution.perturbation.quadratic_iteration = perturbation_solution(S₁, state_update₁ₜ, state_update₁̂)
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:quadratic_iteration, :binder_pesaran])
-
-            𝓂.solution.non_stochastic_steady_state = SS_and_pars
-            𝓂.solution.outdated_NSSS = solution_error > tol
-            
-        end
-
-        obc_not_solved = isnothing(𝓂.solution.perturbation.linear_time_iteration.state_update_obc)
-        if  ((:linear_time_iteration  == algorithm) && ((:linear_time_iteration   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
-            
-            SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
-
-            if solution_error > tol
-                @warn "Could not find non stochastic steady steady."
-            end
-
-            ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
-            
-            S₁ = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
-            
-            state_update₁ₜ = function(state::Vector{T}, shock::Vector{S}) where {T,S}
-                aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                            shock]
-                return S₁ * aug_state # you need a return statement for forwarddiff to work
-            end
-            
-            if obc
-                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 1)
-
-                ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
-            
-                Ŝ₁, converged = calculate_linear_time_iteration_solution(∇₁; T = 𝓂.timings)
-            
-                write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0)
-
-                state_update₁̂ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
-                    aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
-                                shock]
-                    return Ŝ₁ * aug_state # you need a return statement for forwarddiff to work
-                end
-            else
-                state_update₁̂ = nothing
-            end
-
-            𝓂.solution.perturbation.linear_time_iteration = perturbation_solution(S₁, state_update₁ₜ, state_update₁̂)
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:linear_time_iteration])
-
-            𝓂.solution.non_stochastic_steady_state = SS_and_pars
-            𝓂.solution.outdated_NSSS = solution_error > tol
         end
     end
     
@@ -6742,10 +6665,7 @@ end
 
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function,Bool}
     if occasionally_binding_constraints
-        if :linear_time_iteration == algorithm
-            state_update = 𝓂.solution.perturbation.linear_time_iteration.state_update_obc
-            pruning = false
-        elseif algorithm ∈ [:riccati, :first_order]
+        if algorithm ∈ [:riccati, :first_order, :first_order_doubling, :linear_time_iteration, :quadratic_iteration, :binder_pesaran]
             state_update = 𝓂.solution.perturbation.first_order.state_update_obc
             pruning = false
         elseif :second_order == algorithm
@@ -6762,10 +6682,7 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             pruning = true
         end
     else
-        if :linear_time_iteration == algorithm
-            state_update = 𝓂.solution.perturbation.linear_time_iteration.state_update
-            pruning = false
-        elseif algorithm ∈ [:riccati, :first_order]
+        if algorithm ∈ [:riccati, :first_order, :linear_time_iteration, :quadratic_iteration, :binder_pesaran]
             state_update = 𝓂.solution.perturbation.first_order.state_update
             pruning = false
         elseif :second_order == algorithm

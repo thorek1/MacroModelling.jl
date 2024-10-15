@@ -210,8 +210,6 @@ end
 
 mutable struct perturbation
     first_order::perturbation_solution
-    linear_time_iteration::perturbation_solution
-    quadratic_iteration::perturbation_solution
     second_order::second_order_perturbation_solution
     pruned_second_order::second_order_perturbation_solution
     third_order::third_order_perturbation_solution

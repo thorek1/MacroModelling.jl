@@ -718,7 +718,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
             Y[:,i] = pruning ? sum(initial_state) : initial_state
         end
-    elseif algorithm ∈ [:first_order, :riccati, :quadratic_iteration, :linear_time_iteration]
+    elseif algorithm ∈ [:first_order, :riccati, :quadratic_iteration, :linear_time_iteration, :binder_pesaran, :first_order_doubling]
         C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
     
         CC = C[cond_var_idx,free_shock_idx]
@@ -1588,12 +1588,8 @@ function get_solution(𝓂::ℳ;
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, silent = silent, algorithm = algorithm)
 
-    if algorithm == :linear_time_iteration
-        solution_matrix = 𝓂.solution.perturbation.linear_time_iteration.solution_matrix
-    elseif algorithm ∈ [:riccati, :first_order]
+    if algorithm ∈ [:riccati, :first_order, :first_order_doubling, :quadratic_iteration, :binder_pesaran, :linear_time_iteration]
         solution_matrix = 𝓂.solution.perturbation.first_order.solution_matrix
-    elseif algorithm ∈ [:quadratic_iteration, :binder_pesaran]
-        solution_matrix = 𝓂.solution.perturbation.quadratic_iteration.solution_matrix
     end
 
     axis1 = [𝓂.timings.past_not_future_and_mixed; :Volatility; 𝓂.exo]
@@ -2092,7 +2088,7 @@ function get_correlation(𝓂::ℳ;
     lyapunov_algorithm::Symbol = :doubling, 
     verbose::Bool = false)
     
-    @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration,:pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
+    @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration, :first_order_doubling, :binder_pesaran, :pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose)
 
@@ -2184,7 +2180,7 @@ function get_autocorrelation(𝓂::ℳ;
     lyapunov_algorithm::Symbol = :doubling, 
     verbose::Bool = false)
     
-    @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration,:pruned_second_order,:pruned_third_order] "Autocorrelation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
+    @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration, :first_order_doubling, :binder_pesaran, :pruned_second_order,:pruned_third_order] "Autocorrelation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose)
 
@@ -2785,7 +2781,7 @@ function get_statistics(𝓂,
     verbose::Bool = false) where {U,T}
 
 
-    @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration,:pruned_second_order,:pruned_third_order] "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
+    @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration, :first_order_doubling, :binder_pesaran,:pruned_second_order,:pruned_third_order] "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
 
     @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
 
