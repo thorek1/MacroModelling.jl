@@ -1,378 +1,3 @@
-function calculate_first_order_solution(∇₁::Matrix{Float64}; 
-                                        T::timings, 
-                                        explosive::Bool = false,
-                                        timer::TimerOutput = TimerOutput())::Tuple{Matrix{Float64}, Bool}
-    @timeit_debug timer "Calculate 1st order solution" begin
-    @timeit_debug timer "Quadratic matrix solution" begin
-
-    A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
-
-    end # timeit_debug
-    @timeit_debug timer "Exogenous part solution" begin
-
-    if !solved
-        return hcat(A, zeros(size(A,1),T.nExo)), solved
-    end
-
-    Jm = @view(ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:])
-    
-    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:]
-    ∇₀ = copy(∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)])
-    ∇ₑ = copy(∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end])
-    
-    M = similar(∇₀)
-    mul!(M, A, Jm)
-    mul!(∇₀, ∇₊, M, 1, 1)
-    C = RF.lu!(∇₀, check = false)
-    # C = RF.lu!(∇₊ * A * Jm + ∇₀, check = false)
-    
-    if !ℒ.issuccess(C)
-        return hcat(A, zeros(size(A,1),T.nExo)), solved
-    end
-    
-    ℒ.ldiv!(C, ∇ₑ)
-    ℒ.rmul!(∇ₑ, -1)
-    # B = -(C \ ∇ₑ) # otherwise Zygote doesnt diff it
-
-    end # timeit_debug
-    end # timeit_debug
-
-    return hcat(A, ∇ₑ), solved
-end
-
-
-
-function rrule(::typeof(calculate_first_order_solution), 
-                ∇₁; 
-                T, 
-                explosive = false,
-                timer::TimerOutput = TimerOutput())
-    # Forward pass to compute the output and intermediate values needed for the backward pass
-    𝐒ᵗ, solved = riccati_forward(∇₁, T = T, explosive = explosive)
-
-    if !solved
-        return (hcat(𝐒ᵗ, zeros(size(𝐒ᵗ,1),T.nExo)), solved), x -> NoTangent(), NoTangent(), NoTangent()
-    end
-
-    expand = @views [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:],
-                     ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
-
-    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
-    
-    M̂ = RF.lu(∇₊ * 𝐒ᵗ * expand[2] + ∇₀, check = false)
-    
-    if !ℒ.issuccess(M̂)
-        return (hcat(𝐒ᵗ, zeros(size(𝐒ᵗ,1),T.nExo)), false), x -> NoTangent(), NoTangent(), NoTangent()
-    end
-    
-    M = inv(M̂)
-    
-    𝐒ᵉ = -M * ∇ₑ # otherwise Zygote doesnt diff it
-
-    𝐒̂ᵗ = 𝐒ᵗ * expand[2]
-   
-    tmp2 = -M' * ∇₊'
-
-    function first_order_solution_pullback(∂𝐒) 
-        ∂∇₁ = zero(∇₁)
-
-        ∂𝐒ᵗ = ∂𝐒[1][:,1:T.nPast_not_future_and_mixed]
-        ∂𝐒ᵉ = ∂𝐒[1][:,T.nPast_not_future_and_mixed + 1:end]
-
-        ∂∇₁[:,T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1:end] .= -M' * ∂𝐒ᵉ
-
-        ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .= M' * ∂𝐒ᵉ * ∇ₑ' * M'
-
-        ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand[2]' * 𝐒ᵗ')[:,T.future_not_past_and_mixed_idx]
-
-        ∂𝐒ᵗ .+= ∇₊' * M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand[2]'
-
-        tmp1 = M' * ∂𝐒ᵗ * expand[2]
-
-        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, sylvester_algorithm = :sylvester)
-
-        if !solved
-            NoTangent(), NoTangent(), NoTangent()
-        end
-
-        ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
-        ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .+= ss * 𝐒̂ᵗ'
-        ∂∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] .+= ss[:,T.past_not_future_and_mixed_idx]
-
-        return NoTangent(), ∂∇₁, NoTangent()
-    end
-
-    return (hcat(𝐒ᵗ, 𝐒ᵉ), solved), first_order_solution_pullback
-end
-
-
-function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; 
-                                        T::timings, 
-                                        explosive::Bool = false,
-                                        timer::TimerOutput = TimerOutput())::Tuple{Matrix{ℱ.Dual{Z,S,N}},Bool} where {Z,S,N}
-    A, solved = riccati_forward(∇₁; T = T, explosive = explosive)
-
-    if !solved
-        return hcat(A, zeros(size(A,1),T.nExo)), solved
-    end
-
-    Jm = @view(ℒ.diagm(ones(S,T.nVars))[T.past_not_future_and_mixed_idx,:])
-    
-    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(S,T.nVars))[T.future_not_past_and_mixed_idx,:]
-    ∇₀ = @view ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    ∇ₑ = @view ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
-
-    B = -((∇₊ * A * Jm + ∇₀) \ ∇ₑ)
-
-    return hcat(A, B), solved
-end
-
-
-
-function riccati_forward(∇₁::Matrix{Float64}; T::timings, explosive::Bool = false)::Tuple{Matrix{Float64},Bool}
-    n₀₊ = zeros(T.nVars, T.nFuture_not_past_and_mixed)
-    n₀₀ = zeros(T.nVars, T.nVars)
-    n₀₋ = zeros(T.nVars, T.nPast_not_future_and_mixed)
-    n₋₋ = zeros(T.nPast_not_future_and_mixed, T.nPast_not_future_and_mixed)
-    nₚ₋ = zeros(T.nPresent_only, T.nPast_not_future_and_mixed)
-    nₜₚ = zeros(T.nVars - T.nPresent_only, T.nPast_not_future_and_mixed)
-    
-    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]
-    ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
-
-    Q    = @views ℒ.factorize(∇₀[:,T.present_only_idx])
-    # Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
-    Qinv = Q.Q'
-
-    mul!(n₀₊, Qinv, ∇₊)
-    mul!(n₀₀, Qinv, ∇₀)
-    mul!(n₀₋, Qinv, ∇₋)
-    A₊ = n₀₊
-    A₀ = n₀₀
-    A₋ = n₀₋
-
-    dynIndex = T.nPresent_only+1:T.nVars
-
-    Ã₊  = A₊[dynIndex,:]
-    Ã₋  = A₋[dynIndex,:]
-    Ã₀₊ = A₀[dynIndex, T.future_not_past_and_mixed_idx]
-    @views mul!(nₜₚ, A₀[dynIndex, T.past_not_future_idx], ℒ.I(T.nPast_not_future_and_mixed)[T.not_mixed_in_past_idx,:])
-    Ã₀₋ = nₜₚ
-
-    Z₊ = zeros(T.nMixed, T.nFuture_not_past_and_mixed)
-    I₊ = ℒ.I(T.nFuture_not_past_and_mixed)[T.mixed_in_future_idx,:]
-
-    Z₋ = zeros(T.nMixed,T.nPast_not_future_and_mixed)
-    I₋ = ℒ.diagm(ones(T.nPast_not_future_and_mixed))[T.mixed_in_past_idx,:]
-
-    D = vcat(hcat(Ã₀₋, Ã₊), hcat(I₋, Z₊))
-
-    ℒ.rmul!(Ã₋,-1)
-    ℒ.rmul!(Ã₀₊,-1)
-    E = vcat(hcat(Ã₋,Ã₀₊), hcat(Z₋, I₊))
-
-    # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
-    schdcmp = try
-        ℒ.schur!(D, E)
-    catch
-        return zeros(T.nVars,T.nPast_not_future_and_mixed), false
-    end
-
-    if explosive # returns false for NaN gen. eigenvalue which is correct here bc they are > 1
-        eigenselect = abs.(schdcmp.β ./ schdcmp.α) .>= 1
-
-        ℒ.ordschur!(schdcmp, eigenselect)
-
-        Z₂₁ = schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
-        Z₁₁ = @view schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
-        S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-        T₁₁    = schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
-        Ẑ₁₁ = RF.lu(Z₁₁, check = false)
-
-        if !ℒ.issuccess(Ẑ₁₁)
-            Ẑ₁₁ = ℒ.svd(Z₁₁, check = false)
-        end
-
-        if !ℒ.issuccess(Ẑ₁₁)
-            return zeros(T.nVars,T.nPast_not_future_and_mixed), false
-        end
-    else
-        eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
-
-        try
-            ℒ.ordschur!(schdcmp, eigenselect)
-        catch
-            return zeros(T.nVars,T.nPast_not_future_and_mixed), false
-        end
-
-        Z₂₁ = schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
-        Z₁₁ = @view schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
-        S₁₁    = @view schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-        T₁₁    = schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
-
-        Ẑ₁₁ = RF.lu(Z₁₁, check = false)
-
-        if !ℒ.issuccess(Ẑ₁₁)
-            return zeros(T.nVars,T.nPast_not_future_and_mixed), false
-        end
-    end
-
-    if VERSION >= v"1.9"
-        Ŝ₁₁ = RF.lu!(S₁₁, check = false)
-    else
-        Ŝ₁₁ = RF.lu(S₁₁, check = false)
-    end
-
-    if !ℒ.issuccess(Ŝ₁₁)
-        return zeros(T.nVars,T.nPast_not_future_and_mixed), false
-    end
-
-    # D      = Z₂₁ / Ẑ₁₁
-    ℒ.rdiv!(Z₂₁, Ẑ₁₁)
-    D = Z₂₁
-
-    # L      = Z₁₁ * (Ŝ₁₁ \ T₁₁) / Ẑ₁₁
-    ℒ.ldiv!(Ŝ₁₁, T₁₁)
-    mul!(n₋₋, Z₁₁, T₁₁)
-    ℒ.rdiv!(n₋₋, Ẑ₁₁)
-    L = n₋₋
-
-    sol = vcat(L[T.not_mixed_in_past_idx,:], D)
-
-    Ā₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_only_idx]
-    A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
-    Ã₀ᵤ  = A₀[1:T.nPresent_only, T.present_but_not_only_idx]
-    A₋ᵤ  = A₋[1:T.nPresent_only,:]
-
-    
-    if VERSION >= v"1.9"
-        Ā̂₀ᵤ = RF.lu!(Ā₀ᵤ, check = false)
-    else
-        Ā̂₀ᵤ = RF.lu(Ā₀ᵤ, check = false)
-    end
-
-    if !ℒ.issuccess(Ā̂₀ᵤ)
-        return zeros(T.nVars,T.nPast_not_future_and_mixed), false
-    #     Ā̂₀ᵤ = ℒ.svd(collect(Ā₀ᵤ))
-    end
-
-    # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
-    if T.nPresent_only > 0
-        mul!(A₋ᵤ, Ã₀ᵤ, sol[T.dynamic_order,:], 1, 1)
-        mul!(nₚ₋, A₊ᵤ, D)
-        mul!(A₋ᵤ, nₚ₋, L, 1, 1)
-        ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
-        ℒ.rmul!(A₋ᵤ,-1)
-    end
-    A    = vcat(A₋ᵤ, sol)
-
-    return A[T.reorder,:], true
-end
-
-
-
-
-function riccati_forward(∇₁::Matrix{ℱ.Dual{Z,S,N}}; T::timings, explosive::Bool = false) where {Z,S,N}
-    # unpack: AoS -> SoA
-    ∇̂₁ = ℱ.value.(∇₁)
-
-    expand = [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:], ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
-
-    A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-
-    x, solved = riccati_forward(∇̂₁;T = T, explosive = explosive)
-
-    X = x * expand[2]
-
-    AXB = A * X + B
-    
-    AXBfact = RF.lu(AXB, check = false)
-
-    if !ℒ.issuccess(AXBfact)
-        AXBfact = ℒ.svd(AXB)
-    end
-
-    invAXB = inv(AXBfact)
-
-    AA = invAXB * A
-
-    X² = X * X
-
-    X̃ = zeros(length(x), N)
-
-    p = zero(∇̂₁)
-
-    # https://arxiv.org/abs/2011.11430  
-    for i in 1:N
-        p .= ℱ.partials.(∇₁, i)
-
-        dA = p[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-        dB = p[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-        dC = p[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
-    
-        CC = invAXB * (dA * X² + dC + dB * X)
-    
-        dX, solved = solve_sylvester_equation(AA, -X, -CC, sylvester_algorithm = :sylvester)
-
-        X̃[:,i] = vec(dX[:,T.past_not_future_and_mixed_idx])
-    end
-    
-    return reshape(map(x, eachrow(X̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(x)), solved
-end
-
-
-function rrule(::typeof(riccati_forward), ∇₁; T, explosive = false)
-    # Forward pass to compute the output and intermediate values needed for the backward pass
-    A, solved = riccati_forward(∇₁, T = T, explosive = explosive)
-
-    if !solved
-        return (A, solved), x -> NoTangent(), NoTangent()
-    end
-
-    expand = @views [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:],
-                    ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
-
-    Â = A * expand[2]
-    
-    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    ∇₀ = @views ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-
-    ∂∇₁ = zero(∇₁)
-    
-    invtmp = inv(-Â' * ∇₊' - ∇₀')
-    
-    tmp2 = invtmp * ∇₊'
-
-    function first_order_solution_pullback(∂A)
-        tmp1 = invtmp * ∂A[1] * expand[2]
-
-        ss, solved = solve_sylvester_equation(tmp2, Â', -tmp1, sylvester_algorithm = :sylvester)
-
-        if !solved
-            return (A, solved), x -> NoTangent(), NoTangent()
-        end
-        
-        ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (ss * Â' * Â')[:,T.future_not_past_and_mixed_idx]
-        ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .= ss * Â'
-        ∂∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] .= ss[:,T.past_not_future_and_mixed_idx]
-
-        return NoTangent(), ∂∇₁
-    end
-
-    return (A, solved), first_order_solution_pullback
-end
-
-
-
 function calculate_linear_time_iteration_solution(∇₁::AbstractMatrix{Float64}; T::timings, tol::AbstractFloat = eps())
     expand = @views [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:],
             ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
@@ -513,11 +138,126 @@ end
 
 function calculate_first_order_solution(∇₁::Matrix{Float64}; 
                                         T::timings, 
-                                        quadratix_matrix_equation_solver::Symbol = :Doubling,
+                                        quadratic_matrix_equation_solver::Symbol = :doubling,
                                         verbose::Bool = false,
                                         timer::TimerOutput = TimerOutput())::Tuple{Matrix{Float64}, Bool}
     @timeit_debug timer "Calculate 1st order solution" begin
-    @timeit_debug timer "Quadratic matrix solution" begin
+    @timeit_debug timer "Preprocessing" begin
+
+    dynIndex = T.nPresent_only+1:T.nVars
+
+    reverse_dynamic_order = indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx)
+
+    comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
+    sort!(comb)
+
+    future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
+    past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
+  
+    Ir = ℒ.I(length(comb))
+    
+    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
+    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]    
+    ∇₋ = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
+    ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+    
+    end # timeit_debug
+    @timeit_debug timer "Invert ∇₀" begin
+
+    Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
+
+    A₊ = Q.Q' * ∇₊
+    A₀ = Q.Q' * ∇₀
+    A₋ = Q.Q' * ∇₋
+    
+    end # timeit_debug
+    @timeit_debug timer "Sort matrices" begin
+
+    Ã₊ = A₊[dynIndex,:] * Ir[future_not_past_and_mixed_in_comb,:]
+    Ã₀ = A₀[dynIndex, comb]
+    Ã₋ = A₋[dynIndex,:] * Ir[past_not_future_and_mixed_in_comb,:]
+
+    end # timeit_debug
+    @timeit_debug timer "Quadratic matrix equation solve" begin
+
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, 
+                                            T, 
+                                            quadratic_matrix_equation_solver = quadratic_matrix_equation_solver, 
+                                            timer = timer,
+                                            verbose = verbose)
+
+    if !solved
+        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), false
+    end
+
+    end # timeit_debug
+    @timeit_debug timer "Postprocessing" begin
+    @timeit_debug timer "Setup matrices" begin
+
+    sol_compact = sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
+
+    D = sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
+
+    L = sol[indexin(T.past_not_future_and_mixed_idx, T.present_but_not_only_idx), past_not_future_and_mixed_in_comb]
+
+    Ā₀ᵤ  = A₀[1:T.nPresent_only, T.present_only_idx]
+    A₊ᵤ  = A₊[1:T.nPresent_only,:]
+    Ã₀ᵤ  = A₀[1:T.nPresent_only, T.present_but_not_only_idx]
+    A₋ᵤ  = A₋[1:T.nPresent_only,:]
+
+    end # timeit_debug
+    @timeit_debug timer "Invert Ā₀ᵤ" begin
+
+    Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
+
+    if !ℒ.issuccess(Ā̂₀ᵤ)
+        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), false
+    end
+
+    # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
+    if T.nPresent_only > 0
+        ℒ.mul!(A₋ᵤ, Ã₀ᵤ, sol[:,past_not_future_and_mixed_in_comb], 1, 1)
+        nₚ₋ =  A₊ᵤ * D
+        ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
+        ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
+        ℒ.rmul!(A₋ᵤ, -1)
+    end
+    
+    A    = vcat(A₋ᵤ, sol_compact)[T.reorder,:]
+
+    end # timeit_debug
+    end # timeit_debug
+    @timeit_debug timer "Exogenous part solution" begin
+
+    M = A[T.future_not_past_and_mixed_idx,:] * ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]
+
+    ℒ.mul!(∇₀, ∇₁[:,1:T.nFuture_not_past_and_mixed], M, 1, 1)
+
+    C = ℒ.lu!(∇₀, check = false)
+    
+    if !ℒ.issuccess(C)
+        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), false
+    end
+    
+    ℒ.ldiv!(C, ∇ₑ)
+    ℒ.rmul!(∇ₑ, -1)
+
+    end # timeit_debug
+    end # timeit_debug
+
+    return hcat(A, ∇ₑ), true
+end
+
+
+function rrule(::typeof(calculate_first_order_solution), 
+                ∇₁::Matrix{Float64};
+                T::timings, 
+                quadratic_matrix_equation_solver::Symbol = :doubling,
+                verbose::Bool = false,
+                timer::TimerOutput = TimerOutput())
+    # Forward pass to compute the output and intermediate values needed for the backward pass
+    @timeit_debug timer "Calculate 1st order solution" begin
+    @timeit_debug timer "Preprocessing" begin
 
     dynIndex = T.nPresent_only+1:T.nVars
 
@@ -529,76 +269,207 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
     past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
     
-    A₊ = zeros(T.nVars, T.nFuture_not_past_and_mixed)
-    A₀ = zeros(T.nVars, T.nVars)
-    A₋ = zeros(T.nVars, T.nPast_not_future_and_mixed)
-    nₚ₋ = zeros(T.nPresent_only, T.nPast_not_future_and_mixed)
-    M = similar(A₀)
-
-    ∇₊ = @view ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]    
-    ∇₋ = @view ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
-    ∇ₑ = copy(∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end])
+    Ir = ℒ.I(length(comb))
     
-    Q    = @views ℒ.factorize(∇₀[:,T.present_only_idx])
-    # Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
-    Qinv = Q.Q'
+    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
+    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]    
+    ∇₋ = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
+    ∇̂ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+    
+    end # timeit_debug
+    @timeit_debug timer "Invert ∇₀" begin
 
-    ℒ.mul!(A₊, Qinv, ∇₊)
-    ℒ.mul!(A₀, Qinv, ∇₀)
-    ℒ.mul!(A₋, Qinv, ∇₋)
+    Q    = ℒ.qr!(∇₀[:,T.present_only_idx])
 
-    Ã₊ = @views A₊[dynIndex,:] * ℒ.I(length(comb))[future_not_past_and_mixed_in_comb,:]
-    Ã₀ = @views A₀[dynIndex, comb]
-    Ã₋ = @views A₋[dynIndex,:] * ℒ.I(length(comb))[past_not_future_and_mixed_in_comb,:]
+    A₊ = Q.Q' * ∇₊
+    A₀ = Q.Q' * ∇₀
+    A₋ = Q.Q' * ∇₋
+    
+    end # timeit_debug
+    @timeit_debug timer "Sort matrices" begin
 
-    sol = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, 
-                                            Val(quadratix_matrix_equation_solver), 
+    Ã₊ = A₊[dynIndex,:] * Ir[future_not_past_and_mixed_in_comb,:]
+    Ã₀ = A₀[dynIndex, comb]
+    Ã₋ = A₋[dynIndex,:] * Ir[past_not_future_and_mixed_in_comb,:]
+
+    end # timeit_debug
+    @timeit_debug timer "Quadratic matrix equation solve" begin
+
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, 
                                             T, 
+                                            quadratic_matrix_equation_solver = quadratic_matrix_equation_solver, 
                                             timer = timer,
                                             verbose = verbose)
 
-    Ā₀ᵤ  = @view A₀[1:T.nPresent_only, T.present_only_idx]
-    A₊ᵤ  = @view A₊[1:T.nPresent_only,:]
+    if !solved
+        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), false, x -> NoTangent(), NoTangent(), NoTangent()
+    end
+
+    end # timeit_debug
+    @timeit_debug timer "Postprocessing" begin
+    @timeit_debug timer "Setup matrices" begin
+
+    sol_compact = sol[reverse_dynamic_order, past_not_future_and_mixed_in_comb]
+
+    D = sol_compact[end - T.nFuture_not_past_and_mixed + 1:end, :]
+
+    L = sol[indexin(T.past_not_future_and_mixed_idx, T.present_but_not_only_idx), past_not_future_and_mixed_in_comb]
+
+    Ā₀ᵤ  = A₀[1:T.nPresent_only, T.present_only_idx]
+    A₊ᵤ  = A₊[1:T.nPresent_only,:]
     Ã₀ᵤ  = A₀[1:T.nPresent_only, T.present_but_not_only_idx]
     A₋ᵤ  = A₋[1:T.nPresent_only,:]
 
+    end # timeit_debug
+    @timeit_debug timer "Invert Ā₀ᵤ" begin
+
     Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
+
+    if !ℒ.issuccess(Ā̂₀ᵤ)
+        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), false, x -> NoTangent(), NoTangent(), NoTangent()
+    end
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
     if T.nPresent_only > 0
         ℒ.mul!(A₋ᵤ, Ã₀ᵤ, sol[:,past_not_future_and_mixed_in_comb], 1, 1)
-        ℒ.mul!(nₚ₋, A₊ᵤ, D)
+        nₚ₋ =  A₊ᵤ * D
         ℒ.mul!(A₋ᵤ, nₚ₋, L, 1, 1)
         ℒ.ldiv!(Ā̂₀ᵤ, A₋ᵤ)
-        ℒ.rmul!(A₋ᵤ,-1)
+        ℒ.rmul!(A₋ᵤ, -1)
     end
-    
-    A    = vcat(A₋ᵤ, sol[reverse_dynamic_order,past_not_future_and_mixed_in_comb])
 
+    end # timeit_debug
     end # timeit_debug
     @timeit_debug timer "Exogenous part solution" begin
 
-    Jm = @view(ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:])
+    expand =   [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:],
+                ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
 
-    ∇₊ = @views ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:]
+    𝐒ᵗ = vcat(A₋ᵤ, sol_compact)[T.reorder,:]
 
-    ℒ.mul!(M, A[T.reorder,:], Jm)
-    ℒ.mul!(∇₀, ∇₊, M, 1, 1)
+    𝐒̂ᵗ = 𝐒ᵗ * expand[2]
+
+    ℒ.mul!(∇₀, ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1], 𝐒̂ᵗ, 1, 1)
+
     C = ℒ.lu!(∇₀, check = false)
     
     if !ℒ.issuccess(C)
-        return hcat(A[T.reorder,:], zeros(length(T.reorder),T.nExo)), false
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), false), x -> NoTangent(), NoTangent(), NoTangent()
     end
     
-    ℒ.ldiv!(C, ∇ₑ)
-    ℒ.rmul!(∇ₑ, -1)
+    ℒ.ldiv!(C, ∇̂ₑ)
+    ℒ.rmul!(∇̂ₑ, -1)
 
     end # timeit_debug
     end # timeit_debug
+    
+    M = inv(C)
 
-    return hcat(A[T.reorder,:], ∇ₑ), true
+    tmp2 = -M' * (∇₊ * expand[1])'
+    
+    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+
+    function first_order_solution_pullback(∂𝐒) 
+        ∂∇₁ = zero(∇₁)
+
+        ∂𝐒ᵗ = ∂𝐒[1][:,1:T.nPast_not_future_and_mixed]
+        ∂𝐒ᵉ = ∂𝐒[1][:,T.nPast_not_future_and_mixed + 1:end]
+
+        ∂∇₁[:,T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1:end] .= -M' * ∂𝐒ᵉ
+
+        ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .= M' * ∂𝐒ᵉ * ∇ₑ' * M'
+
+        ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand[2]' * 𝐒ᵗ')[:,T.future_not_past_and_mixed_idx]
+
+        ∂𝐒ᵗ .+= ∇₊' * M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand[2]'
+
+        tmp1 = M' * ∂𝐒ᵗ * expand[2]
+
+        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, sylvester_algorithm = :sylvester)
+
+        if !solved
+            NoTangent(), NoTangent(), NoTangent()
+        end
+
+        ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
+        ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .+= ss * 𝐒̂ᵗ'
+        ∂∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] .+= ss[:,T.past_not_future_and_mixed_idx]
+
+        return NoTangent(), ∂∇₁, NoTangent()
+    end
+
+    return (hcat(𝐒ᵗ, ∇̂ₑ), solved), first_order_solution_pullback
 end
+
+
+function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; 
+                                        T::timings, 
+                                        quadratic_matrix_equation_solver::Symbol = :doubling,
+                                        verbose::Bool = false,
+                                        timer::TimerOutput = TimerOutput())::Tuple{Matrix{ℱ.Dual{Z,S,N}},Bool} where {Z,S,N}
+    ∇̂₁ = ℱ.value.(∇₁)
+
+    expand = [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:], ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
+
+    A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    
+    𝐒₁, solved = calculate_first_order_solution(ℱ.value.(∇̂₁); 
+                                                T = T, 
+                                                verbose = verbose,
+                                                quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                timer = timer)
+
+    X = 𝐒₁[:,1:end-T.nExo] * expand[2]
+    
+    AXB = A * X + B
+    
+    AXBfact = RF.lu(AXB, check = false)
+
+    if !ℒ.issuccess(AXBfact)
+        AXBfact = ℒ.svd(AXB)
+    end
+
+    invAXB = inv(AXBfact)
+
+    AA = invAXB * A
+
+    X² = X * X
+
+    X̃ = zeros(length(𝐒₁[:,1:end-T.nExo]), N)
+
+    p = zero(∇̂₁)
+
+    # https://arxiv.org/abs/2011.11430  
+    for i in 1:N
+        p .= ℱ.partials.(∇₁, i)
+
+        dA = p[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+        dB = p[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+        dC = p[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+        
+        CC = invAXB * (dA * X² + dC + dB * X)
+    
+        dX, solved = solve_sylvester_equation(AA, -X, -CC, sylvester_algorithm = :sylvester)
+
+        X̃[:,i] = vec(dX[:,T.past_not_future_and_mixed_idx])
+    end
+
+    x = reshape(map(𝐒₁[:,1:end-T.nExo], eachrow(X̃)) do v, p
+            ℱ.Dual{Z}(v, p...) # Z is the tag
+        end, size(𝐒₁[:,1:end-T.nExo]))
+
+    Jm = @view(ℒ.diagm(ones(S,T.nVars))[T.past_not_future_and_mixed_idx,:])
+    
+    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(S,T.nVars))[T.future_not_past_and_mixed_idx,:]
+    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+
+    B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
+    
+    return hcat(x, B), solved
+end 
 
 
 

@@ -4110,7 +4110,6 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
                                                         timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
     @timeit_debug timer "Calculate SSS - forward" begin
-    
     @timeit_debug timer "Setup indices" begin
 
     nᵉ = 𝓂.timings.nExo
