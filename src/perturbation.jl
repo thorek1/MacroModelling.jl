@@ -274,7 +274,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
                                         quadratic_matrix_equation_solver::Symbol = :doubling,
                                         verbose::Bool = false,
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                        timer::TimerOutput = TimerOutput())::Tuple{Matrix{ℱ.Dual{Z,S,N}},Bool} where {Z,S,N}
+                                        timer::TimerOutput = TimerOutput())::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
 
     expand = [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:], ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
