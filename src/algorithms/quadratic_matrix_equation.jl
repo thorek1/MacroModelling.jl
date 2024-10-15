@@ -1,7 +1,10 @@
 # Solves A * X ^ 2 + B * X + C = 0
+
 # Algorithms:
-# Schur decomposition - fastest, most reliable
-# Doubling algorithm - fast, reliable
+# Schur decomposition (:schur) - fastest, most reliable
+# Doubling algorithm (:doubling) - fast, reliable, most precise
+# Linear time iteration algorithm (:linear_time_iteration) [ -(A * X + B) \ C = X̂ ] - slow
+# Quadratic iteration algorithm (:quadratic_iteration) [ B \ A * X ^ 2 + B \ C = X̂ ] - very slow
 
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
                                         B::AbstractMatrix{R}, 
@@ -271,6 +274,89 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     return X_new, solved
 end
 
+
+
+function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
+                                        B::AbstractMatrix{R}, 
+                                        C::AbstractMatrix{R}, 
+                                        ::Val{:linear_time_iteration}, 
+                                        T::timings; 
+                                        tol::AbstractFloat = 1e-8, # lower tol not possible for NAWM (and probably other models this size)
+                                        timer::TimerOutput = TimerOutput(),
+                                        verbose::Bool = false,
+                                        max_iter::Int = 5000) where R <: Real
+    # Iterate over: A * X * X + C + B * X = (A * X + B) * X + C = X + (A * X + B) \ C
+
+    @timeit_debug timer "Preallocate" begin
+
+    F = similar(C)
+    t = similar(C)
+
+    end # timeit_debug
+    @timeit_debug timer "Loop" begin
+
+    sol = @suppress begin speedmapping(zero(A); m! = (F̄, F) -> begin 
+            ℒ.mul!(t, A, F)
+            ℒ.axpby!(-1, B, -1, t)
+            t̂ = ℒ.lu!(t, check = false)
+            ℒ.ldiv!(F̄, t̂, C)
+        end,
+        tol = tol, maps_limit = max_iter)#, σ_min = 0.0, stabilize = false, orders = [3,3,2])
+    end
+
+    X = sol.minimizer
+
+    # reached_tol = ℒ.norm(A * X * X + B * X + C)
+    
+    # converged = reached_tol < tol
+
+    # if verbose println("Converged: $converged in $(sol.maps) iterations to tolerance: $reached_tol") end
+
+    if verbose println("Converged: $(sol.converged) in $(sol.maps) iterations to tolerance: $(sol.norm_∇)") end
+
+    end # timeit_debug
+
+    return X, sol.converged
+end
+
+
+
+function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
+                                        B::AbstractMatrix{R}, 
+                                        C::AbstractMatrix{R}, 
+                                        ::Val{:quadratic_iteration}, 
+                                        T::timings; 
+                                        tol::AbstractFloat = 1e-8, # lower tol not possible for NAWM (and probably other models this size)
+                                        timer::TimerOutput = TimerOutput(),
+                                        verbose::Bool = false,
+                                        max_iter::Int = 50000) where R <: Real
+    # Iterate over: Ā * X * X + C̄ + X
+
+    B̂ =  ℒ.lu(B)
+
+    C̄ = B̂ \ C
+    Ā = B̂ \ A
+    
+    X = similar(Ā)
+    X̄ = similar(Ā)
+    
+    X² = similar(X)
+    
+    sol = @suppress begin
+        speedmapping(zero(A); m! = (X̄, X) -> begin 
+                                                ℒ.mul!(X², X, X)
+                                                ℒ.mul!(X̄, Ā, X²)
+                                                ℒ.axpy!(1, C̄, X̄)
+                                            end,
+        tol = tol, maps_limit = max_iter, σ_min = 0.0, stabilize = false, orders = [3,3,2])
+    end
+
+    X = -sol.minimizer
+
+    if verbose println("Converged: $(sol.converged) in $(sol.maps) iterations to tolerance: $(sol.norm_∇)") end
+
+    return X, sol.converged
+end
 
 
 
