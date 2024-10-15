@@ -326,7 +326,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
                                     # init::AbstractMatrix{Float64},
                                     timer::TimerOutput = TimerOutput(),
                                     tol::Float64 = 1e-12)
-                                    # see doi:10.1016/j.aml.2009.01.012
+                                    # see doi:10.1016/j.aml.2009.01.012  On Smith-type iterative algorithms for the Stein matrix equation
     𝐀  = copy(A)    
     # 𝐀¹ = copy(A)
     𝐁  = copy(B)

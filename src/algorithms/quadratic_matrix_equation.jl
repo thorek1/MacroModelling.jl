@@ -11,7 +11,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        quadratic_matrix_equation_solver::Symbol = :doubling, 
+                                        quadratic_matrix_equation_solver::Symbol = :schur, 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where R <: Real
     solve_quadratic_matrix_equation(A, B, C, 
@@ -140,6 +140,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         max_iter::Int = 100) where R <: Real
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
+    # https://arxiv.org/abs/2212.09491
     @timeit_debug timer "Invert B" begin
 
     guess_provided = true
@@ -391,7 +392,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
-                                        quadratic_matrix_equation_solver::Symbol = :doubling, 
+                                        quadratic_matrix_equation_solver::Symbol = :schur, 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
