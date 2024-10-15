@@ -3886,7 +3886,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate first order solution" begin
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
 
     𝓂.solution.perturbation.qme_solution = qme_sol
 
@@ -4199,7 +4199,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
     
     𝓂.solution.perturbation.qme_solution = qme_sol
 
