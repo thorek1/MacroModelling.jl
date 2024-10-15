@@ -214,6 +214,7 @@ mutable struct perturbation
     pruned_second_order::second_order_perturbation_solution
     third_order::third_order_perturbation_solution
     pruned_third_order::third_order_perturbation_solution
+    qme_solution::Matrix{Float64}
     auxilliary_indices::auxilliary_indices
     second_order_auxilliary_matrices::second_order_auxilliary_matrices
     third_order_auxilliary_matrices::third_order_auxilliary_matrices

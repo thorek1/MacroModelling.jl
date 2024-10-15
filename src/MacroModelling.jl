@@ -3886,8 +3886,10 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate first order solution" begin
 
-    𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
-    
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
+
+    𝓂.solution.perturbation.qme_solution = qme_sol
+
     # end # timeit_debug
 
     if !solved
@@ -4197,8 +4199,10 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
-    𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
     
+    𝓂.solution.perturbation.qme_solution = qme_sol
+
     if !solved
         if verbose println("1st order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
@@ -4562,8 +4566,10 @@ function solve!(𝓂::ℳ;
                 qme_solver = :schur
             end
 
-            S₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, quadratic_matrix_equation_solver = qme_solver, verbose = verbose)
-             
+            S₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, quadratic_matrix_equation_solver = qme_solver, verbose = verbose, initial_guess = 𝓂.solution.perturbation.qme_solution)
+    
+            𝓂.solution.perturbation.qme_solution = qme_sol
+
             end # timeit_debug
 
             @assert solved "Could not find stable first order solution."
@@ -4579,7 +4585,9 @@ function solve!(𝓂::ℳ;
 
                 ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
-                Ŝ₁, solved = calculate_first_order_solution(∇̂₁; T = 𝓂.timings, quadratic_matrix_equation_solver = qme_solver, verbose = verbose)
+                Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; T = 𝓂.timings, quadratic_matrix_equation_solver = qme_solver, verbose = verbose, initial_guess = 𝓂.solution.perturbation.qme_solution)
+
+                𝓂.solution.perturbation.qme_solution = qme_sol
 
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
 
@@ -4593,6 +4601,7 @@ function solve!(𝓂::ℳ;
             end
             
             𝓂.solution.perturbation.first_order = perturbation_solution(S₁, state_update₁, state_update₁̂)
+            𝓂.solution.perturbation.qme_solution = qme_sol
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -7133,13 +7142,15 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂, timer = timer)# |> Matrix
 
-    𝐒₁, solved = calculate_first_order_solution(∇₁; T = TT, timer = timer)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = TT, timer = timer, initial_guess = 𝓂.solution.perturbation.qme_solution)
+
+    𝓂.solution.perturbation.qme_solution = qme_sol
 
     if !solved
         # println("NSSS not found")
         return TT, SS_and_pars, zeros(S, 0, 0), [state], false
     end
-    
+
     return TT, SS_and_pars, 𝐒₁, [state], solved
 end
 

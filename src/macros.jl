@@ -918,11 +918,12 @@ macro model(𝓂,ex...)
                         ],
 
                         solution(
-                            perturbation(   perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), (x,y)->nothing, nothing),
+                            perturbation(   perturbation_solution(zeros(0,0), (x,y)->nothing, nothing),
                                             second_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [], (x,y)->nothing, nothing),
                                             second_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [], (x,y)->nothing, nothing),
                                             third_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [], (x,y)->nothing, nothing),
                                             third_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [], (x,y)->nothing, nothing),
+                                            zeros(0,0),
                                             auxilliary_indices(Int[],Int[],Int[],Int[],Int[]),
                                             second_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
                                             third_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))

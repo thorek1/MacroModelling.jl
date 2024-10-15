@@ -7,7 +7,9 @@ function calculate_covariance(parameters::Vector{<: Real},
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
-    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
+
+    𝓂.solution.perturbation.qme_solution = qme_sol
 
     A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
 
@@ -40,8 +42,10 @@ function calculate_mean(parameters::Vector{T},
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
-    𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
     
+    𝓂.solution.perturbation.qme_solution = qme_sol
+
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
     
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; T = 𝓂.timings, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)

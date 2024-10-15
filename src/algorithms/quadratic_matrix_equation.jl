@@ -10,7 +10,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         B::AbstractMatrix{R}, 
                                         C::AbstractMatrix{R}, 
                                         T::timings; 
-                                        initial_guess::AbstractMatrix{R} = zeros(R,0,0),
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_solver::Symbol = :schur, 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where R <: Real
@@ -27,7 +27,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         ::Val{:schur}, 
                                         T::timings; 
-                                        initial_guess::AbstractMatrix{R} = zeros(R,0,0),
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where R <: Real
     @timeit_debug timer "Prepare indice" begin
@@ -133,15 +133,25 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         ::Val{:doubling}, 
                                         T::timings; 
-                                        initial_guess::AbstractMatrix{R} = zeros(R,0,0),
-                                        tol::AbstractFloat = eps(),
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        tol::AbstractFloat = 1e-12,
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
                                         max_iter::Int = 100) where R <: Real
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
     @timeit_debug timer "Invert B" begin
-    B̂ = ℒ.lu(B, check = false)
+
+    guess_provided = true
+
+    if length(initial_guess) == 0
+        guess_provided = false
+        initial_guess = zero(A)
+    end
+
+    B̄ = B + A * initial_guess
+
+    B̂ = ℒ.lu(B̄, check = false)
 
     if !ℒ.issuccess(B̂)
         return A, false
@@ -150,11 +160,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # Compute initial values X, Y, E, F
     ℒ.ldiv!(B̂, A)
     ℒ.ldiv!(B̂, C)
+
     E = C
     F = A
-    X = -E
+    X = -E - initial_guess
     Y = -F
-
     end # timeit_debug
     @timeit_debug timer "Prellocate" begin
 
@@ -238,7 +248,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         ℒ.ldiv!(fFI, temp3)
         ℒ.mul!(X_new, F, temp3)
         # X_new = F / fFI * X * E
-        if i > 5 Xtol = ℒ.norm(X_new) end
+        if i > 5 || guess_provided Xtol = ℒ.norm(X_new) end
         ℒ.axpy!(1, X, X_new)
         # X_new += X
 
@@ -250,14 +260,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         ℒ.ldiv!(fEI, X)
         ℒ.mul!(Y_new, E, X)
         # Y_new = E / fEI * Y * F
-        if i > 5 Ytol = ℒ.norm(Y_new) end
+        if i > 5 || guess_provided Ytol = ℒ.norm(Y_new) end
         ℒ.axpy!(1, Y, Y_new)
         # Y_new += Y
         
-        # println("Iter: $i; xtol: $(ℒ.norm(X_new - X)); ytol: $(ℒ.norm(Y_new - Y))")
+        # println("Iter: $i; xtol: $Xtol; ytol: $Ytol")
 
         # Check for convergence
-        if Xtol < tol && Ytol < tol
+        if Xtol < tol# || Ytol < tol # i % 2 == 0 && 
             if verbose println("Converged in $i iterations.") end
             solved = true
             break
@@ -275,6 +285,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     end
     end # timeit_debug
 
+    ℒ.axpy!(1, initial_guess, X_new)
+
     return X_new, solved
 end
 
@@ -285,6 +297,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         ::Val{:linear_time_iteration}, 
                                         T::timings; 
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         tol::AbstractFloat = 1e-8, # lower tol not possible for NAWM (and probably other models this size)
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
@@ -296,10 +309,13 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     F = similar(C)
     t = similar(C)
 
+    initial_guess = length(initial_guess) > 0 ? initial_guess : zero(A)
+
     end # timeit_debug
     @timeit_debug timer "Loop" begin
 
-    sol = @suppress begin speedmapping(zero(A); m! = (F̄, F) -> begin 
+    sol = @suppress begin 
+        speedmapping(initial_guess; m! = (F̄, F) -> begin 
             ℒ.mul!(t, A, F)
             ℒ.axpby!(-1, B, -1, t)
             t̂ = ℒ.lu!(t, check = false)
@@ -330,6 +346,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         ::Val{:quadratic_iteration}, 
                                         T::timings; 
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         tol::AbstractFloat = 1e-8, # lower tol not possible for NAWM (and probably other models this size)
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
@@ -345,9 +362,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     X̄ = similar(Ā)
     
     X² = similar(X)
-    
+
+    initial_guess = length(initial_guess) > 0 ? initial_guess : zero(A)
+
     sol = @suppress begin
-        speedmapping(zero(A); m! = (X̄, X) -> begin 
+        speedmapping(initial_guess; m! = (X̄, X) -> begin 
                                                 ℒ.mul!(X², X, X)
                                                 ℒ.mul!(X̄, Ā, X²)
                                                 ℒ.axpy!(1, C̄, X̄)
@@ -368,7 +387,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         B::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         T::timings; 
-                                        initial_guess::AbstractMatrix{R} = zeros(R,0,0),
+                                        initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         quadratic_matrix_equation_solver::Symbol = :schur, 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where {Z,S,N}
@@ -380,6 +399,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     X, solved = solve_quadratic_matrix_equation(Â, B̂, Ĉ, 
                                                 Val(quadratic_matrix_equation_solver), 
                                                 T; 
+                                                initial_guess = initial_guess,
                                                 timer = timer,
                                                 verbose = verbose)
 

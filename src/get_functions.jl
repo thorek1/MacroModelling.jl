@@ -880,7 +880,9 @@ function get_irf(𝓂::ℳ,
     
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)# |> Matrix
 								
-    sol_mat, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
+    
+    𝓂.solution.perturbation.qme_solution = qme_sol
 
     state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
 
@@ -1722,7 +1724,9 @@ function get_solution(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
-    𝐒₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
+    
+    𝓂.solution.perturbation.qme_solution = qme_sol
 
     if !solved
         if algorithm == :second_order
@@ -1850,8 +1854,10 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    𝑺₁, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
     
+    𝓂.solution.perturbation.qme_solution = qme_sol
+
     A = @views 𝑺₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[indexin(𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nVars),:]
     
     sort!(periods)
@@ -1993,8 +1999,10 @@ function get_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings)
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
     
+    𝓂.solution.perturbation.qme_solution = qme_sol
+
     variances_by_shock = zeros(𝓂.timings.nVars, 𝓂.timings.nExo)
 
     for i in 1:𝓂.timings.nExo

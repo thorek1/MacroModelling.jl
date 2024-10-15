@@ -2,7 +2,8 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
                                         T::timings, 
                                         quadratic_matrix_equation_solver::Symbol = :doubling,
                                         verbose::Bool = false,
-                                        timer::TimerOutput = TimerOutput())::Tuple{Matrix{Float64}, Bool}
+                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                        timer::TimerOutput = TimerOutput())::Tuple{Matrix{Float64}, Matrix{Float64}, Bool}
     @timeit_debug timer "Calculate 1st order solution" begin
     @timeit_debug timer "Preprocessing" begin
 
@@ -46,10 +47,11 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
                                             T, 
                                             quadratic_matrix_equation_solver = quadratic_matrix_equation_solver, 
                                             timer = timer,
+                                            initial_guess = initial_guess,
                                             verbose = verbose)
 
     if !solved
-        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), false
+        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
     end # timeit_debug
@@ -73,7 +75,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
-        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), false
+        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
@@ -98,7 +100,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     C = ℒ.lu!(∇₀, check = false)
     
     if !ℒ.issuccess(C)
-        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), false
+        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
     
     ℒ.ldiv!(C, ∇ₑ)
@@ -107,7 +109,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     end # timeit_debug
     end # timeit_debug
 
-    return hcat(A, ∇ₑ), true
+    return hcat(A, ∇ₑ), sol, true
 end
 
 
@@ -116,6 +118,7 @@ function rrule(::typeof(calculate_first_order_solution),
                 T::timings, 
                 quadratic_matrix_equation_solver::Symbol = :doubling,
                 verbose::Bool = false,
+                initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                 timer::TimerOutput = TimerOutput())
     # Forward pass to compute the output and intermediate values needed for the backward pass
     @timeit_debug timer "Calculate 1st order solution" begin
@@ -161,10 +164,11 @@ function rrule(::typeof(calculate_first_order_solution),
                                             T, 
                                             quadratic_matrix_equation_solver = quadratic_matrix_equation_solver, 
                                             timer = timer,
+                                            initial_guess = initial_guess,
                                             verbose = verbose)
 
     if !solved
-        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), false, x -> NoTangent(), NoTangent(), NoTangent()
+        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false, x -> NoTangent(), NoTangent(), NoTangent()
     end
 
     end # timeit_debug
@@ -188,7 +192,7 @@ function rrule(::typeof(calculate_first_order_solution),
     Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
-        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), false, x -> NoTangent(), NoTangent(), NoTangent()
+        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false, x -> NoTangent(), NoTangent(), NoTangent()
     end
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
@@ -216,7 +220,7 @@ function rrule(::typeof(calculate_first_order_solution),
     C = ℒ.lu!(∇₀, check = false)
     
     if !ℒ.issuccess(C)
-        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), false), x -> NoTangent(), NoTangent(), NoTangent()
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent()
     end
     
     ℒ.ldiv!(C, ∇̂ₑ)
@@ -261,7 +265,7 @@ function rrule(::typeof(calculate_first_order_solution),
         return NoTangent(), ∂∇₁, NoTangent()
     end
 
-    return (hcat(𝐒ᵗ, ∇̂ₑ), solved), first_order_solution_pullback
+    return (hcat(𝐒ᵗ, ∇̂ₑ), sol, solved), first_order_solution_pullback
 end
 
 
@@ -269,6 +273,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
                                         T::timings, 
                                         quadratic_matrix_equation_solver::Symbol = :doubling,
                                         verbose::Bool = false,
+                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                         timer::TimerOutput = TimerOutput())::Tuple{Matrix{ℱ.Dual{Z,S,N}},Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
 
@@ -277,9 +282,10 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
     B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     
-    𝐒₁, solved = calculate_first_order_solution(ℱ.value.(∇̂₁); 
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(ℱ.value.(∇̂₁); 
                                                 T = T, 
                                                 verbose = verbose,
+                                                initial_guess = initial_guess,
                                                 quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
                                                 timer = timer)
 
@@ -330,7 +336,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
 
     B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
     
-    return hcat(x, B), solved
+    return hcat(x, B), qme_sol, solved
 end 
 
 
