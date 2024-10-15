@@ -7135,6 +7135,11 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     𝐒₁, solved = calculate_first_order_solution(∇₁; T = TT, timer = timer)
 
+    if !solved
+        # println("NSSS not found")
+        return TT, SS_and_pars, zeros(S, 0, 0), [state], false
+    end
+    
     return TT, SS_and_pars, 𝐒₁, [state], solved
 end
 
