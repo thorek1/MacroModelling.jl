@@ -398,7 +398,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
 
     solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, verbose = verbose)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -2962,6 +2962,7 @@ function get_loglikelihood(𝓂::ℳ,
     presample_periods::Int = 0,
     initial_covariance::Symbol = :theoretical,
     filter_algorithm::Symbol = :LagrangeNewton,
+    quadratic_matrix_equation_solver::Symbol = :doubling, 
     sylvester_algorithm::Symbol = :bicgstab, 
     tol::AbstractFloat = 1e-12, 
     timer::TimerOutput = TimerOutput(),
@@ -3001,7 +3002,14 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Get relevant steady state and solution" begin
 
-    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, tol, timer = timer, sylvester_algorithm = sylvester_algorithm, verbose = verbose)
+    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), 
+                                                                                    parameter_values, 
+                                                                                    𝓂, 
+                                                                                    tol, 
+                                                                                    timer = timer, 
+                                                                                    quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                                                    sylvester_algorithm = sylvester_algorithm, 
+                                                                                    verbose = verbose)
 
     # end # timeit_debug
 
