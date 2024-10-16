@@ -428,7 +428,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             sylvester_algorithm = sylvester_algorithm, 
                                             initial_guess = initial_guess,
                                             verbose = verbose, 
-                                            tol = tol, 
+                                            # tol = tol, 
                                             timer = timer)
 
     end # timeit_debug
@@ -441,7 +441,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                                 initial_guess = initial_guess,
                                                 sylvester_algorithm = :doubling, 
                                                 verbose = verbose, 
-                                                tol = tol, 
+                                                # tol = tol, 
                                                 timer = timer)
     end
 
@@ -545,7 +545,7 @@ function rrule(::typeof(calculate_second_order_solution),
                                             sylvester_algorithm = sylvester_algorithm, 
                                             initial_guess = initial_guess,
                                             verbose = verbose, 
-                                            tol = tol, 
+                                            # tol = tol, 
                                             timer = timer)
 
     end # timeit_debug
@@ -909,9 +909,9 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
         𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                                 sylvester_algorithm = :doubling, 
                                                 verbose = verbose, 
-                                                initial_guess = initial_guess,
-                                                timer = timer, 
-                                                tol = tol)
+                                                initial_guess = initial_guess, 
+                                                # tol = tol,
+                                                timer = timer)
     end
 
     if !solved
