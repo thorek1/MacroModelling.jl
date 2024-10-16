@@ -3920,7 +3920,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                     verbose = verbose, 
                                                     timer = timer)
 
-    𝓂.solution.perturbation.second_order_solution = 𝐒₂
+    if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
@@ -4243,7 +4243,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
     
-    𝓂.solution.perturbation.second_order_solution = 𝐒₂
+    if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
@@ -4266,7 +4266,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
-    𝓂.solution.perturbation.third_order_solution = 𝐒₃
+    if eltype(𝐒₃) == Float64 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
     𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 

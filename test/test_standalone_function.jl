@@ -80,6 +80,11 @@ first_order_solution,
 RBC_CME.solution.perturbation.second_order_auxilliary_matrices; 
 T = T)
 
+
+second_order_solution *= RBC_CME.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+
+second_order_solution = sparse(second_order_solution)
+
 third_order_solution, solved3 = calculate_third_order_solution(∇₁, 
 ∇₂, 
 ∇₃,
@@ -88,6 +93,10 @@ second_order_solution,
 RBC_CME.solution.perturbation.second_order_auxilliary_matrices, 
 RBC_CME.solution.perturbation.third_order_auxilliary_matrices; 
 T = T)
+
+third_order_solution *= RBC_CME.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
+
+third_order_solution = sparse(third_order_solution)
 
 @testset verbose = true "SS, derivatives of model at SS and solutions" begin
     NSSS =  [1.0
