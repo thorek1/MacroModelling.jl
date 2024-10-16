@@ -11,7 +11,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        quadratic_matrix_equation_solver::Symbol = :schur, 
+                                        quadratic_matrix_equation_solver::Symbol = :doubling, 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where R <: Real
     solve_quadratic_matrix_equation(A, B, C, 
@@ -134,7 +134,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         ::Val{:doubling}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        tol::AbstractFloat = 1e-12,
+                                        tol::AbstractFloat = eps(),
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
                                         max_iter::Int = 100) where R <: Real
@@ -162,9 +162,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     ℒ.ldiv!(B̂, A)
     ℒ.ldiv!(B̂, C)
 
-    E = C + initial_guess
+    E = C
     F = A
-    X = -E
+    X = -E - initial_guess
     Y = -F
     end # timeit_debug
     @timeit_debug timer "Prellocate" begin
@@ -269,7 +269,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # println("Iter: $i; xtol: $Xtol; ytol: $Ytol")
 
         # Check for convergence
-        if Xtol < tol && Ytol < tol # i % 2 == 0 && 
+        if Xtol < tol# && Yreltol < tol # i % 2 == 0 && 
             solved = true
             iter = i
             break
@@ -392,7 +392,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
-                                        quadratic_matrix_equation_solver::Symbol = :schur, 
+                                        quadratic_matrix_equation_solver::Symbol = :doubling, 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
