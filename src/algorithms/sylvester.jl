@@ -150,7 +150,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
         droptol!(𝐀, eps())
         droptol!(𝐁, eps())
 
-        if i > 10# && i % 2 == 0
+        if i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -209,7 +209,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
         droptol!(𝐀, eps())
         droptol!(𝐁, eps())
 
-        if i > 10# && i % 2 == 0
+        if i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -289,7 +289,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
         droptol!(𝐁, eps())
         end # timeit_debug
 
-        if i > 10# && i % 2 == 0
+        if i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -355,7 +355,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
         droptol!(𝐀, eps())
         # droptol!(𝐁, eps())
 
-        if i > 10# && i % 2 == 0
+        if i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -419,7 +419,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
         # droptol!(𝐀, eps())
         # droptol!(𝐁, eps())
 
-        if i > 10# && i % 2 == 0
+        if i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -482,7 +482,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
         # droptol!(𝐀, eps())
         droptol!(𝐁, eps())
 
-        if i > 10# && i % 2 == 0
+        if i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
@@ -554,7 +554,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
         # droptol!(𝐀, eps())
         # droptol!(𝐁, eps())
 
-        if i > 10# && i % 2 == 0
+        if i % 2 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
                 iters = i
                 break 
