@@ -11,15 +11,26 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        quadratic_matrix_equation_solver::Symbol = :doubling, 
+                                        quadratic_matrix_equation_solver::Symbol = :schur, 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where R <: Real
-    solve_quadratic_matrix_equation(A, B, C, 
+    sol, solved = solve_quadratic_matrix_equation(A, B, C, 
                                     Val(quadratic_matrix_equation_solver), 
                                     T; 
                                     initial_guess = initial_guess,
                                     timer = timer,
                                     verbose = verbose)
+
+    if !solved && !(quadratic_matrix_equation_solver == :schur) # try schur if previous one didnt solve it
+        sol, solved = solve_quadratic_matrix_equation(A, B, C, 
+                                                        Val(:schur), 
+                                                        T; 
+                                                        initial_guess = initial_guess,
+                                                        timer = timer,
+                                                        verbose = verbose)
+    end
+
+    return sol, solved
 end
 
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
