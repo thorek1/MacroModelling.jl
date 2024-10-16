@@ -11,7 +11,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        quadratic_matrix_equation_solver::Symbol = :schur, 
+                                        quadratic_matrix_equation_solver::Symbol = :doubling, 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where R <: Real
     sol, solved = solve_quadratic_matrix_equation(A, B, C, 
@@ -161,6 +161,13 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         initial_guess = zero(A)
     end
 
+    guess_ϵ = ℒ.norm(A * initial_guess ^ 2 + B * initial_guess + C) / ℒ.norm(C)
+
+    if guess_ϵ < 1e-8
+        if verbose println("Quadratic matrix equation solver: doubling - used previous solution. Reached relative tol $guess_ϵ") end
+        return initial_guess, true
+    end
+
     B̄ = B + A * initial_guess
 
     B̂ = ℒ.lu(B̄, check = false)
@@ -170,11 +177,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     end
 
     # Compute initial values X, Y, E, F
-    ℒ.ldiv!(B̂, A)
     ℒ.ldiv!(B̂, C)
-
+    ℒ.ldiv!(B̂, A)
     E = C
     F = A
+
+    # E = B̂ \ C
+    # F = B̂ \ A
+
     X = -E - initial_guess
     Y = -F
     end # timeit_debug
@@ -261,7 +271,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         ℒ.ldiv!(fFI, temp3)
         ℒ.mul!(X_new, F, temp3)
         # X_new = F / fFI * X * E
-        if i > 5 || guess_provided Xtol = ℒ.norm(X_new) end
+        if i > 5 || guess_provided 
+            Xtol = ℒ.norm(X_new) 
+            # relXtol = Xtol / ℒ.norm(X) 
+        end
         ℒ.axpy!(1, X, X_new)
         # X_new += X
 
@@ -273,11 +286,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         ℒ.ldiv!(fEI, X)
         ℒ.mul!(Y_new, E, X)
         # Y_new = E / fEI * Y * F
-        if i > 5 || guess_provided Ytol = ℒ.norm(Y_new) end
+        if i > 5 || guess_provided 
+            Ytol = ℒ.norm(Y_new) 
+            # relYtol = Ytol / ℒ.norm(Y) 
+        end
         ℒ.axpy!(1, Y, Y_new)
         # Y_new += Y
         
-        # println("Iter: $i; xtol: $Xtol; ytol: $Ytol")
+        # println("Iter: $i; xtol: $Xtol; ytol: $Ytol; rel ytol: $relYtol; rel xtol: $relXtol")
 
         # Check for convergence
         if Xtol < tol# && Yreltol < tol # i % 2 == 0 && 
