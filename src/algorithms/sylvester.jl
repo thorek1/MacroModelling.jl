@@ -41,11 +41,12 @@ function solve_sylvester_equation(A::M,
     x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, Val(sylvester_algorithm), 
                                                         initial_guess = initial_guess, 
                                                         tol = tol, 
+                                                        verbose = verbose,
                                                         timer = timer)
 
     end # timeit_debug
 
-    if verbose
+    if verbose && i != 0
         println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
 
@@ -137,12 +138,26 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false,
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
+    # guess_provided = true
+    
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
+    
     𝐀  = copy(A)
     𝐁  = copy(B)
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = copy(C)
+    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
+
+    if ℒ.norm(𝐂) / ℒ.norm(C) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂) / ℒ.norm(C))") end
+        return initial_guess, true, 0, 0.0
+    end
+
     # ℒ.rmul!(𝐂, -1)
 
     max_iter = 500
@@ -168,11 +183,15 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
         𝐂 = 𝐂¹
     end
 
-    𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
+
+    𝐂 += initial_guess
+
+    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / ℒ.norm(C)
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -185,14 +204,28 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false,
                                     tol::Float64 = 1e-12)
-                                    # see doi:10.1016/j.aml.2009.01.012
+                                    # see doi:10.1016/j.aml.2009.01.012    
+    # guess_provided = true
+
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
+
     𝐀  = copy(A)    
     𝐀¹ = copy(A)
     𝐁  = copy(B)
     𝐁¹ = copy(B)
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = copy(C)
+    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
+
+    if ℒ.norm(𝐂) / ℒ.norm(C) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂) / ℒ.norm(C))") end
+        return initial_guess, true, 0, 0.0
+    end
+
     # ℒ.rmul!(𝐂, -1)
     𝐂¹  = similar(𝐂)
     𝐂B = copy(C)
@@ -227,16 +260,20 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
         copy!(𝐂,𝐂¹)
     end
 
-    ℒ.mul!(𝐂B, 𝐂, 𝐁)
-    ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
-    ℒ.axpy!(1, 𝐂, 𝐂¹)
-    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+    # ℒ.mul!(𝐂B, 𝐂, 𝐁)
+    # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+    # ℒ.axpy!(1, 𝐂, 𝐂¹)
+    # # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
+    
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
 
-    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+    ℒ.axpy!(1, initial_guess, 𝐂)
+
+    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / ℒ.norm(C)
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -250,20 +287,34 @@ function solve_sylvester_equation(  A::Matrix{Float64},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false,
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
     @timeit_debug timer "Doubling solve" begin
     @timeit_debug timer "Setup buffers" begin
+
+    # guess_provided = true
+
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
 
     𝐀  = copy(A)    
     𝐀¹ = copy(A)
     𝐁  = copy(B)
     # 𝐁¹ = similar(B)
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = copy(C)
+    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
+
+    if ℒ.norm(𝐂) / ℒ.norm(C) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂) / ℒ.norm(C))") end
+        return initial_guess, true, 0, 0.0
+    end
+
     # ℒ.rmul!(𝐂, -1)
     𝐂¹  = similar(𝐂)
-    𝐂B = copy(C)
+    𝐂B = similar(C)
 
     max_iter = 500
 
@@ -310,16 +361,21 @@ function solve_sylvester_equation(  A::Matrix{Float64},
     end
 
     @timeit_debug timer "Finalise" begin
-    ℒ.mul!(𝐂B, 𝐂, 𝐁)
-    ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
-    ℒ.axpy!(1, 𝐂, 𝐂¹)
-    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+    # ℒ.mul!(𝐂B, 𝐂, 𝐁)
+    # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+    # ℒ.axpy!(1, 𝐂, 𝐂¹)
+    # # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
-    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+
+    𝐂 += initial_guess
+
+    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / ℒ.norm(C)
+
     end # timeit_debug
     end # timeit_debug
 
@@ -333,14 +389,28 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false,
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012  On Smith-type iterative algorithms for the Stein matrix equation
+    # guess_provided = true
+
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
+
     𝐀  = copy(A)    
     # 𝐀¹ = copy(A)
     𝐁  = copy(B)
     𝐁¹ = copy(B)
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = copy(C)
+    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
+
+    if ℒ.norm(𝐂) / ℒ.norm(C) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂) / ℒ.norm(C))") end
+        return initial_guess, true, 0, 0.0
+    end
+
     # ℒ.rmul!(𝐂, -1)
     𝐂¹ = similar(𝐂)
     𝐂B = copy(C)
@@ -373,16 +443,20 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
         copy!(𝐂,𝐂¹)
     end
 
-    ℒ.mul!(𝐂B, 𝐂, 𝐁)
-    ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
-    ℒ.axpy!(1, 𝐂, 𝐂¹)
+    # ℒ.mul!(𝐂B, 𝐂, 𝐁)
+    # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+    # ℒ.axpy!(1, 𝐂, 𝐂¹)
     # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
-    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+
+    𝐂 += initial_guess
+
+    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / ℒ.norm(C)
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -395,14 +469,28 @@ function solve_sylvester_equation(  A::Matrix{Float64},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false,
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
+    # guess_provided = true
+
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
+
     𝐀  = copy(A)    
     𝐀¹ = copy(A)
     𝐁  = copy(B)
     𝐁¹ = copy(B)
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = copy(C)
+    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
+
+    if ℒ.norm(𝐂) / ℒ.norm(C) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂) / ℒ.norm(C))") end
+        return initial_guess, true, 0, 0.0
+    end
+
     # ℒ.rmul!(𝐂, -1)
     𝐂¹ = similar(𝐂)
     𝐂B = copy(C)
@@ -441,11 +529,15 @@ function solve_sylvester_equation(  A::Matrix{Float64},
     # ℒ.mul!(𝐂B, 𝐂, 𝐁)
     # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
     # ℒ.axpy!(1, 𝐂, 𝐂¹)
-    𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
+
+    𝐂 += initial_guess
+
+    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / ℒ.norm(C)
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -458,14 +550,28 @@ function solve_sylvester_equation(  A::Matrix{Float64},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false,
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
+    # guess_provided = true
+
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
+
     𝐀  = copy(A)    
     𝐀¹ = copy(A)
     𝐁  = copy(B)
     # 𝐁¹ = copy(B)
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = copy(C)
+    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
+
+    if ℒ.norm(𝐂) / ℒ.norm(C) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂) / ℒ.norm(C))") end
+        return initial_guess, true, 0, 0.0
+    end
+
     # ℒ.rmul!(𝐂, -1)
     𝐂¹ = similar(𝐂)
     𝐂B = copy(C)
@@ -504,11 +610,15 @@ function solve_sylvester_equation(  A::Matrix{Float64},
     # ℒ.mul!(𝐂B, 𝐂, 𝐁)
     # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
     # ℒ.axpy!(1, 𝐂, 𝐂¹)
-    𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
+
+    𝐂 += initial_guess
+
+    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / ℒ.norm(C)
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -520,16 +630,30 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false,
                                     tol::Float64 = 1e-12)
                                     # see doi:10.1016/j.aml.2009.01.012
     @timeit_debug timer "Setup buffers" begin
-                                        
+    
+    # guess_provided = true
+
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
+                                  
     𝐀  = copy(A)    
     𝐀¹ = copy(A)
     𝐁  = copy(B)
     𝐁¹ = copy(B)
     # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = copy(C)
+    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
+
+    if ℒ.norm(𝐂) / ℒ.norm(C) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂) / ℒ.norm(C))") end
+        return initial_guess, true, 0, 0.0
+    end
+
     # ℒ.rmul!(𝐂, -1)
     𝐂¹  = similar(𝐂)
     𝐂B = copy(C)
@@ -576,16 +700,20 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
 
     @timeit_debug timer "Finalise" begin
         
-    ℒ.mul!(𝐂B, 𝐂, 𝐁)
-    ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
-    ℒ.axpy!(1, 𝐂, 𝐂¹)
+    # ℒ.mul!(𝐂B, 𝐂, 𝐁)
+    # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+    # ℒ.axpy!(1, 𝐂, 𝐂¹)
     # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
 
-    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
-    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+
+    ℒ.axpy!(1, initial_guess, 𝐂)
+
+    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / ℒ.norm(C)
 
     end # timeit_debug
 
@@ -599,20 +727,39 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     ::Val{:sylvester};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
-                                    tol::AbstractFloat = 1e-12)
+                                    verbose::Bool = false,
+                                    tol::AbstractFloat = 1e-12)                                 
+    # guess_provided = true
+
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
+      
+    𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
+    
+    if ℒ.norm(𝐂¹) / ℒ.norm(C) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂¹) / ℒ.norm(C))") end
+        return initial_guess, true, 0, 0.0
+    end
+
     𝐂 = try 
-        MatrixEquations.sylvd(-A, B, C)
+        MatrixEquations.sylvd(-A, B, 𝐂¹)
     catch
         return C, false, 0, 1.0
     end
 
-    𝐂¹ = A * 𝐂 * B + C
+    # 𝐂¹ = A * 𝐂 * B + C
 
-    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
-    
-    return 𝐂, reached_tol < tol, 0, reached_tol # return info on convergence
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
+
+    𝐂 += initial_guess
+
+    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / ℒ.norm(C)
+
+    return 𝐂, reached_tol < tol, -1, reached_tol # return info on convergence
 end
 
 
@@ -622,8 +769,24 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     ::Val{:bicgstab};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false,
                                     tol::Float64 = 1e-8)
     @timeit_debug timer "Preallocate matrices" begin
+
+    # guess_provided = true
+
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
+
+    𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
+
+    if ℒ.norm(𝐂¹) / ℒ.norm(C) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂¹) / ℒ.norm(C))") end
+        return initial_guess, true, 0, 0.0
+    end
+
     tmp̄ = zero(C)
     𝐗 = zero(C)
     end # timeit_debug  
@@ -682,7 +845,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     @timeit_debug timer "BICGSTAB solve" begin
     # if length(init) == 0
         # 𝐂, info = Krylov.bicgstab(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
-        𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], rtol = tol / 10, atol = tol / 10)#, M = precond)
+        𝐂, info = Krylov.bicgstab(sylvester, [vec(𝐂¹);], rtol = tol / 10, atol = tol / 10)#, M = precond)
     # else
     #     𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
@@ -696,12 +859,15 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     ℒ.mul!(tmp̄, A, 𝐗 * B)
     ℒ.axpy!(1, C, tmp̄)
 
-    denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
+    # denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
 
     ℒ.axpy!(-1, 𝐗, tmp̄)
 
-    reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
-    
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
+    𝐗 += initial_guess
+
+    reached_tol = ℒ.norm(A * 𝐗 * B + C - 𝐗) / ℒ.norm(C)
+
     end # timeit_debug
     
     if reached_tol > tol || !isfinite(reached_tol)
@@ -717,12 +883,16 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
         ℒ.mul!(tmp̄, A, 𝐗 * B)
         ℒ.axpy!(1, C, tmp̄)
     
-        denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
+        # denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
     
         ℒ.axpy!(-1, 𝐗, tmp̄)
     
-        reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
+        # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
     
+        𝐗 += initial_guess
+
+        reached_tol = ℒ.norm(A * 𝐗 * B + C - 𝐗) / ℒ.norm(C)
+
         end # timeit_debug
     end
 
@@ -740,8 +910,25 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     ::Val{:gmres};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false,
                                     tol::Float64 = 1e-8)
     @timeit_debug timer "Preallocate matrices" begin
+
+    # guess_provided = true
+
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
+
+    𝐂¹  = A * initial_guess * B + C - initial_guess 
+    # 𝐂¹  = copy(C)
+
+    if ℒ.norm(𝐂¹) / ℒ.norm(C) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂¹) / ℒ.norm(C))") end
+        return initial_guess, true, 0, 0.0
+    end
+
     tmp̄ = similar(C)
     𝐗 = similar(C)
     end # timeit_debug   
@@ -790,7 +977,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     @timeit_debug timer "GMRES solve" begin
     # if length(init) == 0
-        𝐂, info = Krylov.gmres(sylvester, [vec(C);], rtol = tol / 10, atol = tol / 10)#, M = precond)
+        𝐂, info = Krylov.gmres(sylvester, [vec(𝐂¹);], rtol = tol / 100, atol = tol / 100)#, M = precond)
     # else
     #     𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)#, restart = true, M = precond)
     # end
@@ -803,14 +990,18 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     ℒ.mul!(tmp̄, A, 𝐗 * B)
     ℒ.axpy!(1, C, tmp̄)
 
-    denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
+    # denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
 
     ℒ.axpy!(-1, 𝐗, tmp̄)
 
-    reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
+
+    𝐗 += initial_guess
+
+    reached_tol = ℒ.norm(A * 𝐗 * B + C - 𝐗) / ℒ.norm(C)
 
     end # timeit_debug
-
+    
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
 
@@ -821,11 +1012,26 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     ::Val{:iterative};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false,
                                     tol::AbstractFloat = 1e-12)
-    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = copy(C)
-    𝐂¹ = copy(C)
-    𝐂B = copy(C)
+    # guess_provided = true
+
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
+
+    𝐂  = A * initial_guess * B + C - initial_guess
+    𝐂⁰  = copy(𝐂)
+    # 𝐂  = copy(C)
+    
+    if ℒ.norm(𝐂) / ℒ.norm(C) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂) / ℒ.norm(C))") end
+        return initial_guess, true, 0, 0.0
+    end
+
+    𝐂¹ = similar(C)
+    𝐂B = similar(C)
     
     max_iter = 10000
     
@@ -835,7 +1041,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
         @timeit_debug timer "Update" begin
         ℒ.mul!(𝐂B, 𝐂, B)
         ℒ.mul!(𝐂¹, A, 𝐂B)
-        ℒ.axpy!(1, C, 𝐂¹)
+        ℒ.axpy!(1, 𝐂⁰, 𝐂¹)
     
         if i % 10 == 0
             if isapprox(𝐂¹, 𝐂, rtol = tol)
@@ -848,16 +1054,20 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
         end # timeit_debug
     end
 
-    ℒ.mul!(𝐂B, 𝐂, B)
-    ℒ.mul!(𝐂¹, A, 𝐂B)
-    ℒ.axpy!(1, C, 𝐂¹)
+    # ℒ.mul!(𝐂B, 𝐂, B)
+    # ℒ.mul!(𝐂¹, A, 𝐂B)
+    # ℒ.axpy!(1, C, 𝐂¹)
 
-    denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
-    reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
-    
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+
+    𝐂 += initial_guess
+
+    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / ℒ.norm(C)
+
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
@@ -868,9 +1078,22 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     ::Val{:speedmapping};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false,
                                     tol::AbstractFloat = 1e-12)
-    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = copy(C)
+    # guess_provided = true
+
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
+
+    𝐂  = A * initial_guess * B + C - initial_guess 
+    # 𝐂 = copy(C)
+
+    if ℒ.norm(𝐂) / ℒ.norm(C) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂) / ℒ.norm(C))") end
+        return initial_guess, true, 0, 0.0
+    end
 
     if !(C isa DenseMatrix)
         C = collect(C)
@@ -882,8 +1105,14 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
             m! = (X, x) -> begin
                 ℒ.mul!(CB, x, B)
                 ℒ.mul!(X, A, CB)
-                ℒ.axpy!(1, C, X)
+                ℒ.axpy!(1, 𝐂, X)
             end, stabilize = false, maps_limit = 10000, tol = tol)
 
-    return soll.minimizer, soll.converged, soll.maps, soll.norm_∇
+    𝐂 = soll.minimizer
+
+    𝐂 += initial_guess
+
+    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / ℒ.norm(C)
+
+    return 𝐂, reached_tol < tol, soll.maps, reached_tol
 end
