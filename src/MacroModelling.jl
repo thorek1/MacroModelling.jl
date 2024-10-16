@@ -3914,10 +3914,17 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; 
                                                     T = 𝓂.timings, 
+                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     # sylvester_algorithm = sylvester_algorithm, 
                                                     sylvester_algorithm = :doubling, # hard code doubling
                                                     verbose = verbose, 
                                                     timer = timer)
+
+    𝓂.solution.perturbation.second_order_solution = 𝐒₂
+
+    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+
+    𝐒₂ = sparse(𝐒₂)
 
     # end # timeit_debug
 
@@ -4222,16 +4229,25 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; 
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
+                                                    𝓂.solution.perturbation.second_order_auxilliary_matrices; 
                                                     T = 𝓂.timings, tol = tol, 
+                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     # sylvester_algorithm = sylvester_algorithm, 
                                                     sylvester_algorithm = :doubling, # doubling will always be faster here
                                                     verbose= verbose, 
                                                     timer = timer)
+
     if !solved2
         if verbose println("2nd order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
+    
+    𝓂.solution.perturbation.second_order_solution = 𝐒₂
+
+    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+
+    𝐒₂ = sparse(𝐒₂)
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂, timer = timer)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
             
@@ -4239,6 +4255,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
                                                 𝓂.solution.perturbation.third_order_auxilliary_matrices; 
                                                 T = 𝓂.timings, 
+                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 sylvester_algorithm = sylvester_algorithm, 
                                                 tol = tol, 
                                                 verbose = verbose, 
@@ -4248,6 +4265,12 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         if verbose println("3rd order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
+
+    𝓂.solution.perturbation.third_order_solution = 𝐒₃
+
+    𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
+
+    𝐒₃ = sparse(𝐒₃)
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 

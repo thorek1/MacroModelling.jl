@@ -195,14 +195,14 @@ struct perturbation_solution
 end
 
 struct second_order_perturbation_solution
-    solution_matrix::SparseMatrixCSC{Float64}
+    # solution_matrix::SparseMatrixCSC{Float64}
     stochastic_steady_state::Vector{Float64}
     state_update::Function
     state_update_obc::Union{Function,Nothing}
 end
 
 struct third_order_perturbation_solution
-    solution_matrix::SparseMatrixCSC{Float64}
+    # solution_matrix::SparseMatrixCSC{Float64}
     stochastic_steady_state::Vector{Float64}
     state_update::Function
     state_update_obc::Union{Function,Nothing}
@@ -215,6 +215,8 @@ mutable struct perturbation
     third_order::third_order_perturbation_solution
     pruned_third_order::third_order_perturbation_solution
     qme_solution::Matrix{Float64}
+    second_order_solution::AbstractMatrix{Float64}
+    third_order_solution::AbstractMatrix{Float64}
     auxilliary_indices::auxilliary_indices
     second_order_auxilliary_matrices::second_order_auxilliary_matrices
     third_order_auxilliary_matrices::third_order_auxilliary_matrices

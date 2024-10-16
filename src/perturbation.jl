@@ -348,10 +348,11 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             𝑺₁::AbstractMatrix{S},#first order solution
                                             M₂::second_order_auxilliary_matrices;  # aux matrices
                                             T::timings,
+                                            initial_guess::AbstractMatrix{Float64} = zeros(0,0),
                                             sylvester_algorithm::Symbol = :doubling,
                                             tol::AbstractFloat = eps(),
                                             timer::TimerOutput = TimerOutput(),
-                                            verbose::Bool = false)::Tuple{<: AbstractSparseMatrix{S}, Bool} where S <: Real
+                                            verbose::Bool = false)::Tuple{<: AbstractMatrix{S}, Bool} where S <: Real
     @timeit_debug timer "Calculate second order solution" begin
 
     # inspired by Levintal
@@ -425,6 +426,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     𝐒₂, solved = solve_sylvester_equation(A, B, C, 
                                             sylvester_algorithm = sylvester_algorithm, 
+                                            initial_guess = initial_guess,
                                             verbose = verbose, 
                                             tol = tol, 
                                             timer = timer)
@@ -436,6 +438,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
         𝐒₂, solved = solve_sylvester_equation(A, B, C, 
                                                 # init = 𝐒₂, 
                                                 # sylvester_algorithm = :gmres, 
+                                                initial_guess = initial_guess,
                                                 sylvester_algorithm = :doubling, 
                                                 verbose = verbose, 
                                                 tol = tol, 
@@ -445,9 +448,9 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     end # timeit_debug
     @timeit_debug timer "Post-process" begin
 
-    𝐒₂ *= M₂.𝐔₂
+    # 𝐒₂ *= M₂.𝐔₂
 
-    𝐒₂ = sparse(𝐒₂)
+    # 𝐒₂ = sparse(𝐒₂)
 
     if !solved
         return 𝐒₂, false
@@ -468,6 +471,7 @@ function rrule(::typeof(calculate_second_order_solution),
                     𝑺₁::AbstractMatrix{<: Real},#first order solution
                     M₂::second_order_auxilliary_matrices;  # aux matrices
                     T::timings,
+                    initial_guess::AbstractMatrix{Float64} = zeros(0,0),
                     sylvester_algorithm::Symbol = :doubling,
                     tol::AbstractFloat = eps(),
                     timer::TimerOutput = TimerOutput(),
@@ -539,6 +543,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
     𝐒₂, solved = solve_sylvester_equation(A, B, C, 
                                             sylvester_algorithm = sylvester_algorithm, 
+                                            initial_guess = initial_guess,
                                             verbose = verbose, 
                                             tol = tol, 
                                             timer = timer)
@@ -582,7 +587,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
         ∂𝐒₂ = ∂𝐒₂_solved[1]
         
-        ∂𝐒₂ *= 𝐔₂t
+        # ∂𝐒₂ *= 𝐔₂t
 
         @timeit_debug timer "Sylvester" begin
 
@@ -710,7 +715,8 @@ function rrule(::typeof(calculate_second_order_solution),
     end
     
 
-    return (sparse(𝐒₂ * M₂.𝐔₂), solved), second_order_solution_pullback
+    # return (sparse(𝐒₂ * M₂.𝐔₂), solved), second_order_solution_pullback
+    return (𝐒₂, solved), second_order_solution_pullback
 end
 
 
@@ -723,6 +729,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxilliary_matrices;  # aux matrices third order
                                             T::timings,
+                                            initial_guess::AbstractMatrix{Float64} = zeros(0,0),
                                             sylvester_algorithm::Symbol = :bicgstab,
                                             timer::TimerOutput = TimerOutput(),
                                             tol::AbstractFloat = 1e-12, # sylvester tol
@@ -890,6 +897,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                             sylvester_algorithm = sylvester_algorithm, 
+                                            initial_guess = initial_guess,
                                             verbose = verbose, 
                                             # tol = tol, 
                                             timer = timer)
@@ -901,6 +909,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
         𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                                 sylvester_algorithm = :doubling, 
                                                 verbose = verbose, 
+                                                initial_guess = initial_guess,
                                                 timer = timer, 
                                                 tol = tol)
     end
@@ -912,10 +921,9 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     end # timeit_debug
     @timeit_debug timer "Post-process" begin
 
-    𝐒₃ *= M₃.𝐔₃
+    # 𝐒₃ *= M₃.𝐔₃
 
-    𝐒₃ = sparse(𝐒₃)
-
+    # 𝐒₃ = sparse(𝐒₃)
 
     end # timeit_debug
     end # timeit_debug
@@ -935,6 +943,7 @@ function rrule(::typeof(calculate_third_order_solution),
                 M₂::second_order_auxilliary_matrices,  # aux matrices second order
                 M₃::third_order_auxilliary_matrices;  # aux matrices third order
                 T::timings,
+                initial_guess::AbstractMatrix{Float64} = zeros(0,0),
                 sylvester_algorithm::Symbol = :bicgstab,
                 timer::TimerOutput = TimerOutput(),
                 tol::AbstractFloat = eps(),
@@ -1107,6 +1116,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                             sylvester_algorithm = sylvester_algorithm, 
+                                            initial_guess = initial_guess,
                                             verbose = verbose, 
                                             # tol = tol, 
                                             timer = timer)
@@ -1117,6 +1127,7 @@ function rrule(::typeof(calculate_third_order_solution),
     if !solved
         𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                                 sylvester_algorithm = :doubling, 
+                                                initial_guess = initial_guess,
                                                 verbose = verbose,
                                                 # tol = tol,
                                                 timer = timer)
@@ -1212,7 +1223,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
         ∂𝐒₃ = ∂𝐒₃_solved[1]
 
-        ∂𝐒₃ *= 𝐔₃t
+        # ∂𝐒₃ *= 𝐔₃t
         
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₃, 
                                                 sylvester_algorithm = sylvester_algorithm, 
@@ -1448,6 +1459,6 @@ function rrule(::typeof(calculate_third_order_solution),
         return NoTangent(), ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
-    return (𝐒₃ * M₃.𝐔₃, solved), third_order_solution_pullback
+    return (𝐒₃, solved), third_order_solution_pullback
 end
 
