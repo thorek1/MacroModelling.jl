@@ -134,7 +134,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         ::Val{:doubling}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        tol::AbstractFloat = eps(),
+                                        tol::AbstractFloat = 1e-12,
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
                                         max_iter::Int = 100) where R <: Real
