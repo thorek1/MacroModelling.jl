@@ -56,7 +56,7 @@ function calculate_mean(parameters::Vector{T},
                                                 tol = tol, 
                                                 verbose = verbose)
 
-    if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+    if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
@@ -165,7 +165,7 @@ function calculate_second_order_moments(
                                                 sylvester_algorithm = sylvester_algorithm, 
                                                 verbose = verbose)
 
-    if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+    if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
@@ -291,7 +291,7 @@ function calculate_third_order_moments(parameters::Vector{T},
                                                 tol = tol, 
                                                 verbose= verbose)
 
-    if eltype(𝐒₃) == Float64 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
+    if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
     𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 

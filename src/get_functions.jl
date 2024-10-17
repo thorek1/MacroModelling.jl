@@ -1746,7 +1746,7 @@ function get_solution(𝓂::ℳ,
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     T = 𝓂.timings, tol = tol)
 
-        𝓂.solution.perturbation.second_order_solution = 𝐒₂
+        if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
         𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
@@ -1761,7 +1761,7 @@ function get_solution(𝓂::ℳ,
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     T = 𝓂.timings, tol = tol)
     
-        𝓂.solution.perturbation.second_order_solution = 𝐒₂
+        if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
         𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
@@ -1776,8 +1776,8 @@ function get_solution(𝓂::ℳ,
                                                     initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                     T = 𝓂.timings, tol = tol)
 
-        𝓂.solution.perturbation.third_order_solution = 𝐒₃
-
+        if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
+        
         𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 
         𝐒₃ = sparse(𝐒₃)
