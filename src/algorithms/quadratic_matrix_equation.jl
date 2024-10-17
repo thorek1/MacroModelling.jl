@@ -169,11 +169,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     guess_ϵ = ℒ.norm(A * initial_guess ^ 2 + B * initial_guess + C) / ℒ.norm(C)
 
-    if guess_ϵ < eps()
+    if guess_ϵ < 1e-14
         if verbose println("Quadratic matrix equation solver: doubling - used previous solution. Reached relative tol $guess_ϵ") end
         return initial_guess, true
     end
-    
+
     B̄ = copy(B)
 
     ℒ.mul!(B̄, A, initial_guess, 1, 1)
