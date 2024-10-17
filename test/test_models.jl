@@ -39,6 +39,15 @@ if !test_higher_order
 
     fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
+    for i in 1:100        
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences worked after $i iterations")
+            @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
+
     @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
 
     write_to_dynare_file(SW07_nonlinear)
