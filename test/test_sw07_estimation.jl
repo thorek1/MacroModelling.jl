@@ -109,7 +109,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.NelderMead())
 
-println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
+# println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
 n_samples = 1000
 
@@ -146,7 +146,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 #                                         Optim.NelderMead(),
 #                                         initial_params = modeSW2007.values)
 
-println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
+# println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
 n_samples = 1000
 
