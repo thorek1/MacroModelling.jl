@@ -4672,7 +4672,7 @@ function solve!(𝓂::ℳ;
                 state_update₂̂ = nothing
             end
 
-            𝓂.solution.perturbation.second_order = second_order_perturbation_solution(𝐒₂, stochastic_steady_state, state_update₂, state_update₂̂)
+            𝓂.solution.perturbation.second_order = second_order_perturbation_solution(stochastic_steady_state, state_update₂, state_update₂̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:second_order])
         end
@@ -4705,7 +4705,7 @@ function solve!(𝓂::ℳ;
                 state_update₂̂ = nothing
             end
 
-            𝓂.solution.perturbation.pruned_second_order = second_order_perturbation_solution(𝐒₂, stochastic_steady_state, state_update₂, state_update₂̂)
+            𝓂.solution.perturbation.pruned_second_order = second_order_perturbation_solution(stochastic_steady_state, state_update₂, state_update₂̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_second_order])
         end
@@ -4736,7 +4736,7 @@ function solve!(𝓂::ℳ;
                 state_update₃̂ = nothing
             end
 
-            𝓂.solution.perturbation.third_order = third_order_perturbation_solution(𝐒₃, stochastic_steady_state, state_update₃, state_update₃̂)
+            𝓂.solution.perturbation.third_order = third_order_perturbation_solution(stochastic_steady_state, state_update₃, state_update₃̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:third_order])
         end
@@ -4776,7 +4776,7 @@ function solve!(𝓂::ℳ;
                 state_update₃̂ = nothing
             end
 
-            𝓂.solution.perturbation.pruned_third_order = third_order_perturbation_solution(𝐒₃, stochastic_steady_state, state_update₃, state_update₃̂)
+            𝓂.solution.perturbation.pruned_third_order = third_order_perturbation_solution(stochastic_steady_state, state_update₃, state_update₃̂)
 
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:pruned_third_order])
         end
