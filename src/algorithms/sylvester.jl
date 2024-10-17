@@ -44,11 +44,28 @@ function solve_sylvester_equation(A::M,
                                                         verbose = verbose,
                                                         timer = timer)
 
-    end # timeit_debug
-
     if verbose && i != 0
         println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
+                                                    
+    if !solved # && sylvester_algorithm != :sylvester # try schur if previous one didn't solve it
+        # a = collect(A)
+
+        # c = collect(C)
+
+        x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, 
+                                                            Val(sylvester_algorithm), 
+                                                            initial_guess = zeros(0,0), 
+                                                            tol = tol, 
+                                                            verbose = verbose,
+                                                            timer = timer)
+
+        if verbose && i != 0
+            println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm (no initial guess)")
+        end
+    end
+
+    end # timeit_debug
 
     X = choose_matrix_format(x)# |> sparse
 
