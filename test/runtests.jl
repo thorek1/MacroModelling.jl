@@ -1,3 +1,4 @@
+using Revise
 using Test
 using MacroModelling
 using Random
@@ -2286,7 +2287,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME.solution.perturbation.quadratic_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
+        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
                                                                     6.73489e-6   0.000168887
                                                                     1.01124e-5   0.000253583
                                                                     -0.000365783  0.00217203
@@ -2297,7 +2298,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, algorithm = :quadratic_iteration, parameters = :I_K_ratio => .1)
 
-        @test isapprox(RBC_CME.solution.perturbation.quadratic_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
+        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
             3.42408e-6   0.000111417
             5.14124e-6   0.000167292
         -0.000196196  0.00190741
@@ -2308,7 +2309,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, algorithm = :quadratic_iteration, parameters = :cap_share => 1.5)
 
-        @test isapprox(RBC_CME.solution.perturbation.quadratic_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
+        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
         4.00629e-6   0.000118171
         6.01543e-6   0.000177434
     -0.000207089  0.00201698
