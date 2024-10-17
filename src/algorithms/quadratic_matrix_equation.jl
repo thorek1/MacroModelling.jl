@@ -173,7 +173,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         if verbose println("Quadratic matrix equation solver: doubling - used previous solution. Reached relative tol $guess_ϵ") end
         return initial_guess, true
     end
-    copy!(B̄, B)
+    
+    B̄ = copy(B)
 
     ℒ.mul!(B̄, A, initial_guess, 1, 1)
     
