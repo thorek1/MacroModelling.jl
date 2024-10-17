@@ -21,7 +21,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                     timer = timer,
                                     verbose = verbose)
 
-    if !solved && !(quadratic_matrix_equation_solver == :schur) # try schur if previous one didnt solve it
+    if !solved && quadratic_matrix_equation_solver != :schur # try schur if previous one didn't solve it
         sol, solved = solve_quadratic_matrix_equation(A, B, C, 
                                                         Val(:schur), 
                                                         T; 
@@ -173,10 +173,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         if verbose println("Quadratic matrix equation solver: doubling - used previous solution. Reached relative tol $guess_ϵ") end
         return initial_guess, true
     end
+    copy!(B̄, B)
 
-    B̄ = B + A * initial_guess
-
-    B̂ = ℒ.lu(B̄, check = false)
+    ℒ.mul!(B̄, A, initial_guess, 1, 1)
+    
+    B̂ = ℒ.lu!(B̄, check = false)
 
     if !ℒ.issuccess(B̂)
         return A, false
