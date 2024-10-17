@@ -51,6 +51,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
                                             verbose = verbose)
 
     if !solved
+        if verbose println("Quadratic matrix equation solution failed.") end
         return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
@@ -75,6 +76,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
+        if verbose println("Factorisation of Ā₀ᵤ failed") end
         return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
@@ -100,6 +102,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     C = ℒ.lu!(∇₀, check = false)
     
     if !ℒ.issuccess(C)
+        if verbose println("Factorisation of ∇₀ failed") end
         return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
     
@@ -281,13 +284,17 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
 
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
     B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    
+
     𝐒₁, qme_sol, solved = calculate_first_order_solution(ℱ.value.(∇̂₁); 
                                                 T = T, 
                                                 verbose = verbose,
                                                 initial_guess = initial_guess,
                                                 quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
                                                 timer = timer)
+
+    if !solved 
+        return ∇₁, qme_sol, false
+    end
 
     X = 𝐒₁[:,1:end-T.nExo] * expand[2]
     
@@ -309,6 +316,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
 
     p = zero(∇̂₁)
 
+    initial_guess = zero(invAXB)
+
     # https://arxiv.org/abs/2011.11430  
     for i in 1:N
         p .= ℱ.partials.(∇₁, i)
@@ -318,8 +327,18 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
         dC = p[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
         
         CC = invAXB * (dA * X² + dC + dB * X)
+
+        if ℒ.norm(CC) < eps() continue end
+
+        dX, solved = solve_sylvester_equation(AA, -X, -CC, 
+                                                initial_guess = initial_guess, 
+                                                verbose = verbose)
+
+        if !solved 
+            return ∇₁, qme_sol, false
+        end
     
-        dX, solved = solve_sylvester_equation(AA, -X, -CC, sylvester_algorithm = :sylvester)
+        initial_guess = dX
 
         X̃[:,i] = vec(dX[:,T.past_not_future_and_mixed_idx])
     end
@@ -335,7 +354,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
     ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
 
     B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
-    
+
     return hcat(x, B), qme_sol, solved
 end 
 
