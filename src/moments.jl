@@ -1,4 +1,3 @@
-
 function calculate_covariance(parameters::Vector{<: Real}, 
                                 𝓂::ℳ; 
                                 lyapunov_algorithm::Symbol = :doubling, 
