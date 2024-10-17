@@ -3895,7 +3895,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution, 
                                                         verbose = verbose)
 
-    𝓂.solution.perturbation.qme_solution = qme_sol
+                                                        if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     # end # timeit_debug
 
@@ -4220,7 +4220,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution, 
                                                         verbose = verbose)
     
-    𝓂.solution.perturbation.qme_solution = qme_sol
+                                                        if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     if !solved
         if verbose println("1st order solution not found") end
@@ -4603,7 +4603,7 @@ function solve!(𝓂::ℳ;
 
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, quadratic_matrix_equation_solver = qme_solver, verbose = verbose, initial_guess = 𝓂.solution.perturbation.qme_solution)
     
-            𝓂.solution.perturbation.qme_solution = qme_sol
+            if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
             end # timeit_debug
 
@@ -4622,7 +4622,7 @@ function solve!(𝓂::ℳ;
             
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; T = 𝓂.timings, quadratic_matrix_equation_solver = qme_solver, verbose = verbose, initial_guess = 𝓂.solution.perturbation.qme_solution)
 
-                𝓂.solution.perturbation.qme_solution = qme_sol
+                if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
 
@@ -4636,7 +4636,6 @@ function solve!(𝓂::ℳ;
             end
             
             𝓂.solution.perturbation.first_order = perturbation_solution(S₁, state_update₁, state_update₁̂)
-            𝓂.solution.perturbation.qme_solution = qme_sol
             𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
@@ -7211,7 +7210,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution, 
                                                         verbose = verbose)
 
-    𝓂.solution.perturbation.qme_solution = qme_sol
+    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     if !solved
         # println("NSSS not found")

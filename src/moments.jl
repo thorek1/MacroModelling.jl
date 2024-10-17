@@ -9,7 +9,7 @@ function calculate_covariance(parameters::Vector{<: Real},
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
 
-    𝓂.solution.perturbation.qme_solution = qme_sol
+    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
 
@@ -44,7 +44,7 @@ function calculate_mean(parameters::Vector{T},
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
     
-    𝓂.solution.perturbation.qme_solution = qme_sol
+    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
     

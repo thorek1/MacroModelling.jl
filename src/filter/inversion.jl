@@ -3329,7 +3329,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = T, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
     
-    𝓂.solution.perturbation.qme_solution = qme_sol
+    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     if !solved 
         @error "No solution for these parameters."
