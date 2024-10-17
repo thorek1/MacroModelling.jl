@@ -80,6 +80,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     schdcmp = try
         ℒ.schur!(D, E)
     catch
+        if verbose println("Quadratic matrix equation solver: schur - converged: false") end
         return A, false
     end
 
@@ -91,6 +92,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     try
         ℒ.ordschur!(schdcmp, eigenselect)
     catch
+        if verbose println("Quadratic matrix equation solver: schur - converged: false") end
         return A, false
     end
 
@@ -108,12 +110,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     Ẑ₁₁ = ℒ.lu(Z₁₁, check = false)
     
     if !ℒ.issuccess(Ẑ₁₁)
+        if verbose println("Quadratic matrix equation solver: schur - converged: false") end
         return A, false
     end
 
     Ŝ₁₁ = ℒ.lu!(S₁₁, check = false)
     
     if !ℒ.issuccess(Ŝ₁₁)
+        if verbose println("Quadratic matrix equation solver: schur - converged: false") end
         return A, false
     end
 
@@ -134,6 +138,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     end # timeit_debug
     end # timeit_debug
+
+    if verbose println("Quadratic matrix equation solver: schur - converged: true") end
 
     return sol[T.dynamic_order,:] * ℒ.I(length(comb))[past_not_future_and_mixed_in_comb,:], true
 end
