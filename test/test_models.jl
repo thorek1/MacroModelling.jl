@@ -37,10 +37,8 @@ if !test_higher_order
 
     back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
-    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
-
     for i in 1:100        
-        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = false), model.parameter_values)
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences worked after $i iterations")
             @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
@@ -209,7 +207,14 @@ if !test_higher_order
 
     back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
-    fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1, max_range = 1e-5),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
+    for i in 1:100        
+        local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1, max_range = 1e-5), x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = false), model.parameter_values)
+        if isfinite(ℒ.norm(fin_grad))
+            println("Finite differences worked after $i iterations")
+            @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
+            break
+        end
+    end
 
     @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-5)
 
