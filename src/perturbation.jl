@@ -331,11 +331,11 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
         if ℒ.norm(CC) < eps() continue end
 
         dX, solved = solve_sylvester_equation(AA, -X, -CC, 
-                                                sylvester_algorithm = :sylvester, # needed otherwise you can have, sparse, dense, sparse inputs, which is currently not implemented
+                                                sylvester_algorithm = :bicgstab, # more robust than sylvester
                                                 initial_guess = initial_guess, 
                                                 verbose = verbose)
 
-        if !solved 
+        if !solved
             return ∇₁, qme_sol, false
         end
     
