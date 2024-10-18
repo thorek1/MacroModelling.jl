@@ -1,12 +1,13 @@
-function calculate_covariance(parameters::Vector{<: Real}, 
+# TODO: fix return types and implement early returns on errors
+function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 
                                 lyapunov_algorithm::Symbol = :doubling, 
-                                verbose::Bool = false)
+                                verbose::Bool = false)::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}} where R <: Real
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
     
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -22,22 +23,20 @@ function calculate_covariance(parameters::Vector{<: Real},
 end
 
 
-
-
-function calculate_mean(parameters::Vector{T}, 
+function calculate_mean(parameters::Vector{R}, 
                         𝓂::ℳ; 
                         verbose::Bool = false, 
                         algorithm = :pruned_second_order, 
                         sylvester_algorithm::Symbol = :doubling, 
-                        tol::Float64 = eps()) where T <: Real
+                        tol::Float64 = eps())::Tuple{Vector{R}, Matrix{R}, Matrix{R}, SparseMatrix{R}, SparseMatrix{R}} where R <: Real
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
-    @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean only available for first order, pruned second and third order perturbation solutions."
+    @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean available only for first order, pruned second and pruned third order perturbation solutions."
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
     
-    if algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran]
-        return SS_and_pars[1:𝓂.timings.nVars], solution_error
-    end
+    # if algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran]
+    #     return SS_and_pars[1:𝓂.timings.nVars], solution_error
+    # end
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
@@ -116,13 +115,13 @@ end
 
 
 function calculate_second_order_moments(
-    parameters::Vector{<: Real}, 
+    parameters::Vector{R}, 
     𝓂::ℳ; 
     covariance::Bool = true,
     verbose::Bool = false, 
     sylvester_algorithm::Symbol = :doubling,
     lyapunov_algorithm::Symbol = :doubling,
-    tol::AbstractFloat = eps())
+    tol::AbstractFloat = eps())::Union{Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, SparseMatrix{R}, SparseMatrix{R}}, Tuple{Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, SparseMatrix{R}, SparseMatrix{R}}} where R <: Real
 
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars = calculate_covariance(parameters, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
 
