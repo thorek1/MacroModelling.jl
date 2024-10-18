@@ -41,7 +41,7 @@ function calculate_mean(parameters::Vector{T},
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 

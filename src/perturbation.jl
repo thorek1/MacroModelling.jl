@@ -285,7 +285,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
     B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(ℱ.value.(∇̂₁); 
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; 
                                                 T = T, 
                                                 verbose = verbose,
                                                 initial_guess = initial_guess,

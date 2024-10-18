@@ -35,7 +35,7 @@ function solve_sylvester_equation(A::M,
     end
     
     end # timeit_debug
-                                    
+    
     @timeit_debug timer "Solve sylvester equation" begin
 
     x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, Val(sylvester_algorithm), 
@@ -136,6 +136,8 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         C̃ .= ℱ.partials.(C, i)
 
         X = Ã * P̂ * B̂ + Â * P̂ * B̃ + C̃
+        
+        if ℒ.norm(X) < eps() continue end
 
         P, solved = solve_sylvester_equation(Â, B̂, X, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
 
