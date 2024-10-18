@@ -6,7 +6,9 @@ using AxisKeys, SparseArrays
 import Zygote, FiniteDifferences
 import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
-using JET
+if VERSION < v"1.12"
+    using JET
+end
 import LinearAlgebra as ℒ
 
 test_set = ENV["TEST_SET"]
@@ -347,7 +349,7 @@ if test_set == "basic"
     GC.gc()
     
     @testset verbose = true "Static checking (JET.jl)" begin
-        if VERSION >= v"1.9"
+        if VERSION < v"1.12"
             JET.test_package(MacroModelling; target_defined_modules = true, toplevel_logger = nothing)
         end
     end
