@@ -28,7 +28,7 @@ function calculate_mean(parameters::Vector{R},
                         verbose::Bool = false, 
                         algorithm = :pruned_second_order, 
                         sylvester_algorithm::Symbol = :doubling, 
-                        tol::Float64 = eps())::Tuple{Vector{R}, Matrix{R}, Matrix{R}, SparseMatrix{R}, SparseMatrix{R}} where R <: Real
+                        tol::Float64 = eps())::Tuple{Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}} where R <: Real
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean available only for first order, pruned second and pruned third order perturbation solutions."
 
@@ -121,7 +121,7 @@ function calculate_second_order_moments(
     verbose::Bool = false, 
     sylvester_algorithm::Symbol = :doubling,
     lyapunov_algorithm::Symbol = :doubling,
-    tol::AbstractFloat = eps())::Union{Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, SparseMatrix{R}, SparseMatrix{R}}, Tuple{Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, SparseMatrix{R}, SparseMatrix{R}}} where R <: Real
+    tol::AbstractFloat = eps())::Union{Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}}, Tuple{Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}}} where R <: Real
 
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars = calculate_covariance(parameters, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
 
