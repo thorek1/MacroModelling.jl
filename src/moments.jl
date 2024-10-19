@@ -28,7 +28,7 @@ function calculate_mean(parameters::Vector{T},
                         verbose::Bool = false, 
                         algorithm = :pruned_second_order, 
                         sylvester_algorithm::Symbol = :doubling, 
-                        tol::Float64 = eps())::Tuple{Vector{T}, Matrix{T}, Matrix{T}, AbstractSparseMatrix{T}, AbstractSparseMatrix{T}} where T <: Real
+                        tol::Float64 = eps())::Tuple{Vector{T}, Matrix{T}, Matrix{T}, AbstractSparseMatrix{T}, AbstractSparseMatrix{T}, Bool} where T <: Real
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean available only for first order, pruned second and pruned third order perturbation solutions."
 
@@ -42,6 +42,10 @@ function calculate_mean(parameters::Vector{T},
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
     
+    if !solved 
+        return zeros(0), zeros(0,0), zeros(0,0), spzeros(0,0,0), spzeros(0,0,0), false
+    end
+
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
@@ -53,6 +57,10 @@ function calculate_mean(parameters::Vector{T},
                                                 sylvester_algorithm = sylvester_algorithm, 
                                                 tol = tol, 
                                                 verbose = verbose)
+
+    if !solved2
+        return zeros(0), zeros(0,0), zeros(0,0), spzeros(0,0,0), spzeros(0,0,0), false
+    end
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
@@ -108,7 +116,7 @@ function calculate_mean(parameters::Vector{T},
     mean_of_pruned_states   = (ℒ.I - pruned_states_to_pruned_states) \ pruned_states_vol_and_shock_effect
     mean_of_variables   = SS_and_pars[1:𝓂.timings.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
     
-    return mean_of_variables, 𝐒₁, ∇₁, 𝐒₂, ∇₂
+    return mean_of_variables, 𝐒₁, ∇₁, 𝐒₂, ∇₂, true
 end
 
 

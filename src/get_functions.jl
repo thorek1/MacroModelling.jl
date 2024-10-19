@@ -2552,7 +2552,9 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            state_μ, ___ = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose)
+            state_μ, _, __, ___, ____, solved = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose)
+            
+            @assert solved "The mean could not be calculated."
 
             # state_μ_dev = 𝒜.jacobian(𝒷(), x -> mean_parameter_derivatives(x, param_idx, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm), 𝓂.parameter_values[param_idx])[1]
             state_μ_dev = 𝒟.jacobian(x -> calculate_mean(x, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm)[1], backend, 𝓂.parameter_values)[:,param_idx]
@@ -2587,7 +2589,10 @@ function get_moments(𝓂::ℳ;
         end
 
         if mean && !(variance || standard_deviation || covariance)
-            state_μ, ___ = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm)
+            state_μ, _, __, ___, ____, solved = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm)
+
+            @assert solved "The mean could not be calculated."
+
             var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
         end
 
