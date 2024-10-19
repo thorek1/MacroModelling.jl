@@ -23,12 +23,12 @@ function calculate_covariance(parameters::Vector{R},
 end
 
 
-function calculate_mean(parameters::Vector{R}, 
+function calculate_mean(parameters::Vector{T}, 
                         𝓂::ℳ; 
                         verbose::Bool = false, 
                         algorithm = :pruned_second_order, 
                         sylvester_algorithm::Symbol = :doubling, 
-                        tol::Float64 = eps())::Tuple{Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}} where R <: Real
+                        tol::Float64 = eps())::Tuple{Vector{T}, Matrix{T}, Matrix{T}, AbstractSparseMatrix{T}, AbstractSparseMatrix{T}} where T <: Real
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
     @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean available only for first order, pruned second and pruned third order perturbation solutions."
 
