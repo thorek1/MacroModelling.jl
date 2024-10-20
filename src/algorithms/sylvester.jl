@@ -49,33 +49,35 @@ function solve_sylvester_equation(A::M,
         println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
          
-    if reached_tol < sqrt(tol) && sylvester_algorithm ≠ :bicgstab
-        a = collect(A)
+    if !solved
+        if reached_tol < sqrt(tol) && sylvester_algorithm ≠ :bicgstab
+            a = collect(A)
 
-        c = collect(C)
+            c = collect(C)
 
-        x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, 
-                                                            Val(:bicgstab), 
-                                                            initial_guess = x, 
-                                                            tol = tol, 
-                                                            verbose = verbose,
-                                                            timer = timer)
-        if verbose && i != 0
-            println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: bicgstab (refinement of previous solution)")
-        end
-    else
-        a = collect(A)
+            x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, 
+                                                                Val(:bicgstab), 
+                                                                initial_guess = x, 
+                                                                tol = tol, 
+                                                                verbose = verbose,
+                                                                timer = timer)
+            if verbose && i != 0
+                println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: bicgstab (refinement of previous solution)")
+            end
+        else
+            a = collect(A)
 
-        c = collect(C)
+            c = collect(C)
 
-        x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, 
-                                                            Val(:bicgstab), 
-                                                            initial_guess = zeros(0,0), 
-                                                            tol = tol, 
-                                                            verbose = verbose,
-                                                            timer = timer)
-        if verbose && i != 0
-            println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: bicgstab")
+            x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, 
+                                                                Val(:bicgstab), 
+                                                                initial_guess = zeros(0,0), 
+                                                                tol = tol, 
+                                                                verbose = verbose,
+                                                                timer = timer)
+            if verbose && i != 0
+                println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: bicgstab")
+            end
         end
     end
 

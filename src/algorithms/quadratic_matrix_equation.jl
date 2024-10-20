@@ -182,9 +182,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     guess_ϵ = ℒ.norm(A * initial_guess ^ 2 + B * initial_guess + C) / ℒ.norm(A * initial_guess ^ 2)
 
     if guess_ϵ < tol # 1e-12 is too large eps is too small
-        if verbose println("Quadratic matrix equation solver: doubling - used previous solution. Reached relative tol $guess_ϵ") end
         return initial_guess, true, 0, guess_ϵ
     end
+
+    E = copy(C)
+    F = copy(A)
 
     B̄ = copy(B)
 
@@ -197,13 +199,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     end
 
     # Compute initial values X, Y, E, F
-    ℒ.ldiv!(B̂, C)
-    ℒ.ldiv!(B̂, A)
-    E = C
-    F = A
-
-    # E = B̂ \ C
-    # F = B̂ \ A
+    ℒ.ldiv!(E, B̂, C)
+    ℒ.ldiv!(F, B̂, A)
 
     X = -E - initial_guess
     Y = -F

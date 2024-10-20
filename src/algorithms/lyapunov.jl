@@ -36,29 +36,31 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
         println("Lyapunov equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $lyapunov_algorithm")
     end
 
-    if (reached_tol < sqrt(tol) || A isa AbstractSparseMatrix) && lyapunov_algorithm ≠ :bicgstab
-        C = collect(C)
+    if !solved 
+        if (reached_tol < sqrt(tol) || A isa AbstractSparseMatrix) && lyapunov_algorithm ≠ :bicgstab
+            C = collect(C)
 
-        X, solved, i, reached_tol = solve_lyapunov_equation(A, C, 
-                                                            Val(:bicgstab), 
-                                                            tol = tol, 
-                                                            timer = timer)
+            X, solved, i, reached_tol = solve_lyapunov_equation(A, C, 
+                                                                Val(:bicgstab), 
+                                                                tol = tol, 
+                                                                timer = timer)
 
-        if verbose
-            println("Lyapunov equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: gmres")
-        end
-    else
-        A = collect(A)
+            if verbose
+                println("Lyapunov equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: gmres")
+            end
+        else
+            A = collect(A)
 
-        C = collect(C)
+            C = collect(C)
 
-        X, solved, i, reached_tol = solve_lyapunov_equation(A, C, 
-                                                            Val(:lyapunov), 
-                                                            tol = tol, 
-                                                            timer = timer)
+            X, solved, i, reached_tol = solve_lyapunov_equation(A, C, 
+                                                                Val(:lyapunov), 
+                                                                tol = tol, 
+                                                                timer = timer)
 
-        if verbose
-            println("Lyapunov equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: lyapunov")
+            if verbose
+                println("Lyapunov equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: lyapunov")
+            end
         end
     end
 
