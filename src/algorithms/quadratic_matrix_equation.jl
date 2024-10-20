@@ -13,21 +13,28 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_solver::Symbol = :doubling, 
                                         timer::TimerOutput = TimerOutput(),
+                                        tol::AbstractFloat = 1e-14,
                                         verbose::Bool = false) where R <: Real
-    sol, solved = solve_quadratic_matrix_equation(A, B, C, 
-                                    Val(quadratic_matrix_equation_solver), 
-                                    T; 
-                                    initial_guess = initial_guess,
-                                    timer = timer,
-                                    verbose = verbose)
-
-    if !solved && quadratic_matrix_equation_solver != :schur # try schur if previous one didn't solve it
-        sol, solved = solve_quadratic_matrix_equation(A, B, C, 
-                                                        Val(:schur), 
+    sol, solved, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
+                                                        Val(quadratic_matrix_equation_solver), 
                                                         T; 
                                                         initial_guess = initial_guess,
+                                                        tol = tol,
                                                         timer = timer,
                                                         verbose = verbose)
+
+    if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_solver - converged: $solved in $iterations iterations to tolerance: $reached_tol") end
+
+    if !solved && quadratic_matrix_equation_solver != :schur # try schur if previous one didn't solve it
+        sol, solved, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
+                                                            Val(:schur), 
+                                                            T; 
+                                                            initial_guess = initial_guess,
+                                                            tol = tol,
+                                                            timer = timer,
+                                                            verbose = verbose)
+
+        if verbose println("Quadratic matrix equation solver: schur - converged: $solved in $iterations iterations to tolerance: $reached_tol") end
     end
 
     return sol, solved
@@ -39,6 +46,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         ::Val{:schur}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        tol::AbstractFloat = 1e-14,
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where R <: Real
     @timeit_debug timer "Prepare indice" begin
@@ -81,7 +89,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         ℒ.schur!(D, E)
     catch
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, false
+        return A, false, 0, 1.0
     end
 
     eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
@@ -93,7 +101,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         ℒ.ordschur!(schdcmp, eigenselect)
     catch
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, false
+        return A, false, 0, 1.0
     end
 
     end # timeit_debug
@@ -111,14 +119,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     if !ℒ.issuccess(Ẑ₁₁)
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, false
+        return A, false, 0, 1.0
     end
 
     Ŝ₁₁ = ℒ.lu!(S₁₁, check = false)
     
     if !ℒ.issuccess(Ŝ₁₁)
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, false
+        return A, false, 0, 1.0
     end
 
     end # timeit_debug
@@ -145,9 +153,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     converged = reached_tol < tol
 
-    if verbose println("Quadratic matrix equation solver: schur - converged: $converged in $iter iterations to tolerance: $reached_tol") end
-
-    return sol[T.dynamic_order,:] * ℒ.I(length(comb))[past_not_future_and_mixed_in_comb,:], true
+    return X, converged, 0, reached_tol
 end
 
 
@@ -157,7 +163,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         ::Val{:doubling}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        tol::AbstractFloat = eps(),
+                                        tol::AbstractFloat = 1e-14,
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
                                         max_iter::Int = 100) where R <: Real
@@ -173,11 +179,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         initial_guess = zero(A)
     end
 
-    guess_ϵ = ℒ.norm(A * initial_guess ^ 2 + B * initial_guess + C) / ℒ.norm(C)
+    guess_ϵ = ℒ.norm(A * initial_guess ^ 2 + B * initial_guess + C) / ℒ.norm(A * initial_guess ^ 2)
 
-    if guess_ϵ < 1e-14 # 1e-12 is too large eps is too small
+    if guess_ϵ < tol # 1e-12 is too large eps is too small
         if verbose println("Quadratic matrix equation solver: doubling - used previous solution. Reached relative tol $guess_ϵ") end
-        return initial_guess, true
+        return initial_guess, true, 0, guess_ϵ
     end
 
     B̄ = copy(B)
@@ -187,7 +193,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     B̂ = ℒ.lu!(B̄, check = false)
 
     if !ℒ.issuccess(B̂)
-        return A, false
+        return A, false, 0, 1.0
     end
 
     # Compute initial values X, Y, E, F
@@ -239,7 +245,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         fEI = ℒ.lu!(temp1, check = false)
 
         if !ℒ.issuccess(fEI)
-            return A, false
+            return A, false, iter, 1.0
         end
 
         end # timeit_debug
@@ -266,7 +272,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         fFI = ℒ.lu!(temp2, check = false)
         
         if !ℒ.issuccess(fFI)
-            return A, false
+            return A, false, iter, 1.0
         end
 
         end # timeit_debug
@@ -330,13 +336,21 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     ℒ.axpy!(1, initial_guess, X_new)
 
-    reached_tol = ℒ.norm(A * X_new * X_new + B * X_new + C) / ℒ.norm(A * X_new * X_new)
+    X = X_new
+
+    AXX = A * X^2
+    
+    AXXnorm = ℒ.norm(AXX)
+    
+    ℒ.mul!(AXX, B, X, 1, 1)
+
+    ℒ.axpy!(1, C, AXX)
+    
+    reached_tol = ℒ.norm(AXX) / AXXnorm
     
     converged = reached_tol < tol
 
-    if verbose println("Quadratic matrix equation solver: doubling - converged: $converged in $iter iterations to tolerance: $reached_tol") end
-
-    return X_new, solved
+    return X_new, converged, iter, reached_tol
 end
 
 
@@ -375,17 +389,21 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     X = sol.minimizer
 
-    reached_tol = ℒ.norm(A * X * X + B * X + C) / ℒ.norm(A * X * X)
+    AXX = A * X^2
+    
+    AXXnorm = ℒ.norm(AXX)
+    
+    ℒ.mul!(AXX, B, X, 1, 1)
+
+    ℒ.axpy!(1, C, AXX)
+    
+    reached_tol = ℒ.norm(AXX) / AXXnorm
     
     converged = reached_tol < tol
-
-    # if verbose println("Converged: $converged in $(sol.maps) iterations to tolerance: $reached_tol") end
-
-    if verbose println("Quadratic matrix equation solver: linear_time_iteration - converged: $converged in $(sol.maps) iterations to tolerance: $reached_tol") end
     
     end # timeit_debug
 
-    return X, sol.converged
+    return X, converged, sol.maps, reached_tol
 end
 
 
@@ -420,14 +438,24 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                 ℒ.mul!(X̄, Ā, X²)
                                                 ℒ.axpy!(1, C̄, X̄)
                                             end,
-        tol = tol, maps_limit = max_iter, σ_min = 0.0, stabilize = false, orders = [3,3,2])
+        tol = tol, maps_limit = max_iter)#, σ_min = 0.0, stabilize = false, orders = [3,3,2])
     end
 
     X = -sol.minimizer
 
-    if verbose println("Quadratic matrix equation solver: linear_time_iteration - converged: $(sol.converged) in $(sol.maps) iterations to tolerance: $(sol.norm_∇)") end
+    AXX = A * X^2
     
-    return X, sol.converged
+    AXXnorm = ℒ.norm(AXX)
+    
+    ℒ.mul!(AXX, B, X, 1, 1)
+
+    ℒ.axpy!(1, C, AXX)
+    
+    reached_tol = ℒ.norm(AXX) / AXXnorm
+
+    converged = reached_tol < tol
+
+    return X, converged, sol.maps, reached_tol
 end
 
 
@@ -437,6 +465,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
+                                        tol::AbstractFloat = 1e-12, 
                                         quadratic_matrix_equation_solver::Symbol = :doubling, 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where {Z,S,N}
