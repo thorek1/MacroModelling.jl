@@ -139,7 +139,13 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     end # timeit_debug
     end # timeit_debug
 
-    if verbose println("Quadratic matrix equation solver: schur - converged: true") end
+    X = sol[T.dynamic_order,:] * ℒ.I(length(comb))[past_not_future_and_mixed_in_comb,:]
+
+    reached_tol = ℒ.norm(A * X * X + B * X + C) / ℒ.norm(A * X * X)
+    
+    converged = reached_tol < tol
+
+    if verbose println("Quadratic matrix equation solver: schur - converged: $converged in $iter iterations to tolerance: $reached_tol") end
 
     return sol[T.dynamic_order,:] * ℒ.I(length(comb))[past_not_future_and_mixed_in_comb,:], true
 end
@@ -324,7 +330,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     ℒ.axpy!(1, initial_guess, X_new)
 
-    if verbose println("Quadratic matrix equation solver: doubling - converged: $solved in $iter iterations to tolerance: $Xtol") end
+    reached_tol = ℒ.norm(A * X_new * X_new + B * X_new + C) / ℒ.norm(A * X_new * X_new)
+    
+    converged = reached_tol < tol
+
+    if verbose println("Quadratic matrix equation solver: doubling - converged: $converged in $iter iterations to tolerance: $reached_tol") end
 
     return X_new, solved
 end
@@ -365,13 +375,13 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     X = sol.minimizer
 
-    # reached_tol = ℒ.norm(A * X * X + B * X + C)
+    reached_tol = ℒ.norm(A * X * X + B * X + C) / ℒ.norm(A * X * X)
     
-    # converged = reached_tol < tol
+    converged = reached_tol < tol
 
     # if verbose println("Converged: $converged in $(sol.maps) iterations to tolerance: $reached_tol") end
 
-    if verbose println("Quadratic matrix equation solver: linear_time_iteration - converged: $(sol.converged) in $(sol.maps) iterations to tolerance: $(sol.norm_∇)") end
+    if verbose println("Quadratic matrix equation solver: linear_time_iteration - converged: $converged in $(sol.maps) iterations to tolerance: $reached_tol") end
     
     end # timeit_debug
 
