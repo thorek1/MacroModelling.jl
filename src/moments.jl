@@ -43,7 +43,7 @@ function calculate_mean(parameters::Vector{T},
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
     
     if !solved 
-        return zeros(0), zeros(0,0), zeros(0,0), spzeros(0,0,0), spzeros(0,0,0), false
+        return zeros(0), zeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0), false
     end
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
@@ -59,7 +59,7 @@ function calculate_mean(parameters::Vector{T},
                                                 verbose = verbose)
 
     if !solved2
-        return zeros(0), zeros(0,0), zeros(0,0), spzeros(0,0,0), spzeros(0,0,0), false
+        return zeros(0), zeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0), false
     end
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
