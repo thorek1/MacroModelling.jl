@@ -13,8 +13,18 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_solver::Symbol = :doubling, 
                                         timer::TimerOutput = TimerOutput(),
-                                        tol::AbstractFloat = 1e-12,
+                                        tol::AbstractFloat = 1e-14,
                                         verbose::Bool = false) where R <: Real
+    if length(initial_guess) > 0
+        guess_ϵ = ℒ.norm(A * initial_guess ^ 2 + B * initial_guess + C) / ℒ.norm(A * initial_guess ^ 2)
+
+        if guess_ϵ < tol # 1e-12 is too large eps is too small
+            if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
+
+            return initial_guess, true
+        end
+    end
+
     sol, solved, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                         Val(quadratic_matrix_equation_solver), 
                                                         T; 
@@ -195,12 +205,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     if length(initial_guess) == 0
         guess_provided = false
         initial_guess = zero(A)
-    end
-
-    guess_ϵ = ℒ.norm(A * initial_guess ^ 2 + B * initial_guess + C) / ℒ.norm(A * initial_guess ^ 2)
-
-    if guess_ϵ < tol # 1e-12 is too large eps is too small
-        return initial_guess, true, 0, guess_ϵ
     end
 
     E = copy(C)
