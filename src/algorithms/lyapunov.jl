@@ -33,13 +33,19 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
         println("Lyapunov equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $lyapunov_algorithm")
     end
 
-    if reached_tol < sqrt(tol) 
+    if reached_tol < sqrt(tol) || A isa AbstractSparseMatrix
+        C = collect(C)
+
         X, solved, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bicgstab), tol = tol, timer = timer)
 
         if verbose
             println("Lyapunov equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: gmres")
         end
     else
+        A = collect(A)
+
+        C = collect(C)
+
         X, solved, i, reached_tol = solve_lyapunov_equation(A, C, Val(:lyapunov), tol = tol, timer = timer)
 
         if verbose
@@ -122,7 +128,11 @@ function solve_lyapunov_equation(A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},D
                                 ::Val{:lyapunov};
                                 tol::AbstractFloat = 1e-12,
                                 timer::TimerOutput = TimerOutput())
-    𝐂 = MatrixEquations.lyapd(A, C)
+    𝐂 = try 
+        MatrixEquations.lyapd(A, C)
+    catch
+        return C, false, 0, 1.0
+    end
     
     # 𝐂¹ = A * 𝐂 * A' + C
 
@@ -342,7 +352,6 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 ::Val{:bicgstab};
                                 tol::Float64 = 1e-8,
                                 timer::TimerOutput = TimerOutput())
-
     tmp̄ = similar(C)
     𝐗 = similar(C)
 
@@ -379,7 +388,6 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 ::Val{:gmres};
                                 tol::Float64 = 1e-8,
                                 timer::TimerOutput = TimerOutput())
-
     tmp̄ = similar(C)
     𝐗 = similar(C)
 
