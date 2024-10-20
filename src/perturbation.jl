@@ -335,16 +335,16 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
                                                 initial_guess = initial_guess, 
                                                 verbose = verbose)
 
-        if !solved
-            dX, solved = solve_sylvester_equation(AA, -X, -CC, 
-                                                    sylvester_algorithm = :bicgstab, # more robust than sylvester
-                                                    initial_guess = initial_guess, 
-                                                    verbose = verbose)
+        # if !solved
+        #     dX, solved = solve_sylvester_equation(AA, -X, -CC, 
+        #                                             sylvester_algorithm = :bicgstab, # more robust than sylvester
+        #                                             initial_guess = initial_guess, 
+        #                                             verbose = verbose)
 
-            if !solved
-                return ∇₁, qme_sol, false
-            end
-        end
+        #     if !solved
+        #         return ∇₁, qme_sol, false
+        #     end
+        # end
     
         initial_guess = dX
 
@@ -459,20 +459,20 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             timer = timer)
 
     end # timeit_debug
-    @timeit_debug timer "Refine sylvester equation" begin
+    # @timeit_debug timer "Refine sylvester equation" begin
 
-    if !solved && !(sylvester_algorithm == :doubling)
-        𝐒₂, solved = solve_sylvester_equation(A, B, C, 
-                                                # init = 𝐒₂, 
-                                                # sylvester_algorithm = :gmres, 
-                                                initial_guess = initial_guess,
-                                                sylvester_algorithm = :doubling, 
-                                                verbose = verbose, 
-                                                # tol = tol, 
-                                                timer = timer)
-    end
+    # # if !solved && !(sylvester_algorithm == :doubling)
+    # #     𝐒₂, solved = solve_sylvester_equation(A, B, C, 
+    # #                                             # init = 𝐒₂, 
+    # #                                             # sylvester_algorithm = :gmres, 
+    # #                                             initial_guess = initial_guess,
+    # #                                             sylvester_algorithm = :doubling, 
+    # #                                             verbose = verbose, 
+    # #                                             # tol = tol, 
+    # #                                             timer = timer)
+    # # end
 
-    end # timeit_debug
+    # end # timeit_debug
     @timeit_debug timer "Post-process" begin
 
     # 𝐒₂ *= M₂.𝐔₂
@@ -930,22 +930,22 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                             timer = timer)
     
     end # timeit_debug
-    @timeit_debug timer "Refine sylvester equation" begin
+    # @timeit_debug timer "Refine sylvester equation" begin
 
-    if !solved
-        𝐒₃, solved = solve_sylvester_equation(A, B, C, 
-                                                sylvester_algorithm = :doubling, 
-                                                verbose = verbose, 
-                                                initial_guess = initial_guess, 
-                                                # tol = tol,
-                                                timer = timer)
-    end
+    # if !solved
+    #     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
+    #                                             sylvester_algorithm = :doubling, 
+    #                                             verbose = verbose, 
+    #                                             initial_guess = initial_guess, 
+    #                                             # tol = tol,
+    #                                             timer = timer)
+    # end
 
     if !solved
         return 𝐒₃, solved
     end
 
-    end # timeit_debug
+    # end # timeit_debug
     @timeit_debug timer "Post-process" begin
 
     # 𝐒₃ *= M₃.𝐔₃
@@ -1149,16 +1149,16 @@ function rrule(::typeof(calculate_third_order_solution),
                                             timer = timer)
     
     end # timeit_debug
-    @timeit_debug timer "Refine sylvester equation" begin
+    # @timeit_debug timer "Refine sylvester equation" begin
 
-    if !solved
-        𝐒₃, solved = solve_sylvester_equation(A, B, C, 
-                                                sylvester_algorithm = :doubling, 
-                                                initial_guess = initial_guess,
-                                                verbose = verbose,
-                                                # tol = tol,
-                                                timer = timer)
-    end
+    # if !solved
+    #     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
+    #                                             sylvester_algorithm = :doubling, 
+    #                                             initial_guess = initial_guess,
+    #                                             verbose = verbose,
+    #                                             # tol = tol,
+    #                                             timer = timer)
+    # end
 
     if !solved
         return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
@@ -1166,7 +1166,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     𝐒₃ = sparse(𝐒₃)
 
-    end # timeit_debug
+    # end # timeit_debug
 
     @timeit_debug timer "Preallocate for pullback" begin
 

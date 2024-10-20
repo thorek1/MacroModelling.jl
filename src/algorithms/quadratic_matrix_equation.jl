@@ -465,6 +465,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         dC = ℱ.partials.(C, i)
     
         CC = invAXB * (dA * X² + dB * X + dC)
+
+        if ℒ.norm(CC) < eps() continue end
     
         dX, solved = solve_sylvester_equation(AA, -X, -CC, sylvester_algorithm = :sylvester)
 
