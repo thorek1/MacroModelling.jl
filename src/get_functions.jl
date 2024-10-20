@@ -988,6 +988,7 @@ function get_irf(𝓂::ℳ;
     generalised_irf::Bool = false,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
     levels::Bool = false,
+    shock_size::Real = 1,
     ignore_obc::Bool = false,
     timer::TimerOutput = TimerOutput(),
     verbose::Bool = false)
@@ -1060,7 +1061,7 @@ function get_irf(𝓂::ℳ;
 
     @timeit_debug timer "Get relevant steady state" begin
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, verbose = verbose)
     
     end # timeit_debug
 
@@ -1109,6 +1110,7 @@ function get_irf(𝓂::ℳ;
                         periods = periods, 
                         shocks = shocks, 
                         variables = variables, 
+                        shock_size = shock_size,
                         negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
         end # timeit_debug
 
@@ -1190,6 +1192,7 @@ function get_irf(𝓂::ℳ;
                         periods = periods, 
                         shocks = shocks, 
                         variables = variables, 
+                        shock_size = shock_size,
                         negative_shock = negative_shock)
             end # timeit_debug
         else
@@ -1201,6 +1204,7 @@ function get_irf(𝓂::ℳ;
                         periods = periods, 
                         shocks = shocks, 
                         variables = variables, 
+                        shock_size = shock_size,
                         negative_shock = negative_shock)
             end # timeit_debug
         end
