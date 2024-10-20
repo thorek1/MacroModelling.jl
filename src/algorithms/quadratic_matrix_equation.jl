@@ -16,9 +16,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::AbstractFloat = 1e-14,
                                         verbose::Bool = false) where R <: Real
     if length(initial_guess) > 0
-        guess_ϵ = ℒ.norm(A * initial_guess ^ 2 + B * initial_guess + C) / ℒ.norm(A * initial_guess ^ 2)
+        reached_tol = ℒ.norm(A * initial_guess ^ 2 + B * initial_guess + C) / ℒ.norm(A * initial_guess ^ 2)
 
-        if guess_ϵ < tol # 1e-12 is too large eps is too small
+        if reached_tol < tol # 1e-12 is too large eps is too small
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
 
             return initial_guess, true
