@@ -16,7 +16,17 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::AbstractFloat = 1e-14,
                                         verbose::Bool = false) where R <: Real
     if length(initial_guess) > 0
-        reached_tol = ℒ.norm(A * initial_guess ^ 2 + B * initial_guess + C) / ℒ.norm(A * initial_guess ^ 2)
+        X = initial_guess
+
+        AXX = A * X^2
+        
+        AXXnorm = ℒ.norm(AXX)
+        
+        ℒ.mul!(AXX, B, X, 1, 1)
+
+        ℒ.axpy!(1, C, AXX)
+        
+        reached_tol = ℒ.norm(AXX) / AXXnorm
 
         if reached_tol < tol # 1e-12 is too large eps is too small
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
