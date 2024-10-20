@@ -13,7 +13,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_solver::Symbol = :doubling, 
                                         timer::TimerOutput = TimerOutput(),
-                                        tol::AbstractFloat = 1e-14,
+                                        tol::AbstractFloat = 1e-13, # 1e-14 is too tight
                                         verbose::Bool = false) where R <: Real
     if length(initial_guess) > 0
         X = initial_guess
