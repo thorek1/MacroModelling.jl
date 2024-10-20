@@ -6244,6 +6244,7 @@ function irf(state_update::Function,
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
+    shock_size::Real = 1,
     negative_shock::Bool = false)
 
     pruning = initial_state isa Vector{Vector{Float64}}
@@ -6290,7 +6291,7 @@ function irf(state_update::Function,
     always_solved = true
 
     if shocks == :simulate
-        shock_history = randn(T.nExo,periods)
+        shock_history = randn(T.nExo,periods) * shock_size
 
         shock_history[contains.(string.(T.exo),"ᵒᵇᶜ"),:] .= 0
 
@@ -6339,7 +6340,7 @@ function irf(state_update::Function,
         for (i,ii) in enumerate(shock_idx)
             if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
                 shock_history = zeros(T.nExo,periods)
-                shock_history[ii,1] = negative_shock ? -1 : 1
+                shock_history[ii,1] = negative_shock ? -shock_size : shock_size
             end
 
             past_states = initial_state
