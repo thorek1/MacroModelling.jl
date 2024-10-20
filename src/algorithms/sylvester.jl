@@ -49,7 +49,7 @@ function solve_sylvester_equation(A::M,
         println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
          
-    if reached_tol < sqrt(tol) 
+    if reached_tol < sqrt(tol) && sylvester_algorithm ≠ :bicgstab
         a = collect(A)
 
         c = collect(C)
