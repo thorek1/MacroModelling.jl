@@ -29,10 +29,10 @@ function solve_sylvester_equation(A::M,
 
             # X = choose_matrix_format(initial_guess)
 
-            return X, true
+            return initial_guess, true
         end
     end
-
+    
     end # timeit_debug
     @timeit_debug timer "Choose matrix formats" begin
 
@@ -960,7 +960,9 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     @timeit_debug timer "BICGSTAB solve" begin
     # if length(init) == 0
         # 𝐂, info = Krylov.bicgstab(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
-        𝐂, info = Krylov.bicgstab(sylvester, [vec(𝐂¹);], rtol = tol / 10, atol = tol / 10)#, M = precond)
+        𝐂, info = Krylov.bicgstab(sylvester, [vec(𝐂¹);], 
+                                    rtol = tol / 100, 
+                                    atol = tol / 100)#, M = precond)
     # else
     #     𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
@@ -990,7 +992,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
         𝐂, info = Krylov.gmres(sylvester, [vec(C);], 
                                 [vec(𝐂);], # start value helps
-                                rtol = tol / 10, atol = tol / 10)#, M = precond)
+                                rtol = tol / 100, atol = tol / 100)#, M = precond)
 
         # @inbounds 𝐗[idxs] = 𝐂
         copyto!(𝐗, 𝐂)
