@@ -606,6 +606,88 @@ end
 
 
 
+function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
+                                    B::Matrix{Float64},
+                                    C::AbstractSparseMatrix{Float64},
+                                    ::Val{:doubling};
+                                    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false,
+                                    tol::Float64 = 1e-12)
+                                    # see doi:10.1016/j.aml.2009.01.012
+    # guess_provided = true
+
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
+
+    𝐀  = copy(A)    
+    # 𝐀¹ = copy(A)
+    𝐁  = copy(B)
+    𝐁¹ = copy(B)
+    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
+
+    if ℒ.norm(𝐂) / ℒ.norm(initial_guess) < tol
+        if verbose println("Previous solution of sylvester equation achieves relative tol of $(ℒ.norm(𝐂) / ℒ.norm(initial_guess))") end
+        return initial_guess, true, 0, 0.0
+    end
+
+    # ℒ.rmul!(𝐂, -1)
+    𝐂¹ = similar(𝐂)
+    # 𝐂B = copy(C)
+
+    max_iter = 500
+
+    iters = max_iter
+
+    for i in 1:max_iter
+        # ℒ.mul!(𝐂B, 𝐂, 𝐁)
+        # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+        # ℒ.axpy!(1, 𝐂, 𝐂¹)
+        𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+        # ℒ.mul!(𝐀¹,𝐀,𝐀)
+        # copy!(𝐀,𝐀¹)
+        𝐀 = 𝐀^2
+        ℒ.mul!(𝐁¹,𝐁,𝐁)
+        copy!(𝐁,𝐁¹)
+        # 𝐁 = 𝐁^2
+
+        droptol!(𝐀, eps())
+        # droptol!(𝐁, eps())
+
+        if i % 2 == 0
+            normdiff = ℒ.norm(𝐂¹ - 𝐂)
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            # if isapprox(𝐂¹, 𝐂, rtol = tol)
+                iters = i
+                break 
+            end
+        end
+
+        # copy!(𝐂,𝐂¹)
+        𝐂 = 𝐂¹
+    end
+
+    # ℒ.mul!(𝐂B, 𝐂, 𝐁)
+    # ℒ.mul!(𝐂¹, 𝐀, 𝐂B)
+    # ℒ.axpy!(1, 𝐂, 𝐂¹)
+    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
+
+    𝐂 += initial_guess
+
+    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / ℒ.norm(𝐂)
+
+    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+end
+
+
 function solve_sylvester_equation(  A::Matrix{Float64},
                                     B::AbstractSparseMatrix{Float64},
                                     C::AbstractSparseMatrix{Float64},
