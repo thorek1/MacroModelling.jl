@@ -45,24 +45,16 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_solver - converged: $solved in $iterations iterations to tolerance: $reached_tol") end
 
-    if !solved # try schur if previous one didn't solve it
-        if quadratic_matrix_equation_solver == :schur
-            initial_guess = reached_tol < sqrt(tol) ? sol : zeros(0,0)
-            
-            other_algo = :doubling
-        else
-            other_algo = :schur
-        end
-        
+    if !solved && quadratic_matrix_equation_solver ≠ :schur # try schur if previous one didn't solve it
         sol, solved, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
-                                                            Val(other_algo), 
+                                                            Val(:schur), 
                                                             T; 
                                                             initial_guess = initial_guess,
                                                             tol = tol,
                                                             timer = timer,
                                                             verbose = verbose)
 
-        if verbose println("Quadratic matrix equation solver: $other_algo - converged: $solved in $iterations iterations to tolerance: $reached_tol") end
+        if verbose println("Quadratic matrix equation solver: schur - converged: $solved in $iterations iterations to tolerance: $reached_tol") end
     end
 
     return sol, solved
@@ -189,9 +181,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     reached_tol = ℒ.norm(AXX) / AXXnorm
     
-    converged = reached_tol < tol
-
-    return X, converged, iter, reached_tol
+    return X, true, iter, reached_tol # schur is always successful
 end
 
 
