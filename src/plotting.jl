@@ -455,6 +455,7 @@ function plot_irf(𝓂::ℳ;
     plots_per_page::Int = 9, 
     algorithm::Symbol = :first_order,
     negative_shock::Bool = false,
+    shock_size::Real = 1,
     generalised_irf::Bool = false,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
     ignore_obc::Bool = false,
@@ -557,6 +558,7 @@ function plot_irf(𝓂::ℳ;
                     𝓂.timings; 
                     periods = periods, 
                     shocks = shocks, 
+                    shock_size = shock_size,
                     variables = variables, 
                     negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
     else
@@ -676,6 +678,7 @@ function plot_irf(𝓂::ℳ;
                     𝓂.timings;
                     periods = periods, 
                     shocks = shocks, 
+                    shock_size = shock_size,
                     variables = variables, 
                     negative_shock = negative_shock) .+ SSS_delta[var_idx]
         else
@@ -685,6 +688,7 @@ function plot_irf(𝓂::ℳ;
                     𝓂.timings;
                     periods = periods, 
                     shocks = shocks, 
+                    shock_size = shock_size,
                     variables = variables, 
                     negative_shock = negative_shock) .+ SSS_delta[var_idx]
         end
