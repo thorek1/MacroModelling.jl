@@ -206,8 +206,8 @@ if priors == "open"
     Beta(0.5, 0.2, μσ = true),        # crhow
     Beta(0.5, 0.2, μσ = true),        # cmap
     Beta(0.5, 0.2, μσ = true),        # cmaw
-    Normal(4.0, 1.5),                  # csadjcost
-    Normal(1.50,0.375),                  # csigma
+    Gamma(4.0, 1.5, μσ = true),                  # csadjcost
+    Normal(1.50, 0.375),                  # csigma
     Beta(0.7, 0.1, μσ = true),         # chabb
     Beta(0.5, 0.1, μσ = true),           # cprobw
     Normal(2.0, 0.75),                  # csigl
@@ -223,9 +223,9 @@ if priors == "open"
     Gamma(0.625, 0.1, μσ = true),         # constepinf
     Gamma(0.25, 0.1, μσ = true),         # constebeta
     Normal(0.0, 2.0),                  # constelab
-    Normal(0.4, 0.2),                    # ctrend
+    Normal(0.3, 0.1),                    # ctrend
     Normal(0.5, 0.25),                   # cgy
-    Normal(0.3, 0.05),                   # calfa
+    Beta(0.3, 0.05, μσ = true),                   # calfa
     Beta(0.025, 0.005, μσ = true),     # ctou    = 0.025;       % depreciation rate; AER page 592
     Normal(1.5, 1.0),                               # clandaw = 1.5;         % average wage markup
     Beta(0.18, 0.01, μσ = true),          # cg      = 0.18;        % exogenous spending gdp ratio; AER page 592      
@@ -474,7 +474,8 @@ LLH = Turing.logjoint(SW07_llh, (all_params = init_params,))
 # end
 
 if !isfinite(LLH)
-    modeSW2007NM = try Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead(), initial_params = init_params)#, show_trace = true, iterations = 100)
+    println("Initial values have infinite loglikelihood. Trying to find finite starting point.")
+    modeSW2007NM = try Turing.maximum_a_posteriori(SW07_llh, Optim.SimulatedAnnealing(), initial_params = init_params)#, show_trace = true, iterations = 100)
     catch
         1
     end
