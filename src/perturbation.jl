@@ -171,7 +171,7 @@ function rrule(::typeof(calculate_first_order_solution),
                                             verbose = verbose)
 
     if !solved
-        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false, x -> NoTangent(), NoTangent(), NoTangent()
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent()
     end
 
     end # timeit_debug
@@ -195,7 +195,7 @@ function rrule(::typeof(calculate_first_order_solution),
     Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
-        return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false, x -> NoTangent(), NoTangent(), NoTangent()
+        return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent()
     end
 
     # A    = vcat(-(Ā̂₀ᵤ \ (A₊ᵤ * D * L + Ã₀ᵤ * sol[T.dynamic_order,:] + A₋ᵤ)), sol)
