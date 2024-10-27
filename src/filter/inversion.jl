@@ -98,7 +98,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
             return -Inf
         end
 
-        logabsdets = ℒ.logabsdet(jac ./ precision_factor)[1]
+        logabsdets = ℒ.logabsdet(jac)[1]
         invjac = inv(jacdecomp)
     else
         jacdecomp = try ℒ.svd(jac)
@@ -107,7 +107,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
             return -Inf
         end
         
-        logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac ./ precision_factor))
+        logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac))
         invjac = try inv(jacdecomp)
         catch
             if verbose println("Inversion filter failed") end
@@ -117,6 +117,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
 
     logabsdets *= size(data_in_deviations,2) - presample_periods
     
+    if !isfinite(logabsdets) return -Inf end
+
     𝐒obs = 𝐒[cond_var_idx,1:end-T.nExo]
 
     @timeit_debug timer "Loop" begin    
@@ -129,6 +131,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
 
         if i > presample_periods
             shocks² += sum(abs2,x)
+            if !isfinite(shocks²) return -Inf end
         end
 
         ℒ.mul!(state, 𝐒, vcat(state[T.past_not_future_and_mixed_idx], x))
@@ -187,7 +190,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     jac = 𝐒[obs_idx,end-T.nExo+1:end]
 
     if T.nExo == length(observables)
-        logabsdets = ℒ.logabsdet(-jac' ./ precision_factor)[1]
+        logabsdets = ℒ.logabsdet(jac)[1] #  ./ precision_factor
 
         jacdecomp = ℒ.lu(jac, check = false)
 
@@ -198,12 +201,16 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         invjac = inv(jacdecomp)
     else
-        logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(-jac' ./ precision_factor))
+        logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac)) #' ./ precision_factor
         jacdecomp = ℒ.svd(jac)
         invjac = inv(jacdecomp)
     end
 
     logabsdets *= size(data_in_deviations,2) - presample_periods
+
+    if !isfinite(logabsdets) 
+        return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+    end
 
     @views 𝐒obs = 𝐒[obs_idx,1:end-T.nExo]
 
@@ -215,6 +222,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         if i > presample_periods
             shocks² += sum(abs2,x[i])
+            if !isfinite(shocks²) 
+                return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            end
         end
 
         ℒ.mul!(state[i+1], 𝐒, vcat(state[i][t⁻], x[i]))
@@ -516,6 +526,10 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
             end
 
             shocks² += sum(abs2,x)
+            
+            if !isfinite(logabsdets) || !isfinite(shocks²)
+                return -Inf
+            end
         end
 
         # aug_state₁ = [state₁; 1; x]
@@ -745,6 +759,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             end
     
             shocks² += sum(abs2,x[i])
+            
+            if !isfinite(logabsdets) || !isfinite(shocks²)
+                return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            end
         end
     
         # aug_state₁[i] = [state₁; 1; x[i]]
@@ -855,11 +873,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             end
 
             # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
-            if size(jacc[i], 1) == size(jacc[i], 2)
-                ∂jacc = inv(jacc[i])'
-            else
-                ∂jacc = inv(ℒ.svd(jacc[i]))'
-            end
+            ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
+                            inv(jacc[i])'
+                        else
+                            inv(ℒ.svd(jacc[i]))'
+                        end
+                    catch
+                        return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x[1])
             # ∂kronIx = 𝐒ⁱ²ᵉ' * ∂jacc
@@ -1190,6 +1211,10 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
             end
 
             shocks² += sum(abs2,x)
+
+            if !isfinite(logabsdets) || !isfinite(shocks²)
+                return -Inf
+            end
         end
 
         # aug_state = [state; 1; x]
@@ -1417,6 +1442,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             end
     
             shocks² += sum(abs2, x[i])
+            
+            if !isfinite(logabsdets) || !isfinite(shocks²)
+                return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            end
         end
         
         # aug_state[i] = [state¹⁻; 1; x[i]]
@@ -1513,11 +1542,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             end
 
             # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
-            if size(jacc[i], 1) == size(jacc[i], 2)
-                ∂jacc = inv(jacc[i])'
-            else
-                ∂jacc = inv(ℒ.svd(jacc[i]))'
-            end
+            ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
+                            inv(jacc[i])'
+                        else
+                            inv(ℒ.svd(jacc[i]))'
+                        end
+                    catch
+                        return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x[1])
             ℒ.mul!(∂kronIx, 𝐒ⁱ²ᵉ', ∂jacc)
@@ -1963,6 +1995,10 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
             end
 
             shocks² += sum(abs2,x)
+            
+            if !isfinite(logabsdets) || !isfinite(shocks²)
+                return -Inf
+            end
         end
 
         aug_state₁ = [state[1]; 1; x]
@@ -2236,6 +2272,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             end
     
             shocks² += sum(abs2,x[i])
+
+            if !isfinite(logabsdets) || !isfinite(shocks²)
+                return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            end
         end
     
         aug_state₁[i] = [state₁; 1; x[i]]
@@ -2357,11 +2397,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             end
 
             # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
-            if size(jacc[i], 1) == size(jacc[i], 2)
-                ∂jacc = inv(jacc[i])'
-            else
-                ∂jacc = inv(ℒ.svd(jacc[i]))'
-            end
+            ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
+                            inv(jacc[i])'
+                        else
+                            inv(ℒ.svd(jacc[i]))'
+                        end
+                    catch
+                        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x))
             # ∂𝐒ⁱ = -∂jacc / 2 # fine
@@ -2830,6 +2873,10 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
             end
 
             shocks² += sum(abs2,x)
+            
+            if !isfinite(logabsdets) || !isfinite(shocks²)
+                return -Inf
+            end
         end
 
         aug_state = [state; 1; x]
@@ -3069,6 +3116,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             end
     
             shocks² += sum(abs2,x[i])
+            
+            if !isfinite(logabsdets) || !isfinite(shocks²)
+                return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            end
         end
     
         aug_state[i] = [stt; 1; x[i]]
@@ -3152,11 +3203,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             end
 
             # logabsdets += ℒ.logabsdet(jacc ./ precision_factor)[1]
-            if size(jacc[i], 1) == size(jacc[i], 2)
-                ∂jacc = inv(jacc[i])'
-            else
-                ∂jacc = inv(ℒ.svd(jacc[i]))'
-            end
+            ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
+                            inv(jacc[i])'
+                        else
+                            inv(ℒ.svd(jacc[i]))'
+                        end
+                    catch
+                        return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
 
             # jacc = 𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x))
             # ∂𝐒ⁱ = -∂jacc / 2 # fine
