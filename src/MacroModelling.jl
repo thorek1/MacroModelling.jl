@@ -7199,9 +7199,9 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     TT = 𝓂.timings
 
-    if solution_error > tol || isnan(solution_error)
+    if solution_error > 1e-12 # || isnan(solution_error) if it's NaN the fisrt condition is false anyway
         # println("NSSS not found")
-        return TT, SS_and_pars, zeros(S, 0, 0), [state], false
+        return TT, SS_and_pars, zeros(S, 0, 0), [state], solution_error < tol
     end
 
     ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂, timer = timer)# |> Matrix
@@ -7217,7 +7217,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     if !solved
         # println("NSSS not found")
-        return TT, SS_and_pars, zeros(S, 0, 0), [state], false
+        return TT, SS_and_pars, zeros(S, 0, 0), [state], solved
     end
 
     return TT, SS_and_pars, 𝐒₁, [state], solved
