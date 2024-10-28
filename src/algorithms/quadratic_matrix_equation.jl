@@ -181,7 +181,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     reached_tol = ℒ.norm(AXX) / AXXnorm
     
-    return X, true, iter, reached_tol # schur is always successful
+    return X, reached_tol < tol, iter, reached_tol # schur can fail
 end
 
 

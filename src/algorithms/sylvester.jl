@@ -2,7 +2,7 @@
 # :doubling     - fast, expensive part: B^2
 # :sylvester    - fast, dense matrices only
 # :bicgstab     - fastest for large problems, might not reach desired precision, warm start not always helpful
-# :gmres        - fastest for large problems, might not reach desired precision
+# :dqgmres      - fastest for large problems, might not reach desired precision
 # :iterative    - slow
 # :speedmapping - slow
 
@@ -14,26 +14,9 @@ function solve_sylvester_equation(A::M,
                                     C::O;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-14,
+                                    tol::AbstractFloat = 1e-12,
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
-    @timeit_debug timer "Check if guess solves it already" begin
-
-    if length(initial_guess) > 0
-        𝐂  = A * initial_guess * B + C - initial_guess
-        
-        reached_tol = ℒ.norm(𝐂) / ℒ.norm(initial_guess)
-
-        if reached_tol < tol
-            if verbose println("Sylvester equation - previous solution achieves relative tol of $reached_tol") end
-
-            # X = choose_matrix_format(initial_guess)
-
-            return initial_guess, true
-        end
-    end
-    
-    end # timeit_debug
     @timeit_debug timer "Choose matrix formats" begin
 
     if sylvester_algorithm == :sylvester
@@ -53,7 +36,23 @@ function solve_sylvester_equation(A::M,
     end
     
     end # timeit_debug
+    @timeit_debug timer "Check if guess solves it already" begin
+
+    if length(initial_guess) > 0
+        𝐂  = a * initial_guess * b + c - initial_guess
+        
+        reached_tol = ℒ.norm(𝐂) / ℒ.norm(initial_guess)
+
+        if reached_tol < tol
+            if verbose println("Sylvester equation - previous solution achieves relative tol of $reached_tol") end
+
+            # X = choose_matrix_format(initial_guess)
+
+            return initial_guess, true
+        end
+    end
     
+    end # timeit_debug
     @timeit_debug timer "Solve sylvester equation" begin
 
     x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, Val(sylvester_algorithm), 
@@ -65,55 +64,122 @@ function solve_sylvester_equation(A::M,
     if verbose && i != 0
         println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
-         
+    
     if !solved
-        if reached_tol < sqrt(tol) && sylvester_algorithm ≠ :bicgstab
-            a = collect(A)
+        if sylvester_algorithm ≠ :bicgstab
+            if reached_tol < sqrt(tol)
+                aa = collect(A)
 
-            c = collect(C)
+                cc = collect(C)
 
-            x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, 
-                                                                Val(:bicgstab), 
-                                                                initial_guess = x, 
-                                                                tol = tol, 
-                                                                verbose = verbose,
-                                                                timer = timer)
-            if verbose && i != 0
-                println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: bicgstab (refinement of previous solution)")
+                x, solved, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
+                                                                    Val(:bicgstab), 
+                                                                    initial_guess = x, 
+                                                                    tol = tol, 
+                                                                    verbose = verbose,
+                                                                    timer = timer)
+                if verbose && i != 0
+                    println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: bicgstab (refinement of previous solution)")
+                end
+            else
+                aa = collect(A)
+
+                cc = collect(C)
+
+                x, solved, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
+                                                                    Val(:bicgstab), 
+                                                                    initial_guess = zeros(0,0), 
+                                                                    tol = tol, 
+                                                                    verbose = verbose,
+                                                                    timer = timer)
+
+                if verbose && i != 0
+                    println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: bicgstab")
+                end
             end
-        else
-            a = collect(A)
+        end
 
-            c = collect(C)
+        if sylvester_algorithm ≠ :dqgmres
+            if reached_tol < sqrt(tol)
+                aa = collect(A)
 
-            x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, 
-                                                                Val(:bicgstab), 
+                cc = collect(C)
+
+                x, solved, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
+                                                                    Val(:dqgmres), 
+                                                                    initial_guess = x, 
+                                                                    tol = tol, 
+                                                                    verbose = verbose,
+                                                                    timer = timer)
+                if verbose && i != 0
+                    println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: dqgmres (refinement of previous solution)")
+                end
+            else
+                aa = collect(A)
+
+                cc = collect(C)
+
+                x, solved, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
+                                                                    Val(:dqgmres), 
+                                                                    initial_guess = zeros(0,0), 
+                                                                    tol = tol, 
+                                                                    verbose = verbose,
+                                                                    timer = timer)
+
+                if verbose && i != 0
+                    println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: dqgmres")
+                end
+            end
+        end
+
+        if !solved && sylvester_algorithm ≠ :sylvester && length(B) < 5e7 # try sylvester if previous one didn't solve it
+            aa = collect(A)
+
+            bb = collect(B)
+
+            cc = collect(C)
+
+            x, solved, i, reached_tol = solve_sylvester_equation(aa, bb, cc, 
+                                                                Val(:sylvester), 
                                                                 initial_guess = zeros(0,0), 
                                                                 tol = tol, 
                                                                 verbose = verbose,
                                                                 timer = timer)
+
             if verbose && i != 0
-                println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: bicgstab")
+                println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: sylvester")
+            end
+
+            if !solved && reached_tol < sqrt(tol)
+                x, solved, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
+                                                                    Val(:bicgstab), 
+                                                                    initial_guess = x, 
+                                                                    tol = tol, 
+                                                                    verbose = verbose,
+                                                                    timer = timer)
+                if verbose && i != 0
+                    println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: bicgstab (refinement of previous solution)")
+                end
             end
         end
     end
 
-    if !solved # && sylvester_algorithm != :sylvester # try schur if previous one didn't solve it
-        # a = collect(A)
+    # if !solved # && sylvester_algorithm != :sylvester # try schur if previous one didn't solve it
+    #     # a = collect(A)
 
-        # c = collect(C)
+    #     # c = collect(C)
 
-        x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, 
-                                                            Val(sylvester_algorithm), 
-                                                            initial_guess = zeros(0,0), 
-                                                            tol = tol, 
-                                                            verbose = verbose,
-                                                            timer = timer)
+    #     x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, 
+    #                                                         Val(sylvester_algorithm), 
+    #                                                         initial_guess = zeros(0,0), 
+    #                                                         tol = tol, 
+    #                                                         verbose = verbose,
+    #                                                         timer = timer)
 
-        if verbose && i != 0
-            println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm (no initial guess)")
-        end
-    end
+    #     if verbose && i != 0
+    #         println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm (no initial guess)")
+    #     end
+    # end
 
     end # timeit_debug
 
@@ -961,6 +1027,8 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     # if length(init) == 0
         # 𝐂, info = Krylov.bicgstab(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
         𝐂, info = Krylov.bicgstab(sylvester, [vec(𝐂¹);], 
+                                    itmax = 1000,
+                                    timemax = 10.0,
                                     rtol = tol / 100, 
                                     atol = tol / 100)#, M = precond)
     # else
@@ -987,32 +1055,6 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     end # timeit_debug
     
-    if reached_tol > tol || !isfinite(reached_tol)
-        @timeit_debug timer "GMRES refinement" begin
-
-        𝐂, info = Krylov.gmres(sylvester, [vec(C);], 
-                                [vec(𝐂);], # start value helps
-                                rtol = tol / 100, atol = tol / 100)#, M = precond)
-
-        # @inbounds 𝐗[idxs] = 𝐂
-        copyto!(𝐗, 𝐂)
-    
-        ℒ.mul!(tmp̄, A, 𝐗 * B)
-        ℒ.axpy!(1, C, tmp̄)
-    
-        # denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
-    
-        ℒ.axpy!(-1, 𝐗, tmp̄)
-    
-        # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
-    
-        𝐗 += initial_guess
-
-        reached_tol = ℒ.norm(A * 𝐗 * B + C - 𝐗) / ℒ.norm(𝐗)
-
-        end # timeit_debug
-    end
-
     if !(typeof(C) <: DenseMatrix)
         𝐗 = choose_matrix_format(𝐗, density_threshold = 1.0)
     end
@@ -1024,7 +1066,7 @@ end
 function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     B::AbstractMatrix{Float64},
                                     C::DenseMatrix{Float64},
-                                    ::Val{:gmres};
+                                    ::Val{:dqgmres};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
@@ -1087,9 +1129,14 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), false, false, preconditioner!)
 
-    @timeit_debug timer "GMRES solve" begin
+    @timeit_debug timer "DQGMRES solve" begin
     # if length(init) == 0
-        𝐂, info = Krylov.gmres(sylvester, [vec(𝐂¹);], rtol = tol / 100, atol = tol / 100)#, M = precond)
+        𝐂, info = Krylov.dqgmres(sylvester, 
+                                [vec(𝐂¹);], # start value helps
+                                itmax = 1000,
+                                timemax = 10.0,
+                                rtol = tol / 100, 
+                                atol = tol / 100)#, M = precond)
     # else
     #     𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)#, restart = true, M = precond)
     # end
