@@ -15,7 +15,7 @@ function solve_sylvester_equation(A::M,
                                     C::O;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-12,
+                                    tol::AbstractFloat = 1e-14,
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
     @timeit_debug timer "Choose matrix formats" begin
