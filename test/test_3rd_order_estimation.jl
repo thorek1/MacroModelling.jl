@@ -78,8 +78,8 @@ while !isfinite(LPmax) && i < 1000
     Pigeons.sample_iid!(Caldara_lp, replica, pt.shared)
     new_LP = Caldara_lp(replica.state)
     if new_LP > LPmax
-        LPmax = new_LP
-        XMAX  = deepcopy(replica.state)
+        global LPmax = new_LP
+        global XMAX  = deepcopy(replica.state)
     end
     i += 1
 end
