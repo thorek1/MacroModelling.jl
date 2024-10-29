@@ -45,16 +45,28 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_solver - converged: $solved in $iterations iterations to tolerance: $reached_tol") end
 
-    if !solved && quadratic_matrix_equation_solver ≠ :schur # try schur if previous one didn't solve it
-        sol, solved, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
-                                                            Val(:schur), 
-                                                            T; 
-                                                            initial_guess = initial_guess,
-                                                            tol = tol,
-                                                            timer = timer,
-                                                            verbose = verbose)
+    if !solved
+        if quadratic_matrix_equation_solver ≠ :schur # try schur if previous one didn't solve it
+            sol, solved, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
+                                                                Val(:schur), 
+                                                                T; 
+                                                                initial_guess = initial_guess,
+                                                                tol = tol,
+                                                                timer = timer,
+                                                                verbose = verbose)
 
-        if verbose println("Quadratic matrix equation solver: schur - converged: $solved in $iterations iterations to tolerance: $reached_tol") end
+            if verbose println("Quadratic matrix equation solver: schur - converged: $solved in $iterations iterations to tolerance: $reached_tol") end
+        else quadratic_matrix_equation_solver ≠ :doubling
+            sol, solved, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
+                                                                Val(:doubling), 
+                                                                T; 
+                                                                initial_guess = initial_guess,
+                                                                tol = tol,
+                                                                timer = timer,
+                                                                verbose = verbose)
+
+            if verbose println("Quadratic matrix equation solver: doubling - converged: $solved in $iterations iterations to tolerance: $reached_tol") end
+        end
     end
 
     return sol, solved
