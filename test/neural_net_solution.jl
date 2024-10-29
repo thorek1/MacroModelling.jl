@@ -65,7 +65,7 @@ for i in 1:10
         end
         Flux.adjust!(optim, ParameterSchedulers.next!(s))
         Flux.update!(optim, neural_net, grads[1])
-        push!(losses, loss)  # logging, outside gradient context
+        push!(losses, lss)  # logging, outside gradient context
         if epoch % 10 == 0 println("Epoch: $epoch; Loss: $lss; Opt state: $(optim.layers[1].weight.rule)") end
     end
 end
