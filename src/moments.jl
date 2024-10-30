@@ -2,9 +2,13 @@
 function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 
                                 lyapunov_algorithm::Symbol = :doubling, 
-                                verbose::Bool = false)::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}} where R <: Real
+                                verbose::Bool = false)::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Bool} where R <: Real
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
     
+    if solution_error > 1e-12
+        return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < 1e-12
+    end
+
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
@@ -17,9 +21,13 @@ function calculate_covariance(parameters::Vector{R},
     
     CC = C * C'
 
-    covar_raw, _ = solve_lyapunov_equation(A, CC, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+    if !solved
+        return CC, sol, ∇₁, SS_and_pars, solved
+    end
 
-    return covar_raw, sol , ∇₁, SS_and_pars
+    covar_raw, solved = solve_lyapunov_equation(A, CC, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+
+    return covar_raw, sol , ∇₁, SS_and_pars, solved
 end
 
 
@@ -134,7 +142,7 @@ function calculate_second_order_moments(
     lyapunov_algorithm::Symbol = :doubling,
     tol::AbstractFloat = eps())::Union{Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}}, Tuple{Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}}} where R <: Real
 
-    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars = calculate_covariance(parameters, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
 
     nᵉ = 𝓂.timings.nExo
 

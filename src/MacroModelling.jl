@@ -4579,10 +4579,8 @@ function solve!(𝓂::ℳ;
 
             end # timeit_debug
 
-            if solution_error > tol
-                @warn "Could not find non stochastic steady steady."
-            end
-
+            @assert solution_error < tol "Could not find non stochastic steady steady."
+            
             @timeit_debug timer "Calculate Jacobian" begin
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix

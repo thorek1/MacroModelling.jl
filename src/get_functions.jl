@@ -2135,7 +2135,9 @@ function get_correlation(𝓂::ℳ;
     elseif algorithm == :pruned_second_order
         covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = calculate_second_order_moments(𝓂.parameter_values, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
     else
-        covar_dcmp, sol, _, SS_and_pars = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+
+        @assert solved "Could not find covariance matrix."
     end
 
     std = sqrt.(ℒ.diag(covar_dcmp))
@@ -2236,7 +2238,9 @@ function get_autocorrelation(𝓂::ℳ;
             ŝ_to_ŝ₂ⁱ *= ŝ_to_ŝ₂
         end
     else
-        covar_dcmp, sol, _, SS_and_pars = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+
+        @assert solved "Could not find covariance matrix."
 
         A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
     
@@ -2380,6 +2384,8 @@ function get_moments(𝓂::ℳ;
 
     NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
+    @assert solution_error < 1e-12 "Could not find non-stochastic steady state."
+
     if length_par * length(NSSS) > 200 && derivatives
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = 3
     end 
@@ -2471,7 +2477,9 @@ function get_moments(𝓂::ℳ;
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+
+                @assert solved "Could not find covariance matrix."
 
                 # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm), 𝓂.parameter_values[param_idx])[1]
                 dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_covariance(x, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
@@ -2536,8 +2544,10 @@ function get_moments(𝓂::ℳ;
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
                 
+                @assert solved "Could not find covariance matrix."
+
                 # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)), 𝓂.parameter_values[param_idx])[1]
                 dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
             end
@@ -2612,7 +2622,9 @@ function get_moments(𝓂::ℳ;
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                
+                @assert solved "Could not find covariance matrix."
             end
 
             varr = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
@@ -2636,7 +2648,9 @@ function get_moments(𝓂::ℳ;
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                
+                @assert solved "Could not find covariance matrix."
             end
             st_dev = KeyedArray(sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))[var_idx];  Variables = axis1)
         end
@@ -2653,7 +2667,9 @@ function get_moments(𝓂::ℳ;
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                
+                @assert solved "Could not find covariance matrix."
             end
         end
     end
@@ -2874,7 +2890,9 @@ function get_statistics(𝓂,
         end
 
     else
-        covar_dcmp, sol, _, SS_and_pars = calculate_covariance(all_parameters, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(all_parameters, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+
+        @assert solved "Could not find covariance matrix."
     end
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
