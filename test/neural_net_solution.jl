@@ -74,10 +74,10 @@ n_vars = length(get_variables(model))
 
 n_hidden = max(64, n_vars * 2)
 
-n_input = n_vars + n_shocks + n_model_parameters
+n_inputs = n_vars + n_shocks + n_model_parameters
 
 if recurrent
-    neural_net = Chain( Dense(n_input, n_hidden, asinh),
+    neural_net = Chain( Dense(n_inputs, n_hidden, asinh),
                         Flux.LSTM(n_hidden, n_hidden ÷ 2),
                         Flux.GRU(n_hidden ÷ 2, n_hidden ÷ 2), # optional
                         Dense(n_hidden ÷ 2, n_hidden ÷ 2, celu),
@@ -86,7 +86,7 @@ if recurrent
                         Dense(n_hidden, n_vars))   
 else
     if normalise
-        neural_net = Chain( Dense(n_input, n_hidden, celu),
+        neural_net = Chain( Dense(n_inputs, n_hidden, celu),
                             Dense(n_hidden, n_hidden, celu),
                             Dense(n_hidden, n_hidden, celu),
                             Dense(n_hidden, n_hidden, celu),
@@ -94,7 +94,7 @@ else
                             Dense(n_hidden, n_hidden, celu),
                             Dense(n_hidden, n_vars))
     else
-        neural_net = Chain( Dense(n_input, n_hidden, asinh),
+        neural_net = Chain( Dense(n_inputs, n_hidden, asinh),
                             Dense(n_hidden, n_hidden, asinh),
                             Dense(n_hidden, n_hidden, tanh),
                             Dense(n_hidden, n_hidden, celu),
@@ -109,16 +109,17 @@ optim = Flux.setup(Flux.Adam(), neural_net)
 
 nn_params = sum(length.(Flux.params(neural_net)))
 
+n_internal_loop = 10
 # n_batches = 100
-n_simul_per_batch = 10 # nn_params ÷ (n_vars * 10)
+n_simul_per_batch = 40 # nn_params ÷ (n_vars * 10)
 n_burnin = 500
 n_epochs = 15000
 
-n_periods_batch_stays_in_sample = 200
-n_batches_in_total = 3000
+# n_periods_batch_stays_in_sample = 200
+# n_batches_in_total = 3000
 # Hannos settings
-# n_periods_batch_stays_in_sample = 100
-# n_batches_in_total = 15000
+n_periods_batch_stays_in_sample = 1000
+n_batches_in_total = 1000
 
 n_batches = n_periods_batch_stays_in_sample * n_batches_in_total ÷ n_epochs
 new_batch_every_n_periods = n_epochs ÷ n_batches_in_total
@@ -155,7 +156,11 @@ upper_bounds_par = [1
 
 bounds_range = upper_bounds_par .- lower_bounds_par
 
+get_irf(model)
+get_mean(model, derivatives = false)
+get_std(model, derivatives = false)
 
+get_parameters(model, values = true)
 function generate_new_data(sob::SobolSeq, n_batches::Int, n_simul_per_batch::Int, n_burnin::Int, n_shocks::Int)
     training_data = Tuple{Matrix{Float32}, Matrix{Float32}}[]
 
@@ -169,63 +174,59 @@ function generate_new_data(sob::SobolSeq, n_batches::Int, n_simul_per_batch::Int
         shcks = randn(n_shocks, n_burnin + n_simul_per_batch)
         
         solved = false
-
+        
         while !solved
             irf_succeeded = true
 
             sims = try get_irf(model, 
                                 shocks = shcks, 
-                                parameters = (pararmeters .=> transformed_draw),
+                                parameters = (model_parameters .=> transformed_draw),
                                 periods = 0, 
                                 levels = true)
             catch
-                irf_succeeded = false
-            end
-
-            if maximum(abs.(sims)) > 100 irf_succeeded = false end
-
-            if irf_succeeded
-                if normalise
-                    mn = get_mean(model, 
-                                    # parameters = (pararmeters .=> draw),
-                                    derivatives = false)
-                    
-                    stddev = get_std(model, 
-                                    # parameters = (pararmeters .=> draw),
-                                    # verbose = true,
-                                    derivatives = false)
-                    
-                    normalised_sims = collect((sims[:,n_burnin:end,1] .- mn) ./ stddev)
-        
-                    if maximum(abs.(normalised_sims)) > 10 || any(!isfinite, normalised_sims)
-                        draw = next!(sob)
-                        
-                        transformed_draw = draw .* bounds_range .+ lower_bounds_par
-        
-                        normalised_draw = (draw .- 0.5) .* sqrt(12)
-
-                        continue 
-                    end
-                    
-                    inputs = Float32.(vcat(normalised_sims[:,1:end - 1], shcks[:,n_burnin + 1:n_burnin + n_simul_per_batch], reshape(repeat(normalised_draw, n_simul_per_batch), length(normalised_draw), n_simul_per_batch)))
-        
-                    outputs = Float32.(normalised_sims[:,2:end])
-                else
-                    inputs = Float32.(vcat(collect(sims[:,n_burnin:n_burnin + n_simul_per_batch - 1,1]), shcks[:,n_burnin + 1:n_burnin + n_simul_per_batch], reshape(repeat(normalised_draw, n_simul_per_batch), length(normalised_draw), n_simul_per_batch)))
-                    
-                    outputs = Float32.(collect(sims[:,n_burnin+1:n_burnin + n_simul_per_batch,1]))  
-                end
-
-                push!(training_data, (outputs, inputs))
-
-                solved = true
-            else
                 draw = next!(sob)
                 
                 transformed_draw = draw .* bounds_range .+ lower_bounds_par
                 
                 normalised_draw = (draw .- 0.5) .* sqrt(12)
+
+                continue
             end
+
+            if normalise
+                mn = get_mean(model, 
+                                # parameters = (pararmeters .=> draw),
+                                derivatives = false)
+                
+                stddev = get_std(model, 
+                                # parameters = (pararmeters .=> draw),
+                                # verbose = true,
+                                derivatives = false)
+                
+                normalised_sims = collect((sims[:,n_burnin:end,1] .- mn) ./ stddev)
+    
+                if maximum(abs.(normalised_sims)) > 10 || any(!isfinite, normalised_sims)
+                    draw = next!(sob)
+                    
+                    transformed_draw = draw .* bounds_range .+ lower_bounds_par
+    
+                    normalised_draw = (draw .- 0.5) .* sqrt(12)
+
+                    continue 
+                end
+                
+                inputs = Float32.(vcat(normalised_sims[:,1:end - 1], shcks[:,n_burnin + 1:n_burnin + n_simul_per_batch], reshape(repeat(normalised_draw, n_simul_per_batch), length(normalised_draw), n_simul_per_batch)))
+    
+                outputs = Float32.(normalised_sims[:,2:end])
+            else
+                inputs = Float32.(vcat(collect(sims[:,n_burnin:n_burnin + n_simul_per_batch - 1,1]), shcks[:,n_burnin + 1:n_burnin + n_simul_per_batch], reshape(repeat(normalised_draw, n_simul_per_batch), length(normalised_draw), n_simul_per_batch)))
+                
+                outputs = Float32.(collect(sims[:,n_burnin+1:n_burnin + n_simul_per_batch,1]))  
+            end
+
+            push!(training_data, (outputs, inputs))
+
+            solved = true
         end
     end
 
@@ -235,8 +236,8 @@ end
 
 training_data = generate_new_data(sob, n_batches, n_simul_per_batch, n_burnin, n_shocks)
 
-mapreduce(x->x[1],vcat,training_data)
-mapreduce(x->x[2],vcat,training_data)
+out = mapreduce(x -> x[1], hcat, training_data)
+inp = mapreduce(x -> x[2], hcat, training_data)
 
 losses = []
 # Training loop
@@ -245,15 +246,22 @@ for epoch in 1:n_epochs
         training_dat = generate_new_data(sob, 1, n_simul_per_batch, n_burnin, n_shocks)
         popfirst!(training_data)
         push!(training_data, training_dat[1])
+
+        out = mapreduce(x -> x[1], hcat, training_data)
+        inp = mapreduce(x -> x[2], hcat, training_data)   
     end
 
-    # if epoch % 300 == 0
+    # if epoch % 100 == 0
     #     training_data = generate_new_data(sob, n_batches, n_simul_per_batch, n_burnin, n_shocks)
+
+    #     out = mapreduce(x -> x[1], hcat, training_data)
+    #     inp = mapreduce(x -> x[2], hcat, training_data)        
     # end
 
-    for (out,in) in training_data
+    for i in 1:n_internal_loop
+    # for (out,in) in training_data
         lss, grads = Flux.withgradient(neural_net) do nn
-            sqrt(Flux.mse(out, nn(in)))
+            sqrt(Flux.mse(out, nn(inp)))
         end
 
         Flux.update!(optim, neural_net, grads[1])
