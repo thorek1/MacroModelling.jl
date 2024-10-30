@@ -7,14 +7,21 @@ using Optim
 using FluxOptTools
 using StatsPlots
 using Sobol
+using Parquet
 
 using LinearAlgebra
 BLAS.set_num_threads(Threads.nthreads())
 
+## Settings
+normalise = true  # use asinh and tanh at the beginning if there is no normalisation
+recurrent = false # the internal state needs to be reset but carries a lot of information
+
+
+## Generate dataset
+
 # include("../models/Smets_Wouters_2007.jl")
 
 # model = Smets_Wouters_2007
-
 
 @model RBC_baseline begin
 	c[0] ^ (-σ) = β * c[1] ^ (-σ) * (α * z[1] * (k[0] / l[1]) ^ (α - 1) + 1 - δ)
@@ -61,20 +68,144 @@ end
 
 model = RBC_baseline
 
-normalise = true  # use asinh and tanh at the beginning if there is no normalisation
-recurrent = false # the internal state needs to be reset but carries a lot of information
-
 model_parameters = Symbol.(get_parameters(model))
 
 n_model_parameters = length(model_parameters)
+
+n_points_per_parameter_dimension = 100
+
+n_parameter_draws = n_points_per_parameter_dimension ^ (n_model_parameters ÷ 4)
+
+n_time_steps = 20
+
+n_burnin = 500
 
 n_shocks = length(get_shocks(model))
 
 n_vars = length(get_variables(model))
 
-n_hidden = max(64, n_vars * 2)
-
 n_inputs = n_vars + n_shocks + n_model_parameters
+
+sob = SobolSeq(n_model_parameters)
+
+lower_bounds_par = model.parameter_values .- 0.01
+upper_bounds_par = model.parameter_values .+ 0.01
+
+lower_bounds_par = [0
+                    0
+                    -2
+                    0.2
+                    8
+                    0.25
+                    0.25
+                    0.15
+                    0.1] .+ eps()
+
+upper_bounds_par = [1
+                    1
+                    3
+                    0.3
+                    12
+                    1
+                    1
+                    0.25
+                    0.5] .- eps()
+
+bounds_range = upper_bounds_par .- lower_bounds_par
+
+
+outputs = zeros(Float32, n_vars, n_time_steps * n_parameter_draws)
+inputs = zeros(Float32, n_inputs, n_time_steps * n_parameter_draws)
+
+for i in 1:n_parameter_draws
+    draw = next!(sob)
+
+    transformed_draw = draw .* bounds_range .+ lower_bounds_par
+    
+    normalised_draw = (draw .- 0.5) .* sqrt(12)
+
+    shcks = randn(n_shocks, n_burnin + n_time_steps)
+    
+    solved = false
+    
+    while !solved
+        irf_succeeded = true
+
+        sims = try get_irf(model, 
+                            shocks = shcks, 
+                            parameters = (model_parameters .=> transformed_draw),
+                            periods = 0, 
+                            levels = true)
+        catch
+            draw = next!(sob)
+            
+            transformed_draw = draw .* bounds_range .+ lower_bounds_par
+            
+            normalised_draw = (draw .- 0.5) .* sqrt(12)
+
+            continue
+        end
+
+        if normalise
+            mn = get_mean(model, 
+                            # parameters = (pararmeters .=> draw),
+                            derivatives = false)
+            
+            stddev = get_std(model, 
+                            # parameters = (pararmeters .=> draw),
+                            # verbose = true,
+                            derivatives = false)
+            
+            normalised_sims = (sims[:,n_burnin:end,1] .- mn) ./ stddev
+
+            if maximum(abs.(normalised_sims)) > 10 || any(!isfinite, normalised_sims)
+                draw = next!(sob)
+                
+                transformed_draw = draw .* bounds_range .+ lower_bounds_par
+
+                normalised_draw = (draw .- 0.5) .* sqrt(12)
+
+                continue 
+            end
+            
+            inputs[1:n_vars,1+(i-1)*n_time_steps:i*n_time_steps] = normalised_sims[:,1:end - 1]
+            inputs[n_vars+1:n_vars+n_shocks,1+(i-1)*n_time_steps:i*n_time_steps] = shcks[:,n_burnin + 1:n_burnin + n_time_steps]
+            inputs[n_vars+n_shocks+1:end,1+(i-1)*n_time_steps:i*n_time_steps] = reshape(repeat(normalised_draw, n_time_steps), length(normalised_draw), n_time_steps)
+
+            outputs[:,1+(i-1)*n_time_steps:i*n_time_steps] = normalised_sims[:,2:end]
+        else
+            inputs[:,1+(i-1)*n_time_steps:i*n_time_steps] = vcat(collect(sims[:,n_burnin:n_burnin + n_time_steps - 1,1]), shcks[:,n_burnin + 1:n_burnin + n_time_steps], reshape(repeat(normalised_draw, n_time_steps), length(normalised_draw), n_time_steps))
+            
+            outputs[:,1+(i-1)*n_time_steps:i*n_time_steps] = sims[:,n_burnin+1:n_burnin + n_time_steps,1]
+        end
+
+        # push!(training_data, (outputs, inputs))
+
+        solved = true
+    end
+end
+
+outputs /= 6
+# outputs .+= .5
+
+inputs /= 6
+# inputs .+= .5
+
+inout = (inputs_17_200000 = vec(inputs), outputs_6_200000 = vec(outputs))
+write_parquet("test_data.parquet",inout)
+
+
+n_epochs = 300
+
+batchsize = 1024
+
+train_loader = Flux.DataLoader((outputs, inputs), batchsize = batchsize, shuffle = true)
+
+n_batches = length(train_loader)
+
+## Create Neural Network
+
+n_hidden = max(64, n_vars * 2)
 
 if recurrent
     neural_net = Chain( Dense(n_inputs, n_hidden, asinh),
@@ -86,7 +217,7 @@ if recurrent
                         Dense(n_hidden, n_vars))   
 else
     if normalise
-        neural_net = Chain( Dense(n_inputs, n_hidden, celu),
+        neural_net = Chain( Dense(n_inputs, n_hidden, tanh),
                             Dense(n_hidden, n_hidden, celu),
                             Dense(n_hidden, n_hidden, celu),
                             Dense(n_hidden, n_hidden, celu),
@@ -104,10 +235,66 @@ else
     end
 end
 
-optim = Flux.setup(Flux.Adam(), neural_net)
-# optim = Flux.setup(Flux.AdamW(.001,(.9,.999),.01), neural_net)
+# Setup optimiser
+# optim = Flux.setup(Flux.Adam(), neural_net)
+optim = Flux.setup(Flux.Optimiser(Flux.ClipNorm(1), Flux.AdamW()), neural_net)
+# opt = ParameterSchedulers.Scheduler(Flux.AdamW, η = CosAnneal(.001, 1e-8, n_epochs * n_batches), β = (0.9, 0.999), decay = CosAnneal(.00001, 1e-10, n_epochs * n_batches))
+# Flux.setup(opt, neural_net)
+eta_sched = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-10, n_epochs * n_batches))
+# decay_sched = ParameterSchedulers.Stateful(CosAnneal(.00001, 1e-10, n_epochs * n_batches))
+# s = ParameterSchedulers.Stateful(Sequence([  CosAnneal(.001, 1e-5, 5000), 
+#                                             Exp(start = 1e-5, decay = .9995), 
+#                                             Exp(start = 1e-6, decay = .999)],
+#                                 [scheduler_period ÷ 3, scheduler_period ÷ 3, scheduler_period ÷ 3]))
+# fieldnames(Flux.Optimiser(Flux.ClipNorm(1), Flux.AdamW()))
+
+print_every = 100000 ÷ batchsize 
+
+losses = []
+# Training loop
+for epoch in 1:n_epochs
+    for (out,inp) in train_loader
+        lss, grads = Flux.withgradient(neural_net) do nn
+            sqrt(Flux.mse(out, nn(inp)))
+        end
+
+        Flux.update!(optim, neural_net, grads[1])
+
+        sched_update = ParameterSchedulers.next!(eta_sched)
+        Flux.adjust!(optim; eta = sched_update)
+        Flux.adjust!(optim; lambda = sched_update * 0.01)
+
+        push!(losses, lss)  # logging, outside gradient context
+
+        if length(losses) % print_every == 0 println("Epoch: $epoch; Loss: $(sum(losses[end-print_every+1:end])/print_every); η: $(optim.layers[1].weight.rule.opts[2].opts[1].eta); λ: $(optim.layers[1].weight.rule.opts[2].opts[2].lambda)") end
+    end
+
+    # if epoch % 10 == 0 println("Epoch: $epoch; Loss: $(sum(losses[end-99:end])/100); Opt state: $(optim.layers[1].weight.rule)") end
+end
+
+plot(losses[500:end], yaxis=:log)
+
+# norm((outputs - neural_net(inputs)) .* stddev) / norm(outputs .* stddev .+ mn)
+
+norm(outputs - neural_net(inputs)) / norm(outputs)
+
+# maximum((outputs[:,1] .* stddev - neural_net(inputs[:,1]) .* stddev))
+
+
+# does it converge to a steady state
+stt = Float32.(zero(outputs[:,1]))
+shck = zeros(Float32,n_shocks)
+for i in 1:100000
+    stt = neural_net(vcat(stt, shck))
+end
+
+
+
+
+### old code
 
 nn_params = sum(length.(Flux.params(neural_net)))
+
 
 n_internal_loop = 10
 # n_batches = 100
@@ -125,175 +312,3 @@ n_batches = n_periods_batch_stays_in_sample * n_batches_in_total ÷ n_epochs
 new_batch_every_n_periods = n_epochs ÷ n_batches_in_total
 
 # total_obs_seen = n_epochs * n_simul_per_batch * n_batches_in_total
-
-s = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-8, n_epochs))
-# s = ParameterSchedulers.Stateful(Sequence([  CosAnneal(.001, 1e-5, 5000), 
-#                                             Exp(start = 1e-5, decay = .9995), 
-#                                             Exp(start = 1e-6, decay = .999)],
-#                                 [scheduler_period ÷ 3, scheduler_period ÷ 3, scheduler_period ÷ 3]))
-
-                                
-
-
-# Parameter draws (Sobol)
-sob = SobolSeq(length(model_parameters))
-lower_bounds_par = model.parameter_values .- 0.01
-upper_bounds_par = model.parameter_values .+ 0.01
-
-lower_bounds_par = [0
-                    0
-                    -2
-                    0.2
-                    8
-                    0.25
-                    0.25
-                    0.15
-                    0.1] .+ eps()
-upper_bounds_par = [1
-                    1
-                    3
-                    0.3
-                    12
-                    1
-                    1
-                    0.25
-                    0.5] .- eps()
-
-bounds_range = upper_bounds_par .- lower_bounds_par
-
-get_irf(model)
-get_mean(model, derivatives = false)
-get_std(model, derivatives = false)
-
-get_parameters(model, values = true)
-function generate_new_data(sob::SobolSeq, n_batches::Int, n_simul_per_batch::Int, n_burnin::Int, n_shocks::Int)
-    training_data = Tuple{Matrix{Float32}, Matrix{Float32}}[]
-
-    for i in 1:n_batches
-        draw = next!(sob)
-
-        transformed_draw = draw .* bounds_range .+ lower_bounds_par
-        
-        normalised_draw = (draw .- 0.5) .* sqrt(12)
-
-        shcks = randn(n_shocks, n_burnin + n_simul_per_batch)
-        
-        solved = false
-        
-        while !solved
-            irf_succeeded = true
-
-            sims = try get_irf(model, 
-                                shocks = shcks, 
-                                parameters = (model_parameters .=> transformed_draw),
-                                periods = 0, 
-                                levels = true)
-            catch
-                draw = next!(sob)
-                
-                transformed_draw = draw .* bounds_range .+ lower_bounds_par
-                
-                normalised_draw = (draw .- 0.5) .* sqrt(12)
-
-                continue
-            end
-
-            if normalise
-                mn = get_mean(model, 
-                                # parameters = (pararmeters .=> draw),
-                                derivatives = false)
-                
-                stddev = get_std(model, 
-                                # parameters = (pararmeters .=> draw),
-                                # verbose = true,
-                                derivatives = false)
-                
-                normalised_sims = collect((sims[:,n_burnin:end,1] .- mn) ./ stddev)
-    
-                if maximum(abs.(normalised_sims)) > 10 || any(!isfinite, normalised_sims)
-                    draw = next!(sob)
-                    
-                    transformed_draw = draw .* bounds_range .+ lower_bounds_par
-    
-                    normalised_draw = (draw .- 0.5) .* sqrt(12)
-
-                    continue 
-                end
-                
-                inputs = Float32.(vcat(normalised_sims[:,1:end - 1], shcks[:,n_burnin + 1:n_burnin + n_simul_per_batch], reshape(repeat(normalised_draw, n_simul_per_batch), length(normalised_draw), n_simul_per_batch)))
-    
-                outputs = Float32.(normalised_sims[:,2:end])
-            else
-                inputs = Float32.(vcat(collect(sims[:,n_burnin:n_burnin + n_simul_per_batch - 1,1]), shcks[:,n_burnin + 1:n_burnin + n_simul_per_batch], reshape(repeat(normalised_draw, n_simul_per_batch), length(normalised_draw), n_simul_per_batch)))
-                
-                outputs = Float32.(collect(sims[:,n_burnin+1:n_burnin + n_simul_per_batch,1]))  
-            end
-
-            push!(training_data, (outputs, inputs))
-
-            solved = true
-        end
-    end
-
-    return training_data
-end
-
-
-training_data = generate_new_data(sob, n_batches, n_simul_per_batch, n_burnin, n_shocks)
-
-out = mapreduce(x -> x[1], hcat, training_data)
-inp = mapreduce(x -> x[2], hcat, training_data)
-
-losses = []
-# Training loop
-for epoch in 1:n_epochs
-    if epoch % new_batch_every_n_periods == 0
-        training_dat = generate_new_data(sob, 1, n_simul_per_batch, n_burnin, n_shocks)
-        popfirst!(training_data)
-        push!(training_data, training_dat[1])
-
-        out = mapreduce(x -> x[1], hcat, training_data)
-        inp = mapreduce(x -> x[2], hcat, training_data)   
-    end
-
-    # if epoch % 100 == 0
-    #     training_data = generate_new_data(sob, n_batches, n_simul_per_batch, n_burnin, n_shocks)
-
-    #     out = mapreduce(x -> x[1], hcat, training_data)
-    #     inp = mapreduce(x -> x[2], hcat, training_data)        
-    # end
-
-    for i in 1:n_internal_loop
-    # for (out,in) in training_data
-        lss, grads = Flux.withgradient(neural_net) do nn
-            sqrt(Flux.mse(out, nn(inp)))
-        end
-
-        Flux.update!(optim, neural_net, grads[1])
-
-        push!(losses, lss)  # logging, outside gradient context
-    end
-
-    Flux.adjust!(optim, ParameterSchedulers.next!(s))
-
-    if epoch % 100 == 0 println("Epoch: $epoch; Loss: $(sum(losses[end-99:end])/100); Opt state: $(optim.layers[1].weight.rule)") end
-end
-
-plot(losses[500:end], yaxis=:log)
-
-outputs = training_data[1][1]
-inputs = training_data[1][2]
-
-# norm((outputs - neural_net(inputs)) .* stddev) / norm(outputs .* stddev .+ mn)
-
-norm(outputs - neural_net(inputs)) / norm(outputs)
-
-# maximum((outputs[:,1] .* stddev - neural_net(inputs[:,1]) .* stddev))
-
-
-# does it converge to a steady state
-stt = Float32.(zero(outputs[:,1]))
-shck = zeros(Float32,n_shocks)
-for i in 1:100000
-    stt = neural_net(vcat(stt, shck))
-end
