@@ -127,7 +127,12 @@ new_batch_every_n_periods = n_epochs ÷ n_batches_in_total
 # total_obs_seen = n_epochs * n_simul_per_batch * n_batches_in_total
 
 s = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-8, n_epochs))
-# s = ParameterSchedulers.Stateful(SinDecay2(.001, 1e-6, 500))
+# s = ParameterSchedulers.Stateful(Sequence([  CosAnneal(.001, 1e-5, 5000), 
+#                                             Exp(start = 1e-5, decay = .9995), 
+#                                             Exp(start = 1e-6, decay = .999)],
+#                                 [scheduler_period ÷ 3, scheduler_period ÷ 3, scheduler_period ÷ 3]))
+
+                                
 
 
 # Parameter draws (Sobol)
