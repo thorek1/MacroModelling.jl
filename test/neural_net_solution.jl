@@ -202,7 +202,7 @@ h5write("data.h5", "outputs", outputs)
 
 
 ## Create Neural Network
-n_hidden = max(128, n_vars * 2)
+n_hidden = max(256, n_vars * 2)
 
 if recurrent
     neural_net = Chain( Dense(n_inputs, n_hidden, asinh),
