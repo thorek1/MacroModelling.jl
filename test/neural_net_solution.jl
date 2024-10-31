@@ -215,12 +215,12 @@ if recurrent
 else
     if normalise
         neural_net = Chain( Dense(n_inputs, n_hidden, tanh_fast),
-                            Dense(n_hidden, n_hidden, tanh_fast),
-                            Dense(n_hidden, n_hidden, tanh_fast),
+                            Dense(n_hidden, n_hidden, leakyrelu),
                             Dense(n_hidden, n_hidden, tanh_fast),
                             Dense(n_hidden, n_hidden, leakyrelu),
+                            Dense(n_hidden, n_hidden, tanh_fast),
                             Dense(n_hidden, n_hidden, leakyrelu),
-                            Dense(n_hidden, n_vars))
+                            Dense(n_hidden, n_vars, tanh_fast))
     else
         neural_net = Chain( Dense(n_inputs, n_hidden, asinh),
                             Dense(n_hidden, n_hidden, asinh),
@@ -271,7 +271,7 @@ eta_sched = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-10, n_epochs))
 
 # Training loop
 
-n_epochs = 1000
+n_epochs = 300
 
 batchsize = 1024
 
@@ -279,7 +279,7 @@ train_loader = Flux.DataLoader((outputs, inputs), batchsize = batchsize, shuffle
 
 n_batches = length(train_loader)
 
-print_every = 2
+print_every = 10
 # print_every = 100000 ÷ batchsize 
 
 losses = []
