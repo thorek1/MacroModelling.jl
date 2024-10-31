@@ -1,17 +1,11 @@
 using Revise
 using MacroModelling
 using Flux
-# using FluxKAN
 using ParameterSchedulers
 using Optim
 using FluxOptTools
 using StatsPlots
 using Sobol
-# using FileIO
-# using ParquetFiles
-# using FeatherFiles
-# using Arrow
-# using Parquet
 using HDF5
 using BSON
 
@@ -202,8 +196,8 @@ inputs /= 6
 
 
 ## Create Neural Network
-n_hidden = max(1024, n_vars * 2)
-n_hidden_small = max(128, n_vars * 2)
+n_hidden = max(256, n_vars * 2)
+n_hidden_small = max(256, n_vars * 2)
 
 if recurrent
     neural_net = Chain( Dense(n_inputs, n_hidden, asinh),
@@ -216,9 +210,9 @@ if recurrent
 else
     if normalise
         neural_net = Chain( Dense(n_inputs, n_hidden, tanh_fast),
-                            Dense(n_hidden, n_hidden_small, leakyrelu),
-                            Dense(n_hidden_small, n_hidden_small, tanh_fast),
-                            Dense(n_hidden_small, n_hidden_small, leakyrelu),
+                            Dense(n_hidden, n_hidden, leakyrelu), # going to 256 brings it down to .0016
+                            Dense(n_hidden, n_hidden_small, tanh_fast), # without these i get to .0032 and relnorm .0192
+                            Dense(n_hidden_small, n_hidden_small, leakyrelu), # without these i get to .0032 and relnorm .0192, with these it goes to .002 and .0123
                             Dense(n_hidden_small, n_hidden_small, tanh_fast),
                             Dense(n_hidden_small, n_hidden_small, leakyrelu),
                             Dense(n_hidden_small, n_vars, tanh_fast))
@@ -259,13 +253,14 @@ end
 
 # Setup optimiser
 
-n_epochs = 300
+n_epochs = 100 # 1000 goes to .0016; 300 goes to .0023
 
 # optim = Flux.setup(Flux.Adam(), neural_net)
 optim = Flux.setup(Flux.Optimiser(Flux.ClipNorm(1), Flux.AdamW()), neural_net)
 
 # eta_sched = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-10, n_epochs * n_batches))
 eta_sched = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-10, n_epochs))
+
 # decay_sched = ParameterSchedulers.Stateful(CosAnneal(.00001, 1e-10, n_epochs * n_batches))
 # s = ParameterSchedulers.Stateful(Sequence([  CosAnneal(.001, 1e-5, 5000), 
 #                                             Exp(start = 1e-5, decay = .9995), 
@@ -275,7 +270,7 @@ eta_sched = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-10, n_epochs))
 
 # Training loop
 
-batchsize = 1024
+batchsize = 512
 
 train_loader = Flux.DataLoader((outputs, inputs), batchsize = batchsize, shuffle = true)
 
@@ -307,12 +302,15 @@ for epoch in 1:n_epochs
 end
 
 
-BSON.@save "post_ADAM.bson" neural_net
+# BSON.@save "post_ADAM.bson" neural_net
 
 # BSON.@load "post_ADAM.bson" neural_net
 
 
 plot(losses[500:end], yaxis=:log)
+eta_sched_plot = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-10, n_epochs*length(train_loader)))
+lr = [ParameterSchedulers.next!(eta_sched_plot) for i in 1:n_epochs*length(train_loader)]
+plot!(twinx(),lr[500:end], yaxis=:log, label = "Learning rate")
 
 # norm((outputs - neural_net(inputs)) .* stddev) / norm(outputs .* stddev .+ mn)
 
