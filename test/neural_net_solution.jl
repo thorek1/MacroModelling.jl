@@ -11,7 +11,9 @@ using Sobol
 # using ParquetFiles
 # using FeatherFiles
 # using Arrow
-using Parquet
+# using Parquet
+using HDF5
+using BSON
 
 using LinearAlgebra
 BLAS.set_num_threads(Threads.nthreads())
@@ -19,7 +21,7 @@ BLAS.set_num_threads(Threads.nthreads())
 ## Settings
 normalise = true  # use asinh and tanh at the beginning if there is no normalisation
 recurrent = false # the internal state needs to be reset but carries a lot of information
-
+pretrain = false
 
 ## Generate dataset
 
@@ -195,26 +197,11 @@ outputs /= 6
 inputs /= 6
 # inputs .+= .5
 
-inout = (inputs_17_200000 = vec(inputs), outputs_6_200000 = vec(outputs))
-write_parquet("test_data.parquet",inout)
+h5write("data.h5", "inputs", inputs)
+h5write("data.h5", "outputs", outputs)
 
-# save("test_input.feather",inputs)
-# save("test_output.feather",outputs)
-
-# save("test_input.arrow",inputs)
-# save("test_output.arrow",outputs)
-
-
-n_epochs = 300
-
-batchsize = 1024
-
-train_loader = Flux.DataLoader((outputs, inputs), batchsize = batchsize, shuffle = true)
-
-n_batches = length(train_loader)
 
 ## Create Neural Network
-
 n_hidden = max(128, n_vars * 2)
 
 if recurrent
@@ -224,15 +211,15 @@ if recurrent
                         Dense(n_hidden ÷ 2, n_hidden ÷ 2, celu),
                         Dense(n_hidden ÷ 2, n_hidden, celu),
                         Dense(n_hidden, n_hidden, celu), # optional
-                        Dense(n_hidden, n_vars))   
+                        Dense(n_hidden, n_vars))
 else
     if normalise
-        neural_net = Chain( Dense(n_inputs, n_hidden, celu),
-                            Dense(n_hidden, n_hidden, celu),
-                            Dense(n_hidden, n_hidden, celu),
-                            Dense(n_hidden, n_hidden, celu),
-                            Dense(n_hidden, n_hidden, celu),
-                            Dense(n_hidden, n_hidden, celu),
+        neural_net = Chain( Dense(n_inputs, n_hidden, tanh_fast),
+                            Dense(n_hidden, n_hidden, tanh_fast),
+                            Dense(n_hidden, n_hidden, tanh_fast),
+                            Dense(n_hidden, n_hidden, tanh_fast),
+                            Dense(n_hidden, n_hidden, leakyrelu),
+                            Dense(n_hidden, n_hidden, leakyrelu),
                             Dense(n_hidden, n_vars))
     else
         neural_net = Chain( Dense(n_inputs, n_hidden, asinh),
@@ -246,35 +233,56 @@ else
 end
 
 # Pretrain with L-BFGS
+if pretrain
+    n_pretrain_epochs = 2000
+    n_pretrain_batches = 128
 
-pretrain_loader = Flux.DataLoader((outputs, inputs), batchsize = (n_time_steps * n_parameter_draws) ÷ 8, shuffle = true)
+    pretrain_loader = Flux.DataLoader((outputs, inputs), batchsize = (n_time_steps * n_parameter_draws) ÷ n_pretrain_batches, shuffle = true)
 
-for (out,inp) in pretrain_loader
-    loss_func() = sqrt(Flux.mse(out, neural_net(inp)))
-    pars   = Flux.params(neural_net)
-    lossfun, gradfun, fg!, p0 = optfuns(loss_func, pars)
-    res = Optim.optimize(Optim.only_fg!(fg!), p0, Optim.Options(iterations=100, show_trace=true))
+    for (out,inp) in pretrain_loader
+        loss_func() = sqrt(Flux.mse(out, neural_net(inp)))
+        pars   = Flux.params(neural_net)
+        lossfun, gradfun, fg!, p0 = optfuns(loss_func, pars)
+        res = Optim.optimize(Optim.only_fg!(fg!), p0, Optim.Options(iterations=n_pretrain_epochs, show_trace=true))
+        if loss_func() < 1e-2 break end
+    end
+
+    # Save and load model
+
+    BSON.@save "post_LBFGS.bson" neural_net
+
+    # BSON.@load "post_LBFGS.bson" neural_net
 end
-# end
-
 
 # Setup optimiser
+
 # optim = Flux.setup(Flux.Adam(), neural_net)
 optim = Flux.setup(Flux.Optimiser(Flux.ClipNorm(1), Flux.AdamW()), neural_net)
-# opt = ParameterSchedulers.Scheduler(Flux.AdamW, η = CosAnneal(.001, 1e-8, n_epochs * n_batches), β = (0.9, 0.999), decay = CosAnneal(.00001, 1e-10, n_epochs * n_batches))
-# Flux.setup(opt, neural_net)
-eta_sched = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-10, n_epochs * n_batches))
+
+# eta_sched = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-10, n_epochs * n_batches))
+eta_sched = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-10, n_epochs))
 # decay_sched = ParameterSchedulers.Stateful(CosAnneal(.00001, 1e-10, n_epochs * n_batches))
 # s = ParameterSchedulers.Stateful(Sequence([  CosAnneal(.001, 1e-5, 5000), 
 #                                             Exp(start = 1e-5, decay = .9995), 
 #                                             Exp(start = 1e-6, decay = .999)],
 #                                 [scheduler_period ÷ 3, scheduler_period ÷ 3, scheduler_period ÷ 3]))
-# fieldnames(Flux.Optimiser(Flux.ClipNorm(1), Flux.AdamW()))
 
-print_every = 100000 ÷ batchsize 
+
+
+# Training loop
+
+n_epochs = 1000
+
+batchsize = 1024
+
+train_loader = Flux.DataLoader((outputs, inputs), batchsize = batchsize, shuffle = true)
+
+n_batches = length(train_loader)
+
+print_every = 2
+# print_every = 100000 ÷ batchsize 
 
 losses = []
-# Training loop
 for epoch in 1:n_epochs
     for (out,inp) in train_loader
         lss, grads = Flux.withgradient(neural_net) do nn
@@ -283,17 +291,24 @@ for epoch in 1:n_epochs
 
         Flux.update!(optim, neural_net, grads[1])
 
-        sched_update = ParameterSchedulers.next!(eta_sched)
-        Flux.adjust!(optim; eta = sched_update)
-        Flux.adjust!(optim; lambda = sched_update * 0.01)
-
         push!(losses, lss)  # logging, outside gradient context
 
-        if length(losses) % print_every == 0 println("Epoch: $epoch; Loss: $(sum(losses[end-print_every+1:end])/print_every)") end #; η: $(optim.layers[1].weight.rule.opts[2].opts[1].eta); λ: $(optim.layers[1].weight.rule.opts[2].opts[2].lambda)") end
+        # if length(losses) % print_every == 0 println("Epoch: $epoch; Loss: $(sum(losses[end-print_every+1:end])/print_every); η: $(optim.layers[1].weight.rule.opts[2].opts[1].eta); λ: $(optim.layers[1].weight.rule.opts[2].opts[2].lambda)") end
     end
 
-    # if epoch % 10 == 0 println("Epoch: $epoch; Loss: $(sum(losses[end-99:end])/100); Opt state: $(optim.layers[1].weight.rule)") end
+    if epoch % print_every == 0 println("Epoch: $epoch; Loss: $(sum(losses[end-n_batches * print_every+1:end])/(n_batches*print_every)); η: $(optim.layers[1].weight.rule.opts[2].opts[1].eta); λ: $(optim.layers[1].weight.rule.opts[2].opts[2].lambda)") end
+
+    sched_update = ParameterSchedulers.next!(eta_sched)
+
+    Flux.adjust!(optim; eta = sched_update)
+    Flux.adjust!(optim; lambda = sched_update * 0.01)
 end
+
+
+BSON.@save "post_ADAM.bson" neural_net
+
+# BSON.@load "post_ADAM.bson" neural_net
+
 
 plot(losses[500:end], yaxis=:log)
 
@@ -302,6 +317,10 @@ plot(losses[500:end], yaxis=:log)
 norm(outputs - neural_net(inputs)) / norm(outputs)
 
 # maximum((outputs[:,1] .* stddev - neural_net(inputs[:,1]) .* stddev))
+
+model_state = Flux.state(model)
+
+jldsave("post_ADAM.jld2"; model_state)
 
 
 # does it converge to a steady state
