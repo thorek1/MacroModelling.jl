@@ -8,6 +8,7 @@ using StatsPlots
 using Sobol
 using HDF5
 using BSON
+using Random
 
 using LinearAlgebra
 BLAS.set_num_threads(Threads.nthreads())
@@ -117,6 +118,8 @@ bounds_range = upper_bounds_par .- lower_bounds_par
 outputs = zeros(Float32, n_vars, n_time_steps * n_parameter_draws)
 inputs = zeros(Float32, n_inputs, n_time_steps * n_parameter_draws)
 
+Rnadom.seed!(14124)
+
 for i in 1:n_parameter_draws
     draw = next!(sob)
 
@@ -196,8 +199,10 @@ inputs /= 6
 
 
 ## Create Neural Network
-n_hidden = max(512, n_vars * 2)
-n_hidden_small = max(128, n_vars * 2)
+n_hidden = max(256, n_vars * 2)
+n_hidden_small = max(256, n_vars * 2)
+
+Random.seed!(6794)
 
 if recurrent
     neural_net = Chain( Dense(n_inputs, n_hidden, asinh),
@@ -209,13 +214,13 @@ if recurrent
                         Dense(n_hidden, n_vars))
 else
     if normalise
-        neural_net = Chain( Dense(n_inputs, n_hidden, tanh_fast),
+        neural_net = Chain( Dense(n_inputs, n_hidden),
                             Dense(n_hidden, n_hidden, leakyrelu), # going to 256 brings it down to .0016
                             Dense(n_hidden, n_hidden_small, tanh_fast), # without these i get to .0032 and relnorm .0192
                             Dense(n_hidden_small, n_hidden_small, leakyrelu), # without these i get to .0032 and relnorm .0192, with these it goes to .002 and .0123
-                            # Dense(n_hidden_small, n_hidden_small, tanh_fast),
-                            # Dense(n_hidden_small, n_hidden_small, leakyrelu),
-                            Dense(n_hidden_small, n_vars, tanh_fast))
+                            Dense(n_hidden_small, n_hidden_small, tanh_fast),
+                            Dense(n_hidden_small, n_hidden_small, leakyrelu),
+                            Dense(n_hidden_small, n_vars))
     else
         neural_net = Chain( Dense(n_inputs, n_hidden, asinh),
                             Dense(n_hidden, n_hidden, asinh),
@@ -258,8 +263,19 @@ n_epochs = 100 # 1000 goes to .0016; 300 goes to .0023
 # optim = Flux.setup(Flux.Adam(), neural_net)
 optim = Flux.setup(Flux.Optimiser(Flux.ClipNorm(1), Flux.AdamW()), neural_net)
 
-# eta_sched = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-10, n_epochs * n_batches))
-eta_sched = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-10, n_epochs))
+# lr_start = 1e-3
+# lr_end = 1e-10
+
+# eta_sched = ParameterSchedulers.Stateful(CosAnneal(lr_start, lr_end, n_epochs * n_batches))
+
+lr_start = 1e-3
+lr_end   = 1e-10
+
+# degree = (log(lr_start) - log(lr_end)) / log((1 - (n_epochs - 1) / n_epochs))
+
+eta_sched = ParameterSchedulers.Stateful(CosAnneal(lr_start, lr_end, n_epochs))
+# eta_sched = ParameterSchedulers.Stateful(Exp(start = lr_start, decay = (lr_end / lr_start) ^ (1 / n_epochs)))
+# eta_sched = ParameterSchedulers.Stateful(Poly(start = lr_start, degree = 3, max_iter = n_epochs))
 
 # decay_sched = ParameterSchedulers.Stateful(CosAnneal(.00001, 1e-10, n_epochs * n_batches))
 # s = ParameterSchedulers.Stateful(Sequence([  CosAnneal(.001, 1e-5, 5000), 
@@ -306,15 +322,35 @@ end
 
 # BSON.@load "post_ADAM.bson" neural_net
 
+
 plot(losses[500:end], yaxis=:log)
-eta_sched_plot = ParameterSchedulers.Stateful(CosAnneal(.001, 1e-10, n_epochs*length(train_loader)))
+
+eta_sched_plot = ParameterSchedulers.Stateful(CosAnneal(lr_start, lr_end, n_epochs * length(train_loader)))
+# eta_sched_plot = ParameterSchedulers.Stateful(Exp(start = lr_start, decay = (lr_end / lr_start) ^ (1 / (n_epochs * length(train_loader)))))
+# eta_sched_plot = ParameterSchedulers.Stateful(Poly(start = lr_start, degree = 2, max_iter = n_epochs * length(train_loader)))
+
 lr = [ParameterSchedulers.next!(eta_sched_plot) for i in 1:n_epochs*length(train_loader)]
-plot!(twinx(),lr[500:end], yaxis=:log, label = "Learning rate")
+
+plot!(twinx(),lr[500:end], yaxis=:log, label = "Learning rate", lc = "black")
+
+
+# [lr_start * (1 - (t - 1) / (n_epochs))^1.5 for t in 1:n_epochs]
+
+# plot([lr_start * (1 - (t - 1) / (n_epochs))^1.5 for t in 1:n_epochs]
+# , yaxis=:log, label = "Learning rate", lc = "black")
+
+# plot!([lr_start * (1 - (t - 1) / (n_epochs))^3 for t in 1:n_epochs]
+# , yaxis=:log, label = "Learning rate", lc = "black")
+
+
 
 # norm((outputs - neural_net(inputs)) .* stddev) / norm(outputs .* stddev .+ mn)
 
 norm(outputs - neural_net(inputs)) / norm(outputs)
 
+maximum(abs, outputs - neural_net(inputs))
+sum(abs, outputs - neural_net(inputs)) / length(outputs)
+sum(abs2, outputs - neural_net(inputs)) / length(outputs)
 # maximum((outputs[:,1] .* stddev - neural_net(inputs[:,1]) .* stddev))
 
 model_state = Flux.state(model)
