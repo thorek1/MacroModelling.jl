@@ -198,6 +198,7 @@ inputs /= 6
 # h5write("data.h5", "outputs", outputs)
 
 
+
 lr_start = 1e-3
 lr_end   = 1e-10
 n_hidden = 256
@@ -210,15 +211,32 @@ optimiser = :adamw
 n_layers = 5
 
 
+optimiser = try Symbol(ENV["optimiser"]) catch 
+    :adamw
+end
+
+lr_start = try Meta.parse(ENV["lr_start"]) catch 
+    1e-3
+end
+
+batchsize = try Meta.parse(ENV["batchsize"]) catch 
+    256
+end
+
+n_hidden = try Meta.parse(ENV["n_hidden"]) catch 
+    128
+end
+
+
 results = []
 for activation in [:relu, :gelu, :tanh]
     for schedule in [:cos,:poly,:exp]
-        for n_hidden in [256,128,384]
+        # for n_hidden in [256,128,384]
             # for lr_start in [1e-3,5e-3,5e-4,1e-4]
             # for lr_end in [1e-8,1e-9,1e-10,1e-11]
-            for batchsize in [128,256,512]#,1024]#,2048]
+            # for batchsize in [128,256,512]#,1024]#,2048]
                 for n_layers in [3,5,7]
-                                # for optimiser in [:adam,:adamw]
+                                for optimiser in [:adam,:adamw]
                                     # for n_epochs in [100,150]#,300]
                                         ## Create Neural Network
                                         # n_hidden = max(256, n_vars * 2)
@@ -291,7 +309,7 @@ for activation in [:relu, :gelu, :tanh]
                                         
                                         relnorm = norm(outputs - neural_net(inputs)) / norm(outputs)
 
-                                        push!(results,[lr_start,lr_end,activation,batchsize,n_epochs,n_hidden, schedule, optimiser, elapsed_time, sum(losses[end-500:end])/(500), relnorm])
+                                        push!(results,[lr_start,lr_end,activation,batchsize,n_epochs,n_hidden, n_layers,schedule, optimiser, elapsed_time, sum(losses[end-500:end])/(500), relnorm])
                                         println("Finished $(results[end])")
                                     end
                                 end
@@ -301,7 +319,7 @@ for activation in [:relu, :gelu, :tanh]
         #     end
         # end
     # end
-end
+# end
 
 # Finished [1.0e-8, 256.0, 100.0, 758.8324751853943, 0.0017534949583932757]
 # Finished [1.0e-8, 256.0, 150.0, 1088.4795179367065, 0.0014873802429065108]
@@ -395,15 +413,15 @@ end
 # BSON.@load "post_ADAM.bson" neural_net
 
 
-plot(losses[500:end], yaxis=:log)
+# plot(losses[500:end], yaxis=:log)
 
-eta_sched_plot = ParameterSchedulers.Stateful(CosAnneal(lr_start, lr_end, n_epochs * length(train_loader)))
-# eta_sched_plot = ParameterSchedulers.Stateful(Exp(start = lr_start, decay = (lr_end / lr_start) ^ (1 / (n_epochs * length(train_loader)))))
-# eta_sched_plot = ParameterSchedulers.Stateful(Poly(start = lr_start, degree = 2, max_iter = n_epochs * length(train_loader)))
+# eta_sched_plot = ParameterSchedulers.Stateful(CosAnneal(lr_start, lr_end, n_epochs * length(train_loader)))
+# # eta_sched_plot = ParameterSchedulers.Stateful(Exp(start = lr_start, decay = (lr_end / lr_start) ^ (1 / (n_epochs * length(train_loader)))))
+# # eta_sched_plot = ParameterSchedulers.Stateful(Poly(start = lr_start, degree = 2, max_iter = n_epochs * length(train_loader)))
 
-lr = [ParameterSchedulers.next!(eta_sched_plot) for i in 1:n_epochs*length(train_loader)]
+# lr = [ParameterSchedulers.next!(eta_sched_plot) for i in 1:n_epochs*length(train_loader)]
 
-plot!(twinx(),lr[500:end], yaxis=:log, label = "Learning rate", lc = "black")
+# plot!(twinx(),lr[500:end], yaxis=:log, label = "Learning rate", lc = "black")
 
 
 # [lr_start * (1 - (t - 1) / (n_epochs))^1.5 for t in 1:n_epochs]
@@ -418,46 +436,13 @@ plot!(twinx(),lr[500:end], yaxis=:log, label = "Learning rate", lc = "black")
 
 # norm((outputs - neural_net(inputs)) .* stddev) / norm(outputs .* stddev .+ mn)
 
-norm(outputs - neural_net(inputs)) / norm(outputs)
+# norm(outputs - neural_net(inputs)) / norm(outputs)
 
-maximum(abs, outputs - neural_net(inputs))
-sum(abs, outputs - neural_net(inputs)) / length(outputs)
-sum(abs2, outputs - neural_net(inputs)) / length(outputs)
+# maximum(abs, outputs - neural_net(inputs))
+# sum(abs, outputs - neural_net(inputs)) / length(outputs)
+# sum(abs2, outputs - neural_net(inputs)) / length(outputs)
 # maximum((outputs[:,1] .* stddev - neural_net(inputs[:,1]) .* stddev))
 
-model_state = Flux.state(model)
+# model_state = Flux.state(model)
 
-jldsave("post_ADAM.jld2"; model_state)
-
-
-# does it converge to a steady state
-stt = Float32.(zero(outputs[:,1]))
-shck = zeros(Float32,n_shocks)
-for i in 1:100000
-    stt = neural_net(vcat(stt, shck))
-end
-
-
-
-
-### old code
-
-nn_params = sum(length.(Flux.params(neural_net)))
-
-
-n_internal_loop = 10
-# n_batches = 100
-n_simul_per_batch = 40 # nn_params ÷ (n_vars * 10)
-n_burnin = 500
-n_epochs = 15000
-
-# n_periods_batch_stays_in_sample = 200
-# n_batches_in_total = 3000
-# Hannos settings
-n_periods_batch_stays_in_sample = 1000
-n_batches_in_total = 1000
-
-n_batches = n_periods_batch_stays_in_sample * n_batches_in_total ÷ n_epochs
-new_batch_every_n_periods = n_epochs ÷ n_batches_in_total
-
-# total_obs_seen = n_epochs * n_simul_per_batch * n_batches_in_total
+# jldsave("post_ADAM.jld2"; model_state)
