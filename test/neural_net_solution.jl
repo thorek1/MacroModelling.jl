@@ -206,104 +206,102 @@ n_epochs = 100
 
 activation = :tanh
 schedule = :cos
-optimiser = :adam
+optimiser = :adamw
+n_layers = 5
+
 
 results = []
-for activation in [:tanh, :relu, :gelu]
-    for n_hidden in [256,128,384]
-for schedule in [:cos,:poly,:exp]
+for activation in [:relu, :gelu, :tanh]
+    for schedule in [:cos,:poly,:exp]
+        for n_hidden in [256,128,384]
             # for lr_start in [1e-3,5e-3,5e-4,1e-4]
-                # for lr_end in [1e-8,1e-9,1e-10,1e-11]
-                    for batchsize in [128,256,512]#,1024]#,2048]
-                        # for optimiser in [:adam,:adamw]
-                        # for n_epochs in [100,150]#,300]
-                            ## Create Neural Network
-                            # n_hidden = max(256, n_vars * 2)
-                            # n_hidden_small = max(256, n_vars * 2)
+            # for lr_end in [1e-8,1e-9,1e-10,1e-11]
+            for batchsize in [128,256,512]#,1024]#,2048]
+                for n_layers in [3,5,7]
+                                # for optimiser in [:adam,:adamw]
+                                    # for n_epochs in [100,150]#,300]
+                                        ## Create Neural Network
+                                        # n_hidden = max(256, n_vars * 2)
+                                        # n_hidden_small = max(256, n_vars * 2)
 
-                            Random.seed!(6794)
+                                        Random.seed!(6794)
 
-                            if activation == :relu
-                                act = leakyrelu
-                            elseif activation == :tanh
-                                act = tanh_fast
-                            elseif activation == :celu
-                                act = celu
-                            elseif activation == :gelu
-                                act = gelu
-                            end
+                                        if activation == :relu
+                                            act = leakyrelu
+                                        elseif activation == :tanh
+                                            act = tanh_fast
+                                        elseif activation == :celu
+                                            act = celu
+                                        elseif activation == :gelu
+                                            act = gelu
+                                        end
 
-                            neural_net = Chain( Dense(n_inputs, n_hidden),
-                                                Dense(n_hidden, n_hidden, act), # going to 256 brings it down to .0016
-                                                Dense(n_hidden, n_hidden, act), # without these i get to .0032 and relnorm .0192
-                                                Dense(n_hidden, n_hidden, act), # without these i get to .0032 and relnorm .0192, with these it goes to .002 and .0123
-                                                Dense(n_hidden, n_hidden, act),
-                                                Dense(n_hidden, n_hidden, act),
-                                                Dense(n_hidden, n_vars))
+                                        intermediate_layers = [Dense(n_hidden, n_hidden, act) for i in 1:n_layers]
+                                        neural_net = Chain( Dense(n_inputs, n_hidden), intermediate_layers..., Dense(n_hidden, n_vars))
 
+                                        # Setup optimiser
 
-                            # Setup optimiser
+                                        # n_epochs = 100 # 1000 goes to .0016; 300 goes to .0023
 
-                            # n_epochs = 100 # 1000 goes to .0016; 300 goes to .0023
+                                        if optimiser == :adam
+                                            optim = Flux.setup(Flux.Adam(), neural_net)
+                                        elseif optimiser == :adamw
+                                            optim = Flux.setup(Flux.Optimiser(Flux.ClipNorm(1), Flux.AdamW()), neural_net)
+                                        end
 
-                            if optimiser == :adam
-                                optim = Flux.setup(Flux.Adam(), neural_net)
-                            elseif optimise == :adamw
-                                optim = Flux.setup(Flux.Optimiser(Flux.ClipNorm(1), Flux.AdamW()), neural_net)
-                            end
+                                        # lr_start = 1e-3
+                                        # lr_end   = 1e-10
+                                        if schedule == :cos
+                                            eta_sched = ParameterSchedulers.Stateful(CosAnneal(lr_start, lr_end, n_epochs))
+                                        elseif schedule == :exp
+                                            eta_sched = ParameterSchedulers.Stateful(Exp(start = lr_start, decay = (lr_end / lr_start) ^ (1 / n_epochs)))
+                                        elseif schedule == :poly
+                                            eta_sched = ParameterSchedulers.Stateful(Poly(start = lr_start, degree = 3, max_iter = n_epochs))
+                                        end
 
-                            # lr_start = 1e-3
-                            # lr_end   = 1e-10
-                            if schedule == :cos
-                                eta_sched = ParameterSchedulers.Stateful(CosAnneal(lr_start, lr_end, n_epochs))
-                            elseif schedule == :exp
-                                eta_sched = ParameterSchedulers.Stateful(Exp(start = lr_start, decay = (lr_end / lr_start) ^ (1 / n_epochs)))
-                            elseif schedule == :poly
-                                eta_sched = ParameterSchedulers.Stateful(Poly(start = lr_start, degree = 3, max_iter = n_epochs))
-                            end
+                                        # Training loop
 
-                            # Training loop
+                                        # batchsize = 512
 
-                            # batchsize = 512
+                                        train_loader = Flux.DataLoader((outputs, inputs), batchsize = batchsize, shuffle = true)
 
-                            train_loader = Flux.DataLoader((outputs, inputs), batchsize = batchsize, shuffle = true)
+                                        n_batches = length(train_loader)
 
-                            n_batches = length(train_loader)
+                                        start_time = time()
+                                        losses = []
+                                        for epoch in 1:n_epochs
+                                            for (out,inp) in train_loader
+                                                lss, grads = Flux.withgradient(neural_net) do nn
+                                                    sqrt(Flux.mse(out, nn(inp)))
+                                                end
 
-                            start_time = time()
-                            losses = []
-                            for epoch in 1:n_epochs
-                                for (out,inp) in train_loader
-                                    lss, grads = Flux.withgradient(neural_net) do nn
-                                        sqrt(Flux.mse(out, nn(inp)))
+                                                Flux.update!(optim, neural_net, grads[1])
+
+                                                push!(losses, lss)  # logging, outside gradient context
+
+                                            end
+
+                                            sched_update = ParameterSchedulers.next!(eta_sched)
+
+                                            Flux.adjust!(optim; eta = sched_update)
+                                            Flux.adjust!(optim; lambda = sched_update * 0.01)
+                                        end
+                                        end_time = time()  # Record end time
+                                        elapsed_time = end_time - start_time
+                                        
+                                        relnorm = norm(outputs - neural_net(inputs)) / norm(outputs)
+
+                                        push!(results,[lr_start,lr_end,activation,batchsize,n_epochs,n_hidden, schedule, optimiser, elapsed_time, sum(losses[end-500:end])/(500), relnorm])
+                                        println("Finished $(results[end])")
                                     end
-
-                                    Flux.update!(optim, neural_net, grads[1])
-
-                                    push!(losses, lss)  # logging, outside gradient context
-
                                 end
-
-                                sched_update = ParameterSchedulers.next!(eta_sched)
-
-                                Flux.adjust!(optim; eta = sched_update)
-                                Flux.adjust!(optim; lambda = sched_update * 0.01)
                             end
-                            end_time = time()  # Record end time
-                            elapsed_time = end_time - start_time
-                            
-                            relnorm = norm(outputs - neural_net(inputs)) / norm(outputs)
-
-                            push!(results,[lr_start,lr_end,activation,batchsize,n_epochs,n_hidden, schedule, optimiser, elapsed_time, sum(losses[end-500:end])/(500), relnorm])
-                            println("Finished $(results[end])")
                         end
-                    end
-                end
-            end
+                # end
+        #     end
         # end
-#     end
     # end
-# end
+end
 
 # Finished [1.0e-8, 256.0, 100.0, 758.8324751853943, 0.0017534949583932757]
 # Finished [1.0e-8, 256.0, 150.0, 1088.4795179367065, 0.0014873802429065108]
@@ -360,6 +358,38 @@ for schedule in [:cos,:poly,:exp]
 # Finished Any[0.001, 1.0e-10, :tanh, 512, 100, 256, :poly, 500.66837191581726, 0.00709356f0]
 # Finished Any[0.001, 1.0e-10, :tanh, 1024, 100, 256, :poly, 400.3649890422821, 0.009719013f0]
 # Finished Any[0.001, 1.0e-10, :relu, 256, 100, 256, :poly, 649.3027341365814, 0.0020020679f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 128, 100, 256, :cos, :adam, 874.7590310573578, 0.008674952f0, 0.053340144f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 256, 100, 256, :cos, :adam, 1479.008378982544, 0.0042581027f0, 0.025902053f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 512, 100, 256, :cos, :adam, 657.4577000141144, 0.005456611f0, 0.032977317f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 128, 100, 256, :poly, :adam, 1065.2488479614258, 0.0068564145f0, 0.042251226f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 256, 100, 256, :poly, :adam, 690.5816850662231, 0.0050768475f0, 0.030870058f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 512, 100, 256, :poly, :adam, 655.0082411766052, 0.0072127706f0, 0.04362028f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 128, 100, 256, :exp, :adam, 957.6404728889465, 0.01103832f0, 0.06775959f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 256, 100, 256, :exp, :adam, 707.8961498737335, 0.012567502f0, 0.07634977f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 512, 100, 256, :exp, :adam, 485.78916001319885, 0.012558071f0, 0.0759405f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 128, 100, 128, :cos, :adam, 441.0436019897461, 0.005521825f0, 0.034186002f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 256, 100, 128, :cos, :adam, 307.0251669883728, 0.005009134f0, 0.030602196f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 512, 100, 128, :cos, :adam, 209.77864789962769, 0.0074116797f0, 0.044822957f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 128, 100, 128, :poly, :adam, 404.1711390018463, 0.006917475f0, 0.042661365f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 256, 100, 128, :poly, :adam, 293.3614249229431, 0.0066384356f0, 0.040544663f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 512, 100, 128, :poly, :adam, 233.64928793907166, 0.009719833f0, 0.05880016f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 128, 100, 128, :exp, :adam, 457.6904640197754, 0.013690149f0, 0.083735645f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 256, 100, 128, :exp, :adam, 307.8617420196533, 0.013544772f0, 0.082225695f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 512, 100, 128, :exp, :adam, 228.92059087753296, 0.015151696f0, 0.0915573f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 128, 100, 384, :cos, :adam, 1548.1928508281708, 0.004702253f0, 0.029134441f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 256, 100, 384, :cos, :adam, 2695.2564520835876, 0.005433802f0, 0.033156622f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 512, 100, 384, :cos, :adam, 878.5811469554901, 0.0055878004f0, 0.033750694f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 128, 100, 384, :poly, :adam, 1666.9311110973358, 0.004909168f0, 0.030593151f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 256, 100, 384, :poly, :adam, 1250.2043538093567, 0.006147527f0, 0.037540067f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 512, 100, 384, :poly, :adam, 1013.6991958618164, 0.007157812f0, 0.043307714f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 128, 100, 384, :exp, :adam, 1612.9655721187592, 0.01080064f0, 0.066040665f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 256, 100, 384, :exp, :adam, 1105.5232849121094, 0.012695885f0, 0.07717036f0]
+# Finished Any[0.001, 1.0e-10, :tanh, 512, 100, 384, :exp, :adam, 883.1924521923065, 0.0130463075f0, 0.07885451f0]
+# Finished Any[0.001, 1.0e-10, :relu, 128, 100, 256, :cos, :adam, 947.8783750534058, 0.0017637294f0, 0.010659676f0]
+# Finished Any[0.001, 1.0e-10, :relu, 256, 100, 256, :cos, :adam, 666.8837270736694, 0.001751316f0, 0.010552594f0]
+# Finished Any[0.001, 1.0e-10, :relu, 512, 100, 256, :cos, :adam, 472.91423892974854, 0.0019897788f0, 0.011983875f0]
+# Finished Any[0.001, 1.0e-10, :relu, 128, 100, 256, :poly, :adam, 972.5033791065216, 0.0018560188f0, 0.01122801f0]
+# Finished Any[0.001, 1.0e-10, :relu, 256, 100, 256, :poly, :adam, 657.7711980342865, 0.0020595042f0, 0.012445164f0]
 # BSON.@save "post_ADAM.bson" neural_net
 
 # BSON.@load "post_ADAM.bson" neural_net
