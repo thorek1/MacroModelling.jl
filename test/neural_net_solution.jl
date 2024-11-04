@@ -131,13 +131,13 @@ lower_bounds_par = [0.01
                     0.15
                     0.2] .+ eps()
 
-upper_bounds_par = [.5
-                    .5
+upper_bounds_par = [.25
+                    .25
                     1.5
                     0.3
                     11
-                    .99
-                    .99
+                    .9
+                    .9
                     0.25
                     0.4] .- eps()
 
@@ -256,7 +256,7 @@ batchsize = 128
 
 n_epochs = n_gradient_evals * batchsize ÷ (n_parameter_draws * n_time_steps)
 
-activation = :gelu
+activation = :swish
 schedule = :cos
 optimiser = :adam
 n_layers = 5
@@ -330,7 +330,7 @@ for epoch in 1:n_epochs
 
         push!(losses, lss)  # logging, outside gradient context
 
-        if length(losses) % 100 == 0 && length(losses) > 100  println("Epoch: $epoch - Gradient calls: $(length(losses)) - Loss: $(sum(losses[end-100:end])/(100))") end
+        if length(losses) % (n_gradient_evals ÷ 100) == 0 && length(losses) > (n_gradient_evals ÷ 100)  println("Epoch: $epoch - Gradient calls: $(length(losses)) - Loss: $(sum(losses[end-(n_gradient_evals ÷ 100):end])/(n_gradient_evals ÷ 100)) - η: $(optim.layers[1].weight.rule.eta)") end
     end
 end
 end_time = time()  # Record end time
@@ -402,6 +402,8 @@ function calculate_loss(variables₍₋₁₎::Matrix{R},
     loss += sum(abs2, min.(eps(eltype(inputs)), k₍₁₎))
     loss += sum(abs2, min.(eps(eltype(inputs)), l₍₁₎))
 
+    loss *= 1000000000
+
     c₍₋₁₎ = max.(eps(eltype(inputs)), c₍₋₁₎)
     k₍₋₁₎ = max.(eps(eltype(inputs)), k₍₋₁₎)
     l₍₋₁₎ = max.(eps(eltype(inputs)), l₍₋₁₎)
@@ -438,18 +440,6 @@ shock_grid = Float32.(shock_grid)
 
 
 
-
-if activation == :relu
-    act = leakyrelu
-elseif activation == :tanh
-    act = tanh_fast
-elseif activation == :celu
-    act = celu
-elseif activation == :gelu
-    act = gelu
-elseif activation == :swish
-    act = swish
-end
 
 intermediate_layers = [Dense(n_hidden, n_hidden, act) for i in 1:n_layers]
 neural_net = Chain( Dense(n_inputs, n_hidden), intermediate_layers..., Dense(n_hidden, n_vars))
@@ -514,9 +504,9 @@ for epoch in 1:n_epochs
         Flux.adjust!(optim; lambda = sched_update * 0.01)
 
         push!(losses, lss)  # logging, outside gradient context
-        if length(losses) % 100 == 0 && length(losses) > 100  println("Epoch: $epoch - Gradient calls: $(length(losses)) - Loss: $(sum(losses[end-100:end])/(100))") end
+
+        if length(losses) % (n_gradient_evals ÷ 100) == 0 && length(losses) > (n_gradient_evals ÷ 100)  println("Epoch: $epoch - Gradient calls: $(length(losses)) - Loss: $(sum(losses[end-(n_gradient_evals ÷ 100):end])/(n_gradient_evals ÷ 100)) - η: $(optim.layers[1].weight.rule.eta)") end
     end
-    # println("Epoch: $epoch - Loss: $(sum(losses[end-100:end])/(100))")
 end
 
 end_time = time()  # Record end time
