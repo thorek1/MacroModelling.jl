@@ -194,7 +194,9 @@ for i in 1:n_parameter_draws
             mn = get_mean(model, 
                             algorithm = algorithm,
                             derivatives = false)
-            
+            # no bias for positive only variables
+            # mn[[1,3,4]] *= 0
+
             stddev = get_std(model, 
                             algorithm = algorithm,
                             derivatives = false)
@@ -280,6 +282,7 @@ end
 
 intermediate_layers = [Dense(n_hidden, n_hidden, act) for i in 1:n_layers]
 neural_net_approx = Chain( Dense(n_inputs, n_hidden), intermediate_layers..., Dense(n_hidden, n_vars))
+# Parallel(vcat, Dense(n_hidden, 1, softplus), Dense(n_hidden, 1), Dense(n_hidden, 2, softplus), Dense(n_hidden, 2)))
 
 # Setup optimiser
 
@@ -442,7 +445,8 @@ shock_grid = Float32.(shock_grid)
 
 
 intermediate_layers = [Dense(n_hidden, n_hidden, act) for i in 1:n_layers]
-neural_net = Chain( Dense(n_inputs, n_hidden), intermediate_layers..., Dense(n_hidden, n_vars))
+neural_net = Chain( Dense(n_inputs, n_hidden), intermediate_layers..., Dense(n_hidden, n_vars)) #
+# Parallel(vcat, Dense(n_hidden, 1, softplus), Dense(n_hidden, 1), Dense(n_hidden, 2, softplus), Dense(n_hidden, 2)))
 
 # Setup optimiser
 if optimiser == :adam
