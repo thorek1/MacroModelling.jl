@@ -81,7 +81,7 @@ while !isfinite(LPmax) && i < 1000
         global LPmax = new_LP
         global XMAX  = deepcopy(replica.state)
     end
-    i += 1
+    global i += 1
 end
 
 # define a specific initialization for this model
