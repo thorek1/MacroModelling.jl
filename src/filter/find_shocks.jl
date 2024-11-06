@@ -347,7 +347,7 @@ function find_shocks(::Val{:LagrangeNewton},
     # println("Norm: $(ℒ.norm(x̂) / max(norm1,norm2))")
     # println(ℒ.norm(Δxλ))
     # println(ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol)
-    return x, ℒ.norm(x̂) / max(norm1,norm2) < 1e-14 && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol
+    return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
 end
 
 
