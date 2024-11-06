@@ -32,11 +32,11 @@ dists = [
     InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, m)
+Turing.@model function FS2000_loglikelihood_function(data, m, algorithm)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_second_order)
+        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = algorithm)
     end
 end
 
@@ -44,31 +44,47 @@ end
 Random.seed!(30)
 
 # generate a Pigeons log potential
-FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000))
+FS2000_pruned2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order))
 
-# find a feasible starting point
-pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1)
+init_params = FS2000.parameter_values
 
-replica = pt.replicas[end]
-XMAX = deepcopy(replica.state)
-LPmax = FS2000_lp(XMAX)
+LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order), (all_params = init_params,))
 
-i = 0
+if isfinite(LLH)
+    const FS2000_pruned2nd_LP = typeof(FS2000_pruned2nd_lp)
 
-while !isfinite(LPmax) && i < 1000
-    Pigeons.sample_iid!(FS2000_lp, replica, pt.shared)
-    new_LP = FS2000_lp(replica.state)
-    if new_LP > LPmax
-        global LPmax = new_LP
-        global XMAX  = deepcopy(replica.state)
+    function Pigeons.initialization(target::FS2000_pruned2nd_LP, rng::AbstractRNG, _::Int64)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+        # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
+        
+        result = DynamicPPL.initialize_parameters!!(result, init_params, DynamicPPL.SampleFromPrior(), target.model)
+
+        return result
     end
-    i += 1
+
+    pt = Pigeons.pigeons(target = FS2000_pruned2nd_lp, n_rounds = 0, n_chains = 1)
+else
+    replica = pt.replicas[end]
+    XMAX = deepcopy(replica.state)
+    LPmax = FS2000_pruned2nd_lp(XMAX)
+
+    i = 0
+
+    while !isfinite(LPmax) && i < 1000
+        Pigeons.sample_iid!(FS2000_pruned2nd_lp, replica, pt.shared)
+        new_LP = FS2000_pruned2nd_lp(replica.state)
+        if new_LP > LPmax
+            global LPmax = new_LP
+            global XMAX  = deepcopy(replica.state)
+        end
+        global i += 1
+    end
+
+    # define a specific initialization for this model
+    Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
 end
 
-# define a specific initialization for this model
-Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
-
-pt = @time Pigeons.pigeons(target = FS2000_lp,
+pt = @time Pigeons.pigeons(target = FS2000_pruned2nd_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
             n_rounds = 8,
@@ -83,45 +99,50 @@ println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
 
 
 
-Turing.@model function FS2000_loglikelihood_function(data, m)
-    all_params ~ Turing.arraydist(dists)
-
-    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :second_order)
-    end
-end
-
-
 Random.seed!(30)
 
 # generate a Pigeons log potential
-FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000))
+FS2000_2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :second_order))
 
-# find a feasible starting point
-pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1)
+init_params = FS2000.parameter_values
 
-replica = pt.replicas[end]
-XMAX = deepcopy(replica.state)
-LPmax = FS2000_lp(XMAX)
+LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :second_order), (all_params = init_params,))
 
-i = 0
+if isfinite(LLH)
+    const FS2000_2nd_LP = typeof(FS2000_2nd_lp)
 
-while !isfinite(LPmax) && i < 1000
-    Pigeons.sample_iid!(FS2000_lp, replica, pt.shared)
-    new_LP = FS2000_lp(replica.state)
-    if new_LP > LPmax
-        LPmax = new_LP
-        XMAX  = deepcopy(replica.state)
+    function Pigeons.initialization(target::FS2000_2nd_LP, rng::AbstractRNG, _::Int64)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+        # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
+        
+        result = DynamicPPL.initialize_parameters!!(result, init_params, DynamicPPL.SampleFromPrior(), target.model)
+
+        return result
     end
-    i += 1
+
+    pt = Pigeons.pigeons(target = FS2000_2nd_lp, n_rounds = 0, n_chains = 1)
+else
+    replica = pt.replicas[end]
+    XMAX = deepcopy(replica.state)
+    LPmax = FS2000_2nd_lp(XMAX)
+
+    i = 0
+
+    while !isfinite(LPmax) && i < 1000
+        Pigeons.sample_iid!(FS2000_2nd_lp, replica, pt.shared)
+        new_LP = FS2000_2nd_lp(replica.state)
+        if new_LP > LPmax
+            global LPmax = new_LP
+            global XMAX  = deepcopy(replica.state)
+        end
+        global i += 1
+    end
+
+    # define a specific initialization for this model
+    Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
 end
 
-# define a specific initialization for this model
-Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
-
-
-
-pt = @time Pigeons.pigeons(target = FS2000_lp,
+pt = @time Pigeons.pigeons(target = FS2000_2nd_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
             n_rounds = 9,
