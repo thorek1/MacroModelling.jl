@@ -193,6 +193,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     reached_tol = ℒ.norm(AXX) / AXXnorm
     
+    if reached_tol > tol
+        println("QME: schur $reached_tol")
+    end
+
     return X, reached_tol < tol, iter, reached_tol # schur can fail
 end
 
@@ -381,6 +385,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     converged = reached_tol < tol
 
+    if reached_tol > tol
+        println("QME: doubling $reached_tol")
+    end
+
     return X, converged, iter, reached_tol
 end
 
@@ -434,6 +442,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     end # timeit_debug
 
+    if reached_tol > tol
+        println("QME: linear time iteration $reached_tol")
+    end
+
     return X, converged, sol.maps, reached_tol
 end
 
@@ -485,6 +497,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     reached_tol = ℒ.norm(AXX) / AXXnorm
 
     converged = reached_tol < tol
+
+    if reached_tol > tol
+        println("QME: quadratic iteration $reached_tol")
+    end
 
     return X, converged, sol.maps, reached_tol
 end

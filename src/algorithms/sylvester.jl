@@ -343,6 +343,10 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
+    if reached_tol > tol
+        println("Sylvester: doubling $reached_tol")
+    end
+
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
@@ -421,6 +425,10 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
     ℒ.axpy!(1, initial_guess, 𝐂)
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
+
+    if reached_tol > tol
+        println("Sylvester: doubling $reached_tol")
+    end
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -523,6 +531,10 @@ function solve_sylvester_equation(  A::Matrix{Float64},
     end # timeit_debug
     end # timeit_debug
 
+    if reached_tol > tol
+        println("Sylvester: doubling $reached_tol")
+    end
+
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
@@ -598,6 +610,10 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
     𝐂 += initial_guess
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
+
+    if reached_tol > tol
+        println("Sylvester: doubling $reached_tol")
+    end
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -676,6 +692,10 @@ function solve_sylvester_equation(  A::Matrix{Float64},
     𝐂 += initial_guess
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
+
+    if reached_tol > tol
+        println("Sylvester: doubling $reached_tol")
+    end
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -755,6 +775,10 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
+    if reached_tol > tol
+        println("Sylvester: doubling $reached_tol")
+    end
+
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
@@ -831,6 +855,10 @@ function solve_sylvester_equation(  A::Matrix{Float64},
     𝐂 += initial_guess
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
+
+    if reached_tol > tol
+        println("Sylvester: doubling $reached_tol")
+    end
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -926,6 +954,10 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
 
     end # timeit_debug
 
+    if reached_tol > tol
+        println("Sylvester: doubling $reached_tol")
+    end
+
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
@@ -962,6 +994,10 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     𝐂 += initial_guess
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
+
+    if reached_tol > tol
+        println("Sylvester: sylvester $reached_tol")
+    end
 
     return 𝐂, reached_tol < tol, -1, reached_tol # return info on convergence
 end
@@ -1079,6 +1115,10 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
         𝐗 = choose_matrix_format(𝐗, density_threshold = 1.0)
     end
 
+    if reached_tol > tol
+        println("Sylvester: bicgstab $reached_tol")
+    end
+
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
 
@@ -1181,6 +1221,10 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     end # timeit_debug
     
+    if reached_tol > tol
+        println("Sylvester: dqgmres $reached_tol")
+    end
+
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
 
@@ -1283,6 +1327,10 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     end # timeit_debug
     
+    if reached_tol > tol
+        println("Sylvester: gmres $reached_tol")
+    end
+
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
 
@@ -1346,6 +1394,10 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
+    if reached_tol > tol
+        println("Sylvester: iterative $reached_tol")
+    end
+
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
@@ -1386,6 +1438,10 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
     𝐂 += initial_guess
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
+
+    if reached_tol > tol
+        println("Sylvester: speedmapping $reached_tol")
+    end
 
     return 𝐂, reached_tol < tol, soll.maps, reached_tol
 end

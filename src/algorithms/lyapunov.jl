@@ -153,6 +153,10 @@ function solve_lyapunov_equation(A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},D
     
     reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
 
+    if reached_tol > tol
+        println("Lyapunov: lyapunov $reached_tol")
+    end
+
     return 𝐂, reached_tol < tol, 0, reached_tol # return info on convergence
 end
 
@@ -196,6 +200,10 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
 
     reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
+
+    if reached_tol > tol
+        println("Lyapunov: doubling $reached_tol")
+    end
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -242,6 +250,10 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
 
     reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
+
+    if reached_tol > tol
+        println("Lyapunov: doubling $reached_tol")
+    end
 
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
@@ -299,6 +311,10 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
 
+    if reached_tol > tol
+        println("Lyapunov: doubling $reached_tol")
+    end
+
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
@@ -352,6 +368,10 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
     
     reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
 
+    if reached_tol > tol
+        println("Lyapunov: doubling $reached_tol")
+    end
+
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
@@ -390,6 +410,10 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐗 * A' + C - 𝐗) / ℒ.norm(𝐗)
 
+    if reached_tol > tol
+        println("Lyapunov: bicgstab $reached_tol")
+    end
+
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
 
@@ -427,6 +451,10 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
 
     reached_tol = ℒ.norm(A * 𝐗 * A' + C - 𝐗) / ℒ.norm(𝐗)
+
+    if reached_tol > tol
+        println("Lyapunov: gmres $reached_tol")
+    end
 
     return 𝐗, reached_tol < tol, info.niter, reached_tol
 end
@@ -474,6 +502,10 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     
     reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
 
+    if reached_tol > tol
+        println("Lyapunov: iterative $reached_tol")
+    end
+
     return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
 end
 
@@ -495,6 +527,10 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     𝐂 = soll.minimizer
 
     reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
+
+    if reached_tol > tol
+        println("Lyapunov: speedmapping $reached_tol")
+    end
 
     return 𝐂, reached_tol < tol, soll.maps, reached_tol
 end
