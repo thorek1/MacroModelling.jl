@@ -12,7 +12,7 @@ function find_shocks(::Val{:LagrangeNewton},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 1000,
-                    tol::Float64 = 1e-14) # will fail for higher or lower precision
+                    tol::Float64 = 1e-13) # will fail for higher or lower precision
     x = copy(initial_guess)
     
     λ = zeros(size(𝐒ⁱ, 1))
@@ -142,7 +142,7 @@ function rrule(::typeof(find_shocks),
                 𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                 shock_independent::Vector{Float64};
                 max_iter::Int = 1000,
-                tol::Float64 = 1e-14)
+                tol::Float64 = 1e-13)
 
     x, matched = find_shocks(Val(:LagrangeNewton),
                             initial_guess,
@@ -208,7 +208,7 @@ function find_shocks(::Val{:LagrangeNewton},
                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 1000,
-                    tol::Float64 = 1e-14) # will fail for higher or lower precision
+                    tol::Float64 = 1e-13) # will fail for higher or lower precision
     x = copy(initial_guess)
 
     λ = zeros(size(𝐒ⁱ, 1))
@@ -368,7 +368,7 @@ function rrule(::typeof(find_shocks),
                 𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
                 shock_independent::Vector{Float64};
                 max_iter::Int = 1000,
-                tol::Float64 = 1e-14)
+                tol::Float64 = 1e-13)
 
     x, matched = find_shocks(Val(:LagrangeNewton),
                             initial_guess,
@@ -431,7 +431,7 @@ function find_shocks(::Val{:SLSQP},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 500,
-                    tol::Float64 = 1e-14) # will fail for higher or lower precision
+                    tol::Float64 = 1e-13) # will fail for higher or lower precision
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
         if length(grad) > 0
             copy!(grad, X)
@@ -516,7 +516,7 @@ function find_shocks(::Val{:SLSQP},
                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 500,
-                    tol::Float64 = 1e-14) # will fail for higher or lower precision
+                    tol::Float64 = 1e-13) # will fail for higher or lower precision
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
         if length(grad) > 0
             copy!(grad, X)
@@ -614,7 +614,7 @@ function find_shocks(::Val{:COBYLA},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 10000,
-                    tol::Float64 = 1e-14) # will fail for higher or lower precision
+                    tol::Float64 = 1e-13) # will fail for higher or lower precision
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
         sum(abs2, X)
     end
@@ -682,7 +682,7 @@ function find_shocks(::Val{:COBYLA},
                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 10000,
-                    tol::Float64 = 1e-14) # will fail for higher or lower precision
+                    tol::Float64 = 1e-13) # will fail for higher or lower precision
     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
         sum(abs2, X)
     end
@@ -762,7 +762,7 @@ end
 #                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
 #                     shock_independent::Vector{Float64};
 #                     max_iter::Int = 500,
-#                     tol::Float64 = 1e-14) # will fail for higher or lower precision
+#                     tol::Float64 = 1e-13) # will fail for higher or lower precision
 #     model = JuMP.Model(MadNLP.Optimizer)
 
 #     JuMP.set_silent(model)
@@ -811,7 +811,7 @@ end
 #                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
 #                     shock_independent::Vector{Float64};
 #                     max_iter::Int = 500,
-#                     tol::Float64 = 1e-14) # will fail for higher or lower precision
+#                     tol::Float64 = 1e-13) # will fail for higher or lower precision
 #     model = JuMP.Model(Ipopt.Optimizer)
 
 #     JuMP.set_silent(model)
@@ -852,7 +852,7 @@ end
 #     𝐒ⁱ::AbstractMatrix{Float64},
 #     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
 #     shock_independent::Vector{Float64};
-#     tol::Float64 = 1e-14) # will fail for higher or lower precision
+#     tol::Float64 = 1e-13) # will fail for higher or lower precision
 
 #     nExo = Int(sqrt(length(kron_buffer)))
 
@@ -930,7 +930,7 @@ end
 #                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
 #                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
 #                     shock_independent::Vector{Float64};
-#                     tol::Float64 = 1e-14) # will fail for higher or lower precision
+#                     tol::Float64 = 1e-13) # will fail for higher or lower precision
 
 #     nExo = Int(sqrt(length(kron_buffer)))
 
