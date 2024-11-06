@@ -9,6 +9,8 @@ using Sobol
 using HDF5
 using BSON
 using Random
+using HyperbolicCrossApprox
+using Zygote
 
 using LinearAlgebra
 BLAS.set_num_threads(Threads.nthreads())
@@ -69,6 +71,8 @@ end
 
 model = RBC_baseline
 
+algorithm = :pruned_second_order
+
 model_parameters = Symbol.(get_parameters(model))
 
 n_model_parameters = length(model_parameters)
@@ -85,38 +89,70 @@ n_shocks = length(get_shocks(model))
 
 n_vars = length(get_variables(model))
 
-n_inputs = n_vars + n_shocks + n_model_parameters
+n_inputs = n_vars + n_shocks + n_model_parameters# + length(model.par_calib_list)
+
+n_gradient_evals = 100000
+
+scaling_factor = 1
 
 sob = SobolSeq(n_model_parameters)
 
 lower_bounds_par = model.parameter_values .- 0.01
 upper_bounds_par = model.parameter_values .+ 0.01
 
-lower_bounds_par = [0
-                    0
-                    -2
-                    0.2
-                    8
-                    0.25
-                    0.25
-                    0.15
-                    0.1] .+ eps()
+# lower_bounds_par = [0
+#                     0
+#                     -2
+#                     0.2
+#                     8
+#                     0.25
+#                     0.25
+#                     0.15
+#                     0.1] .+ eps()
 
-upper_bounds_par = [1
-                    1
-                    3
+# upper_bounds_par = [1
+#                     1
+#                     3
+#                     0.3
+#                     12
+#                     1
+#                     1
+#                     0.25
+#                     0.5] .- eps()
+
+
+lower_bounds_par = [0.01
+                    0.01
+                    .5
+                    0.2
+                    9
+                    0.5
+                    0.5
+                    0.15
+                    0.2] .+ eps()
+
+upper_bounds_par = [.25
+                    .25
+                    1.5
                     0.3
-                    12
-                    1
-                    1
+                    11
+                    .9
+                    .9
                     0.25
-                    0.5] .- eps()
+                    0.4] .- eps()
 
 bounds_range = upper_bounds_par .- lower_bounds_par
 
 
 outputs = zeros(Float32, n_vars, n_time_steps * n_parameter_draws)
 inputs = zeros(Float32, n_inputs, n_time_steps * n_parameter_draws)
+
+# orig_sims = zeros(Float32, n_vars, n_time_steps * n_parameter_draws)
+
+calibration_parameters = zeros(Float32, length(model.par_calib_list), n_time_steps * n_parameter_draws)
+
+variables_scale = zeros(Float32, n_vars, n_time_steps * n_parameter_draws)
+variables_bias = zeros(Float32, n_vars, n_time_steps * n_parameter_draws)
 
 Random.seed!(14124)
 
@@ -136,6 +172,7 @@ for i in 1:n_parameter_draws
 
         sims = try get_irf(model, 
                             shocks = shcks, 
+                            algorithm = algorithm,
                             parameters = (model_parameters .=> transformed_draw),
                             periods = 0, 
                             levels = true)
@@ -150,18 +187,26 @@ for i in 1:n_parameter_draws
         end
 
         if normalise
-            mn = get_mean(model, 
-                            # parameters = (pararmeters .=> draw),
+            stst = get_ss(model, 
+                            algorithm = algorithm,
                             derivatives = false)
-            
+
+            mn = get_mean(model, 
+                            algorithm = algorithm,
+                            derivatives = false)
+            # no bias for positive only variables
+            # mn[[1,3,4]] *= 0
+
             stddev = get_std(model, 
-                            # parameters = (pararmeters .=> draw),
-                            # verbose = true,
+                            algorithm = algorithm,
                             derivatives = false)
             
             normalised_sims = (sims[:,n_burnin:end,1] .- mn) ./ stddev
 
-            if maximum(abs.(normalised_sims)) > 10 || any(!isfinite, normalised_sims)
+            variables_scale[:,1+(i-1)*n_time_steps:i*n_time_steps] = repeat(stddev, n_time_steps)
+            variables_bias[:,1+(i-1)*n_time_steps:i*n_time_steps]  = repeat(mn, n_time_steps)
+
+            if maximum(abs.(normalised_sims)) > 10 || any(!isfinite, normalised_sims) || any(sims[[1,3,4],:,:] .< 0)
                 draw = next!(sob)
                 
                 transformed_draw = draw .* bounds_range .+ lower_bounds_par
@@ -171,9 +216,15 @@ for i in 1:n_parameter_draws
                 continue 
             end
             
+            # orig_sims[:,1+(i-1)*n_time_steps:i*n_time_steps] = sims[:,n_burnin:end-1,1]
+
             inputs[1:n_vars,1+(i-1)*n_time_steps:i*n_time_steps] = normalised_sims[:,1:end - 1]
+
             inputs[n_vars+1:n_vars+n_shocks,1+(i-1)*n_time_steps:i*n_time_steps] = shcks[:,n_burnin + 1:n_burnin + n_time_steps]
-            inputs[n_vars+n_shocks+1:end,1+(i-1)*n_time_steps:i*n_time_steps] = reshape(repeat(normalised_draw, n_time_steps), length(normalised_draw), n_time_steps)
+
+            inputs[n_vars+n_shocks+1:n_vars+n_shocks+n_model_parameters,1+(i-1)*n_time_steps:i*n_time_steps] = reshape(repeat(normalised_draw, n_time_steps), length(normalised_draw), n_time_steps)
+
+            calibration_parameters[:,1+(i-1)*n_time_steps:i*n_time_steps] = reshape(repeat(stst[n_vars+1:end], n_time_steps), length(stst)-n_vars, n_time_steps)
 
             outputs[:,1+(i-1)*n_time_steps:i*n_time_steps] = normalised_sims[:,2:end]
         else
@@ -188,10 +239,10 @@ for i in 1:n_parameter_draws
     end
 end
 
-outputs /= 6
+outputs /= scaling_factor
 # outputs .+= .5
 
-inputs /= 6
+inputs /= scaling_factor
 # inputs .+= .5
 
 # h5write("data.h5", "inputs", inputs)
@@ -199,15 +250,17 @@ inputs /= 6
 
 
 
+
 lr_start = 1e-3
 lr_end   = 1e-10
-n_hidden = 256
-batchsize = 512
-n_epochs = 100
+n_hidden = 128
+batchsize = 128
 
-activation = :tanh
+n_epochs = n_gradient_evals * batchsize ÷ (n_parameter_draws * n_time_steps)
+
+activation = :swish
 schedule = :cos
-optimiser = :adamw
+optimiser = :adam
 n_layers = 5
 
 
@@ -244,70 +297,257 @@ for activation in [:relu, :gelu, :tanh]
 
                                         Random.seed!(6794)
 
-                                        if activation == :relu
-                                            act = leakyrelu
-                                        elseif activation == :tanh
-                                            act = tanh_fast
-                                        elseif activation == :celu
-                                            act = celu
-                                        elseif activation == :gelu
-                                            act = gelu
-                                        end
+if activation == :relu
+    act = leakyrelu
+elseif activation == :tanh
+    act = tanh_fast
+elseif activation == :celu
+    act = celu
+elseif activation == :gelu
+    act = gelu
+elseif activation == :swish
+    act = swish
+elseif activation == :mish
+    act = mish
+end
 
-                                        intermediate_layers = [Dense(n_hidden, n_hidden, act) for i in 1:n_layers]
-                                        neural_net = Chain( Dense(n_inputs, n_hidden), intermediate_layers..., Dense(n_hidden, n_vars))
+intermediate_layers = [Dense(n_hidden, n_hidden, act) for i in 1:n_layers]
+neural_net_approx = Chain( Dense(n_inputs, n_hidden), intermediate_layers..., Dense(n_hidden, n_vars))
+# Parallel(vcat, Dense(n_hidden, 1, softplus), Dense(n_hidden, 1), Dense(n_hidden, 2, softplus), Dense(n_hidden, 2)))
 
-                                        # Setup optimiser
+# Setup optimiser
 
-                                        # n_epochs = 100 # 1000 goes to .0016; 300 goes to .0023
+# n_epochs = 100 # 1000 goes to .0016; 300 goes to .0023
 
-                                        if optimiser == :adam
-                                            optim = Flux.setup(Flux.Adam(), neural_net)
-                                        elseif optimiser == :adamw
-                                            optim = Flux.setup(Flux.Optimiser(Flux.ClipNorm(1), Flux.AdamW()), neural_net)
-                                        end
+if optimiser == :adam
+    optim = Flux.setup(Flux.Adam(), neural_net_approx)
+elseif optimiser == :adamw
+    optim = Flux.setup(Flux.Optimiser(Flux.ClipNorm(1), Flux.AdamW()), neural_net_approx)
+end
 
-                                        # lr_start = 1e-3
-                                        # lr_end   = 1e-10
-                                        if schedule == :cos
-                                            eta_sched = ParameterSchedulers.Stateful(CosAnneal(lr_start, lr_end, n_epochs))
-                                        elseif schedule == :exp
-                                            eta_sched = ParameterSchedulers.Stateful(Exp(start = lr_start, decay = (lr_end / lr_start) ^ (1 / n_epochs)))
-                                        elseif schedule == :poly
-                                            eta_sched = ParameterSchedulers.Stateful(Poly(start = lr_start, degree = 3, max_iter = n_epochs))
-                                        end
+# lr_start = 1e-3
+# lr_end   = 1e-10
 
-                                        # Training loop
 
-                                        # batchsize = 512
+# Training loop
 
-                                        train_loader = Flux.DataLoader((outputs, inputs), batchsize = batchsize, shuffle = true)
+# batchsize = 512
 
-                                        n_batches = length(train_loader)
+train_loader = Flux.DataLoader((outputs, inputs), batchsize = batchsize, shuffle = true)
 
-                                        start_time = time()
-                                        losses = []
-                                        for epoch in 1:n_epochs
-                                            for (out,inp) in train_loader
-                                                lss, grads = Flux.withgradient(neural_net) do nn
-                                                    sqrt(Flux.mse(out, nn(inp)))
-                                                end
+n_batches = length(train_loader)
 
-                                                Flux.update!(optim, neural_net, grads[1])
+n_epochs = n_gradient_evals ÷ n_batches
 
-                                                push!(losses, lss)  # logging, outside gradient context
+if schedule == :cos
+    eta_sched = ParameterSchedulers.Stateful(CosAnneal(lr_start, lr_end, n_epochs * n_batches))
+elseif schedule == :exp
+    eta_sched = ParameterSchedulers.Stateful(Exp(start = lr_start, decay = (lr_end / lr_start) ^ (1 / (n_epochs * n_batches))))
+elseif schedule == :poly
+    eta_sched = ParameterSchedulers.Stateful(Poly(start = lr_start, degree = 3, max_iter = n_epochs * n_batches))
+end
 
-                                            end
+start_time = time()
+losses = []
+for epoch in 1:n_epochs
+    for (out,inp) in train_loader
+        lss, grads = Flux.withgradient(neural_net_approx) do nn
+            sqrt(Flux.mse(out, nn(inp)))
+        end
 
-                                            sched_update = ParameterSchedulers.next!(eta_sched)
+        Flux.update!(optim, neural_net_approx, grads[1])
 
-                                            Flux.adjust!(optim; eta = sched_update)
-                                            Flux.adjust!(optim; lambda = sched_update * 0.01)
-                                        end
-                                        end_time = time()  # Record end time
-                                        elapsed_time = end_time - start_time
-                                        
-                                        relnorm = norm(outputs - neural_net(inputs)) / norm(outputs)
+        sched_update = ParameterSchedulers.next!(eta_sched)
+
+        Flux.adjust!(optim; eta = sched_update)
+        Flux.adjust!(optim; lambda = sched_update * 0.01)
+
+        push!(losses, lss)  # logging, outside gradient context
+
+        if length(losses) % (n_gradient_evals ÷ 100) == 0 && length(losses) > (n_gradient_evals ÷ 100)  println("Epoch: $epoch - Gradient calls: $(length(losses)) - Loss: $(sum(losses[end-(n_gradient_evals ÷ 100):end])/(n_gradient_evals ÷ 100)) - η: $(optim.layers[1].weight.rule.eta)") end
+    end
+end
+end_time = time()  # Record end time
+elapsed_time = end_time - start_time
+
+relnorm = norm(outputs - neural_net_approx(inputs)) / norm(outputs)
+
+# 0.0044 - 10
+# 0.0029 - 3
+# 0.0024 - 1
+
+function calculate_loss(variables₍₋₁₎::Matrix{R}, 
+                        variables₍₀₎::Matrix{R}, 
+                        variables₍₁₎::Matrix{R}, 
+                        shocks₍ₓ₎::Matrix{R}, 
+                        model_parameters::Matrix{R}, 
+                        calibration_parameters::Matrix{R}) where R <: Real
+    c₍₋₁₎   = variables₍₋₁₎[1,:]
+    g₍₋₁₎   = variables₍₋₁₎[2,:]
+    k₍₋₁₎   = variables₍₋₁₎[3,:]
+    l₍₋₁₎   = variables₍₋₁₎[4,:]
+    w₍₋₁₎   = variables₍₋₁₎[5,:]
+    z₍₋₁₎   = variables₍₋₁₎[6,:]
+
+    c₍₀₎    = variables₍₀₎[1,:]
+    g₍₀₎    = variables₍₀₎[2,:]
+    k₍₀₎    = variables₍₀₎[3,:]
+    l₍₀₎    = variables₍₀₎[4,:]
+    w₍₀₎    = variables₍₀₎[5,:]
+    z₍₀₎    = variables₍₀₎[6,:]
+
+    c₍₁₎    = variables₍₁₎[1,:]
+    g₍₁₎    = variables₍₁₎[2,:]
+    k₍₁₎    = variables₍₁₎[3,:]
+    l₍₁₎    = variables₍₁₎[4,:]
+    w₍₁₎    = variables₍₁₎[5,:]
+    z₍₁₎    = variables₍₁₎[6,:]
+
+    ϵᵍ₍ₓ₎   = shocks₍ₓ₎[1,:]
+    ϵᶻ₍ₓ₎   = shocks₍ₓ₎[2,:]
+
+    σᶻ      = model_parameters[1,:]
+    σᵍ      = model_parameters[2,:]
+    σ       = model_parameters[3,:]
+    i_y     = model_parameters[4,:]
+    k_y     = model_parameters[5,:]
+    ρᶻ      = model_parameters[6,:]
+    ρᵍ      = model_parameters[7,:]
+    g_y     = model_parameters[8,:]
+    α       = model_parameters[9,:]
+
+    ḡ       = calibration_parameters[1,:]
+    ψ       = calibration_parameters[2,:]
+
+    δ = @.(i_y / k_y)
+    β = @.(1 / (α / k_y + (1 - δ)))
+
+    loss = zero(eltype(inputs))
+
+    loss += sum(abs2, min.(eps(eltype(inputs)), c₍₋₁₎))
+    loss += sum(abs2, min.(eps(eltype(inputs)), k₍₋₁₎))
+    loss += sum(abs2, min.(eps(eltype(inputs)), l₍₋₁₎))
+
+    loss += sum(abs2, min.(eps(eltype(inputs)), c₍₀₎))
+    loss += sum(abs2, min.(eps(eltype(inputs)), k₍₀₎))
+    loss += sum(abs2, min.(eps(eltype(inputs)), l₍₀₎))
+
+    loss += sum(abs2, min.(eps(eltype(inputs)), c₍₁₎))
+    loss += sum(abs2, min.(eps(eltype(inputs)), k₍₁₎))
+    loss += sum(abs2, min.(eps(eltype(inputs)), l₍₁₎))
+
+    loss *= 1000000000
+
+    c₍₋₁₎ = max.(eps(eltype(inputs)), c₍₋₁₎)
+    k₍₋₁₎ = max.(eps(eltype(inputs)), k₍₋₁₎)
+    l₍₋₁₎ = max.(eps(eltype(inputs)), l₍₋₁₎)
+
+    c₍₀₎ = max.(eps(eltype(inputs)), c₍₀₎)
+    k₍₀₎ = max.(eps(eltype(inputs)), k₍₀₎)
+    l₍₀₎ = max.(eps(eltype(inputs)), l₍₀₎)
+
+    c₍₁₎ = max.(eps(eltype(inputs)), c₍₁₎)
+    k₍₁₎ = max.(eps(eltype(inputs)), k₍₁₎)
+    l₍₁₎ = max.(eps(eltype(inputs)), l₍₁₎)
+
+
+    loss += sum(abs2, @.(c₍₀₎ ^ -σ - β * c₍₁₎ ^ -σ * ((α * z₍₁₎ * (k₍₀₎ / l₍₁₎) ^ (α - 1) + 1) - δ)))
+    loss += sum(abs2, @.(((ψ * c₍₀₎ ^ σ) / (1 - l₍₀₎) - w₍₀₎)))
+    loss += sum(abs2, @.((k₍₀₎ - ((((1 - δ) * k₍₋₁₎ + z₍₀₎ * k₍₋₁₎ ^ α * l₍₀₎ ^ (1 - α)) - g₍₀₎) - c₍₀₎))))
+    loss += sum(abs2, @.((w₍₀₎ - z₍₀₎ * (1 - α) * (k₍₋₁₎ / l₍₀₎) ^ α)))
+    loss += sum(abs2, @.((z₍₀₎ - ((1 - ρᶻ) + ρᶻ * z₍₋₁₎ + σᶻ * ϵᶻ₍ₓ₎))))
+    loss += sum(abs2, @.((g₍₀₎ - ((1 - ρᵍ) * ḡ + ρᵍ * g₍₋₁₎ + σᵍ * ϵᵍ₍ₓ₎))))
+
+    return loss
+end
+
+
+domain = fill(3.0,n_shocks,2)
+domain[2,:] *= -1
+
+shock_grid, _ = hyperbolic_cross_grid(chebyshev_nodes, n_shocks, 2, domain)
+shock_grid = Float32.(shock_grid)
+# scatter(shock_grid[:,1], shock_grid[:,2])
+
+
+
+
+
+
+
+intermediate_layers = [Dense(n_hidden, n_hidden, act) for i in 1:n_layers]
+neural_net = Chain( Dense(n_inputs, n_hidden), intermediate_layers..., Dense(n_hidden, n_vars)) #
+# Parallel(vcat, Dense(n_hidden, 1, softplus), Dense(n_hidden, 1), Dense(n_hidden, 2, softplus), Dense(n_hidden, 2)))
+
+# Setup optimiser
+if optimiser == :adam
+    optim = Flux.setup(Flux.Adam(), neural_net)
+elseif optimiser == :adamw
+    optim = Flux.setup(Flux.Optimiser(Flux.ClipNorm(1), Flux.AdamW()), neural_net)
+end
+
+# Training loop
+
+train_loader_nonlinear = Flux.DataLoader((inputs, variables_scale, variables_bias, calibration_parameters), batchsize = batchsize, shuffle = true)
+
+n_batches = length(train_loader_nonlinear)
+
+n_epochs = n_gradient_evals ÷ n_batches
+
+if schedule == :cos
+    eta_sched = ParameterSchedulers.Stateful(CosAnneal(lr_start, lr_end, n_epochs * n_batches))
+elseif schedule == :exp
+    eta_sched = ParameterSchedulers.Stateful(Exp(start = lr_start, decay = (lr_end / lr_start) ^ (1 / (n_epochs * n_batches))))
+elseif schedule == :poly
+    eta_sched = ParameterSchedulers.Stateful(Poly(start = lr_start, degree = 3, max_iter = n_epochs * n_batches))
+end
+
+start_time = time()
+losses = []
+
+for epoch in 1:n_epochs
+    for (inp, var_scale, var_bias, calib_pars) in train_loader_nonlinear
+        lss, grads = Flux.withgradient(neural_net) do nn
+            variables₍₋₁₎ = inp[1:n_vars,:] * scaling_factor .* var_scale .+ var_bias
+
+            shocks₍ₓ₎ = inp[n_vars+1:n_vars+n_shocks,:]
+
+            normalised_parameters = inp[n_vars+n_shocks+1:n_vars+n_shocks+n_model_parameters,:]
+
+            model_parameters = (normalised_parameters / Float32(sqrt(12)) .+ 0.5f0) .* Float32.(bounds_range) .+ Float32.(lower_bounds_par)
+
+            normalised_variables₍₀₎ = nn(inp)
+
+            variables₍₀₎ = normalised_variables₍₀₎ * scaling_factor .* var_scale .+ var_bias
+
+            normalised_variables₍₁₎ = nn(vcat(normalised_variables₍₀₎, repeat(randn(Float32,2),1,size(inp,2)), normalised_parameters))
+
+            for shck in eachrow(shock_grid)
+                normalised_variables₍₁₎ += nn(vcat(normalised_variables₍₀₎, repeat(shck,1,size(inp,2)), normalised_parameters))
+            end
+
+            variables₍₁₎ = normalised_variables₍₁₎ / (size(shock_grid,1) + 1) * scaling_factor .* var_scale .+ var_bias
+            
+            return sqrt(calculate_loss(variables₍₋₁₎, variables₍₀₎, variables₍₁₎, shocks₍ₓ₎, model_parameters, calib_pars) / length(variables₍₀₎))
+        end
+
+        Flux.update!(optim, neural_net, grads[1])
+
+        sched_update = ParameterSchedulers.next!(eta_sched)
+
+        Flux.adjust!(optim; eta = sched_update)
+        Flux.adjust!(optim; lambda = sched_update * 0.01)
+
+        push!(losses, lss)  # logging, outside gradient context
+
+        if length(losses) % (n_gradient_evals ÷ 100) == 0 && length(losses) > (n_gradient_evals ÷ 100)  println("Epoch: $epoch - Gradient calls: $(length(losses)) - Loss: $(sum(losses[end-(n_gradient_evals ÷ 100):end])/(n_gradient_evals ÷ 100)) - η: $(optim.layers[1].weight.rule.eta)") end
+    end
+end
+
+end_time = time()  # Record end time
+elapsed_time = end_time - start_time
+
+relnorm = norm(outputs - neural_net(inputs)) / norm(outputs)
 
                                         push!(results,[lr_start,lr_end,activation,batchsize,n_epochs,n_hidden, n_layers,schedule, optimiser, elapsed_time, sum(losses[end-500:end])/(500), relnorm])
                                         println("Finished $(results[end])")
