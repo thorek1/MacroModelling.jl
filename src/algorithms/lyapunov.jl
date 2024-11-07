@@ -67,7 +67,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     end # timeit_debug
     end # timeit_debug
     
-    if (reached_tol > tol) println("Lyapunov failed: $reached_tol") end
+    # if (reached_tol > tol) println("Lyapunov failed: $reached_tol") end
 
     return X, reached_tol < tol
 end

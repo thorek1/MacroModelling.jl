@@ -13,7 +13,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_solver::Symbol = :schur, 
                                         timer::TimerOutput = TimerOutput(),
-                                        tol::AbstractFloat = 1e-10, # 1e-14 is too tight
+                                        tol::AbstractFloat = 1e-8, # 1e-14 is too tight
                                         verbose::Bool = false) where R <: Real
     if length(initial_guess) > 0
         X = initial_guess
@@ -69,7 +69,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         end
     end
 
-    if (reached_tol > tol) println("QME failed: $reached_tol") end
+    # if (reached_tol > tol) println("QME failed: $reached_tol") end
 
     return sol, reached_tol < tol
 end
@@ -353,7 +353,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # println("Iter: $i; xtol: $Xtol; ytol: $Ytol; rel ytol: $relYtol; rel xtol: $relXtol")
 
         # Check for convergence
-        if Xtol < tol / 100# && Yreltol < tol # i % 2 == 0 && 
+        if Xtol < tol # && Yreltol < tol # i % 2 == 0 && 
             solved = true
             iter = i
             break
@@ -508,7 +508,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
-                                        tol::AbstractFloat = 1e-10, 
+                                        tol::AbstractFloat = 1e-8, 
                                         quadratic_matrix_equation_solver::Symbol = :schur, 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where {Z,S,N}

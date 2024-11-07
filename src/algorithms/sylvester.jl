@@ -203,7 +203,7 @@ function solve_sylvester_equation(A::M,
 
     X = choose_matrix_format(x)# |> sparse
 
-    if (reached_tol > tol) println("Sylvester failed: $reached_tol") end
+    # if (reached_tol > tol) println("Sylvester failed: $reached_tol") end
 
     return X, reached_tol < tol
 end
