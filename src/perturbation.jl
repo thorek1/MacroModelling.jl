@@ -419,8 +419,15 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     @timeit_debug timer "Invert matrix" begin
 
-    spinv = inv(∇₁₊𝐒₁➕∇₁₀)
-    spinv = choose_matrix_format(spinv)
+    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+
+    if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
+        if verbose println("Second order solution: inversion failed") end
+        return ∇₁₊𝐒₁➕∇₁₀, false
+    end
+
+    # spinv = inv(∇₁₊𝐒₁➕∇₁₀)
+    # spinv = choose_matrix_format(spinv)
 
     end # timeit_debug
 
@@ -429,7 +436,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
 
-    A = spinv * ∇₁₊
+    A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
     
     end # timeit_debug
     @timeit_debug timer "C" begin
@@ -437,7 +444,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * (ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
     ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, M₂.𝐂₂) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, M₂.𝛔 * M₂.𝐂₂)
     
-    C = spinv * ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
+    C = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
 
     end # timeit_debug
     @timeit_debug timer "B" begin
@@ -537,7 +544,14 @@ function rrule(::typeof(calculate_second_order_solution),
     end # timeit_debug
     @timeit_debug timer "Invert matrix" begin
 
-    spinv = inv(∇₁₊𝐒₁➕∇₁₀)
+    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+
+    if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
+        if verbose println("Second order solution: inversion failed") end
+        return (∇₁₊𝐒₁➕∇₁₀, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+    end
+    
+    spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
     spinv = choose_matrix_format(spinv)
 
     end # timeit_debug
@@ -605,7 +619,7 @@ function rrule(::typeof(calculate_second_order_solution),
         ∂∇₂ = zeros(size(∇₂))
         ∂∇₁ = zero(∇₁)
         ∂𝐒₁ = zero(𝐒₁)
-        ∂spinv = zero(spinv)
+        ∂spinv = zero(∇₁₊𝐒₁➕∇₁₀)
         ∂𝐒₁₋╱𝟏ₑ = zeros(size(𝐒₁₋╱𝟏ₑ))
         ∂𝐒₁₊╱𝟎 = zeros(size(𝐒₁₊╱𝟎))
         ∂⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = zeros(size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋))
@@ -796,14 +810,21 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     end # timeit_debug
     @timeit_debug timer "Invert matrix" begin
 
-    spinv = inv(∇₁₊𝐒₁➕∇₁₀)
-    spinv = choose_matrix_format(spinv)
+    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+
+    if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
+        if verbose println("Second order solution: inversion failed") end
+        return (∇₁₊𝐒₁➕∇₁₀, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+    end
+        
+    # spinv = inv(∇₁₊𝐒₁➕∇₁₀)
+    # spinv = choose_matrix_format(spinv)
 
     end # timeit_debug
     
     ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
 
-    A = spinv * ∇₁₊
+    A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
 
     @timeit_debug timer "Setup B" begin
     @timeit_debug timer "Add tmpkron" begin
@@ -916,7 +937,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     end # timeit_debug
     @timeit_debug timer "Mult 2" begin
 
-    C = spinv * 𝐗₃# * M₃.𝐂₃
+    C = ∇₁₊𝐒₁➕∇₁₀lu \ 𝐗₃# * M₃.𝐂₃
 
     end # timeit_debug
     end # timeit_debug
@@ -1010,7 +1031,14 @@ function rrule(::typeof(calculate_third_order_solution),
     end # timeit_debug
     @timeit_debug timer "Invert matrix" begin
 
-    spinv = inv(∇₁₊𝐒₁➕∇₁₀)
+    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
+
+    if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
+        if verbose println("Second order solution: inversion failed") end
+        return (∇₁₊𝐒₁➕∇₁₀, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+    end
+
+    spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
     spinv = choose_matrix_format(spinv)
 
     end # timeit_debug
