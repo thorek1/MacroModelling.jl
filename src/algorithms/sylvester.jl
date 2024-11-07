@@ -15,7 +15,7 @@ function solve_sylvester_equation(A::M,
                                     C::O;
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-14,
+                                    tol::AbstractFloat = 1e-10,
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
     @timeit_debug timer "Choose matrix formats" begin
@@ -56,27 +56,27 @@ function solve_sylvester_equation(A::M,
     end # timeit_debug
     @timeit_debug timer "Solve sylvester equation" begin
 
-    x, solved, i, reached_tol = solve_sylvester_equation(a, b, c, Val(sylvester_algorithm), 
+    x, i, reached_tol = solve_sylvester_equation(a, b, c, Val(sylvester_algorithm), 
                                                         initial_guess = initial_guess, 
-                                                        tol = tol, 
+                                                        # tol = tol, 
                                                         verbose = verbose,
                                                         timer = timer)
 
     if verbose && i != 0
-        println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
+        println("Sylvester equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
     
-    if !solved && sylvester_algorithm ≠ :sylvester && length(B) < 5e7 # try sylvester if previous one didn't solve it
+    if !(reached_tol < tol) && sylvester_algorithm ≠ :sylvester && length(B) < 5e7 # try sylvester if previous one didn't solve it
         aa = collect(A)
 
         bb = collect(B)
 
         cc = collect(C)
 
-        x, solved, i, reached_tol = solve_sylvester_equation(aa, bb, cc, 
+        x, i, reached_tol = solve_sylvester_equation(aa, bb, cc, 
                                                             Val(:sylvester), 
                                                             initial_guess = zeros(0,0), 
-                                                            tol = tol, 
+                                                            # tol = tol, 
                                                             verbose = verbose,
                                                             timer = timer)
 
@@ -85,15 +85,15 @@ function solve_sylvester_equation(A::M,
         end
     end
 
-    if !solved && reached_tol < sqrt(tol)
+    if !(reached_tol < tol) && reached_tol < sqrt(tol)
         aa = collect(A)
 
         cc = collect(C)
 
-        X, solved, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
+        X, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:dqgmres), 
                                                             initial_guess = x, 
-                                                            tol = tol, 
+                                                            # tol = tol, 
                                                             verbose = verbose,
                                                             timer = timer)
         if Reached_tol < reached_tol
@@ -102,36 +102,36 @@ function solve_sylvester_equation(A::M,
         end
 
         if verbose# && i != 0
-            println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $Reached_tol; algorithm: dqgmres (refinement of previous solution)")
+            println("Sylvester equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $Reached_tol; algorithm: dqgmres (refinement of previous solution)")
         end
     end
 
-    if !solved && sylvester_algorithm ≠ :gmres
+    if !(reached_tol < tol) && sylvester_algorithm ≠ :gmres
         aa = collect(A)
 
         cc = collect(C)
 
-        x, solved, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
+        x, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:gmres), 
                                                             initial_guess = zeros(0,0), 
-                                                            tol = tol, 
+                                                            # tol = tol, 
                                                             verbose = verbose,
                                                             timer = timer)
 
         if verbose# && i != 0
-            println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: gmres")
+            println("Sylvester equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $reached_tol; algorithm: gmres")
         end
     end
 
-    if !solved && reached_tol < sqrt(tol)
+    if !(reached_tol < tol) && reached_tol < sqrt(tol)
         aa = collect(A)
 
         cc = collect(C)
 
-        X, solved, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
+        X, i, Reached_tol = solve_sylvester_equation(aa, b, cc, 
                                                             Val(:dqgmres), 
                                                             initial_guess = x, 
-                                                            tol = tol, 
+                                                            # tol = tol, 
                                                             verbose = verbose,
                                                             timer = timer)
         if Reached_tol < reached_tol
@@ -203,7 +203,9 @@ function solve_sylvester_equation(A::M,
 
     X = choose_matrix_format(x)# |> sparse
 
-    return X, solved
+    if (reached_tol > tol) println("Sylvester failed: $reached_tol") end
+
+    return X, reached_tol < tol
 end
 
 
@@ -292,7 +294,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-12)
+                                    tol::Float64 = 1e-14)
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
     
@@ -343,11 +345,11 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
-    if reached_tol > tol
-        println("Sylvester: doubling $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: doubling $reached_tol")
+    # end
 
-    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -359,7 +361,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-12)
+                                    tol::Float64 = 1e-14)
                                     # see doi:10.1016/j.aml.2009.01.012    
     # guess_provided = true
 
@@ -426,11 +428,11 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
-    if reached_tol > tol
-        println("Sylvester: doubling $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: doubling $reached_tol")
+    # end
 
-    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -443,7 +445,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-12)
+                                    tol::Float64 = 1e-14)
                                     # see doi:10.1016/j.aml.2009.01.012
     @timeit_debug timer "Doubling solve" begin
     @timeit_debug timer "Setup buffers" begin
@@ -531,11 +533,11 @@ function solve_sylvester_equation(  A::Matrix{Float64},
     end # timeit_debug
     end # timeit_debug
 
-    if reached_tol > tol
-        println("Sylvester: doubling $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: doubling $reached_tol")
+    # end
 
-    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -546,7 +548,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-12)
+                                    tol::Float64 = 1e-14)
                                     # see doi:10.1016/j.aml.2009.01.012  On Smith-type iterative algorithms for the Stein matrix equation
     # guess_provided = true
 
@@ -611,11 +613,11 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
-    if reached_tol > tol
-        println("Sylvester: doubling $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: doubling $reached_tol")
+    # end
 
-    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -627,7 +629,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-12)
+                                    tol::Float64 = 1e-14)
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
 
@@ -693,11 +695,11 @@ function solve_sylvester_equation(  A::Matrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
-    if reached_tol > tol
-        println("Sylvester: doubling $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: doubling $reached_tol")
+    # end
 
-    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -709,7 +711,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-12)
+                                    tol::Float64 = 1e-14)
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
 
@@ -775,11 +777,11 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
-    if reached_tol > tol
-        println("Sylvester: doubling $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: doubling $reached_tol")
+    # end
 
-    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -790,7 +792,7 @@ function solve_sylvester_equation(  A::Matrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-12)
+                                    tol::Float64 = 1e-14)
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
 
@@ -856,11 +858,11 @@ function solve_sylvester_equation(  A::Matrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
-    if reached_tol > tol
-        println("Sylvester: doubling $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: doubling $reached_tol")
+    # end
 
-    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -871,7 +873,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-12)
+                                    tol::Float64 = 1e-14)
                                     # see doi:10.1016/j.aml.2009.01.012
     @timeit_debug timer "Setup buffers" begin
     
@@ -954,11 +956,11 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
 
     end # timeit_debug
 
-    if reached_tol > tol
-        println("Sylvester: doubling $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: doubling $reached_tol")
+    # end
 
-    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -995,11 +997,11 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
-    if reached_tol > tol
-        println("Sylvester: sylvester $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: sylvester $reached_tol")
+    # end
 
-    return 𝐂, reached_tol < tol, -1, reached_tol # return info on convergence
+    return 𝐂, -1, reached_tol # return info on convergence
 end
 
 
@@ -1010,7 +1012,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-8)
+                                    tol::Float64 = 1e-14)
     @timeit_debug timer "Preallocate matrices" begin
 
     # guess_provided = true
@@ -1115,11 +1117,11 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
         𝐗 = choose_matrix_format(𝐗, density_threshold = 1.0)
     end
 
-    if reached_tol > tol
-        println("Sylvester: bicgstab $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: bicgstab $reached_tol")
+    # end
 
-    return 𝐗, reached_tol < tol, info.niter, reached_tol
+    return 𝐗, info.niter, reached_tol
 end
 
 
@@ -1130,7 +1132,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-8)
+                                    tol::Float64 = 1e-14)
     @timeit_debug timer "Preallocate matrices" begin
 
     # guess_provided = true
@@ -1221,11 +1223,11 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     end # timeit_debug
     
-    if reached_tol > tol
-        println("Sylvester: dqgmres $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: dqgmres $reached_tol")
+    # end
 
-    return 𝐗, reached_tol < tol, info.niter, reached_tol
+    return 𝐗, info.niter, reached_tol
 end
 
 
@@ -1236,7 +1238,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-8)
+                                    tol::Float64 = 1e-14)
     @timeit_debug timer "Preallocate matrices" begin
 
     # guess_provided = true
@@ -1327,11 +1329,11 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 
     end # timeit_debug
     
-    if reached_tol > tol
-        println("Sylvester: gmres $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: gmres $reached_tol")
+    # end
 
-    return 𝐗, reached_tol < tol, info.niter, reached_tol
+    return 𝐗, info.niter, reached_tol
 end
 
 
@@ -1342,7 +1344,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::AbstractFloat = 1e-12)
+                                    tol::AbstractFloat = 1e-14)
     # guess_provided = true
 
     if length(initial_guess) == 0
@@ -1394,11 +1396,11 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
-    if reached_tol > tol
-        println("Sylvester: iterative $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: iterative $reached_tol")
+    # end
 
-    return 𝐂, reached_tol < tol, iters, reached_tol # return info on convergence
+    return 𝐂, iters, reached_tol # return info on convergence
 end
 
 
@@ -1409,7 +1411,7 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::AbstractFloat = 1e-12)
+                                    tol::AbstractFloat = 1e-14)
     # guess_provided = true
 
     if length(initial_guess) == 0
@@ -1439,9 +1441,9 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
 
     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
-    if reached_tol > tol
-        println("Sylvester: speedmapping $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("Sylvester: speedmapping $reached_tol")
+    # end
 
-    return 𝐂, reached_tol < tol, soll.maps, reached_tol
+    return 𝐂, soll.maps, reached_tol
 end

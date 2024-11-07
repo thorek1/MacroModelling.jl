@@ -128,7 +128,7 @@ function find_shocks(::Val{:LagrangeNewton},
     # println(ℒ.norm(Δxλ))
     # println(ℒ.norm(Δxλ) / ℒ.norm(xλ))
     if !(ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol))
-        println("Norm 1: $(ℒ.norm(x̂) / max(norm1,norm2)); Norm 2: $(ℒ.norm(Δxλ) / ℒ.norm(xλ))")
+        println("Find shocks failed. Norm 1: $(ℒ.norm(x̂) / max(norm1,norm2)); Norm 2: $(ℒ.norm(Δxλ) / ℒ.norm(xλ))")
     end
     return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
 end
@@ -352,9 +352,9 @@ function find_shocks(::Val{:LagrangeNewton},
     # println(ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < tol)
 
     if !(ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol))
-        println("Norm 1: $(ℒ.norm(x̂) / max(norm1,norm2)); Norm 2: $(ℒ.norm(Δxλ) / ℒ.norm(xλ))")
+        println("Find shocks failed. Norm 1: $(ℒ.norm(x̂) / max(norm1,norm2)); Norm 2: $(ℒ.norm(Δxλ) / ℒ.norm(xλ))")
     end
-    
+
     return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
 end
 

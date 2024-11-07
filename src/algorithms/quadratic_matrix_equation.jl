@@ -13,7 +13,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_solver::Symbol = :doubling, 
                                         timer::TimerOutput = TimerOutput(),
-                                        tol::AbstractFloat = 1e-13, # 1e-14 is too tight
+                                        tol::AbstractFloat = 1e-10, # 1e-14 is too tight
                                         verbose::Bool = false) where R <: Real
     if length(initial_guess) > 0
         X = initial_guess
@@ -35,41 +35,41 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         end
     end
 
-    sol, solved, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
+    sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                         Val(quadratic_matrix_equation_solver), 
                                                         T; 
                                                         initial_guess = initial_guess,
-                                                        tol = tol,
+                                                        # tol = tol,
                                                         timer = timer,
                                                         verbose = verbose)
 
-    if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_solver - converged: $solved in $iterations iterations to tolerance: $reached_tol") end
+    if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_solver - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
 
-    if !solved
+    if reached_tol > tol
         if quadratic_matrix_equation_solver ≠ :schur # try schur if previous one didn't solve it
-            sol, solved, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
+            sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:schur), 
                                                                 T; 
                                                                 initial_guess = initial_guess,
-                                                                tol = tol,
+                                                                # tol = tol,
                                                                 timer = timer,
                                                                 verbose = verbose)
 
-            if verbose println("Quadratic matrix equation solver: schur - converged: $solved in $iterations iterations to tolerance: $reached_tol") end
+            if verbose println("Quadratic matrix equation solver: schur - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
         else quadratic_matrix_equation_solver ≠ :doubling
-            sol, solved, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
+            sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:doubling), 
                                                                 T; 
                                                                 initial_guess = initial_guess,
-                                                                tol = tol,
+                                                                # tol = tol,
                                                                 timer = timer,
                                                                 verbose = verbose)
 
-            if verbose println("Quadratic matrix equation solver: doubling - converged: $solved in $iterations iterations to tolerance: $reached_tol") end
+            if verbose println("Quadratic matrix equation solver: doubling - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
         end
     end
 
-    return sol, solved
+    return sol, reached_tol < tol
 end
 
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
@@ -193,11 +193,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     reached_tol = ℒ.norm(AXX) / AXXnorm
     
-    if reached_tol > tol
-        println("QME: schur $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("QME: schur $reached_tol")
+    # end
 
-    return X, reached_tol < tol, iter, reached_tol # schur can fail
+    return X, iter, reached_tol # schur can fail
 end
 
 
@@ -383,13 +383,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     reached_tol = ℒ.norm(AXX) / AXXnorm
     
-    converged = reached_tol < tol
+    # if reached_tol > tol
+    #     println("QME: doubling $reached_tol")
+    # end
 
-    if reached_tol > tol
-        println("QME: doubling $reached_tol")
-    end
-
-    return X, converged, iter, reached_tol
+    return X, iter, reached_tol
 end
 
 
@@ -400,7 +398,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         ::Val{:linear_time_iteration}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        tol::AbstractFloat = 1e-8, # lower tol not possible for NAWM (and probably other models this size)
+                                        tol::AbstractFloat = 1e-14, # lower tol not possible for NAWM (and probably other models this size)
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
                                         max_iter::Int = 5000) where R <: Real
@@ -438,15 +436,13 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     reached_tol = ℒ.norm(AXX) / AXXnorm
     
-    converged = reached_tol < tol
-    
     end # timeit_debug
 
-    if reached_tol > tol
-        println("QME: linear time iteration $reached_tol")
-    end
+    # if reached_tol > tol
+    #     println("QME: linear time iteration $reached_tol")
+    # end
 
-    return X, converged, sol.maps, reached_tol
+    return X, sol.maps, reached_tol
 end
 
 
@@ -457,7 +453,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         ::Val{:quadratic_iteration}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        tol::AbstractFloat = 1e-8, # lower tol not possible for NAWM (and probably other models this size)
+                                        tol::AbstractFloat = 1e-14, # lower tol not possible for NAWM (and probably other models this size)
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
                                         max_iter::Int = 50000) where R <: Real
@@ -496,13 +492,11 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     reached_tol = ℒ.norm(AXX) / AXXnorm
 
-    converged = reached_tol < tol
+    # if reached_tol > tol
+    #     println("QME: quadratic iteration $reached_tol")
+    # end
 
-    if reached_tol > tol
-        println("QME: quadratic iteration $reached_tol")
-    end
-
-    return X, converged, sol.maps, reached_tol
+    return X, sol.maps, reached_tol
 end
 
 
@@ -512,7 +506,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
-                                        tol::AbstractFloat = 1e-12, 
+                                        tol::AbstractFloat = 1e-10, 
                                         quadratic_matrix_equation_solver::Symbol = :doubling, 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where {Z,S,N}
@@ -524,6 +518,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     X, solved = solve_quadratic_matrix_equation(Â, B̂, Ĉ, 
                                                 Val(quadratic_matrix_equation_solver), 
                                                 T; 
+                                                tol = tol,
                                                 initial_guess = initial_guess,
                                                 timer = timer,
                                                 verbose = verbose)
