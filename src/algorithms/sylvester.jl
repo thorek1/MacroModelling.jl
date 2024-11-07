@@ -81,7 +81,7 @@ function solve_sylvester_equation(A::M,
                                                             timer = timer)
 
         if verbose && i != 0
-            println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $reached_tol; algorithm: sylvester")
+            println("Sylvester equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $reached_tol; algorithm: sylvester")
         end
     end
 
@@ -140,7 +140,7 @@ function solve_sylvester_equation(A::M,
         end
 
         if verbose# && i != 0
-            println("Sylvester equation - converged to tol $tol: $solved; iterations: $i; reached tol: $Reached_tol; algorithm: dqgmres (refinement of previous solution)")
+            println("Sylvester equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $Reached_tol; algorithm: dqgmres (refinement of previous solution)")
         end
     end
 
