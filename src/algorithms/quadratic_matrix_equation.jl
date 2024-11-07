@@ -11,7 +11,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        quadratic_matrix_equation_solver::Symbol = :doubling, 
+                                        quadratic_matrix_equation_solver::Symbol = :schur, 
                                         timer::TimerOutput = TimerOutput(),
                                         tol::AbstractFloat = 1e-10, # 1e-14 is too tight
                                         verbose::Bool = false) where R <: Real
@@ -68,6 +68,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
             if verbose println("Quadratic matrix equation solver: doubling - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
         end
     end
+
+    if (reached_tol > tol) println("QME failed: $reached_tol") end
 
     return sol, reached_tol < tol
 end
@@ -507,7 +509,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         T::timings; 
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         tol::AbstractFloat = 1e-10, 
-                                        quadratic_matrix_equation_solver::Symbol = :doubling, 
+                                        quadratic_matrix_equation_solver::Symbol = :schur, 
                                         timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
