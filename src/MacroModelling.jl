@@ -2368,11 +2368,11 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
                                                             
     push!(SS_solve_func,:(iters += solution[2][2])) 
     push!(SS_solve_func,:(solution_error += solution[2][1])) 
-    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed after solving block with error $solution_error") end; continue end))
+    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed after solving block with error $solution_error") end; scale = (scale + solved_scale) / 2; continue end))
 
     if length(ss_and_aux_equations_error) > 0
         push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error...))))
-        push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for aux variables with error $(solution_error)") end; continue end))
+        push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for aux variables with error $(solution_error)") end; scale = (scale + solved_scale) / 2; continue end))
     end
 
     push!(SS_solve_func,:(sol = solution[1]))
@@ -2899,7 +2899,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             if parsed_eq_to_solve_for != minmax_fixed_eqs
                 [push!(atoms_in_equations, a) for a in setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs))]
                 push!(min_max_errors,:(solution_error += abs($parsed_eq_to_solve_for)))
-                push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for min max terms in equations with error $solution_error") end; continue end))
+                push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for min max terms in equations with error $solution_error") end; scale = (scale + solved_scale) / 2; continue end))
                 eq_to_solve = eval(minmax_fixed_eqs)
             end
             
@@ -2941,7 +2941,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
                     push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, 𝓂.solved_vars[end], 𝓂.solved_vals[end])))))
-                    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for analytical aux variables with error $solution_error") end; continue end))
+                    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for analytical aux variables with error $solution_error") end; scale = (scale + solved_scale) / 2; continue end))
 
                     unique_➕_eqs[𝓂.solved_vals[end]] = 𝓂.solved_vars[end]
                 else
@@ -2952,7 +2952,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     if length(vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)) > 0
                         push!(SS_solve_func,vcat(ss_and_aux_equations, ss_and_aux_equations_dep)...)
                         push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)...))))
-                        push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for analytical variables with error $solution_error") end; continue end))
+                        push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for analytical variables with error $solution_error") end; scale = (scale + solved_scale) / 2; continue end))
                     end
                     
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
@@ -2960,7 +2960,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 if haskey(𝓂.bounds, 𝓂.solved_vars[end]) && 𝓂.solved_vars[end] ∉ 𝓂.➕_vars
                     push!(SS_solve_func,:(solution_error += abs(min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vars[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2])) - $(𝓂.solved_vars[end]))))
-                    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for bounded variables with error $solution_error") end; continue end))
+                    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for bounded variables with error $solution_error") end; scale = (scale + solved_scale) / 2; continue end))
                 end
             end
         else
@@ -3086,7 +3086,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     #                             end
     #                         end))
 
-        push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < 1e-12)
+        push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < 1e-12)
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
                                 # solved_scale = scale
                             end))
@@ -3130,14 +3130,23 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     end
                     # solution_error = 1.0
                     # iters = 0
+                    range_iters = 0
+                    solution_error = 1.0
                     solved_scale = 0
-                    range_length = [ 1, 2, 4, 8,16,32]
-                    for range_ in range_length
-                        rangee = range(0,1,range_+1)
-                        for scale in rangee[2:end]
-                            scale = 6*scale^5 - 15*scale^4 + 10*scale^3 # smootherstep
+                    # range_length = [ 1, 2, 4, 8,16,32,64,128,1024]
+                    scale = 1.0
 
-                            if scale <= solved_scale continue end
+                    while range_iters < 100 && !(solution_error < 1e-12 && solved_scale == 1)
+                        range_iters += 1
+                        # println(range_iters)
+                        # println(scale)
+                        # println(solved_scale)
+                    # for range_ in range_length
+                        # rangee = range(0,1,range_+1)
+                        # for scale in rangee[2:end]
+                            # scale = 6*scale^5 - 15*scale^4 + 10*scale^3 # smootherstep
+
+                            # if scale <= solved_scale continue end
 
                             current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - initial_parameters)
                             closest_solution = 𝓂.NSSS_solver_cache[end]
@@ -3149,7 +3158,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                     closest_solution = pars
                                 end
                             end
-                            
+
+                            # println(closest_solution)
+
                             if all(isfinite,closest_solution[end]) && initial_parameters != closest_solution_init[end]
                                 parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
                             else
@@ -3157,6 +3168,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             end
                             params_flt = parameters
                             
+                            # println(parameters)
+
                             $(parameters_in_equations...)
                             $(par_bounds...)
                             $(𝓂.calibration_equations_no_var...)
@@ -3166,18 +3179,28 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             $(SS_solve_func...)
 
                             if solution_error < 1e-12
+                                # println("solved for $scale; $range_iters")
                                 solved_scale = scale
-                                
                                 if scale == 1
                                     # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
                                     # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
                                     # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesnt work with Zygote
                                     return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
                                 end
-                            elseif scale == 1 && range_ == range_length[end]
-                                return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
+
+                                if scale > .95
+                                    scale = 1
+                                else
+                                    scale = (scale + 1) / 2
+                                end
+                            # else
+                            #     println("no sol")
+                            #     scale  = (scale + solved_scale) / 2
+                            #     println("scale $scale")
+                            # elseif scale == 1 && range_ == range_length[end]
+                            #     return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
                             end
-                        end
+                    #     end
                     end
                     return [0.0], (1, 0)
                 end)
@@ -3479,7 +3502,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                                 end
                             end))
 
-    push!(SS_solve_func,:(if (current_best > 1e-5) && (solution_error < 1e-12)
+    push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < 1e-12)
                                 reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
                                 # solved_scale = scale
                             end))
@@ -3826,73 +3849,80 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             for p in parameters
                 for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
                     if sol_minimum > tol# || rel_sol_minimum > rtol
+                        if solved_yet continue end
                         sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                             g, 
                                                             p,
                                                             ext,
                                                             false)
+                        if sol_minimum < tol 
+                            solved_yet = true
+                        end
                     end
                 end
             end
         end
     else !cold_start
-        for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
+        # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
             for algo in [newton, levenberg_marquardt]
-                if sol_minimum > tol# || rel_sol_minimum > rtol
+                if sol_minimum > tol # || rel_sol_minimum > rtol
+                    if solved_yet continue end
                     # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
                     sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
                                                                         total_iters, 
                                                                         n_block, 
-                                                                        false, #verbose
+                                                                        false, # verbose
                                                                         guess, 
                                                                         parameters[1],
-                                                                        ext,
+                                                                        false, # ext
                                                                         false)                 
-                    if !(sol_minimum > tol)# || rel_sol_minimum > rtol)
+                    if sol_minimum < tol # || rel_sol_minimum > rtol)
                         solved_yet = true
 
                         if verbose
-                            println("Block: $n_block, - Solved with $algo using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum - $total_iters")
+                            # println("Block: $n_block, - Solved with $algo using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum - $total_iters")
+                            println("Block: $n_block, - Solved with $algo using previous solution - $sol_minimum - $rel_sol_minimum - $total_iters")
                         end
                     end                      
-                end
+            #     end
             end
         end
 
 
-        if sol_minimum > tol# || rel_sol_minimum > rtol
-            for p in unique(parameters)#[1:3] # take unique because some parameters might appear more than once
-                for s in [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
-                    # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
-                        if sol_minimum > tol# || rel_sol_minimum > rtol
-                            sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, 
-                                                                false, # verbose
-                                                                guess, 
-                                                                p,
-                                                                false,
-                                                                s)
-                            if !solved_yet && !(sol_minimum > tol)# || rel_sol_minimum > rtol)     
-                                solved_yet = true
-                                if verbose
-                                    loop1 = unique(parameters)#[1:3]
-                                    loop2 = [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]
-                                    p_in_loop1 = findfirst(x -> x == p, loop1)
-                                    s_in_loop2 = findfirst(x -> x == s, loop2)
-                                    if p_in_loop1 isa Nothing
-                                        p_in_loop1 = 1
-                                    end
-                                    if s_in_loop2 isa Nothing
-                                        s_in_loop2 = 1
-                                    end
-                                    n1 = (p_in_loop1 - 1) * length(loop2) + s_in_loop2
-                                    println("Block: $n_block, - Solved with modified Levenberg-Marquardt - $n1/$(length(loop2) *length(loop1)) - $sol_minimum - $rel_sol_minimum - $total_iters")
-                                end
-                            end 
-                        end
-                    # end
-                end
-            end
-        end
+        # if sol_minimum > tol# || rel_sol_minimum > rtol
+        #     for p in unique(parameters)#[1:3] # take unique because some parameters might appear more than once
+        #         # for s in [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]#, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+        #             # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
+        #                 if sol_minimum > tol# || rel_sol_minimum > rtol
+        #                     sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, 
+        #                                                         false, # verbose
+        #                                                         guess, 
+        #                                                         p,
+        #                                                         false,
+        #                                                         false)
+        #                                                         # s)
+        #                     if !solved_yet && sol_minimum < tol# || rel_sol_minimum > rtol)     
+        #                         solved_yet = true
+        #                         if verbose
+        #                             loop1 = unique(parameters)#[1:3]
+        #                             loop2 = [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]
+        #                             p_in_loop1 = findfirst(x -> x == p, loop1)
+        #                             s_in_loop2 = findfirst(x -> x == s, loop2)
+        #                             if p_in_loop1 isa Nothing
+        #                                 p_in_loop1 = 1
+        #                             end
+        #                             if s_in_loop2 isa Nothing
+        #                                 s_in_loop2 = 1
+        #                             end
+        #                             n1 = (p_in_loop1 - 1) * length(loop2) + s_in_loop2
+        #                             println("Block: $n_block, - Solved with modified Levenberg-Marquardt - $n1/$(length(loop2) *length(loop1)) - $sol_minimum - $rel_sol_minimum - $total_iters")
+        #                         end
+        #                     end 
+        #                 end
+        #             # end
+        #         # end
+        #     end
+        # end
     end
 
     if verbose
@@ -6831,8 +6861,16 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                     timer::TimerOutput = TimerOutput(),
                                     tol::AbstractFloat = 1e-12) where S <: Float64
     @timeit_debug timer "Calculate NSSS" begin
-    𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
+
+    if solution_error > tol || isnan(solution_error)
+        if verbose println("Failed to find NSSS") end
+
+        return (SS_and_pars, (10, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    end
+
     end # timeit_debug
+    return SS_and_pars, (solution_error, iters)
 end
 
 
