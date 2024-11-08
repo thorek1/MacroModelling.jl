@@ -2368,11 +2368,11 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
                                                             
     push!(SS_solve_func,:(iters += solution[2][2])) 
     push!(SS_solve_func,:(solution_error += solution[2][1])) 
-    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed after solving block with error $solution_error") end; return [0.0], (solution_error,1) end))
+    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed after solving block with error $solution_error") end; continue end))
 
     if length(ss_and_aux_equations_error) > 0
         push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error...))))
-        push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for aux variables with error $(solution_error)") end; return [0.0], (solution_error,1) end))
+        push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for aux variables with error $(solution_error)") end; continue end))
     end
 
     push!(SS_solve_func,:(sol = solution[1]))
@@ -2899,7 +2899,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             if parsed_eq_to_solve_for != minmax_fixed_eqs
                 [push!(atoms_in_equations, a) for a in setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs))]
                 push!(min_max_errors,:(solution_error += abs($parsed_eq_to_solve_for)))
-                push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for min max terms in equations with error $solution_error") end; return [0.0], (solution_error,1) end))
+                push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for min max terms in equations with error $solution_error") end; continue end))
                 eq_to_solve = eval(minmax_fixed_eqs)
             end
             
@@ -2941,7 +2941,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
                     push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, 𝓂.solved_vars[end], 𝓂.solved_vals[end])))))
-                    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for analytical aux variables with error $solution_error") end; return [0.0], (solution_error,1) end))
+                    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for analytical aux variables with error $solution_error") end; continue end))
 
                     unique_➕_eqs[𝓂.solved_vals[end]] = 𝓂.solved_vars[end]
                 else
@@ -2952,7 +2952,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     if length(vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)) > 0
                         push!(SS_solve_func,vcat(ss_and_aux_equations, ss_and_aux_equations_dep)...)
                         push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)...))))
-                        push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for analytical variables with error $solution_error") end; return [0.0], (solution_error,1) end))
+                        push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for analytical variables with error $solution_error") end; continue end))
                     end
                     
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
@@ -2960,7 +2960,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 if haskey(𝓂.bounds, 𝓂.solved_vars[end]) && 𝓂.solved_vars[end] ∉ 𝓂.➕_vars
                     push!(SS_solve_func,:(solution_error += abs(min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vars[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2])) - $(𝓂.solved_vars[end]))))
-                    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for bounded variables with error $solution_error") end; return [0.0], (solution_error,1) end))
+                    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for bounded variables with error $solution_error") end; continue end))
                 end
             end
         else
@@ -3108,42 +3108,55 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
         end
     end
 
-    solve_exp = :(function solve_SS(parameters::Vector{Real}, 
+    solve_exp = :(function solve_SS(initial_parameters::Vector{Real}, 
                                     𝓂::ℳ,
                                     # fail_fast_solvers_only::Bool, 
                                     verbose::Bool, 
                                     cold_start::Bool,
                                     solver_parameters::Vector{solver_parameters})
+                    initial_parameters = typeof(initial_parameters) == Vector{Float64} ? initial_parameters : ℱ.value.(initial_parameters)
 
-                    # params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
-                    # current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
-                    # closest_solution_init = 𝓂.NSSS_solver_cache[end]
-                    # for pars in 𝓂.NSSS_solver_cache
-                    #     latest = sum(abs2,pars[end] - params_flt)
-                    #     if latest <= current_best
-                    #         current_best = latest
-                    #         closest_solution_init = pars
-                    #     end
-                    # end
-                    # solved_scale = 0
-                    # range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
-                    # for r in range_length
-                        # rangee = ignore_derivatives(range(0,1,r+1))
-                        # for scale in rangee[2:end]
-                            # if scale <= solved_scale continue end
-                            params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
-                            current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
+                    parameters = copy(initial_parameters)
+                    params_flt = copy(initial_parameters)
+                    
+                    current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - initial_parameters)
+                    closest_solution_init = 𝓂.NSSS_solver_cache[end]
+                    for pars in 𝓂.NSSS_solver_cache
+                        latest = sum(abs2,pars[end] - initial_parameters)
+                        if latest <= current_best
+                            current_best = latest
+                            closest_solution_init = pars
+                        end
+                    end
+                    # solution_error = 1.0
+                    # iters = 0
+                    solved_scale = 0
+                    range_length = [ 1, 2, 4, 8,16,32]
+                    for range_ in range_length
+                        rangee = range(0,1,range_+1)
+                        for scale in rangee[2:end]
+                            scale = 6*scale^5 - 15*scale^4 + 10*scale^3 # smootherstep
+
+                            if scale <= solved_scale continue end
+
+                            current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - initial_parameters)
                             closest_solution = 𝓂.NSSS_solver_cache[end]
+
                             for pars in 𝓂.NSSS_solver_cache
-                                latest = sum(abs2,pars[end] - params_flt)
+                                latest = sum(abs2,pars[end] - initial_parameters)
                                 if latest <= current_best
                                     current_best = latest
                                     closest_solution = pars
                                 end
                             end
-
-                            # params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
-
+                            
+                            if all(isfinite,closest_solution[end]) && initial_parameters != closest_solution_init[end]
+                                parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
+                            else
+                                parameters = copy(initial_parameters)
+                            end
+                            params_flt = parameters
+                            
                             $(parameters_in_equations...)
                             $(par_bounds...)
                             $(𝓂.calibration_equations_no_var...)
@@ -3151,14 +3164,22 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             solution_error = 0.0
                             iters = 0
                             $(SS_solve_func...)
-                            # if scale == 1
-                                # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
-                                # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
-                                # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesnt work with Zygote
+
+                            if solution_error < 1e-12
+                                solved_scale = scale
+                                
+                                if scale == 1
+                                    # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
+                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
+                                    # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesnt work with Zygote
+                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
+                                end
+                            elseif scale == 1 && range_ == range_length[end]
                                 return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
-                            # end
-                        # end
-                    # end
+                            end
+                        end
+                    end
+                    return [0.0], (1, 0)
                 end)
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
@@ -3472,41 +3493,55 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         end
     end
 
-    solve_exp = :(function solve_SS(parameters::Vector{Real}, 
+    solve_exp = :(function solve_SS(initial_parameters::Vector{Real}, 
                                     𝓂::ℳ, 
                                     # fail_fast_solvers_only::Bool, 
                                     verbose::Bool, 
                                     cold_start::Bool,
                                     solver_parameters::Vector{solver_parameters})
+                    initial_parameters = typeof(initial_parameters) == Vector{Float64} ? initial_parameters : ℱ.value.(initial_parameters)
 
-                    # params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
-                    # current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
-                    # closest_solution_init = 𝓂.NSSS_solver_cache[end]
-                    # for pars in 𝓂.NSSS_solver_cache
-                    #     latest = sum(abs2,pars[end] - params_flt)
-                    #     if latest <= current_best
-                    #         current_best = latest
-                    #         closest_solution_init = pars
-                    #     end
-                    # end
-                    # solved_scale = 0
-                    # range_length = [1]#fail_fast_solvers_only ? [1] : [ 1, 2, 4, 8,16,32]
-                    # for r in range_length
-                    #     rangee = ignore_derivatives(range(0,1,r+1))
-                    #     for scale in rangee[2:end]
-                    #         if scale <= solved_scale continue end
-                            params_flt = typeof(parameters) == Vector{Float64} ? parameters : ℱ.value.(parameters)
-                            current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - params_flt)
+                    parameters = copy(initial_parameters)
+                    params_flt = copy(initial_parameters)
+                    
+                    current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - initial_parameters)
+                    closest_solution_init = 𝓂.NSSS_solver_cache[end]
+                    for pars in 𝓂.NSSS_solver_cache
+                        latest = sum(abs2,pars[end] - initial_parameters)
+                        if latest <= current_best
+                            current_best = latest
+                            closest_solution_init = pars
+                        end
+                    end
+                    # solution_error = 1.0
+                    # iters = 0
+                    solved_scale = 0
+                    range_length = [ 1, 2, 4, 8,16,32]
+                    for range_ in range_length
+                        rangee = range(0,1,range_+1)
+                        for scale in rangee[2:end]
+                            scale = 6*scale^5 - 15*scale^4 + 10*scale^3 # smootherstep
+
+                            if scale <= solved_scale continue end
+
+                            current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - initial_parameters)
                             closest_solution = 𝓂.NSSS_solver_cache[end]
+
                             for pars in 𝓂.NSSS_solver_cache
-                                latest = sum(abs2,pars[end] - params_flt)
+                                latest = sum(abs2,pars[end] - initial_parameters)
                                 if latest <= current_best
                                     current_best = latest
                                     closest_solution = pars
                                 end
                             end
-                            # params = all(isfinite.(closest_solution_init[end])) && parameters != closest_solution_init[end] ? scale * parameters + (1 - scale) * closest_solution_init[end] : parameters
-
+                            
+                            if all(isfinite,closest_solution[end]) && initial_parameters != closest_solution_init[end]
+                                parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
+                            else
+                                parameters = copy(initial_parameters)
+                            end
+                            params_flt = parameters
+                            
                             $(parameters_in_equations...)
                             $(par_bounds...)
                             $(𝓂.calibration_equations_no_var...)
@@ -3514,12 +3549,22 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                             iters = 0
                             solution_error = 0.0
                             $(SS_solve_func...)
-                            # if scale == 1
-                                # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
-                                return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)] , (solution_error, iters)
-                            # end
-                    #     end
-                    # end
+
+                            if solution_error < 1e-12
+                                solved_scale = scale
+                                
+                                if scale == 1
+                                    # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
+                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
+                                    # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesnt work with Zygote
+                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
+                                end
+                            elseif scale == 1 && range_ == range_length[end]
+                                return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
+                            end
+                        end
+                    end
+                    return [0.0], (1, 0)
                 end)
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
@@ -3817,7 +3862,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
         if sol_minimum > tol# || rel_sol_minimum > rtol
             for p in unique(parameters)#[1:3] # take unique because some parameters might appear more than once
-                for s in [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897] #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+                for s in [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                     # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
                         if sol_minimum > tol# || rel_sol_minimum > rtol
                             sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, 
@@ -3852,7 +3897,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
 
     if verbose
         if !solved_yet
-            println("Block: $n_block, - Solution not found after $(total_iters[1]) gradient evaluations and $(total_iters[2]) function evaluations")
+            println("Block: $n_block, - Solution not found after $(total_iters[1]) gradient evaluations and $(total_iters[2]) function evaluations; reltol: $rel_sol_minimum - tol: $sol_minimum")
         end
     end
 
@@ -7042,7 +7087,7 @@ end
 
 
 function check_bounds(parameter_values::Vector{S}, 𝓂::ℳ)::Bool where S <: Real
-    if !all(isfinite.(parameter_values)) return true end
+    if !all(isfinite,parameter_values) return true end
 
     if length(𝓂.bounds) > 0 
         for (k,v) in 𝓂.bounds
