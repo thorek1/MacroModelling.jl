@@ -1852,7 +1852,7 @@ end
 
 function write_out_for_loops(arg::Expr)
     postwalk(x -> begin
-                    x = unblock(x)
+                    x = flatten(unblock(x))
                     x isa Expr ?
                         x.head == :for ?
                             x.args[2] isa Array ?
@@ -1887,11 +1887,11 @@ function write_out_for_loops(arg::Expr)
                                                 # end 
                                                 # : # for loop part of equation
                             # begin println(x); 
-                                (replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                 Symbol(x.args[1].args[1]), 
                                                 (x.args[1].args[2]),
                                                 false,
-                                                :+)) :
+                                                :+) :
                                                 # println(out); 
                                                 # return out end 
                                                 # :
@@ -1970,7 +1970,7 @@ function parse_for_loops(equations_block)
 
         end
     end
-    return Expr(:block,eqs...)
+    return Expr(:block,eqs...) |> flatten
 end
 
 

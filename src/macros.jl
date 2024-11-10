@@ -1,5 +1,5 @@
 
-import MacroTools: unblock, postwalk, @capture
+import MacroTools: unblock, postwalk, @capture, flatten
 
 const all_available_algorithms = [:linear_time_iteration, :riccati, :first_order, :first_order_doubling, :quadratic_iteration, :binder_pesaran, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
@@ -303,7 +303,7 @@ macro model(𝓂,ex...)
                     x :
                 x,
             model_ex.args[i])
-            push!(ss_equations,unblock(eqs))
+            push!(ss_equations,flatten(unblock(eqs)))
 
             # write down ss equations including nonnegativity auxilliary variables
             # find nonegative variables, parameters, or terms
