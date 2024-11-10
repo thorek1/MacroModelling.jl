@@ -1797,7 +1797,11 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                         time isa Expr || time isa Symbol ?
                             index_variable ∈ get_symbols(time) ?
                                 :($(Expr(:ref, name, Meta.parse(replace(string(time), string(index_variable) => idx))))) :
+                            # occursin("{" * string(index_variable) * "}", string(name)) ?
+                            #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
                             x :
+                        # occursin("{" * string(index_variable) * "}", string(name)) ?
+                        #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
                         x :
                     x :
                 @capture(x, name_{index_}) ?
@@ -1808,16 +1812,20 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
             @capture(x, name_) ?
                 name == index_variable && idx isa Int ?
                     :($idx) :
+                # occursin("{" * string(index_variable) * "}", string(name)) ?
+                #     Meta.parse(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")) :
                 x :
             x
         end,
         exxpr))
     end
-
+    
     if concatenate
         return :($(Expr(:call, operator, calls...)))
     else
         return :($(Expr(:block, calls...)))
+        # return :($calls...)
+        # return calls
     end
 end
 
@@ -1829,17 +1837,17 @@ replace_indices(x::String) = Symbol(replace(x, "{" => "◖", "}" => "◗"))
 replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{", "◗" => "}")
 
 function replace_indices(exxpr::Expr)
-    out = postwalk(x -> begin
-    x isa Symbol ?
-        Symbol(replace_indices(string(x))) : x
-        # @capture(x, {index_}) ?
-        #     :($(Symbol("◖" * string((index)) * "◗"))) :
-        # x
-        end,
-    exxpr)
-
-    return out
+    postwalk(x -> begin
+        x isa Symbol ?
+            replace_indices(string(x)) :
+        x isa Expr ?
+            x.head == :curly ?
+                Symbol(string(x.args[1]) * "◖" * string(x.args[2]) * "◗") :
+            x :
+        x
+    end, exxpr)
 end
+
 
 
 function write_out_for_loops(arg::Expr)
@@ -1850,37 +1858,84 @@ function write_out_for_loops(arg::Expr)
                             x.args[2] isa Array ?
                                 length(x.args[2]) >= 1 ?
                                     x.args[1].head == :block ?
+                                        # begin println("here"); 
                                         [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[2].args[1]), (x.args[1].args[2].args[2]), false, x.args[1].args[1].args[2].value) for X in x.args[2]] :
+                                    # begin println("here2"); 
                                     [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), (x.args[1].args[2]), false, :+) for X in x.args[2]] :
                                 x :
                             x.args[2].head ∉ [:(=), :block] ?
                                 x.args[1].head == :block ?
-                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                        # begin println("here3"); 
+                                        replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                         Symbol(x.args[1].args[2].args[1]), 
                                                         (x.args[1].args[2].args[2]),
                                                         true,
                                                         x.args[1].args[1].args[2].value) : # for loop part of equation
+                                # begin println("here4"); 
                                 replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                     Symbol(x.args[1].args[1]), 
                                                     (x.args[1].args[2]),
                                                     true,
                                                     :+) : # for loop part of equation
                             x.args[1].head == :block ?
+                                # begin println("here5"); r
                                 replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                     Symbol(x.args[1].args[2].args[1]), 
                                                     (x.args[1].args[2].args[2]),
                                                     false,
-                                                    x.args[1].args[1].args[2].value) : # for loop part of equation
-                            replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                    x.args[1].args[1].args[2].value) :
+                                                # end 
+                                                # : # for loop part of equation
+                            # begin println(x); 
+                                (replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                 Symbol(x.args[1].args[1]), 
                                                 (x.args[1].args[2]),
                                                 false,
-                                                :+) :
+                                                :+)) :
+                                                # println(out); 
+                                                # return out end 
+                                                # :
                         x :
                     x
                 end,
-    arg)
+    arg) #|> unblock |> flatten
 end
+
+# function parse_for_loops(equations_block)
+#     eqs = Expr[]  # Initialize an empty array to collect expressions
+
+#     # Define a helper recursive function
+#     function recurse(arg)
+#             if arg isa Expr
+#                 if arg.head == :block
+#                     for b in arg.args
+#                         if b isa Expr
+#                             # If the result is an Expr, process and add to eqs
+#                             push!(eqs, unblock(replace_indices(b)))
+#                         elseif b isa Array
+#                             recurse(b)
+#                         end
+#                     end
+#                 end
+#             elseif arg isa Array
+#                 # If the result is an Array, iterate and recurse
+#                 for B in arg
+#                     println((B))
+#                     recurse(B)
+#                 end
+#             end
+#     end
+
+#     for arg in equations_block.args
+#         if isa(arg,Expr)
+#             parsed_eqs = write_out_for_loops(arg)
+#             recurse(parsed_eqs)
+#         end
+#     end
+
+#     # Return the collected expressions as a block
+#     return Expr(:block, eqs...)
+# end
 
 
 function parse_for_loops(equations_block)
@@ -1888,6 +1943,7 @@ function parse_for_loops(equations_block)
     for arg in equations_block.args
         if isa(arg,Expr)
             parsed_eqs = write_out_for_loops(arg)
+            # println(parsed_eqs)
             if parsed_eqs isa Expr
                 push!(eqs,unblock(replace_indices(parsed_eqs)))
             elseif parsed_eqs isa Array
