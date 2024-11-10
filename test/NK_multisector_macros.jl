@@ -87,8 +87,8 @@ using MacroModelling
     end
 
     for co in [a]  
-        for se in 1:10 
-            pi_ppi_1_t{co}[0] / pi_ppi_t{se}{co}[0] = P_1_t{co}[0] / P_t{se}{co}[0] * P_t{se}{co}[-1] / P_1_t{co}[-1] # (Nominal) PPI-inflation 
+        for se in 2:10 
+            pi_ppi_t{1}{co}[0] / pi_ppi_t{se}{co}[0] = P_t{1}{co}[0] / P_t{se}{co}[0] * P_t{se}{co}[-1] / P_t{1}{co}[-1] # (Nominal) PPI-inflation 
         end
     end
 end
