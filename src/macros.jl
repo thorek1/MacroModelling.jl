@@ -1075,7 +1075,7 @@ macro parameters(𝓂,ex...)
     parameter_definitions = replace_indices(ex[end])
 
     # parse parameter inputs
-    # label all variables parameters and exogenous vairables and timings across all equations
+    # label all variables parameters and exogenous variables and timings across all equations
     postwalk(x -> 
         x isa Expr ?
             x.head == :(=) ? 
@@ -1123,7 +1123,7 @@ macro parameters(𝓂,ex...)
             x.head == :(=) ? 
                 typeof(x.args[2]) ∈ [Int, Float64] ?
                     x :
-                x.args[1] isa Symbol ?# || x.args[1] isa Expr ? #this doesnt work really well yet
+                x.args[1] isa Symbol ?# || x.args[1] isa Expr ? # this doesnt work really well yet
                     x.args[2] isa Expr ?
                         x.args[2].args[1] == :| ? # capture this case: b_star = b_share * y[ss] | b_star
                             begin # this is calibration by targeting SS values (conditional parameter at the end)
