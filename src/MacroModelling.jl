@@ -1817,7 +1817,7 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
     if concatenate
         return :($(Expr(:call, operator, calls...)))
     else
-        return calls
+        return :($(Expr(:block, calls...)))
     end
 end
 
@@ -1829,12 +1829,16 @@ replace_indices(x::String) = Symbol(replace(x, "{" => "◖", "}" => "◗"))
 replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{", "◗" => "}")
 
 function replace_indices(exxpr::Expr)
-    postwalk(x -> begin
-        @capture(x, name_{index_}) ?
-            :($(Symbol(string(name) * "◖" * string((index)) * "◗"))) :
-        x
+    out = postwalk(x -> begin
+    x isa Symbol ?
+        Symbol(replace_indices(string(x))) : x
+        # @capture(x, {index_}) ?
+        #     :($(Symbol("◖" * string((index)) * "◗"))) :
+        # x
         end,
     exxpr)
+
+    return out
 end
 
 
