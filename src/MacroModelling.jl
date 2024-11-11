@@ -3711,7 +3711,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
 end
 
 
-function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 60, maxiter::Int = 250000, tol::AbstractFloat = 1e-12)
+function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 250000, tol::AbstractFloat = 1e-12, verbosity = 0)
     pars = rand(20) .+ 1
     pars[20] -= 1
 
@@ -3719,10 +3719,10 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 60, maxiter::Int =
     lbs[20] = -20
 
     ubs = fill(100.0,length(pars))
-
+    
     sol = Optim.optimize(x -> calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂), 
                             lbs, ubs, pars, 
-                            Optim.SAMIN(verbosity = 0), 
+                            Optim.SAMIN(verbosity = verbosity, nt = 2, ns = 2), 
                             Optim.Options(time_limit = maxtime, iterations = maxiter))
 
     pars = Optim.minimizer(sol)

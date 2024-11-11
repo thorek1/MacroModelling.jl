@@ -1528,7 +1528,7 @@ macro parameters(𝓂,ex...)
 
             if solution_error > 1e-12
                 # start_time = time()
-                found_solution = find_SS_solver_parameters!(mod.$𝓂)
+                found_solution = find_SS_solver_parameters!(mod.$𝓂, verbosity = 0, maxtime = 120, maxiter = 10000000)
                 # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
             end
             
