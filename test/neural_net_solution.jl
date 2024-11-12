@@ -15,6 +15,8 @@ using Zygote
 using LinearAlgebra
 BLAS.set_num_threads(Threads.nthreads())
 
+# TODO: train another neural net: ergodic mean and std = neural_net(parameters) which you use then to normalise inputs for the policy function neural net
+
 ## Settings
 normalise = true  # use asinh and tanh at the beginning if there is no normalisation
 recurrent = false # the internal state needs to be reset but carries a lot of information
