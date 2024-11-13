@@ -1787,7 +1787,7 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                 x.head == :ref ?
                     @capture(x, name_{index_}[time_]) ?
                         index == index_variable ?
-                            :($(Expr(:ref, Symbol(string(name) * "◖" * string(idx) * "◗"),time))) :
+                            :($(Expr(:ref, Symbol(string(name) * "{" * string(idx) * "}"),time))) :
                         time isa Expr || time isa Symbol ?
                             index_variable ∈ get_symbols(time) ?
                                 :($(Expr(:ref, Expr(:curly,name,index), Meta.parse(replace(string(time), string(index_variable) => idx))))) :
@@ -1806,14 +1806,16 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                     x :
                 @capture(x, name_{index_}) ?
                     index == index_variable ?
-                        :($(Symbol(string(name) * "◖" * string(idx) * "◗"))) :
+                        :($(Symbol(string(name) * "{" * string(idx) * "}"))) :
                     x :
                 x :
             @capture(x, name_) ?
                 name == index_variable && idx isa Int ?
                     :($idx) :
-                # occursin("{" * string(index_variable) * "}", string(name)) ?
-                #     Meta.parse(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")) :
+                x isa Symbol ?
+                    occursin("{" * string(index_variable) * "}", string(x)) ?
+                Symbol(replace(string(x),  string(index_variable) => string(idx))) :
+                    x :
                 x :
             x
         end,
@@ -1859,9 +1861,9 @@ function write_out_for_loops(arg::Expr)
                                 length(x.args[2]) >= 1 ?
                                     x.args[1].head == :block ?
                                         # begin println("here"); 
-                                        [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[2].args[1]), (x.args[1].args[2].args[2]), false, x.args[1].args[1].args[2].value) for X in x.args[2]] :
+                                        [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[2].args[1]), (x.args[1].args[2].args[2]), false, x.args[1].args[1].args[2].value) for X in x.args[2]] : # end :
                                     # begin println("here2"); 
-                                    [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), (x.args[1].args[2]), false, :+) for X in x.args[2]] :
+                                    [replace_indices_inside_for_loop(X, Symbol(x.args[1].args[1]), (x.args[1].args[2]), false, :+) for X in x.args[2]] : # end :
                                 x :
                             x.args[2].head ∉ [:(=), :block] ?
                                 x.args[1].head == :block ?
@@ -1870,28 +1872,29 @@ function write_out_for_loops(arg::Expr)
                                                         Symbol(x.args[1].args[2].args[1]), 
                                                         (x.args[1].args[2].args[2]),
                                                         true,
-                                                        x.args[1].args[1].args[2].value) : # for loop part of equation
-                                # begin println("here4"); 
+                                                        x.args[1].args[1].args[2].value) : # end : # for loop part of equation
+                                # begin println("here4"); println(x)
                                 replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                     Symbol(x.args[1].args[1]), 
                                                     (x.args[1].args[2]),
                                                     true,
-                                                    :+) : # for loop part of equation
+                                                    :+) : # end : # for loop part of equation
                             x.args[1].head == :block ?
-                                # begin println("here5"); r
+                                # begin println("here5"); 
                                 replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                     Symbol(x.args[1].args[2].args[1]), 
                                                     (x.args[1].args[2].args[2]),
                                                     false,
-                                                    x.args[1].args[1].args[2].value) :
+                                                    x.args[1].args[1].args[2].value) : # end :
                                                 # end 
                                                 # : # for loop part of equation
                             # begin println(x); 
+                                # begin println("here6"); 
                                 replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                 Symbol(x.args[1].args[1]), 
                                                 (x.args[1].args[2]),
                                                 false,
-                                                :+) :
+                                                :+) : # end :
                                                 # println(out); 
                                                 # return out end 
                                                 # :
