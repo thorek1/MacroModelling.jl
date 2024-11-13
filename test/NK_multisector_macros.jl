@@ -55,7 +55,7 @@ using MacroModelling
 
         Y_t{co}[0] = for se in 1:10 Y_t{se}{co}[0] end
 
-        #### Consumption and investmend demand for different goods, relative prices ####
+        #### Consumption and investment demand for different goods, relative prices ####
         for se in 1:10
             C_t{se}{co}[0] = C_t{co}[0] * Psi_con{se}{co} * (1 / P_t{se}{co}[0]) ^ (1 / (1 - sigc{co})) # Specific demand for sectoral consumption goods
 
@@ -367,10 +367,12 @@ end
     Psi{10}{10}{a} =   0.227600065914005
 end
 
-# SS(NK_multisector)
+SS(NK_multisector)
+
+get_solution(NK_multisector)
 
 import MacroModelling: block_solver, find_SS_solver_parameters!, solve_ss, levenberg_marquardt
-find_SS_solver_parameters!(NK_multisector)
+find_SS_solver_parameters!(NK_multisector, verbosity = 2, maxtime = 60)
 SS_and_pars, (solution_error, iters) = NK_multisector.SS_solve_func(NK_multisector.parameter_values, NK_multisector, true, true, NK_multisector.solver_parameters)
 
 NK_multisector.solution.non_stochastic_steady_state = SS_and_pars
