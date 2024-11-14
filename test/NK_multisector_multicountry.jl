@@ -4,23 +4,23 @@ using MacroModelling
 @model NK_multisector begin
     #### Climate variables ####
     for co in [a,b]
-        # P_EM_t{co}[0] = P_EM_ts{co} + shock_P_EM_t{co}[x] # Law of motion for carbon price 
+        P_EM_t{co}[0] = P_EM_ts{co} + shock_P_EM_t{co}[x] # Law of motion for carbon price 
 
         log(epsi_t{co}[0] / epsi_ts{co}) = rho_eps{co} * log(epsi_t{co}[-1] / epsi_ts{co}) + shock_epsi_t{co}[x] # Law of motion for aggregate TFP
     end
 
-	# EM_t[0] = (1 - rho_EM) * EM_t[-1] + for co in [a,b] for se in 1:10 ZZ_t{se}{co}[0] end end # Law of motion for emissions concentration
+	EM_t[0] = (1 - rho_EM) * EM_t[-1] + for co in [a,b] for se in 1:10 ZZ_t{se}{co}[0] * size{co} end end # Law of motion for emissions concentration
 
-    # for co in [a,b] 
-    #     for se in 1:10   
-    #         Pen_t{se}{co}[0] = gama0{se}{co} + EM_t[0] * gama1{se}{co} + gama2{se}{co} * EM_t[0] ^ 2  # Damage function
-    #         ZZ_t{se}{co}[0] = (1 + shock_epsi_carb_int_t{co}[x]) * carb_int{se}{co} * Y_t{se}{co}[0] # Emissions
-    #     end 
-    # end
+    for co in [a,b] 
+        for se in 1:10   
+            Pen_t{se}{co}[0] = gama0{se}{co} + EM_t[0] * gama1{se}{co} + gama2{se}{co} * EM_t[0] ^ 2  # Damage function
+            ZZ_t{se}{co}[0] = (1 + shock_epsi_carb_int_t{co}[x]) * carb_int{se}{co} * Y_t{se}{co}[0] # Emissions
+        end 
+    end
 
-    # for co in [a,b] 
-    #     ZZ_t{co}[0] = for se in 1:10 ZZ_t{se}{co}[0] end
-    # end
+    for co in [a,b] 
+        ZZ_t{co}[0] = for se in 1:10 ZZ_t{se}{co}[0] end
+    end
     
     #### Domestic aggregates ####
     for co in [a,b] 
@@ -40,7 +40,7 @@ using MacroModelling
         1 = (for se in 1:10 Psi_con{se}{co} * PC_t{se}{co}[0] ^ (( - sigc{co}) / (1 - sigc{co})) end) # Price index derived from opt. problem of cons.-bundler 
 
         # pi_cpi_t{co}[0] = (for se in 1:10 Psi_con{se}{co} * (pi_ppi_t{se}{co}[0] * P_t{se}{co}[-1]) ^ (( - sigc{co}) / (1 - sigc{co})) end) ^ (( - (1 - sigc{co})) / sigc{co}) # CPI-inflation 
-        pi_cpi_t{co}[0] ^ (( - sigc{co} / (1 - sigc{co})))  = (for se in 1:10 Psi_con{se}{co} * (pi_ppi_t{se}{co}[0] * PC_t{se}{co}[-1]) ^ (( - sigc{co}) / (1 - sigc{co})) end)# CPI-inflation 
+        pi_cpi_t{co}[0] ^ (( - sigc{co} / (1 - sigc{co})))  = (for se in 1:10 Psi_con{se}{co} * (pi_cpi_t{se}{co}[0] * PC_t{se}{co}[-1]) ^ (( - sigc{co}) / (1 - sigc{co})) end)# CPI-inflation 
 
         # PI_t{co}[0] = (for se in 1:10 Psi_inv{se}{co} * P_t{se}{co}[0] ^ (( - sigi{co}) / (1 - sigi{co})) end) ^ (( - (1 - sigi{co})) / sigi{co}) # Price index derived from opt. problem of inv.-bundler 
         PI_t{co}[0] ^ (( - sigi{co}) / (1 - sigi{co})) = (for se in 1:10 Psi_inv{se}{co} * PI_t{se}{co}[0] ^ (( - sigi{co}) / (1 - sigi{co})) end) # Price index derived from opt. problem of inv.-bundler 
@@ -52,10 +52,14 @@ using MacroModelling
         rk_t{co}[0] ^ (( - upsi_K{co}) / (1 - upsi_K{co})) = (for se in 1:10 omega_K{se}{co} * rk_t{se}{co}[0] ^ (( - upsi_K{co}) / (1 - upsi_K{co})) end) # Rental rate index derived from opt. problem of capital-bundler
 
         Y_VA_t{co}[0] = C_t{co}[0] + I_t{co}[0] * PI_t{co}[0] + TB_t{co}[0]
-
+    end
+    
+    for co in [a,b] 
         Y_t{co}[0] = for se in 1:10 Y_t{se}{co}[0] end
+    end
 
         #### Consumption and investment demand for different goods, relative prices ####
+    for co in [a,b] 
         for se in 1:10
             C_t{se}{co}[0] = C_t{co}[0] * Psi_con{se}{co} * (1 / PC_t{se}{co}[0]) ^ (1 / (1 - sigc{co})) # Specific demand for sectoral consumption goods
 
@@ -70,13 +74,13 @@ using MacroModelling
 
             # Y_t{se}{co}[0] = epsi_t{co}[0] * epsi_t{se}{co}[0] * (1 - Pen_t{se}{co}[0]) * (N_t{se}{co}[0] ^ alphaN{se}{co} * K_t{se}{co}[-1] ^ (1 - alphaN{se}{co})) ^ alphaH{se}{co} * H_t{se}{co}[0] ^ (1 - alphaH{se}{co}) # Production technology of perfectly competitive firm
 
-            Y_t{se}{co}[0] = epsi_t{co}[0] * epsi_t{se}{co}[0] * (N_t{se}{co}[0] ^ alphaN{se}{co} * K_t{se}{co}[-1] ^ (1 - alphaN{se}{co})) ^ alphaH{se}{co} * H_t{se}{co}[0] ^ (1 - alphaH{se}{co}) # Production technology of perfectly competitive firm
+            Y_t{se}{co}[0] = epsi_t{co}[0] * epsi_t{se}{co}[0] * (1 - Pen_t{se}{co}[0]) * (N_t{se}{co}[0] ^ alphaN{se}{co} * K_t{se}{co}[-1] ^ (1 - alphaN{se}{co})) ^ alphaH{se}{co} * H_t{se}{co}[0] ^ (1 - alphaH{se}{co}) # Production technology of perfectly competitive firm
 
-            # EM_cost_t{se}{co}[0] = P_EM_t{co}[0] * (1 + shock_epsi_carb_int_t{co}[x]) * carb_int{se}{co} # Emissions costs
+            EM_cost_t{se}{co}[0] = P_EM_t{co}[0] * (1 + shock_epsi_carb_int_t{co}[x]) * carb_int{se}{co} # Emissions costs
 
-            # mc_tild_t{se}{co}[0] = EM_cost_t{se}{co}[0] + mc_t{se}{co}[0] # Real marginal costs relevant for pricing (including emissions taxes)
+            mc_tild_t{se}{co}[0] = EM_cost_t{se}{co}[0] + mc_t{se}{co}[0] # Real marginal costs relevant for pricing (including emissions taxes)
 
-            mc_tild_t{se}{co}[0] = mc_t{se}{co}[0] # Real marginal costs relevant for pricing (including emissions taxes)
+            # mc_tild_t{se}{co}[0] = mc_t{se}{co}[0] # Real marginal costs relevant for pricing (including emissions taxes)
 
             P_t{se}{co}{co}[0] = mc_tild_t{se}{co}[0]
 
@@ -144,6 +148,14 @@ using MacroModelling
         TB_t{co}[0] = for se in 1:10 TB_t{se}{co}[0] end
     end
 
+    for se in 1:10
+        MM_t{se}{a}{b}[0] = carb_int{se}{b} * (1 + shock_epsi_carb_int_t{b}[x]) * (C_t{se}{a}{b}[0] + I_t{se}{a}{b}[0] + for se2 in 1:10 H_t{se2}{se}{a}{b}[0] end)
+    end
+
+    for se in 1:10
+        XX_t{se}{b}{a}[0] = carb_int{se}{a} * (1 + shock_epsi_carb_int_t{a}[x]) * size{b} / size{a} * (C_t{se}{b}{a}[0] + I_t{se}{b}{a}[0] + for se2 in 1:10 H_t{se2}{se}{b}{a}[0] end)
+    end
+
     NFA_t{a}[0] = R_w_t[-1] / pi_cpi_t{a}[0] * exp(-Psi2 * (NFA_t{a}[-1] - NFA_t{a}[ss]) / Y_VA_t{a}[-1]) * NFA_t{a}[-1] + TB_t{a}[0]
 
     R_t{a}[0] = R_w_t[0] * exp(-Psi2 * (NFA_t{a}[0] - NFA_t{a}[ss]) / Y_VA_t{a}[0])
@@ -152,37 +164,41 @@ using MacroModelling
 
     # R_t{b}[0] = R_w_t[0]  * (rer_ba[1] / rer_ba[0]) * exp(-Psi2 * (NFA_t{b}[0] * rer_ba[0] - NFA_t{b}[ss]) / Y_VA_t{a}[0])
 
-    NFA_t{b}[0] * size_b = - NFA_t{a}[0] * size_a
+    NFA_t{b}[0] * size{b} = - NFA_t{a}[0] * size{a}
 end
 
 
-@model NK_multisector begin
-    #### Domestic aggregates ####
-    for co in [a,b] 
-        #### Consumption and investment demand for different goods, relative prices ####
-        for se in 1:10
-            #### Multi-country part ####
-            for co2 in [a,b]
-                for se2 in 1:10
-                    H_t{se}{se2}{co}{co2}[0] = hb_hhh{se}{se2}{co}{co2} * (PHH_t{se}{se2}{co}[0] / P_t{se2}{co}{co2}[0]) ^ (1 / (1-sighh{se}{co})) * H_t{se}{se2}{co}[0]
-                end
+# @model NK_multisector begin
+#     #### Domestic aggregates ####
+#     for co in [a,b] 
+#         #### Consumption and investment demand for different goods, relative prices ####
+#         for se in 1:10
+#             #### Multi-country part ####
+#             for co2 in [a,b]
+#                 for se2 in 1:10
+#                     H_t{se}{se2}{co}{co2}[0] = hb_hhh{se}{se2}{co}{co2} * (PHH_t{se}{se2}{co}[0] / P_t{se2}{co}{co2}[0]) ^ (1 / (1-sighh{se}{co})) * H_t{se}{se2}{co}[0]
+#                 end
 
-                # I_t{se}{co}{co2}[0] = hb_inv{se}{co}{co2} * (PI_t{se}{co}[0] / P_t{se}{co}{co2}[0]) ^ (1 / (1 - sigi{se}{co})) * I_t{se}{co}[0]
+#                 # I_t{se}{co}{co2}[0] = hb_inv{se}{co}{co2} * (PI_t{se}{co}[0] / P_t{se}{co}{co2}[0]) ^ (1 / (1 - sigi{se}{co})) * I_t{se}{co}[0]
 
-                # C_t{se}{co}{co2}[0] = hb_con{se}{co}{co2} * (PC_t{se}{co}[0] / P_t{se}{co}{co2}[0]) ^ (1 / (1 - sigc{se}{co})) * C_t{se}{co}[0]
-            end
-        end
-    end
-end
+#                 # C_t{se}{co}{co2}[0] = hb_con{se}{co}{co2} * (PC_t{se}{co}[0] / P_t{se}{co}{co2}[0]) ^ (1 / (1 - sigc{se}{co})) * C_t{se}{co}[0]
+#             end
+#         end
+#     end
+# end
 
 
 NK_multisector.parameters_in_equations
+
 NK_multisector.var
 
 @parameters NK_multisector begin
     # EM_t > 170
 
     # K_t{a} > 5
+
+    size{a} = 0.156
+    size{b} = 0.844
 
     Psi2 = 0.5
 
@@ -195,49 +211,117 @@ NK_multisector.var
     sig   = 2 # Intertemporal elasticity of substitution
 
     ## Country level parameters
-    P_EM_ts{a} = 1e-07 # Initial carbon price level
+    P_EM_ts = 1e-07 # Initial carbon price level
 
     R_ts = 1/betta # Nominal interest rate <-> real interest rate 
 
-    epsi_ts{a} = 1 # Aggregate TFP shock
+    epsi_ts = 1 # Aggregate TFP shock
     
     N_t{a}[ss] = 1/3 | kappaN{a} # = 0.1 # endogenous
+    N_t{b}[ss] = 1/3 | kappaN{b} # = 0.1 # endogenous
     # kappaN{a} = 13.01619
 
-    lab{a} = 2 # Inverse Frisch elasticity of labor supply
+    lab = 2 # Inverse Frisch elasticity of labor supply
 
-    rho_eps{a}  = 0.8 # Persistence TFP shock
+    rho_eps  = 0.8 # Persistence TFP shock
 
     sigc{a} = -0.099989 # Determines elasticity of substitution between sector-level consumption goods 
+    sigc{b} = -0.099989 # Determines elasticity of substitution between sector-level consumption goods 
+
+    sigc{10}{a} = -0.111111
+    sigc{10}{b} = -0.111111
+    sigc{1}{a} = -0.111111
+    sigc{1}{b} = -0.111111
+    sigc{2}{a} = -0.111111
+    sigc{2}{b} = -0.111111
+    sigc{3}{a} = -0.111111
+    sigc{3}{b} = -0.111111
+    sigc{4}{a} = -0.111111
+    sigc{4}{b} = -0.111111
+    sigc{5}{a} = -0.111111
+    sigc{5}{b} = -0.111111
+    sigc{6}{a} = -0.111111
+    sigc{6}{b} = -0.111111
+    sigc{7}{a} = -0.111111
+    sigc{7}{b} = -0.111111
+    sigc{8}{a} = -0.111111
+    sigc{8}{b} = -0.111111
+    sigc{9}{a} = -0.111111
+    sigc{9}{b} = -0.111111
 
     sigi{a} = -0.3313806 # Determines elasticity of substitution between sector-level investment goods 
+    sigi{b} = -0.3313806 # Determines elasticity of substitution between sector-level investment goods 
 
-    upsi_K{a} = 2 # Determines the elasticity of substitution of capital across sectors
+    sigi{1}{a} = -0.111111
+    sigi{1}{b} = -0.111111
+    sigi{2}{a} = -0.111111
+    sigi{2}{b} = -0.111111
+    sigi{3}{a} = -0.111111
+    sigi{3}{b} = -0.111111
+    sigi{4}{a} = -0.111111
+    sigi{4}{b} = -0.111111
+    sigi{5}{a} = -0.111111
+    sigi{5}{b} = -0.111111
+    sigi{6}{a} = -0.111111
+    sigi{6}{b} = -0.111111
+    sigi{7}{a} = -0.111111
+    sigi{7}{b} = -0.111111
+    sigi{8}{a} = -0.111111
+    sigi{8}{b} = -0.111111
+    sigi{9}{a} = -0.111111
+    sigi{9}{b} = -0.111111
+    sigi{10}{a} = -0.111111
+    sigi{10}{b} = -0.111111
 
-    upsi_N{a} = 2 # Determines the elasticity of substitution of labor across sectors
+    
+    sighh{10}{a} = -0.111111
+    sighh{10}{b} = -0.111111
+    sighh{1}{a} = -0.111111
+    sighh{1}{b} = -0.111111
+    sighh{2}{a} = -0.111111
+    sighh{2}{b} = -0.111111
+    sighh{3}{a} = -0.111111
+    sighh{3}{b} = -0.111111
+    sighh{4}{a} = -0.111111
+    sighh{4}{b} = -0.111111
+    sighh{5}{a} = -0.111111
+    sighh{5}{b} = -0.111111
+    sighh{6}{a} = -0.111111
+    sighh{6}{b} = -0.111111
+    sighh{7}{a} = -0.111111
+    sighh{7}{b} = -0.111111
+    sighh{8}{a} = -0.111111
+    sighh{8}{b} = -0.111111
+    sighh{9}{a} = -0.111111
+    sighh{9}{b} = -0.111111
+    
+
+    upsi_K = 2 # Determines the elasticity of substitution of capital across sectors
+
+    upsi_N = 2 # Determines the elasticity of substitution of labor across sectors
 
     ## Sectoral country level parameters
     # Sectoral TFP shock
-    epsi_ts{10}{a}{ts} = 2.02514
-    epsi_ts{10}{b}{ts} = 1.67372
-    epsi_ts{1}{a}{ts} = 1.56158
-    epsi_ts{1}{b}{ts} = 0.923894
-    epsi_ts{2}{a}{ts} = 2.54221
-    epsi_ts{2}{b}{ts} = 1.23762
-    epsi_ts{3}{a}{ts} = 2.08087
-    epsi_ts{3}{b}{ts} = 1.7934
-    epsi_ts{4}{a}{ts} = 1.50016
-    epsi_ts{4}{b}{ts} = 1.37446
-    epsi_ts{5}{a}{ts} = 1.51347
-    epsi_ts{5}{b}{ts} = 2.79255
-    epsi_ts{6}{a}{ts} = 2.15877
-    epsi_ts{6}{b}{ts} = 2.33055
-    epsi_ts{7}{a}{ts} = 2.39879
-    epsi_ts{7}{b}{ts} = 2.09739
-    epsi_ts{8}{a}{ts} = 2.71772
-    epsi_ts{8}{b}{ts} = 1.94856
-    epsi_ts{9}{a}{ts} = 2.57335
-    epsi_ts{9}{b}{ts} = 3.12819
+    epsi_ts{10}{a} = 2.02514
+    epsi_ts{10}{b} = 1.67372
+    epsi_ts{1}{a} = 1.56158
+    epsi_ts{1}{b} = 0.923894
+    epsi_ts{2}{a} = 2.54221
+    epsi_ts{2}{b} = 1.23762
+    epsi_ts{3}{a} = 2.08087
+    epsi_ts{3}{b} = 1.7934
+    epsi_ts{4}{a} = 1.50016
+    epsi_ts{4}{b} = 1.37446
+    epsi_ts{5}{a} = 1.51347
+    epsi_ts{5}{b} = 2.79255
+    epsi_ts{6}{a} = 2.15877
+    epsi_ts{6}{b} = 2.33055
+    epsi_ts{7}{a} = 2.39879
+    epsi_ts{7}{b} = 2.09739
+    epsi_ts{8}{a} = 2.71772
+    epsi_ts{8}{b} = 1.94856
+    epsi_ts{9}{a} = 2.57335
+    epsi_ts{9}{b} = 3.12819
 
     # Damage function parameter (level)
     gama0 = 0 
@@ -321,29 +405,59 @@ NK_multisector.var
     carb_int{9}{a} = 0.0196
     carb_int{10}{a} = 0.0323
 
+    carb_int{1}{b} = 0.1918
+    carb_int{2}{b} = 0.4023
+    carb_int{3}{b} = 0.1531
+    carb_int{4}{b} = 2.3625
+    carb_int{5}{b} = 0.1297
+    carb_int{6}{b} = 0.0264
+    carb_int{7}{b} = 0.1570
+    carb_int{8}{b} = 0.0130
+    carb_int{9}{b} = 0.0196
+    carb_int{10}{b} = 0.0323
 
-    omega_N{1}{a} = 1.681360e-01
-    omega_N{2}{a} = 4.413774e-03
-    omega_N{3}{a} = 1.714096e-01
-    omega_N{4}{a} = 3.950297e-03
-    omega_N{5}{a} = 6.099488e-03
-    omega_N{6}{a} = 1.251327e-01
-    omega_N{7}{a} = 3.137282e-01
-    omega_N{8}{a} = 2.786590e-02
-    omega_N{9}{a} = 2.039494e-01
-    omega_N{10}{a} = 6.753223e-02
-    
 
-    omega_K{1}{a} = 1.219069e-01
-    omega_K{2}{a} = 1.188118e-02
-    omega_K{3}{a} = 1.879135e-01
-    omega_K{4}{a} = 7.801404e-02
-    omega_K{5}{a} = 1.113495e-01
-    omega_K{6}{a} = 1.357246e-01
-    omega_K{7}{a} = 2.127142e-01
-    omega_K{8}{a} = 5.862381e-02
-    omega_K{9}{a} = 1.329445e-01
-    omega_K{10}{a} = 5.703369e-02
+    omega_N{10}{a} = 0.0793127
+    omega_N{10}{b} = 0.0647321
+    omega_N{1}{a} = 0.210919
+    omega_N{1}{b} = 2.11322
+    omega_N{2}{a} = 0.00183764
+    omega_N{2}{b} = 0.00670852
+    omega_N{3}{a} = 0.194167
+    omega_N{3}{b} = 0.112558
+    omega_N{4}{a} = 0.00480011
+    omega_N{4}{b} = 0.00135165
+    omega_N{5}{a} = 0.00824765
+    omega_N{5}{b} = 0.000181534
+    omega_N{6}{a} = 0.110496
+    omega_N{6}{b} = 0.0510961
+    omega_N{7}{a} = 0.346295
+    omega_N{7}{b} = 0.158643
+    omega_N{8}{a} = 0.0203172
+    omega_N{8}{b} = 0.00522211
+    omega_N{9}{a} = 0.132737
+    omega_N{9}{b} = 0.00974644
+
+    omega_K{10}{a} = 0.0682791
+    omega_K{10}{b} = 0.0860078
+    omega_K{1}{a} = 0.155886
+    omega_K{1}{b} = 0.139286
+    omega_K{2}{a} = 0.00504237
+    omega_K{2}{b} = 0.0544235
+    omega_K{3}{a} = 0.216982
+    omega_K{3}{b} = 0.226972
+    omega_K{4}{a} = 0.0966315
+    omega_K{4}{b} = 0.1553
+    omega_K{5}{a} = 0.153479
+    omega_K{5}{b} = 0.0609857
+    omega_K{6}{a} = 0.122169
+    omega_K{6}{b} = 0.0193126
+    omega_K{7}{a} = 0.239339
+    omega_K{7}{b} = 0.17545
+    omega_K{8}{a} = 0.0435701
+    omega_K{8}{b} = 0.164973
+    omega_K{9}{a} = 0.0881988
+    omega_K{9}{b} = 0.0644996
     
     # Sectoral shares in the consumption good bundle
     Psi_con{1}{a} = 0.0328046
@@ -605,6 +719,492 @@ NK_multisector.var
     Psi{10}{9}{b} = 0.169209
 
     
+    hb_con{10}{a}{a} = 0.975868
+    hb_con{10}{a}{b} = 0.0241318
+    hb_con{10}{b}{a} = 0.00840522
+    hb_con{10}{b}{b} = 0.991595
+    hb_con{1}{a}{a} = 0.906864
+    hb_con{1}{a}{b} = 0.0931361
+    hb_con{1}{b}{a} = 0.0152666
+    hb_con{1}{b}{b} = 0.984733
+    hb_con{2}{a}{a} = 0.706732
+    hb_con{2}{a}{b} = 0.293268
+    hb_con{2}{b}{a} = 0.117819
+    hb_con{2}{b}{b} = 0.882181
+    hb_con{3}{a}{a} = 0.870346
+    hb_con{3}{a}{b} = 0.129654
+    hb_con{3}{b}{a} = 0.0360449
+    hb_con{3}{b}{b} = 0.963955
+    hb_con{4}{a}{a} = 0.99026
+    hb_con{4}{a}{b} = 0.00974028
+    hb_con{4}{b}{a} = 0.00630072
+    hb_con{4}{b}{b} = 0.993699
+    hb_con{5}{a}{a} = 0.999516
+    hb_con{5}{a}{b} = 0.000483995
+    hb_con{5}{b}{a} = 0.0167779
+    hb_con{5}{b}{b} = 0.983222
+    hb_con{6}{a}{a} = 0.99148
+    hb_con{6}{a}{b} = 0.0085199
+    hb_con{6}{b}{a} = 0.000929087
+    hb_con{6}{b}{b} = 0.999071
+    hb_con{7}{a}{a} = 0.973658
+    hb_con{7}{a}{b} = 0.0263418
+    hb_con{7}{b}{a} = 0.0169815
+    hb_con{7}{b}{b} = 0.983018
+    hb_con{8}{a}{a} = 0.95632
+    hb_con{8}{a}{b} = 0.0436795
+    hb_con{8}{b}{a} = 0.016199
+    hb_con{8}{b}{b} = 0.983801
+    hb_con{9}{a}{a} = 0.9303
+    hb_con{9}{a}{b} = 0.0696997
+    hb_con{9}{b}{a} = 0.0273127
+    hb_con{9}{b}{b} = 0.972687
+    
+
+    
+    hb_inv{10}{a}{a} = 0.995968
+    hb_inv{10}{a}{b} = 0.00403225
+    hb_inv{10}{b}{a} = 0.00840522
+    hb_inv{10}{b}{b} = 0.991595
+    hb_inv{1}{a}{a} = 0.991542
+    hb_inv{1}{a}{b} = 0.00845824
+    hb_inv{1}{b}{a} = 0.0152666
+    hb_inv{1}{b}{b} = 0.984733
+    hb_inv{2}{a}{a} = 0.782773
+    hb_inv{2}{a}{b} = 0.217227
+    hb_inv{2}{b}{a} = 0.117819
+    hb_inv{2}{b}{b} = 0.882181
+    hb_inv{3}{a}{a} = 0.838321
+    hb_inv{3}{a}{b} = 0.161679
+    hb_inv{3}{b}{a} = 0.0360449
+    hb_inv{3}{b}{b} = 0.963955
+    hb_inv{4}{a}{a} = 0.995401
+    hb_inv{4}{a}{b} = 0.00459915
+    hb_inv{4}{b}{a} = 0.00630072
+    hb_inv{4}{b}{b} = 0.993699
+    hb_inv{5}{a}{a} = 0.990295
+    hb_inv{5}{a}{b} = 0.00970466
+    hb_inv{5}{b}{a} = 0.0167779
+    hb_inv{5}{b}{b} = 0.983222
+    hb_inv{6}{a}{a} = 0.999922
+    hb_inv{6}{a}{b} = 7.81625e-05
+    hb_inv{6}{b}{a} = 0.000929087
+    hb_inv{6}{b}{b} = 0.999071
+    hb_inv{7}{a}{a} = 0.986134
+    hb_inv{7}{a}{b} = 0.0138658
+    hb_inv{7}{b}{a} = 0.0169815
+    hb_inv{7}{b}{b} = 0.983018
+    hb_inv{8}{a}{a} = 0.966211
+    hb_inv{8}{a}{b} = 0.0337888
+    hb_inv{8}{b}{a} = 0.016199
+    hb_inv{8}{b}{b} = 0.983801
+    hb_inv{9}{a}{a} = 0.982955
+    hb_inv{9}{a}{b} = 0.0170448
+    hb_inv{9}{b}{a} = 0.0273127
+    hb_inv{9}{b}{b} = 0.972687
+
+    hb_hhh{10}{10}{a}{a} = 0.983696
+    hb_hhh{10}{10}{a}{b} = 0.016304
+    hb_hhh{10}{10}{b}{a} = 0.00840522
+    hb_hhh{10}{10}{b}{b} = 0.991595
+    hb_hhh{10}{1}{a}{a} = 0.925408
+    hb_hhh{10}{1}{a}{b} = 0.0745919
+    hb_hhh{10}{1}{b}{a} = 0.0152666
+    hb_hhh{10}{1}{b}{b} = 0.984733
+    hb_hhh{10}{2}{a}{a} = 0.592358
+    hb_hhh{10}{2}{a}{b} = 0.407642
+    hb_hhh{10}{2}{b}{a} = 0.117819
+    hb_hhh{10}{2}{b}{b} = 0.882181
+    hb_hhh{10}{3}{a}{a} = 0.882816
+    hb_hhh{10}{3}{a}{b} = 0.117184
+    hb_hhh{10}{3}{b}{a} = 0.0360449
+    hb_hhh{10}{3}{b}{b} = 0.963955
+    hb_hhh{10}{4}{a}{a} = 0.972608
+    hb_hhh{10}{4}{a}{b} = 0.0273923
+    hb_hhh{10}{4}{b}{a} = 0.00630072
+    hb_hhh{10}{4}{b}{b} = 0.993699
+    hb_hhh{10}{5}{a}{a} = 0.960838
+    hb_hhh{10}{5}{a}{b} = 0.0391621
+    hb_hhh{10}{5}{b}{a} = 0.0167779
+    hb_hhh{10}{5}{b}{b} = 0.983222
+    hb_hhh{10}{6}{a}{a} = 0.994207
+    hb_hhh{10}{6}{a}{b} = 0.00579303
+    hb_hhh{10}{6}{b}{a} = 0.000929087
+    hb_hhh{10}{6}{b}{b} = 0.999071
+    hb_hhh{10}{7}{a}{a} = 0.948257
+    hb_hhh{10}{7}{a}{b} = 0.0517428
+    hb_hhh{10}{7}{b}{a} = 0.0169815
+    hb_hhh{10}{7}{b}{b} = 0.983018
+    hb_hhh{10}{8}{a}{a} = 0.95858
+    hb_hhh{10}{8}{a}{b} = 0.0414202
+    hb_hhh{10}{8}{b}{a} = 0.016199
+    hb_hhh{10}{8}{b}{b} = 0.983801
+    hb_hhh{10}{9}{a}{a} = 0.94975
+    hb_hhh{10}{9}{a}{b} = 0.0502497
+    hb_hhh{10}{9}{b}{a} = 0.0273127
+    hb_hhh{10}{9}{b}{b} = 0.972687
+    hb_hhh{1}{10}{a}{a} = 0.984884
+    hb_hhh{1}{10}{a}{b} = 0.0151161
+    hb_hhh{1}{10}{b}{a} = 0.00840522
+    hb_hhh{1}{10}{b}{b} = 0.991595
+    hb_hhh{1}{1}{a}{a} = 0.937697
+    hb_hhh{1}{1}{a}{b} = 0.0623032
+    hb_hhh{1}{1}{b}{a} = 0.0152666
+    hb_hhh{1}{1}{b}{b} = 0.984733
+    hb_hhh{1}{2}{a}{a} = 0.401377
+    hb_hhh{1}{2}{a}{b} = 0.598623
+    hb_hhh{1}{2}{b}{a} = 0.117819
+    hb_hhh{1}{2}{b}{b} = 0.882181
+    hb_hhh{1}{3}{a}{a} = 0.903451
+    hb_hhh{1}{3}{a}{b} = 0.0965489
+    hb_hhh{1}{3}{b}{a} = 0.0360449
+    hb_hhh{1}{3}{b}{b} = 0.963955
+    hb_hhh{1}{4}{a}{a} = 0.967254
+    hb_hhh{1}{4}{a}{b} = 0.0327461
+    hb_hhh{1}{4}{b}{a} = 0.00630072
+    hb_hhh{1}{4}{b}{b} = 0.993699
+    hb_hhh{1}{5}{a}{a} = 0.959124
+    hb_hhh{1}{5}{a}{b} = 0.0408761
+    hb_hhh{1}{5}{b}{a} = 0.0167779
+    hb_hhh{1}{5}{b}{b} = 0.983222
+    hb_hhh{1}{6}{a}{a} = 0.994349
+    hb_hhh{1}{6}{a}{b} = 0.00565149
+    hb_hhh{1}{6}{b}{a} = 0.000929087
+    hb_hhh{1}{6}{b}{b} = 0.999071
+    hb_hhh{1}{7}{a}{a} = 0.970498
+    hb_hhh{1}{7}{a}{b} = 0.0295021
+    hb_hhh{1}{7}{b}{a} = 0.0169815
+    hb_hhh{1}{7}{b}{b} = 0.983018
+    hb_hhh{1}{8}{a}{a} = 0.962423
+    hb_hhh{1}{8}{a}{b} = 0.0375775
+    hb_hhh{1}{8}{b}{a} = 0.016199
+    hb_hhh{1}{8}{b}{b} = 0.983801
+    hb_hhh{1}{9}{a}{a} = 0.955338
+    hb_hhh{1}{9}{a}{b} = 0.0446619
+    hb_hhh{1}{9}{b}{a} = 0.0273127
+    hb_hhh{1}{9}{b}{b} = 0.972687
+    hb_hhh{2}{10}{a}{a} = 0.944292
+    hb_hhh{2}{10}{a}{b} = 0.0557077
+    hb_hhh{2}{10}{b}{a} = 0.00840522
+    hb_hhh{2}{10}{b}{b} = 0.991595
+    hb_hhh{2}{1}{a}{a} = 0.92485
+    hb_hhh{2}{1}{a}{b} = 0.0751502
+    hb_hhh{2}{1}{b}{a} = 0.0152666
+    hb_hhh{2}{1}{b}{b} = 0.984733
+    hb_hhh{2}{2}{a}{a} = 0.462795
+    hb_hhh{2}{2}{a}{b} = 0.537205
+    hb_hhh{2}{2}{b}{a} = 0.117819
+    hb_hhh{2}{2}{b}{b} = 0.882181
+    hb_hhh{2}{3}{a}{a} = 0.910603
+    hb_hhh{2}{3}{a}{b} = 0.0893971
+    hb_hhh{2}{3}{b}{a} = 0.0360449
+    hb_hhh{2}{3}{b}{b} = 0.963955
+    hb_hhh{2}{4}{a}{a} = 0.973087
+    hb_hhh{2}{4}{a}{b} = 0.026913
+    hb_hhh{2}{4}{b}{a} = 0.00630072
+    hb_hhh{2}{4}{b}{b} = 0.993699
+    hb_hhh{2}{5}{a}{a} = 0.948893
+    hb_hhh{2}{5}{a}{b} = 0.0511066
+    hb_hhh{2}{5}{b}{a} = 0.0167779
+    hb_hhh{2}{5}{b}{b} = 0.983222
+    hb_hhh{2}{6}{a}{a} = 0.993379
+    hb_hhh{2}{6}{a}{b} = 0.00662051
+    hb_hhh{2}{6}{b}{a} = 0.000929087
+    hb_hhh{2}{6}{b}{b} = 0.999071
+    hb_hhh{2}{7}{a}{a} = 0.851458
+    hb_hhh{2}{7}{a}{b} = 0.148542
+    hb_hhh{2}{7}{b}{a} = 0.0169815
+    hb_hhh{2}{7}{b}{b} = 0.983018
+    hb_hhh{2}{8}{a}{a} = 0.962477
+    hb_hhh{2}{8}{a}{b} = 0.0375227
+    hb_hhh{2}{8}{b}{a} = 0.016199
+    hb_hhh{2}{8}{b}{b} = 0.983801
+    hb_hhh{2}{9}{a}{a} = 0.944537
+    hb_hhh{2}{9}{a}{b} = 0.0554631
+    hb_hhh{2}{9}{b}{a} = 0.0273127
+    hb_hhh{2}{9}{b}{b} = 0.972687
+    hb_hhh{3}{10}{a}{a} = 0.974157
+    hb_hhh{3}{10}{a}{b} = 0.0258432
+    hb_hhh{3}{10}{b}{a} = 0.00840522
+    hb_hhh{3}{10}{b}{b} = 0.991595
+    hb_hhh{3}{1}{a}{a} = 0.922189
+    hb_hhh{3}{1}{a}{b} = 0.0778106
+    hb_hhh{3}{1}{b}{a} = 0.0152666
+    hb_hhh{3}{1}{b}{b} = 0.984733
+    hb_hhh{3}{2}{a}{a} = 0.342299
+    hb_hhh{3}{2}{a}{b} = 0.657701
+    hb_hhh{3}{2}{b}{a} = 0.117819
+    hb_hhh{3}{2}{b}{b} = 0.882181
+    hb_hhh{3}{3}{a}{a} = 0.889858
+    hb_hhh{3}{3}{a}{b} = 0.110142
+    hb_hhh{3}{3}{b}{a} = 0.0360449
+    hb_hhh{3}{3}{b}{b} = 0.963955
+    hb_hhh{3}{4}{a}{a} = 0.959738
+    hb_hhh{3}{4}{a}{b} = 0.0402619
+    hb_hhh{3}{4}{b}{a} = 0.00630072
+    hb_hhh{3}{4}{b}{b} = 0.993699
+    hb_hhh{3}{5}{a}{a} = 0.947338
+    hb_hhh{3}{5}{a}{b} = 0.0526616
+    hb_hhh{3}{5}{b}{a} = 0.0167779
+    hb_hhh{3}{5}{b}{b} = 0.983222
+    hb_hhh{3}{6}{a}{a} = 0.991706
+    hb_hhh{3}{6}{a}{b} = 0.00829417
+    hb_hhh{3}{6}{b}{a} = 0.000929087
+    hb_hhh{3}{6}{b}{b} = 0.999071
+    hb_hhh{3}{7}{a}{a} = 0.935491
+    hb_hhh{3}{7}{a}{b} = 0.0645089
+    hb_hhh{3}{7}{b}{a} = 0.0169815
+    hb_hhh{3}{7}{b}{b} = 0.983018
+    hb_hhh{3}{8}{a}{a} = 0.950062
+    hb_hhh{3}{8}{a}{b} = 0.0499376
+    hb_hhh{3}{8}{b}{a} = 0.016199
+    hb_hhh{3}{8}{b}{b} = 0.983801
+    hb_hhh{3}{9}{a}{a} = 0.92807
+    hb_hhh{3}{9}{a}{b} = 0.0719295
+    hb_hhh{3}{9}{b}{a} = 0.0273127
+    hb_hhh{3}{9}{b}{b} = 0.972687
+    hb_hhh{4}{10}{a}{a} = 0.967273
+    hb_hhh{4}{10}{a}{b} = 0.0327267
+    hb_hhh{4}{10}{b}{a} = 0.00840522
+    hb_hhh{4}{10}{b}{b} = 0.991595
+    hb_hhh{4}{1}{a}{a} = 0.931787
+    hb_hhh{4}{1}{a}{b} = 0.068213
+    hb_hhh{4}{1}{b}{a} = 0.0152666
+    hb_hhh{4}{1}{b}{b} = 0.984733
+    hb_hhh{4}{2}{a}{a} = 0.389818
+    hb_hhh{4}{2}{a}{b} = 0.610182
+    hb_hhh{4}{2}{b}{a} = 0.117819
+    hb_hhh{4}{2}{b}{b} = 0.882181
+    hb_hhh{4}{3}{a}{a} = 0.883262
+    hb_hhh{4}{3}{a}{b} = 0.116738
+    hb_hhh{4}{3}{b}{a} = 0.0360449
+    hb_hhh{4}{3}{b}{b} = 0.963955
+    hb_hhh{4}{4}{a}{a} = 0.972575
+    hb_hhh{4}{4}{a}{b} = 0.0274246
+    hb_hhh{4}{4}{b}{a} = 0.00630072
+    hb_hhh{4}{4}{b}{b} = 0.993699
+    hb_hhh{4}{5}{a}{a} = 0.970764
+    hb_hhh{4}{5}{a}{b} = 0.0292361
+    hb_hhh{4}{5}{b}{a} = 0.0167779
+    hb_hhh{4}{5}{b}{b} = 0.983222
+    hb_hhh{4}{6}{a}{a} = 0.991708
+    hb_hhh{4}{6}{a}{b} = 0.00829168
+    hb_hhh{4}{6}{b}{a} = 0.000929087
+    hb_hhh{4}{6}{b}{b} = 0.999071
+    hb_hhh{4}{7}{a}{a} = 0.750562
+    hb_hhh{4}{7}{a}{b} = 0.249438
+    hb_hhh{4}{7}{b}{a} = 0.0169815
+    hb_hhh{4}{7}{b}{b} = 0.983018
+    hb_hhh{4}{8}{a}{a} = 0.963341
+    hb_hhh{4}{8}{a}{b} = 0.0366594
+    hb_hhh{4}{8}{b}{a} = 0.016199
+    hb_hhh{4}{8}{b}{b} = 0.983801
+    hb_hhh{4}{9}{a}{a} = 0.95492
+    hb_hhh{4}{9}{a}{b} = 0.0450802
+    hb_hhh{4}{9}{b}{a} = 0.0273127
+    hb_hhh{4}{9}{b}{b} = 0.972687
+    hb_hhh{5}{10}{a}{a} = 0.958333
+    hb_hhh{5}{10}{a}{b} = 0.0416669
+    hb_hhh{5}{10}{b}{a} = 0.00840522
+    hb_hhh{5}{10}{b}{b} = 0.991595
+    hb_hhh{5}{1}{a}{a} = 0.911206
+    hb_hhh{5}{1}{a}{b} = 0.0887937
+    hb_hhh{5}{1}{b}{a} = 0.0152666
+    hb_hhh{5}{1}{b}{b} = 0.984733
+    hb_hhh{5}{2}{a}{a} = 0.568603
+    hb_hhh{5}{2}{a}{b} = 0.431397
+    hb_hhh{5}{2}{b}{a} = 0.117819
+    hb_hhh{5}{2}{b}{b} = 0.882181
+    hb_hhh{5}{3}{a}{a} = 0.903804
+    hb_hhh{5}{3}{a}{b} = 0.0961964
+    hb_hhh{5}{3}{b}{a} = 0.0360449
+    hb_hhh{5}{3}{b}{b} = 0.963955
+    hb_hhh{5}{4}{a}{a} = 0.973889
+    hb_hhh{5}{4}{a}{b} = 0.0261113
+    hb_hhh{5}{4}{b}{a} = 0.00630072
+    hb_hhh{5}{4}{b}{b} = 0.993699
+    hb_hhh{5}{5}{a}{a} = 0.94639
+    hb_hhh{5}{5}{a}{b} = 0.0536102
+    hb_hhh{5}{5}{b}{a} = 0.0167779
+    hb_hhh{5}{5}{b}{b} = 0.983222
+    hb_hhh{5}{6}{a}{a} = 0.995383
+    hb_hhh{5}{6}{a}{b} = 0.00461652
+    hb_hhh{5}{6}{b}{a} = 0.000929087
+    hb_hhh{5}{6}{b}{b} = 0.999071
+    hb_hhh{5}{7}{a}{a} = 0.962683
+    hb_hhh{5}{7}{a}{b} = 0.0373169
+    hb_hhh{5}{7}{b}{a} = 0.0169815
+    hb_hhh{5}{7}{b}{b} = 0.983018
+    hb_hhh{5}{8}{a}{a} = 0.953447
+    hb_hhh{5}{8}{a}{b} = 0.0465525
+    hb_hhh{5}{8}{b}{a} = 0.016199
+    hb_hhh{5}{8}{b}{b} = 0.983801
+    hb_hhh{5}{9}{a}{a} = 0.960505
+    hb_hhh{5}{9}{a}{b} = 0.0394949
+    hb_hhh{5}{9}{b}{a} = 0.0273127
+    hb_hhh{5}{9}{b}{b} = 0.972687
+    hb_hhh{6}{10}{a}{a} = 0.9332
+    hb_hhh{6}{10}{a}{b} = 0.0668003
+    hb_hhh{6}{10}{b}{a} = 0.00840522
+    hb_hhh{6}{10}{b}{b} = 0.991595
+    hb_hhh{6}{1}{a}{a} = 0.919914
+    hb_hhh{6}{1}{a}{b} = 0.0800863
+    hb_hhh{6}{1}{b}{a} = 0.0152666
+    hb_hhh{6}{1}{b}{b} = 0.984733
+    hb_hhh{6}{2}{a}{a} = 0.447405
+    hb_hhh{6}{2}{a}{b} = 0.552595
+    hb_hhh{6}{2}{b}{a} = 0.117819
+    hb_hhh{6}{2}{b}{b} = 0.882181
+    hb_hhh{6}{3}{a}{a} = 0.931635
+    hb_hhh{6}{3}{a}{b} = 0.0683647
+    hb_hhh{6}{3}{b}{a} = 0.0360449
+    hb_hhh{6}{3}{b}{b} = 0.963955
+    hb_hhh{6}{4}{a}{a} = 0.97734
+    hb_hhh{6}{4}{a}{b} = 0.0226601
+    hb_hhh{6}{4}{b}{a} = 0.00630072
+    hb_hhh{6}{4}{b}{b} = 0.993699
+    hb_hhh{6}{5}{a}{a} = 0.956309
+    hb_hhh{6}{5}{a}{b} = 0.043691
+    hb_hhh{6}{5}{b}{a} = 0.0167779
+    hb_hhh{6}{5}{b}{b} = 0.983222
+    hb_hhh{6}{6}{a}{a} = 0.994339
+    hb_hhh{6}{6}{a}{b} = 0.00566095
+    hb_hhh{6}{6}{b}{a} = 0.000929087
+    hb_hhh{6}{6}{b}{b} = 0.999071
+    hb_hhh{6}{7}{a}{a} = 0.960324
+    hb_hhh{6}{7}{a}{b} = 0.0396763
+    hb_hhh{6}{7}{b}{a} = 0.0169815
+    hb_hhh{6}{7}{b}{b} = 0.983018
+    hb_hhh{6}{8}{a}{a} = 0.96721
+    hb_hhh{6}{8}{a}{b} = 0.0327901
+    hb_hhh{6}{8}{b}{a} = 0.016199
+    hb_hhh{6}{8}{b}{b} = 0.983801
+    hb_hhh{6}{9}{a}{a} = 0.958483
+    hb_hhh{6}{9}{a}{b} = 0.0415167
+    hb_hhh{6}{9}{b}{a} = 0.0273127
+    hb_hhh{6}{9}{b}{b} = 0.972687
+    hb_hhh{7}{10}{a}{a} = 0.964436
+    hb_hhh{7}{10}{a}{b} = 0.0355636
+    hb_hhh{7}{10}{b}{a} = 0.00840522
+    hb_hhh{7}{10}{b}{b} = 0.991595
+    hb_hhh{7}{1}{a}{a} = 0.930598
+    hb_hhh{7}{1}{a}{b} = 0.0694024
+    hb_hhh{7}{1}{b}{a} = 0.0152666
+    hb_hhh{7}{1}{b}{b} = 0.984733
+    hb_hhh{7}{2}{a}{a} = 0.565397
+    hb_hhh{7}{2}{a}{b} = 0.434603
+    hb_hhh{7}{2}{b}{a} = 0.117819
+    hb_hhh{7}{2}{b}{b} = 0.882181
+    hb_hhh{7}{3}{a}{a} = 0.90305
+    hb_hhh{7}{3}{a}{b} = 0.0969497
+    hb_hhh{7}{3}{b}{a} = 0.0360449
+    hb_hhh{7}{3}{b}{b} = 0.963955
+    hb_hhh{7}{4}{a}{a} = 0.971356
+    hb_hhh{7}{4}{a}{b} = 0.0286442
+    hb_hhh{7}{4}{b}{a} = 0.00630072
+    hb_hhh{7}{4}{b}{b} = 0.993699
+    hb_hhh{7}{5}{a}{a} = 0.95523
+    hb_hhh{7}{5}{a}{b} = 0.0447704
+    hb_hhh{7}{5}{b}{a} = 0.0167779
+    hb_hhh{7}{5}{b}{b} = 0.983222
+    hb_hhh{7}{6}{a}{a} = 0.993284
+    hb_hhh{7}{6}{a}{b} = 0.006716
+    hb_hhh{7}{6}{b}{a} = 0.000929087
+    hb_hhh{7}{6}{b}{b} = 0.999071
+    hb_hhh{7}{7}{a}{a} = 0.947078
+    hb_hhh{7}{7}{a}{b} = 0.0529219
+    hb_hhh{7}{7}{b}{a} = 0.0169815
+    hb_hhh{7}{7}{b}{b} = 0.983018
+    hb_hhh{7}{8}{a}{a} = 0.964415
+    hb_hhh{7}{8}{a}{b} = 0.0355852
+    hb_hhh{7}{8}{b}{a} = 0.016199
+    hb_hhh{7}{8}{b}{b} = 0.983801
+    hb_hhh{7}{9}{a}{a} = 0.953201
+    hb_hhh{7}{9}{a}{b} = 0.0467993
+    hb_hhh{7}{9}{b}{a} = 0.0273127
+    hb_hhh{7}{9}{b}{b} = 0.972687
+    hb_hhh{8}{10}{a}{a} = 0.966611
+    hb_hhh{8}{10}{a}{b} = 0.0333893
+    hb_hhh{8}{10}{b}{a} = 0.00840522
+    hb_hhh{8}{10}{b}{b} = 0.991595
+    hb_hhh{8}{1}{a}{a} = 0.966182
+    hb_hhh{8}{1}{a}{b} = 0.0338178
+    hb_hhh{8}{1}{b}{a} = 0.0152666
+    hb_hhh{8}{1}{b}{b} = 0.984733
+    hb_hhh{8}{2}{a}{a} = 0.760821
+    hb_hhh{8}{2}{a}{b} = 0.239179
+    hb_hhh{8}{2}{b}{a} = 0.117819
+    hb_hhh{8}{2}{b}{b} = 0.882181
+    hb_hhh{8}{3}{a}{a} = 0.848712
+    hb_hhh{8}{3}{a}{b} = 0.151288
+    hb_hhh{8}{3}{b}{a} = 0.0360449
+    hb_hhh{8}{3}{b}{b} = 0.963955
+    hb_hhh{8}{4}{a}{a} = 0.971917
+    hb_hhh{8}{4}{a}{b} = 0.0280832
+    hb_hhh{8}{4}{b}{a} = 0.00630072
+    hb_hhh{8}{4}{b}{b} = 0.993699
+    hb_hhh{8}{5}{a}{a} = 0.960784
+    hb_hhh{8}{5}{a}{b} = 0.039216
+    hb_hhh{8}{5}{b}{a} = 0.0167779
+    hb_hhh{8}{5}{b}{b} = 0.983222
+    hb_hhh{8}{6}{a}{a} = 0.994603
+    hb_hhh{8}{6}{a}{b} = 0.0053972
+    hb_hhh{8}{6}{b}{a} = 0.000929087
+    hb_hhh{8}{6}{b}{b} = 0.999071
+    hb_hhh{8}{7}{a}{a} = 0.940396
+    hb_hhh{8}{7}{a}{b} = 0.0596041
+    hb_hhh{8}{7}{b}{a} = 0.0169815
+    hb_hhh{8}{7}{b}{b} = 0.983018
+    hb_hhh{8}{8}{a}{a} = 0.962614
+    hb_hhh{8}{8}{a}{b} = 0.0373858
+    hb_hhh{8}{8}{b}{a} = 0.016199
+    hb_hhh{8}{8}{b}{b} = 0.983801
+    hb_hhh{8}{9}{a}{a} = 0.90871
+    hb_hhh{8}{9}{a}{b} = 0.0912904
+    hb_hhh{8}{9}{b}{a} = 0.0273127
+    hb_hhh{8}{9}{b}{b} = 0.972687
+    hb_hhh{9}{10}{a}{a} = 0.937819
+    hb_hhh{9}{10}{a}{b} = 0.0621808
+    hb_hhh{9}{10}{b}{a} = 0.00840522
+    hb_hhh{9}{10}{b}{b} = 0.991595
+    hb_hhh{9}{1}{a}{a} = 0.919792
+    hb_hhh{9}{1}{a}{b} = 0.0802079
+    hb_hhh{9}{1}{b}{a} = 0.0152666
+    hb_hhh{9}{1}{b}{b} = 0.984733
+    hb_hhh{9}{2}{a}{a} = 0.728592
+    hb_hhh{9}{2}{a}{b} = 0.271408
+    hb_hhh{9}{2}{b}{a} = 0.117819
+    hb_hhh{9}{2}{b}{b} = 0.882181
+    hb_hhh{9}{3}{a}{a} = 0.901405
+    hb_hhh{9}{3}{a}{b} = 0.098595
+    hb_hhh{9}{3}{b}{a} = 0.0360449
+    hb_hhh{9}{3}{b}{b} = 0.963955
+    hb_hhh{9}{4}{a}{a} = 0.97456
+    hb_hhh{9}{4}{a}{b} = 0.0254404
+    hb_hhh{9}{4}{b}{a} = 0.00630072
+    hb_hhh{9}{4}{b}{b} = 0.993699
+    hb_hhh{9}{5}{a}{a} = 0.955789
+    hb_hhh{9}{5}{a}{b} = 0.0442112
+    hb_hhh{9}{5}{b}{a} = 0.0167779
+    hb_hhh{9}{5}{b}{b} = 0.983222
+    hb_hhh{9}{6}{a}{a} = 0.993284
+    hb_hhh{9}{6}{a}{b} = 0.00671639
+    hb_hhh{9}{6}{b}{a} = 0.000929087
+    hb_hhh{9}{6}{b}{b} = 0.999071
+    hb_hhh{9}{7}{a}{a} = 0.927834
+    hb_hhh{9}{7}{a}{b} = 0.0721664
+    hb_hhh{9}{7}{b}{a} = 0.0169815
+    hb_hhh{9}{7}{b}{b} = 0.983018
+    hb_hhh{9}{8}{a}{a} = 0.96059
+    hb_hhh{9}{8}{a}{b} = 0.0394098
+    hb_hhh{9}{8}{b}{a} = 0.016199
+    hb_hhh{9}{8}{b}{b} = 0.983801
+    hb_hhh{9}{9}{a}{a} = 0.956069
+    hb_hhh{9}{9}{a}{b} = 0.0439305
+    hb_hhh{9}{9}{b}{a} = 0.0273127
+    hb_hhh{9}{9}{b}{b} = 0.972687
+end
+
 Aux_10_b_a_ts = 0.000304591
 Aux_1_b_a_ts = 0.000963888
 Aux_2_b_a_ts = 0.0060469
