@@ -1814,7 +1814,7 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                     :($idx) :
                 x isa Symbol ?
                     occursin("{" * string(index_variable) * "}", string(x)) ?
-                Symbol(replace(string(x),  string(index_variable) => string(idx))) :
+                Symbol(replace(string(x),  "{" * string(index_variable) * "}" => "{" * string(idx) * "}")) :
                     x :
                 x :
             x
