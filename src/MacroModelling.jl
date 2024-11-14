@@ -305,7 +305,7 @@ function transform_obc(ex::Expr; avoid_solve::Bool = false)
 
     eq = eval(transformed_expr)
 
-    if avoid_solve && count_ops(Meta.parse(string(eq))) > 15
+    if avoid_solve || count_ops(Meta.parse(string(eq))) > 15
         soll = nothing
     else
         soll = try SPyPyC.solve(eq, eval(:minmax__P))
@@ -2235,7 +2235,7 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve:
 
     for i in redundant_idx
         for var_to_solve_for in redundant_vars[i]            
-            if avoid_solve && count_ops(Meta.parse(string(ss_equations[i]))) > 15
+            if avoid_solve || count_ops(Meta.parse(string(ss_equations[i]))) > 15
                 soll = nothing
             else
                 soll = try SPyPyC.solve(ss_equations[i],var_to_solve_for)
@@ -2462,7 +2462,7 @@ function partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset; avo
                 remaining_vars_in_remaining_eqs = setdiff(var_indices_in_remaining_eqs, var_combo)
                 # println("Solving for: ",vars_to_solve[var_combo]," in: ",eqs_to_solve[eq_combo])
                 if length(remaining_vars_in_remaining_eqs) == length(eqs_to_solve) - n # not sure whether this condition needs to be there. could be because if the last remaining vars not solved for in the block is not present in the remaining block he will not be able to solve it for the same reasons he wasnt able to solve the unpartitioned block 
-                    if avoid_solve && count_ops(Meta.parse(string(eqs_to_solve[eq_combo]))) > 15
+                    if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve[eq_combo]))) > 15
                         soll = nothing
                     else
                         soll = try SPyPyC.solve(eqs_to_solve[eq_combo], vars_to_solve[var_combo])
@@ -2966,7 +2966,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 eq_to_solve = eval(minmax_fixed_eqs)
             end
             
-            if avoid_solve && count_ops(Meta.parse(string(eq_to_solve))) > 15
+            if avoid_solve || count_ops(Meta.parse(string(eq_to_solve))) > 15
                 soll = nothing
             else
                 soll = try SPyPyC.solve(eq_to_solve,var_to_solve_for)
@@ -3034,7 +3034,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             numerical_sol = false
             
             if symbolic_SS
-                if avoid_solve && count_ops(Meta.parse(string(eqs_to_solve))) > 15
+                if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve))) > 15
                     soll = nothing
                 else
                     soll = try SPyPyC.solve(eqs_to_solve,vars_to_solve)
