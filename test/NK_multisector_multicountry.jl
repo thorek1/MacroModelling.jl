@@ -4,23 +4,23 @@ using MacroModelling
 @model NK_multisector begin
     #### Climate variables ####
     for co in [a,b]
-        P_EM_t{co}[0] = P_EM_ts{co} + shock_P_EM_t{co}[x] # Law of motion for carbon price 
+        # P_EM_t{co}[0] = P_EM_ts{co} + shock_P_EM_t{co}[x] # Law of motion for carbon price 
 
         log(epsi_t{co}[0] / epsi_ts{co}) = rho_eps{co} * log(epsi_t{co}[-1] / epsi_ts{co}) + shock_epsi_t{co}[x] # Law of motion for aggregate TFP
     end
 
-	EM_t[0] = (1 - rho_EM) * EM_t[-1] + for co in [a,b] for se in 1:10 ZZ_t{se}{co}[0] * size{co} end end # Law of motion for emissions concentration
+	# EM_t[0] = (1 - rho_EM) * EM_t[-1] + for co in [a,b] for se in 1:10 ZZ_t{se}{co}[0] * size{co} end end # Law of motion for emissions concentration
 
-    for co in [a,b] 
-        for se in 1:10   
-            Pen_t{se}{co}[0] = gama0{se}{co} + EM_t[0] * gama1{se}{co} + gama2{se}{co} * EM_t[0] ^ 2  # Damage function
-            ZZ_t{se}{co}[0] = (1 + shock_epsi_carb_int_t{co}[x]) * carb_int{se}{co} * Y_t{se}{co}[0] # Emissions
-        end 
-    end
+    # for co in [a,b] 
+    #     for se in 1:10   
+    #         Pen_t{se}{co}[0] = gama0{se}{co} + EM_t[0] * gama1{se}{co} + gama2{se}{co} * EM_t[0] ^ 2  # Damage function
+    #         ZZ_t{se}{co}[0] = (1 + shock_epsi_carb_int_t{co}[x]) * carb_int{se}{co} * Y_t{se}{co}[0] # Emissions
+    #     end 
+    # end
 
-    for co in [a,b] 
-        ZZ_t{co}[0] = for se in 1:10 ZZ_t{se}{co}[0] end
-    end
+    # for co in [a,b] 
+    #     ZZ_t{co}[0] = for se in 1:10 ZZ_t{se}{co}[0] end
+    # end
     
     #### Domestic aggregates ####
     for co in [a,b] 
@@ -74,13 +74,13 @@ using MacroModelling
 
             # Y_t{se}{co}[0] = epsi_t{co}[0] * epsi_t{se}{co}[0] * (1 - Pen_t{se}{co}[0]) * (N_t{se}{co}[0] ^ alphaN{se}{co} * K_t{se}{co}[-1] ^ (1 - alphaN{se}{co})) ^ alphaH{se}{co} * H_t{se}{co}[0] ^ (1 - alphaH{se}{co}) # Production technology of perfectly competitive firm
 
-            Y_t{se}{co}[0] = epsi_t{co}[0] * epsi_t{se}{co}[0] * (1 - Pen_t{se}{co}[0]) * (N_t{se}{co}[0] ^ alphaN{se}{co} * K_t{se}{co}[-1] ^ (1 - alphaN{se}{co})) ^ alphaH{se}{co} * H_t{se}{co}[0] ^ (1 - alphaH{se}{co}) # Production technology of perfectly competitive firm
+            Y_t{se}{co}[0] = epsi_t{co}[0] * epsi_t{se}{co}[0] * (N_t{se}{co}[0] ^ alphaN{se}{co} * K_t{se}{co}[-1] ^ (1 - alphaN{se}{co})) ^ alphaH{se}{co} * H_t{se}{co}[0] ^ (1 - alphaH{se}{co}) # Production technology of perfectly competitive firm
 
-            EM_cost_t{se}{co}[0] = P_EM_t{co}[0] * (1 + shock_epsi_carb_int_t{co}[x]) * carb_int{se}{co} # Emissions costs
+            # EM_cost_t{se}{co}[0] = P_EM_t{co}[0] * (1 + shock_epsi_carb_int_t{co}[x]) * carb_int{se}{co} # Emissions costs
 
-            mc_tild_t{se}{co}[0] = EM_cost_t{se}{co}[0] + mc_t{se}{co}[0] # Real marginal costs relevant for pricing (including emissions taxes)
+            # mc_tild_t{se}{co}[0] = EM_cost_t{se}{co}[0] + mc_t{se}{co}[0] # Real marginal costs relevant for pricing (including emissions taxes)
 
-            # mc_tild_t{se}{co}[0] = mc_t{se}{co}[0] # Real marginal costs relevant for pricing (including emissions taxes)
+            mc_tild_t{se}{co}[0] = mc_t{se}{co}[0] # Real marginal costs relevant for pricing (including emissions taxes)
 
             P_t{se}{co}{co}[0] = mc_tild_t{se}{co}[0]
 
@@ -148,13 +148,13 @@ using MacroModelling
         TB_t{co}[0] = for se in 1:10 TB_t{se}{co}[0] end
     end
 
-    for se in 1:10
-        MM_t{se}{a}{b}[0] = carb_int{se}{b} * (1 + shock_epsi_carb_int_t{b}[x]) * (C_t{se}{a}{b}[0] + I_t{se}{a}{b}[0] + for se2 in 1:10 H_t{se2}{se}{a}{b}[0] end)
-    end
+    # for se in 1:10
+    #     MM_t{se}{a}{b}[0] = carb_int{se}{b} * (1 + shock_epsi_carb_int_t{b}[x]) * (C_t{se}{a}{b}[0] + I_t{se}{a}{b}[0] + for se2 in 1:10 H_t{se2}{se}{a}{b}[0] end)
+    # end
 
-    for se in 1:10
-        XX_t{se}{b}{a}[0] = carb_int{se}{a} * (1 + shock_epsi_carb_int_t{a}[x]) * size{b} / size{a} * (C_t{se}{b}{a}[0] + I_t{se}{b}{a}[0] + for se2 in 1:10 H_t{se2}{se}{b}{a}[0] end)
-    end
+    # for se in 1:10
+    #     XX_t{se}{b}{a}[0] = carb_int{se}{a} * (1 + shock_epsi_carb_int_t{a}[x]) * size{b} / size{a} * (C_t{se}{b}{a}[0] + I_t{se}{b}{a}[0] + for se2 in 1:10 H_t{se2}{se}{b}{a}[0] end)
+    # end
 
     NFA_t{a}[0] = R_w_t[-1] / pi_cpi_t{a}[0] * exp(-Psi2 * (NFA_t{a}[-1] - NFA_t{a}[ss]) / Y_VA_t{a}[-1]) * NFA_t{a}[-1] + TB_t{a}[0]
 
@@ -188,11 +188,11 @@ end
 # end
 
 
-NK_multisector.parameters_in_equations
+# NK_multisector.parameters_in_equations
 
-NK_multisector.var
+# NK_multisector.var
 
-@parameters NK_multisector begin
+@parameters NK_multisector begin # simplify = false begin
     # EM_t > 170
 
     # K_t{a} > 5
@@ -3659,4 +3659,4 @@ w_9_a_ts = 1.98639
 w_9_b_ts = 3.33902
 w_a_ts = 1.85826
 w_b_ts = 0.95827
-end
+# end
