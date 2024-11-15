@@ -555,7 +555,7 @@ macro model(𝓂,ex...)
     end
 
     # go through changed SS equations including nonnegative auxilliary variables
-    ss_aux_equations = []
+    ss_aux_equations = Expr[]
 
     # tag vars and pars in changed SS equations
     var_list_aux_SS = []
@@ -645,9 +645,13 @@ macro model(𝓂,ex...)
                 ss_aux_equation = simplify(unblock(prs_ex))
             end
         end
-        ss_aux_equation_expr = if ss_aux_equation isa Symbol Expr(:call,:-,ss_aux_equation,0) else ss_aux_equation end
-
-        push!(ss_aux_equations,ss_aux_equation_expr)
+        
+        if ss_aux_equation isa Symbol 
+            push!(ss_aux_equations, Expr(:call,:-,ss_aux_equation,0))
+        else#if !(ss_aux_equation isa Int)
+            # println(eq)
+            push!(ss_aux_equations, ss_aux_equation)
+        end
     end
 
     # go through dynamic equations and label
@@ -710,8 +714,12 @@ macro model(𝓂,ex...)
     reorder       = indexin(var, [present_only; past_not_future; future_not_past_and_mixed])
     dynamic_order = indexin(present_but_not_only, [past_not_future; future_not_past_and_mixed])
 
+    # TODO: collect errors so you can tackle them altogether
     @assert length(intersect(union(var,exo),parameters_in_equations)) == 0 "Parameters and variables cannot have the same name. This is the case for: " * repr(sort([intersect(union(var,exo),parameters_in_equations)...]))
 
+    @assert !any(isnothing, future_not_past_and_mixed_idx) "The following variables appear in the future only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
+
+    @assert !any(isnothing, past_not_future_and_mixed_idx) "The following variables appear in the past only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
 
     T = timings(present_only,
                 future_not_past,
