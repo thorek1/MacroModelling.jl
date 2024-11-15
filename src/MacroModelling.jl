@@ -3635,6 +3635,13 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                                 end
                             end
 
+                            # Zero initial value if startin without guess
+                            for i in 1:2:length(closest_solution)
+                                if !isfinite(sum(abs,closest_solution[i+1]))
+                                    closest_solution[i] = zeros(length(closest_solution[i]))
+                                end
+                            end
+
                             # println(closest_solution)
 
                             if all(isfinite,closest_solution[end]) && initial_parameters != closest_solution_init[end]
