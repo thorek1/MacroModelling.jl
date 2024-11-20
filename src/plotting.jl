@@ -1416,7 +1416,7 @@ end
 # c is conditioned to deviate by 0.01 in period 1 and y is conditioned to deviate by 0.02 in period 3
 conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = [:c,:y], Periods = 1:2)
 conditions[1,1] = .01
-conditions[2,2] = .02
+conditions[2,3] = .02
 
 # in period 2 second shock (eps_z) is conditioned to take a value of 0.05
 shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
