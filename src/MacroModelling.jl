@@ -8635,7 +8635,8 @@ function run_kalman_iterations(A::Matrix{S}, 𝐁::Matrix{S}, C::Matrix{Float64}
     Ptmp = similar(P)
 
     for t in 1:size(data_in_deviations, 2)
-        ℒ.axpby!(1, data_in_deviations[:, t], -1, z)
+         z = replace(ℒ.axpby!(1, data_in_deviations[:, t], -1, z),NaN=>0)
+	# ℒ.axpby!(1, data_in_deviations[:, t], -1, z)
         # v = data_in_deviations[:, t] - z
 
         mul!(Ctmp, C, P) # use Octavian.jl
