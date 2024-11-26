@@ -1,8 +1,11 @@
+using Revise
 using MacroModelling
 using StatsPlots
 using Optim, LineSearches
 using Optimization, OptimizationNLopt
-using Zygote
+using Zygote, ForwardDiff
+using BenchmarkTools
+
 
 @model Gali_2015_chapter_3_nonlinear begin
 	# W_real[0] = C[0] ^ σ * N[0] ^ φ
@@ -130,22 +133,22 @@ end
 
 
 
-include("../models/Smets_Wouters_2007.jl")
+include("../models/Smets_Wouters_2007 copy.jl")
 
 # Optimal simple rule
-get_para
-
 
 loss_function_weights = [1, .3, .4]
 
+loss_function_weights = [1, 1, .1]
+
 lbs = [eps(),eps(),eps(),eps()]
-ubs = [.999,1e2,1e2,1e2]
+ubs = [1-eps(), 1e6, 1e6, 1e6]
 initial_values = [0.8762 ,1.488 ,0.0593 ,0.2347]
 
 get_statistics(Smets_Wouters_2007,   
                     initial_values,
                     parameters = [:crr, :crpi, :cry, :crdy],
-                    variance = [:ygap, :pinfobs, :drobs],
+                    variance = [:ygap, :pinfobs, :robs],
                     algorithm = :first_order,
                     verbose = true)
 
@@ -154,18 +157,18 @@ function calculate_cb_loss(parameter_inputs,p; verbose = false)
     out = get_statistics(Smets_Wouters_2007,   
                     parameter_inputs,
                     parameters = [:crr, :crpi, :cry, :crdy],
-                    variance = [:ygap, :pinfobs, :drobs],
+                    variance = [:ygap, :pinfobs, :robs],
                     algorithm = :first_order,
                     verbose = verbose)
 
-    cb_loss = out[1]' * loss_function_weights
+    cb_loss = out[:variance]' * loss_function_weights
 end
 
-calculate_cb_loss(initial_values, verbose = true)
+calculate_cb_loss(initial_values,[], verbose = true)
 
 
-# f = OptimizationFunction(calculate_cb_loss, AutoZygote())
-f = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
+f = OptimizationFunction(calculate_cb_loss, AutoZygote())
+# f = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
 prob = OptimizationProblem(f, initial_values, [], ub = ubs, lb = lbs)
 
 # Import a solver package and solve the optimization problem
@@ -173,17 +176,49 @@ prob = OptimizationProblem(f, initial_values, [], ub = ubs, lb = lbs)
 sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000)
 
 
-sol = Optim.optimize(calculate_cb_loss, 
-                    lbs, 
-                    ubs, 
+f_zyg = OptimizationFunction(calculate_cb_loss, AutoZygote())
+prob_zyg = OptimizationProblem(f_zyg, initial_values, [], ub = ubs, lb = lbs)
+
+sol_zyg = solve(prob_zyg, NLopt.LD_LBFGS(), maxiters = 10000)
+# 32.749
+@benchmark sol_zyg = solve(prob_zyg, NLopt.LD_LBFGS(), maxiters = 10000)
+@profview sol_zyg = solve(prob_zyg, NLopt.LD_LBFGS(), maxiters = 10000)
+
+sol_zyg = solve(prob_zyg, NLopt.LN_PRAXIS(), maxiters = 10000)
+sol_zyg = solve(prob_zyg, NLopt.LN_SBPLX(), maxiters = 10000)
+sol_zyg = solve(prob_zyg, NLopt.LN_NELDERMEAD(), maxiters = 10000)
+sol_zyg = solve(prob_zyg, NLopt.LD_SLSQP(), maxiters = 10000)
+# sol_zyg = solve(prob_for, NLopt.LD_MMA(), maxiters = 10000)
+# sol_zyg = solve(prob_for, NLopt.LD_CCSAQ(), maxiters = 10000)
+sol_zyg = solve(prob_zyg, NLopt.LD_LBFGS(), maxiters = 10000)
+# sol_zyg = solve(prob_for, NLopt.LD_TNEWTON(), maxiters = 10000)
+sol_zyg = solve(prob_zyg,  NLopt.GD_MLSL_LDS(), local_method = NLopt.LD_LBFGS(), maxiters = 10000)
+sol_zyg = solve(prob_zyg,  NLopt.GN_MLSL_LDS(), local_method = NLopt.LN_NELDERMEAD(), maxiters = 10000)
+sol_zyg.u
+
+f_for = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
+prob_for = OptimizationProblem(f_for, initial_values, [], ub = ubs, lb = lbs)
+
+@benchmark sol_for = solve(prob_for, NLopt.LD_LBFGS(), maxiters = 10000)
+@profview sol_for = solve(prob_for, NLopt.LD_LBFGS(), maxiters = 10000)
+
+
+ForwardDiff.gradient(x->calculate_cb_loss(x,[]), [0.5753000884102637, 2.220446049250313e-16, 2.1312643700117118, 2.220446049250313e-16])
+
+Zygote.gradient(x->calculate_cb_loss(x,[]), [0.5753000884102637, 2.220446049250313e-16, 2.1312643700117118, 2.220446049250313e-16])
+
+sol = Optim.optimize(x->calculate_cb_loss(x,[]), 
+                    # lbs, 
+                    # ubs, 
                     initial_values, 
-                    # SAMIN(),
+                    LBFGS(),
+                    # NelderMead(),
                     # Optim.Fminbox(NelderMead()), 
-                    Optim.Fminbox(BFGS(linesearch = LineSearches.BackTracking(order = 3))), 
-                    # LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                    # Optim.Fminbox(LBFGS()), 
+                    # Optim.Fminbox(LBFGS(linesearch = LineSearches.BackTracking(order = 2))), 
                     Optim.Options(
                     # time_limit = max_time, 
-                                                        #    show_trace = true, 
+                                                           show_trace = true, 
                                     # iterations = 1000,
                     #                                        extended_trace = true, 
                     #                                        show_every = 10000
@@ -193,16 +228,17 @@ pars = Optim.minimizer(sol)
 
 
 get_statistics(Smets_Wouters_2007,   
-                    pars,
+                    sol.u,
                     parameters = [:crr, :crpi, :cry, :crdy],
                     variance = [:ygap, :pinfobs, :drobs],
                     algorithm = :first_order,
                     verbose = true)
+
 ## Central bank loss function: Loss = θʸ * var(Ŷ) + θᵖⁱ * var(π̂) + θᴿ * var(ΔR)
 loss_function_weights = [1, .3, .4]
 
 lbs = [eps(),eps(),eps()]
-ubs = [1e4,1e4,1-eps()]
+ubs = [1e2,1e2,1-eps()]
 initial_values = [1.5, 0.125, 0.75]
 
 function calculate_cb_loss(parameter_inputs; verbose = false)
@@ -213,13 +249,13 @@ function calculate_cb_loss(parameter_inputs; verbose = false)
                     algorithm = :first_order,
                     verbose = verbose)
 
-    cb_loss = out[1]' * loss_function_weights
+    cb_loss = out[:variance]' * loss_function_weights
 end
 
 calculate_cb_loss(initial_values, verbose = true)
 
 
-sol = Optim.optimize(calculate_cb_loss, 
+@time sol = Optim.optimize(calculate_cb_loss, 
                     lbs, 
                     ubs, 
                     initial_values, 
@@ -227,15 +263,59 @@ sol = Optim.optimize(calculate_cb_loss,
                     # LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                     Optim.Options(
                     # time_limit = max_time, 
-                                                           show_trace = true, 
-                                    iterations = 1000,
+                                                        #    show_trace = true, 
+                                    # iterations = 1000,
                     #                                        extended_trace = true, 
                     #                                        show_every = 10000
-                    ))
+                    ));
 
 pars = Optim.minimizer(sol)
+
+
+out = get_statistics(Gali_2015_chapter_3_nonlinear,   
+                initial_values,
+                parameters = [:ϕᵖⁱ, :ϕʸ, :ϕᴿ],
+                variance = [:Ŷ,:π̂,:ΔR],
+                algorithm = :first_order,
+                verbose = true)
+out[:variance]
+dd = Dict{Symbol,Array{<:Real}}()
+dd[:variance] = out[1]
+
 init_params = copy(Gali_2015_chapter_3_nonlinear.parameter_values)
 
+function calculate_cb_loss_Opt(parameter_inputs,p; verbose = false)
+    out = get_statistics(Gali_2015_chapter_3_nonlinear,   
+                    parameter_inputs,
+                    parameters = [:ϕᵖⁱ, :ϕʸ, :ϕᴿ],
+                    variance = [:Ŷ,:π̂,:ΔR],
+                    algorithm = :first_order,
+                    verbose = verbose)
+
+    cb_loss = out[:variance]' * loss_function_weights
+end
+
+f_zyg = OptimizationFunction(calculate_cb_loss_Opt, AutoZygote())
+prob_zyg = OptimizationProblem(f_zyg, initial_values, [], ub = ubs, lb = lbs)
+
+@benchmark sol_zyg = solve(prob_zyg, NLopt.LD_LBFGS(), maxiters = 10000)
+
+f_for = OptimizationFunction(calculate_cb_loss_Opt, AutoForwardDiff())
+prob_for = OptimizationProblem(f_for, initial_values, [], ub = ubs, lb = lbs)
+
+@benchmark sol_for = solve(prob_for, NLopt.LD_LBFGS(), maxiters = 10000)
+@profview sol_for = solve(prob_for, NLopt.LD_LBFGS(), maxiters = 10000)
+
+# Import a solver package and solve the optimization problem
+# sol = solve(prob, NLopt.LN_PRAXIS());
+# sol.u
+@time sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000);
+
+@benchmark sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000);
+
+using ForwardDiff
+ForwardDiff.gradient(calculate_cb_loss,initial_values)
+Zygote.gradient(calculate_cb_loss,initial_values)[1]
 # SS(Gali_2015_chapter_3_nonlinear, parameters = :std_std_a => .00001)
 
 SS(Gali_2015_chapter_3_nonlinear, algorithm = :pruned_third_order)
