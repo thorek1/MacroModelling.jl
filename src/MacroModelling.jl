@@ -781,6 +781,18 @@ function fill_kron_adjoint_∂A!(∂X::AbstractSparseMatrix{R}, ∂A::AbstractMa
 end
 
 
+function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}}; 
+                                density_threshold::Float64 = .1, 
+                                min_length::Int = 1000,
+                                tol::AbstractFloat = eps()) where S <: Real
+    if length(A) < 100
+        return collect(A)
+    else
+        return sparse(A)
+    end
+end
+
+
 function choose_matrix_format(A::ℒ.Adjoint{S, <: DenseMatrix{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,

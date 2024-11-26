@@ -2839,26 +2839,25 @@ function get_statistics(𝓂,
     lyapunov_algorithm::Symbol = :doubling, 
     verbose::Bool = false) where {U,T}
 
-
     @assert algorithm ∈ [:first_order,:linear_time_iteration,:quadratic_iteration, :first_order_doubling, :binder_pesaran,:pruned_second_order,:pruned_third_order] "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
 
     @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
 
-    SS_var_idx = indexin(non_stochastic_steady_state, 𝓂.var)
+    SS_var_idx = @ignore_derivatives indexin(non_stochastic_steady_state, 𝓂.var)
 
-    mean_var_idx = indexin(mean, 𝓂.var)
+    mean_var_idx = @ignore_derivatives indexin(mean, 𝓂.var)
 
-    std_var_idx = indexin(standard_deviation, 𝓂.var)
+    std_var_idx = @ignore_derivatives indexin(standard_deviation, 𝓂.var)
 
-    var_var_idx = indexin(variance, 𝓂.var)
+    var_var_idx = @ignore_derivatives indexin(variance, 𝓂.var)
 
-    covar_var_idx = indexin(covariance, 𝓂.var)
+    covar_var_idx = @ignore_derivatives indexin(covariance, 𝓂.var)
 
-    autocorr_var_idx = indexin(autocorrelation, 𝓂.var)
+    autocorr_var_idx = @ignore_derivatives indexin(autocorrelation, 𝓂.var)
 
-    other_parameter_values = 𝓂.parameter_values[indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters)]
+    other_parameter_values = @ignore_derivatives 𝓂.parameter_values[indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters)]
 
-    sort_idx = sortperm(vcat(indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters), indexin(parameters, 𝓂.parameters)))
+    sort_idx = @ignore_derivatives sortperm(vcat(indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters), indexin(parameters, 𝓂.parameters)))
 
     all_parameters = vcat(other_parameter_values, parameter_values)[sort_idx]
 
@@ -2866,7 +2865,7 @@ function get_statistics(𝓂,
         algorithm = :pruned_second_order
     end
 
-    solve!(𝓂, algorithm = algorithm, verbose = verbose)
+    @ignore_derivatives solve!(𝓂, algorithm = algorithm, verbose = verbose)
 
     if algorithm == :pruned_third_order
 
@@ -2892,7 +2891,7 @@ function get_statistics(𝓂,
     else
         covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(all_parameters, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
 
-        @assert solved "Could not find covariance matrix."
+        # @assert solved "Could not find covariance matrix."
     end
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
@@ -2928,32 +2927,41 @@ function get_statistics(𝓂,
         end
     end
 
-    ret = AbstractArray{T}[]
+    # ret = AbstractArray{T}[]
+    ret = Dict{Symbol,AbstractArray{T}}()
+
     if !(non_stochastic_steady_state == Symbol[])
-        push!(ret,SS[SS_var_idx])
+        # push!(ret,SS[SS_var_idx])
+        ret[:non_stochastic_steady_state] = solved ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values),length(SS_var_idx))
     end
     if !(mean == Symbol[])
         if algorithm ∉ [:pruned_second_order,:pruned_third_order]
-            push!(ret,SS[mean_var_idx])
+            # push!(ret,SS[mean_var_idx])
+            ret[:mean] = solved ? SS[mean_var_idx] : fill(Inf * sum(abs2,parameter_values),length(mean_var_idx))
         else
-            push!(ret,state_μ[mean_var_idx])
+            # push!(ret,state_μ[mean_var_idx])
+            ret[:mean] = solved ? state_μ[mean_var_idx] : fill(Inf * sum(abs2,parameter_values),length(mean_var_idx))
         end
     end
     if !(standard_deviation == Symbol[])
-        push!(ret,st_dev[std_var_idx])
+        # push!(ret,st_dev[std_var_idx])
+        ret[:standard_deviation] = solved ? st_dev[std_var_idx] : fill(Inf * sum(abs2,parameter_values),length(std_var_idx))
     end
     if !(variance == Symbol[])
-        push!(ret,varrs[var_var_idx])
+        # push!(ret,varrs[var_var_idx])
+        ret[:variance] = solved ? varrs[var_var_idx] : fill(Inf * sum(abs2,parameter_values),length(var_var_idx))
     end
     if !(covariance == Symbol[])
         covar_dcmp_sp = sparse(ℒ.triu(covar_dcmp))
 
         droptol!(covar_dcmp_sp,eps(Float64))
 
-        push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
+        # push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
+        ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx,covar_var_idx] : fill(Inf * sum(abs2,parameter_values),length(covar_var_idx),length(covar_var_idx))
     end
     if !(autocorrelation == Symbol[]) 
-        push!(ret,autocorr[autocorr_var_idx,:] )
+        # push!(ret,autocorr[autocorr_var_idx,:] )
+        ret[:autocorrelation] = solved ? autocorr[autocorr_var_idx,:] : fill(Inf * sum(abs2,parameter_values),length(autocorr_var_idx),length(autocorrelation_periods))
     end
 
     return ret
