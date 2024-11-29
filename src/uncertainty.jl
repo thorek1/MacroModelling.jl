@@ -1,8 +1,11 @@
+using Revise
 using MacroModelling
 using StatsPlots
 using Optim, LineSearches
-using Optimization, OptimizationNLopt
-using Zygote
+using Optimization, OptimizationNLopt, OptimizationOptimJL
+using Zygote, ForwardDiff
+using BenchmarkTools
+
 
 @model Gali_2015_chapter_3_nonlinear begin
 	# W_real[0] = C[0] ^ σ * N[0] ^ φ
@@ -130,60 +133,250 @@ end
 
 
 
-include("../models/Smets_Wouters_2007.jl")
+include("../models/Smets_Wouters_2007 copy.jl")
+
+estimated_par_vals = [0.4818650901000989, 0.24054470291311028, 0.5186956692202958, 0.4662413867655003, 0.23136135922950385, 0.13132950287219664, 0.2506090809487915, 0.9776707755474057, 0.2595790622654468, 0.9727418060187103, 0.687330720531337, 0.1643636762401503, 0.9593771388356938, 0.9717966717403557, 0.8082505346152592, 0.8950643861525535, 5.869499350284732, 1.4625899840952736, 0.724649200081708, 0.7508616008157103, 2.06747381157293, 0.647865359908012, 0.585642549132298, 0.22857733002230182, 0.4476375712834215, 1.6446238878581076, 2.0421854715489007, 0.8196744223749656, 0.10480818163546246, 0.20376610336806866, 0.7312462829038883, 0.14032972276989308, 1.1915345520903131, 0.47172181998770146, 0.5676468533218533, 0.2071701728019517]
+
+estimated_pars = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+
+SS(Smets_Wouters_2007, parameters = estimated_pars .=> estimated_par_vals, derivatives = false)
 
 # Optimal simple rule
-get_para
-
 
 loss_function_weights = [1, .3, .4]
 
-lbs = [eps(),eps(),eps(),eps()]
-ubs = [.999,1e2,1e2,1e2]
-initial_values = [0.8762 ,1.488 ,0.0593 ,0.2347]
+# loss_function_weights = [1, 1, .1]
+
+lbs = [eps(),eps(),eps()] #,eps()]
+ubs = [1-eps(), 1e6, 1e6] #, 1e6]
+initial_values = [0.8762 ,1.488 ,0.0593] # ,0.2347]
+regularisation = [1e-7,1e-5,1e-5]  #,1e-5]
 
 get_statistics(Smets_Wouters_2007,   
                     initial_values,
-                    parameters = [:crr, :crpi, :cry, :crdy],
+                    parameters = [:crr, :crpi, :cry],#, :crdy],
                     variance = [:ygap, :pinfobs, :drobs],
                     algorithm = :first_order,
                     verbose = true)
 
-function calculate_cb_loss(parameter_inputs,p; verbose = false)
+function calculate_cb_loss(parameter_inputs,regularisation; verbose = false)
     # println(parameter_inputs)
     out = get_statistics(Smets_Wouters_2007,   
                     parameter_inputs,
-                    parameters = [:crr, :crpi, :cry, :crdy],
+                    parameters = [:crr, :crpi, :cry],#, :crdy],
                     variance = [:ygap, :pinfobs, :drobs],
                     algorithm = :first_order,
                     verbose = verbose)
 
-    cb_loss = out[1]' * loss_function_weights
+    return out[:variance]' * loss_function_weights + abs2.(parameter_inputs)' * regularisation
 end
 
-calculate_cb_loss(initial_values, verbose = true)
+calculate_cb_loss(initial_values,regularisation, verbose = true)
 
+SS(Smets_Wouters_2007, parameters = :crdy => 0, derivatives = false)
 
-# f = OptimizationFunction(calculate_cb_loss, AutoZygote())
-f = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
-prob = OptimizationProblem(f, initial_values, [], ub = ubs, lb = lbs)
+f = OptimizationFunction(calculate_cb_loss, AutoZygote())
+# f = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
+prob = OptimizationProblem(f, initial_values, regularisation*10, ub = ubs, lb = lbs)
 
 # Import a solver package and solve the optimization problem
 
-sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000)
+sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+# sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000)
+
+# sol = solve(prob, Optimization.LBFGS(), maxiters = 10000)
+
+# sol = solve(prob, Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), maxiters = 10000)
+
+# sol = solve(prob,  NLopt.G_MLSL_LDS(), local_method = NLopt.LD_SLSQP(), maxiters = 1000)
+
+# calculate_cb_loss(sol.u, regularisation)
+
+# abs2.(sol.u)' * regularisation
+
+# sol.objective
+# loop across different levels of std
+
+get_parameters(Smets_Wouters_2007, values = true)
+
+stds = Smets_Wouters_2007.parameters[end-6:end]
+std_vals = copy(Smets_Wouters_2007.parameter_values[end-6:end])
+
+stdderivs = get_std(Smets_Wouters_2007, parameters = [:crr, :crpi, :cry, :crdy] .=> vcat(sol.u,0))
+stdderivs([:ygap, :pinfobs, :drobs, :robs],vcat(stds,[:crr, :crpi, :cry]))
+# 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+# ↓   Variables ∈ 4-element view(::Vector{Symbol},...)
+# →   Standard_deviation_and_∂standard_deviation∂parameter ∈ 11-element view(::Vector{Symbol},...)
+# And data, 4×11 view(::Matrix{Float64}, [65, 44, 17, 52], [36, 37, 38, 39, 40, 41, 42, 20, 19, 21, 22]) with eltype Float64:
+#               (:z_ea)     (:z_eb)      (:z_eg)      (:z_em)     (:z_ew)    (:z_eqs)      (:z_epinf)   (:crr)    (:crpi)     (:cry)       (:crdy)
+#   (:ygap)      0.0173547   0.151379     0.00335788   0.303146    4.07402    0.0062702     1.15872    -60.0597    0.0553865  -0.0208848   -0.116337
+#   (:pinfobs)   0.0112278   2.48401e-5   9.97486e-5   0.134175    8.97266    0.000271719   3.75081     90.5474   -0.0832394   0.0312395    0.105122
+#   (:drobs)     0.289815    3.7398       0.0452899    0.0150356   0.731132   0.0148536     0.297607     4.20058  -0.0045197   0.00175464   0.121104
+#   (:robs)      0.216192    1.82174      0.0424333    0.115266    7.89551    0.0742737     2.57712     80.8386   -0.0743082   0.0273497    0.14874
+
+for (nm,vl) in zip(stds,std_vals)
+    σ_range = range(vl, 1.5 * vl,length = 10)
+
+    coeffs = []
+    
+    for σ in σ_range
+        SS(Smets_Wouters_2007, parameters = nm => σ, derivatives = false)
+        # prob = OptimizationProblem(f, sol.u, regularisation * 100, ub = ubs, lb = lbs)
+        soll = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+        push!(coeffs,soll.u)
+        println("$nm $σ $(soll.objective)")
+    end
+
+    SS(Smets_Wouters_2007, parameters = nm => vl, derivatives = false)
+
+    plots = []
+    push!(plots, plot(σ_range, [i[1] for i in coeffs], label = "", ylabel = "crr"))
+    push!(plots, plot(σ_range, [(1 - i[1]) * i[2] for i in coeffs], label = "", ylabel = "(1 - crr) * crpi"))
+    push!(plots, plot(σ_range, [(1 - i[1]) * i[3] for i in coeffs], label = "", ylabel = "(1 - crr) * cry"))
+    # push!(plots, plot(σ_range, [i[4] for i in coeffs], label = "", ylabel = "crdy"))
+
+    p = plot(plots..., plot_title = string(nm))
+    savefig(p,"OSR_$nm.png")
+    # display(p)
+end
+
+# Demand shocks (Y↑ - pi↑ - R↑)
+# z_eb	# risk-premium shock
+# z_eg	# government shock
+# z_eqs	# investment-specific shock
 
 
-sol = Optim.optimize(calculate_cb_loss, 
+# Monetary policy (Y↓ - pi↓ - R↑)
+# z_em	# interest rate shock
+
+# Supply shock (Y↓ - pi↑ - R↑)
+# z_ea	# technology shock
+
+## Mark-up/cost-push shocks (Y↓ - pi↑ - R↑)
+# z_ew	# wage mark-up shock
+# z_epinf	# price mark-up shock
+
+
+
+# demand shock (Y↑ - pi↑ - R↑): more aggressive on all three measures
+# irf: GDP and inflation in same direction so you can neutralise this shocks at the cost of higher rate volatility
+
+# supply shocks (Y↓ - pi↑ - R↑): more aggressive on inflation and GDP and less so on inflation
+# trade off betwen GDP and inflation will probably dampen interest rate voltility so you can allow yourself to smooth less
+
+# mark-up shocks (Y↓ - pi↑ - R↑): less aggressive on inflation and GDP but more smoothing
+# low effectiveness wrt inflation, high costs, inflation less sticky
+
+
+
+# try with EA parameters from estimation
+estimated_par_vals = [0.5508386670366793, 0.1121915320498811, 0.4243377356726877, 1.1480212757573225, 0.15646733079230218, 0.296296659613257, 0.5432042443198039, 0.9902290087557833, 0.9259443641489151, 0.9951289612362465, 0.10142231358290743, 0.39362463001158415, 0.1289134188454152, 0.9186217201941123, 0.335751074044953, 0.9679659067034428, 7.200553443953002, 1.6027080351282608, 0.2951432248740656, 0.9228560491337098, 1.4634253784176727, 0.9395327544812212, 0.1686071783737509, 0.6899027652288519, 0.8752458891177585, 1.0875693299513425, 1.0500350793944067, 0.935445005053725, 0.14728806935911198, 0.05076653598648485, 0.6415024921505285, 0.2033331251651342, 1.3564948300498199, 0.37489234540710886, 0.31427612698706603, 0.12891275085926296]
+
+estimated_pars = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+
+SS(Smets_Wouters_2007, parameters = estimated_pars .=> estimated_par_vals, derivatives = false)
+
+
+prob = OptimizationProblem(f, initial_values, regularisation / 100, ub = ubs, lb = lbs)
+
+sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+
+stds = Smets_Wouters_2007.parameters[end-6:end]
+std_vals = copy(Smets_Wouters_2007.parameter_values[end-6:end])
+
+stdderivs = get_std(Smets_Wouters_2007, parameters = [:crr, :crpi, :cry, :crdy] .=> vcat(sol.u,0));
+stdderivs([:ygap, :pinfobs, :drobs, :robs],vcat(stds,[:crr, :crpi, :cry]))
+# 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+# ↓   Variables ∈ 4-element view(::Vector{Symbol},...)
+# →   Standard_deviation_and_∂standard_deviation∂parameter ∈ 11-element view(::Vector{Symbol},...)
+# And data, 4×11 view(::Matrix{Float64}, [65, 44, 17, 52], [36, 37, 38, 39, 40, 41, 42, 20, 19, 21, 22]) with eltype Float64:
+#               (:z_ea)     (:z_eb)      (:z_eg)      (:z_em)     (:z_ew)    (:z_eqs)      (:z_epinf)   (:crr)    (:crpi)     (:cry)       (:crdy)
+#   (:ygap)      0.0173547   0.151379     0.00335788   0.303146    4.07402    0.0062702     1.15872    -60.0597    0.0553865  -0.0208848   -0.116337
+#   (:pinfobs)   0.0112278   2.48401e-5   9.97486e-5   0.134175    8.97266    0.000271719   3.75081     90.5474   -0.0832394   0.0312395    0.105122
+#   (:drobs)     0.289815    3.7398       0.0452899    0.0150356   0.731132   0.0148536     0.297607     4.20058  -0.0045197   0.00175464   0.121104
+#   (:robs)      0.216192    1.82174      0.0424333    0.115266    7.89551    0.0742737     2.57712     80.8386   -0.0743082   0.0273497    0.14874
+
+Smets_Wouters_2007.parameter_values[indexin([:crr, :crpi, :cry, :crdy],Smets_Wouters_2007.parameters)]
+
+for (nm,vl) in zip(stds,std_vals)
+    σ_range = range(vl, 1.5 * vl,length = 10)
+
+    coeffs = []
+    
+    for σ in σ_range
+        SS(Smets_Wouters_2007, parameters = nm => σ, derivatives = false)
+        # prob = OptimizationProblem(f, sol.u, regularisation * 100, ub = ubs, lb = lbs)
+        soll = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+        push!(coeffs,soll.u)
+        println("$nm $σ $(soll.objective)")
+    end
+
+    SS(Smets_Wouters_2007, parameters = nm => vl, derivatives = false)
+
+    plots = []
+    push!(plots, plot(σ_range, [i[1] for i in coeffs], label = "", ylabel = "crr"))
+    push!(plots, plot(σ_range, [(1 - i[1]) * i[2] for i in coeffs], label = "", ylabel = "(1 - crr) * crpi"))
+    push!(plots, plot(σ_range, [(1 - i[1]) * i[3] for i in coeffs], label = "", ylabel = "(1 - crr) * cry"))
+    # push!(plots, plot(σ_range, [i[4] for i in coeffs], label = "", ylabel = "crdy"))
+
+    p = plot(plots..., plot_title = string(nm))
+    savefig(p,"OSR_EA_$nm.png")
+    # display(p)
+end
+
+
+
+
+
+solopt = solve(prob, Optimization.LBFGS(), maxiters = 10000)
+soloptjl = solve(prob, Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), maxiters = 10000)
+
+sol_mlsl = solve(prob,  NLopt.G_MLSL_LDS(), local_method = NLopt.LD_SLSQP(), maxiters = 10000)
+
+
+f_zyg = OptimizationFunction(calculate_cb_loss, AutoZygote())
+prob_zyg = OptimizationProblem(f_zyg, initial_values, [], ub = ubs, lb = lbs)
+
+sol_zyg = solve(prob_zyg, NLopt.LD_LBFGS(), maxiters = 10000)
+# 32.749
+@benchmark sol_zyg = solve(prob_zyg, NLopt.LD_LBFGS(), maxiters = 10000)
+@profview sol_zyg = solve(prob_zyg, NLopt.LD_LBFGS(), maxiters = 10000)
+
+sol_zyg = solve(prob_zyg, NLopt.LN_PRAXIS(), maxiters = 10000)
+sol_zyg = solve(prob_zyg, NLopt.LN_SBPLX(), maxiters = 10000)
+sol_zyg = solve(prob_zyg, NLopt.LN_NELDERMEAD(), maxiters = 10000)
+sol_zyg = solve(prob_zyg, NLopt.LD_SLSQP(), maxiters = 10000)
+# sol_zyg = solve(prob_for, NLopt.LD_MMA(), maxiters = 10000)
+# sol_zyg = solve(prob_for, NLopt.LD_CCSAQ(), maxiters = 10000)
+sol_zyg = solve(prob_zyg, NLopt.LD_LBFGS(), maxiters = 10000)
+# sol_zyg = solve(prob_for, NLopt.LD_TNEWTON(), maxiters = 10000)
+sol_zyg = solve(prob_zyg,  NLopt.GD_MLSL_LDS(), local_method = NLopt.LD_SLSQP(), maxiters = 10000)
+sol_zyg = solve(prob_zyg,  NLopt.GN_MLSL_LDS(), local_method = NLopt.LN_NELDERMEAD(), maxiters = 1000)
+sol_zyg.u
+
+f_for = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
+prob_for = OptimizationProblem(f_for, initial_values, [], ub = ubs, lb = lbs)
+
+@benchmark sol_for = solve(prob_for, NLopt.LD_LBFGS(), maxiters = 10000)
+@profview sol_for = solve(prob_for, NLopt.LD_LBFGS(), maxiters = 10000)
+
+
+ForwardDiff.gradient(x->calculate_cb_loss(x,[]), [0.5753000884102637, 2.220446049250313e-16, 2.1312643700117118, 2.220446049250313e-16])
+
+Zygote.gradient(x->calculate_cb_loss(x,[]), [0.5753000884102637, 2.220446049250313e-16, 2.1312643700117118, 2.220446049250313e-16])
+
+sol = Optim.optimize(x->calculate_cb_loss(x,[]), 
                     lbs, 
                     ubs, 
                     initial_values, 
-                    # SAMIN(),
+                    # LBFGS(),
+                    # NelderMead(),
                     # Optim.Fminbox(NelderMead()), 
-                    Optim.Fminbox(BFGS(linesearch = LineSearches.BackTracking(order = 3))), 
-                    # LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                    # Optim.Fminbox(LBFGS()), 
+                    Optim.Fminbox(LBFGS(linesearch = LineSearches.BackTracking(order = 3))), 
                     Optim.Options(
                     # time_limit = max_time, 
-                                                        #    show_trace = true, 
+                                                           show_trace = true, 
                                     # iterations = 1000,
                     #                                        extended_trace = true, 
                     #                                        show_every = 10000
@@ -193,16 +386,17 @@ pars = Optim.minimizer(sol)
 
 
 get_statistics(Smets_Wouters_2007,   
-                    pars,
+                    sol.u,
                     parameters = [:crr, :crpi, :cry, :crdy],
                     variance = [:ygap, :pinfobs, :drobs],
                     algorithm = :first_order,
                     verbose = true)
+
 ## Central bank loss function: Loss = θʸ * var(Ŷ) + θᵖⁱ * var(π̂) + θᴿ * var(ΔR)
 loss_function_weights = [1, .3, .4]
 
 lbs = [eps(),eps(),eps()]
-ubs = [1e4,1e4,1-eps()]
+ubs = [1e2,1e2,1-eps()]
 initial_values = [1.5, 0.125, 0.75]
 
 function calculate_cb_loss(parameter_inputs; verbose = false)
@@ -213,13 +407,13 @@ function calculate_cb_loss(parameter_inputs; verbose = false)
                     algorithm = :first_order,
                     verbose = verbose)
 
-    cb_loss = out[1]' * loss_function_weights
+    cb_loss = out[:variance]' * loss_function_weights
 end
 
 calculate_cb_loss(initial_values, verbose = true)
 
 
-sol = Optim.optimize(calculate_cb_loss, 
+@time sol = Optim.optimize(calculate_cb_loss, 
                     lbs, 
                     ubs, 
                     initial_values, 
@@ -227,15 +421,59 @@ sol = Optim.optimize(calculate_cb_loss,
                     # LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                     Optim.Options(
                     # time_limit = max_time, 
-                                                           show_trace = true, 
-                                    iterations = 1000,
+                                                        #    show_trace = true, 
+                                    # iterations = 1000,
                     #                                        extended_trace = true, 
                     #                                        show_every = 10000
-                    ))
+                    ));
 
 pars = Optim.minimizer(sol)
+
+
+out = get_statistics(Gali_2015_chapter_3_nonlinear,   
+                initial_values,
+                parameters = [:ϕᵖⁱ, :ϕʸ, :ϕᴿ],
+                variance = [:Ŷ,:π̂,:ΔR],
+                algorithm = :first_order,
+                verbose = true)
+out[:variance]
+dd = Dict{Symbol,Array{<:Real}}()
+dd[:variance] = out[1]
+
 init_params = copy(Gali_2015_chapter_3_nonlinear.parameter_values)
 
+function calculate_cb_loss_Opt(parameter_inputs,p; verbose = false)
+    out = get_statistics(Gali_2015_chapter_3_nonlinear,   
+                    parameter_inputs,
+                    parameters = [:ϕᵖⁱ, :ϕʸ, :ϕᴿ],
+                    variance = [:Ŷ,:π̂,:ΔR],
+                    algorithm = :first_order,
+                    verbose = verbose)
+
+    cb_loss = out[:variance]' * loss_function_weights
+end
+
+f_zyg = OptimizationFunction(calculate_cb_loss_Opt, AutoZygote())
+prob_zyg = OptimizationProblem(f_zyg, initial_values, [], ub = ubs, lb = lbs)
+
+@benchmark sol_zyg = solve(prob_zyg, NLopt.LD_LBFGS(), maxiters = 10000)
+
+f_for = OptimizationFunction(calculate_cb_loss_Opt, AutoForwardDiff())
+prob_for = OptimizationProblem(f_for, initial_values, [], ub = ubs, lb = lbs)
+
+@benchmark sol_for = solve(prob_for, NLopt.LD_LBFGS(), maxiters = 10000)
+@profview sol_for = solve(prob_for, NLopt.LD_LBFGS(), maxiters = 10000)
+
+# Import a solver package and solve the optimization problem
+# sol = solve(prob, NLopt.LN_PRAXIS());
+# sol.u
+@time sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000);
+
+@benchmark sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000);
+
+using ForwardDiff
+ForwardDiff.gradient(calculate_cb_loss,initial_values)
+Zygote.gradient(calculate_cb_loss,initial_values)[1]
 # SS(Gali_2015_chapter_3_nonlinear, parameters = :std_std_a => .00001)
 
 SS(Gali_2015_chapter_3_nonlinear, algorithm = :pruned_third_order)
