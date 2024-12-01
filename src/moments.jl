@@ -140,7 +140,7 @@ function calculate_second_order_moments(
     verbose::Bool = false, 
     sylvester_algorithm::Symbol = :doubling,
     lyapunov_algorithm::Symbol = :doubling,
-    tol::AbstractFloat = eps())::Union{Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}}, Tuple{Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}}} where R <: Real
+    tol::AbstractFloat = eps())::Union{Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}, Bool}, Tuple{Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}, Bool}} where R <: Real
 
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
 
@@ -245,7 +245,7 @@ function calculate_second_order_moments(
     μʸ₂  = SS_and_pars[1:𝓂.timings.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
     if !covariance
-        return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
+        return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved && solved2
     end
 
     # Covariance
@@ -265,7 +265,7 @@ function calculate_second_order_moments(
 
     autocorr_tmp = ŝ_to_ŝ₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_ŝ₂ * Γ₂ * ê_to_y₂'
 
-    return Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
+    return Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved && solved2 && info
 end
 
 
@@ -291,10 +291,10 @@ function calculate_third_order_moments(parameters::Vector{T},
                                                             sylvester_algorithm = sylvester_algorithm, 
                                                             lyapunov_algorithm = lyapunov_algorithm)
 
-    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂ = second_order_moments
+    Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = second_order_moments
 
     if !covariance && !autocorrelation
-        return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂
+        return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved
     end
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
@@ -533,9 +533,9 @@ function calculate_third_order_moments(parameters::Vector{T},
     end
 
     if autocorrelation
-        return Σʸ₃, μʸ₂, autocorr, SS_and_pars
+        return Σʸ₃, μʸ₂, autocorr, SS_and_pars, solved && solved3 && info
     else
-        return Σʸ₃, μʸ₂, SS_and_pars
+        return Σʸ₃, μʸ₂, SS_and_pars, solved && solved3 && info
     end
 
 end
