@@ -354,6 +354,8 @@ function calculate_third_order_moments(parameters::Vector{T},
         autocorr = zeros(T, size(Σʸ₂,1), length(autocorrelation_periods))
     end
 
+    solved_lyapunov = true
+
     # Threads.@threads for ords in orders 
     for ords in orders 
         variance_observable, dependencies_all_vars = ords
@@ -497,6 +499,8 @@ function calculate_third_order_moments(parameters::Vector{T},
 
         Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
 
+        solved_lyapunov = solved_lyapunov && info
+
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
         for obs in variance_observable
@@ -533,9 +537,9 @@ function calculate_third_order_moments(parameters::Vector{T},
     end
 
     if autocorrelation
-        return Σʸ₃, μʸ₂, autocorr, SS_and_pars, solved && solved3 && info
+        return Σʸ₃, μʸ₂, autocorr, SS_and_pars, solved && solved3 && solved_lyapunov
     else
-        return Σʸ₃, μʸ₂, SS_and_pars, solved && solved3 && info
+        return Σʸ₃, μʸ₂, SS_and_pars, solved && solved3 && solved_lyapunov
     end
 
 end
