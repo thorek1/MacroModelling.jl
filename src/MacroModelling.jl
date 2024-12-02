@@ -3213,10 +3213,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     solved_scale = 0
                     # range_length = [ 1, 2, 4, 8,16,32,64,128,1024]
                     scale = 1.0
+                    fail_fast_solvers_only = true
                     # TODO: try have this run for 1000 and and use closest_solution based on the previous result and not on the cache. that way you dont crowd out good and diverse solutions in the cache and make sure he finds the other SS. rely on previous commit for way of implementing closest_solution
                     while range_iters <= (cold_start ? 1 : 500) && !(solution_error < 1e-12 && solved_scale == 1)
                         range_iters += 1
-                        fail_fast_solvers_only = scale == 1.0 ? false : true
+                        # fail_fast_solvers_only = scale == 1.0 ? false : true
                         # println(range_iters)
                         # println(scale)
                         # println(solved_scale)
