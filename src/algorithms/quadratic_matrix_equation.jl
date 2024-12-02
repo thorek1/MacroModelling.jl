@@ -28,7 +28,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         
         reached_tol = ℒ.norm(AXX) / AXXnorm
 
-        if reached_tol < tol # 1e-12 is too large eps is too small
+        if reached_tol < (tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if you use the low tol it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
 
             return initial_guess, true

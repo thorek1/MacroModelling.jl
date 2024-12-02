@@ -284,18 +284,18 @@ end
 
 
 results = []
-for activation in [:relu, :gelu, :tanh]
-    for schedule in [:cos,:poly,:exp]
-        # for n_hidden in [256,128,384]
-            # for lr_start in [1e-3,5e-3,5e-4,1e-4]
-            # for lr_end in [1e-8,1e-9,1e-10,1e-11]
-            # for batchsize in [128,256,512]#,1024]#,2048]
-                for n_layers in [3,5,7]
-                                for optimiser in [:adam,:adamw]
-                                    # for n_epochs in [100,150]#,300]
-                                        ## Create Neural Network
-                                        # n_hidden = max(256, n_vars * 2)
-                                        # n_hidden_small = max(256, n_vars * 2)
+# for activation in [:relu, :gelu, :tanh]
+#     for schedule in [:cos,:poly,:exp]
+#         # for n_hidden in [256,128,384]
+#             # for lr_start in [1e-3,5e-3,5e-4,1e-4]
+#             # for lr_end in [1e-8,1e-9,1e-10,1e-11]
+#             # for batchsize in [128,256,512]#,1024]#,2048]
+#                 for n_layers in [3,5,7]
+#                                 for optimiser in [:adam,:adamw]
+#                                     # for n_epochs in [100,150]#,300]
+#                                         ## Create Neural Network
+#                                         # n_hidden = max(256, n_vars * 2)
+#                                         # n_hidden_small = max(256, n_vars * 2)
 
                                         Random.seed!(6794)
 
@@ -354,7 +354,7 @@ losses = []
 for epoch in 1:n_epochs
     for (out,inp) in train_loader
         lss, grads = Flux.withgradient(neural_net_approx) do nn
-            sqrt(Flux.mse(out, nn(inp)))
+            sqrt(sum(logcosh, out - nn(inp)) / length(out))
         end
 
         Flux.update!(optim, neural_net_approx, grads[1])
@@ -383,7 +383,8 @@ function calculate_loss(variables₍₋₁₎::Matrix{R},
                         variables₍₁₎::Matrix{R}, 
                         shocks₍ₓ₎::Matrix{R}, 
                         model_parameters::Matrix{R}, 
-                        calibration_parameters::Matrix{R}) where R <: Real
+                        calibration_parameters::Matrix{R},
+                        loss_func) where R <: Real
     c₍₋₁₎   = variables₍₋₁₎[1,:]
     g₍₋₁₎   = variables₍₋₁₎[2,:]
     k₍₋₁₎   = variables₍₋₁₎[3,:]
@@ -426,19 +427,19 @@ function calculate_loss(variables₍₋₁₎::Matrix{R},
 
     loss = zero(eltype(inputs))
 
-    loss += sum(abs2, min.(eps(eltype(inputs)), c₍₋₁₎))
-    loss += sum(abs2, min.(eps(eltype(inputs)), k₍₋₁₎))
-    loss += sum(abs2, min.(eps(eltype(inputs)), l₍₋₁₎))
+    loss += sum(loss_func, min.(eps(eltype(inputs)), c₍₋₁₎))
+    loss += sum(loss_func, min.(eps(eltype(inputs)), k₍₋₁₎))
+    loss += sum(loss_func, min.(eps(eltype(inputs)), l₍₋₁₎))
 
-    loss += sum(abs2, min.(eps(eltype(inputs)), c₍₀₎))
-    loss += sum(abs2, min.(eps(eltype(inputs)), k₍₀₎))
-    loss += sum(abs2, min.(eps(eltype(inputs)), l₍₀₎))
+    loss += sum(loss_func, min.(eps(eltype(inputs)), c₍₀₎))
+    loss += sum(loss_func, min.(eps(eltype(inputs)), k₍₀₎))
+    loss += sum(loss_func, min.(eps(eltype(inputs)), l₍₀₎))
 
-    loss += sum(abs2, min.(eps(eltype(inputs)), c₍₁₎))
-    loss += sum(abs2, min.(eps(eltype(inputs)), k₍₁₎))
-    loss += sum(abs2, min.(eps(eltype(inputs)), l₍₁₎))
+    loss += sum(loss_func, min.(eps(eltype(inputs)), c₍₁₎))
+    loss += sum(loss_func, min.(eps(eltype(inputs)), k₍₁₎))
+    loss += sum(loss_func, min.(eps(eltype(inputs)), l₍₁₎))
 
-    loss *= 1000000000
+    # loss *= 1000000000
 
     c₍₋₁₎ = max.(eps(eltype(inputs)), c₍₋₁₎)
     k₍₋₁₎ = max.(eps(eltype(inputs)), k₍₋₁₎)
@@ -453,12 +454,12 @@ function calculate_loss(variables₍₋₁₎::Matrix{R},
     l₍₁₎ = max.(eps(eltype(inputs)), l₍₁₎)
 
 
-    loss += sum(abs2, @.(c₍₀₎ ^ -σ - β * c₍₁₎ ^ -σ * ((α * z₍₁₎ * (k₍₀₎ / l₍₁₎) ^ (α - 1) + 1) - δ)))
-    loss += sum(abs2, @.(((ψ * c₍₀₎ ^ σ) / (1 - l₍₀₎) - w₍₀₎)))
-    loss += sum(abs2, @.((k₍₀₎ - ((((1 - δ) * k₍₋₁₎ + z₍₀₎ * k₍₋₁₎ ^ α * l₍₀₎ ^ (1 - α)) - g₍₀₎) - c₍₀₎))))
-    loss += sum(abs2, @.((w₍₀₎ - z₍₀₎ * (1 - α) * (k₍₋₁₎ / l₍₀₎) ^ α)))
-    loss += sum(abs2, @.((z₍₀₎ - ((1 - ρᶻ) + ρᶻ * z₍₋₁₎ + σᶻ * ϵᶻ₍ₓ₎))))
-    loss += sum(abs2, @.((g₍₀₎ - ((1 - ρᵍ) * ḡ + ρᵍ * g₍₋₁₎ + σᵍ * ϵᵍ₍ₓ₎))))
+    loss += sum(loss_func, @.(c₍₀₎ ^ -σ - β * c₍₁₎ ^ -σ * ((α * z₍₁₎ * (k₍₀₎ / l₍₁₎) ^ (α - 1) + 1) - δ)))
+    loss += sum(loss_func, @.(((ψ * c₍₀₎ ^ σ) / (1 - l₍₀₎) - w₍₀₎)))
+    loss += sum(loss_func, @.((k₍₀₎ - ((((1 - δ) * k₍₋₁₎ + z₍₀₎ * k₍₋₁₎ ^ α * l₍₀₎ ^ (1 - α)) - g₍₀₎) - c₍₀₎))))
+    loss += sum(loss_func, @.((w₍₀₎ - z₍₀₎ * (1 - α) * (k₍₋₁₎ / l₍₀₎) ^ α)))
+    loss += sum(loss_func, @.((z₍₀₎ - ((1 - ρᶻ) + ρᶻ * z₍₋₁₎ + σᶻ * ϵᶻ₍ₓ₎))))
+    loss += sum(loss_func, @.((g₍₀₎ - ((1 - ρᵍ) * ḡ + ρᵍ * g₍₋₁₎ + σᵍ * ϵᵍ₍ₓ₎))))
 
     return loss
 end
@@ -476,6 +477,8 @@ shock_grid = Float32.(shock_grid)
 
 
 
+
+n_gradient_evals = 20000
 
 intermediate_layers = [Dense(n_hidden, n_hidden, act) for i in 1:n_layers]
 neural_net = Chain( Dense(n_inputs, n_hidden), intermediate_layers..., Dense(n_hidden, n_vars)) #
@@ -503,6 +506,36 @@ elseif schedule == :exp
 elseif schedule == :poly
     eta_sched = ParameterSchedulers.Stateful(Poly(start = lr_start, degree = 3, max_iter = n_epochs * n_batches))
 end
+
+
+
+
+train_loader_nonlin = Flux.DataLoader((inputs, variables_scale, variables_bias, calibration_parameters), batchsize = size(inputs,2), shuffle = true)
+
+(inp, var_scale, var_bias, calib_pars)  =  collect(train_loader_nonlin)[1]
+variables₍₋₁₎ = inp[1:n_vars,:] * scaling_factor .* var_scale .+ var_bias
+
+shocks₍ₓ₎ = inp[n_vars+1:n_vars+n_shocks,:]
+
+normalised_parameters = inp[n_vars+n_shocks+1:n_vars+n_shocks+n_model_parameters,:]
+
+model_parameters = (normalised_parameters / Float32(sqrt(12)) .+ 0.5f0) .* Float32.(bounds_range) .+ Float32.(lower_bounds_par)
+
+normalised_variables₍₀₎ = neural_net(inp)
+
+variables₍₀₎ = normalised_variables₍₀₎ * scaling_factor .* var_scale .+ var_bias
+
+normalised_variables₍₁₎ = neural_net(vcat(normalised_variables₍₀₎, repeat(randn(Float32,2),1,size(inp,2)), normalised_parameters))
+
+for shck in eachrow(shock_grid)
+    normalised_variables₍₁₎ += neural_net(vcat(normalised_variables₍₀₎, repeat(shck,1,size(inp,2)), normalised_parameters))
+end
+
+variables₍₁₎ = normalised_variables₍₁₎ / (size(shock_grid,1) + 1) * scaling_factor .* var_scale .+ var_bias
+
+sqrt(calculate_loss(variables₍₋₁₎, variables₍₀₎, variables₍₁₎, shocks₍ₓ₎, model_parameters, calib_pars, abs2) / length(variables₍₀₎))
+
+
 
 start_time = time()
 losses = []
@@ -542,7 +575,7 @@ for epoch in 1:n_epochs
 
         push!(losses, lss)  # logging, outside gradient context
 
-        if length(losses) % (n_gradient_evals ÷ 100) == 0 && length(losses) > (n_gradient_evals ÷ 100)  println("Epoch: $epoch - Gradient calls: $(length(losses)) - Loss: $(sum(losses[end-(n_gradient_evals ÷ 100):end])/(n_gradient_evals ÷ 100)) - η: $(optim.layers[1].weight.rule.eta)") end
+        if length(losses) % (n_gradient_evals ÷ 100) == 0 && length(losses) > (n_gradient_evals ÷ 100)  println("Epoch: $epoch/$n_epochs - Gradient calls: $(length(losses))/$n_gradient_evals - Loss: $(sum(losses[end-(n_gradient_evals ÷ 100):end])/(n_gradient_evals ÷ 100))") end # - η: $(optim.layers[1].weight.rule.eta)") end
     end
 end
 
@@ -551,12 +584,12 @@ elapsed_time = end_time - start_time
 
 relnorm = norm(outputs - neural_net(inputs)) / norm(outputs)
 
-                                        push!(results,[lr_start,lr_end,activation,batchsize,n_epochs,n_hidden, n_layers,schedule, optimiser, elapsed_time, sum(losses[end-500:end])/(500), relnorm])
-                                        println("Finished $(results[end])")
-                                    end
-                                end
-                            end
-                        end
+                        #                 push!(results,[lr_start,lr_end,activation,batchsize,n_epochs,n_hidden, n_layers,schedule, optimiser, elapsed_time, sum(losses[end-500:end])/(500), relnorm])
+                        #                 println("Finished $(results[end])")
+                        #             end
+                        #         end
+                        #     end
+                        # end
                 # end
         #     end
         # end
