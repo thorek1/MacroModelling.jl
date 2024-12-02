@@ -2437,7 +2437,7 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
                                                             lbs, 
                                                             ubs,
                                                             solver_parameters,
-                                                            # fail_fast_solvers_only = fail_fast_solvers_only,
+                                                            fail_fast_solvers_only,
                                                             cold_start,
                                                             verbose)))
                                                             
@@ -3214,8 +3214,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     # range_length = [ 1, 2, 4, 8,16,32,64,128,1024]
                     scale = 1.0
                     # TODO: try have this run for 1000 and and use closest_solution based on the previous result and not on the cache. that way you dont crowd out good and diverse solutions in the cache and make sure he finds the other SS. rely on previous commit for way of implementing closest_solution
-                    while range_iters < (cold_start ? 1 : 500) && !(solution_error < 1e-12 && solved_scale == 1)
+                    while range_iters <= (cold_start ? 1 : 500) && !(solution_error < 1e-12 && solved_scale == 1)
                         range_iters += 1
+                        fail_fast_solvers_only = scale == 1.0 ? false : true
                         # println(range_iters)
                         # println(scale)
                         # println(solved_scale)
@@ -3502,8 +3503,8 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                                                                 lbs, 
                                                                 ubs,
                                                                 solver_parameters,
+                                                                fail_fast_solvers_only,
                                                                 cold_start,
-                                                                # fail_fast_solvers_only = fail_fast_solvers_only,
                                                                 verbose)))
         
         # push!(SS_solve_func,:(solution = block_solver_RD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)])))#, 
@@ -3626,7 +3627,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                     # range_length = [ 1, 2, 4, 8,16,32,64,128,1024]
                     scale = 1.0
 
-                    while range_iters < 500 && !(solution_error < 1e-12 && solved_scale == 1)
+                    while range_iters <= 500 && !(solution_error < 1e-12 && solved_scale == 1)
                         range_iters += 1
 
                     # for range_ in range_length
@@ -3893,13 +3894,13 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         lbs::Vector{Float64}, 
                         ubs::Vector{Float64},
                         parameters::Vector{solver_parameters},
+                        fail_fast_solvers_only::Bool,
                         cold_start::Bool,
                         verbose::Bool ;
                         tol::AbstractFloat = 1e-12,
                         # rtol::AbstractFloat = sqrt(eps()),
                         # timeout = 120,
                         # starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
-                        # fail_fast_solvers_only = true,
                         # verbose::Bool = false
                         )
 
@@ -3973,28 +3974,33 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
             end
         end
     else !cold_start
-        # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
-            for algo in [newton, levenberg_marquardt]
-                if sol_minimum > tol # || rel_sol_minimum > rtol
-                    if solved_yet continue end
-                    # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
-                    sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
-                                                                        total_iters, 
-                                                                        n_block, 
-                                                                        false, # verbose
-                                                                        guess, 
-                                                                        parameters[1],
-                                                                        false, # ext
-                                                                        false)                 
-                    if sol_minimum < tol # || rel_sol_minimum > rtol)
-                        solved_yet = true
+        for p in (fail_fast_solvers_only ? [parameters[1]] : unique(parameters)) #[1:3] # take unique because some parameters might appear more than once
+            for s in (fail_fast_solvers_only ? [false] : [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]) #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+                # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
+                for algo in [newton, levenberg_marquardt]
+                    if sol_minimum > tol # || rel_sol_minimum > rtol
+                        if solved_yet continue end
+                        # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
+                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
+                                                                            total_iters, 
+                                                                            n_block, 
+                                                                            false, # verbose
+                                                                            guess, 
+                                                                            p, 
+                                                                            # parameters[1],
+                                                                            false, # ext
+                                                                            # false)
+                                                                            s)                 
+                        if sol_minimum < tol # || rel_sol_minimum > rtol)
+                            solved_yet = true
 
-                        if verbose
-                            # println("Block: $n_block, - Solved with $algo using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum - $total_iters")
-                            println("Block: $n_block, - Solved with $algo using previous solution - $sol_minimum - $rel_sol_minimum - $total_iters")
-                        end
-                    end                      
-            #     end
+                            if verbose
+                                # println("Block: $n_block, - Solved with $algo using previous solution - $(indexin([ext],[false, true])[1])/2 - $ext - $sol_minimum - $rel_sol_minimum - $total_iters")
+                                println("Block: $n_block, - Solved with $algo using previous solution - $sol_minimum - $rel_sol_minimum - $total_iters")
+                            end
+                        end                      
+                    end
+                end
             end
         end
 
