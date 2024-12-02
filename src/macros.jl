@@ -1544,12 +1544,12 @@ macro parameters(𝓂,ex...)
                 # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
             end
             
-            if !found_solution
-                @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
-            end
-
             if !$silent 
                 println(round(time() - start_time, digits = 3), " seconds") 
+            end
+
+            if !found_solution
+                @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
             end
 
             mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
