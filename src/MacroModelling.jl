@@ -2716,7 +2716,7 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                             x.args[2] isa Symbol ? # have exp terms bound so they dont go to Inf
                                 x.args[2] ∈ vars_to_exclude[1] ?
                                 begin
-                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 700)) : (-1e12, 700)
+                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 600)) : (-1e12, 600)
                                     x 
                                 end :
                                 begin
@@ -2724,14 +2724,14 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                         replacement = unique_➕_eqs[x.args[2]]
                                     else
                                         if x.args[2] in vars_to_exclude[1]
-                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(700,max(-1e12,$(x.args[2])))))
+                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(600,max(-1e12,$(x.args[2])))))
                                             push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                         else
-                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(700,max(-1e12,$(x.args[2]))))) 
+                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(600,max(-1e12,$(x.args[2]))))) 
                                             push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                         end
                                         
-                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 700)) : (-1e12, 700)
+                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 600)) : (-1e12, 600)
                                         push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                         replacement = Symbol("➕" * sub(string(length(➕_vars))))
 
@@ -2753,14 +2753,14 @@ function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
                                             replacement = unique_➕_eqs[x.args[2]]
                                         else
                                             if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
-                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(700,max(-1e12,$(x.args[2])))))
+                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(600,max(-1e12,$(x.args[2])))))
                                                 push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                             else
-                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(700,max(-1e12,$(x.args[2])))))
+                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(600,max(-1e12,$(x.args[2])))))
                                                 push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
                                             end
                                             
-                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 700)) : (-1e12, 700)
+                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 600)) : (-1e12, 600)
                                             push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
                                             replacement = Symbol("➕" * sub(string(length(➕_vars))))
 

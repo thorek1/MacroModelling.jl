@@ -461,13 +461,13 @@ macro model(𝓂,ex...)
                         x.args[1] ∈ [:exp] ?
                             x.args[2] isa Symbol ? # have exp terms bound so they dont go to Inf
                                 begin
-                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 700)) : (-1e12, 700)
+                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 600)) : (-1e12, 600)
                                     x
                                 end :
                             x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # have exp terms bound so they dont go to Inf
                                     begin
-                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], -1e12), min(bounds[x.args[2].args[1]][2], 700)) : (-1e12, 700)
+                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], -1e12), min(bounds[x.args[2].args[1]][2], 600)) : (-1e12, 600)
                                         x
                                     end :
                                 x :
@@ -484,7 +484,7 @@ macro model(𝓂,ex...)
                                             replacement = unique_➕_eqs[x.args[2]]
                                         else
                                             lb = -1e12
-                                            ub = 700
+                                            ub = 600
 
                                             # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
                                             push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
