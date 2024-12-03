@@ -3977,7 +3977,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
         end
     else !cold_start
         for p in (fail_fast_solvers_only ? [parameters[1]] : unique(parameters)) #[1:3] # take unique because some parameters might appear more than once
-            for s in (fail_fast_solvers_only ? [false] : [p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]) #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+            for s in (fail_fast_solvers_only ? [false] : Any[false,p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]) #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                 # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
                 for algo in [newton, levenberg_marquardt]
                     if sol_minimum > tol # || rel_sol_minimum > rtol
@@ -3992,7 +3992,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                                                                             # parameters[1],
                                                                             false, # ext
                                                                             # false)
-                                                                            s)                 
+                                                                            s) 
                         if sol_minimum < tol # || rel_sol_minimum > rtol)
                             solved_yet = true
 
