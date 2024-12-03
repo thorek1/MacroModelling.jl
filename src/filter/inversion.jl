@@ -3440,9 +3440,9 @@ function filter_data_with_model(𝓂::ℳ,
 
         invjac = inv(jacdecomp)
     else
-        jacdecomp = ℒ.svd(jac)
+        # jacdecomp = ℒ.svd(jac)
         
-        invjac = inv(jacdecomp)
+        invjac = ℒ.pinv(jac)
     end
 
     for i in axes(data_in_deviations,2)
