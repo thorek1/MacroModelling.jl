@@ -39,7 +39,7 @@ function levenberg_marquardt(f::Function,
     @assert all(lower_bounds .< upper_bounds)
     @assert backtracking_order ∈ [2,3] "Backtracking order can only be quadratic (2) or cubic (3)."
 
-    max_linesearch_iterations = 1000
+    max_linesearch_iterations = 500
 
     function f̂(x) 
         f(undo_transform(x,transformation_level))  
@@ -222,25 +222,27 @@ function newton(f::Function,
     xtol = parameters.xtol
     rel_xtol = parameters.rel_xtol
     iterations = parameters.iterations
-    transformation_level = 0 # parameters.transformation_level
+    # transformation_level = 0 # parameters.transformation_level
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
     @assert all(lower_bounds .< upper_bounds)
 
-    function f̂(x) 
-        f(undo_transform(x,transformation_level))  
-    end
+    # function f̂(x) 
+    #     f(undo_transform(x,transformation_level))  
+    # end
 
-    upper_bounds  = transform(upper_bounds,transformation_level)
-    lower_bounds  = transform(lower_bounds,transformation_level)
+    # upper_bounds  = transform(upper_bounds,transformation_level)
+    # lower_bounds  = transform(lower_bounds,transformation_level)
 
-    new_guess = copy(transform(initial_guess,transformation_level))
+    # new_guess = copy(transform(initial_guess,transformation_level))
 
-    new_residuals = f̂(new_guess)
+    new_guess = copy(initial_guess)
 
-    ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
+    new_residuals = f(new_guess)
 
-    prep = 𝒟.prepare_jacobian(f̂, backend, new_guess)
+    ∇ = Array{T,2}(undef, length(new_guess), length(new_guess))
+
+    prep = 𝒟.prepare_jacobian(f, backend, new_guess)
 
     # largest_step = zero(T) + 1
     # largest_residual = zero(T) + 1
@@ -256,13 +258,13 @@ function newton(f::Function,
 
 	for iter in 1:iterations
     # while iter < iterations
-        𝒟.jacobian!(f̂, ∇, prep, backend, new_guess)
+        𝒟.jacobian!(f, ∇, prep, backend, new_guess)
 
         # old_residuals_norm = ℒ.norm(new_residuals)
 
         # old_residuals = copy(new_residuals)
 
-        new_residuals = f̂(new_guess)
+        new_residuals = f(new_guess)
 
         if !all(isfinite,new_residuals) 
             # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
@@ -370,9 +372,9 @@ function newton(f::Function,
     #     println("GN converged after $(iters[1]) iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")
     # end
 
-    best_guess = undo_transform(new_guess,transformation_level)
+    # best_guess = undo_transform(new_guess,transformation_level)
     
-    return best_guess, (iters[1], iters[2], rel_xtol_reached, new_residuals_norm)
+    return new_guess, (iters[1], iters[2], rel_xtol_reached, new_residuals_norm)
 end
 
 
