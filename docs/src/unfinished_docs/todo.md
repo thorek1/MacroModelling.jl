@@ -3,12 +3,14 @@
 ## High priority
 
 - [ ] ss transition by entering new parameters at given periods
+- [ ] higher order estimation should start from mean not the stochastic steady state as the mean is the most likely starting point
+- [ ] large models will need functions to be compiled individually as done for higher order; when tackling that, also separate steady state related equations from the steady state, so that speed issue is addresses due to replacing parameters with the steady state equations from the parameter block; also creat non allocating (residuals) steady state function
 - [ ] allow to define y[ss] = 1 in parameters block
 - [ ] check tols throughout. adopt max(abs,rel*norm) tols
 - [ ] fix presample period for higher order estim
 - [ ] newton SS solver once sol was found
 - [ ] redo diffs (DiffInt or ForwardDiff or FastDiff)
-- [ ] swtich from sympy to Symbolics
+- [ ] switch from sympy to Symbolics
 - [ ] optimize second order estim with SW07 or NAWM
 - [ ] optimize third order with smaller model
 - [ ] add argument to plotting functions to replace names in plots (e.g input a dictionnary: Dict(:dinve => "Investment growth"))
