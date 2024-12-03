@@ -3191,6 +3191,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                     solver_parameters::Vector{solver_parameters})
                     initial_parameters = typeof(initial_parameters) == Vector{Float64} ? initial_parameters : ℱ.value.(initial_parameters)
 
+                    initial_parameters_tmp = copy(initial_parameters)
+
                     parameters = copy(initial_parameters)
                     params_flt = copy(initial_parameters)
                     
@@ -3198,7 +3200,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     closest_solution_init = 𝓂.NSSS_solver_cache[end]
                     
                     for pars in 𝓂.NSSS_solver_cache
-                        latest = sum(abs2,pars[end] - initial_parameters)
+                        copy!(initial_parameters_tmp, pars[end])
+
+                        ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
+
+                        latest = sum(abs2,initial_parameters_tmp)
                         if latest <= current_best
                             current_best = latest
                             closest_solution_init = pars
@@ -3233,7 +3239,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             closest_solution = 𝓂.NSSS_solver_cache[end]
 
                             for pars in 𝓂.NSSS_solver_cache
-                                latest = sum(abs2,pars[end] - initial_parameters)
+                                copy!(initial_parameters_tmp, pars[end])
+                                
+                                ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
+
+                                latest = sum(abs2,initial_parameters_tmp)
+
                                 if latest <= current_best
                                     current_best = latest
                                     closest_solution = pars
