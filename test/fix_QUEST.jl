@@ -199,3 +199,212 @@ end)
     #= /home/cdsw/Github/MacroModelling.jl/src/MacroModelling.jl:2398 =#
     return [-(➕₁₀ ^ (1 / (1 - SIGIME))) + exp(E_LPCP), -(➕₁₆ ^ SIGEXE) * ➕₁₇ ^ ALPHAX * (1 - SE) * exp(➕₂₈) + exp(E_LEXYN), -(➕₁₃ ^ SIGIME) * (1 - SE) * (exp(➕₂₉) + exp(➕₃₀) + exp(➕₃₁) + exp(➕₃₂)) * exp(➕₁₄) + exp(E_LIMYN), ➕₁₃ - exp(➕₁₂), ➕₉ - exp(E_LPMP), ➕₁₆ - exp(➕₁₅), (E_LPCP - E_LPMP) + ➕₁₄, (-SE + ➕₁₀) - ➕₉ ^ (1 - SIGIME) * (1 - SE), (-RHOPWPX * (ALPHAX * E_LER * SE - E_LPXP) + ➕₁₅) - (1 - RHOPWPX) * (ALPHAX * E_LER * SE - E_LPXP), ➕₁₁ - exp(E_LER), -(➕₁₁ ^ ALPHAX) * (GAMIFLAG * GAMPME * ((BETAE * ((E_PHIM * SFPME + E_PHIM * (1 - SFPME)) - GP0) - E_PHIM) + GP0) + 1) + exp(E_LPMP), (E_TBYN - exp(E_LEXYN)) + exp(E_LIMYN), (-RHOPCPM * (E_LPCP - E_LPMP) + ➕₁₂) - (1 - RHOPCPM) * (E_LPCP - E_LPMP)]
 end)
+
+
+
+
+
+
+
+
+
+4-element Vector{Any}:
+ RuntimeGeneratedFunctions.RuntimeGeneratedFunction{(:parameters_and_solved_vars, :guess), MacroModelling.var"#_RGF_ModTag", MacroModelling.var"#_RGF_ModTag", (0xb1d83a3f, 0x0ea0885e, 0xdf103142, 0xb0af54b7, 0xd8f8b1d0), Expr}(quote
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2391 =#
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2392 =#
+    E_GI = guess[1]
+    E_GIG = guess[2]
+    E_GK = guess[3]
+    E_GKG = guess[4]
+    E_GY = guess[5]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2393 =#
+    ALPHAE = parameters_and_solved_vars[1]
+    ALPHAGE = parameters_and_solved_vars[2]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2394 =#
+    E_GTFP = parameters_and_solved_vars[3]
+    E_PHIPI = parameters_and_solved_vars[4]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2396 =#
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2398 =#
+    return [((-ALPHAE * E_GTFP - E_GK * (1 - ALPHAE)) - E_GKG * (1 - ALPHAGE)) + E_GY, -E_GI + E_GIG, -E_GK + E_GY + E_PHIPI, E_GIG - E_GKG, E_GI - E_GK]
+end)
+ RuntimeGeneratedFunctions.RuntimeGeneratedFunction{(:parameters_and_solved_vars, :guess), MacroModelling.var"#_RGF_ModTag", MacroModelling.var"#_RGF_ModTag", (0xc1432651, 0x3d197534, 0x69fddcad, 0x88948d33, 0x4b65e72b), Expr}(quote
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2391 =#
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2392 =#
+    E_INOMW = guess[1]
+    E_PHIW = guess[2]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2393 =#
+    RII = parameters_and_solved_vars[1]
+    RIP = parameters_and_solved_vars[2]
+    RIX = parameters_and_solved_vars[3]
+    RPI = parameters_and_solved_vars[4]
+    RPP = parameters_and_solved_vars[5]
+    RPX = parameters_and_solved_vars[6]
+    GPW0 = parameters_and_solved_vars[7]
+    GYW0 = parameters_and_solved_vars[8]
+    E_EX_INOMW = parameters_and_solved_vars[9]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2394 =#
+    E_GYW = parameters_and_solved_vars[10]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2396 =#
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2398 =#
+    return [(((E_PHIW - GPW0) - RPI * (-E_EX_INOMW + E_INOMW)) - RPP * (E_PHIW - GPW0)) - RPX * (E_GYW - GYW0), (((-E_EX_INOMW * (1 - RII) - E_INOMW * RII) + E_INOMW) - RIP * (E_PHIW - GPW0)) - RIX * (E_GYW - GYW0)]
+end)
+ RuntimeGeneratedFunctions.RuntimeGeneratedFunction{(:parameters_and_solved_vars, :guess), MacroModelling.var"#_RGF_ModTag", MacroModelling.var"#_RGF_ModTag", (0x2be0d08d, 0x3e2d1c33, 0xb8f91a0d, 0xe8395989, 0xca13564f), Expr}(quote
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2391 =#
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2392 =#
+    E_BWRY = guess[1]
+    E_ETA = guess[2]
+    E_GCNLC = guess[3]
+    E_GE = guess[4]
+    E_GG = guess[5]
+    E_GUC = guess[6]
+    E_INOM = guess[7]
+    E_LCLCSN = guess[8]
+    E_LCNLCSN = guess[9]
+    E_LCSN = guess[10]
+    E_LGSN = guess[11]
+    E_LISN = guess[12]
+    E_LL = guess[13]
+    E_LL0 = guess[14]
+    E_LUCLCYN = guess[15]
+    E_LUCYN = guess[16]
+    E_LYGAP = guess[17]
+    E_LYKPPI = guess[18]
+    E_LYWR = guess[19]
+    E_PHI = guess[20]
+    E_PHIC = guess[21]
+    E_Q = guess[22]
+    E_R = guess[23]
+    E_TAXYN = guess[24]
+    E_TBYN = guess[25]
+    E_TRW = guess[26]
+    E_TW = guess[27]
+    E_UCAP = guess[28]
+    E_UCAP0 = guess[29]
+    E_VL = guess[30]
+    E_VLLC = guess[31]
+    E_WPHI = guess[32]
+    E_WS = guess[33]
+    ➕₁ = guess[34]
+    ➕₂ = guess[35]
+    ➕₃ = guess[36]
+    ➕₄ = guess[37]
+    ➕₅ = guess[38]
+    ➕₆ = guess[39]
+    ➕₇ = guess[40]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2393 =#
+    A2E = parameters_and_solved_vars[1]
+    GAMIE = parameters_and_solved_vars[2]
+    GAMI2E = parameters_and_solved_vars[3]
+    GAMPE = parameters_and_solved_vars[4]
+    GAMWE = parameters_and_solved_vars[5]
+    GSLAG = parameters_and_solved_vars[6]
+    GVECM = parameters_and_solved_vars[7]
+    HABE = parameters_and_solved_vars[8]
+    HABLE = parameters_and_solved_vars[9]
+    ILAGE = parameters_and_solved_vars[10]
+    KAPPAE = parameters_and_solved_vars[11]
+    RHOL0 = parameters_and_solved_vars[12]
+    RHOUCAP0 = parameters_and_solved_vars[13]
+    RPREME = parameters_and_solved_vars[14]
+    RPREMK = parameters_and_solved_vars[15]
+    SFPE = parameters_and_solved_vars[16]
+    SFWE = parameters_and_solved_vars[17]
+    SIGC = parameters_and_solved_vars[18]
+    SLC = parameters_and_solved_vars[19]
+    TINFE = parameters_and_solved_vars[20]
+    TR1E = parameters_and_solved_vars[21]
+    TYE1 = parameters_and_solved_vars[22]
+    WRLAG = parameters_and_solved_vars[23]
+    BETAE = parameters_and_solved_vars[24]
+    ALPHAE = parameters_and_solved_vars[25]
+    DELTAE = parameters_and_solved_vars[26]
+    SSC = parameters_and_solved_vars[27]
+    TAUE = parameters_and_solved_vars[28]
+    THETAE = parameters_and_solved_vars[29]
+    TP = parameters_and_solved_vars[30]
+    TRSN = parameters_and_solved_vars[31]
+    TVAT = parameters_and_solved_vars[32]
+    TW0 = parameters_and_solved_vars[33]
+    TW1 = parameters_and_solved_vars[34]
+    GFLAG = parameters_and_solved_vars[35]
+    TRFLAG = parameters_and_solved_vars[36]
+    TWFLAG = parameters_and_solved_vars[37]
+    SLCFLAG = parameters_and_solved_vars[38]
+    GAMIFLAG = parameters_and_solved_vars[39]
+    A1E = parameters_and_solved_vars[40]
+    OMEGE = parameters_and_solved_vars[41]
+    GSN = parameters_and_solved_vars[42]
+    GPCPI0 = parameters_and_solved_vars[43]
+    GP0 = parameters_and_solved_vars[44]
+    GPOP0 = parameters_and_solved_vars[45]
+    GY0 = parameters_and_solved_vars[46]
+    UCAP0 = parameters_and_solved_vars[47]
+    L0 = parameters_and_solved_vars[48]
+    E_EX_R = parameters_and_solved_vars[49]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2394 =#
+    E_GI = parameters_and_solved_vars[50]
+    E_GK = parameters_and_solved_vars[51]
+    E_GY = parameters_and_solved_vars[52]
+    E_INOMW = parameters_and_solved_vars[53]
+    E_LBGYN = parameters_and_solved_vars[54]
+    E_LIGSN = parameters_and_solved_vars[55]
+    E_LIK = parameters_and_solved_vars[56]
+    E_LOL = parameters_and_solved_vars[57]
+    E_PHIPI = parameters_and_solved_vars[58]
+    E_PHIW = parameters_and_solved_vars[59]
+    ➕₂₁ = parameters_and_solved_vars[60]
+    ➕₂₄ = parameters_and_solved_vars[61]
+    ➕₂₅ = parameters_and_solved_vars[62]
+    ➕₂₆ = parameters_and_solved_vars[63]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2396 =#
+    ➕₂₂ = min(700, max(-1.0e12, -E_LL))
+    ➕₂₃ = min(700, max(-1.0e12, -E_LYWR))
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2398 =#
+    return [(E_ETA + GAMIFLAG * GAMPE * ((BETAE * ((E_PHI * SFPE + E_PHI * (1 - SFPE)) - GP0) - E_PHI) + GP0) + TAUE) - 1, (E_GY + E_PHI) - E_WPHI, -E_GUC - SIGC * (((E_GY + E_PHI) - E_PHIC) - GY0), E_WS - exp(➕₅), ((((-E_TBYN - exp(E_LCSN)) - exp(E_LGSN)) - exp(➕₂₁)) - exp(E_LISN)) + 1, ((E_ETA * (1 - ALPHAE) * (1 - TP) * exp(E_LYKPPI) + E_Q * (((((-DELTAE - E_PHIPI) - E_R) + GPCPI0) - RPREMK) + 1)) - E_Q) - (1 - TP) * (A1E * (E_UCAP - UCAP0) + A2E * (E_UCAP - UCAP0) ^ 2), E_VLLC - (KAPPAE * OMEGE * ➕₂ ^ (KAPPAE - 1) * ➕₄ ^ (1 - SIGC)) / ➕₃ ^ SIGC, (-ALPHAE * (E_LL - E_LL0) + E_LYGAP) - (1 - ALPHAE) * (log(E_UCAP) - log(E_UCAP0)), (((E_GK - E_LIK) + E_LISN + E_LYKPPI) - GPCPI0) - GY0, (-E_UCAP * (1 - RHOUCAP0) - E_UCAP0 * RHOUCAP0) + E_UCAP0, (-E_BWRY * ((((-E_GY + E_INOM) - E_PHI) - GPOP0) + 1) + E_BWRY) - E_TBYN, -ALPHAE * E_ETA * (E_LOL + 1) * exp(➕₂₂) + exp(➕₂₃), (-SLC * SLCFLAG * exp(E_LCLCSN) - (-SLC * SLCFLAG + 1) * exp(E_LCNLCSN)) + exp(E_LCSN), (-E_INOM * ILAGE + E_INOM) - (1 - ILAGE) * (E_EX_R + E_LYGAP * TYE1 + GP0 + TINFE * (E_PHIC - GP0)), ((E_BWRY * RPREME - E_GE) + E_INOM) - E_INOMW, (((((E_TAXYN - E_TRW * exp(➕₅)) + E_WS * (E_TW + SSC) + TP * (1 - E_WS) + TVAT * exp(E_LCSN)) - (((-E_GY + E_R) - GPOP0) + 1) * exp(➕₂₄)) + exp(➕₂₄)) - exp(E_LGSN)) - exp(➕₂₁), -(➕₃ ^ (1 - SIGC)) / ➕₄ ^ SIGC + exp(E_LUCLCYN), E_ETA * (1 - ALPHAE) * exp(E_LYKPPI) - E_UCAP * (A1E + A2E * (E_UCAP * 2 - UCAP0 * 2)), ➕₁ - (-HABE / ((E_GCNLC - GY0) + 1) + 1) * exp(E_LCNLCSN), ((E_TAXYN - E_TRW * E_WS) - E_WS * ((-E_TW - SSC) + 1)) + (TVAT + 1) * exp(E_LCLCSN), E_VL - (KAPPAE * OMEGE * ➕₁ ^ (1 - SIGC) * ➕₂ ^ (KAPPAE - 1)) / ➕₃ ^ SIGC, -E_PHI + E_PHIC, (-E_LL * (1 - RHOL0) - E_LL0 * RHOL0) + E_LL0, E_TW - TW0 * (E_LYGAP * TW1 * TWFLAG + 1), ((E_GG - E_GY) - E_PHI) + E_PHIC, ((-E_Q + GAMI2E * ((E_GI - GPCPI0) - GY0)) - (GAMI2E * ((E_GI - GPCPI0) - GY0)) / (E_INOM + 1)) + GAMIE * ((((-DELTAE - GPCPI0) - GPOP0) - GY0) + exp(➕₂₅)) + 1, exp(E_LUCYN) - ➕₃ ^ (1 - SIGC) / ➕₁ ^ SIGC, -E_INOM + E_PHI + E_R, ((E_GCNLC - E_GY) - E_PHI) + E_PHIC, ➕₇ - ((THETAE - 1) * ((-E_TW - SSC) + 1) * exp(➕₂₃)) / (THETAE * (TVAT + 1) * ((E_GY - GY0) + 1)), (((BETAE * GAMIFLAG * GAMWE * (((E_WPHI - GP0) - GY0) - (1 - SFWE) * (E_PHI - GP0)) * exp(➕₂₃)) / THETAE - (GAMIFLAG * GAMWE * (((E_WPHI - GP0) - GY0) - (1 - SFWE) * (E_PHI - GP0)) * exp(➕₂₃)) / THETAE) + ➕₆ ^ (1 - WRLAG) * ➕₇ ^ WRLAG * (TVAT + 1)) - ((THETAE - 1) * ((-E_TW - SSC) + 1) * exp(➕₂₃)) / THETAE, (HABLE * exp(E_LL) + ➕₂) - exp(E_LL), (E_GE - E_PHI) + E_PHIW, (E_TRW - TR1E * TRFLAG * (L0 - exp(E_LL))) - TRSN, (OMEGE * ➕₂ ^ KAPPAE + ➕₃) - 1, ➕₆ - (E_VL * (1 - SLC) + E_VLLC * SLC) / (SLC * exp(E_LUCLCYN) + (1 - SLC) * exp(E_LUCYN)), ➕₄ - exp(E_LCLCSN), (((-E_GUC - E_INOM) + E_PHIC) - 1) + 1 / BETAE, ((E_GG - GFLAG * GVECM * (E_LGSN - log(➕₂₆))) - GSLAG * (E_GG - GY0)) - GY0, -E_LL + E_LYWR + ➕₅]
+end)
+ RuntimeGeneratedFunctions.RuntimeGeneratedFunction{(:parameters_and_solved_vars, :guess), MacroModelling.var"#_RGF_ModTag", MacroModelling.var"#_RGF_ModTag", (0x0a6bf057, 0x498d6a83, 0x053e55f2, 0xee545210, 0xa7b0e861), Expr}(quote
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2391 =#
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2392 =#
+    E_LER = guess[1]
+    E_LEXYN = guess[2]
+    E_LIMYN = guess[3]
+    E_LPCP = guess[4]
+    E_LPMP = guess[5]
+    ➕₁₀ = guess[6]
+    ➕₁₁ = guess[7]
+    ➕₁₂ = guess[8]
+    ➕₁₃ = guess[9]
+    ➕₁₄ = guess[10]
+    ➕₁₅ = guess[11]
+    ➕₁₆ = guess[12]
+    ➕₉ = guess[13]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2393 =#
+    GAMPME = parameters_and_solved_vars[1]
+    RHOPCPM = parameters_and_solved_vars[2]
+    RHOPWPX = parameters_and_solved_vars[3]
+    SE = parameters_and_solved_vars[4]
+    SFPME = parameters_and_solved_vars[5]
+    SIGEXE = parameters_and_solved_vars[6]
+    SIGIME = parameters_and_solved_vars[7]
+    ALPHAX = parameters_and_solved_vars[8]
+    BETAE = parameters_and_solved_vars[9]
+    GAMIFLAG = parameters_and_solved_vars[10]
+    GP0 = parameters_and_solved_vars[11]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2394 =#
+    E_LCSN = parameters_and_solved_vars[12]
+    E_LGSN = parameters_and_solved_vars[13]
+    E_LIGSN = parameters_and_solved_vars[14]
+    E_LISN = parameters_and_solved_vars[15]
+    E_LPXP = parameters_and_solved_vars[16]
+    E_PHIM = parameters_and_solved_vars[17]
+    E_TBYN = parameters_and_solved_vars[18]
+    ➕₁₇ = parameters_and_solved_vars[19]
+    ➕₂₈ = parameters_and_solved_vars[20]
+    ➕₂₉ = parameters_and_solved_vars[21]
+    ➕₃₀ = parameters_and_solved_vars[22]
+    ➕₃₁ = parameters_and_solved_vars[23]
+    ➕₃₂ = parameters_and_solved_vars[24]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2396 =#
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2398 =#
+    return [-(➕₁₁ ^ ALPHAX) * (GAMIFLAG * GAMPME * ((BETAE * ((E_PHIM * SFPME + E_PHIM * (1 - SFPME)) - GP0) - E_PHIM) + GP0) + 1) + exp(E_LPMP), (E_TBYN - exp(E_LEXYN)) + exp(E_LIMYN), -(➕₁₆ ^ SIGEXE) * ➕₁₇ ^ ALPHAX * (1 - SE) * exp(➕₂₈) + exp(E_LEXYN), -(➕₁₀ ^ (1 / (1 - SIGIME))) + exp(E_LPCP), ➕₁₁ - exp(E_LER), ➕₉ - exp(E_LPMP), (-RHOPWPX * (ALPHAX * E_LER * SE - E_LPXP) + ➕₁₅) - (1 - RHOPWPX) * (ALPHAX * E_LER * SE - E_LPXP), (-RHOPCPM * (E_LPCP - E_LPMP) + ➕₁₂) - (1 - RHOPCPM) * (E_LPCP - E_LPMP), -(➕₁₃ ^ SIGIME) * (1 - SE) * (exp(➕₂₉) + exp(➕₃₀) + exp(➕₃₁) + exp(➕₃₂)) * exp(➕₁₄) + exp(E_LIMYN), (E_LPCP - E_LPMP) + ➕₁₄, ➕₁₃ - exp(➕₁₂), ➕₁₆ - exp(➕₁₅), (-SE + ➕₁₀) - ➕₉ ^ (1 - SIGIME) * (1 - SE)]
+end)
