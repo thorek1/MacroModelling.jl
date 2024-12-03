@@ -39,7 +39,7 @@ function levenberg_marquardt(f::Function,
     @assert all(lower_bounds .< upper_bounds)
     @assert backtracking_order ∈ [2,3] "Backtracking order can only be quadratic (2) or cubic (3)."
 
-    max_linesearch_iterations = 500
+    max_linesearch_iterations = 600
 
     function f̂(x) 
         f(undo_transform(x,transformation_level))  
