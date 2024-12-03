@@ -197,9 +197,9 @@ function levenberg_marquardt(f::Function,
         # allow for norm increases (in both measures) as this can lead to the solution
         
         if largest_residual <= ftol || largest_step <= xtol || largest_relative_step <= rel_xtol
+            # println("LM Iteration: $iter; xtol ($xtol): $largest_step; ftol ($ftol): $largest_residual; rel_xtol ($rel_xtol): $largest_relative_step")
             break
             # else
-            #     println("Iteration: $iter; ftol: $largest_residual; rel_xtol: $largest_relative_step")
             # end
         end
     end
@@ -273,7 +273,26 @@ function newton(f::Function,
         end
         
         if new_residuals_norm < ftol || rel_xtol_reached < rel_xtol || guess_update_norm < xtol # || rel_ftol_reached < rel_ftol
-            # println("GN worked with $iter iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")# rel_ftol: $rel_ftol_reached")
+            new_guess_norm = ℒ.norm(new_guess)
+
+            old_residuals_norm = new_residuals_norm
+
+            new_residuals_norm = ℒ.norm(new_residuals)
+        
+            ∇̂ = ℒ.lu!(∇, check = false)
+        
+            ℒ.ldiv!(∇̂, new_residuals)
+
+            guess_update = new_residuals
+    
+            guess_update_norm = ℒ.norm(guess_update)
+    
+            ℒ.axpy!(-1, guess_update, new_guess)
+    
+            iters[1] += 1
+            iters[2] += 1
+
+            # println("GN worked with $(iter+1) iterations - xtol ($xtol): $guess_update_norm; ftol ($ftol): $new_residuals_norm; rel_xtol ($rel_xtol): $rel_xtol_reached")# rel_ftol: $rel_ftol_reached")
             break
         end
 
