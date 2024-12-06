@@ -185,7 +185,7 @@ SS(Smets_Wouters_2007, parameters = estimated_pars .=> estimated_par_vals, deriv
 
 # EA (no crdy)
 # optimal_taylor_coefficients = [0.935445005053725, 1.0500350793944067, 0.14728806935911198, 0.0]
-optimal_taylor_coefficients = [Dict(get_parameters(Smets_Wouters_2007, values = true))[i] for i in ["crr", "crpi", "cry"]]
+optimal_taylor_coefficients = [Dict(get_parameters(Smets_Wouters_2007, values = true))[i] for i in ["crpi", "cry", "crr"]]
 
 
 # out = get_statistics(Smets_Wouters_2007,   
@@ -221,7 +221,7 @@ function calculate_cb_loss(parameter_inputs,p; verbose = false)
     out = get_statistics(Smets_Wouters_2007,   
                     parameter_inputs,
                     parameters = [:crpi, :cry, :crr],#, :crdy],
-                    variance = [:ygap, :pinfobs, :drobs],
+                    variance = [:pinfobs, :ygap, :drobs],
                     algorithm = :first_order,
                     verbose = verbose)
 
@@ -232,10 +232,10 @@ end
 
 loss_function_wts = [.1,1]
 
-regularisation = [1e-7, 1e-5, 1e-5]  #,1e-5]
+regularisation = [1e-5, 1e-5, 1e-5]  #,1e-5]
 
 function find_weights(loss_function_weights, optimal_taylor_coefficients)
-    sum(abs2, ForwardDiff.gradient(x->calculate_cb_loss(x, (vcat(1,loss_function_weights), regularisation)), optimal_taylor_coefficients)) #, 0.05076653598648485])
+    sum(abs2, ForwardDiff.gradient(x->calculate_cb_loss(x, (vcat(1,loss_function_weights), regularisation * 0)), optimal_taylor_coefficients)) #, 0.05076653598648485])
 end
 
 find_weights(loss_function_wts, optimal_taylor_coefficients)
@@ -246,17 +246,17 @@ ubs = fill(1e36,2)
 
 f = OptimizationFunction((x,p)-> find_weights(x,p), AutoForwardDiff())
 # f = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
-prob = OptimizationProblem(f, fill(0.5,2), optimal_taylor_coefficients, ub = ubs, lb = lbs)
+prob = OptimizationProblem(f, fill(10.5,2), optimal_taylor_coefficients, ub = ubs, lb = lbs)
 
 # Import a solver package and solve the optimization problem
 
-# sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000) # this seems to achieve best results
+sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000) # this seems to achieve best results
 
 # sol = solve(prob, NLopt.LN_PRAXIS(), maxiters = 10000) # this seems to achieve best results
 
 sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
 
-# sol = solve(prob, NLopt.LD_TNEWTON(), maxiters = 10000) # this seems to achieve best results
+sol = solve(prob, NLopt.LD_TNEWTON(), maxiters = 10000) # this seems to achieve best results
 
 # sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LD_TNEWTON(), maxiters = 1000) # this seems to achieve best results
 
