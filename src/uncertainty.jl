@@ -138,10 +138,16 @@ include("../models/Smets_Wouters_2007 copy.jl")
 # US SW07 sample estims
 estimated_par_vals = [0.4818650901000989, 0.24054470291311028, 0.5186956692202958, 0.4662413867655003, 0.23136135922950385, 0.13132950287219664, 0.2506090809487915, 0.9776707755474057, 0.2595790622654468, 0.9727418060187103, 0.687330720531337, 0.1643636762401503, 0.9593771388356938, 0.9717966717403557, 0.8082505346152592, 0.8950643861525535, 5.869499350284732, 1.4625899840952736, 0.724649200081708, 0.7508616008157103, 2.06747381157293, 0.647865359908012, 0.585642549132298, 0.22857733002230182, 0.4476375712834215, 1.6446238878581076, 2.0421854715489007, 0.8196744223749656, 0.10480818163546246, 0.20376610336806866, 0.7312462829038883, 0.14032972276989308, 1.1915345520903131, 0.47172181998770146, 0.5676468533218533, 0.2071701728019517]
 
+estimated_pars = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+
+SS(Smets_Wouters_2007, parameters = estimated_pars .=> estimated_par_vals, derivatives = false)
+
 # EA long sample
 # estimated_par_vals = [0.5508386670366793, 0.1121915320498811, 0.4243377356726877, 1.1480212757573225, 0.15646733079230218, 0.296296659613257, 0.5432042443198039, 0.9902290087557833, 0.9259443641489151, 0.9951289612362465, 0.10142231358290743, 0.39362463001158415, 0.1289134188454152, 0.9186217201941123, 0.335751074044953, 0.9679659067034428, 7.200553443953002, 1.6027080351282608, 0.2951432248740656, 0.9228560491337098, 1.4634253784176727, 0.9395327544812212, 0.1686071783737509, 0.6899027652288519, 0.8752458891177585, 1.0875693299513425, 1.0500350793944067, 0.935445005053725, 0.14728806935911198, 0.05076653598648485, 0.6415024921505285, 0.2033331251651342, 1.3564948300498199, 0.37489234540710886, 0.31427612698706603, 0.12891275085926296]
 
 estimated_pars = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+
+SS(Smets_Wouters_2007, parameters = estimated_pars .=> estimated_par_vals, derivatives = false)
 
 # EA tighter priors (no crdy)
 estimated_par_vals = [0.5155251475194788, 0.07660166839374086, 0.42934249231657745, 1.221167691146145, 0.7156091225215181, 0.13071182824630584, 0.5072333270577154, 0.9771677130980795, 0.986794686927924, 0.9822502018161883, 0.09286109236460689, 0.4654804216926021, 0.9370552043932711, 0.47725222696887853, 0.44661470121418184, 0.4303294544434745, 3.6306838940222996, 0.3762913949270054, 0.5439881753546603, 0.7489991629811795, 1.367786474803364, 0.8055157457796492, 0.40545058009366347, 0.10369929978953055, 0.7253632750136628, 0.9035647768098533, 2.7581458138927886, 0.6340306336303874, 0.0275348491078362, 0.43733563413301674, 0.34302913866206625, -0.05823832790219527, 0.29395331895770577, 0.2747958016561462, 0.3114891537064354, 0.030983938890070825, 4.7228912586862375, 0.1908504262397911, 3.7626464596678604, 18.34766525498524]
@@ -165,25 +171,29 @@ SS(Smets_Wouters_2007, parameters = estimated_pars .=> estimated_par_vals, deriv
 # SS(Smets_Wouters_2007, parameters = :crdy => 0, derivatives = false)
 
 # loss_function_weights = [1, 1, .1]
-# get_parameters(Smets_Wouters_2007, values = true)
+
 # lbs = [eps(),eps(),eps()] #,eps()]
 # ubs = [1-eps(), 1e6, 1e6] #, 1e6]
 # initial_values = [0.8762 ,1.488 ,0.0593] # ,0.2347]
 # regularisation = [1e-7,1e-5,1e-5]  #,1e-5]
 
 # US
-optimal_taylor_coefficients = [0.8196744223749656, 2.0421854715489007, 0.10480818163546246, 0.20376610336806866]
+# optimal_taylor_coefficients = [0.8196744223749656, 2.0421854715489007, 0.10480818163546246, 0.20376610336806866]
 
 # EA
 # optimal_taylor_coefficients = [0.935445005053725, 1.0500350793944067, 0.14728806935911198, 0.05076653598648485]
 
+# EA (no crdy)
+# optimal_taylor_coefficients = [0.935445005053725, 1.0500350793944067, 0.14728806935911198, 0.0]
+optimal_taylor_coefficients = [Dict(get_parameters(Smets_Wouters_2007, values = true))[i] for i in ["crr", "crpi", "cry"]]
 
-out = get_statistics(Smets_Wouters_2007,   
-                    optimal_taylor_coefficients,
-                    parameters = [:crr, :crpi, :cry, :crdy],
-                    variance = [:ygap, :pinfobs, :drobs],
-                    algorithm = :first_order,
-                    verbose = true)
+
+# out = get_statistics(Smets_Wouters_2007,   
+#                     optimal_taylor_coefficients,
+#                     parameters = [:crr, :crpi, :cry],#, :crdy],
+#                     variance = [:ygap, :pinfobs, :drobs],
+#                     algorithm = :first_order,
+#                     verbose = true)
 
 
 # out[:variance]' * loss_function_weights + abs2.(initial_values)' * regularisation
@@ -210,7 +220,7 @@ function calculate_cb_loss(parameter_inputs,p; verbose = false)
     # println(parameter_inputs)
     out = get_statistics(Smets_Wouters_2007,   
                     parameter_inputs,
-                    parameters = [:crr, :crpi, :cry],#, :crdy],
+                    parameters = [:crpi, :cry, :crr],#, :crdy],
                     variance = [:ygap, :pinfobs, :drobs],
                     algorithm = :first_order,
                     verbose = verbose)
@@ -218,43 +228,43 @@ function calculate_cb_loss(parameter_inputs,p; verbose = false)
     return out[:variance]' * loss_function_weights + abs2.(parameter_inputs)' * regularisation
 end
 
-optimal_taylor_coefficients = [0.824085387718046, 1.9780022172135707, 4.095695818850862]
+# optimal_taylor_coefficients = [0.824085387718046, 1.9780022172135707, 4.095695818850862]
 
-loss_function_weights = [1, .1,1]
+loss_function_wts = [.1,1]
 
-regularisation = [1e-7,1e-5,1e-5]  #,1e-5]
+regularisation = [1e-7, 1e-5, 1e-5]  #,1e-5]
 
 function find_weights(loss_function_weights, optimal_taylor_coefficients)
-    sum(abs2, ForwardDiff.gradient(x->calculate_cb_loss(x, (loss_function_weights / sum(loss_function_weights), regularisation * 100)), optimal_taylor_coefficients)) #, 0.05076653598648485])
+    sum(abs2, ForwardDiff.gradient(x->calculate_cb_loss(x, (vcat(1,loss_function_weights), regularisation)), optimal_taylor_coefficients)) #, 0.05076653598648485])
 end
 
-find_weights(loss_function_weights, optimal_taylor_coefficients)
+find_weights(loss_function_wts, optimal_taylor_coefficients)
 
 # get_parameters(Smets_Wouters_2007, values = true)
-lbs = fill(0.0,3)
-ubs = fill(1.0,3)
+lbs = fill(0.0,2)
+ubs = fill(1e36,2)
 
 f = OptimizationFunction((x,p)-> find_weights(x,p), AutoForwardDiff())
 # f = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
-prob = OptimizationProblem(f, fill(.35,3), optimal_taylor_coefficients, ub = ubs, lb = lbs)
+prob = OptimizationProblem(f, fill(0.5,2), optimal_taylor_coefficients, ub = ubs, lb = lbs)
 
 # Import a solver package and solve the optimization problem
 
-sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000) # this seems to achieve best results
+# sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000) # this seems to achieve best results
 
-sol = solve(prob, NLopt.LN_PRAXIS(), maxiters = 10000) # this seems to achieve best results
+# sol = solve(prob, NLopt.LN_PRAXIS(), maxiters = 10000) # this seems to achieve best results
 
 sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
 
-sol = solve(prob, NLopt.LD_TNEWTON(), maxiters = 10000) # this seems to achieve best results
+# sol = solve(prob, NLopt.LD_TNEWTON(), maxiters = 10000) # this seems to achieve best results
 
-sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LD_LBFGS(), maxiters = 1000) # this seems to achieve best results
+# sol = solve(prob, NLopt.G_MLSL_LDS(), local_method = NLopt.LD_TNEWTON(), maxiters = 1000) # this seems to achieve best results
 
-consistent_optimal_weights = sol.u ./ sol.u[1]
+# consistent_optimal_weights = sol.u 
 
-find_weights(consistent_optimal_weights, optimal_taylor_coefficients)
+find_weights(sol.u, optimal_taylor_coefficients)
 
-ForwardDiff.gradient(x->calculate_cb_loss(x, (sol.u ./ sol.u[1], regularisation * 100)), optimal_taylor_coefficients)
+ForwardDiff.gradient(x->calculate_cb_loss(x, (vcat(1,sol.u), regularisation * 0)), optimal_taylor_coefficients)
 
 
 
