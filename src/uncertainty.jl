@@ -33,51 +33,6 @@ SS(Smets_Wouters_2007, parameters = estimated_pars .=> estimated_par_vals, deriv
 
 # find optimal loss coefficients
 # Problem definition, find the loss coefficients such that the derivatives of the Taylor rule coefficients wrt the loss are 0
-# lbs = [0,0]
-# ubs = [1e6, 1e6] #, 1e6]
-# initial_values = [.3 ,.3] # ,0.2347]
-
-# var = get_variance(Smets_Wouters_2007, derivatives = false)
-
-
-
-# Define the given vector
-# SS(Smets_Wouters_2007, parameters = :crdy => 0, derivatives = false)
-
-# loss_function_weights = [1, 1, .1]
-
-# lbs = [eps(),eps(),eps()] #,eps()]
-# ubs = [1-eps(), 1e6, 1e6] #, 1e6]
-# initial_values = [0.8762 ,1.488 ,0.0593] # ,0.2347]
-# regularisation = [1e-7,1e-5,1e-5]  #,1e-5]
-
-# optimal_taylor_coefficients = [Dict(get_parameters(Smets_Wouters_2007, values = true))[i] for i in ["crpi", "cry", "crr"]]
-
-# out = get_statistics(Smets_Wouters_2007,   
-#                     optimal_taylor_coefficients,
-#                     parameters = [:crr, :crpi, :cry],#, :crdy],
-#                     variance = [:ygap, :pinfobs, :drobs],
-#                     algorithm = :first_order,
-#                     verbose = true)
-
-
-# out[:variance]' * loss_function_weights + abs2.(initial_values)' * regularisation
-
-
-
-
-
-# function calculate_loss(loss_function_weights,regularisation; verbose = false)
-#     out = get_statistics(Smets_Wouters_2007,   
-#                     [0.824085387718046, 1.9780022172135707, 4.095695818850862],
-#                     # [0.935445005053725, 1.0500350793944067, 0.14728806935911198, 0.05076653598648485, 0],
-#                     parameters = [:crr, :crpi, :cry, :crdy],
-#                     variance = [:ygap, :pinfobs, :drobs],
-#                     algorithm = :first_order,
-#                     verbose = verbose)
-
-#     return out[:variance]' * loss_function_weights + abs2.([0.824085387718046, 1.9780022172135707, 4.095695818850862,0])' * regularisation
-# end
 
 optimal_taylor_coefficients = [Dict(get_parameters(Smets_Wouters_2007, values = true))[i] for i in ["crpi", "cry", "crr"]]
 
@@ -277,6 +232,156 @@ for (nm,vl) in zip(stds,std_vals)
     savefig(p,"OSR_$(nm)_contour.png")
     ii += 1
 end
+
+
+
+
+## Analysis of other sources of uncertainty
+include("../models/Smets_Wouters_2007_ext.jl")
+
+model = Smets_Wouters_2007_ext
+
+
+# EA tighter priors (no crdy)
+estimated_par_vals = [0.5155251475194788, 0.07660166839374086, 0.42934249231657745, 1.221167691146145, 0.7156091225215181, 0.13071182824630584, 0.5072333270577154, 0.9771677130980795, 0.986794686927924, 0.9822502018161883, 0.09286109236460689, 0.4654804216926021, 0.9370552043932711, 0.47725222696887853, 0.44661470121418184, 0.4303294544434745, 3.6306838940222996, 0.3762913949270054, 0.5439881753546603, 0.7489991629811795, 1.367786474803364, 0.8055157457796492, 0.40545058009366347, 0.10369929978953055, 0.7253632750136628, 0.9035647768098533, 2.7581458138927886, 0.6340306336303874, 0.0275348491078362, 0.43733563413301674, 0.34302913866206625, -0.05823832790219527, 0.29395331895770577, 0.2747958016561462, 0.3114891537064354, 0.030983938890070825, 4.7228912586862375, 0.1908504262397911, 3.7626464596678604, 18.34766525498524]
+
+estimated_pars = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa, :ctou, :clandaw, :cg, :curvp, :curvw]
+
+SS(model, parameters = :crdy => 0, derivatives = false)
+
+SS(model, parameters = estimated_pars .=> estimated_par_vals, derivatives = false)
+
+
+optimal_taylor_coefficients = [Dict(get_parameters(model, values = true))[i] for i in ["crpi", "cry", "crr"]]
+
+taylor_coef_stds = [0.2739, 0.0113, 0.0467]
+
+
+function calculate_cb_loss(taylor_parameter_inputs,p; verbose = false)
+    loss_function_weights, regularisation, model = p
+
+    out = get_statistics(model,   
+                    taylor_parameter_inputs,
+                    parameters = [:crpi, :cry, :crr],#, :crdy],
+                    variance = [:pinfobs, :ygap, :drobs],
+                    algorithm = :first_order,
+                    verbose = verbose)
+
+    return out[:variance]' * loss_function_weights + sum(abs2, taylor_parameter_inputs) * regularisation
+end
+
+function find_weights(loss_function_weights_regularisation, p)
+    optimal_taylor_coefficients, model = p
+    loss_function_weights = loss_function_weights_regularisation[1:2]
+    regularisation = 1 / loss_function_weights_regularisation[3]
+    sum(abs2, ForwardDiff.gradient(x->calculate_cb_loss(x, (vcat(1,loss_function_weights), regularisation, model)), optimal_taylor_coefficients))
+end
+
+lbs = fill(0.0, 3)
+ubs = fill(1e6, 3)
+
+f = OptimizationFunction((x,p)-> find_weights(x,p), AutoForwardDiff())
+
+prob = OptimizationProblem(f, fill(0.5, 3), (optimal_taylor_coefficients, model), ub = ubs, lb = lbs)
+
+sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000)
+
+
+
+
+loss_function_weights = vcat(1, copy(sol.u[1:2]))
+
+lbs = [eps(),eps(),eps()] #,eps()]
+ubs = [1e6, 1e6, 1] #, 1e6]
+# initial_values = [0.8762 ,1.488 ,0.0593] # ,0.2347]
+regularisation = 1 / copy(sol.u[3])  #,1e-5]
+
+f = OptimizationFunction(calculate_cb_loss, AutoZygote())
+
+prob = OptimizationProblem(f, optimal_taylor_coefficients, (loss_function_weights, regularisation, model), ub = ubs, lb = lbs)
+
+sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+
+
+
+# std cprobw: 0.08
+# std cprobp: 0.0321
+
+stds = [:σ_pinf, :σ_cprobp, :σ_cprobw]
+std_vals = [0.015, 0.0321, 0.08]
+
+stdderivs = get_std(model)#, parameters = [:crr, :crpi, :cry, :crdy] .=> vcat(sol.u,0))
+stdderivs([:ygap, :pinfobs, :drobs, :robs],vcat(stds,[:crr, :crpi, :cry]))
+
+
+
+k_range = .45:.025:.55 # [.5] # 
+n_σ_range = 10
+coeff = zeros(length(k_range), length(stds), n_σ_range, 7);
+
+ii = 1
+for (nm,vl) in zip(stds,std_vals)
+    for (l,k) in enumerate(k_range)
+        σ_range = range(0 * vl, .05 * vl, length = n_σ_range)
+
+        combined_loss_function_weights = vcat(1,k * loss_function_weights_upper[1:2] + (1-k) * loss_function_weights_lower[1:2])
+
+        prob = OptimizationProblem(f, optimal_taylor_coefficients, (combined_loss_function_weights, regularisation, model), ub = ubs, lb = lbs)
+
+        for (ll,σ) in enumerate(σ_range)
+            SS(model, parameters = nm => σ, derivatives = false)
+            
+            # soll = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+            
+            soll = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000) # this seems to achieve best results
+            
+            coeff[l,ii,ll,:] = vcat(combined_loss_function_weights,σ,soll.u)
+
+            println("$nm $σ $(soll.objective)")
+        end
+
+        
+        SS(model, parameters = nm => 0, derivatives = false)
+        
+        # display(p)
+    end
+    
+    plots = []
+    push!(plots, surface(vec(coeff[:,ii,:,3]), vec(coeff[:,ii,:,4]), vec(coeff[:,ii,:,7]), label = "", xlabel = "Loss weight: Δr", ylabel = "$nm", zlabel = "crr", colorbar=false))
+    push!(plots, surface(vec(coeff[:,ii,:,3]), vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,7]) .* coeff[:,ii,:,5]), label = "", xlabel = "Loss weight: Δr", ylabel = "$nm", zlabel = "(1 - crr) * crpi", colorbar=false))
+    push!(plots, surface(vec(coeff[:,ii,:,3]), vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,7]) .* coeff[:,ii,:,6]), label = "", xlabel = "Loss weight: Δr", ylabel = "$nm", zlabel = "(1 - crr) * cry", colorbar=false))
+
+    p = plot(plots...) # , plot_title = string(nm))
+    savefig(p,"OSR_$(nm)_surface_ext.png")
+
+    # plots = []
+    # push!(plots, plot(vec(coeff[:,ii,:,4]), vec(coeff[:,ii,:,7]), label = "", xlabel = "$nm", ylabel = "crr", colorbar=false))
+    # push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,7]) .* coeff[:,ii,:,5]), label = "", xlabel = "$nm", ylabel = "(1 - crr) * crpi", colorbar=false))
+    # push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,7]) .* coeff[:,ii,:,6]), label = "", xlabel = "$nm", ylabel = "(1 - crr) * cry", colorbar=false))
+    
+    # p = plot(plots...) # , plot_title = string(nm))
+    # savefig(p,"OSR_$(nm)_ext.png")
+
+    ii += 1
+end
+
+
+# look at shock decomposition for pandemic period
+using StatsPlots
+include("../test/download_EA_data.jl")
+
+plot_shock_decomposition(Smets_Wouters_2007, data[[1,2,3,4,6,7,8],78:end], variables = [:ygap,:y,:pinfobs,:robs], plots_per_page = 1, filter = :kalman, smooth = true)
+
+shck_dcmp = get_shock_decomposition(Smets_Wouters_2007, data[[1,2,3,4,6,7,8],78:end], initial_values = state20q1)#, 
+# filter = :kalman, smooth = false)
+
+
+shck_dcmp([:ygap,:pinfobs,:robs,:y],:,118:125)
+
+# pandemic shock interepreted as mix of productivity and cost push shock
+# inflation surge driven by cost push and mon. pol. shocks
+
+# estimate up to start of pandemic and compare stds to gauge difference
 
 
 xs = [string("x", i) for i = 1:10]
