@@ -117,13 +117,17 @@ end
 
 ## Load data
 if geo == "EA"
-    include("download_EA_data.jl") # 1970Q4 - 2024Q2
+    include("download_EA_data.jl") # 1990Q1 - 2024Q2
     if smple == "original"
         # subset observables in data
         sample_idx = 78:size(data,2) # 1990Q1-2024Q4
 
         data = data[:, sample_idx]
-    # elseif smple == "full" # 1970Q4 - 2024Q2
+    elseif smple == "no_pandemic" # 1990Q1 - 2020Q1
+        # subset observables in data
+        sample_idx = 78:198 # 1990Q1-2020Q1
+
+        data = data[:, sample_idx]
     end
 elseif geo == "US"
     if smple == "original"
