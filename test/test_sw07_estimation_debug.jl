@@ -8,7 +8,7 @@
 # rewrite inversion_filter to take into account constrained optim problem - done
 
 
-using Revise
+# using Revise
 using MacroModelling
 using Zygote
 import Turing
@@ -18,7 +18,7 @@ import Turing: NUTS, sample, logpdf, AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
-
+# import InferenceReport
 import Dates
 using Serialization
 using StatsPlots
@@ -30,11 +30,11 @@ println("Threads used: ", Threads.nthreads())
 println("BLAS threads used: ", BLAS.get_num_threads())
 
 geo = try ENV["geo"] catch 
-    "US" 
+    "EA" 
 end
 
 priors = try ENV["priors"] catch 
-    "original" 
+    "open" 
 end
 
 smple = try ENV["sample"] catch
@@ -50,7 +50,7 @@ fltr = try Symbol(ENV["filter"]) catch
 end
 
 algo = try Symbol(ENV["algorithm"]) catch 
-    :first_order
+    :pruned_third_order
 end 
 
 smpls = try Meta.parse(ENV["samples"]) catch 
@@ -59,6 +59,10 @@ end
 
 labor = try ENV["labor"] catch 
     "level" 
+end 
+
+sv = try Meta.parse(ENV["sv"]) catch 
+    true
 end 
 
 rnds = try Meta.parse(ENV["rounds"]) catch
@@ -73,17 +77,17 @@ msrmt_err = try Meta.parse(ENV["measurement_error"]) catch
     # end
 end 
 
-geo = "EA"
+# geo = "EA"
 # smple = "full"
-fltr = :inversion
+# fltr = :inversion
 # algo = :second_order
 # smpls = 2000
-priors = "open"#"original"
+# priors = "open"#"original"
 # labor = "growth"
-msrmt_err = true
-smplr = "pigeons"
-
-# cd("/home/cdsw")
+# msrmt_err = true
+# smplr = "pigeons"
+# rnds = 10
+if !(pwd() == "/home/cdsw") cd("/home/cdsw") end
 # smpler = ENV["sampler"] # "pigeons" #
 # mdl = ENV["model"] # "linear" # 
 # chns = Meta.parse(ENV["chains"]) # "4" # 
@@ -170,6 +174,10 @@ else
     include("../models/Smets_Wouters_2007_estim.jl")
 end
 
+if sv
+    include("../models/Smets_Wouters_2007_SV_EPZ.jl")
+end
+
 fixed_parameters = Vector{Vector{Float64}}(undef,0)
 
 if priors == "original"
@@ -206,8 +214,8 @@ if priors == "open"
     Beta(0.5, 0.2, μσ = true),        # crhow
     Beta(0.5, 0.2, μσ = true),        # cmap
     Beta(0.5, 0.2, μσ = true),        # cmaw
-    Normal(4.0, 1.5),                  # csadjcost
-    Normal(1.50,0.375),                  # csigma
+    Gamma(4.0, 1.5, μσ = true),                  # csadjcost
+    Normal(1.50, 0.375),                  # csigma
     Beta(0.7, 0.1, μσ = true),         # chabb
     Beta(0.5, 0.1, μσ = true),           # cprobw
     Normal(2.0, 0.75),                  # csigl
@@ -219,13 +227,13 @@ if priors == "open"
     Gamma(1.5, 0.25, μσ = true),                    # crpi
     Beta(0.75, 0.10, μσ = true),        # crr
     Gamma(0.125, 0.05, μσ = true),                # cry
-    Gamma(0.125, 0.05, μσ = true),                # crdy
-    Gamma(0.625, 0.1, μσ = true),         # constepinf
+    # Gamma(0.0001, 0.0000001, 0.0, 0.000001, μσ = true),                # crdy
+    Gamma(0.475, 0.025, μσ = true),         # constepinf
     Gamma(0.25, 0.1, μσ = true),         # constebeta
     Normal(0.0, 2.0),                  # constelab
-    Normal(0.4, 0.2),                    # ctrend
+    Normal(0.3, 0.1),                    # ctrend
     Normal(0.5, 0.25),                   # cgy
-    Normal(0.3, 0.05),                   # calfa
+    Beta(0.3, 0.05, μσ = true),                   # calfa
     Beta(0.025, 0.005, μσ = true),     # ctou    = 0.025;       % depreciation rate; AER page 592
     Normal(1.5, 1.0),                               # clandaw = 1.5;         % average wage markup
     Beta(0.18, 0.01, μσ = true),          # cg      = 0.18;        % exogenous spending gdp ratio; AER page 592      
@@ -283,20 +291,42 @@ if priors == "all"
                         ])
 end
 
+if sv
+    dists = vcat(dists,[
+        Cauchy(0.0, 5.0, 0.0, 100000.0),   # αᴱ
+
+        Cauchy(0.0, 2.0, 0.0, 100.0),   # z_z_ea
+        Cauchy(0.0, 2.0, 0.0, 100.0),   # z_z_eb
+        Cauchy(0.0, 2.0, 0.0, 100.0),   # z_z_eg
+        Cauchy(0.0, 2.0, 0.0, 100.0),   # z_z_em
+        Cauchy(0.0, 2.0, 0.0, 100.0),   # z_z_ew
+        Cauchy(0.0, 2.0, 0.0, 100.0),   # z_z_eqs
+        Cauchy(0.0, 2.0, 0.0, 100.0),   # z_z_epinf
+
+        Beta(0.5, 0.2, μσ = true),     # rho_z_ea
+        Beta(0.5, 0.2, μσ = true),     # rho_z_eb
+        Beta(0.5, 0.2, μσ = true),     # rho_z_eg
+        Beta(0.5, 0.2, μσ = true),     # rho_z_em
+        Beta(0.5, 0.2, μσ = true),     # rho_z_ew
+        Beta(0.5, 0.2, μσ = true),     # rho_z_eqs
+        Beta(0.5, 0.2, μσ = true),     # rho_z_epinf
+                        ])
+end
+
 if msrmt_err
     dists = vcat(dists,[
-        Cauchy(0.0, 2.0, 0.0, 10.0),   # z_dy
-        Cauchy(0.0, 2.0, 0.0, 10.0),   # z_dc
-        Cauchy(0.0, 2.0, 0.0, 10.0),   # z_dinve
-        Cauchy(0.0, 2.0, 0.0, 10.0),   # z_pinfobs
-        Cauchy(0.0, 2.0, 0.0, 10.0),   # z_robs
-        Cauchy(0.0, 2.0, 0.0, 10.0)    # z_dwobs
+        Cauchy(0.0, 0.5, 0.0, 10.0),   # z_dy
+        Cauchy(0.0, 0.5, 0.0, 10.0),   # z_dc
+        Cauchy(0.0, 0.5, 0.0, 10.0),   # z_dinve
+        Cauchy(0.0, 0.5, 0.0, 10.0),   # z_pinfobs
+        Cauchy(0.0, 0.5, 0.0, 10.0),   # z_robs
+        Cauchy(0.0, 0.5, 0.0, 10.0)   # z_dwobs
                         ])
 
     if labor == "growth"
-        dists = vcat(dists,[Cauchy(0.0, 2.0, 0.0, 10.0)])   # z_dlabobs
+        dists = vcat(dists,[Cauchy(0.0, 0.5, 0.0, 10.0)])   # z_dlabobs
     elseif labor == "level"
-        dists = vcat(dists,[Cauchy(0.0, 2.0, 0.0, 10.0)])   # z_labobs
+        dists = vcat(dists,[Cauchy(0.0, 0.5, 0.0, 10.0)])   # z_labobs
     end
 end
 
@@ -359,28 +389,44 @@ end
 Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter, dists)
     all_params ~ Turing.arraydist(dists)
 
-    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params[1:36]
+    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params[1:35]
+
+    crdy = 0
 
     if priors == "original"
         ctou, clandaw, cg, curvp, curvw = fixed_parameters[1]
     elseif priors ∈ ["all", "open"]
-        ctou, clandaw, cg, curvp, curvw = all_params[36 .+ (1:5)]
+        ctou, clandaw, cg, curvp, curvw = all_params[35 .+ (1:5)]
     end
 
-    if msrmt_err
-        z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs = all_params[36 + 5 - length(fixed_parameters[1]) .+ (1:6)]
+    if sv
+        z̄_ea    = z_ea
+        z̄_eb    = z_eb
+        z̄_eg    = z_eg
+        z̄_em    = z_em
+        z̄_ew    = z_ew
+        z̄_eqs   = z_eqs
+        z̄_epinf = z_epinf
+        
+        αᴱ, z_z_ea, z_z_eb, z_z_eg, z_z_em, z_z_ew, z_z_eqs, z_z_epinf, rho_z_ea, rho_z_eb, rho_z_eg, rho_z_em, rho_z_ew, rho_z_eqs, rho_z_epinf = all_params[35 + 5 - length(fixed_parameters[1]) + 1 : end]
 
-        if labor == "growth"
-            z_labobs = fixed_parameters[2][1]
-            z_dlabobs = all_params[end] # 36 + 5 - length(fixed_parameters[1]) + 6 + length(fixed_parameters[2])]
-        elseif labor == "level"
-            z_labobs = all_params[end] # 36 + 5 - length(fixed_parameters[1]) + 6 + length(fixed_parameters[2])]
-            z_dlabobs = fixed_parameters[2][1]
-        end
-
-        parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf, z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs, z_dlabobs, z_labobs]
+        parameters_combined = [αᴱ, z̄_ea, z̄_eb, z̄_eg, z̄_em, z̄_ew, z̄_eqs, z̄_epinf, z_z_ea, z_z_eb, z_z_eg, z_z_em, z_z_ew, z_z_eqs, z_z_epinf, rho_z_ea, rho_z_eb, rho_z_eg, rho_z_em, rho_z_ew, rho_z_eqs, rho_z_epinf, ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend]
     else
-        parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+        if msrmt_err
+            z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs = all_params[36 + 5 - length(fixed_parameters[1]) .+ (1:6)]
+
+            if labor == "growth"
+                z_labobs = fixed_parameters[2][1]
+                z_dlabobs = all_params[end] # 36 + 5 - length(fixed_parameters[1]) + 6 + length(fixed_parameters[2])]
+            elseif labor == "level"
+                z_labobs = all_params[end] # 36 + 5 - length(fixed_parameters[1]) + 6 + length(fixed_parameters[2])]
+                z_dlabobs = fixed_parameters[2][1]
+            end
+
+            parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf, z_dy, z_dc, z_dinve, z_pinfobs, z_robs, z_dwobs, z_dlabobs, z_labobs]
+        else
+            parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+        end
     end
     
     
@@ -392,7 +438,8 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
                                 algorithm = algorithm)
 
         # if isfinite(llh) println(all_params) end
-
+        println(all_params)
+        println(llh)
         Turing.@addlogprob! llh
     end
 end
@@ -409,12 +456,14 @@ if geo == "EA"
         end
     elseif priors ∈ ["all", "open"]
         if algo ∈ [:first_order, :third_order]
-            init_params = [1.0684367030087487, 0.7413356790824348, 0.651645804415184, 0.909399723044257, 0.3541011741346618, 0.21378397360041512, 0.7655347845840065, 0.9463238660984851, 0.7730496130813369, 0.7538080421583919, 0.5676524690984942, 0.5734812450102826, 0.6411252781905724, 0.7915403743191631, 0.17280602018316096, 0.18056800909027879, 3.335314258445025, 0.5264396196821965, 0.4192536942946363, 0.6693818083526992, 0.825850104046445, 0.8543679796931302, 0.360355717761473, 0.2590608874343108, 0.6940031864762307, 1.0874252276356324, 1.4790255355741952, 0.7522186927508887, 0.03386035566548007, 0.10533741748125172, 1.0188924595382955, 0.47197941113894964, -4.084600344798764, 0.29064934865697245, 0.25728904097993166, 0.1688815982672292, 0.022706560973330424, 2.1060507855204866, 0.17956382791143666, 32.03995589253832, 5.205262088423767]
+            init_params = [0.7161903394789723, 0.08749581983066951, 0.5996039433611786, 1.282283599429332, 0.2813180555578314, 0.1938632278078158, 0.535527616439156, 0.9955012011469743, 0.9736726934937979, 0.8485486560603187, 0.31665842082145557, 0.5911678846344337, 0.9888442541712489, 0.8781087825830718, 0.4970929016711537, 0.7407107829286769, 5.07171257545687, 1.187419342792692, 0.4514305904508852, 0.6364952240606264, -0.31056628312627593, 0.5829677221597701, 0.6543317361772387, 0.1802331842737685, 0.8427622648028558, 1.2193463381813248, 1.9762146376177703, 0.8294582566023195, 0.021785288512891028, 0.08161103324781213, 0.7878594407064632, 0.3429549318049575, 15.82793242047244, 0.5784043377850486, 0.3232430722313766, 0.197878195387292, 0.01669453347964063, 3.1019814182272354, 0.1960539096241335, 12.35207983064041, 16.17879860560539]
+            # init_params = [1.0684367030087487, 0.7413356790824348, 0.651645804415184, 0.909399723044257, 0.3541011741346618, 0.21378397360041512, 0.7655347845840065, 0.9463238660984851, 0.7730496130813369, 0.7538080421583919, 0.5676524690984942, 0.5734812450102826, 0.6411252781905724, 0.7915403743191631, 0.17280602018316096, 0.18056800909027879, 3.335314258445025, 0.5264396196821965, 0.4192536942946363, 0.6693818083526992, 0.825850104046445, 0.8543679796931302, 0.360355717761473, 0.2590608874343108, 0.6940031864762307, 1.0874252276356324, 1.4790255355741952, 0.7522186927508887, 0.03386035566548007, 0.10533741748125172, 1.0188924595382955, 0.47197941113894964, -4.084600344798764, 0.29064934865697245, 0.25728904097993166, 0.1688815982672292, 0.022706560973330424, 2.1060507855204866, 0.17956382791143666, 32.03995589253832, 5.205262088423767]
             # init_params = [1.0539813334864006, 1.790429623465026, 0.9612222743988239, 2.245019416637746, 1.8289708051323972, 2.358601316186861, 1.0789156261697992, 0.8568570601272402, 0.5139803858707833, 0.5086054051557977, 0.746210025525195, 0.2216391679710211, 0.19408834744356726, 0.25466129806674787, 0.30052398003282593, 0.24194224912107154, 3.765673288590403, 1.0977662596765847, 0.15765142087879247, 0.5912277797105701, 2.4184271279443204, 0.674638689237271, 0.2907071570692985, 0.2739634874939473, 0.41260499766712827, 2.430495316537354, 1.6681265382886468, 0.6276427598244203, 0.18302843368856803, 0.16329242389824458, 0.6958098238409626, 0.8548003732242354, -6.430609194624573, 0.6565910012337266, 0.6119056581112686, 0.1572641393297738, 0.025, 1.5, 0.18, 10, 10]
             # init_params = [0.7313106904457178, 0.09700895799848093, 0.5920640699440656, 1.265361545704499, 0.27297506922164955, 0.195953368384533, 0.5442225915559922, 0.9955500976192675, 0.9725651688203177, 0.8866959058966631, 0.37038470114816974, 0.5775705282809267, 0.9873994492006416, 0.890191474044162, 0.5274740205652197, 0.7215671001774427, 5.4994704577984965, 1.2486546742085023, 0.42324160155361734, 0.618867961816553, 0.07760841574345216, 0.6101273580974104, 0.6893261256964629, 0.19027202373062296, 0.8062387668960043, 1.1899316448115973, 2.0445068173053076, 0.8402388639664063, 0.024030692850014076, 0.07557280727782609, 0.7888835120052056, 0.3196699135160988, 16.1094568737249, 0.5609215600824993, 0.3145230845675469, 0.17801096063423938, 0.018195041145224043, 3.050466433163007, 0.1957715762720714, 12.013367486745231, 14.358322495821245]
             # init_params = [1.4096491114728449, 1.276469479507767, 0.8199421197596538, 1.1492490144710634, 0.8570493433823514, 2.104831086575707, 1.3970751593570685, 0.9091701812225143, 0.5561703142710693, 0.5985458295400763, 0.7467908716874889, 0.34119468647156004, 0.26584271843503193, 0.4645085470204899, 0.21999679024742438, 0.1234682520969361, 3.438270946191947, 0.9370990212137913, 0.19858354659530447, 0.7151750386624385, 0.8471731085782387, 0.7866200028088226, 0.3102064673383781, 0.26755220075226094, 0.45264868381611284, 1.1122392496164437, 1.8356356903083675, 0.6920881545468558, 0.042495178087510146, 0.21319527987296272, 0.6674680044330801, 0.5677206677632957, -5.6455030664907415, 0.17797051330607852, 0.3392885166384611, 0.1785819301869544, 0.01521171472071183, 1.8149225637371782, 0.1935894680586804, 16.393321278178554, 5.576132237342907]
-        elseif algo == :second_order
-            init_params = [0.7634182382527728, 0.1051593631358384, 0.5380206989183525, 1.035247090648674, 0.3474545268183535, 0.18872162635728051, 0.4523188756702942, 0.9644401368733749, 0.9335270233922365, 0.9885668070980861, 0.9684490999461778, 0.22892889166430036, 0.9609347238927085, 0.8563480603419, 0.7604059535773245, 0.25908482910986136, 2.154457596381628, 1.4090318009629395, 0.2772068624512342, 0.732701012535399, -0.10355717771601747, 0.6660073416651998, 0.6923607650084501, 0.5346492654810947, 0.7524181410736868, 1.1383683356266345, 1.7428849969716322, 0.8795707523003566, 0.016368759430859702, 0.1399538642493827, 0.8242234478192142, 0.16528650409117301, 2.582610947255007, 0.5416171646957421, 0.32393603224059236, 0.23639416133278487, 0.01969851344949738, 2.4812097313961896, 0.1909830159681015, 26.106440595605864, 4.183827130216384]
+        elseif algo ∈ [:second_order, :pruned_second_order]
+            init_params = [0.6111934477523883, 0.12497868130749006, 0.5564034192432256, 1.5536646081161096, 0.2156174489715736, 0.22827259796783594, 0.44562540865881556, 0.9571458381348725, 0.9478090601478012, 0.9932451039482718, 0.984287772149258, 0.192226621439691, 0.9728767112136598, 0.9102136944623916, 0.43031008083249395, 0.45804076200428473, 0.9489320507558426, 1.0597751770033499, 0.3140874702424214, 0.7283915854969836, 0.6205288415365354, 0.5173313307962408, 0.6380662645026339, 0.556689430979887, 0.5118000460350238, 1.1653230792991733, 2.307371228896243, 0.8921078464557056, 0.053092580973749456, 0.06567992819729927, 1.0315102944824468, 0.7419203087468489, -5.972818026402989, 0.4212935813145953, 0.4752150531938121, 0.32611757214685866, 0.0175888568014872, 2.6873626318400907, 0.18245775870527642, 8.808655595664643, 4.07416351355247]
+            # init_params = [0.7634182382527728, 0.1051593631358384, 0.5380206989183525, 1.035247090648674, 0.3474545268183535, 0.18872162635728051, 0.4523188756702942, 0.9644401368733749, 0.9335270233922365, 0.9885668070980861, 0.9684490999461778, 0.22892889166430036, 0.9609347238927085, 0.8563480603419, 0.7604059535773245, 0.25908482910986136, 2.154457596381628, 1.4090318009629395, 0.2772068624512342, 0.732701012535399, -0.10355717771601747, 0.6660073416651998, 0.6923607650084501, 0.5346492654810947, 0.7524181410736868, 1.1383683356266345, 1.7428849969716322, 0.8795707523003566, 0.016368759430859702, 0.1399538642493827, 0.8242234478192142, 0.16528650409117301, 2.582610947255007, 0.5416171646957421, 0.32393603224059236, 0.23639416133278487, 0.01969851344949738, 2.4812097313961896, 0.1909830159681015, 26.106440595605864, 4.183827130216384]
         else
             init_params = [2.7749852410138702, 0.8456673107681664, 0.8193867630407516, 1.741416552345618, 0.914872705790209, 1.18695818062067, 1.2528679322551275, 0.40491114421769414, 0.7373768296231142, 0.6909661001343012, 0.8344336581861671, 0.488743166195874, 0.525692918226704, 0.5357304799885511, 0.22046533559816237, 0.21400559014083304, 8.46093342090205, 0.9696483822433017, 0.13091505956911606, 0.5742334844273536, 2.087263881526341, 0.611539849422541, 0.8651508487613061, 0.8662238419365927, 0.44570575381670136, 1.74218169018084, 2.405472755923317, 0.5590205671329227, 0.2589985535732698, 0.05587005191768583, 1.0807045784619862, 0.7570290094634802, -6.591114604426181, 0.7135443306435844, 1.6808911462102745, 0.27736369269355865, 0.02569284966819406, 1.4429570504223437, 0.170773328665838, 10.346943630023226, 10.467680279242824]
             # init_params = [2.5989822151536535, 0.6578044451220171, 0.9281310531821928, 1.8852968089406528, 0.8186057477776528, 1.624749728115599, 1.369464287917585, 0.41507938838632535, 0.721658080649216, 0.6664692672787901, 0.8514498174369488, 0.4890983016708977, 0.5624499122468842, 0.5414859476317512, 0.18714280089686092, 0.24684006940138484, 8.398955355725677, 1.0006070838317087, 0.12254688311712678, 0.5509201816084156, 2.195979154320753, 0.5881723445941589, 0.8508888247348659, 0.8686808809823324, 0.4526443895917511, 2.1036428455911094, 2.618645870807919, 0.5776965506871476, 0.30373468432509065, 0.0638034232215675, 1.5107565101005929, 0.8497814956065451, -6.561209938565711, 0.5803935558464064, 1.7440087116410714, 0.2280110157450484, 0.025, 1.5, 0.18, 10, 10]
@@ -431,19 +480,61 @@ elseif geo == "US"
 end
 
 if msrmt_err
-    init_params = vcat(init_params, fill(.1,7))
+    if priors ∈ ["all", "open"]
+        if algo ∈ [:second_order, :pruned_second_order]
+            init_params = [0.4912254729981812, 0.07492409923857386, 0.07902135573281707, 0.1899033586118107, 0.17187427245701614, 0.1125847474034227, 0.7107366917869753, 0.9927434695502426, 0.9708000305516318, 0.5421304518505606, 0.4850267945153262, 0.7164261925847759, 0.992011674410248, 0.8985581528781368, 0.22808992505433887, 0.3349851422572574, 3.358157299920804, 1.9686563463755407, 0.3048060902265331, 0.48634512055067086, -0.1360217201719513, 0.5867749647545417, 0.676191131467224, 0.2917774540294729, 0.8058269543694692, 1.1657425880998589, 2.7351723542980975, 0.7726926549546841, 0.033850070869810005, 0.06147242745118224, 1.1439863738654916, 0.381077654657161, -1.0046487874344876, 0.6676753247657647, 0.40485266627848787, 0.33353882481672986, 0.02726792622993614, 2.0720563121202087, 0.18539730022190326, 11.160802461278527, 7.039619700951304, 0.34248772829734564, 0.7750176921599624, 2.874701066918748, 0.2689035022600061, 0.02457078892938331, 0.1491114494282737, 0.0810542375572529]
+        else
+            init_params = vcat(init_params, fill(.1,7))
+        end
+    else
+        init_params = vcat(init_params, fill(.1,7))
+    end
 end
 
 # init_params = [0.44782103619412217, 0.2744045109202037, 0.4749131045737315, 0.5500013887684249, 0.20797862809478998, 0.16403206635329395, 0.2265429204859803, 0.43525313943541133, 0.2997483599917961, 0.9929064436262415, 0.8910717163839491, 0.32001072751135523, 0.9470322491063278, 0.975570664813966, 0.9093679009913245, 0.9322716703495983, 7.983148082915397, 1.9442481261064553, 0.8765975237541827, 0.7327948767708871, 1.4574975375554169, 0.879978391524078, 0.49747177843774315, 0.16832219162867687, 0.3137327219049285, 1.2454711526959057, 1.5641396410403388, 0.9350501638586194, 0.09977324400428086, 0.10712340142214574, 0.8677773593341505, 0.255711488563984, 0.1575767917768001, 0.5234796158982757, 0.4860719623974521, 0.16549041204343068, 0.01900863729797648, 2.3150642268481483, 0.1865874146108375, 19.373555985211755, 15.149288245159438]
 
 # init_params = [0.5385394820973827, 0.3197180175495133, 0.5601931993394005, 0.6404791252524147, 0.2424743956393476, 0.1888604855414084, 0.2656934310737569, 0.43614085208448194, 0.2924168276337342, 0.9934910232091974, 0.898389230124756, 0.3140630989689976, 0.951502286664987, 0.9778291138619446, 0.9142552081269052, 0.935374453492536, 8.077789204450177, 2.128646028889402, 0.9598880970288731, 0.7870113675994888, 1.407903348898891, 0.9207149636808479, 0.4977393687273778, 0.14873103987877914, 0.2903579447271281, 1.265849679351675, 1.7920551594029805, 0.9425433398382976, 0.09771702491956362, 0.10749885452252637, 1.7800508083595947, 0.26943375031410555, 0.29887846718348093, 0.943799603684421, 0.4574889743375664, 0.06254784879918907, 0.01488851937088571, 2.325954394386562, 0.2141982188195456, 25.14997472497331, 18.00738280331338]
 
-LLH = -1e-6
+init_params = [2.3129025856626537, 1.2228495746691226, 0.9318849031234546, 1.3562376944895138, 0.6524428881873411, 0.49327442409101196, 1.203573267304028, 0.3864746042310666, 0.7727726105580373, 0.730220110698647, 0.6971677564095574, 0.4871156800924448, 0.5294463954763282, 0.5180336034543481, 0.2311459148984609, 0.37454996015841147, 4.088133803603757, 0.841759775361655, 0.20955720026547556, 0.5793852405168153, 2.138011267034095, 0.5922638159623184, 0.8453416012208816, 0.8607561500871466, 0.44579814085943115, 1.5958087587562493, 2.234781340692493, 0.5830882824408568, 0.19517922938138044, 0.06584912174267307, 1.0615455794403328, 0.7176586475825152, -2.821805075991958, 0.3928011814568654, 0.35359747406257547, 0.358634703958937, 0.02532274081741523, 1.919384711061613, 0.19796125261237685, 6.197908162131676, 6.624131926212707]#, 9.831921527897893e-7, 2.8178913647950456e-9, 4.167785814366856e-8, 0.029433066014022225, 0.0013806669709717648, 0.004562581986412541, 0.0003063221804371521, 0.00038275447381583966, 0.0034830137859471443, 0.011628283282447376, 0.012803823726913414, 0.00334461764231085, 0.01946104523533141, 0.004987272896391558, 0.019924594838780108]
+# init_params = [1.5405638118799722, 0.1401733553876237, 0.3563834542577937, 1.082849382259215, 0.1894200490285658, 0.13508911878423554, 0.3451699627252529, 0.754451328217958, 0.884235488873944, 0.7407950376964677, 0.7135458395980955, 0.51588745447427, 0.4941853204371512, 0.6329053580174352, 0.2361995136142515, 0.3870747834489993, 7.75276276588488, 0.978483385459904, 0.5067696357728338, 0.532155122429255, 1.352725161223888, 0.6307490884276056, 0.964234511298511, 0.30742493113498, 0.3959904363292017, 1.358426706506619, 2.479590268754805, 0.893745578951469, 0.897695199654623, 0.05522371087341704, 1.091966086014422, 0.76813295787931, -3.361925447473285, 0.384076080342996, 0.1993048797518073, 0.3411168411375663, 0.6383206695861549, 1.9477987552835, 0.1916827188867194, 4.58113289366161, 7.954552634244455, 6.8520855707497e-10, 2.41006504947337e-15, 0.671949360871998, 0.3967410254432711, 0.495879827013376, 0.856581279746787, 0.12590664986837324, 1.0009678484398778, 0.47498960563225, -1106.5302631487]
+
+init_params = [1.5356503753987876, 0.14045468245253154, 0.3537225682511057, 1.0819806892683805, 0.1100181277435769, 0.13565688285587504, 0.3438965052191379, 0.7569934380196678, 0.8037278807970569, 0.7411271048440026, 0.7137580608531687, 0.515841775802562, 0.49379933360335715, 0.633605865738407, 0.23512670740067015, 0.38608306492617006, 7.73711929035069, 0.9744659640124764, 0.5072644700029988, 0.5323538360758189, 1.3549661182756, 0.6317104166869645, 0.9640781288845617, 0.30297073183093565, 0.3963620263283701, 1.3558958633848701, 2.4820362938200247, 0.894428822442336, 0.0896187160744439, 0.475, 0.7688920973977127, -3.3472801839040156, 0.38423851558887867, 0.19734559386361872, 0.34075457935020076, 0.03841339328523424, 1.9487128051873783, 0.19135311776553954, 4.523817860860894, 7.936066882870238, 5.003393684819979e-10, 1.886790735858059e-15, 0.6631998234623356, 0.3939396787782743, 0.4865358607821454, 0.8559066893027523, 0.12330771725013766, 1.0098922531172527, 0.4755604578703209, 0.7182422927373188, 0.9083070318786729, 0.7004156890986633, 0.8490860174841245, 0.7857297447360877, 0.5803621229112111]
+
+init_params = [1.1868936841071407, 0.1276711627771277, 0.3354595327414588, 0.6518833013121655, 0.12391883733962886, 0.1442460973710499, 0.20611491750517905, 0.7673484386356815, 0.8072070421341406, 0.8441475488891756, 0.6629600668715214, 0.5114243914443558, 0.49110238525172495, 0.7376198110598682, 0.10686040368664165, 0.3850171298417315, 7.153576708889624, 1.064593260199596, 0.5115545400423005, 0.5333214882587825, 1.9254112592577899, 0.6857843008901706, 0.9332766047926039, 0.3087615353319762, 0.4068801936702653, 1.4340490265932555, 2.2280180879069786, 0.9036303290424907, 0.08556592243443006, 0.49300844482830547, 0.7770181660362642, -3.1890708807820474, 0.335467305275283, 0.25480757560021583, 0.3161755477623316, 0.02031327751210803, 2.4242459879262155, 0.19635183050436467, 4.509466381720398, 9.120165335112405, 2.6770642502607984e-8, 1.80150409044232e-18, 0.7894173127468824, 0.6388387672898941, 0.5909280323789, 0.7758451032442724, 0.5548425869290083, 0.6264440170284101, 0.4808240534336051, 0.717035728599077, 0.8479443822032737, 0.694653078142983, 0.8147812028893971, 0.750020549076146, 0.5762673507185069]
+
+init_params = [0.9526481144390319, 0.09150721235937721, 0.2284502220723092, 0.3360450108523094, 0.12122386113506689, 0.1369031754683562, 0.08794318699780272, 0.9266723522273672, 0.7916824053433282, 0.9094664831627973, 0.8555269704003927, 0.5012090568058599, 0.5127655430110843, 0.8250843245134164, 0.2038030482712811, 0.3784024255774639, 7.77120086607542, 2.2605341015234544, 0.513805987313476, 0.556645532995259, 1.6161091902376372, 0.7600445179274161, 0.40205783892802793, 0.21255291504087975, 0.3662588602761151, 1.3885107628354572, 1.9400751752271217, 0.9159186821668642, 0.12258165558504787, 0.5786170123865231, 0.6129581220463054, -3.4306227551185406, 0.3033839065535559, 0.40947893259161394, 0.25629057267107297, 0.018757520917307015, 3.3690663770182434, 0.18082457566209373, 3.57142920870023, 8.50356739586171, 3.935146271963624e-5, 0.4316750310686323, 1.0440683621695073, 0.9901118724304545, 0.5227603112083585, 0.777843744152753, 0.7871309133100914, 0.9711608108934877, 0.46659060439214856, 0.6754318697287595, 0.8174665244492126, 0.6597711951249539, 0.8430369905706759, 0.7072930962555888, 0.6217352927693114]
+
+all_params = init_params
+
+z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params[1:35]
+
+crdy = 0
+ctou, clandaw, cg, curvp, curvw = all_params[35 .+ (1:5)]
 
 
-SW07_llh = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, dists)
+z̄_ea    = z_ea
+z̄_eb    = z_eb
+z̄_eg    = z_eg
+z̄_em    = z_em
+z̄_ew    = z_ew
+z̄_eqs   = z_eqs
+z̄_epinf = z_epinf
 
-# Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr), (all_params = init_params,))
+αᴱ, z_z_ea, z_z_eb, z_z_eg, z_z_em, z_z_ew, z_z_eqs, z_z_epinf, rho_z_ea, rho_z_eb, rho_z_eg, rho_z_em, rho_z_ew, rho_z_eqs, rho_z_epinf = all_params[35 + 5 - length(fixed_parameters[1]) + 1 : end]
+Smets_Wouters_2007_SV_EPZ.parameters
+
+parameters_combined = [αᴱ, z̄_ea, z̄_eb, z̄_eg, z̄_em, z̄_ew, z̄_eqs, z̄_epinf, z_z_ea, z_z_eb, z_z_eg, z_z_em, z_z_ew, z_z_eqs, z_z_epinf, rho_z_ea, rho_z_eb, rho_z_eg, rho_z_em, rho_z_ew, rho_z_eqs, rho_z_epinf, ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend]
+
+SS(Smets_Wouters_2007_SV_EPZ,parameters = parameters_combined, derivatives = false)
+mn = get_mean(Smets_Wouters_2007_SV_EPZ,parameters = parameters_combined, algorithm = :pruned_third_order, derivatives = false)
+
+write_mod_file(Smets_Wouters_2007_SV_EPZ)
+
+
+
+SW07_llh = SW07_loglikelihood_function(data, Smets_Wouters_2007_SV_EPZ, observables, fixed_parameters, algo, fltr, dists)
+# init_params = vcat(init_params,100,fill(.25,7),fill(.5,7))
+LLH = Turing.logjoint(SW07_llh, (all_params = init_params,))
 # Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :pruned_second_order, fltr), (all_params = init_params,))
 # Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :first_order, :inversion), (all_params = init_params,))
 
@@ -464,33 +555,42 @@ SW07_llh = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fi
 # catch
 #     1
 # end
+# modeSW2007NM = Turing.maximum_a_posteriori(SW07_llh, Optim.SimulatedAnnealing())
+# modeSW2007NM.values
+using OptimizationNLopt
+modeSW2007NM2 = Turing.maximum_a_posteriori(SW07_llh, NLopt.LN_NELDERMEAD(), initial_params = init_params)
+# modeSW2007BFGS2 = Turing.maximum_a_posteriori(SW07_llh, NLopt.LD_LBFGS(), initial_params = init_params, adtype = AutoZygote()) # Out of memory
 
-
-modeSW2007NM = try Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead(), initial_params = init_params)#, show_trace = true, iterations = 100)
-catch
-    1
-end
-
-if !(modeSW2007NM == 1) && isfinite(modeSW2007NM.lp)
-    global LLH = modeSW2007NM.lp
-    global init_params = modeSW2007NM.values
-    println("Nelder Mead: $LLH")
-end
-
-if !(smplr == "pigeons")
-    modeSW2007 = try Turing.maximum_a_posteriori(SW07_llh, 
-                                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                            adtype = AutoZygote(),
-                                            initial_params = init_params)#,
-                                            # show_trace = true)
+if !isfinite(LLH)
+    println("Initial values have infinite loglikelihood. Trying to find finite starting point.")
+    modeSW2007NM = try Turing.maximum_a_posteriori(SW07_llh, Optim.SimulatedAnnealing())#, initial_params = init_params)#, show_trace = true, iterations = 100)
     catch
         1
     end
 
-    if !(modeSW2007 == 1) && isfinite(modeSW2007.lp)
-        global LLH = modeSW2007.lp
-        global init_params = modeSW2007.values
-        println("LBFGS: $LLH")
+    println("Mode variable values: $(init_params); Mode loglikelihood: $(LLH)")
+
+    if !(modeSW2007NM == 1) && isfinite(modeSW2007NM.lp)
+        global LLH = modeSW2007NM.lp
+        global init_params = modeSW2007NM.values
+        println("Nelder Mead: $LLH")
+    end
+
+    if !(smplr == "pigeons")
+        modeSW2007 = try Turing.maximum_a_posteriori(SW07_llh, 
+                                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                                adtype = AutoZygote(),
+                                                initial_params = init_params)#,
+                                                # show_trace = true)
+        catch
+            1
+        end
+
+        if !(modeSW2007 == 1) && isfinite(modeSW2007.lp)
+            global LLH = modeSW2007.lp
+            global init_params = modeSW2007.values
+            println("LBFGS: $LLH")
+        end
     end
 end
 
@@ -504,12 +604,13 @@ if smplr == "NUTS"
                                 initial_params = isfinite(LLH) ? init_params : nothing,
                                 progress = true,
                                 callback = callback)
+
+    # InferenceReport.report(samps; max_moving_plot_iters = 0, view = false, render = true, exec_folder = "/home/cdsw")
 elseif smplr == "pigeons"
     # generate a Pigeons log potential
-    sw07_lp = Pigeons.TuringLogPotential(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, dists))
+    sw07_lp = Pigeons.TuringLogPotential(SW07_llh)
 
     const SW07_LP = typeof(sw07_lp)
-    
     
     function Pigeons.initialization(target::SW07_LP, rng::AbstractRNG, _::Int64)
         result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
@@ -520,31 +621,39 @@ elseif smplr == "pigeons"
         return result
     end
     
-    
-    # cd(dir_name)
-    
-    # if !isdir("results/latest")
-    #     pt = Pigeons.PT("results/latest")
-    
+    cd(dir_name)
+
+    # Get list of folders only (ignoring files)
+    # folders = filter(isdir, joinpath.("results/all", readdir("results/all")))
+    # latest_folder = folders |> sort |> last
+
+    # full_rounds = length(filter(isdir, joinpath.(latest_folder, readdir(latest_folder))))
+
+    # if full_rounds < rnds
+    #     pt = Pigeons.PT(latest_folder)
+
     #     # do two more rounds of sampling
     #     pt = Pigeons.increment_n_rounds!(pt, 1)
     #     pt = Pigeons.pigeons(pt)
     # else
-        pt = Pigeons.pigeons(target = sw07_lp, n_rounds = 0)
+        pt = Pigeons.pigeons(target = sw07_lp, n_rounds = 0, n_chains = 2)
 
         pt = Pigeons.pigeons(target = sw07_lp,
                             # explorer = Pigeons.AutoMALA(default_autodiff_backend = :Zygote),
-                            # checkpoint = true,
-                            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
+                            checkpoint = true,
+                            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
                             multithreaded = false,
                             n_chains = 2,
                             n_rounds = rnds)
     # end
 
-    # cd("../..")
+    cd("../..")
+
+    # InferenceReport.report(pt; max_moving_plot_iters = 0, view = false, render = true, exec_folder = "/home/cdsw")
 
     samps = MCMCChains.Chains(pt)
 end
+
 
 println(samps)
 println("Mean variable values: $(mean(samps).nt.mean)")
@@ -579,46 +688,3 @@ StatsPlots.savefig(my_plot, dir_name * "/samples_$(dt)h.png")
 StatsPlots.savefig(my_plot, "samples_latest.png")
 
 Base.show(stdout, MIME"text/plain"(), samps)
-
-
-
-
-state_estims = get_estimated_variables(Smets_Wouters_2007, 
-                                        data, 
-                                        parameters = varnames .=> mean(samps).nt.mean,
-                                        algorithm = algo, 
-                                        filter = fltr)
-
-plot_model_estimates(Smets_Wouters_2007, 
-                    data, 
-                    algorithm = algo, 
-                    filter = fltr, 
-                    variables = [:lab,:labobs,:w,:dwobs,:r,:robs,:pinf,:pinfobs,:inve,:dinve,:c,:dc,:y,:dy],
-                    plots_per_page = 4,
-                    shock_decomposition = true)
-
-
-sck_dcmp = get_shock_decomposition(Smets_Wouters_2007, data, algorithm = algo, filter = fltr)
-sck_dcmp_kalman = get_shock_decomposition(Smets_Wouters_2007, data, algorithm = algo)#, filter = fltr)
-sck_dcmp(:pinf,:,:)
-sck_dcmp_kalman(:pinf,:,:)
-
-sck_dcmp(:robs,:,:)
-
-sck_dcmp(:labobs,:,:)
-
-sck_dcmp(:labobs,:e_labobs₍ₓ₎,:)*1000 |> plot
-data(:labobs,:) |> plot!
-
-sck_dcmp(:pinfobs,:e_pinfobs₍ₓ₎,:)*10 |> plot
-data(:pinfobs,:) |> plot!
-
-sck_dcmp(:robs,:e_robs₍ₓ₎,:)*100 |> plot
-data(:robs,:) |> plot!
-
-get_estimated_shocks(Smets_Wouters_2007, data, algorithm = algo, filter = fltr)
-
-dat.real_GDP_per_capita |> plot
-data(:dy,:) |> plot
-Dict(get_parameters(Smets_Wouters_2007, values = true))["ctrend"]
-data(:dy,:) |> mean
