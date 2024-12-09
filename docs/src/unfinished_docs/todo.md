@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] ss transition by entering new parameters at given periods
+- [ ] start filter from initial values provided by user
 - [ ] higher order estimation should start from mean not the stochastic steady state as the mean is the most likely starting point
 - [ ] large models will need functions to be compiled individually as done for higher order; when tackling that, also separate steady state related equations from the steady state, so that speed issue is addresses due to replacing parameters with the steady state equations from the parameter block; also creat non allocating (residuals) steady state function
 - [ ] allow to define y[ss] = 1 in parameters block
