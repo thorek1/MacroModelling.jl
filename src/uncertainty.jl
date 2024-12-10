@@ -473,6 +473,53 @@ end
 
 
 
+SS(Smets_Wouters_2007, parameters = pars .=> no_pandemic, derivatives = false)
+
+f = OptimizationFunction(calculate_cb_loss, AutoZygote())
+# f = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
+prob = OptimizationProblem(f, optimal_taylor_coefficients, (loss_function_weights, regularisation), ub = ubs, lb = lbs)
+
+# Import a solver package and solve the optimization problem
+
+sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+
+sol.objective
+
+
+SS(Smets_Wouters_2007, parameters = pars .=> full_sample_shock_pandemic, derivatives = false)
+
+f = OptimizationFunction(calculate_cb_loss, AutoZygote())
+# f = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
+prob = OptimizationProblem(f, optimal_taylor_coefficients, (loss_function_weights, regularisation), ub = ubs, lb = lbs)
+
+# Import a solver package and solve the optimization problem
+
+sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000) # this seems to achieve best results
+sol = solve(prob, NLopt.LN_PRAXIS(), maxiters = 10000) # this seems to achieve best results
+
+sol.objective
+
+
+SS(Smets_Wouters_2007, parameters = pars .=> full_sample, derivatives = false)
+
+f = OptimizationFunction(calculate_cb_loss, AutoZygote())
+# f = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
+prob = OptimizationProblem(f, optimal_taylor_coefficients, (loss_function_weights, regularisation), ub = ubs, lb = lbs)
+
+# Import a solver package and solve the optimization problem
+
+# sol = solve(prob, NLopt.LN_PRAXIS(), maxiters = 10000) # this seems to achieve best results
+
+sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000) # this seems to achieve best results
+
+# sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+
+sol.objective
+
+# Interpretation:
+# taken together the changes in the variance of the shock processes imply a weaker response to inflation, a stronger response to output and overall more persistence
+
 ## Analysis of other sources of uncertainty
 include("../models/Smets_Wouters_2007_ext.jl")
 
@@ -620,6 +667,12 @@ for (nm,vl) in zip(stds,std_vals)
     savefig(p,"OSR_$(nm)_contour_ext.png")
     ii += 1
 end
+
+
+# Interpretation:
+# increase in uncertainty regarding the calvo probabilities, or a measurement error of inflation in the Taylor rule all trigger a weaker inflation response and a stronger output response
+
+
 
 # look at shock decomposition for pandemic period
 using StatsPlots
