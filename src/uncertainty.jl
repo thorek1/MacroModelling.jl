@@ -165,11 +165,15 @@ std_no_pandemic([:a,:b,:gy,:qs,:ms,:spinf,:sw])
 std_full_sample_shock_pandemic([:a,:b,:gy,:qs,:ms,:spinf,:sw])
 # (:a)     ↓ 0.02134176978740371
 # (:b)     ↓ 0.0058214610923949675
-# (:gy)    ↓ 0.022320722694152133
+# (:gy)    ↑ 0.022320722694152133
 # (:qs)    ↑ 0.15367977595326165
 # (:ms)    ↓ 0.0032698178820298263
 # (:spinf) ↓ 0.03365828622497589
 # (:sw)      2.009285473806119
+
+
+# Interpretation:
+# estimating the model on the pre-pandemic sample, then fixing the model parameters and reestimating on the full sample only the AR1 shock process related parameters the impact of the pandemic and inflaiton surge period of the variance of the shock processes is higher variance on the investment and government spending shock, unchanged variance on the wage markup shock and all other variances decrease
 
 
 
@@ -457,6 +461,16 @@ for (nm,vl) in zip(stds,std_vals)
 end
 
 
+# Interpretation:
+# starting from the implied optimal weights by the taylor rule coefficients resulting from the estimation to be optimal on the pre-pandemic period and setting the crdy coefficient to 0 we change the shock standard deviations and recalculate the optimal Taylor rule coefficients given the implied optimal loss weights
+# (:a)     ↓ stronger reaction to inflation and output
+# (:b)     ↓ weaker reaction to inflation and output
+# (:gy)    ↑ no impact on optimal reaction function 
+# (:qs)    ↑ slightly weaker response on inflaiton, stronger response to output
+# (:ms)    ↓ weaker reaction to inflation and output
+# (:spinf) ↓ stronger reaction to inflation and output
+# (:sw)    →
+
 
 
 ## Analysis of other sources of uncertainty
@@ -549,7 +563,7 @@ coeff = zeros(length(k_range), length(stds), n_σ_range, 7);
 ii = 1
 for (nm,vl) in zip(stds,std_vals)
     for (l,k) in enumerate(k_range)
-        σ_range = range(0 * vl, .05 * vl, length = n_σ_range)
+        σ_range = range(0 * vl, .1 * vl, length = n_σ_range)
 
         combined_loss_function_weights = vcat(1,k * loss_function_weights_upper[1:2] + (1-k) * loss_function_weights_lower[1:2])
 
@@ -558,13 +572,13 @@ for (nm,vl) in zip(stds,std_vals)
         for (ll,σ) in enumerate(σ_range)
             SS(model, parameters = nm => σ, derivatives = false)
             
-            # soll = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+            soll = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
             
-            soll = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000) # this seems to achieve best results
+            # soll = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000) # this seems to achieve best results
             
             coeff[l,ii,ll,:] = vcat(combined_loss_function_weights,σ,soll.u)
 
-            println("$nm $σ $(soll.objective)")
+            println("$nm $σ $(soll.objective) $(soll.u[1:2])")
         end
 
         
@@ -592,6 +606,20 @@ for (nm,vl) in zip(stds,std_vals)
     ii += 1
 end
 
+
+
+ii = 1
+for (nm,vl) in zip(stds,std_vals)
+    plots = []
+    push!(plots, contour(vec(coeff[1,ii,:,4]), vec(coeff[end:-1:1,ii,1,3]), (coeff[end:-1:1,ii,:,7]), label = "", xlabel = "Loss weight: Δr", ylabel = "Std($nm)", title = "crr", colorbar=false))
+    push!(plots, contour(vec(coeff[1,ii,:,4]), vec(coeff[end:-1:1,ii,1,3]), ((1 .- coeff[end:-1:1,ii,:,7]) .* coeff[end:-1:1,ii,:,5]), label = "", xlabel = "Loss weight: Δr", ylabel = "Std($nm)", title = "(1 - crr) * crpi", colorbar=false))
+    push!(plots, contour(vec(coeff[1,ii,:,4]), vec(coeff[end:-1:1,ii,1,3]), ((1 .- coeff[end:-1:1,ii,:,7]) .* coeff[end:-1:1,ii,:,6]), label = "", xlabel = "Loss weight: Δr", ylabel = "Std($nm)", title = "(1 - crr) * cry", colorbar=false))
+
+    p = plot(plots...) # , plot_title = string(nm))
+
+    savefig(p,"OSR_$(nm)_contour_ext.png")
+    ii += 1
+end
 
 # look at shock decomposition for pandemic period
 using StatsPlots
