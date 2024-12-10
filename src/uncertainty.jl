@@ -134,6 +134,22 @@ full_sample_shock_pandemic = [0.523787265696482, 0.1350452339819597, 0.769699247
 #        crhow    0.8547    0.0237    0.0010    542.5226   508.8381    1.0002        0.3122
 #         cmap    0.2322    0.0938    0.0035    697.8830   576.4969    1.0097        0.4016
 #         cmaw    0.7073    0.0505    0.0021    601.4647   550.5438    0.9995        0.3462
+
+
+
+# FULL SAMPLE with reestimation of shock sizes
+# Summary Statistics
+#   parameters      mean       std      mcse    ess_bulk   ess_tail      rhat   ess_per_sec 
+#       Symbol   Float64   Float64   Float64     Float64    Float64   Float64       Float64 
+
+#         z_ea    0.5259    0.0312    0.0010    998.9972   716.1674    1.0007        1.1543
+#         z_eb    0.1302    0.0082    0.0002   1119.4634   741.5955    1.0015        1.2935
+#         z_eg    0.7616    0.0490    0.0014   1222.5520   785.5574    0.9995        1.4126
+#        z_eqs    1.3036    0.0812    0.0026    969.7095   560.9309    1.0006        1.1204
+#         z_em    0.2675    0.0163    0.0005   1009.6180   812.2920    0.9993        1.1666
+#      z_epinf    0.1521    0.0093    0.0003   1042.4295   675.1217    1.0003        1.2045
+#         z_ew    0.4955    0.0289    0.0009    962.8892   606.0280    0.9998        1.1126
+
 pars = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa, :ctou, :clandaw, :cg, :curvp, :curvw]
 
 SS(Smets_Wouters_2007, parameters = :crdy => 0, derivatives = false)
