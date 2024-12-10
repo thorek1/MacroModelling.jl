@@ -150,6 +150,9 @@ full_sample_shock_pandemic = [0.523787265696482, 0.1350452339819597, 0.769699247
 #      z_epinf    0.1521    0.0093    0.0003   1042.4295   675.1217    1.0003        1.2045
 #         z_ew    0.4955    0.0289    0.0009    962.8892   606.0280    0.9998        1.1126
 
+full_sample_shock_std_pandemic = [0.5259, 0.1302, 0.7616, 1.3036, 0.2675, 0.1521, 0.4955,       0.9941945010996004, 0.9900258724661307, 0.944447821651772, 0.09136974979681929, 0.5469941169752605, 0.9839879182859345, 0.8176542834158012, 0.46404242788618344, 0.7277828188461039, 6.207074468776051, 0.5342528174391462, 0.560325003881225, 0.6329231385353169, 0.8484146558715042, 0.7618268755139341, 0.7816314780804516, 0.07816721962903334, 0.817115418052766, 0.9812936465960612, 2.2188852317152006, 0.626915938550924, 0.02363305569575591, 0.4237043241955714, 0.28392007131192487, -0.7476344687461959, 0.30542058428439206, 0.5032209567712396, 0.2993769847124837, 0.034103710249185064, 4.119095036926654, 0.19636391880348672, 8.22514103090019, 14.633481496900645]
+
+
 pars = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa, :ctou, :clandaw, :cg, :curvp, :curvw]
 
 SS(Smets_Wouters_2007, parameters = :crdy => 0, derivatives = false)
@@ -159,6 +162,8 @@ std_full_sample = get_std(Smets_Wouters_2007, parameters = pars .=> full_sample,
 std_no_pandemic = get_std(Smets_Wouters_2007, parameters = pars .=> no_pandemic, derivatives = false)
 
 std_full_sample_shock_pandemic = get_std(Smets_Wouters_2007, parameters = pars .=> full_sample_shock_pandemic, derivatives = false)
+
+std_full_sample_shock_std_pandemic = get_std(Smets_Wouters_2007, parameters = pars .=> full_sample_shock_std_pandemic, derivatives = false)
 
 std_full_sample([:a,:b,:gy,:qs,:ms,:spinf,:sw])
 # (:a)      0.02426349697813647
@@ -186,6 +191,15 @@ std_full_sample_shock_pandemic([:a,:b,:gy,:qs,:ms,:spinf,:sw])
 # (:ms)    ↓ 0.0032698178820298263
 # (:spinf) ↓ 0.03365828622497589
 # (:sw)      2.009285473806119
+
+std_full_sample_shock_std_pandemic([:a,:b,:gy,:qs,:ms,:spinf,:sw])
+# (:a)     ↓ 0.048876448357432746
+# (:b)     ↑ 0.017434807203149848
+# (:gy)    ↑ 0.024531928343334983
+# (:qs)    ↑ 0.1633892331129693
+# (:ms)    ↓ 0.0031954169476854496
+# (:spinf) ↑ 0.05720222121202543
+# (:sw)    ↑ 2.1905984089710966
 
 
 # Interpretation:
@@ -379,16 +393,31 @@ stds = Smets_Wouters_2007.parameters[end-6:end]
 std_vals = copy(Smets_Wouters_2007.parameter_values[end-6:end])
 
 stdderivs = get_std(Smets_Wouters_2007)#, parameters = [:crr, :crpi, :cry, :crdy] .=> vcat(sol.u,0))
-stdderivs([:ygap, :pinfobs, :drobs, :robs],vcat(stds,[:crr, :crpi, :cry]))
+stdderivs([:ygap, :pinfobs, :drobs, :robs],vcat(stds,[:crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw],[:crr, :crpi, :cry]))'
 # 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
-# ↓   Variables ∈ 4-element view(::Vector{Symbol},...)
-# →   Standard_deviation_and_∂standard_deviation∂parameter ∈ 10-element view(::Vector{Symbol},...)
-# And data, 4×10 view(::Matrix{Float64}, [65, 44, 17, 52], [36, 37, 38, 39, 40, 41, 42, 20, 19, 21]) with eltype Float64:
-#               (:z_ea)     (:z_eb)    (:z_eg)      (:z_em)    (:z_ew)     (:z_eqs)     (:z_epinf)  (:crr)     (:crpi)     (:cry)
-#   (:ygap)      1.5512      1.43771    0.0386122    2.92771    9.07026     0.165315    22.7405      8.57412    0.183427  -41.4294
-#   (:pinfobs)   0.0441266   2.33557    0.00261732   0.157377   0.225685    0.00387798   0.878799    0.343056  -0.19993     1.93685
-#   (:drobs)     0.0142478   0.117477   0.00070993   0.768874   0.0522678   0.00104345   0.412586   -0.367055  -0.013684    0.381459
-#   (:robs)      0.0576051   7.14347    0.0042997    0.787224   0.286545    0.00582915   1.00055     0.102156  -0.162961    1.65897
+# ↓   Standard_deviation_and_∂standard_deviation∂parameter ∈ 19-element view(::Vector{Symbol},...)
+# →   Variables ∈ 4-element view(::Vector{Symbol},...)
+# And data, 19×4 adjoint(view(::Matrix{Float64}, [65, 44, 17, 52], [36, 37, 38, 39, 40, 41, 42, 23, 24, 25, 26, 27, 28, 29, 30, 31, 20, 19, 21])) with eltype Float64:
+#                 (:ygap)      (:pinfobs)   (:drobs)      (:robs)
+#   (:z_ea)        0.431892     0.0337031    0.0209319     0.0399137
+#   (:z_eb)        0.498688     7.68657      0.2897       18.1822
+#   (:z_eg)        0.00730732   0.00281355   0.00143873    0.00418418
+#   (:z_em)        1.23788      0.168688     0.73829       0.561376
+#   (:z_ew)       15.9711       0.535026     0.104924      0.710824
+#   (:z_eqs)       0.067932     0.00306293   0.000692842   0.00469514
+#   (:z_epinf)    24.2758       0.535294     0.297274      0.504287
+#   (:crhoa)       0.0784198   -0.156896    -0.0374588    -0.270447
+#   (:crhob)      -0.537715    29.0378       0.0992404    69.119
+#   (:crhog)      -0.201827    -0.00292154   0.00139387   -0.00340863
+#   (:crhoqs)      0.113207     0.00511452   0.0019416     0.00756271
+#   (:crhoms)      2.09109      0.369009    -0.45944      -0.0168982
+#   (:crhopinf)   73.8881       0.226225    -0.0511477    -0.0245807
+#   (:crhow)      94.8585       2.11075      0.078647      2.75274
+#   (:cmap)       -5.89078     -0.0945698   -0.0291701    -0.0982907
+#   (:cmaw)      -57.2493      -1.54286     -0.146276     -2.06334
+#   (:crr)         2.58469      0.271689    -0.330182     -0.128754
+#   (:crpi)        0.607836    -0.624988    -0.0260916    -0.539138
+#   (:cry)       -20.0359       3.69087      0.464149      2.69922
 
 # Zygote.gradient(x->calculate_cb_loss(x,regularisation), sol.u)[1]
 
@@ -450,14 +479,6 @@ for (nm,vl) in zip(stds,std_vals)
     p = plot(plots...) # , plot_title = string(nm))
     savefig(p,"OSR_$(nm)_surface.png")
 
-    # plots = []
-    # push!(plots, plot(vec(coeff[:,ii,:,4]), vec(coeff[:,ii,:,7]), label = "", xlabel = "Std($nm)", ylabel = "crr", colorbar=false))
-    # push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,7]) .* coeff[:,ii,:,5]), label = "", xlabel = "Std($nm)", ylabel = "(1 - crr) * crpi", colorbar=false))
-    # push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,7]) .* coeff[:,ii,:,6]), label = "", xlabel = "Std($nm)", ylabel = "(1 - crr) * cry", colorbar=false))
-    
-    # p = plot(plots...) # , plot_title = string(nm))
-    # savefig(p,"OSR_$(nm).png")
-
     ii += 1
 end
 
@@ -466,9 +487,9 @@ end
 ii = 1
 for (nm,vl) in zip(stds,std_vals)
     plots = []
-    push!(plots, contour(vec(coeff[1,ii,:,4]), vec(coeff[end:-1:1,ii,1,3]), (coeff[end:-1:1,ii,:,7]), label = "", xlabel = "Loss weight: Δr", ylabel = "Std($nm)", title = "crr", colorbar=false))
-    push!(plots, contour(vec(coeff[1,ii,:,4]), vec(coeff[end:-1:1,ii,1,3]), ((1 .- coeff[end:-1:1,ii,:,7]) .* coeff[end:-1:1,ii,:,5]), label = "", xlabel = "Loss weight: Δr", ylabel = "Std($nm)", title = "(1 - crr) * crpi", colorbar=false))
-    push!(plots, contour(vec(coeff[1,ii,:,4]), vec(coeff[end:-1:1,ii,1,3]), ((1 .- coeff[end:-1:1,ii,:,7]) .* coeff[end:-1:1,ii,:,6]), label = "", xlabel = "Loss weight: Δr", ylabel = "Std($nm)", title = "(1 - crr) * cry", colorbar=true))
+    push!(plots, contour(vec(coeff[1,ii,:,4]), vec(coeff[end:-1:1,ii,1,3]), (coeff[end:-1:1,ii,:,7]), label = "", ylabel = "Loss weight: Δr", xlabel = "Std($nm)", title = "crr", colorbar=false))
+    push!(plots, contour(vec(coeff[1,ii,:,4]), vec(coeff[end:-1:1,ii,1,3]), ((1 .- coeff[end:-1:1,ii,:,7]) .* coeff[end:-1:1,ii,:,5]), label = "", ylabel = "Loss weight: Δr", xlabel = "Std($nm)", title = "(1 - crr) * crpi", colorbar=false))
+    push!(plots, contour(vec(coeff[1,ii,:,4]), vec(coeff[end:-1:1,ii,1,3]), ((1 .- coeff[end:-1:1,ii,:,7]) .* coeff[end:-1:1,ii,:,6]), label = "", ylabel = "Loss weight: Δr", xlabel = "Std($nm)", title = "(1 - crr) * cry", colorbar=true))
 
     p = plot(plots...) # , plot_title = string(nm))
 
@@ -476,6 +497,171 @@ for (nm,vl) in zip(stds,std_vals)
     ii += 1
 end
 
+
+k_range = [.5] # .45:.025:.55 # [.5] # 
+n_σ_range = 10
+coeff = zeros(length(k_range), length(stds), n_σ_range, 7);
+
+
+ii = 1
+for (nm,vl) in zip(stds,std_vals)
+    for (l,k) in enumerate(k_range)
+        σ_range = range(.9 * vl, 1.1 * vl, length = n_σ_range)
+
+        combined_loss_function_weights = vcat(1,k * loss_function_weights_upper[1:2] + (1-k) * loss_function_weights_lower[1:2])
+
+        prob = OptimizationProblem(f, optimal_taylor_coefficients, (combined_loss_function_weights, regularisation), ub = ubs, lb = lbs)
+
+        for (ll,σ) in enumerate(σ_range)
+            SS(Smets_Wouters_2007, parameters = nm => σ, derivatives = false)
+            # prob = OptimizationProblem(f, sol.u, regularisation * 100, ub = ubs, lb = lbs)
+            soll = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+            
+            coeff[l,ii,ll,:] = vcat(combined_loss_function_weights,σ,soll.u)
+
+            println("$nm $σ $(soll.objective)")
+        end
+
+        
+        SS(Smets_Wouters_2007, parameters = nm => vl, derivatives = false)
+        
+        # display(p)
+    end
+    
+    plots = []
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec(coeff[:,ii,:,7]), label = "", xlabel = "Std($nm)", ylabel = "crr", colorbar=false))
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,7]) .* coeff[:,ii,:,5]), label = "", xlabel = "Std($nm)", ylabel = "(1 - crr) * crpi", colorbar=false))
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,7]) .* coeff[:,ii,:,6]), label = "", xlabel = "Std($nm)", ylabel = "(1 - crr) * cry", colorbar=false))
+    
+    p = plot(plots...) # , plot_title = string(nm))
+    savefig(p,"OSR_$(nm).png")
+
+    ii += 1
+end
+
+
+# ↑ z_ea    ⟹   ↓ inflation, ↓ output, ↑ persistence   -    0.6078559133318278
+# ↑ z_eb    ⟹   ↑ inflation, ↑ output, ↑ persistence   -    0.06836618238325545
+# ↑ z_eg    ⟹   → inflation, → output, → persistence   -    0.4203898197505046
+# ↑ z_em    ⟹   ↑ inflation, ↑ output, ↓ persistence   -    0.6541387441075293
+# ↑ z_ew    ⟹   ↓ inflation, ↓ output, ↑ persistence   -    0.4528480216201151
+# ↑ z_eqs   ⟹   → inflation, ↑ output, → persistence   -    1.1088241818556892
+# ↑ z_epinf ⟹   ↓ inflation, ↓ output, ↑ persistence   -    0.1267035923202942
+
+# do the same for the shock autocorrelation
+
+rhos = Smets_Wouters_2007.parameters[end-19:end-11]
+rho_vals = copy(Smets_Wouters_2007.parameter_values[end-19:end-11])
+
+k_range = .45:.025:.55 # [.5] # 
+n_σ_range = 10
+coeff = zeros(length(k_range), length(rhos), n_σ_range, 7);
+
+
+ii = 1
+for (nm,vl) in zip(rhos,rho_vals)
+    for (l,k) in enumerate(k_range)
+        σ_range = range(.9 * vl, 1.0 * vl, length = n_σ_range)
+
+        combined_loss_function_weights = vcat(1,k * loss_function_weights_upper[1:2] + (1-k) * loss_function_weights_lower[1:2])
+
+        prob = OptimizationProblem(f, optimal_taylor_coefficients, (combined_loss_function_weights, regularisation), ub = ubs, lb = lbs)
+
+        for (ll,σ) in enumerate(σ_range)
+            SS(Smets_Wouters_2007, parameters = nm => σ, derivatives = false)
+            # prob = OptimizationProblem(f, sol.u, regularisation * 100, ub = ubs, lb = lbs)
+            soll = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+            
+            coeff[l,ii,ll,:] = vcat(combined_loss_function_weights,σ,soll.u)
+
+            println("$nm $σ $(soll.objective)")
+        end
+
+        
+        SS(Smets_Wouters_2007, parameters = nm => vl, derivatives = false)
+        
+        # display(p)
+    end
+    
+    plots = []
+    push!(plots, surface(vec(coeff[:,ii,:,3]), vec(coeff[:,ii,:,4]), vec(coeff[:,ii,:,7]), label = "", xlabel = "Loss weight: Δr", ylabel = "$nm", zlabel = "crr", colorbar=false))
+    push!(plots, surface(vec(coeff[:,ii,:,3]), vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,7]) .* coeff[:,ii,:,5]), label = "", xlabel = "Loss weight: Δr", ylabel = "$nm", zlabel = "(1 - crr) * crpi", colorbar=false))
+    push!(plots, surface(vec(coeff[:,ii,:,3]), vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,7]) .* coeff[:,ii,:,6]), label = "", xlabel = "Loss weight: Δr", ylabel = "$nm", zlabel = "(1 - crr) * cry", colorbar=false))
+
+    p = plot(plots...) # , plot_title = string(nm))
+    savefig(p,"OSR_$(nm)_surface.png")
+
+    ii += 1
+end
+
+
+ii = 1
+for (nm,vl) in zip(rhos,rho_vals)
+    plots = []
+    push!(plots, contour(vec(coeff[1,ii,:,4]), vec(coeff[end:-1:1,ii,1,3]), (coeff[end:-1:1,ii,:,7]), label = "", ylabel = "Loss weight: Δr", xlabel = "$nm", title = "crr", colorbar=false))
+    push!(plots, contour(vec(coeff[1,ii,:,4]), vec(coeff[end:-1:1,ii,1,3]), ((1 .- coeff[end:-1:1,ii,:,7]) .* coeff[end:-1:1,ii,:,5]), label = "", ylabel = "Loss weight: Δr", xlabel = "$nm", title = "(1 - crr) * crpi", colorbar=false))
+    push!(plots, contour(vec(coeff[1,ii,:,4]), vec(coeff[end:-1:1,ii,1,3]), ((1 .- coeff[end:-1:1,ii,:,7]) .* coeff[end:-1:1,ii,:,6]), label = "", ylabel = "Loss weight: Δr", xlabel = "$nm", title = "(1 - crr) * cry", colorbar=true))
+
+    p = plot(plots...) # , plot_title = string(nm))
+
+    savefig(p,"OSR_$(nm)_contour.png")
+    ii += 1
+end
+
+
+k_range = [.5] # .45:.025:.55 # [.5] # 
+n_σ_range = 10
+coeff = zeros(length(k_range), length(rhos), n_σ_range, 7);
+
+
+ii = 1
+for (nm,vl) in zip(rhos,rho_vals)
+    for (l,k) in enumerate(k_range)
+        σ_range = range(.9 * vl, 1.0 * vl, length = n_σ_range)
+
+        combined_loss_function_weights = vcat(1,k * loss_function_weights_upper[1:2] + (1-k) * loss_function_weights_lower[1:2])
+
+        prob = OptimizationProblem(f, optimal_taylor_coefficients, (combined_loss_function_weights, regularisation), ub = ubs, lb = lbs)
+
+        for (ll,σ) in enumerate(σ_range)
+            SS(Smets_Wouters_2007, parameters = nm => σ, derivatives = false)
+            # prob = OptimizationProblem(f, sol.u, regularisation * 100, ub = ubs, lb = lbs)
+            soll = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+            
+            coeff[l,ii,ll,:] = vcat(combined_loss_function_weights,σ,soll.u)
+
+            println("$nm $σ $(soll.objective)")
+        end
+
+        
+        SS(Smets_Wouters_2007, parameters = nm => vl, derivatives = false)
+        
+        # display(p)
+    end
+    
+    plots = []
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec(coeff[:,ii,:,7]), label = "", xlabel = "$nm", ylabel = "crr", colorbar=false))
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,7]) .* coeff[:,ii,:,5]), label = "", xlabel = "$nm", ylabel = "(1 - crr) * crpi", colorbar=false))
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,7]) .* coeff[:,ii,:,6]), label = "", xlabel = "$nm", ylabel = "(1 - crr) * cry", colorbar=false))
+    
+    p = plot(plots...) # , plot_title = string(nm))
+    savefig(p,"OSR_$(nm).png")
+
+    ii += 1
+end
+
+
+# Interpretation:
+# Shock persistence:
+# ↑ crhob     ⟹ ↑ inflation, ↑ output, ↑ persistence    -   0.9941945010996004
+# ↑ crhoa     ⟹ ↑ inflation, ↑ output, ↓ persistence   -   0.9900258724661307
+# ↑ crhog     ⟹ → inflation, → output, → persistence    -   0.944447821651772
+# ↑ crhoqs    ⟹ → inflation, → output, → persistence    -   0.09136974979681929
+# ↑ crhoms    ⟹ ↑ inflation, ↓ output, ↓ persistence    -   0.5469941169752605
+# ↑ crhopinf  ⟹ ↑ inflation, ↓ output, ↓ persistence    -   0.9839879182859345
+# ↑ crhow     ⟹ ↓ inflation, ↓ output, ↑ persistence    -   0.8176542834158012
+# ↑ cmap      ⟹ ↑ inflation, ↑ output, ↓ persistence    -   0.46404242788618344
+# ↑ cmaw      ⟹ ↑ inflation, ↓ output, ↓ persistence    -   0.7277828188461039
 
 # Interpretation:
 # starting from the implied optimal weights by the taylor rule coefficients resulting from the estimation to be optimal on the pre-pandemic period and setting the crdy coefficient to 0 we change the shock standard deviations and recalculate the optimal Taylor rule coefficients given the implied optimal loss weights
@@ -487,6 +673,37 @@ end
 # (:spinf) ↓ stronger reaction to inflation and output
 # (:sw)    →
 
+# doing the same but letting only the standard deviations vary the following changes apply:
+# (:a)     ↓ 0.048876448357432746   (0.05649332222233191)   stronger reaction to inflation and output, less persistence
+# (:b)     ↑ 0.017434807203149848   (0.009154771190994018)  stronger reaction to inflation and output, more persistence - dominates
+# (:gy)    ↑ 0.024531928343334983   (0.015818645868635427)  no impact on optimal reaction function 
+# (:qs)    ↑ 0.1633892331129693     (0.13897662836032265)   slightly weaker response on inflaiton, slightly less persistence, stronger response to output
+# (:ms)    ↓ 0.0031954169476854496  (0.007814003846949065)  weaker reaction to inflation and output, more persistence - compensates
+# (:spinf) ↑ 0.05720222121202543    (0.047651064538222695)  weaker reaction to inflation and output, more persistence
+# (:sw)    ↑ 2.1905984089710966     (2.0020346229399255)    weaker reaction to inflation and output, more persistence
+
+
+
+# Demand shocks (Y↑ - pi↑ - R↑)
+# z_eb	# risk-premium shock
+# z_eg	# government shock
+# z_eqs	# investment-specific shock
+
+
+# Monetary policy (Y↓ - pi↓ - R↑)
+# z_em	# interest rate shock
+
+# Supply shock (Y↓ - pi↑ - R↑)
+# z_ea	# technology shock
+
+## Mark-up/cost-push shocks (Y↓ - pi↑ - R↑)
+# z_ew	# wage mark-up shock
+# z_epinf	# price mark-up shock
+
+full_sample_shock_std_pandemic[1:7] - no_pandemic[1:7]
+
+(stdderivs([:ygap, :pinfobs, :drobs, :robs],vcat(stds)) * (full_sample_shock_std_pandemic[1:7] - no_pandemic[1:7]))[1:3] #' * derivs[1]'
+# these changes imply lower output gap standard deviation and higher std of inflation and changes in rates
 
 
 SS(Smets_Wouters_2007, parameters = pars .=> no_pandemic, derivatives = false)
@@ -498,7 +715,9 @@ prob = OptimizationProblem(f, optimal_taylor_coefficients, (loss_function_weight
 # Import a solver package and solve the optimization problem
 
 sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
-
+# 2.2188852312707352
+# 0.0236330702790334
+# 0.626915938497439
 sol.objective
 
 
@@ -513,7 +732,26 @@ prob = OptimizationProblem(f, optimal_taylor_coefficients, (loss_function_weight
 sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
 sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000) # this seems to achieve best results
 sol = solve(prob, NLopt.LN_PRAXIS(), maxiters = 10000) # this seems to achieve best results
+# 1.6438787396024561
+# 0.03092869784067731
+# 0.849531449088666
+sol.objective
 
+
+SS(Smets_Wouters_2007, parameters = pars .=> full_sample_shock_std_pandemic, derivatives = false)
+
+f = OptimizationFunction(calculate_cb_loss, AutoZygote())
+# f = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
+prob = OptimizationProblem(f, optimal_taylor_coefficients, (loss_function_weights, regularisation), ub = ubs, lb = lbs)
+
+# Import a solver package and solve the optimization problem
+
+sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000) # this seems to achieve best results
+sol = solve(prob, NLopt.LN_PRAXIS(), maxiters = 10000) # this seems to achieve best results
+# 2.628935541874458
+# 0.06795643427038466
+# 0.8303750184985217
 sol.objective
 
 
@@ -528,13 +766,16 @@ prob = OptimizationProblem(f, optimal_taylor_coefficients, (loss_function_weight
 # sol = solve(prob, NLopt.LN_PRAXIS(), maxiters = 10000) # this seems to achieve best results
 
 sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000) # this seems to achieve best results
-
+# 0.6344347396867679
+# 1.2479460911230826
+# 0.5721511659886132
 # sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
 
 sol.objective
 
 # Interpretation:
 # taken together the changes in the variance of the shock processes imply a weaker response to inflation, a stronger response to output and overall more persistence
+# if you vary only the shock standard deviations and not the persistence the effect is flipped and the optimal response is stronger wrt output, inflation and also more presistent
 
 ## Analysis of other sources of uncertainty
 include("../models/Smets_Wouters_2007_ext.jl")
