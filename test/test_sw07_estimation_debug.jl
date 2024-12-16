@@ -8,7 +8,7 @@
 # rewrite inversion_filter to take into account constrained optim problem - done
 
 
-# using Revise
+using Revise
 using MacroModelling
 using Zygote
 import Turing
@@ -24,7 +24,7 @@ using Serialization
 using StatsPlots
 
 using LinearAlgebra
-BLAS.set_num_threads(Threads.nthreads() ÷ 2)
+BLAS.set_num_threads(Threads.nthreads())
 
 println("Threads used: ", Threads.nthreads())
 println("BLAS threads used: ", BLAS.get_num_threads())
@@ -38,11 +38,11 @@ priors = try ENV["priors"] catch
 end
 
 smple = try ENV["sample"] catch
-    "original" 
+    "no_pandemic" 
 end
 
 smplr = try ENV["sampler"] catch
-    "NUTS" 
+    "pigeons" 
 end
 
 fltr = try Symbol(ENV["filter"]) catch
@@ -50,7 +50,7 @@ fltr = try Symbol(ENV["filter"]) catch
 end
 
 algo = try Symbol(ENV["algorithm"]) catch 
-    :pruned_third_order
+    :pruned_second_order
 end 
 
 smpls = try Meta.parse(ENV["samples"]) catch 
@@ -62,12 +62,17 @@ labor = try ENV["labor"] catch
 end 
 
 sv = try Meta.parse(ENV["sv"]) catch 
-    true
+    false
 end 
 
 rnds = try Meta.parse(ENV["rounds"]) catch
-    4
+    6
 end
+
+shadow = try Meta.parse(ENV["shadowrate"]) catch 
+    true
+end 
+
 
 msrmt_err = try Meta.parse(ENV["measurement_error"]) catch 
     # if fltr == :inversion || !(algo == :first_order)
@@ -87,7 +92,7 @@ end
 # msrmt_err = true
 # smplr = "pigeons"
 # rnds = 10
-if !(pwd() == "/home/cdsw") cd("/home/cdsw") end
+# if !(pwd() == "/home/cdsw") cd("/home/cdsw") end
 # smpler = ENV["sampler"] # "pigeons" #
 # mdl = ENV["model"] # "linear" # 
 # chns = Meta.parse(ENV["chains"]) # "4" # 
@@ -127,7 +132,12 @@ if geo == "EA"
         sample_idx = 78:size(data,2) # 1990Q1-2024Q4
 
         data = data[:, sample_idx]
-    # elseif smple == "full" # 1970Q4 - 2024Q2
+    elseif smple == "no_pandemic" # 1990Q1 - 2020Q1
+        data = data[:, 78:198]
+    end
+
+    if shadow
+        data = rekey(data, :Variable => [:dy, :dc, :dinve, :labobs, :dlabobs, :pinfobs, :dwobs, :r̃obs, :robs])
     end
 elseif geo == "US"
     if smple == "original"
@@ -433,13 +443,16 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
         llh = get_loglikelihood(m, data(observables), parameters_combined, 
                                 filter = filter,
+                                # verbose = true,
                                 # timer = timer,
                                 # presample_periods = 4, initial_covariance = :diagonal, 
                                 algorithm = algorithm)
 
-        # if isfinite(llh) println(all_params) end
-        println(all_params)
-        println(llh)
+        # if !isfinite(llh) println(all_params) end
+
+        # println(llh, all_params)
+        # println(llh)
+        
         Turing.@addlogprob! llh
     end
 end
@@ -498,68 +511,92 @@ end
 init_params = [2.3129025856626537, 1.2228495746691226, 0.9318849031234546, 1.3562376944895138, 0.6524428881873411, 0.49327442409101196, 1.203573267304028, 0.3864746042310666, 0.7727726105580373, 0.730220110698647, 0.6971677564095574, 0.4871156800924448, 0.5294463954763282, 0.5180336034543481, 0.2311459148984609, 0.37454996015841147, 4.088133803603757, 0.841759775361655, 0.20955720026547556, 0.5793852405168153, 2.138011267034095, 0.5922638159623184, 0.8453416012208816, 0.8607561500871466, 0.44579814085943115, 1.5958087587562493, 2.234781340692493, 0.5830882824408568, 0.19517922938138044, 0.06584912174267307, 1.0615455794403328, 0.7176586475825152, -2.821805075991958, 0.3928011814568654, 0.35359747406257547, 0.358634703958937, 0.02532274081741523, 1.919384711061613, 0.19796125261237685, 6.197908162131676, 6.624131926212707]#, 9.831921527897893e-7, 2.8178913647950456e-9, 4.167785814366856e-8, 0.029433066014022225, 0.0013806669709717648, 0.004562581986412541, 0.0003063221804371521, 0.00038275447381583966, 0.0034830137859471443, 0.011628283282447376, 0.012803823726913414, 0.00334461764231085, 0.01946104523533141, 0.004987272896391558, 0.019924594838780108]
 # init_params = [1.5405638118799722, 0.1401733553876237, 0.3563834542577937, 1.082849382259215, 0.1894200490285658, 0.13508911878423554, 0.3451699627252529, 0.754451328217958, 0.884235488873944, 0.7407950376964677, 0.7135458395980955, 0.51588745447427, 0.4941853204371512, 0.6329053580174352, 0.2361995136142515, 0.3870747834489993, 7.75276276588488, 0.978483385459904, 0.5067696357728338, 0.532155122429255, 1.352725161223888, 0.6307490884276056, 0.964234511298511, 0.30742493113498, 0.3959904363292017, 1.358426706506619, 2.479590268754805, 0.893745578951469, 0.897695199654623, 0.05522371087341704, 1.091966086014422, 0.76813295787931, -3.361925447473285, 0.384076080342996, 0.1993048797518073, 0.3411168411375663, 0.6383206695861549, 1.9477987552835, 0.1916827188867194, 4.58113289366161, 7.954552634244455, 6.8520855707497e-10, 2.41006504947337e-15, 0.671949360871998, 0.3967410254432711, 0.495879827013376, 0.856581279746787, 0.12590664986837324, 1.0009678484398778, 0.47498960563225, -1106.5302631487]
 
-init_params = [1.5356503753987876, 0.14045468245253154, 0.3537225682511057, 1.0819806892683805, 0.1100181277435769, 0.13565688285587504, 0.3438965052191379, 0.7569934380196678, 0.8037278807970569, 0.7411271048440026, 0.7137580608531687, 0.515841775802562, 0.49379933360335715, 0.633605865738407, 0.23512670740067015, 0.38608306492617006, 7.73711929035069, 0.9744659640124764, 0.5072644700029988, 0.5323538360758189, 1.3549661182756, 0.6317104166869645, 0.9640781288845617, 0.30297073183093565, 0.3963620263283701, 1.3558958633848701, 2.4820362938200247, 0.894428822442336, 0.0896187160744439, 0.475, 0.7688920973977127, -3.3472801839040156, 0.38423851558887867, 0.19734559386361872, 0.34075457935020076, 0.03841339328523424, 1.9487128051873783, 0.19135311776553954, 4.523817860860894, 7.936066882870238, 5.003393684819979e-10, 1.886790735858059e-15, 0.6631998234623356, 0.3939396787782743, 0.4865358607821454, 0.8559066893027523, 0.12330771725013766, 1.0098922531172527, 0.4755604578703209, 0.7182422927373188, 0.9083070318786729, 0.7004156890986633, 0.8490860174841245, 0.7857297447360877, 0.5803621229112111]
+# init_params = [1.5356503753987876, 0.14045468245253154, 0.3537225682511057, 1.0819806892683805, 0.1100181277435769, 0.13565688285587504, 0.3438965052191379, 0.7569934380196678, 0.8037278807970569, 0.7411271048440026, 0.7137580608531687, 0.515841775802562, 0.49379933360335715, 0.633605865738407, 0.23512670740067015, 0.38608306492617006, 7.73711929035069, 0.9744659640124764, 0.5072644700029988, 0.5323538360758189, 1.3549661182756, 0.6317104166869645, 0.9640781288845617, 0.30297073183093565, 0.3963620263283701, 1.3558958633848701, 2.4820362938200247, 0.894428822442336, 0.0896187160744439, 0.475, 0.7688920973977127, -3.3472801839040156, 0.38423851558887867, 0.19734559386361872, 0.34075457935020076, 0.03841339328523424, 1.9487128051873783, 0.19135311776553954, 4.523817860860894, 7.936066882870238, 5.003393684819979e-10, 1.886790735858059e-15, 0.6631998234623356, 0.3939396787782743, 0.4865358607821454, 0.8559066893027523, 0.12330771725013766, 1.0098922531172527, 0.4755604578703209, 0.7182422927373188, 0.9083070318786729, 0.7004156890986633, 0.8490860174841245, 0.7857297447360877, 0.5803621229112111]
 
-init_params = [1.1868936841071407, 0.1276711627771277, 0.3354595327414588, 0.6518833013121655, 0.12391883733962886, 0.1442460973710499, 0.20611491750517905, 0.7673484386356815, 0.8072070421341406, 0.8441475488891756, 0.6629600668715214, 0.5114243914443558, 0.49110238525172495, 0.7376198110598682, 0.10686040368664165, 0.3850171298417315, 7.153576708889624, 1.064593260199596, 0.5115545400423005, 0.5333214882587825, 1.9254112592577899, 0.6857843008901706, 0.9332766047926039, 0.3087615353319762, 0.4068801936702653, 1.4340490265932555, 2.2280180879069786, 0.9036303290424907, 0.08556592243443006, 0.49300844482830547, 0.7770181660362642, -3.1890708807820474, 0.335467305275283, 0.25480757560021583, 0.3161755477623316, 0.02031327751210803, 2.4242459879262155, 0.19635183050436467, 4.509466381720398, 9.120165335112405, 2.6770642502607984e-8, 1.80150409044232e-18, 0.7894173127468824, 0.6388387672898941, 0.5909280323789, 0.7758451032442724, 0.5548425869290083, 0.6264440170284101, 0.4808240534336051, 0.717035728599077, 0.8479443822032737, 0.694653078142983, 0.8147812028893971, 0.750020549076146, 0.5762673507185069]
+# init_params = [1.1868936841071407, 0.1276711627771277, 0.3354595327414588, 0.6518833013121655, 0.12391883733962886, 0.1442460973710499, 0.20611491750517905, 0.7673484386356815, 0.8072070421341406, 0.8441475488891756, 0.6629600668715214, 0.5114243914443558, 0.49110238525172495, 0.7376198110598682, 0.10686040368664165, 0.3850171298417315, 7.153576708889624, 1.064593260199596, 0.5115545400423005, 0.5333214882587825, 1.9254112592577899, 0.6857843008901706, 0.9332766047926039, 0.3087615353319762, 0.4068801936702653, 1.4340490265932555, 2.2280180879069786, 0.9036303290424907, 0.08556592243443006, 0.49300844482830547, 0.7770181660362642, -3.1890708807820474, 0.335467305275283, 0.25480757560021583, 0.3161755477623316, 0.02031327751210803, 2.4242459879262155, 0.19635183050436467, 4.509466381720398, 9.120165335112405, 2.6770642502607984e-8, 1.80150409044232e-18, 0.7894173127468824, 0.6388387672898941, 0.5909280323789, 0.7758451032442724, 0.5548425869290083, 0.6264440170284101, 0.4808240534336051, 0.717035728599077, 0.8479443822032737, 0.694653078142983, 0.8147812028893971, 0.750020549076146, 0.5762673507185069]
 
-init_params = [0.9526481144390319, 0.09150721235937721, 0.2284502220723092, 0.3360450108523094, 0.12122386113506689, 0.1369031754683562, 0.08794318699780272, 0.9266723522273672, 0.7916824053433282, 0.9094664831627973, 0.8555269704003927, 0.5012090568058599, 0.5127655430110843, 0.8250843245134164, 0.2038030482712811, 0.3784024255774639, 7.77120086607542, 2.2605341015234544, 0.513805987313476, 0.556645532995259, 1.6161091902376372, 0.7600445179274161, 0.40205783892802793, 0.21255291504087975, 0.3662588602761151, 1.3885107628354572, 1.9400751752271217, 0.9159186821668642, 0.12258165558504787, 0.5786170123865231, 0.6129581220463054, -3.4306227551185406, 0.3033839065535559, 0.40947893259161394, 0.25629057267107297, 0.018757520917307015, 3.3690663770182434, 0.18082457566209373, 3.57142920870023, 8.50356739586171, 3.935146271963624e-5, 0.4316750310686323, 1.0440683621695073, 0.9901118724304545, 0.5227603112083585, 0.777843744152753, 0.7871309133100914, 0.9711608108934877, 0.46659060439214856, 0.6754318697287595, 0.8174665244492126, 0.6597711951249539, 0.8430369905706759, 0.7072930962555888, 0.6217352927693114]
+# init_params = [0.9526481144390319, 0.09150721235937721, 0.2284502220723092, 0.3360450108523094, 0.12122386113506689, 0.1369031754683562, 0.08794318699780272, 0.9266723522273672, 0.7916824053433282, 0.9094664831627973, 0.8555269704003927, 0.5012090568058599, 0.5127655430110843, 0.8250843245134164, 0.2038030482712811, 0.3784024255774639, 7.77120086607542, 2.2605341015234544, 0.513805987313476, 0.556645532995259, 1.6161091902376372, 0.7600445179274161, 0.40205783892802793, 0.21255291504087975, 0.3662588602761151, 1.3885107628354572, 1.9400751752271217, 0.9159186821668642, 0.12258165558504787, 0.5786170123865231, 0.6129581220463054, -3.4306227551185406, 0.3033839065535559, 0.40947893259161394, 0.25629057267107297, 0.018757520917307015, 3.3690663770182434, 0.18082457566209373, 3.57142920870023, 8.50356739586171, 3.935146271963624e-5, 0.4316750310686323, 1.0440683621695073, 0.9901118724304545, 0.5227603112083585, 0.777843744152753, 0.7871309133100914, 0.9711608108934877, 0.46659060439214856, 0.6754318697287595, 0.8174665244492126, 0.6597711951249539, 0.8430369905706759, 0.7072930962555888, 0.6217352927693114]
 
-all_params = init_params
+# all_params = init_params
 
-z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, constepinf, constebeta, constelab, ctrend, cgy, calfa = all_params[1:35]
+# z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, crdy, constepinf, constebeta, constelab, ctrend, cgy, calfa, ctou, clandaw, cg, curvp, curvw = all_params
 
-crdy = 0
-ctou, clandaw, cg, curvp, curvw = all_params[35 .+ (1:5)]
-
-
-z̄_ea    = z_ea
-z̄_eb    = z_eb
-z̄_eg    = z_eg
-z̄_em    = z_em
-z̄_ew    = z_ew
-z̄_eqs   = z_eqs
-z̄_epinf = z_epinf
-
-αᴱ, z_z_ea, z_z_eb, z_z_eg, z_z_em, z_z_ew, z_z_eqs, z_z_epinf, rho_z_ea, rho_z_eb, rho_z_eg, rho_z_em, rho_z_ew, rho_z_eqs, rho_z_epinf = all_params[35 + 5 - length(fixed_parameters[1]) + 1 : end]
-Smets_Wouters_2007_SV_EPZ.parameters
-
-parameters_combined = [αᴱ, z̄_ea, z̄_eb, z̄_eg, z̄_em, z̄_ew, z̄_eqs, z̄_epinf, z_z_ea, z_z_eb, z_z_eg, z_z_em, z_z_ew, z_z_eqs, z_z_epinf, rho_z_ea, rho_z_eb, rho_z_eg, rho_z_em, rho_z_ew, rho_z_eqs, rho_z_epinf, ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend]
-
-SS(Smets_Wouters_2007_SV_EPZ,parameters = parameters_combined, derivatives = false)
-mn = get_mean(Smets_Wouters_2007_SV_EPZ,parameters = parameters_combined, algorithm = :pruned_third_order, derivatives = false)
-
-write_mod_file(Smets_Wouters_2007_SV_EPZ)
+# crdy = 0
+# ctou, clandaw, cg, curvp, curvw = all_params[36 .+ (1:5)]
 
 
+# z̄_ea    = z_ea
+# z̄_eb    = z_eb
+# z̄_eg    = z_eg
+# z̄_em    = z_em
+# z̄_ew    = z_ew
+# z̄_eqs   = z_eqs
+# z̄_epinf = z_epinf
 
-SW07_llh = SW07_loglikelihood_function(data, Smets_Wouters_2007_SV_EPZ, observables, fixed_parameters, algo, fltr, dists)
+# αᴱ, z_z_ea, z_z_eb, z_z_eg, z_z_em, z_z_ew, z_z_eqs, z_z_epinf, rho_z_ea, rho_z_eb, rho_z_eg, rho_z_em, rho_z_ew, rho_z_eqs, rho_z_epinf = all_params[35 + 5 - length(fixed_parameters[1]) + 1 : end]
+# Smets_Wouters_2007_SV_EPZ.parameters
+
+# parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea,  z_eb,  z_eg,  z_em,  z_ew,  z_eqs,  z_epinf]
+# Smets_Wouters_2007.parameters
+
+# SS(Smets_Wouters_2007, parameters = parameters_combined, derivatives = false)
+# SS(Smets_Wouters_2007, parameters = :crdy => 0, derivatives = false)
+
+# SS(Smets_Wouters_2007_SV_EPZ,parameters = parameters_combined, derivatives = false)
+# mn = get_mean(Smets_Wouters_2007_SV_EPZ,parameters = parameters_combined, algorithm = :pruned_third_order, derivatives = false)
+
+# write_mod_file(Smets_Wouters_2007_SV_EPZ)
+
+
+init_params = [0.6620354075195423, 0.10768250881329916, 0.48801304949362956, 1.770927378080611, 0.1955753320679856, 0.3197180356921326, 0.9551361886906241, 0.9977844890700551, 0.9691417991977467, 0.8728843954944048, 0.49659129506022714, 0.3584065887522079, 0.9873744130805314, 0.9806233170657974, 0.2489561763963097, 0.5660705500281242, 1.7180820317149463, 1.8431238402445613, 0.2202405755566067, 0.40841035895229333, -0.4669756850359026, 0.5204683928642624, 0.6718472817176422, 0.3103271326742966, 0.9084207817147026, 1.0741237658234042, 2.7460557201172926, 0.8888957488237553, 0.10671758949937071, 0.5152602577303966, 0.6368125693076699, 0.054339645101056766, 0.5808583404523284, 0.22874506751012447, 0.2628140283514245, 0.024093997219398144, 1.7039197242733768, 0.19168547981814818, 5.572156222619091, 4.835252526546624]
+
+
+SW07_llh = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, dists)
 # init_params = vcat(init_params,100,fill(.25,7),fill(.5,7))
 LLH = Turing.logjoint(SW07_llh, (all_params = init_params,))
 # Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :pruned_second_order, fltr), (all_params = init_params,))
 # Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :first_order, :inversion), (all_params = init_params,))
 
-# using OptimizationNLopt
 
-# modeSW2007NM = try Turing.maximum_a_posteriori(SW07_llh, NLopt.LN_NELDERMEAD(), 
-#     # initial_params = init_params, 
-#     # maxtime = 4*60^2)
-#     maxeval = 10000)#, show_trace = true, iterations = 100)
-# catch
-#     1
-# end
+using OptimizationNLopt, OptimizationOptimJL
 
-# modeSW2007NM = try Turing.maximum_a_posteriori(SW07_llh, NLopt.LD_LBFGS(), 
-#     initial_params = init_params, 
-#     adtype = AutoZygote(),
-#     maxeval = 100)#, show_trace = true, iterations = 100)
-# catch
-#     1
-# end
-# modeSW2007NM = Turing.maximum_a_posteriori(SW07_llh, Optim.SimulatedAnnealing())
+init_params = init_params[vcat(1:29,31:41)]
+
+init_params = [0.6620354075195423, 0.10768250881329916, 0.48801304949362956, 1.770927378080611, 0.1955753320679856, 0.3197180356921326, 0.9551361886906241, 0.9977844890700551, 0.9691417991977467, 0.8728843954944048, 0.49659129506022714, 0.3584065887522079, 0.9873744130805314, 0.9806233170657974, 0.2489561763963097, 0.5660705500281242, 1.7180820317149463, 1.8431238402445613, 0.2202405755566067, 0.40841035895229333, -0.4669756850359026, 0.5204683928642624, 0.6718472817176422, 0.3103271326742966, 0.9084207817147026, 1.0741237658234042, 2.7460557201172926, 0.8888957488237553, 0.10671758949937071, 0.5152602577303966, 0.6368125693076699, 0.054339645101056766, 0.5808583404523284, 0.22874506751012447, 0.2628140283514245, 0.024093997219398144, 1.7039197242733768, 0.19168547981814818, 5.572156222619091, 4.835252526546624]
+
+init_params = [0.7024851452253356, 0.06777720647710624, 0.4967839140151745, 1.6966333093544783, 0.1807839230451908, 0.36098987342456, 0.6901657554487456, 0.9985708988801497, 0.9850118709446123, 0.9734277146707105, 0.497348891576039, 0.5281692566579538, 0.9770838376971972, 0.953291844733876, 0.23116463841574095, 0.5478935227034405, 2.0811969199871285, 2.2731358443018648, 0.2630236101459915, 0.529465880500292, -0.30808019231172123, 0.7075966400023548, 0.7091007237194571, 0.406954415051917, 0.8622785454198567, 0.9697377116234818, 2.486865422045813, 0.9090028410187968, 0.04524209078378454, 0.5021293420090507, 0.8331126421607148, -1.7579561512979356, 0.5124695806487632, 0.21572673107043036, 0.24902390620811718, 0.017607360271706902, 2.206450089840765, 0.19608508334407346, 20.361750839493485, 3.625188087614931]
+
+init_params = [0.639752323931147, 0.047752521685742184, 0.4656915891346402, 1.8376035858804507, 0.17513198147478673, 0.288881593552456, 0.9150199317420883, 0.9979581326078037, 0.9834076500304879, 0.9010630645960009, 0.5333681219993218, 0.3778213739655571, 0.9881749938783719, 0.9831577665970362, 0.24639888294818502, 0.48493020086245425, 2.361608182515568, 2.5589136737508795, 0.3121278238154774, 0.42101651260753736, -0.7844053069782329, 0.5515156390553695, 0.654363937877366, 0.29575314054910673, 0.9072369955114816, 1.1056326588824705, 2.667961260326033, 0.9350843320625146, 0.06412134952627468, 0.5155629193370593, 0.8067790574987737, -0.06972950025498818, 0.586077562670571, 0.27123569259748836, 0.28912672393060884, 0.01889684749516295, 1.3949107181639564, 0.19320963133896565, 5.81062425351932, 6.661515605631647]
+
+init_params = [0.6617776465679659, 0.14444791712405503, 0.512101041770193, 1.7002466038514714, 0.23576278938503695, 0.3320459781681061, 1.0347393522532642, 0.9973348934447676, 0.9452042824997534, 0.890598160091433, 0.5244918525609598, 0.25613482596796633, 0.987692224138875, 0.9777067742617025, 0.1458696108744117, 0.49237199604113463, 1.5450666109597258, 1.576809329488479, 0.238294910129156, 0.372955909925465, -0.17389560259313808, 0.4702930781106115, 0.7214592928005356, 0.29589074018516637, 0.9093091481399374, 1.0709816423232308, 2.5274616213163483, 0.8433393542322632, 0.10193225711002216, 0.5081200118611934, 0.3552170289890642, -0.205837602646873, 0.5817488061169276, 0.20815722184550728, 0.26014637302908383, 0.023935553740246963, 2.204596536719598, 0.19035643596794463, 7.223039352344145, 4.398530583682079]
+
+
+init_params[28] = 0.6
+
+init_params[1:3] *= .25
+init_params[4:7] *= .9
+
+
+init_params = [0.6972060514611745, 0.11417651001389305, 0.4929070221735187, 1.6936200231835798, 0.2598680955381663, 0.3285121343839307, 1.0936720782794245, 0.9979991899011958, 0.9649402932057441, 0.8750175895462207, 0.5201743904514804, 0.30001181956130174, 0.9867550271883783, 0.9811513450368833, 0.2496461434232096, 0.3958629667368422, 1.710057305501522, 1.8563217546492552, 0.260221248089197, 0.33401616292308545, -0.695686788929071, 0.5030834550927599, 0.6549003729813853, 0.32207531849260806, 0.9153241727453424, 1.0896433635031537, 2.6137333039781607, 0.8316667826439402, 0.10855040387365646, 0.5071784317659216, 0.30750377286880454, -0.3144354074453616, 0.5809722251156426, 0.20924807741450885, 0.2584242518159307, 0.023914393896932246, 1.2830786829445315, 0.19423886316415204, 5.222467349470297, 10.221824129459003]
+
+LLH = Turing.logjoint(SW07_llh, (all_params = init_params,))
+
+
+modeSW2007LBFGS = Turing.maximum_a_posteriori(SW07_llh, Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), initial_params = init_params, adtype = AutoZygote()) # Out of memory
+modeSW2007LBFGS.values |>println
+
+modeSW2007SA = Turing.maximum_a_posteriori(SW07_llh, Optim.SimulatedAnnealing(), initial_params = init_params)
 # modeSW2007NM.values
-using OptimizationNLopt
+modeSW2007Px = Turing.maximum_a_posteriori(SW07_llh, NLopt.LN_PRAXIS(), initial_params = init_params)
 modeSW2007NM2 = Turing.maximum_a_posteriori(SW07_llh, NLopt.LN_NELDERMEAD(), initial_params = init_params)
-# modeSW2007BFGS2 = Turing.maximum_a_posteriori(SW07_llh, NLopt.LD_LBFGS(), initial_params = init_params, adtype = AutoZygote()) # Out of memory
+modeSW2007SP = Turing.maximum_a_posteriori(SW07_llh, NLopt.LN_SBPLX(), initial_params = init_params)
+modeSW2007LBFGS2 = Turing.maximum_a_posteriori(SW07_llh, NLopt.LD_LBFGS(), initial_params = init_params, adtype = AutoZygote()) # Out of memory
+
+modeSW2007NWTN = Turing.maximum_a_posteriori(SW07_llh, NLopt.LD_TNEWTON_PRECOND(), initial_params = init_params, adtype = AutoZygote()) # Out of memory
+
+modeSW2007NM2.values |>println
+
+modeSW2007NM = Turing.maximum_a_posteriori(SW07_llh, Optim.NelderMead(), initial_params = init_params, adtype = AutoZygote()) # Out of memory
 
 if !isfinite(LLH)
     println("Initial values have infinite loglikelihood. Trying to find finite starting point.")
@@ -636,14 +673,14 @@ elseif smplr == "pigeons"
     #     pt = Pigeons.increment_n_rounds!(pt, 1)
     #     pt = Pigeons.pigeons(pt)
     # else
-        pt = Pigeons.pigeons(target = sw07_lp, n_rounds = 0, n_chains = 2)
+        pt = Pigeons.pigeons(target = sw07_lp, n_rounds = 0, n_chains = 1)
 
         pt = Pigeons.pigeons(target = sw07_lp,
                             # explorer = Pigeons.AutoMALA(default_autodiff_backend = :Zygote),
                             checkpoint = true,
                             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
-                            multithreaded = false,
-                            n_chains = 2,
+                            multithreaded = true,
+                            n_chains = 1,
                             n_rounds = rnds)
     # end
 
@@ -659,7 +696,7 @@ println(samps)
 println("Mean variable values: $(mean(samps).nt.mean)")
 
 
-varnames = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry, :crdy, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
+varnames = [:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crr, :cry,  :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa]
 
 if priors ∈ ["all", "open"]
     varnames = vcat(varnames,[:ctou, :clandaw, :cg, :curvp, :curvw])
@@ -688,3 +725,88 @@ StatsPlots.savefig(my_plot, dir_name * "/samples_$(dt)h.png")
 StatsPlots.savefig(my_plot, "samples_latest.png")
 
 Base.show(stdout, MIME"text/plain"(), samps)
+
+
+init_params = [0.6647831723963108, 0.1696409521786583, 0.5580454054112424, 1.4107875417460551, 0.27150800318229096, 0.2982789062192042, 0.9608926135337186, 0.9968070538427887, 0.9355375595019946, 0.8857554713134486, 0.6671161668424413, 0.363490876566295, 0.9844516855340667, 0.9548251912875737, 0.2672038505621581, 0.4710818007355946, 2.3199691360451973, 1.647356911213051, 0.2681908246948425, 0.4216832168949589, -0.15640416813475932, 0.5091965632941383, 0.6795174040555909, 0.3819940049374918, 0.8953965508435049, 1.0811321641690619, 2.763652185541633, 0.8578346355200306, 0.08963808582038361, 0.5101854590802727, 0.4527575703228302, -0.8627011833961279, 0.5462134869630935, 0.1813725165517729, 0.25860912552471754, 0.02283530676171379, 2.256424512963501, 0.1922713275188999, 8.218707368321041, 5.906699475772892]
+
+fixed_parameters = init_params[8:end]
+
+dists = dists = [
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ea
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eb
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eg
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eqs
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_em
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_epinf
+    Cauchy(0.0, 2.0, 0.0, 10.0)]
+
+Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter, dists)
+    all_params ~ Turing.arraydist(dists)
+
+    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew = all_params
+    
+    crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, constepinf, constebeta, constelab, ctrend, cgy, calfa, ctou, clandaw, cg, curvp, curvw = fixed_parameters
+
+    crdy = 0
+
+    parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+    
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        llh = get_loglikelihood(m, data(observables), parameters_combined, 
+                                filter = filter,
+                                # verbose = true,
+                                # timer = timer,
+                                # presample_periods = 4, initial_covariance = :diagonal, 
+                                algorithm = algorithm)
+
+        Turing.@addlogprob! llh
+    end
+end
+
+
+SW07_llh3 = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, dists)
+
+LLH = Turing.logjoint(SW07_llh3, (all_params = init_params[1:7],))
+
+
+if smplr == "NUTS"
+    samps = @time Turing.sample(SW07_llh,
+                                # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
+                                NUTS(1000, 0.65, adtype = AutoZygote()),
+                                smpls;
+                                initial_params = isfinite(LLH) ? init_params : nothing,
+                                progress = true,
+                                callback = callback)
+
+    # InferenceReport.report(samps; max_moving_plot_iters = 0, view = false, render = true, exec_folder = "/home/cdsw")
+elseif smplr == "pigeons"
+    # generate a Pigeons log potential
+    sw07_lp3 = Pigeons.TuringLogPotential(SW07_llh3)
+
+    const SW07_LP3 = typeof(sw07_lp3)
+    
+    function Pigeons.initialization(target::SW07_LP3, rng::AbstractRNG, _::Int64)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+        
+        result = DynamicPPL.initialize_parameters!!(result, init_params[1:7], DynamicPPL.SampleFromPrior(), target.model)
+
+        return result
+    end
+    
+    cd(dir_name)
+
+    pt = Pigeons.pigeons(target = sw07_lp3, n_rounds = 0, n_chains = 1)
+
+    pt = Pigeons.pigeons(target = sw07_lp3,
+                        checkpoint = true,
+                        record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
+                        multithreaded = true,
+                        n_chains = 1,
+                        n_rounds = 5)
+
+    cd("../..")
+
+    samps = MCMCChains.Chains(pt)
+end
+
+pre_pandemic_stds = [0.6214776253642815, 0.09180625969728813, 0.48695111652187245, 1.7462778722662238, 0.22762104671667938, 0.2841560574382372, 0.42421425521650646]
