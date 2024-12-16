@@ -5,9 +5,11 @@ import Dates
 using AxisKeys
 using Statistics
 
-dat = CSV.read("./Github/MacroModelling.jl/test/data/EA_SW_rawdata.csv", DataFrame, types = Dict(8=>Float64))
+dat = CSV.read("./test/data/EA_SW_rawdata.csv", DataFrame, types = Dict(8=>Float64))
 
 dat.interest_rate = dat.shortrate / 4
+
+dat.shadow_interest_rate = dat.shadowshortrate / 4
 
 dat.real_GDP_per_capita = dat.gdp ./ dat.pop
 dat.real_GDP_per_capita_growth = [missing; diff(log.(dat.real_GDP_per_capita)) * 100]
@@ -35,7 +37,8 @@ subset_data_wide = dat[:,[:period,
                         :hours_growth,
                         :inflation, 
                         :real_wage_per_capita_growth,
-                        :interest_rate
+                        :interest_rate,
+                        :shadow_interest_rate
                         ]]
                                     
 complete_subset_data_wide = subset_data_wide[completecases(subset_data_wide),:]
@@ -50,6 +53,6 @@ data = KeyedArray(Float64.(Matrix(complete_subset_data_wide[:, Not(:period)])'),
 obs = [:dy, :dc, :dinve, 
 :labobs, 
 :dlabobs,
-:pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+:pinfobs, :dwobs, :robs, :r̃obs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
 
 data = rekey(data, :Variable => obs)
