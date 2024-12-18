@@ -67,6 +67,7 @@ function get_shock_decomposition(𝓂::ℳ,
     parameters::ParameterType = nothing,
     filter::Symbol = :kalman,
     algorithm::Symbol = :first_order,
+    quadratic_matrix_equation_solver::Symbol = :schur,
     data_in_levels::Bool = true,
     warmup_iterations::Int = 0,
     smooth::Bool = true,
@@ -99,7 +100,11 @@ function get_shock_decomposition(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
+    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
+                                        warmup_iterations = warmup_iterations, 
+                                        quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                        smooth = smooth, 
+                                        verbose = verbose)
     
     axis1 = 𝓂.timings.var
 
@@ -991,7 +996,7 @@ function get_irf(𝓂::ℳ;
     levels::Bool = false,
     shock_size::Real = 1,
     ignore_obc::Bool = false,
-    timer::TimerOutput = TimerOutput(),
+    # timer::TimerOutput = TimerOutput(),
     verbose::Bool = false)
 
     # @timeit_debug timer "Wrangling inputs" begin
