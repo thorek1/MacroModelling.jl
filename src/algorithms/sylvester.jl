@@ -1,9 +1,10 @@
 # Available algorithms: 
 # :doubling     - fast, expensive part: B^2
-# :sylvester    - fast, dense matrices only
+# :bartels_stewart    - fast, dense matrices only
 # :bicgstab     - fastest for large problems, might not reach desired precision, warm start not always helpful
 # :dqgmres      - fastest for large problems, might not reach desired precision, stable path with warm start
 # :gmres      - fastest for large problems, might not reach desired precision, can be effective, not efficient
+
 # :iterative    - slow
 # :speedmapping - slow
 
@@ -20,13 +21,13 @@ function solve_sylvester_equation(A::M,
                                     verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
     @timeit_debug timer "Choose matrix formats" begin
 
-    if sylvester_algorithm == :sylvester
+    if sylvester_algorithm == :bartels_stewart
         b = collect(B)
     else
         b = choose_matrix_format(B)# |> collect
     end
 
-    if sylvester_algorithm ∈ [:bicgstab, :gmres, :sylvester]
+    if sylvester_algorithm ∈ [:bicgstab, :gmres, :bartels_stewart]
         a = collect(A)
 
         c = collect(C)
@@ -66,7 +67,7 @@ function solve_sylvester_equation(A::M,
         println("Sylvester equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
     
-    if !(reached_tol < tol) && sylvester_algorithm ≠ :sylvester && length(B) < 5e7 # try sylvester if previous one didn't solve it
+    if !(reached_tol < tol) && sylvester_algorithm ≠ :bartels_stewart && length(B) < 5e7 # try sylvester if previous one didn't solve it
         aa = collect(A)
 
         bb = collect(B)
@@ -74,7 +75,7 @@ function solve_sylvester_equation(A::M,
         cc = collect(C)
 
         x, i, reached_tol = solve_sylvester_equation(aa, bb, cc, 
-                                                            Val(:sylvester), 
+                                                            Val(:bartels_stewart), 
                                                             initial_guess = zeros(0,0), 
                                                             # tol = tol, 
                                                             verbose = verbose,
@@ -967,7 +968,7 @@ end
 function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     B::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
                                     C::DenseMatrix{Float64},
-                                    ::Val{:sylvester};
+                                    ::Val{:bartels_stewart};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
@@ -1337,71 +1338,71 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 end
 
 
-function solve_sylvester_equation(A::AbstractMatrix{Float64},
-                                    B::AbstractMatrix{Float64},
-                                    C::AbstractMatrix{Float64},
-                                    ::Val{:iterative};
-                                    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false,
-                                    tol::AbstractFloat = 1e-14)
-    # guess_provided = true
+# function solve_sylvester_equation(A::AbstractMatrix{Float64},
+#                                     B::AbstractMatrix{Float64},
+#                                     C::AbstractMatrix{Float64},
+#                                     ::Val{:iterative};
+#                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+#                                     timer::TimerOutput = TimerOutput(),
+#                                     verbose::Bool = false,
+#                                     tol::AbstractFloat = 1e-14)
+#     # guess_provided = true
 
-    if length(initial_guess) == 0
-        # guess_provided = false
-        initial_guess = zero(C)
-    end
+#     if length(initial_guess) == 0
+#         # guess_provided = false
+#         initial_guess = zero(C)
+#     end
 
-    𝐂  = A * initial_guess * B + C - initial_guess
-    𝐂⁰  = copy(𝐂)
-    # 𝐂  = copy(C)
+#     𝐂  = A * initial_guess * B + C - initial_guess
+#     𝐂⁰  = copy(𝐂)
+#     # 𝐂  = copy(C)
  
-    𝐂¹ = similar(C)
-    𝐂B = similar(C)
+#     𝐂¹ = similar(C)
+#     𝐂B = similar(C)
     
-    max_iter = 10000
+#     max_iter = 10000
     
-    iters = max_iter
+#     iters = max_iter
 
-    for i in 1:max_iter
-        @timeit_debug timer "Update" begin
-        ℒ.mul!(𝐂B, 𝐂, B)
-        ℒ.mul!(𝐂¹, A, 𝐂B)
-        ℒ.axpy!(1, 𝐂⁰, 𝐂¹)
+#     for i in 1:max_iter
+#         @timeit_debug timer "Update" begin
+#         ℒ.mul!(𝐂B, 𝐂, B)
+#         ℒ.mul!(𝐂¹, A, 𝐂B)
+#         ℒ.axpy!(1, 𝐂⁰, 𝐂¹)
     
-        if i % 10 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
-            # if isapprox(𝐂¹, 𝐂, rtol = tol)
-                iters = i
-                break
-            end
-        end
+#         if i % 10 == 0
+#             normdiff = ℒ.norm(𝐂¹ - 𝐂)
+#             if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+#             # if isapprox(𝐂¹, 𝐂, rtol = tol)
+#                 iters = i
+#                 break
+#             end
+#         end
     
-        copyto!(𝐂, 𝐂¹)
-        end # timeit_debug
-    end
+#         copyto!(𝐂, 𝐂¹)
+#         end # timeit_debug
+#     end
 
-    # ℒ.mul!(𝐂B, 𝐂, B)
-    # ℒ.mul!(𝐂¹, A, 𝐂B)
-    # ℒ.axpy!(1, C, 𝐂¹)
+#     # ℒ.mul!(𝐂B, 𝐂, B)
+#     # ℒ.mul!(𝐂¹, A, 𝐂B)
+#     # ℒ.axpy!(1, C, 𝐂¹)
 
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+#     # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
+#     # ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+#     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
 
-    𝐂 += initial_guess
+#     𝐂 += initial_guess
 
-    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
+#     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
-    # if reached_tol > tol
-    #     println("Sylvester: iterative $reached_tol")
-    # end
+#     # if reached_tol > tol
+#     #     println("Sylvester: iterative $reached_tol")
+#     # end
 
-    return 𝐂, iters, reached_tol # return info on convergence
-end
+#     return 𝐂, iters, reached_tol # return info on convergence
+# end
 
 
 # function solve_sylvester_equation(A::AbstractMatrix{Float64},

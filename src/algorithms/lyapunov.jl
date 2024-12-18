@@ -1,8 +1,9 @@
 # Available algorithms: 
 # :doubling     - fast and precise
-# :lyapunov     - fast for small matrices and precise, dense matrices only
+# :bartels_stewart     - fast for small matrices and precise, dense matrices only
 # :bicgstab     - less precise
 # :gmres        - less precise
+
 # :iterative    - slow and precise
 # :speedmapping - slow and very precise
 
@@ -17,7 +18,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     @timeit_debug timer "Solve lyapunov equation" begin
     @timeit_debug timer "Choose matrix formats" begin
         
-    if lyapunov_algorithm ≠ :lyapunov
+    if lyapunov_algorithm ≠ :bartels_stewart
         A = choose_matrix_format(A)
     end
 
@@ -54,7 +55,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
             C = collect(C)
 
             X, i, reached_tol = solve_lyapunov_equation(A, C, 
-                                                                Val(:lyapunov), 
+                                                                Val(:bartels_stewart), 
                                                                 # tol = tol, 
                                                                 timer = timer)
 
@@ -145,7 +146,7 @@ end
 
 function solve_lyapunov_equation(A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
                                 C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-                                ::Val{:lyapunov};
+                                ::Val{:bartels_stewart};
                                 tol::AbstractFloat = 1e-12,
                                 timer::TimerOutput = TimerOutput())
     𝐂 = try 
@@ -469,54 +470,54 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
 end
 
 
-function solve_lyapunov_equation(A::AbstractMatrix{Float64},
-                                C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-                                ::Val{:iterative};
-                                tol::AbstractFloat = 1e-14,
-                                timer::TimerOutput = TimerOutput())
-    𝐂  = copy(C)
-    𝐂¹ = copy(C)
-    𝐂A = copy(C)
+# function solve_lyapunov_equation(A::AbstractMatrix{Float64},
+#                                 C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+#                                 ::Val{:iterative};
+#                                 tol::AbstractFloat = 1e-14,
+#                                 timer::TimerOutput = TimerOutput())
+#     𝐂  = copy(C)
+#     𝐂¹ = copy(C)
+#     𝐂A = copy(C)
     
-    max_iter = 10000
+#     max_iter = 10000
     
-    iters = max_iter
+#     iters = max_iter
 
-    for i in 1:max_iter
-        ℒ.mul!(𝐂A, 𝐂, A')
-        ℒ.mul!(𝐂¹, A, 𝐂A)
-        ℒ.axpy!(1, C, 𝐂¹)
+#     for i in 1:max_iter
+#         ℒ.mul!(𝐂A, 𝐂, A')
+#         ℒ.mul!(𝐂¹, A, 𝐂A)
+#         ℒ.axpy!(1, C, 𝐂¹)
     
-        if i % 10 == 0
-            normdiff = ℒ.norm(𝐂¹ - 𝐂)
-            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
-            # if isapprox(𝐂¹, 𝐂, rtol = tol)
-                iters = i
-                break
-            end
-        end
+#         if i % 10 == 0
+#             normdiff = ℒ.norm(𝐂¹ - 𝐂)
+#             if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+#             # if isapprox(𝐂¹, 𝐂, rtol = tol)
+#                 iters = i
+#                 break
+#             end
+#         end
     
-        copyto!(𝐂, 𝐂¹)
-    end
+#         copyto!(𝐂, 𝐂¹)
+#     end
 
-    # ℒ.mul!(𝐂A, 𝐂, A')
-    # ℒ.mul!(𝐂¹, A, 𝐂A)
-    # ℒ.axpy!(1, C, 𝐂¹)
+#     # ℒ.mul!(𝐂A, 𝐂, A')
+#     # ℒ.mul!(𝐂¹, A, 𝐂A)
+#     # ℒ.axpy!(1, C, 𝐂¹)
 
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+#     # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
 
-    # ℒ.axpy!(-1, 𝐂, 𝐂¹)
+#     # ℒ.axpy!(-1, 𝐂, 𝐂¹)
 
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
+#     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹) / denom
     
-    reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
+#     reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
 
-    # if reached_tol > tol
-    #     println("Lyapunov: iterative $reached_tol")
-    # end
+#     # if reached_tol > tol
+#     #     println("Lyapunov: iterative $reached_tol")
+#     # end
 
-    return 𝐂, iters, reached_tol # return info on convergence
-end
+#     return 𝐂, iters, reached_tol # return info on convergence
+# end
 
 
 # function solve_lyapunov_equation(A::AbstractMatrix{Float64},

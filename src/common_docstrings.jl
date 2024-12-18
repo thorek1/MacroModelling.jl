@@ -19,3 +19,5 @@ const PARAMETER_DERIVATIVES = "`parameter_derivatives` [Default: :all]: paramete
 const DATA = "`data` [Type: `KeyedArray`]: data matrix with variables (`String` or `Symbol`) in rows and time in columns"
 const SMOOTH = "`smooth` [Default: `true`, Type: `Bool`]: whether to return smoothed (`true`) or filtered (`false`) shocks/variables. Only works for the Kalman filter. The inversion filter only returns filtered shocks/variables."
 const DATA_IN_LEVELS = "`data_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the data is provided in levels. If `true` the input to the data argument will have the non stochastic steady state substracted."
+const LYAPUNOV = "`lyapunov_algorithm` [Default: `:doubling`, Type: `Symbol`]: algorithm to solve Lyapunov equation (`A * X * A' + C = X`). Available algorithms: `:doubling`, `:bartels_stewart`, `:bicgstab`, `:gmres`"
+const SYLVESTER = "`sylvester_algorithm` [Default: `:doubling`, Type: `Symbol`]: algorithm to solve Sylvester equation (`A * X * B + C = X`). Available algorithms: `:doubling`, `:bartels_stewart`, `:bicgstab`, `:dqgmres`, `:gmres`"

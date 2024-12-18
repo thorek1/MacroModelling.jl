@@ -1974,6 +1974,7 @@ Return the variance decomposition of endogenous variables with regards to the sh
 - $MODEL
 # Keyword Arguments
 - $PARAMETERS
+- $LYAPUNOV
 - $VERBOSE
 
 # Examples
@@ -2086,6 +2087,8 @@ Return the correlations of endogenous variables using the first, pruned second, 
 # Keyword Arguments
 - $PARAMETERS
 - $ALGORITHM
+- $LYAPUNOV
+- $SYLVESTER
 - $VERBOSE
 
 # Examples
@@ -2179,6 +2182,8 @@ Return the autocorrelations of endogenous variables using the first, pruned seco
 - `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation
 - $PARAMETERS
 - $ALGORITHM
+- $LYAPUNOV
+- $SYLVESTER
 - $VERBOSE
 
 # Examples
@@ -2290,6 +2295,8 @@ Return the first and second moments of endogenous variables using the first, pru
 - $DERIVATIVES
 - $PARAMETER_DERIVATIVES
 - $ALGORITHM
+- $LYAPUNOV
+- $SYLVESTER
 - `dependencies_tol` [Default: `1e-12`, Type: `AbstractFloat`]: tolerance for the effect of a variable on the variable of interest when isolating part of the system for calculating covariance related statistics
 - $VERBOSE
 
@@ -2798,6 +2805,8 @@ Function to use when differentiating model moments with repect to parameters.
 - `autocorrelation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the autocorrelation of the mentioned variables
 - `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation of the mentioned variables
 - $ALGORITHM
+- $LYAPUNOV
+- $SYLVESTER
 - $VERBOSE
 
 # Examples
@@ -3032,9 +3041,9 @@ function get_loglikelihood(𝓂::ℳ,
     timer::TimerOutput = TimerOutput(),
     verbose::Bool = false)::S where S <: Real
 
-    if algorithm ∈ [:third_order,:pruned_third_order]
-        sylvester_algorithm = :bicgstab
-    end
+    # if algorithm ∈ [:third_order,:pruned_third_order]
+    #     sylvester_algorithm = :bicgstab
+    # end
 
     # TODO: throw error for bounds violations, suggesting this might be due to wrong parameter ordering
     @assert length(parameter_values) == length(𝓂.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, you need to combine the estimated parameters with the other model parameters in one `Vector`. Make sure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."

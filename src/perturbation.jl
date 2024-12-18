@@ -255,7 +255,7 @@ function rrule(::typeof(calculate_first_order_solution),
 
         tmp1 = M' * ∂𝐒ᵗ * expand[2]
 
-        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, sylvester_algorithm = :sylvester)
+        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, sylvester_algorithm = :doubling)
 
         if !solved
             NoTangent(), NoTangent(), NoTangent()

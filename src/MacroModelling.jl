@@ -7406,7 +7406,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
                                                     quadratic_matrix_equation_solver::Symbol = :schur, 
-                                                    sylvester_algorithm::Symbol = :gmres, 
+                                                    sylvester_algorithm::Symbol = :bicgstab, 
                                                     verbose::Bool = false,
                                                     timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, tol = tol, timer = timer, verbose = verbose)
