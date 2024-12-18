@@ -560,6 +560,7 @@ function filter_data_with_model(𝓂::ℳ,
     ::Val{:first_order}, # algo
     ::Val{:kalman}; # filter
     quadratic_matrix_equation_solver::Symbol = :schur,
+    lyapunov_algorithm::Symbol = :doubling,
     warmup_iterations::Int = 0,
     smooth::Bool = true,
     verbose::Bool = false)
@@ -568,7 +569,10 @@ function filter_data_with_model(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; verbose = verbose)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; 
+                                                quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                verbose = verbose)
 
     variables           = filtered_and_smoothed[smooth ? 1 : 5]
     standard_deviations = filtered_and_smoothed[smooth ? 2 : 6]
@@ -584,6 +588,7 @@ function filter_and_smooth(𝓂::ℳ,
                             data_in_deviations::AbstractArray{Float64}, 
                             observables::Vector{Symbol}; 
                             verbose::Bool = false, 
+                            quadratic_matrix_equation_solver::Symbol = :schur,
                             lyapunov_algorithm::Symbol = :doubling,
                             tol::AbstractFloat = 1e-12)
     # Based on Durbin and Koopman (2012)
@@ -604,7 +609,10 @@ function filter_and_smooth(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, 
+                                                            quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                            initial_guess = 𝓂.solution.perturbation.qme_solution, 
+                                                            verbose = verbose)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
