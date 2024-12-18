@@ -3491,6 +3491,7 @@ function filter_data_with_model(𝓂::ℳ,
     data_in_deviations::KeyedArray{Float64},
     ::Val{:second_order}, # algo
     ::Val{:inversion}; # filter
+    quadratic_matrix_equation_solver::Symbol = :schur,
     warmup_iterations::Int = 0,
     filter_algorithm::Symbol = :LagrangeNewton,
     smooth::Bool = true,
@@ -3706,6 +3707,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:pruned_second_order}, # algo
                                 ::Val{:inversion}; # filter
+                                quadratic_matrix_equation_solver::Symbol = :schur,
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
@@ -3979,6 +3981,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:third_order}, # algo
                                 ::Val{:inversion}; # filter
+                                quadratic_matrix_equation_solver::Symbol = :schur,
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
@@ -4289,6 +4292,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:pruned_third_order}, # algo
                                 ::Val{:inversion}; # filter
+                                quadratic_matrix_equation_solver::Symbol = :schur,
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,

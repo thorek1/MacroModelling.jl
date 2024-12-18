@@ -559,6 +559,7 @@ function filter_data_with_model(𝓂::ℳ,
     data_in_deviations::KeyedArray{Float64},
     ::Val{:first_order}, # algo
     ::Val{:kalman}; # filter
+    quadratic_matrix_equation_solver::Symbol = :schur,
     warmup_iterations::Int = 0,
     smooth::Bool = true,
     verbose::Bool = false)
