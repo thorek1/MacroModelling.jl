@@ -938,6 +938,7 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedAr
 - $VARIABLES
 - $SHOCKS
 - $NEGATIVE_SHOCK
+- `shock_size` [Default: `1`, Type: `Real`]: affects the size of shocks as long as they are not set to `:none`
 - $GENERALISED_IRF
 - `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
 - $LEVELS
