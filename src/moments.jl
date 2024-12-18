@@ -40,11 +40,11 @@ function calculate_mean(parameters::Vector{T},
                         # Matrix{T}, Matrix{T}, AbstractSparseMatrix{T}, AbstractSparseMatrix{T}, 
                         Bool} where T <: Real
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
-    @assert algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :pruned_second_order, :pruned_third_order] "Theoretical mean available only for first order, pruned second and pruned third order perturbation solutions."
+    @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order, :pruned_third_order] "Theoretical mean available only for first order, pruned second and pruned third order perturbation solutions."
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
     
-    if algorithm ∈ [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran]
+    if algorithm ∈ [:first_order, :first_order_doubling]
         return SS_and_pars[1:𝓂.timings.nVars], solution_error < tol
     end
 

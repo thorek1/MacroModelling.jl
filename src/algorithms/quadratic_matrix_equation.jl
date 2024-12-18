@@ -394,112 +394,112 @@ end
 
 
 
-function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
-                                        B::AbstractMatrix{R}, 
-                                        C::AbstractMatrix{R}, 
-                                        ::Val{:linear_time_iteration}, 
-                                        T::timings; 
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        tol::AbstractFloat = 1e-14, # lower tol not possible for NAWM (and probably other models this size)
-                                        timer::TimerOutput = TimerOutput(),
-                                        verbose::Bool = false,
-                                        max_iter::Int = 5000) where R <: Real
-    # Iterate over: A * X * X + C + B * X = (A * X + B) * X + C = X + (A * X + B) \ C
+# function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
+#                                         B::AbstractMatrix{R}, 
+#                                         C::AbstractMatrix{R}, 
+#                                         ::Val{:linear_time_iteration}, 
+#                                         T::timings; 
+#                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
+#                                         tol::AbstractFloat = 1e-14, # lower tol not possible for NAWM (and probably other models this size)
+#                                         timer::TimerOutput = TimerOutput(),
+#                                         verbose::Bool = false,
+#                                         max_iter::Int = 5000) where R <: Real
+#     # Iterate over: A * X * X + C + B * X = (A * X + B) * X + C = X + (A * X + B) \ C
 
-    @timeit_debug timer "Preallocate" begin
+#     @timeit_debug timer "Preallocate" begin
 
-    F = similar(C)
-    t = similar(C)
+#     F = similar(C)
+#     t = similar(C)
 
-    initial_guess = length(initial_guess) > 0 ? initial_guess : zero(A)
+#     initial_guess = length(initial_guess) > 0 ? initial_guess : zero(A)
 
-    end # timeit_debug
-    @timeit_debug timer "Loop" begin
+#     end # timeit_debug
+#     @timeit_debug timer "Loop" begin
 
-    sol = @suppress begin 
-        speedmapping(initial_guess; m! = (F̄, F) -> begin 
-            ℒ.mul!(t, A, F)
-            ℒ.axpby!(-1, B, -1, t)
-            t̂ = ℒ.lu!(t, check = false)
-            ℒ.ldiv!(F̄, t̂, C)
-        end,
-        tol = tol, maps_limit = max_iter)#, σ_min = 0.0, stabilize = false, orders = [3,3,2])
-    end
+#     sol = @suppress begin 
+#         speedmapping(initial_guess; m! = (F̄, F) -> begin 
+#             ℒ.mul!(t, A, F)
+#             ℒ.axpby!(-1, B, -1, t)
+#             t̂ = ℒ.lu!(t, check = false)
+#             ℒ.ldiv!(F̄, t̂, C)
+#         end,
+#         tol = tol, maps_limit = max_iter)#, σ_min = 0.0, stabilize = false, orders = [3,3,2])
+#     end
 
-    X = sol.minimizer
+#     X = sol.minimizer
 
-    AXX = A * X^2
+#     AXX = A * X^2
     
-    AXXnorm = ℒ.norm(AXX)
+#     AXXnorm = ℒ.norm(AXX)
     
-    ℒ.mul!(AXX, B, X, 1, 1)
+#     ℒ.mul!(AXX, B, X, 1, 1)
 
-    ℒ.axpy!(1, C, AXX)
+#     ℒ.axpy!(1, C, AXX)
     
-    reached_tol = ℒ.norm(AXX) / AXXnorm
+#     reached_tol = ℒ.norm(AXX) / AXXnorm
     
-    end # timeit_debug
+#     end # timeit_debug
 
-    # if reached_tol > tol
-    #     println("QME: linear time iteration $reached_tol")
-    # end
+#     # if reached_tol > tol
+#     #     println("QME: linear time iteration $reached_tol")
+#     # end
 
-    return X, sol.maps, reached_tol
-end
+#     return X, sol.maps, reached_tol
+# end
 
 
 
-function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
-                                        B::AbstractMatrix{R}, 
-                                        C::AbstractMatrix{R}, 
-                                        ::Val{:quadratic_iteration}, 
-                                        T::timings; 
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        tol::AbstractFloat = 1e-14, # lower tol not possible for NAWM (and probably other models this size)
-                                        timer::TimerOutput = TimerOutput(),
-                                        verbose::Bool = false,
-                                        max_iter::Int = 50000) where R <: Real
-    # Iterate over: Ā * X * X + C̄ + X
+# function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
+#                                         B::AbstractMatrix{R}, 
+#                                         C::AbstractMatrix{R}, 
+#                                         ::Val{:quadratic_iteration}, 
+#                                         T::timings; 
+#                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
+#                                         tol::AbstractFloat = 1e-14, # lower tol not possible for NAWM (and probably other models this size)
+#                                         timer::TimerOutput = TimerOutput(),
+#                                         verbose::Bool = false,
+#                                         max_iter::Int = 50000) where R <: Real
+#     # Iterate over: Ā * X * X + C̄ + X
 
-    B̂ =  ℒ.lu(B)
+#     B̂ =  ℒ.lu(B)
 
-    C̄ = B̂ \ C
-    Ā = B̂ \ A
+#     C̄ = B̂ \ C
+#     Ā = B̂ \ A
     
-    X = similar(Ā)
-    X̄ = similar(Ā)
+#     X = similar(Ā)
+#     X̄ = similar(Ā)
     
-    X² = similar(X)
+#     X² = similar(X)
 
-    initial_guess = length(initial_guess) > 0 ? initial_guess : zero(A)
+#     initial_guess = length(initial_guess) > 0 ? initial_guess : zero(A)
 
-    sol = @suppress begin
-        speedmapping(initial_guess; m! = (X̄, X) -> begin 
-                                                ℒ.mul!(X², X, X)
-                                                ℒ.mul!(X̄, Ā, X²)
-                                                ℒ.axpy!(1, C̄, X̄)
-                                            end,
-        tol = tol, maps_limit = max_iter)#, σ_min = 0.0, stabilize = false, orders = [3,3,2])
-    end
+#     sol = @suppress begin
+#         speedmapping(initial_guess; m! = (X̄, X) -> begin 
+#                                                 ℒ.mul!(X², X, X)
+#                                                 ℒ.mul!(X̄, Ā, X²)
+#                                                 ℒ.axpy!(1, C̄, X̄)
+#                                             end,
+#         tol = tol, maps_limit = max_iter)#, σ_min = 0.0, stabilize = false, orders = [3,3,2])
+#     end
 
-    X = -sol.minimizer
+#     X = -sol.minimizer
 
-    AXX = A * X^2
+#     AXX = A * X^2
     
-    AXXnorm = ℒ.norm(AXX)
+#     AXXnorm = ℒ.norm(AXX)
     
-    ℒ.mul!(AXX, B, X, 1, 1)
+#     ℒ.mul!(AXX, B, X, 1, 1)
 
-    ℒ.axpy!(1, C, AXX)
+#     ℒ.axpy!(1, C, AXX)
     
-    reached_tol = ℒ.norm(AXX) / AXXnorm
+#     reached_tol = ℒ.norm(AXX) / AXXnorm
 
-    # if reached_tol > tol
-    #     println("QME: quadratic iteration $reached_tol")
-    # end
+#     # if reached_tol > tol
+#     #     println("QME: quadratic iteration $reached_tol")
+#     # end
 
-    return X, sol.maps, reached_tol
-end
+#     return X, sol.maps, reached_tol
+# end
 
 
 

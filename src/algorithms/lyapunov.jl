@@ -519,27 +519,27 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
 end
 
 
-function solve_lyapunov_equation(A::AbstractMatrix{Float64},
-                                    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-                                    ::Val{:speedmapping};
-                                    tol::AbstractFloat = 1e-14,
-                                    timer::TimerOutput = TimerOutput())
-    𝐂A = similar(C)
+# function solve_lyapunov_equation(A::AbstractMatrix{Float64},
+#                                     C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+#                                     ::Val{:speedmapping};
+#                                     tol::AbstractFloat = 1e-14,
+#                                     timer::TimerOutput = TimerOutput())
+#     𝐂A = similar(C)
 
-    soll = speedmapping(C; 
-            m! = (X, x) -> begin
-                ℒ.mul!(𝐂A, x, A')
-                ℒ.mul!(X, A, 𝐂A)
-                ℒ.axpy!(1, C, X)
-            end, stabilize = false, maps_limit = 1000, tol = tol)
+#     soll = speedmapping(C; 
+#             m! = (X, x) -> begin
+#                 ℒ.mul!(𝐂A, x, A')
+#                 ℒ.mul!(X, A, 𝐂A)
+#                 ℒ.axpy!(1, C, X)
+#             end, stabilize = false, maps_limit = 1000, tol = tol)
     
-    𝐂 = soll.minimizer
+#     𝐂 = soll.minimizer
 
-    reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
+#     reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
 
-    # if reached_tol > tol
-    #     println("Lyapunov: speedmapping $reached_tol")
-    # end
+#     # if reached_tol > tol
+#     #     println("Lyapunov: speedmapping $reached_tol")
+#     # end
 
-    return 𝐂, soll.maps, reached_tol
-end
+#     return 𝐂, soll.maps, reached_tol
+# end

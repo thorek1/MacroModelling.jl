@@ -44,7 +44,7 @@ import Subscripts: super, sub
 import Krylov
 import LinearOperators
 import DataStructures: CircularBuffer
-import SpeedMapping: speedmapping
+# import SpeedMapping: speedmapping
 import Suppressor: @suppress
 import REPL
 import Unicode
@@ -148,7 +148,7 @@ export get_equations, get_steady_state_equations, get_dynamic_equations, get_cal
 export irf, girf
 
 # Remove comment for debugging
-# export riccati_forward, block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
+# export block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
 # export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
 
 
@@ -4748,7 +4748,7 @@ end
 function solve!(𝓂::ℳ; 
     parameters::ParameterType = nothing, 
     dynamics::Bool = false, 
-    algorithm::Symbol = :riccati, 
+    algorithm::Symbol = :first_order, 
     obc::Bool = false,
     verbose::Bool = false,
     silent::Bool = false,
@@ -4778,12 +4778,8 @@ function solve!(𝓂::ℳ;
 
     if dynamics
         obc_not_solved = isnothing(𝓂.solution.perturbation.first_order.state_update_obc)
-        if  ((:riccati             == algorithm) && ((:riccati             ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:first_order         == algorithm) && ((:first_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+        if  ((:first_order         == algorithm) && ((:first_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:first_order_doubling         == algorithm) && ((:first_order_doubling         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:binder_pesaran  == algorithm) && ((:binder_pesaran   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:quadratic_iteration  == algorithm) && ((:quadratic_iteration   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:linear_time_iteration  == algorithm) && ((:linear_time_iteration   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:second_order        == algorithm) && ((:second_order        ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_second_order == algorithm) && ((:pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
@@ -4807,10 +4803,6 @@ function solve!(𝓂::ℳ;
 
             if algorithm == :first_order_doubling 
                 qme_solver = :doubling
-            elseif algorithm ∈ [:quadratic_iteration, :binder_pesaran]
-                qme_solver = :quadratic_iteration
-            elseif algorithm == :linear_time_iteration 
-                qme_solver = :linear_time_iteration
             else # default option
                 qme_solver = :schur
             end
@@ -4850,7 +4842,7 @@ function solve!(𝓂::ℳ;
             end
             
             𝓂.solution.perturbation.first_order = perturbation_solution(S₁, state_update₁, state_update₁̂)
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:riccati, :first_order])
+            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:first_order, :first_order_doubling])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
             𝓂.solution.outdated_NSSS = solution_error > tol
@@ -6925,7 +6917,7 @@ end
 
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function,Bool}
     if occasionally_binding_constraints
-        if algorithm ∈ [:riccati, :first_order, :first_order_doubling, :linear_time_iteration, :quadratic_iteration, :binder_pesaran]
+        if algorithm ∈ [:first_order, :first_order_doubling]
             state_update = 𝓂.solution.perturbation.first_order.state_update_obc
             pruning = false
         elseif :second_order == algorithm
@@ -6942,7 +6934,7 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             pruning = true
         end
     else
-        if algorithm ∈ [:riccati, :first_order, :linear_time_iteration, :quadratic_iteration, :binder_pesaran]
+        if algorithm ∈ [:first_order, :first_order_doubling]
             state_update = 𝓂.solution.perturbation.first_order.state_update
             pruning = false
         elseif :second_order == algorithm

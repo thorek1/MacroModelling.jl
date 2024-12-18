@@ -1404,46 +1404,46 @@ function solve_sylvester_equation(A::AbstractMatrix{Float64},
 end
 
 
-function solve_sylvester_equation(A::AbstractMatrix{Float64},
-                                    B::AbstractMatrix{Float64},
-                                    C::AbstractMatrix{Float64},
-                                    ::Val{:speedmapping};
-                                    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false,
-                                    tol::AbstractFloat = 1e-14)
-    # guess_provided = true
+# function solve_sylvester_equation(A::AbstractMatrix{Float64},
+#                                     B::AbstractMatrix{Float64},
+#                                     C::AbstractMatrix{Float64},
+#                                     ::Val{:speedmapping};
+#                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+#                                     timer::TimerOutput = TimerOutput(),
+#                                     verbose::Bool = false,
+#                                     tol::AbstractFloat = 1e-14)
+#     # guess_provided = true
 
-    if length(initial_guess) == 0
-        # guess_provided = false
-        initial_guess = zero(C)
-    end
+#     if length(initial_guess) == 0
+#         # guess_provided = false
+#         initial_guess = zero(C)
+#     end
 
-    𝐂  = A * initial_guess * B + C - initial_guess 
-    # 𝐂 = copy(C)
+#     𝐂  = A * initial_guess * B + C - initial_guess 
+#     # 𝐂 = copy(C)
 
-    if !(C isa DenseMatrix)
-        C = collect(C)
-    end
+#     if !(C isa DenseMatrix)
+#         C = collect(C)
+#     end
 
-    CB = similar(C)
+#     CB = similar(C)
 
-    soll = speedmapping(-𝐂; 
-            m! = (X, x) -> begin
-                ℒ.mul!(CB, x, B)
-                ℒ.mul!(X, A, CB)
-                ℒ.axpy!(1, 𝐂, X)
-            end, stabilize = false, maps_limit = 10000, tol = tol)
+#     soll = speedmapping(-𝐂; 
+#             m! = (X, x) -> begin
+#                 ℒ.mul!(CB, x, B)
+#                 ℒ.mul!(X, A, CB)
+#                 ℒ.axpy!(1, 𝐂, X)
+#             end, stabilize = false, maps_limit = 10000, tol = tol)
 
-    𝐂 = soll.minimizer
+#     𝐂 = soll.minimizer
 
-    𝐂 += initial_guess
+#     𝐂 += initial_guess
 
-    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
+#     reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
-    # if reached_tol > tol
-    #     println("Sylvester: speedmapping $reached_tol")
-    # end
+#     # if reached_tol > tol
+#     #     println("Sylvester: speedmapping $reached_tol")
+#     # end
 
-    return 𝐂, soll.maps, reached_tol
-end
+#     return 𝐂, soll.maps, reached_tol
+# end
