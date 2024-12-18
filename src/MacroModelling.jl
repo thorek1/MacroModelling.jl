@@ -4179,7 +4179,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
         A = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed]
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
     
-        SSSstates, converged = calculate_second_order_stochastic_steady_state(Val(:Newton), 𝐒₁, 𝐒₂, SSSstates, 𝓂) # , timer = timer)
+        SSSstates, converged = calculate_second_order_stochastic_steady_state(Val(:newton), 𝐒₁, 𝐒₂, SSSstates, 𝓂) # , timer = timer)
         
         if !converged
             if verbose println("SSS not found") end
@@ -4206,7 +4206,7 @@ end
 
 
 
-function calculate_second_order_stochastic_steady_state(::Val{:Newton}, 
+function calculate_second_order_stochastic_steady_state(::Val{:newton}, 
                                                         𝐒₁::Matrix{Float64}, 
                                                         𝐒₂::AbstractSparseMatrix{Float64}, 
                                                         x::Vector{Float64},
@@ -4264,7 +4264,7 @@ end
 
 
 
-function calculate_second_order_stochastic_steady_state(::Val{:Newton}, 
+function calculate_second_order_stochastic_steady_state(::Val{:newton}, 
                                                         𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
                                                         𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
                                                         x::Vector{ℱ.Dual{Z,S,N}},
@@ -4334,7 +4334,7 @@ end
 
 
 function rrule(::typeof(calculate_second_order_stochastic_steady_state),
-                                                        ::Val{:Newton}, 
+                                                        ::Val{:newton}, 
                                                         𝐒₁::Matrix{Float64}, 
                                                         𝐒₂::AbstractSparseMatrix{Float64}, 
                                                         x::Vector{Float64},
@@ -4519,7 +4519,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
         Ĉ = 𝐒₃[:,kron_s⁺_s⁺_s⁺]
     
-        SSSstates, converged = calculate_third_order_stochastic_steady_state(Val(:Newton), 𝐒₁, 𝐒₂, 𝐒₃, SSSstates, 𝓂)
+        SSSstates, converged = calculate_third_order_stochastic_steady_state(Val(:newton), 𝐒₁, 𝐒₂, 𝐒₃, SSSstates, 𝓂)
         
         if !converged
             if verbose println("SSS not found") end
@@ -4544,7 +4544,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 end
 
 
-function calculate_third_order_stochastic_steady_state(::Val{:Newton}, 
+function calculate_third_order_stochastic_steady_state(::Val{:newton}, 
                                                         𝐒₁::Matrix{Float64}, 
                                                         𝐒₂::AbstractSparseMatrix{Float64}, 
                                                         𝐒₃::AbstractSparseMatrix{Float64},
@@ -4596,7 +4596,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:Newton},
 end
 
 
-function calculate_third_order_stochastic_steady_state(::Val{:Newton}, 
+function calculate_third_order_stochastic_steady_state(::Val{:newton}, 
                                                         𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
                                                         𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
                                                         𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
@@ -4676,7 +4676,7 @@ end
 
 
 function rrule(::typeof(calculate_third_order_stochastic_steady_state),
-                                                        ::Val{:Newton}, 
+                                                        ::Val{:newton}, 
                                                         𝐒₁::Matrix{Float64}, 
                                                         𝐒₂::AbstractSparseMatrix{Float64}, 
                                                         𝐒₃::AbstractSparseMatrix{Float64},
@@ -7413,7 +7413,10 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                     sylvester_algorithm::Symbol = :bicgstab,
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     verbose::Bool = false)::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, tol = tol, timer = timer, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, 
+    tol = tol, 
+    # timer = timer, 
+    verbose = verbose)
 
     state = zeros(𝓂.timings.nVars)
 

@@ -3358,6 +3358,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:first_order}, # algo
                                 ::Val{:inversion}; # filter
+                                quadratic_matrix_equation_solver::Symbol = :schur,
                                 warmup_iterations::Int = 0,
                                 smooth::Bool = true,
                                 verbose::Bool = false)
@@ -3381,7 +3382,11 @@ function filter_data_with_model(𝓂::ℳ,
 
     ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = T, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
+                                                        T = T, 
+                                                        quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution, 
+                                                        verbose = verbose)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
