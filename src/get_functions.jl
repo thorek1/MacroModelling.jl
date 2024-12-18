@@ -994,7 +994,7 @@ function get_irf(𝓂::ℳ;
     timer::TimerOutput = TimerOutput(),
     verbose::Bool = false)
 
-    @timeit_debug timer "Wrangling inputs" begin
+    # @timeit_debug timer "Wrangling inputs" begin
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -1046,9 +1046,9 @@ function get_irf(𝓂::ℳ;
         occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
     end
 
-    end # timeit_debug
+    # end # timeit_debug
     
-    @timeit_debug timer "Solve model" begin
+    # @timeit_debug timer "Solve model" begin
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -1058,13 +1058,13 @@ function get_irf(𝓂::ℳ;
             obc = occasionally_binding_constraints || obc_shocks_included, 
             timer = timer)
     
-    end # timeit_debug
+    # end # timeit_debug
 
-    @timeit_debug timer "Get relevant steady state" begin
+    # @timeit_debug timer "Get relevant steady state" begin
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, verbose = verbose)
     
-    end # timeit_debug
+    # end # timeit_debug
 
     unspecified_initial_state = initial_state == [0.0]
 
@@ -1103,7 +1103,7 @@ function get_irf(𝓂::ℳ;
     end
     
     if generalised_irf
-        @timeit_debug timer "Calculate IRFs" begin    
+        # @timeit_debug timer "Calculate IRFs" begin    
         girfs =  girf(state_update,
                         initial_state,
                         levels ? reference_steady_state + SSS_delta : SSS_delta,
@@ -1113,7 +1113,7 @@ function get_irf(𝓂::ℳ;
                         variables = variables, 
                         shock_size = shock_size,
                         negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
-        end # timeit_debug
+        # end # timeit_debug
 
         return girfs
     else
@@ -1184,7 +1184,7 @@ function get_irf(𝓂::ℳ;
                 return present_states, present_shocks, solved
             end
 
-            @timeit_debug timer "Calculate IRFs" begin
+            # @timeit_debug timer "Calculate IRFs" begin
             irfs =  irf(state_update,
                         obc_state_update, 
                         initial_state, 
@@ -1195,9 +1195,9 @@ function get_irf(𝓂::ℳ;
                         variables = variables, 
                         shock_size = shock_size,
                         negative_shock = negative_shock)
-            end # timeit_debug
+            # end # timeit_debug
         else
-            @timeit_debug timer "Calculate IRFs" begin        
+            # @timeit_debug timer "Calculate IRFs" begin        
             irfs =  irf(state_update, 
                         initial_state, 
                         levels ? reference_steady_state + SSS_delta : SSS_delta,
@@ -1207,7 +1207,7 @@ function get_irf(𝓂::ℳ;
                         variables = variables, 
                         shock_size = shock_size,
                         negative_shock = negative_shock)
-            end # timeit_debug
+            # end # timeit_debug
         end
    
         return irfs

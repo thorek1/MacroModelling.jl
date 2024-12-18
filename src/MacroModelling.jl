@@ -10,8 +10,8 @@ import SpecialFunctions
 import SymPyPythonCall as SPyPyC
 import Symbolics
 import Accessors
-import TimerOutputs
-import TimerOutputs: TimerOutput, @timeit, @timeit_debug
+# import TimerOutputs
+# import TimerOutputs: TimerOutput, @timeit, @timeit_debug
 # import NaNMath
 # import Memoization: @memoize
 # import LRUCache: LRU
@@ -1059,11 +1059,11 @@ end
 function compressed_kron³(a::AbstractMatrix{T};
                     rowmask::Vector{Int} = Int[],
                     colmask::Vector{Int} = Int[],
-                    timer::TimerOutput = TimerOutput(),
+                    # timer::TimerOutput = TimerOutput(),
                     tol::AbstractFloat= eps()) where T <: Real
-    @timeit_debug timer "Compressed 3rd kronecker power" begin
+    # @timeit_debug timer "Compressed 3rd kronecker power" begin
           
-    @timeit_debug timer "Preallocation" begin
+    # @timeit_debug timer "Preallocation" begin
     
     a_is_adjoint = typeof(a) <: ℒ.Adjoint{T,Matrix{T}}
     
@@ -1113,18 +1113,18 @@ function compressed_kron³(a::AbstractMatrix{T};
     # k̄ = Threads.Atomic{Int}(0)  # effectively slower than the non-threaded version
     k = 0
 
-    end # timeit_debug
+    # end # timeit_debug
 
-    @timeit_debug timer "findnz" begin
+    # @timeit_debug timer "findnz" begin
                 
     # Find unique non-zero row and column indices
     rowinds, colinds, _ = findnz(a)
     ui = unique(rowinds)
     uj = unique(colinds)
        
-    end # timeit_debug
+    # end # timeit_debug
 
-    @timeit_debug timer "Loop" begin
+    # @timeit_debug timer "Loop" begin
     # Triple nested loops for (i1 ≤ j1 ≤ k1) and (i2 ≤ j2 ≤ k2)
     # Polyester.@batch threadlocal=(Vector{Int}(), Vector{Int}(), Vector{T}()) for i1 in ui
     # Polyester.@batch minbatch = 10 for i1 in ui
@@ -1214,9 +1214,9 @@ function compressed_kron³(a::AbstractMatrix{T};
         end
     end
 
-    end # timeit_debug
+    # end # timeit_debug
 
-    @timeit_debug timer "Resize" begin
+    # @timeit_debug timer "Resize" begin
 
     # out = map(fetch, threadlocal)
 
@@ -1232,8 +1232,8 @@ function compressed_kron³(a::AbstractMatrix{T};
     resize!(J, k)
     resize!(V, k)
 
-    end # timeit_debug
-    end # timeit_debug
+    # end # timeit_debug
+    # end # timeit_debug
 
     # Create the sparse matrix from the collected indices and values
     if VERSION >= v"1.10"
@@ -4082,7 +4082,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         pruning::Bool = false, 
                                                         quadratic_matrix_equation_solver::Symbol = :schur, 
                                                         sylvester_algorithm::Symbol = :doubling, 
-                                                        timer::TimerOutput = TimerOutput(),
+                                                        # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     # @timeit_debug timer "Calculate NSSS" begin
 
@@ -4211,9 +4211,9 @@ function calculate_second_order_stochastic_steady_state(::Val{:Newton},
                                                         𝐒₂::AbstractSparseMatrix{Float64}, 
                                                         x::Vector{Float64},
                                                         𝓂::ℳ;
-                                                        timer::TimerOutput = TimerOutput(),
+                                                        # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
-    @timeit_debug timer "Setup matrices" begin
+    # @timeit_debug timer "Setup matrices" begin
 
     nᵉ = 𝓂.timings.nExo
 
@@ -4231,9 +4231,9 @@ function calculate_second_order_stochastic_steady_state(::Val{:Newton},
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     
-    end # timeit_debug
+    # end # timeit_debug
       
-    @timeit_debug timer "Iterations" begin
+    # @timeit_debug timer "Iterations" begin
 
     for i in 1:max_iters
         ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
@@ -4256,7 +4256,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:Newton},
         ℒ.axpy!(-1, Δx, x)
     end
 
-    end # timeit_debug
+    # end # timeit_debug
 
     return x, isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
 end
@@ -4269,7 +4269,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:Newton},
                                                         𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
                                                         x::Vector{ℱ.Dual{Z,S,N}},
                                                         𝓂::ℳ;
-                                                        timer::TimerOutput = TimerOutput(),
+                                                        # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14) where {Z,S,N}
 
     𝐒₁̂ = ℱ.value.(𝐒₁)
@@ -4339,10 +4339,10 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
                                                         𝐒₂::AbstractSparseMatrix{Float64}, 
                                                         x::Vector{Float64},
                                                         𝓂::ℳ;
-                                                        timer::TimerOutput = TimerOutput(),
+                                                        # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
-    @timeit_debug timer "Calculate SSS - forward" begin
-    @timeit_debug timer "Setup indices" begin
+    # @timeit_debug timer "Calculate SSS - forward" begin
+    # @timeit_debug timer "Setup indices" begin
 
     nᵉ = 𝓂.timings.nExo
 
@@ -4357,9 +4357,9 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
     B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
     
-    end # timeit_debug
+    # end # timeit_debug
       
-    @timeit_debug timer "Iterations" begin
+    # @timeit_debug timer "Iterations" begin
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
@@ -4389,11 +4389,11 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     ∂𝐒₁ =  zero(𝐒₁)
     ∂𝐒₂ =  zero(𝐒₂)
 
-    end # timeit_debug
-    end # timeit_debug
+    # end # timeit_debug
+    # end # timeit_debug
 
     function second_order_stochastic_steady_state_pullback(∂x)
-        @timeit_debug timer "Calculate SSS - pullback" begin
+        # @timeit_debug timer "Calculate SSS - pullback" begin
 
         S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
 
@@ -4401,7 +4401,7 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
         
         ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
 
-        end # timeit_debug
+        # end # timeit_debug
 
         return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent()
     end
@@ -4417,7 +4417,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         pruning::Bool = false, 
                                                         quadratic_matrix_equation_solver::Symbol = :schur, 
                                                         sylvester_algorithm::Symbol = :bicgstab, 
-                                                        timer::TimerOutput = TimerOutput(),
+                                                        # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose, timer = timer)
     
@@ -4550,7 +4550,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:Newton},
                                                         𝐒₃::AbstractSparseMatrix{Float64},
                                                         x::Vector{Float64},
                                                         𝓂::ℳ;
-                                                        timer::TimerOutput = TimerOutput(),
+                                                        # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
     nᵉ = 𝓂.timings.nExo
 
@@ -4746,22 +4746,22 @@ end
 
 
 function solve!(𝓂::ℳ; 
-    parameters::ParameterType = nothing, 
-    dynamics::Bool = false, 
-    algorithm::Symbol = :first_order, 
-    obc::Bool = false,
-    verbose::Bool = false,
-    silent::Bool = false,
-    timer::TimerOutput = TimerOutput(),
-    tol::AbstractFloat = 1e-12)
+                parameters::ParameterType = nothing, 
+                dynamics::Bool = false, 
+                algorithm::Symbol = :first_order, 
+                obc::Bool = false,
+                verbose::Bool = false,
+                silent::Bool = false,
+                # timer::TimerOutput = TimerOutput(),
+                tol::AbstractFloat = 1e-12)
 
     @assert algorithm ∈ all_available_algorithms
     
-    @timeit_debug timer "Write parameter inputs" begin
+    # @timeit_debug timer "Write parameter inputs" begin
 
     write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    end # timeit_debug
+    # end # timeit_debug
 
     if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && 
         algorithm ∈ [:second_order, :pruned_second_order]
@@ -4785,21 +4785,21 @@ function solve!(𝓂::ℳ;
             ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
-            @timeit_debug timer "Solve for NSSS (if necessary)" begin
+            # @timeit_debug timer "Solve for NSSS (if necessary)" begin
 
             SS_and_pars, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose) : (𝓂.solution.non_stochastic_steady_state, (eps(), 0))
 
-            end # timeit_debug
+            # end # timeit_debug
 
             @assert solution_error < tol "Could not find non stochastic steady steady."
             
-            @timeit_debug timer "Calculate Jacobian" begin
+            # @timeit_debug timer "Calculate Jacobian" begin
 
             ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
-            end # timeit_debug
+            # end # timeit_debug
 
-            @timeit_debug timer "Calculate first order solution" begin
+            # @timeit_debug timer "Calculate first order solution" begin
 
             if algorithm == :first_order_doubling 
                 qme_solver = :doubling
@@ -4811,7 +4811,7 @@ function solve!(𝓂::ℳ;
     
             if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
-            end # timeit_debug
+            # end # timeit_debug
 
             @assert solved "Could not find stable first order solution."
 
@@ -6065,9 +6065,9 @@ end
 
 function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
-                            𝓂::ℳ;
-                            timer::TimerOutput = TimerOutput())::Matrix{M} where {M,N}
-    @timeit_debug timer "Calculate jacobian" begin
+                            𝓂::ℳ)::Matrix{M} where {M,N}
+                            # timer::TimerOutput = TimerOutput())::Matrix{M} where {M,N}
+    # @timeit_debug timer "Calculate jacobian" begin
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
@@ -6092,7 +6092,7 @@ function calculate_jacobian(parameters::Vector{M},
     
     # lk = ReentrantLock()
 
-    @timeit_debug timer "Loop" begin
+    # @timeit_debug timer "Loop" begin
 
     Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian[1]
     # for f in 𝓂.model_jacobian[1]
@@ -6116,8 +6116,8 @@ function calculate_jacobian(parameters::Vector{M},
 
     𝓂.model_jacobian[3][𝓂.model_jacobian[2]] .= vals
 
-    end # timeit_debug
-    end # timeit_debug
+    # end # timeit_debug
+    # end # timeit_debug
 
     return 𝓂.model_jacobian[3]
 end
@@ -6126,16 +6126,16 @@ end
 function rrule(::typeof(calculate_jacobian), 
                 parameters, 
                 SS_and_pars, 
-                𝓂;
-                timer::TimerOutput = TimerOutput())
-    @timeit_debug timer "Calculate jacobian - forward" begin
+                𝓂)#;
+                # timer::TimerOutput = TimerOutput())
+    # @timeit_debug timer "Calculate jacobian - forward" begin
 
     jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
-    end # timeit_debug
+    # end # timeit_debug
 
     function calculate_jacobian_pullback(∂∇₁)
-        @timeit_debug timer "Calculate jacobian - reverse" begin
+        # @timeit_debug timer "Calculate jacobian - reverse" begin
         X = [parameters; SS_and_pars]
 
         # vals = Float64[]
@@ -6148,7 +6148,7 @@ function rrule(::typeof(calculate_jacobian),
 
         # lk = ReentrantLock()
 
-        @timeit_debug timer "Loop" begin
+        # @timeit_debug timer "Loop" begin
 
         Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
             out = f(X)
@@ -6173,8 +6173,8 @@ function rrule(::typeof(calculate_jacobian),
 
         ∂parameters_and_SS_and_pars = analytical_jacobian_SS_and_pars_vars[:,cols_unique] * v∂∇₁
 
-        end # timeit_debug
-        end # timeit_debug
+        # end # timeit_debug
+        # end # timeit_debug
 
         return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
     end
@@ -6289,8 +6289,11 @@ function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
 end
 
 
-function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ; timer::TimerOutput = TimerOutput()) where {M,N}
-    @timeit_debug timer "3rd order derivatives" begin
+function calculate_third_order_derivatives(parameters::Vector{M}, 
+    SS_and_pars::Vector{N}, 
+    𝓂::ℳ) where {M,N} #; 
+    # timer::TimerOutput = TimerOutput()) where {M,N}
+    # @timeit_debug timer "3rd order derivatives" begin
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
@@ -6327,7 +6330,7 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
 
     # lk = ReentrantLock()
 
-    @timeit_debug timer "Loop" begin
+    # @timeit_debug timer "Loop" begin
 
     Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives[1]
         out = f(X)
@@ -6342,14 +6345,14 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
         # end
     end
 
-    end # timeit_debug
+    # end # timeit_debug
 
-    @timeit_debug timer "Allocation" begin
+    # @timeit_debug timer "Allocation" begin
 
     Accessors.@reset 𝓂.model_third_order_derivatives[2].nzval = vals
     
-    end # timeit_debug
-    end # timeit_debug
+    # end # timeit_debug
+    # end # timeit_debug
 
     return 𝓂.model_third_order_derivatives[2]# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 
@@ -6371,18 +6374,19 @@ function calculate_third_order_derivatives(parameters::Vector{M}, SS_and_pars::V
 end
 
 
-function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_pars, 𝓂; timer::TimerOutput = TimerOutput())
-    @timeit_debug timer "3rd order derivatives - forward" begin
+function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_pars, 𝓂) # ;
+    # timer::TimerOutput = TimerOutput())
+    # @timeit_debug timer "3rd order derivatives - forward" begin
     third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂, timer = timer)
-    end # timeit_debug
+    # end # timeit_debug
 
     function calculate_third_order_derivatives_pullback(∂∇₁)
-        @timeit_debug timer "3rd order derivatives - pullback" begin
+        # @timeit_debug timer "3rd order derivatives - pullback" begin
         X = [parameters; SS_and_pars]
 
         vals = zeros(Float64, length(𝓂.model_third_order_derivatives_SS_and_pars_vars[1]))
         
-        @timeit_debug timer "Loop" begin
+        # @timeit_debug timer "Loop" begin
     
         Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives_SS_and_pars_vars[1]
             out = f(X)
@@ -6390,13 +6394,13 @@ function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_p
             @inbounds vals[out[2]] = out[1]
         end
     
-        end # timeit_debug
-        @timeit_debug timer "Allocation" begin
+        # end # timeit_debug
+        # @timeit_debug timer "Allocation" begin
 
         Accessors.@reset 𝓂.model_third_order_derivatives_SS_and_pars_vars[2].nzval = vals
         
-        end # timeit_debug
-        @timeit_debug timer "Post process" begin
+        # end # timeit_debug
+        # @timeit_debug timer "Post process" begin
 
         analytical_third_order_derivatives_SS_and_pars_vars = 𝓂.model_third_order_derivatives_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
@@ -6406,8 +6410,8 @@ function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_p
 
         ∂parameters_and_SS_and_pars = analytical_third_order_derivatives_SS_and_pars_vars[:,cols_unique] * v∂∇₁
 
-        end # timeit_debug
-        end # timeit_debug
+        # end # timeit_debug
+        # end # timeit_debug
 
         return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
     end
@@ -6991,9 +6995,9 @@ end
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                     parameter_values::Vector{S}; 
                                     verbose::Bool = false, 
-                                    timer::TimerOutput = TimerOutput(),
+                                    # timer::TimerOutput = TimerOutput(),
                                     tol::AbstractFloat = 1e-12) where S <: Float64
-    @timeit_debug timer "Calculate NSSS" begin
+    # @timeit_debug timer "Calculate NSSS" begin
     SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
 
     if solution_error > tol || isnan(solution_error)
@@ -7004,7 +7008,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         return (SS_and_pars, (10, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
-    end # timeit_debug
+    # end # timeit_debug
     return SS_and_pars, (solution_error, iters)
 end
 
@@ -7013,19 +7017,19 @@ function rrule(::typeof(get_NSSS_and_parameters),
                 𝓂, 
                 parameter_values; 
                 verbose = false,  
-                timer::TimerOutput = TimerOutput(),
+                # timer::TimerOutput = TimerOutput(),
                 tol::AbstractFloat = 1e-12)
-    @timeit_debug timer "Calculate NSSS - forward" begin
+    # @timeit_debug timer "Calculate NSSS - forward" begin
 
     SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, verbose, false, 𝓂.solver_parameters)
 
-    end # timeit_debug
+    # end # timeit_debug
 
     if solution_error > tol || isnan(solution_error)
         return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
-    @timeit_debug timer "Calculate NSSS - pullback" begin
+    # @timeit_debug timer "Calculate NSSS - pullback" begin
 
     SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
         
@@ -7050,7 +7054,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # lk = ReentrantLock()
 
-    @timeit_debug timer "Loop - parameter derivatives" begin
+    # @timeit_debug timer "Loop - parameter derivatives" begin
 
     Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
         out = f(X)
@@ -7069,7 +7073,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
     
     ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
 
-    end # timeit_debug
+    # end # timeit_debug
 
     # vals = Float64[]
 
@@ -7081,7 +7085,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # lk = ReentrantLock()
 
-    @timeit_debug timer "Loop - NSSS derivatives" begin
+    # @timeit_debug timer "Loop - NSSS derivatives" begin
 
     Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
         out = f(X)
@@ -7101,12 +7105,12 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
 
-    end # timeit_debug
+    # end # timeit_debug
 
     # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
     # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
     
-    @timeit_debug timer "Implicit diff - mat inv" begin
+    # @timeit_debug timer "Implicit diff - mat inv" begin
 
     ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
 
@@ -7124,8 +7128,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
         end
     end
 
-    end # timeit_debug
-    end # timeit_debug
+    # end # timeit_debug
+    # end # timeit_debug
 
     # try block-gmres here
     function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
@@ -7144,7 +7148,7 @@ end
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
                                 verbose::Bool = false, 
-                                timer::TimerOutput = TimerOutput(),
+                                # timer::TimerOutput = TimerOutput(),
                                 tol::AbstractFloat = 1e-12) where {Z,S,N}
     parameter_values = ℱ.value.(parameter_values_dual)
 
@@ -7280,9 +7284,9 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
                                                     quadratic_matrix_equation_solver::Symbol = :schur, 
-                                                    sylvester_algorithm::Symbol = :doubling, 
-                                                    verbose::Bool = false,
-                                                    timer::TimerOutput = TimerOutput()) where S <: Real
+                                                    sylvester_algorithm::Symbol = :doubling,
+                                                    # timer::TimerOutput = TimerOutput(), 
+                                                    verbose::Bool = false) where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 
                                                                     𝓂, 
                                                                     timer = timer, 
@@ -7311,9 +7315,9 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
                                                     quadratic_matrix_equation_solver::Symbol = :schur, 
-                                                    sylvester_algorithm::Symbol = :doubling, 
-                                                    verbose::Bool = false,
-                                                    timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    sylvester_algorithm::Symbol = :doubling,
+                                                    # timer::TimerOutput = TimerOutput(), 
+                                                    verbose::Bool = false)::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 
                                                                                                                     𝓂, 
                                                                                                                     pruning = true, 
@@ -7344,9 +7348,9 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
                                                     quadratic_matrix_equation_solver::Symbol = :schur, 
-                                                    sylvester_algorithm::Symbol = :bicgstab, 
-                                                    verbose::Bool = false,
-                                                    timer::TimerOutput = TimerOutput()) where S <: Real
+                                                    sylvester_algorithm::Symbol = :bicgstab,
+                                                    # timer::TimerOutput = TimerOutput(), 
+                                                    verbose::Bool = false) where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 
                                                                                                                         𝓂, 
                                                                                                                         timer = timer,     
@@ -7375,9 +7379,9 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
                                                     quadratic_matrix_equation_solver::Symbol = :schur, 
-                                                    sylvester_algorithm::Symbol = :bicgstab, 
-                                                    verbose::Bool = false,
-                                                    timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    sylvester_algorithm::Symbol = :bicgstab,
+                                                    # timer::TimerOutput = TimerOutput(), 
+                                                    verbose::Bool = false)::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 
                                                                                                                         𝓂, 
                                                                                                                         pruning = true, 
@@ -7406,9 +7410,9 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
                                                     quadratic_matrix_equation_solver::Symbol = :schur, 
-                                                    sylvester_algorithm::Symbol = :bicgstab, 
-                                                    verbose::Bool = false,
-                                                    timer::TimerOutput = TimerOutput())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
+                                                    sylvester_algorithm::Symbol = :bicgstab,
+                                                    # timer::TimerOutput = TimerOutput(), 
+                                                    verbose::Bool = false)::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, tol = tol, timer = timer, verbose = verbose)
 
     state = zeros(𝓂.timings.nVars)

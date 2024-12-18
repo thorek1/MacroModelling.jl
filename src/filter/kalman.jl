@@ -10,8 +10,8 @@ function calculate_loglikelihood(::Val{:kalman},
                                 state, 
                                 warmup_iterations, 
                                 filter_algorithm, 
-                                verbose; 
-                                timer::TimerOutput = TimerOutput())
+                                verbose) #; 
+                                # timer::TimerOutput = TimerOutput())
     return calculate_kalman_filter_loglikelihood(observables, 
                                                 𝐒, 
                                                 data_in_deviations, 
@@ -26,7 +26,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
-                                                timer::TimerOutput = TimerOutput(), 
+                                                # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical,
                                                 verbose::Bool = false)::S where S <: Real
@@ -39,7 +39,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
-                                                timer::TimerOutput = TimerOutput(), 
+                                                # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical,
                                                 verbose::Bool = false)::S where S <: Real
@@ -52,7 +52,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
-                                                timer::TimerOutput = TimerOutput(), 
+                                                # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
                                                 lyapunov_algorithm::Symbol = :doubling,
@@ -77,9 +77,9 @@ end
 function get_initial_covariance(::Val{:theoretical}, 
                                 A::AbstractMatrix{S}, 
                                 B::AbstractMatrix{S}; 
-                                lyapunov_algorithm::Symbol = :doubling, 
-                                verbose::Bool = false,
-                                timer::TimerOutput = TimerOutput())::Matrix{S} where S <: Real
+                                lyapunov_algorithm::Symbol = :doubling,
+                                # timer::TimerOutput = TimerOutput(), 
+                                verbose::Bool = false)::Matrix{S} where S <: Real
     P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose, timer = timer)
     return P
 end
@@ -89,9 +89,9 @@ end
 function get_initial_covariance(::Val{:diagonal}, 
                                 A::AbstractMatrix{S}, 
                                 B::AbstractMatrix{S}; 
-                                lyapunov_algorithm::Symbol = :doubling, 
-                                verbose::Bool = false,
-                                timer::TimerOutput = TimerOutput())::Matrix{S} where S <: Real
+                                lyapunov_algorithm::Symbol = :doubling,
+                                # timer::TimerOutput = TimerOutput(), 
+                                verbose::Bool = false)::Matrix{S} where S <: Real
     P = @ignore_derivatives collect(ℒ.I(size(A, 1)) * 10.0)
     return P
 end
@@ -103,9 +103,9 @@ function run_kalman_iterations(A::Matrix{S},
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S}; 
                                 presample_periods::Int = 0,
-                                verbose::Bool = false,
-                                timer::TimerOutput = TimerOutput())::S where S <: Float64
-    @timeit_debug timer "Calculate Kalman filter" begin
+                                # timer::TimerOutput = TimerOutput(),
+                                verbose::Bool = false)::S where S <: Float64
+    # @timeit_debug timer "Calculate Kalman filter" begin
 
     u = zeros(S, size(C,2))
 
@@ -127,7 +127,7 @@ function run_kalman_iterations(A::Matrix{S},
     tmp = similar(P)
     Ptmp = similar(P)
 
-    @timeit_debug timer "Loop" begin
+    # @timeit_debug timer "Loop" begin
     for t in 1:size(data_in_deviations, 2)
         if !all(isfinite.(z)) 
             if verbose println("KF not finite at step $t") end
@@ -141,9 +141,9 @@ function run_kalman_iterations(A::Matrix{S},
         mul!(F, Ctmp, C')
         # F = C * P * C'
 
-        @timeit_debug timer "LU factorisation" begin
+        # @timeit_debug timer "LU factorisation" begin
         luF = RF.lu!(F, check = false) ### has to be LU since F will always be symmetric and positive semi-definite but not positive definite (due to linear dependencies)
-        end # timeit_debug
+        # end # timeit_debug
 
         if !ℒ.issuccess(luF)
             if verbose println("KF factorisation failed step $t") end
@@ -160,7 +160,7 @@ function run_kalman_iterations(A::Matrix{S},
 
         # invF = inv(luF) ###
 
-        @timeit_debug timer "LU div" begin
+        # @timeit_debug timer "LU div" begin
         if t > presample_periods
             ℒ.ldiv!(ztmp, luF, z)
             loglik += log(Fdet) + ℒ.dot(z', ztmp) ###
@@ -175,8 +175,8 @@ function run_kalman_iterations(A::Matrix{S},
         # K = P * Ct / luF
         # K = P * C' * invF
 
-        end # timeit_debug
-        @timeit_debug timer "Matmul" begin
+        # end # timeit_debug
+        # @timeit_debug timer "Matmul" begin
 
         mul!(tmp, K, C)
         mul!(Ptmp, tmp, P)
@@ -195,11 +195,11 @@ function run_kalman_iterations(A::Matrix{S},
         mul!(z, C, u)
         # z = C * u
 
-        end # timeit_debug
+        # end # timeit_debug
     end
 
-    end # timeit_debug
-    end # timeit_debug
+    # end # timeit_debug
+    # end # timeit_debug
 
     return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
 end
@@ -212,9 +212,9 @@ function run_kalman_iterations(A::Matrix{S},
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S}; 
                                 presample_periods::Int = 0,
-                                verbose::Bool = false,
-                                timer::TimerOutput = TimerOutput())::S where S <: ℱ.Dual
-    @timeit_debug timer "Calculate Kalman filter - forward mode AD" begin
+                                # timer::TimerOutput = TimerOutput(),
+                                verbose::Bool = false)::S where S <: ℱ.Dual
+    # @timeit_debug timer "Calculate Kalman filter - forward mode AD" begin
     u = zeros(S, size(C,2))
 
     z = C * u
@@ -265,7 +265,7 @@ function run_kalman_iterations(A::Matrix{S},
         z = C * u
     end
 
-    end # timeit_debug
+    # end # timeit_debug
 
     return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
 end
@@ -278,9 +278,9 @@ function rrule(::typeof(run_kalman_iterations),
                     P, 
                     data_in_deviations; 
                     presample_periods = 0,
-                    verbose::Bool = false,
-                    timer::TimerOutput = TimerOutput())
-    @timeit_debug timer "Calculate Kalman filter - forward" begin
+                    # timer::TimerOutput = TimerOutput(),
+                    verbose::Bool = false)
+    # @timeit_debug timer "Calculate Kalman filter - forward" begin
     T = size(data_in_deviations, 2) + 1
 
     z = zeros(size(data_in_deviations, 1))
@@ -309,7 +309,7 @@ function rrule(::typeof(run_kalman_iterations),
 
     loglik = 0.0
 
-    @timeit_debug timer "Loop" begin
+    # @timeit_debug timer "Loop" begin
         
     for t in 2:T
         if !all(isfinite.(z)) 
@@ -385,19 +385,19 @@ function rrule(::typeof(run_kalman_iterations),
     vtmp = zero(v[1])
     Ptmp = zero(P[1])
 
-    end # timeit_debug
-    end # timeit_debug
+    # end # timeit_debug
+    # end # timeit_debug
 
     # pullback
     function kalman_pullback(∂llh)
-        @timeit_debug timer "Calculate Kalman filter - reverse" begin
+        # @timeit_debug timer "Calculate Kalman filter - reverse" begin
         ℒ.rmul!(∂A, 0)
         ℒ.rmul!(∂Faccum, 0)
         ℒ.rmul!(∂P, 0)
         ℒ.rmul!(∂ū, 0)
         ℒ.rmul!(∂𝐁, 0)
 
-        @timeit_debug timer "Loop" begin
+        # @timeit_debug timer "Loop" begin
         for t in T:-1:2
             if t > presample_periods + 1
                 # ∂llh∂F
@@ -534,8 +534,8 @@ function rrule(::typeof(run_kalman_iterations),
         ℒ.rmul!(∂𝐁, -∂llh/2)
         ℒ.rmul!(∂data_in_deviations, -∂llh/2)
 
-        end # timeit_debug
-        end # timeit_debug
+        # end # timeit_debug
+        # end # timeit_debug
 
         return NoTangent(), ∂A, ∂𝐁, NoTangent(), ∂P, ∂data_in_deviations, NoTangent()
     end

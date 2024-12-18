@@ -12,7 +12,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_solver::Symbol = :schur, 
-                                        timer::TimerOutput = TimerOutput(),
+                                        # timer::TimerOutput = TimerOutput(),
                                         tol::AbstractFloat = 1e-8, # 1e-14 is too tight
                                         verbose::Bool = false) where R <: Real
     if length(initial_guess) > 0
@@ -81,9 +81,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         tol::AbstractFloat = 1e-14,
-                                        timer::TimerOutput = TimerOutput(),
+                                        # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where R <: Real
-    @timeit_debug timer "Prepare indice" begin
+    # @timeit_debug timer "Prepare indice" begin
    
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
     sort!(comb)
@@ -92,8 +92,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
     indices_past_not_future_in_comb = indexin(T.past_not_future_idx, comb)
 
-    end # timeit_debug
-    @timeit_debug timer "Assemble matrices" begin
+    # end # timeit_debug
+    # @timeit_debug timer "Assemble matrices" begin
 
     Ã₊ =  A[:,future_not_past_and_mixed_in_comb]
     
@@ -115,8 +115,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     ℒ.rmul!(Ã₀₊,-1)
     E = vcat(hcat(Ã₋,Ã₀₊), hcat(Z₋, I₊))
     
-    end # timeit_debug
-    @timeit_debug timer "Schur decomposition" begin
+    # end # timeit_debug
+    # @timeit_debug timer "Schur decomposition" begin
 
     # this is the companion form and by itself the linearisation of the matrix polynomial used in the linear time iteration method. see: https://opus4.kobv.de/opus4-matheon/files/209/240.pdf
     schdcmp = try
@@ -128,8 +128,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
 
-    end # timeit_debug
-    @timeit_debug timer "Reorder Schur decomposition" begin
+    # end # timeit_debug
+    # @timeit_debug timer "Reorder Schur decomposition" begin
 
     try
         ℒ.ordschur!(schdcmp, eigenselect)
@@ -138,8 +138,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         return A, false, 0, 1.0
     end
 
-    end # timeit_debug
-    @timeit_debug timer "Postprocess" begin
+    # end # timeit_debug
+    # @timeit_debug timer "Postprocess" begin
 
     Z₂₁ = schdcmp.Z[T.nPast_not_future_and_mixed+1:end, 1:T.nPast_not_future_and_mixed]
     Z₁₁ = schdcmp.Z[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
@@ -147,7 +147,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     S₁₁    = schdcmp.S[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
     T₁₁    = schdcmp.T[1:T.nPast_not_future_and_mixed, 1:T.nPast_not_future_and_mixed]
 
-    @timeit_debug timer "Matrix inversions" begin
+    # @timeit_debug timer "Matrix inversions" begin
 
     Ẑ₁₁ = ℒ.lu(Z₁₁, check = false)
     
@@ -163,8 +163,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         return A, false, 0, 1.0
     end
 
-    end # timeit_debug
-    @timeit_debug timer "Matrix divisions" begin
+    # end # timeit_debug
+    # @timeit_debug timer "Matrix divisions" begin
 
     # D      = Z₂₁ / Ẑ₁₁
     ℒ.rdiv!(Z₂₁, Ẑ₁₁)
@@ -178,8 +178,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     sol = vcat(L[T.not_mixed_in_past_idx,:], D)
 
-    end # timeit_debug
-    end # timeit_debug
+    # end # timeit_debug
+    # end # timeit_debug
 
     X = sol[T.dynamic_order,:] * ℒ.I(length(comb))[past_not_future_and_mixed_in_comb,:]
 
@@ -210,13 +210,13 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         tol::AbstractFloat = 1e-14,
-                                        timer::TimerOutput = TimerOutput(),
+                                        # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
                                         max_iter::Int = 100) where R <: Real
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
     # https://arxiv.org/abs/2212.09491
-    @timeit_debug timer "Invert B" begin
+    # @timeit_debug timer "Invert B" begin
 
     guess_provided = true
 
@@ -244,8 +244,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     X = -E - initial_guess
     Y = -F
-    end # timeit_debug
-    @timeit_debug timer "Prellocate" begin
+    # end # timeit_debug
+    # @timeit_debug timer "Prellocate" begin
 
     X_new = similar(X)
     Y_new = similar(Y)
@@ -265,19 +265,19 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     solved = false
 
     iter = max_iter
-    end # timeit_debug
-    @timeit_debug timer "Loop" begin
+    # end # timeit_debug
+    # @timeit_debug timer "Loop" begin
 
     for i in 1:max_iter
-        @timeit_debug timer "Compute EI" begin
+        # @timeit_debug timer "Compute EI" begin
 
         # Compute EI = I - Y * X
         ℒ.mul!(temp1, Y, X)
         ℒ.axpby!(1, II, -1, temp1)
         # temp1 = II - Y * X
 
-        end # timeit_debug
-        @timeit_debug timer "Invert EI" begin
+        # end # timeit_debug
+        # @timeit_debug timer "Invert EI" begin
 
         fEI = ℒ.lu!(temp1, check = false)
 
@@ -285,16 +285,16 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
             return A, false, iter, 1.0
         end
 
-        end # timeit_debug
-        @timeit_debug timer "Compute E" begin
+        # end # timeit_debug
+        # @timeit_debug timer "Compute E" begin
 
         # Compute E = E * EI * E
         ℒ.ldiv!(temp3, fEI, E)
         ℒ.mul!(E_new, E, temp3)
         # E_new = E / fEI * E
 
-        end # timeit_debug
-        @timeit_debug timer "Compute FI" begin
+        # end # timeit_debug
+        # @timeit_debug timer "Compute FI" begin
             
         # Compute FI = I - X * Y
         ℒ.mul!(temp2, X, Y)
@@ -303,8 +303,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # ℒ.mul!(E_new, X, Y, -1, 1)
         # temp1 .= II - X * Y
 
-        end # timeit_debug
-        @timeit_debug timer "Invert FI" begin
+        # end # timeit_debug
+        # @timeit_debug timer "Invert FI" begin
 
         fFI = ℒ.lu!(temp2, check = false)
         
@@ -312,16 +312,16 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
             return A, false, iter, 1.0
         end
 
-        end # timeit_debug
-        @timeit_debug timer "Compute F" begin
+        # end # timeit_debug
+        # @timeit_debug timer "Compute F" begin
         
         # Compute F = F * FI * F
         ℒ.ldiv!(temp3, fFI, F)
         ℒ.mul!(F_new, F, temp3)
         # F_new = F / fFI * F
 
-        end # timeit_debug
-        @timeit_debug timer "Compute X_new" begin
+        # end # timeit_debug
+        # @timeit_debug timer "Compute X_new" begin
     
         # Compute X_new = X + F * FI * X * E
         ℒ.mul!(temp3, X, E)
@@ -335,8 +335,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         ℒ.axpy!(1, X, X_new)
         # X_new += X
 
-        end # timeit_debug
-        @timeit_debug timer "Compute Y_new" begin
+        # end # timeit_debug
+        # @timeit_debug timer "Compute Y_new" begin
 
         # Compute Y_new = Y + E * EI * Y * F
         ℒ.mul!(X, Y, F) # use X as temporary storage
@@ -359,17 +359,17 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
             break
         end
 
-        end # timeit_debug
-        @timeit_debug timer "Copy" begin
+        # end # timeit_debug
+        # @timeit_debug timer "Copy" begin
 
         # Update values for the next iteration
         copy!(X, X_new)
         copy!(Y, Y_new)
         copy!(E, E_new)
         copy!(F, F_new)
-        end # timeit_debug
+        # end # timeit_debug
     end
-    end # timeit_debug
+    # end # timeit_debug
 
     ℒ.axpy!(1, initial_guess, X_new)
 
@@ -406,15 +406,15 @@ end
 #                                         max_iter::Int = 5000) where R <: Real
 #     # Iterate over: A * X * X + C + B * X = (A * X + B) * X + C = X + (A * X + B) \ C
 
-#     @timeit_debug timer "Preallocate" begin
+#     # @timeit_debug timer "Preallocate" begin
 
 #     F = similar(C)
 #     t = similar(C)
 
 #     initial_guess = length(initial_guess) > 0 ? initial_guess : zero(A)
 
-#     end # timeit_debug
-#     @timeit_debug timer "Loop" begin
+#     # end # timeit_debug
+#     # @timeit_debug timer "Loop" begin
 
 #     sol = @suppress begin 
 #         speedmapping(initial_guess; m! = (F̄, F) -> begin 
@@ -438,7 +438,7 @@ end
     
 #     reached_tol = ℒ.norm(AXX) / AXXnorm
     
-#     end # timeit_debug
+#     # end # timeit_debug
 
 #     # if reached_tol > tol
 #     #     println("QME: linear time iteration $reached_tol")
@@ -510,7 +510,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         tol::AbstractFloat = 1e-8, 
                                         quadratic_matrix_equation_solver::Symbol = :schur, 
-                                        timer::TimerOutput = TimerOutput(),
+                                        # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
@@ -551,7 +551,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         if ℒ.norm(CC) < eps() continue end
     
-        dX, solved = solve_sylvester_equation(AA, -X, -CC, sylvester_algorithm = :sylvester)
+        dX, solved = solve_sylvester_equation(AA, -X, -CC, sylvester_algorithm = :doubling)
 
         X̃[:,i] = vec(dX)
     end
