@@ -854,7 +854,7 @@ end
 # end
 
 
-# function find_shocks(::Val{:Newton},
+# function find_shocks(::Val{:newton},
 #     kron_buffer::Vector{Float64},
 #     kron_buffer2::AbstractMatrix{Float64},
 #     J::ℒ.Diagonal{Bool, Vector{Bool}},
@@ -929,7 +929,7 @@ end
 
 
 
-# function find_shocks(::Val{:Newton},
+# function find_shocks(::Val{:newton},
 #                     kron_buffer::Vector{Float64},
 #                     kron_buffer²::Vector{Float64},
 #                     kron_buffer2::AbstractMatrix{Float64},
