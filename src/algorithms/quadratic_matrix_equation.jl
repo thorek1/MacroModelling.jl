@@ -40,7 +40,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                         T; 
                                                         initial_guess = initial_guess,
                                                         # tol = tol,
-                                                        timer = timer,
+                                                        # timer = timer,
                                                         verbose = verbose)
 
     if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_solver - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
@@ -52,7 +52,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 T; 
                                                                 initial_guess = initial_guess,
                                                                 # tol = tol,
-                                                                timer = timer,
+                                                                # timer = timer,
                                                                 verbose = verbose)
 
             if verbose println("Quadratic matrix equation solver: schur - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
@@ -62,7 +62,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 T; 
                                                                 initial_guess = initial_guess,
                                                                 # tol = tol,
-                                                                timer = timer,
+                                                                # timer = timer,
                                                                 verbose = verbose)
 
             if verbose println("Quadratic matrix equation solver: doubling - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
@@ -522,7 +522,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                                 T; 
                                                 tol = tol,
                                                 initial_guess = initial_guess,
-                                                timer = timer,
+                                                # timer = timer,
                                                 verbose = verbose)
 
     AXB = Â * X + B̂

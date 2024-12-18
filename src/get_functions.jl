@@ -1055,8 +1055,8 @@ function get_irf(𝓂::ℳ;
             verbose = verbose, 
             dynamics = true, 
             algorithm = algorithm, 
-            obc = occasionally_binding_constraints || obc_shocks_included, 
-            timer = timer)
+            # timer = timer, 
+            obc = occasionally_binding_constraints || obc_shocks_included)
     
     # end # timeit_debug
 
@@ -3038,7 +3038,7 @@ function get_loglikelihood(𝓂::ℳ,
     quadratic_matrix_equation_solver::Symbol = :schur, 
     sylvester_algorithm::Symbol = :bicgstab, 
     tol::AbstractFloat = 1e-12, 
-    timer::TimerOutput = TimerOutput(),
+    # timer::TimerOutput = TimerOutput(),
     verbose::Bool = false)::S where S <: Real
 
     # if algorithm ∈ [:third_order,:pruned_third_order]
@@ -3060,7 +3060,10 @@ function get_loglikelihood(𝓂::ℳ,
 
     observables = @ignore_derivatives get_and_check_observables(𝓂, data)
 
-    @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm, timer = timer)
+    @ignore_derivatives solve!(𝓂, 
+                                verbose = verbose, 
+                                # timer = timer, 
+                                algorithm = algorithm)
 
     bounds_violated = @ignore_derivatives check_bounds(parameter_values, 𝓂)
 
@@ -3079,7 +3082,7 @@ function get_loglikelihood(𝓂::ℳ,
                                                                                     parameter_values, 
                                                                                     𝓂, 
                                                                                     tol, 
-                                                                                    timer = timer, 
+                                                                                    # timer = timer, 
                                                                                     quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
                                                                                     sylvester_algorithm = sylvester_algorithm, 
                                                                                     verbose = verbose)
@@ -3102,7 +3105,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Filter" begin
 
-    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, verbose, timer = timer)
+    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, verbose) # timer = timer
 
     # end # timeit_debug
 

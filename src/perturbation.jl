@@ -46,7 +46,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, 
                                             T, 
                                             quadratic_matrix_equation_solver = quadratic_matrix_equation_solver, 
-                                            timer = timer,
+                                            # timer = timer,
                                             initial_guess = initial_guess,
                                             verbose = verbose)
 
@@ -166,7 +166,7 @@ function rrule(::typeof(calculate_first_order_solution),
     sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, 
                                             T, 
                                             quadratic_matrix_equation_solver = quadratic_matrix_equation_solver, 
-                                            timer = timer,
+                                            # timer = timer,
                                             initial_guess = initial_guess,
                                             verbose = verbose)
 
@@ -289,8 +289,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
                                                 T = T, 
                                                 verbose = verbose,
                                                 initial_guess = initial_guess,
-                                                quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
-                                                timer = timer)
+                                                # timer = timer,
+                                                quadratic_matrix_equation_solver = quadratic_matrix_equation_solver)
 
     if !solved 
         return ∇₁, qme_sol, false
@@ -461,9 +461,9 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     𝐒₂, solved = solve_sylvester_equation(A, B, C, 
                                             sylvester_algorithm = sylvester_algorithm, 
                                             initial_guess = initial_guess,
-                                            verbose = verbose, 
+                                            verbose = verbose)#, 
                                             # tol = tol, 
-                                            timer = timer)
+                                            # timer = timer)
 
     # end # timeit_debug
     # # @timeit_debug timer "Refine sylvester equation" begin
@@ -585,9 +585,9 @@ function rrule(::typeof(calculate_second_order_solution),
     𝐒₂, solved = solve_sylvester_equation(A, B, C, 
                                             sylvester_algorithm = sylvester_algorithm, 
                                             initial_guess = initial_guess,
-                                            verbose = verbose, 
+                                            verbose = verbose) #, 
                                             # tol = tol, 
-                                            timer = timer)
+                                            # timer = timer)
 
     # end # timeit_debug
     # @timeit_debug timer "Post-process" begin
@@ -635,8 +635,8 @@ function rrule(::typeof(calculate_second_order_solution),
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂, 
                                                 sylvester_algorithm = sylvester_algorithm, 
                                                 # tol = tol, 
-                                                verbose = verbose, 
-                                                timer = timer)
+                                                verbose = verbose) # , 
+                                                # timer = timer)
         
         if !solved
             return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
@@ -853,7 +853,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
     # B += mat_mult_kron(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ), collect(ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)), M₃.𝐂₃) # slower than direct compression
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, timer = timer)
+    B += compressed_kron³(𝐒₁₋╱𝟏ₑ)#, timer = timer)
 
     # end # timeit_debug
     # end # timeit_debug
@@ -932,7 +932,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     # @timeit_debug timer "3rd Kronecker power" begin
 
     # 𝐗₃ += mat_mult_kron(∇₃, collect(aux), collect(ℒ.kron(aux, aux)), M₃.𝐂₃) # slower than direct compression
-    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), timer = timer)
+    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2])) #, timer = timer)
     
     # end # timeit_debug
     # @timeit_debug timer "Mult 2" begin
@@ -946,9 +946,9 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                             sylvester_algorithm = sylvester_algorithm, 
                                             initial_guess = initial_guess,
-                                            verbose = verbose, 
+                                            verbose = verbose) # , 
                                             # tol = tol, 
-                                            timer = timer)
+                                            # timer = timer)
     
     # end # timeit_debug
     # # @timeit_debug timer "Refine sylvester equation" begin
@@ -1075,7 +1075,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
 
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, timer = timer)
+    B += compressed_kron³(𝐒₁₋╱𝟏ₑ) # , timer = timer)
 
     # end # timeit_debug
     # end # timeit_debug
@@ -1157,7 +1157,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power aux" begin
 
-    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), timer = timer)
+    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2])) # , timer = timer)
     𝐗₃ = choose_matrix_format(𝐗₃, density_threshold = 1.0, min_length = 10)
 
     # end # timeit_debug
@@ -1172,9 +1172,9 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                             sylvester_algorithm = sylvester_algorithm, 
                                             initial_guess = initial_guess,
-                                            verbose = verbose, 
+                                            verbose = verbose) # , 
                                             # tol = tol, 
-                                            timer = timer)
+                                            # timer = timer)
     
     # end # timeit_debug
     # # @timeit_debug timer "Refine sylvester equation" begin
@@ -1283,7 +1283,7 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₃, 
                                                 sylvester_algorithm = sylvester_algorithm, 
                                                 # tol = tol,
-                                                timer = timer,
+                                                # timer = timer,
                                                 verbose = verbose)
 
         if !solved
@@ -1406,7 +1406,7 @@ function rrule(::typeof(calculate_third_order_solution),
         # @timeit_debug timer "Step 5" begin
             
         # this is very slow
-        ∂∇₃ += ∂𝐗₃ * compressed_kron³(aux', rowmask = unique(findnz(∂𝐗₃)[2]), timer = timer)
+        ∂∇₃ += ∂𝐗₃ * compressed_kron³(aux', rowmask = unique(findnz(∂𝐗₃)[2])) # , timer = timer)
         # ∂∇₃ += ∂𝐗₃ * ℒ.kron(aux', aux', aux')
         
         # end # timeit_debug

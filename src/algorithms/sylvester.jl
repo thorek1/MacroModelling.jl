@@ -59,9 +59,9 @@ function solve_sylvester_equation(A::M,
 
     x, i, reached_tol = solve_sylvester_equation(a, b, c, Val(sylvester_algorithm), 
                                                         initial_guess = initial_guess, 
-                                                        # tol = tol, 
-                                                        verbose = verbose,
-                                                        timer = timer)
+                                                        # tol = tol,
+                                                        # timer = timer, 
+                                                        verbose = verbose)
 
     if verbose && i != 0
         println("Sylvester equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
@@ -78,8 +78,8 @@ function solve_sylvester_equation(A::M,
                                                             Val(:bartels_stewart), 
                                                             initial_guess = zeros(0,0), 
                                                             # tol = tol, 
-                                                            verbose = verbose,
-                                                            timer = timer)
+                                                            # timer = timer, 
+                                                            verbose = verbose)
 
         if verbose && i != 0
             println("Sylvester equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $reached_tol; algorithm: sylvester")
@@ -95,8 +95,8 @@ function solve_sylvester_equation(A::M,
                                                             Val(:dqgmres), 
                                                             initial_guess = x, 
                                                             # tol = tol, 
-                                                            verbose = verbose,
-                                                            timer = timer)
+                                                            # timer = timer, 
+                                                            verbose = verbose)
         if Reached_tol < reached_tol
             x = X
             reached_tol = Reached_tol
@@ -116,8 +116,8 @@ function solve_sylvester_equation(A::M,
                                                             Val(:gmres), 
                                                             initial_guess = zeros(0,0), 
                                                             # tol = tol, 
-                                                            verbose = verbose,
-                                                            timer = timer)
+                                                            # timer = timer, 
+                                                            verbose = verbose)
 
         if verbose# && i != 0
             println("Sylvester equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $reached_tol; algorithm: gmres")
@@ -133,8 +133,8 @@ function solve_sylvester_equation(A::M,
                                                             Val(:dqgmres), 
                                                             initial_guess = x, 
                                                             # tol = tol, 
-                                                            verbose = verbose,
-                                                            timer = timer)
+                                                            # timer = timer, 
+                                                            verbose = verbose)
         if Reached_tol < reached_tol
             x = X
             reached_tol = Reached_tol

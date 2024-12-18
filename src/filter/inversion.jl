@@ -20,8 +20,8 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     warmup_iterations = warmup_iterations, 
                                                     presample_periods = presample_periods, 
                                                     filter_algorithm = filter_algorithm, 
-                                                    verbose = verbose,
-                                                    timer = timer)
+                                                    # timer = timer, 
+                                                    verbose = verbose)
 end
 
 
